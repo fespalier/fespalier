@@ -732,6 +732,8 @@
         "docs/i18n-tolgee.md#Testing",
         "docs/i18n-tolgee.md#Rules and what it costs",
         "docs/i18n-tolgee.md#Not built",
+        "docs/examples.md#i18n",
+        "examples/i18n",
         "packages/fespalier_tolgee/README.md",
         "packages/fespalier_tolgee/lib/fespalier_tolgee.dart",
         "packages/fespalier_tolgee/lib/in_context.dart",

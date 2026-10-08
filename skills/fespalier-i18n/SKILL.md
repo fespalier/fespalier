@@ -194,6 +194,10 @@ carry keys, texts or the CDN URL). It starts no timer and adds no listener of it
 | An error message, or a symptom                                                              | [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-tolgee.md` page) |
 | The route side: `route.dart` `paths`, `locationFor`, `locale:`                              | [`fespalier-routing`](../fespalier-routing/SKILL.md) (its `route-dart.md` page)                         |
 
+## Example
+
+`examples/i18n` (in the fespalier repository) is this skill as a runnable app: `lib/app/startup.dart` (bundled ARB assets), `app.dart` (the scope's `routerConfig`), `$lang/layout.dart` (a language switch with `relocate`), `products/` (an ICU plural and a `paths` spelling) and `test/i18n_test.dart` (`pumpRouter(app:)`, `FakeTranslations`, `fakeTranslations`), with no network and no key.
+
 ## Where the code is
 
 `packages/fespalier_tolgee/lib/src/`: `scope.dart` (`TranslationScope`, `context.tr`, `TrText`), `providers.dart`

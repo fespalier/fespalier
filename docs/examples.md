@@ -191,3 +191,19 @@ just cose                                                                   # th
 ```
 
 `SignKeypairSigner` (the hardware key) is not run by any test: they use a software key.
+
+## i18n
+
+[`examples/i18n`](../examples/i18n) is [`fespalier_tolgee`](../packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):
+
+- the language is a `$lang` enum folder (`/en`, `/fr`; `/xx` is not found), read by `MaterialApp.router(routerConfig: TranslationScope.routerConfig(router, localeOf: localeSegment()))`;
+- `startup()` reads `assets/i18n/en.arb` and `fr.arb` while `splash.dart` shows, so the first frame is translated, and `fr.arb` lacks one key on purpose: the page shows the English text;
+- a layout with a button per language (no dropdown) that navigates with `relocate`, so `/en/products` becomes `/fr/produits` (a `route.dart` `paths` spelling);
+- an ICU plural (`=0`, `one`, `other`) in one string;
+- tests with `pumpRouter(app: ...)`, `FakeTranslations` as the over-the-air source and `fakeTranslations(...)` for a strict catalog: the first frame, a deep link in French, the switch changing the URL and the text, the fallback, a fetched text, an offline source and a missing key.
+
+```sh
+cd examples/i18n
+flutter create . --platforms=android,ios,web
+flutter run
+```

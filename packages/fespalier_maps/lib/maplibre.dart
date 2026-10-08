@@ -1,14 +1,20 @@
-/// The MapLibre surface of the pin picker (since 0.13.0): the one library of this package that
-/// imports `maplibre_gl`, so an app that only uses the pure model never links a map.
+/// The MapLibre side of the package (since 0.13.0): the surface of the pin picker and the offline
+/// database of the region packs. The one library of this package that imports `maplibre_gl`, so
+/// an app that only uses the pure model never links a map.
 ///
-/// Nothing here runs in a widget test (a platform view cannot render there): tests use
-/// `FakeMapSurface` from `package:fespalier_maps/testing.dart`.
+/// Nothing here runs in a widget test (a platform view cannot render there, and the offline
+/// calls are platform channels): tests use `FakeMapSurface` and `FakeOfflineTiles` from
+/// `package:fespalier_maps/testing.dart`.
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/widgets.dart';
 import 'package:maplibre_gl/maplibre_gl.dart';
+import 'package:maplibre_gl/maplibre_gl.dart' as ml;
 
 import 'fespalier_maps.dart';
+import 'src/offline/file_size_stub.dart'
+    if (dart.library.io) 'src/offline/file_size_io.dart';
 
 /// A [MapSurface] over `MapLibreMap`: configuration only, with value equality.
 ///
@@ -167,4 +173,161 @@ class _MapLibreHostState extends State<_MapLibreHost> {
       onCameraIdle: _idle,
     );
   }
+}
+
+/// The key under which a region's metadata holds the pack's key.
+const String _keyField = 'fespalier_maps.key';
+
+/// An [OfflineTiles] over MapLibre's offline database (`downloadOfflineRegion` and its siblings
+/// of `maplibre_gl` 0.27). Install it for `TilePacks`:
+///
+/// ```dart
+/// ProviderScope(
+///   overrides: [offlineTiles.overrideWithValue(const MapLibreOfflineTiles())],
+///   child: const MyApp(),
+/// )
+/// ```
+///
+/// Android and iOS only: on the web every call throws an [UnsupportedError], which the packs
+/// report as [PackFailure.unsupported], and the list of regions is empty. A pack is a region of
+/// MapLibre's database with the pack's key in its metadata; a region something else made has no
+/// key and is not listed. It listens to nothing: the plugin's download events reach the callback
+/// `download` is given.
+///
+/// A platform channel needs a device: a widget test uses `FakeOfflineTiles`.
+final class MapLibreOfflineTiles implements OfflineTiles {
+  /// The offline database of this app.
+  const MapLibreOfflineTiles();
+
+  @override
+  Future<List<StoredRegion>> regions() async {
+    if (kIsWeb) return const [];
+    return [for (final region in await ml.getListOfRegions()) _stored(region)];
+  }
+
+  @override
+  Future<StoredRegion> download(
+    RegionPackRequest request,
+    void Function(DownloadEvent event) onEvent,
+  ) async {
+    _noWeb();
+    final region = await ml.downloadOfflineRegion(
+      ml.OfflineRegionDefinition(
+        bounds: ml.LatLngBounds(
+          southwest: ml.LatLng(
+            request.bounds.southwest.latitude,
+            request.bounds.southwest.longitude,
+          ),
+          northeast: ml.LatLng(
+            request.bounds.northeast.latitude,
+            request.bounds.northeast.longitude,
+          ),
+        ),
+        mapStyleUrl: request.styleUrl,
+        minZoom: request.minZoom,
+        maxZoom: request.maxZoom,
+      ),
+      metadata: <String, dynamic>{_keyField: request.key},
+      onEvent: (ml.DownloadRegionStatus event) =>
+          onEvent(downloadEventOf(event)),
+    );
+    return _stored(region);
+  }
+
+  @override
+  Future<void> pause(int id) {
+    _noWeb();
+    return ml.pauseOfflineRegionDownload(id);
+  }
+
+  @override
+  Future<void> resume(int id) {
+    _noWeb();
+    return ml.resumeOfflineRegionDownload(id);
+  }
+
+  @override
+  Future<void> delete(int id) async {
+    _noWeb();
+    await ml.deleteOfflineRegion(id);
+  }
+
+  @override
+  Future<RegionStatus> status(int id) async {
+    _noWeb();
+    return regionStatusOf(await ml.getOfflineRegionStatus(id));
+  }
+
+  /// The size of the offline database file (`getOfflineDatabasePath`); the file only, not the
+  /// journal beside it. Null on the web, and where the plugin does not know the path.
+  @override
+  Future<int?> databaseBytes() async {
+    if (kIsWeb) return null;
+    final path = await ml.getOfflineDatabasePath();
+    return path == null ? null : fileBytes(path);
+  }
+
+  static void _noWeb() {
+    if (kIsWeb) {
+      throw UnsupportedError('Offline regions are not available on the web.');
+    }
+  }
+}
+
+/// MapLibre reports progress as a **percentage**: both native sides compute
+/// `100.0 * completedResources / requiredResources`. Download events: Android
+/// `OfflineManagerUtils.java` (`setObserverOnRegion`), iOS `OfflinePackDownloadManager.swift`
+/// (lines 303-309); `getOfflineRegionStatus`: both platforms' `OfflineManagerUtils`.
+/// The port speaks a fraction, so divide by 100 and keep it in 0 to 1.
+@visibleForTesting
+double progressFraction(double percent) =>
+    percent.isNaN ? 0 : (percent / 100).clamp(0.0, 1.0);
+
+/// The port's event for one of the plugin's download events (see [progressFraction]).
+@visibleForTesting
+DownloadEvent downloadEventOf(ml.DownloadRegionStatus event) => switch (event) {
+  ml.InProgress() => DownloadProgress(
+    progress: progressFraction(event.progress),
+    completedResources: event.completedResourceCount,
+    requiredResources: event.requiredResourceCount,
+    bytes: event.completedResourceSize,
+  ),
+  ml.Success() => const DownloadFinished(),
+  ml.Error() => DownloadFailed(PackFailure.of(event.cause)),
+  _ => const DownloadFailed(PackFailure.other),
+};
+
+/// The port's status for the plugin's (see [progressFraction]).
+@visibleForTesting
+RegionStatus regionStatusOf(ml.OfflineRegionStatus status) => RegionStatus(
+  progress: progressFraction(status.downloadProgress),
+  completedResources: status.completedResourceCount,
+  requiredResources: status.requiredResourceCount,
+  bytes: status.completedResourceSize,
+  isComplete: status.isComplete,
+);
+
+StoredRegion _stored(ml.OfflineRegion region) {
+  final key = region.metadata[_keyField];
+  if (key is! String || key.isEmpty) return StoredRegion(id: region.id);
+  final definition = region.definition;
+  return StoredRegion(
+    id: region.id,
+    request: RegionPackRequest(
+      key: key,
+      bounds: GeoBounds(
+        GeoPoint(
+          definition.bounds.southwest.latitude,
+          definition.bounds.southwest.longitude,
+        ),
+        GeoPoint(
+          definition.bounds.northeast.latitude,
+          definition.bounds.northeast.longitude,
+        ),
+      ),
+      styleUrl: definition.mapStyleUrl,
+      minZoom: definition.minZoom,
+      maxZoom: definition.maxZoom,
+    ),
+  );
 }

@@ -1,6 +1,6 @@
 ---
 name: fespalier-maps
-description: "A place picked on a map in a fespalier app with fespalier_maps (since 0.13.0) — a PinPicker body for a page you write (the pin fixed at the centre, the map moving under it), the Geocoder you implement (recipes for Nominatim, Photon and your own backend), the position source over geolocator, MapLibreSurface over maplibre_gl, a name shown as a guess and never as fact, forward search in a field docked at the bottom, a PickedPlace returned through push<PickedPlace>, the fespalier.maps telemetry that never carries a place, and FakeMapSurface, FakeGeocoder and FakePositionSource in tests. Load before adding a place or address picker, a map, geolocation or a geocoder, or when a picker shows no pin, never asks for the position, confirms nothing or a test cannot render the map."
+description: "A place picked on a map in a fespalier app with fespalier_maps (since 0.13.0) — a PinPicker body for a page you write (the pin fixed at the centre, the map moving under it), the Geocoder you implement (recipes for Nominatim, Photon and your own backend), the position source over geolocator, MapLibreSurface over maplibre_gl, a name shown as a guess and never as fact, forward search in a field docked at the bottom, a PickedPlace returned through push<PickedPlace>, the fespalier.maps telemetry that never carries a place, and FakeMapSurface, FakeGeocoder and FakePositionSource in tests; and offline MapLibre region packs — RegionPackRequest and its tile estimate, the tilePacks notifier (start, pause, resume within the session, remove, refresh, storage) with a PackStatus per key, MapLibreOfflineTiles over the offline database, a download that does not resume across an app restart, and FakeOfflineTiles. Load before adding a place or address picker, a map, geolocation, a geocoder or downloaded offline map regions, or when a picker shows no pin, never asks for the position, confirms nothing, a pack stays Interrupted after a restart or a test cannot render the map."
 ---
 
 # fespalier-maps
@@ -39,7 +39,7 @@ dependencies:
 with a real tag in an app, but never in these pages, where `cli/tests/versions.rs` would read it as fespalier's own
 version. The package's own
 [install block](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_maps/README.md#install) is the one
-release-please keeps current.) The package brings `maplibre_gl` (`>=0.26.0 <0.28.0`) and `geolocator`
+release-please keeps current.) The package brings `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator`
 (`>=14.0.0 <15.0.0`), which are platform plugins: the location permission strings (`NSLocationWhenInUseUsageDescription`
 in `Info.plist`, `ACCESS_FINE_LOCATION` and `ACCESS_COARSE_LOCATION` in the manifest) and a map **style** you may use are
 the app's. Nothing in CI draws a map or builds Android with `maplibre_gl`: a device run is the check.
@@ -49,12 +49,12 @@ the app's. Nothing in CI draws a map or builds Android with `maplibre_gl`: a dev
 Three libraries, so an app links only what it uses, and one rule: **the page is yours, the three widgets in it are yours,
 the geocoder is yours.**
 
-| You import                                   | For                                                                                                                                                                                                                                                      |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package:fespalier_maps/fespalier_maps.dart` | `PinPicker`, `PinPickerModel`, `GeoPoint`, `PlaceGuess`, `PickedPlace`, `MapCamera`, `MapBinding`, the seams `Geocoder`, `PositionSource` (`PositionFix`: `Fixed`, `ServiceOff`, `Denied`, `Unavailable`) and `MapSurface`, `tileCount`, `MapsTelemetry` |
-| `package:fespalier_maps/maplibre.dart`       | `MapLibreSurface`, the one file that imports `maplibre_gl`                                                                                                                                                                                               |
-| `package:fespalier_maps/geolocator.dart`     | `GeolocatorPositionSource`, the one file that imports `geolocator`                                                                                                                                                                                       |
-| `package:fespalier_maps/testing.dart`        | `FakeMapSurface` (`FakeMapMount`, `attachOnMount: false` for a map that exists late), `FakeGeocoder`, `FakePositionSource`                                                                                                                               |
+| You import                                   | For                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_maps/fespalier_maps.dart` | `PinPicker`, `PinPickerModel`, `GeoPoint`, `PlaceGuess`, `PickedPlace`, `MapCamera`, `MapBinding`, the seams `Geocoder`, `PositionSource` (`PositionFix`: `Fixed`, `ServiceOff`, `Denied`, `Unavailable`) and `MapSurface`, `tileCount`, `MapsTelemetry`, and the offline packs: `RegionPackRequest`, `tilePacks`, `tilePackStatus`, `TilePacks`, `PackStatus`, `StorageUse`, `OfflineTiles` (provider `offlineTiles`) |
+| `package:fespalier_maps/maplibre.dart`       | `MapLibreSurface` and `MapLibreOfflineTiles`, the one file that imports `maplibre_gl`                                                                                                                                                                                                                                                                                                                                  |
+| `package:fespalier_maps/geolocator.dart`     | `GeolocatorPositionSource`, the one file that imports `geolocator`                                                                                                                                                                                                                                                                                                                                                     |
+| `package:fespalier_maps/testing.dart`        | `FakeMapSurface` (`FakeMapMount`, `attachOnMount: false` for a map that exists late), `FakeGeocoder`, `FakePositionSource`, `FakeOfflineTiles`                                                                                                                                                                                                                                                                         |
 
 The page, the push, the three widgets and a test that runs the whole round trip on fakes are compiled in
 [`references/pin-picker.md`](references/pin-picker.md). A geocoder is [`references/geocoders.md`](references/geocoders.md).
@@ -108,28 +108,59 @@ The page, the push, the three widgets and a test that runs the whole round trip 
 - **Telemetry never has a place.** `fespalier.maps.geocode`, `.locate` and `.pick` carry constants and a boolean; if you add
   your own span, keep the coordinate, the label and the query out of it too.
 
+## Offline region packs
+
+`TilePacks` (provider `tilePacks`) downloads MapLibre regions: `start(RegionPackRequest)`, `pause`, `resume`, `remove`,
+`refresh`, `storage`; the state is a `PackStatus` per key and `ref.watch(tilePackStatus(key))` reads one. Override
+`offlineTiles` once with `MapLibreOfflineTiles()` (no default: reading it unset throws a `StateError` that says so). The
+page, the wiring and a test are compiled in [`references/offline-packs.md`](references/offline-packs.md).
+
+- **A MapLibre download does not resume across an app restart.** Pause and resume continue the same download while the app
+  stays alive. After a restart `refresh()` finds the region `Interrupted`, and `resume` starts the same definition **again**
+  (MapLibre replaces the old region when that download begins; whether stored resources are reused: not checked on a
+  device). Say so in the UI ("Download again", not "Resume"). The PMTiles file packs of a later release are the resumable kind.
+- **Call `refresh()` once** (a packs page opening, or startup): nothing is read before, so a pack from an earlier session is
+  `Absent` until then.
+- **Progress is provider state**, written from MapLibre's callback: no stream to listen to, no timer. `Downloading` has a
+  fraction, **resource** counts (tiles, glyphs, sprites; not tiles) and bytes.
+- **`estimatedTiles` is tiles, not bytes**, and `isValid` is false for an antimeridian rectangle or zoom above 22: such a
+  `start` ends `Failed(invalidRegion)` without reaching MapLibre.
+- **Per-pack bytes overlap** (shared glyphs and edge tiles are counted in each pack) and `StorageUse.onDisk` is the file,
+  which also holds the ambient cache: do not add the rows up. `onDisk` is the file `getOfflineDatabasePath` names (null on
+  the web).
+- **`pause` and `resume` never throw**; `remove` throws only when the database refuses (and the pack is then `Failed`).
+  A failure is a `PackFailure` value, never platform text. The web has no offline regions: `Failed(unsupported)`.
+- **Telemetry**: `fespalier.maps.download` (`kind=region`; `complete`, `failed` or `cancelled`), never the key, the rectangle
+  or the style.
+- **One definition is one region** (`maplibre_gl` 0.27): a download deletes the region that already has the same style,
+  rectangle and zoom range, at its start (on iOS the new one takes the old id). A re-download that fails has lost the
+  pack, and two keys with one definition are refused (`Failed(duplicateRegion)`): give each pack its own rectangle.
+- **`refresh()` keeps the complete region of a key** whatever the ids and deletes the others.
+
 ## What it does not do
 
-Offline region packs and PMTiles file packs (later releases, with a page of their own here),
+PMTiles file packs (a later release, resumable over HTTP Range),
 markers, routes and overlays, clustering, search-as-you-type, a geocoder of its own (no network code: no `http`
 dependency), a key or a secret of any kind, and a web-specific surface (`maplibre_gl` has a web implementation; nothing
 here has run on it). It starts no timer and adds no listener of its own.
 
 ## References
 
-| Need                                                                                         | Page                                                             |
-| -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| The page, the push, the guess card and search field, the permission states, the test         | [`references/pin-picker.md`](references/pin-picker.md)           |
-| `Geocoder`: Nominatim (and its usage policy), Photon, your own backend, the locale, failures | [`references/geocoders.md`](references/geocoders.md)             |
-| A page or a navigation question                                                              | [`fespalier-routing`](../fespalier-routing/SKILL.md)             |
-| `pumpRouter` and the traps that hang a test                                                  | [`fespalier-testing`](../fespalier-testing/SKILL.md)             |
-| Where telemetry goes and what a sink may carry                                               | [`fespalier-observability`](../fespalier-observability/SKILL.md) |
+| Need                                                                                                    | Page                                                             |
+| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| The page, the push, the guess card and search field, the permission states, the test                    | [`references/pin-picker.md`](references/pin-picker.md)           |
+| Offline region packs: the request, `tilePacks`, the page, storage, the restart rule, `FakeOfflineTiles` | [`references/offline-packs.md`](references/offline-packs.md)     |
+| `Geocoder`: Nominatim (and its usage policy), Photon, your own backend, the locale, failures            | [`references/geocoders.md`](references/geocoders.md)             |
+| A page or a navigation question                                                                         | [`fespalier-routing`](../fespalier-routing/SKILL.md)             |
+| `pumpRouter` and the traps that hang a test                                                             | [`fespalier-testing`](../fespalier-testing/SKILL.md)             |
+| Where telemetry goes and what a sink may carry                                                          | [`fespalier-observability`](../fespalier-observability/SKILL.md) |
 
 ## Where the code is
 
 `packages/fespalier_maps/lib/src/`: `geo.dart` (the values), `ports.dart` (`Geocoder`, `PositionFix`, `PositionSource`,
 `MapSurface`), `pin_model.dart` (`PinPickerModel`, `PinSearch`, `PinGuess`: the whole behaviour, with no widget),
-`pin_picker.dart` (the widget), `telemetry.dart` (`MapsTelemetry`), `tiles.dart` (`tileCount`); `lib/maplibre.dart`,
+`pin_picker.dart` (the widget), `telemetry.dart` (`MapsTelemetry`), `tiles.dart` (`tileCount`), `offline/` (`request.dart`,
+`status.dart`, `port.dart`, `tile_packs.dart`, `fake.dart`); `lib/maplibre.dart`,
 `lib/geolocator.dart`, `lib/testing.dart`; `test/no_timers_test.dart` greps `lib/` for timers, listeners and for anything
 that opens a dialog, and `test/telemetry_test.dart` pins the names. The guide is
 [`docs/maps.md`](https://github.com/fespalier/fespalier/blob/main/docs/maps.md).

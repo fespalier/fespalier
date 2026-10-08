@@ -1,4 +1,4 @@
-import 'package:fespalier/fespalier.dart' show Provider;
+import 'package:fespalier/fespalier.dart' show DataRefusal, Provider;
 
 /// The wire code of a `409` the server did not store, so the same call (and key) can be tried again.
 const transactionAborted = 'TRANSACTION_ABORTED';
@@ -112,7 +112,10 @@ final class CrateStackOffline extends CrateStackFailure {
 
 /// The server answered and decided: a refusal (`4xx`). [code] is the wire code, [message] the
 /// server's text (never shown to telemetry: it may quote a value), [details] as sent.
-final class CrateStackRefused extends CrateStackFailure {
+///
+/// A [DataRefusal] (since 0.13.1): a route with a `freshness` shows `error.dart` instead of the
+/// copy it kept.
+final class CrateStackRefused extends CrateStackFailure implements DataRefusal {
   /// A refusal.
   const CrateStackRefused({
     required this.status,

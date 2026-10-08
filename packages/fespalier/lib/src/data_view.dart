@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'deferred.dart';
+import 'data_refusal.dart';
 import 'optimistic.dart' show OptimisticLayer;
 
 /// Glue emitted around every route that has a `data.dart`:
@@ -19,7 +20,8 @@ import 'optimistic.dart' show OptimisticLayer;
 /// A route whose data.dart has a `freshness` or a `dataCache` sets [keepDataOnError] (since
 /// 0.8.1): a reload that fails (a stale value loaded again, a start offline) keeps the page on
 /// its value, and `error` only shows when there is nothing to show. A value restored from the
-/// cache (`isFromCache`) shows while the fresh one loads, whatever [keepPrevious] says.
+/// cache (`isFromCache`) shows while the fresh one loads, whatever [keepPrevious] says. An error
+/// that is a [DataRefusal] (since 0.13.1) is never kept behind the value: `error` shows.
 ///
 /// With a [library] (the route's `page.dart` is deferred, since 0.7.0) the page's code
 /// starts loading at the first build, in parallel with the data, and the page shows once
@@ -62,7 +64,7 @@ class DataView<T> extends ConsumerWidget {
 
   /// Whether a failed reload keeps showing the value it had (set for a route whose data.dart
   /// has a `freshness` or a `dataCache`, since 0.8.1): [error] then only shows when there is
-  /// no value.
+  /// no value, or when the error is a [DataRefusal] (since 0.13.1).
   final bool keepDataOnError;
 
   /// The code of the page [data] builds, when its `page.dart` is deferred; null otherwise.
@@ -91,7 +93,8 @@ class DataView<T> extends ConsumerWidget {
       // fresh one loads, whatever keep_previous says (since 0.8.1).
       skipLoadingOnReload: keep || value.isFromCache,
       skipLoadingOnRefresh: keep,
-      skipError: keepDataOnError,
+      // A refusal is an answer, not a lost connection: error shows instead of the kept value.
+      skipError: keepDataOnError && value.error is! DataRefusal,
       data: lib == null
           ? page
           : (d) => DeferredView(

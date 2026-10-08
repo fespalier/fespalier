@@ -4,6 +4,8 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
+import 'package:fespalier_cratestack/testing.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
@@ -321,6 +323,68 @@ void main() {
     ).read(one(() => throw const CrateStackOffline()));
     expect(served.value, 5);
     expect(served.source, ServedFrom.local);
+  });
+
+  group('a route with a freshness keeps its page (keepDataOnError)', () {
+    Future<void> reloadWith(WidgetTester tester, Object failure) async {
+      final store = InMemoryLocalStore();
+      final container = ProviderContainer(
+        overrides: crateStackTestOverrides(store: store, scope: 'u1'),
+        retry: (_, _) => null,
+      );
+      addTearDown(container.dispose);
+      Object? fail;
+      final read = FutureProvider.autoDispose<Served<List<int>>>(
+        (ref) async => ref.serve(
+          key: 'orders',
+          codec: _codec,
+          fetch: () async {
+            if (fail != null) throw fail;
+            return [1, 2];
+          },
+        ),
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            home: DataView<Served<List<int>>>(
+              watch: (ref) => ref.watch(read),
+              refresh: (ref) => ref.invalidate(read),
+              data: (s) => Text('data ${s.value}'),
+              loading: () => const Text('loading'),
+              error: (e, st, retry) => Text('error $e'),
+              keepDataOnError: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.text('data [1, 2]'), findsOneWidget);
+      fail = failure;
+      container.invalidate(read);
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+
+    testWidgets('a 403 on a reload shows error.dart, not the old copy', (
+      tester,
+    ) async {
+      await reloadWith(
+        tester,
+        const CrateStackRefused(status: 403, code: 'FORBIDDEN', message: ''),
+      );
+      expect(
+        find.text('error CrateStackRefused(403 FORBIDDEN)'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('data'), findsNothing);
+    });
+
+    testWidgets('a 503 on a reload keeps the page', (tester) async {
+      await reloadWith(tester, const CrateStackUnavailable(status: 503));
+      expect(find.text('data [1, 2]'), findsOneWidget);
+      expect(find.textContaining('error'), findsNothing);
+    });
   });
 }
 

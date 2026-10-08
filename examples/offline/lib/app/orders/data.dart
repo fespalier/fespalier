@@ -16,12 +16,13 @@ final _codec = ServedCodec<List<Order>>(
 /// account last loaded here on a connection failure. `Served` says which one it is, and as of when.
 /// A refusal (a 403) is never answered from the copy: it goes to error.dart.
 ///
-/// It reads again when the network is back (`reconnectSignal`: here the switch fires it, on a device
-/// `fespalier_connectivity`'s `ConnectivitySignal` does). It watches the signal itself rather than
-/// declare a `freshness`: a route with a `freshness` keeps its page when a reload fails
-/// (`keepDataOnError`), which would leave an old copy on screen over a refusal.
+/// It reads again when the network is back (`refetchOnReconnect`; `reconnectSignal` fires here when
+/// the switch is turned on, on a device `fespalier_connectivity`'s `ConnectivitySignal` does). A route
+/// with a `freshness` keeps its page when a reload fails offline, but not for a refusal (a 403 is a
+/// `DataRefusal`, since 0.13.1): error.dart shows instead of the page.
+const freshness = Freshness(refetchOnReconnect: true);
+
 FutureOr<Served<List<Order>>> data(Ref ref) {
-  ref.watch(reconnectSignal);
   return ref.serve(
     key: 'orders',
     codec: _codec,

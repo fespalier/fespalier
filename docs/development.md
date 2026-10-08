@@ -35,7 +35,9 @@ examples/minimal/    the smallest app: `flutter create` + `fsp init` + three pag
 examples/shop/       end-to-end example; its lib/app.g.dart is committed
 examples/features/   every binding rule, section data and nested not_found.dart, with widget tests
 examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
+examples/telemetry/  the route lifecycle, OpenTelemetry and Sentry, with widget tests
 examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with widget tests
+examples/plugins/    fespalier_push and fespalier_analytics through adapters, with widget tests
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

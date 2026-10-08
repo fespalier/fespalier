@@ -146,6 +146,15 @@ Without the package, or on 0.8.x, [`references/adaptive-by-hand.md`](references/
 bar-versus-rail tab layout whose tab state survives a resize, and a drawer-versus-side-list plain layout
 that highlights the current route through `AppManifest.of(GoRouterState.of(context))`.
 
+## Examples
+
+- `examples/tabs`: the tab layout (`(tabs)/layout.dart`, a Library tab that is a tab layout of its own), six `nav.dart` files
+  drawn by `fespalier_adaptive`, and the restoration and resize tests.
+- `examples/features`: a root `layout.dart` and `nav.dart`, the `teams/$teamId` section layout, and the menu and scroll
+  restoration tests.
+
+The `fespalier` skill lists every example.
+
 ## Quick diagnosis
 
 | Symptom                                           | Likely cause                                                                                   |

@@ -306,6 +306,17 @@ function's own result (a value stays a value, a `Future` stays the `Future`), an
 followed since 0.8.1 as an `app provider`, through the state the views got; its other listeners are not
 visible (`fespalier-troubleshooting`, its DevTools page).
 
+## Examples
+
+Read these before inventing a pattern; each compiles and has widget tests
+(the `fespalier` skill lists them all).
+
+- `examples/features`: a `data.dart` keyed by a segment (`catalog/$productId`), a `teams/$teamId` section with its `data.dart`
+  and `action.dart` (an optimistic `addMember`), forms on `action.dart`, a `Stream` in `ticks/data.dart`, and the cache and
+  reconnect pair (`test/offline_test.dart`, `test/freshness_test.dart`).
+- `examples/shop`: `products/$id/data.dart` with `error.dart` and Retry, and `test/refresh_test.dart`.
+- `examples/auth`: two `data.dart` files (`orders/` and `orders/$id/`) that share one token refresh.
+
 ## Common symptoms
 
 | Symptom                                                        | Look at                                                                                                                                                                         |

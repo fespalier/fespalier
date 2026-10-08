@@ -242,6 +242,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/i18n`](examples/i18n): translated routes with `fespalier_tolgee`: a `$lang` segment, bundled catalogs, a language switch, ICU plurals.
 - [`examples/maps`](examples/maps): a pin picker that returns a place and one offline map pack (`fespalier_maps`), with a fixed gazetteer and fakes.
 - [`examples/adopt`](examples/adopt): a go_router app half-way through adopting fespalier: the old routes stay, the new pages are mounted under `/shop`, with `ready()` and `attach()` in `startup.dart`.
+- [`examples/offline`](examples/offline): `fespalier_cratestack` offline-first on an in-process demo server: a read served from the device, a decision queued as an intent, and a note edited offline and merged.
 
 How to run them: [Run the examples](docs/examples.md).
 

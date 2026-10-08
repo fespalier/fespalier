@@ -1,0 +1,32 @@
+name: offline
+description: fespalier example — offline-first with fespalier_cratestack, a read served from the device, a decision queued as an intent, a note edited offline and merged, on an in-process demo server.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # Reads that say how current they are, intents, owned rows and the sync triggers (since 0.10.0).
+  # Its core is pure Dart: the demo server in lib/demo/ plays the transport, so nothing here needs a backend.
+  fespalier_cratestack:
+    path: ../../packages/fespalier_cratestack
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# fespalier_cratestack depends on fespalier and fespalier_dio by git, as an app does; here both are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_dio:
+    path: ../../packages/fespalier_dio
+
+flutter:
+  uses-material-design: true

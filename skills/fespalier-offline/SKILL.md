@@ -321,3 +321,8 @@ Future<List<Override>> startup() async => [
 `scope.dart`, `errors.dart`, `transport.dart`; `test/intents_test.dart` pins the answer table and
 `test/no_timers_test.dart` greps `lib/` for timers. The guide is
 [`docs/offline-first.md`](https://github.com/fespalier/fespalier/blob/main/docs/offline-first.md).
+
+`examples/offline` (in the fespalier repository) is a running app of the sample above: an orders list read with
+`ref.serve`, a cancel as an intent, notes as owned rows with a `RowSync`, `autoSync` in the root layout with the app's
+own ticker, the sign-out wipe and a switch that plays the network, all on an in-process demo server. Its
+`test/support.dart` is `references/testing.md` applied to a whole app.

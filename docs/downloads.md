@@ -385,6 +385,7 @@ you. Follow the plugin's current README where it moves.
 
 **macOS** needs `com.apple.security.network.client` in both entitlements files; **Windows and Linux** need nothing. The
 desktop has no operating-system background mode, so a download there stops with the app.
+
 ## Credentials
 
 A download is a request the operating system may send **later, in another process, with no access to your app's session,

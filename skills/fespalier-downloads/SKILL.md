@@ -58,6 +58,7 @@ background backend. What no device has answered about it (issue #158) is listed 
 - **Setup is the plugin's and the app's** (Kotlin 2.1, `POST_NOTIFICATIONS`, `RUN_USER_INITIATED_JOBS` and the job service,
   iOS 14 and the notification delegate): "Android and iOS setup" in `docs/downloads.md`.
 - **Test with `FakeBackgroundTransport`**; no test runs the plugin.
+
 ## Credentials
 
 (Since 0.15.0.) Authenticate a download with a **short-lived capability grant**, not a stored credential: the app makes its

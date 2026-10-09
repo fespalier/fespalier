@@ -74,14 +74,41 @@ dart run fespalier check
 
 The package and the binary are versioned together, and this is what keeps them in step.
 
+### Upgrading fsp
+
+`fsp upgrade` (since 0.15.0) upgrades the `fsp` you are running the way you installed it, and needs no project:
+
+```sh
+fsp upgrade --check     # is there a newer release? exit 0 (up to date), 3 (yes), 1 (could not tell)
+fsp upgrade --dry-run   # what it would run, and nothing else
+fsp upgrade             # upgrade
+```
+
+It reads the latest release from GitHub with the system `curl` (so `HTTPS_PROXY` and your certificate store apply), works out how this `fsp` was installed from where the binary is, and hands the upgrade to that installer:
+
+| Installed with             | `fsp upgrade`                                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Homebrew                   | runs `brew upgrade fespalier/tap/fsp` (run `brew update` first when the tap has no newer release yet)                                               |
+| Scoop                      | prints `scoop update` and `scoop update fsp`                                                                                                        |
+| `cargo install`            | prints the `cargo install --git ... --tag <tag> --locked fespalier` line for the latest release                                                     |
+| The install script         | names the folder the binary is in and prints the `install.sh` (or `install.ps1`) command that replaces it; `--version vX.Y.Z` picks another release |
+| `dart run fespalier`       | refuses: see below                                                                                                                                  |
+| A build of the source tree | refuses; update the checkout                                                                                                                        |
+
+`fsp upgrade --check --json` prints one object (`current`, `latest`, `target`, `method`, `command`, `upToDate`) for scripts. `FSP_RELEASES_URL` (where the latest release is looked up) and `FSP_BASE_URL` (where archives are downloaded from) point it at a mirror.
+
+The `fsp` that `dart run fespalier` keeps in its cache is not upgraded by `fsp upgrade`: it is the one for the version your `pubspec.yaml` pins, and it changes when you change that `ref:`. Move the `ref:` of fespalier and of every companion package to the release you want, then `flutter pub get`.
+
 ### Environment variables
 
-| Variable          | Used by                     | What it does                                                                                                                       |
-| ----------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `FSP_VERSION`     | `install.sh`, `install.ps1` | A release tag to install (the default is the latest). In PowerShell it is `$env:FSP_VERSION`.                                      |
-| `FSP_INSTALL_DIR` | `install.sh`, `install.ps1` | Where `fsp` is installed (`~/.local/bin`, or `%LOCALAPPDATA%\fespalier\bin` on Windows).                                           |
-| `FSP_CACHE_DIR`   | `dart run fespalier`        | Where the launcher keeps the `fsp` it downloaded (`~/.cache/fespalier`, `~/Library/Caches/fespalier`, `%LOCALAPPDATA%\fespalier`). |
-| `FSP_BINARY`      | `dart run fespalier`        | The path of an `fsp` of your own to run, for example a build from source.                                                          |
+| Variable           | Used by                     | What it does                                                                                                                         |
+| ------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `FSP_VERSION`      | `install.sh`, `install.ps1` | A release tag to install (the default is the latest). In PowerShell it is `$env:FSP_VERSION`.                                        |
+| `FSP_INSTALL_DIR`  | `install.sh`, `install.ps1` | Where `fsp` is installed (`~/.local/bin`, or `%LOCALAPPDATA%\fespalier\bin` on Windows).                                             |
+| `FSP_CACHE_DIR`    | `dart run fespalier`        | Where the launcher keeps the `fsp` it downloaded (`~/.cache/fespalier`, `~/Library/Caches/fespalier`, `%LOCALAPPDATA%\fespalier`).   |
+| `FSP_BINARY`       | `dart run fespalier`        | The path of an `fsp` of your own to run, for example a build from source.                                                            |
+| `FSP_RELEASES_URL` | `fsp upgrade`               | Where the latest release is looked up (default: GitHub's `/releases/latest`, which redirects to the tag). Any `http` or `https` URL. |
+| `FSP_BASE_URL`     | `install.sh`, `fsp upgrade` | Where release archives are downloaded from (default: GitHub's `releases/download`).                                                  |
 
 ## Companion packages
 

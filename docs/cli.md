@@ -22,6 +22,8 @@ fsp test                # a widget smoke test per route, in test/routes/ (since 
 fsp test --check        # CI: non-zero exit when that file is stale
 fsp telemetry           # a local OpenTelemetry stack with fespalier's dashboards (since 0.8.1; needs Docker)
 fsp telemetry --grafana # ...and Grafana, with the same dashboards
+fsp upgrade             # upgrade fsp the way it was installed (since 0.15.0)
+fsp upgrade --check     # exit 0 up to date, 3 an update is available, 1 error
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp dev                 # fsp watch and flutter run in one terminal, hot restarting when the routes change (since 0.9.0)
 fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
@@ -585,6 +587,19 @@ Every message `fsp size` can print is quoted in the `fespalier-troubleshooting` 
 - It reads the JavaScript build. A `--wasm` build also writes a `main.dart.js` (the fallback), which is what is read; the `.wasm` file is not looked at.
 - The routes' own import prefixes are the only ones it matches, which is exact for an app whose deferred imports are the generated ones.
 - For what is _in_ a chunk, `flutter build web --dump-info` writes `main.dart.js.info.json` (tens of megabytes) that a tool like `dart pub global run dart2js_info` reads; `fsp size` does not use it.
+
+## fsp upgrade
+
+`fsp upgrade` (since 0.15.0) upgrades the `fsp` binary that runs it, by the installer that put it there. It needs no project, and it is the one command that looks at the network: it follows GitHub's `releases/latest` redirect with the system `curl` (`-fsSL --proto =https`, so `HTTPS_PROXY` and the OS trust store apply; without `curl` it stops and names the install script).
+
+| Flag              | What it does                                                                                                                                                                                                                                |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--check`         | Writes nothing. Prints the installed and the latest version and the command that would upgrade. Exit **0** when up to date (or ahead of the latest release), **3** when an update is available, **1** on an error (no network, no release). |
+| `--dry-run`       | Prints what it would run or replace and does nothing.                                                                                                                                                                                       |
+| `--json`          | With `--check` or `--dry-run`, one object on stdout: `current`, `latest`, `target`, `method` (`homebrew`, `scoop`, `cargo`, `script`, `dart-run`, `source`), `command` (null when the install cannot be upgraded from here) and `upToDate`. |
+| `--version <tag>` | Upgrade (or downgrade) to `vX.Y.Z` or `X.Y.Z` instead of the latest, for an install-script install; a Homebrew or Scoop install is pointed at the script's `FSP_VERSION` instead.                                                           |
+
+How the install is told apart, in this order: the `dart run fespalier` cache (`<cache>/fespalier/<version>-<target>/`), a build of the source tree (`target/debug` or `target/release`), Homebrew (`Cellar/fsp/`), Scoop (`scoop/apps/fsp/`, or under `$SCOOP`), cargo (`$CARGO_HOME/bin`, default `~/.cargo/bin`), and otherwise the install script. Homebrew's upgrade runs with your terminal; Scoop's and cargo's commands are printed, not run. The cache copy and a source build are refused, with the reason: the first follows the `ref:` in `pubspec.yaml`. `FSP_RELEASES_URL` and `FSP_BASE_URL` redirect the lookup and the downloads (see [Upgrading fsp](getting-started.md#upgrading-fsp)).
 
 ## fsp telemetry
 

@@ -193,7 +193,7 @@ here has run on it). It starts no timer and adds no listener of its own.
 `MapSurface`), `pin_model.dart` (`PinPickerModel`, `PinSearch`, `PinGuess`: the whole behaviour, with no widget),
 `pin_picker.dart` (the widget), `telemetry.dart` (`MapsTelemetry`), `tiles.dart` (`tileCount`), `offline/` (`request.dart`,
 `status.dart`, `port.dart`, `tile_packs.dart`, `fake.dart`), `files/` (`request.dart`, `store.dart`,
-`store_io.dart`, `store_stub.dart`, `file_packs.dart`, `fake.dart`); `lib/maplibre.dart`,
+`transfer_adapter.dart` (the store seen as `fespalier_download`'s `TransferFiles`), `file_packs.dart`, `fake.dart`); `lib/maplibre.dart`,
 `lib/geolocator.dart`, `lib/testing.dart`; `test/no_timers_test.dart` greps `lib/` for timers, listeners and for anything
 that opens a dialog, and `test/telemetry_test.dart` pins the names. The guide is
 [`docs/maps.md`](https://github.com/fespalier/fespalier/blob/main/docs/maps.md).

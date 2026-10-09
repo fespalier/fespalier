@@ -71,6 +71,11 @@ class BackgroundDownloaderBackend implements DownloadBackend {
   // Bumped by every enqueue, resume, cancel and close of an id and never reset, so that a check
   // that was waiting for a file cannot report over what came after it.
   final Map<String, int> _generations = {};
+  // The attempts we cancelled: "<id>@<creation time in ms>". The plugin sends a `canceled` update
+  // for a task we cancel, and for a retry or a renewed grant that update can arrive after the
+  // same id was enqueued again: it must not end the new attempt. A task is told from its
+  // successor by its creation time (kept to the millisecond, as the plugin stores it).
+  final Set<String> _stale = {};
   // The checks of finished files that are still running; open() waits for them.
   final Set<Future<void>> _pending = {};
 
@@ -151,12 +156,18 @@ class BackgroundDownloaderBackend implements DownloadBackend {
       _transport.unregister(options.group);
     }
     _tasks.clear();
+    _stale.clear();
     _progress.clear();
     _ended.clear();
     for (final id in _generations.keys.toList()) {
       _bump(id);
     }
   }
+
+  static String _key(bd.Task task) =>
+      '${task.taskId}@${task.creationTime.millisecondsSinceEpoch}';
+
+  bool _isStale(bd.Task task) => _stale.contains(_key(task));
 
   int _generationOf(String id) => _generations[id] ?? 0;
 
@@ -255,7 +266,12 @@ class BackgroundDownloaderBackend implements DownloadBackend {
   @override
   Future<void> cancel(String id) async {
     _bump(id);
-    _tasks.remove(id);
+    final known =
+        _tasks.remove(id) ??
+        (_platform == BackgroundPlatform.unsupported
+            ? null
+            : await _transport.taskOf(id));
+    if (known != null) _stale.add(_key(known));
     _progress.remove(id);
     _ended.remove(id);
     if (_platform == BackgroundPlatform.unsupported) return;
@@ -267,6 +283,7 @@ class BackgroundDownloaderBackend implements DownloadBackend {
     for (final id in {..._tasks.keys, ..._generations.keys}) {
       _bump(id);
     }
+    _stale.addAll(_tasks.values.map(_key));
     _tasks.clear();
     _progress.clear();
     _ended.clear();
@@ -297,7 +314,7 @@ class BackgroundDownloaderBackend implements DownloadBackend {
 
   void _onProgress(bd.TaskProgressUpdate update) {
     final id = update.task.taskId;
-    if (_events == null || _ended.contains(id)) return;
+    if (_events == null || _ended.contains(id) || _isStale(update.task)) return;
     final progress = progressOfUpdate(update);
     if (progress == null) return;
     _progress[id] = progress;
@@ -314,6 +331,7 @@ class BackgroundDownloaderBackend implements DownloadBackend {
     if (_events == null) return;
     final task = update.task;
     final id = task.taskId;
+    if (_isStale(task)) return;
     if (update.status == bd.TaskStatus.complete) {
       _ended.add(id);
       if (task is bd.DownloadTask) _tasks[id] = task;

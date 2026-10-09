@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:fespalier_http/fespalier_http.dart'
+    show HttpAuthorization, HttpCredentials;
 import 'package:http/http.dart' as http;
 
 import 'status.dart' show DownloadFailure;
@@ -58,7 +60,10 @@ final class TransferFailed extends TransferResult {
   final int? httpStatus;
 }
 
-enum _Step { verify, stop, restart }
+enum _Step { verify, stop, restart, again }
+
+/// The most sends of one request that [HttpCredentials] may ask for, as `SessionClient`'s.
+const int _maxSends = 3;
 
 // The body of a response and whether the transfer took it: a body nobody reads is cancelled.
 final class _Body {
@@ -116,6 +121,7 @@ class HttpTransfer {
     this.sha256,
     this.onProgress,
     this.onVerifying,
+    this.credentials,
   }) : _client = client,
        _files = files;
 
@@ -142,6 +148,17 @@ class HttpTransfer {
 
   /// Called once the body is whole, before its size and digest are checked.
   final void Function()? onVerifying;
+
+  /// The session's credentials, asked before each send (`authorize`) and after a refusal
+  /// (`retry`), for this foreground transfer only: the app is running, so its session is there.
+  /// A transfer sends one `GET`, which is safe to send again; at most three sends per request.
+  /// Null sends [headers] alone. A throw from the credentials ends the transfer
+  /// `unauthorized`.
+  final HttpCredentials? credentials;
+
+  // The attempt of the request being sent, kept while [credentials] asks for a re-send.
+  HttpAuthorization? _attempt;
+  int _sends = 0;
 
   /// Where the bytes arrive: [destination] plus `.part`.
   String get partial => '$destination.part';
@@ -246,6 +263,8 @@ class HttpTransfer {
       switch (step) {
         case _Step.stop:
           return;
+        case _Step.again:
+          continue;
         case _Step.verify:
           await _verify();
           return;
@@ -303,6 +322,22 @@ class HttpTransfer {
       abortTrigger: Future.any([_abort.future, done.future]),
     );
     request.headers.addAll(headers);
+    final session = credentials;
+    if (session != null) {
+      try {
+        final attempt = _attempt = await session.authorize(
+          'GET',
+          url,
+          previous: _attempt,
+        );
+        _sends++;
+        request.headers.addAll(attempt.headers);
+      } catch (_) {
+        done.complete();
+        if (!_stopped) _fail(DownloadFailure.unauthorized);
+        return _Step.stop;
+      }
+    }
     request.headers.remove('range');
     request.headers.remove('if-range');
     // Offsets count the bytes on the wire: a compressed body would make them mean nothing.
@@ -325,10 +360,43 @@ class HttpTransfer {
     }
     final body = _Body(response);
     try {
+      final again = await _askAgain(response);
+      if (again == null) return _Step.stop;
+      if (again) return _Step.again;
+      // The response stands: the next request (a restart) starts its sends from one.
+      _attempt = null;
+      _sends = 0;
       return await _handle(offset, tag, body);
     } finally {
       if (!body.taken) unawaited(_abandon(response));
       if (!done.isCompleted) done.complete();
+    }
+  }
+
+  // Whether the credentials want the request sent once more after this response: true (send
+  // again), false (handle it), null (the credentials threw: the transfer failed). Only a refusal
+  // is put to them, and only while sends are left.
+  Future<bool?> _askAgain(http.StreamedResponse response) async {
+    final session = credentials;
+    final attempt = _attempt;
+    final code = response.statusCode;
+    if (session == null || attempt == null || _stopped || _pausing) {
+      return false;
+    }
+    if (code < 400 || code >= 500 || code == 416 || _sends >= _maxSends) {
+      return false;
+    }
+    try {
+      final again = await session.retry(
+        attempt,
+        statusCode: code,
+        headers: response.headers,
+      );
+      if (again && !_stopped && !_abort.isCompleted) return true;
+      return false;
+    } catch (_) {
+      if (!_stopped) _fail(DownloadFailure.unauthorized);
+      return null;
     }
   }
 

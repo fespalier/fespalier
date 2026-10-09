@@ -660,6 +660,74 @@ void main() {
       expect(engine.statusOf('a'), const Failed(DownloadFailure.unauthorized));
     });
 
+    test('a renewed grant: the 401 is answered with a new attempt, and the old one\'s cancel does not end it', () async {
+      final t = FakeBackgroundTransport();
+      var asked = 0;
+      final engine = Downloads(
+        backend: backend(t),
+        store: MemoryDownloadStore(),
+        grantor: (r, {required bool renewal}) {
+          asked++;
+          return DownloadGrant(
+            url: Uri.parse('https://files.example.com/grant-$asked'),
+            headers: {'Authorization': 'grant-$asked'},
+          );
+        },
+      );
+      await engine.open();
+      await engine.start(request());
+      final first = t.enqueued.single;
+      expect(first.url, endsWith('/grant-1'));
+      expect(first.headers, {'Authorization': 'grant-1'});
+      t.emitStatus(
+        statusOf(first, bd.TaskStatus.failed, bd.TaskHttpException('x', 401)),
+      );
+      await pumpEventQueue();
+      expect(t.cancelled, ['a']);
+      expect(t.enqueued, hasLength(2));
+      final second = t.enqueued.last;
+      expect(second.url, endsWith('/grant-2'));
+      expect(second.headers, {'Authorization': 'grant-2'});
+      // The plugin\'s answer to our cancel of the first attempt arrives late.
+      t.emitStatus(statusOf(first, bd.TaskStatus.canceled));
+      t.emitProgress(bd.TaskProgressUpdate(first, 0.5, 10));
+      await pumpEventQueue();
+      expect(engine.statusOf('a'), isNot(isA<Cancelled>()));
+      expect(engine.statusOf('a'), const Queued());
+      t.emitStatus(statusOf(second, bd.TaskStatus.running));
+      expect(engine.statusOf('a'), const Running(0));
+    });
+
+    test(
+      'retry: the old attempt\'s late canceled does not cancel the new one',
+      () async {
+        final t = FakeBackgroundTransport();
+        final engine = Downloads(
+          backend: backend(t),
+          store: MemoryDownloadStore(),
+        );
+        await engine.open();
+        await engine.start(request());
+        final first = t.enqueued.single;
+        t.emitStatus(
+          statusOf(
+            first,
+            bd.TaskStatus.failed,
+            bd.TaskConnectionException('x'),
+          ),
+        );
+        await engine.retry('a');
+        expect(t.enqueued, hasLength(2));
+        t.emitStatus(statusOf(first, bd.TaskStatus.canceled));
+        await pumpEventQueue();
+        expect(engine.statusOf('a'), const Queued());
+        // A cancel of the new attempt (the person, from a notification) still counts.
+        t.emitStatus(statusOf(t.enqueued.last, bd.TaskStatus.canceled));
+        await pumpEventQueue();
+        expect(engine.statusOf('a'), const Cancelled());
+      },
+    );
+
     test('after a restart the plugin\'s record settles the registry', () async {
       final r = request(bytes: 8);
       final store = MemoryDownloadStore({'a': StoredDownload(r)});

@@ -82,7 +82,9 @@ transfer. The `Downloads` engine, the providers and the registry are `fespalier_
   package never asks for the notification permission.**
 - **Auth is what the request carries**: a short-lived grant (a URL or a download-scoped header). **Headers are written to
   the operating system's task queue in plaintext** until the task ends, and a retry sends the same ones. Never a refresh
-  token. A proof per request (DPoP) is impossible there: the plugin's native callbacks cannot reach the app's state.
+  token. A proof per request (DPoP) is impossible there: the plugin's native callbacks cannot reach the app's state. With a
+  `grantor` on the engine, `enqueue` and `resume` get the granted request and headers; a renewal after a 401 is a cancel and
+  a new task, and the late `canceled` update of the old one is dropped.
 
 ## Rules
 
@@ -115,5 +117,6 @@ following depend on behaviour of the operating system and the plugin that nobody
 - whether a failed update carries the server's response headers (the plugin documents the status code in its exception);
 - whether the plugin's database delete is scoped to the group (its source says so; it was read, not run);
 - whether an Android task that cycles every nine minutes reuses the headers it was enqueued with;
+- whether the plugin's cancel keeps the partial file (a renewed grant or a retry is a cancel and a new task);
 - what happens to updates of the group when the app opened the plugin itself before this backend;
 - that the package builds for the web (the web path never calls the plugin).

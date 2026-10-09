@@ -20,7 +20,7 @@ same line, and this page grows with it.
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
 [The foreground backend](#the-foreground-backend), [The background backend](#the-background-backend),
-[Android and iOS setup](#android-and-ios-setup), [In a widget](#in-a-widget), [Testing](#testing).
+[Android and iOS setup](#android-and-ios-setup), [Credentials](#credentials), [In a widget](#in-a-widget), [Testing](#testing).
 
 ## Install
 
@@ -29,7 +29,7 @@ then. The tag must be a release that contains the package (0.15.0 or later). The
 release-please keeps current, is in [the package's README](../packages/fespalier_download/README.md#install).
 
 The package depends on `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests), a pure Dart package, and on
-fespalier. It resolves on Flutter 3.32 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
+fespalier and `fespalier_http` (for `HttpCredentials`; list it yourself, with the same `url` and `ref`, only if your code imports it). It resolves on Flutter 3.32 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
 `flutter analyze` and `flutter test` on the package).
 
 ## Requests and files
@@ -191,6 +191,9 @@ final downloads = Downloads(
   it in `<file>.part.etag`. A file at its destination is always whole and checked: the part is moved there, atomically,
   only when it has the `bytes` and the `sha256` the request names (the digest is computed in another isolate, so a large
   file does not take frames).
+- **Who uses it.** The foreground transfer is the one `fespalier_maps`' file packs run on (since 0.15.0): `FilePacks` builds an
+  `HttpTransfer` per attempt and maps its result to a `PackStatus` (a 401 or 403 stays `rejected` there), so the two packages
+  resume, verify and move a file the same way. See [File packs](maps.md#file-packs).
 - **Resuming.** A pause, a network failure and an app restart leave the part. The next attempt asks for
   `Range: bytes=<size of the part>-` with `If-Range: <validator>`, and appends. A server that ignores `Range` (it answers 200) makes the transfer start again from the first byte; a 206 whose validator is not the part's, or at another offset,
   and a 416 to a part the server no longer has the end of, each restart once. A part with no validator and no `sha256`
@@ -298,8 +301,12 @@ await engine.start(
   task holds. **The headers of a task are written to the operating system's task queue in plaintext until it ends,** and a
   retry sends the same ones; set `BackgroundOptions(retries: 0)` where a stale grant must not be replayed. Never a refresh
   token, never a long-lived bearer. A proof per request (DPoP) cannot be done: the plugin's native callbacks run with no
-  access to the app's state or its plugins. On a 401 or 403 the engine ends the download `Failed(unauthorized)`, and `retry`
-  (with a fresh grant) starts it again.
+  access to the app's state or its plugins. **A grant works here as it does anywhere** ([Credentials](#credentials)): the
+  engine hands `enqueue` and `resume` the granted request (its URL) and the grant's headers, and after a 401 or 403 it
+  cancels the attempt and enqueues again with a renewed grant. The backend drops the plugin's late `canceled` update for the
+  attempt it cancelled (told apart from its successor by the task's creation time), so a renewed grant or a `retry` is not
+  ended by the answer to its own cancel. Without a grantor the download ends `Failed(unauthorized)`, and `retry` starts it
+  again.
 - **Telemetry** is the engine's `fespalier.download.transfer` span with `background` true. The backend reports nothing
   of its own, and a URL, an id, a path, a header or an error's text never leave it.
 - **What no test shows (UNCHECKED).** There is no device in CI: `PluginTransport`, the one file that calls the plugin, is
@@ -311,7 +318,8 @@ await engine.start(
   known); whether a **failed update carries the server's headers**, or only the status code the plugin documents in its
   exception; whether the plugin's **database delete is scoped to the group** (its source deletes record by record for the
   group, which was read, not run); whether an Android task that **cycles every nine minutes reuses the headers** it was
-  enqueued with (which would replay an expired grant); how an update for a group with no callbacks arrives when the app
+  enqueued with (which would replay an expired grant); whether the plugin's cancel keeps the partial file (a renewed
+  grant or a `retry` is a cancel and a new task, so it may start again from the first byte); how an update for a group with no callbacks arrives when the app
   opened the plugin first; and whether the package builds for the web (the web path never calls the plugin, but the
   plugin's own web support was not compiled here).
 
@@ -377,6 +385,65 @@ you. Follow the plugin's current README where it moves.
 
 **macOS** needs `com.apple.security.network.client` in both entitlements files; **Windows and Linux** need nothing. The
 desktop has no operating-system background mode, so a download there stops with the app.
+## Credentials
+
+A download is a request the operating system may send **later, in another process, with no access to your app's session,
+its plugins or its signing key**. That decides what credentials can be (since 0.15.0).
+
+**The documented path is a short-lived capability grant.** Before the download starts, in the foreground, the app makes a
+normal signed request (a `fespalier_http` client, so the session, its refresh and its proofs apply there), and the server
+answers with something good for one file for a few minutes: a single-file URL and/or headers scoped to that download. The
+transfer carries only that.
+
+```dart
+Future<DownloadGrant?> grant(DownloadRequest request, {required bool renewal}) async {
+  final answer = await signedClient.post(Uri.parse('https://api.example.com/files/${request.id}/grant'));
+  return DownloadGrant(url: Uri.parse(urlOf(answer))); // expires in minutes, names one file
+}
+
+final downloads = Downloads(backend: backend, store: store, files: files, grantor: grant);
+```
+
+- **`DownloadGrant`** is a `url` (replaces the request's own for this attempt) and `headers` (added for this attempt),
+  either or both. Its `toString()` prints no field. The engine never stores it: the registry keeps the request as you made
+  it, so a grant URL is not in `fespalier_downloads.json`. (A background backend may still keep the request it was handed
+  in plaintext while it is queued, which is why a grant must expire.)
+- **When it is asked.** The `grantor` is called before each `start`, `retry` and `resume` (`renewal: false`), and **once
+  more after a 401 or 403** (`renewal: true`). Return null to send the request as it is.
+- **After a 401 or 403 the engine asks once.** It cancels the failed attempt, keeping the bytes the backend can continue
+  from (the foreground backend keeps its `.part`, and the new attempt sends `Range`), and enqueues again with the new
+  grant. A second 401 or 403 ends `Failed(unauthorized)`; so does a grantor that throws or a grant whose URL is not a valid
+  http or https URL. Nothing of the error is kept. There is no retry loop and no timer.
+- **A newer state wins.** A `cancel`, `remove`, restart or `clearAccount` while the grant request is in flight drops its
+  answer: nothing reaches the backend after it.
+- **A resumed transfer keeps its address.** On `resume` only the grant's headers are used; an expired URL earns its 401 and
+  is renewed then.
+- **Telemetry.** The transfer span's end carries `fespalier.download.regranted: true` when a renewal was asked (absent
+  otherwise). Never the grant, a URL or a header.
+
+**Plain headers are allowed, and they are stored in plaintext.** `DownloadRequest.headers` may be kept by a backend, on
+disk, while a download is queued; `FileDownloadStore` keeps them in the registry. Use them for something that is public
+or expires in minutes, never for a credential you would mind finding in a backup.
+
+**Never a refresh token or a long-lived bearer** in a request or a grant: anything a background backend persists can be
+read back from the device, and a download has no way to refresh a token itself.
+
+**Why not the session's own credentials in the background.** A DPoP proof is bound to one method, one URL and a fresh
+nonce and timestamp, so it would have to be signed for each send, by a key the operating system's native callbacks cannot
+reach. Authenticating every send is therefore possible only where your Dart code makes the send.
+
+**The foreground backend can do exactly that.** `HttpDownloadBackend(credentials: credentials)` takes any
+`HttpCredentials` from `fespalier_http` (`fespalier_auth`'s `Authorizer` is one). For each request it sends it asks
+`credentials.authorize('GET', url)` and adds the headers it returns (nothing for an origin the credentials do not cover),
+and after a 4xx answer it asks `credentials.retry(attempt, statusCode:, headers:)` and, if told to, sends again with
+`authorize(..., previous: attempt)`, at most three sends, the way `SessionClient` does. The credentials live in memory for
+the send. A credentials object that throws ends the download `Failed(unauthorized)`. When the refusal stands, the engine's
+grant renewal above still applies, so the two compose. Choose by where the transfer runs: `credentials` for a foreground
+download to your own API, a grant for anything a background backend sends or a CDN that does not know your session.
+
+**Replay.** A transfer sends one `GET`, which is safe to send again, so the re-send above is allowed. A request that is
+not replay-safe (a `POST`, which uploads will be) must be sent once: no retry, no re-send after a 401, and no pause that
+would cycle it. Nothing in this release sends one.
 
 ## In a widget
 

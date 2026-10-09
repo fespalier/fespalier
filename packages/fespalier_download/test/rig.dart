@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:fespalier_download/fespalier_download.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpCredentials;
 import 'package:http/http.dart' as http;
 
 /// The base folder every test resolves to.
@@ -38,13 +39,18 @@ DownloadRequest request({
 Future<String> defaultBases(DownloadBase base) async => root;
 
 class Rig implements DownloadEvents {
-  Rig(http.Client client, this.files, {DownloadBases? basesOf})
-    : bases = basesOf ?? defaultBases,
-      backend = HttpDownloadBackend(
-        client: client,
-        bases: basesOf ?? defaultBases,
-        files: files,
-      ) {
+  Rig(
+    http.Client client,
+    this.files, {
+    DownloadBases? basesOf,
+    HttpCredentials? credentials,
+  }) : bases = basesOf ?? defaultBases,
+       backend = HttpDownloadBackend(
+         client: client,
+         bases: basesOf ?? defaultBases,
+         files: files,
+         credentials: credentials,
+       ) {
     // open() only keeps the events, before its first await.
     unawaited(open());
   }

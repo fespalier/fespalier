@@ -49,6 +49,9 @@ Override `downloadsEngine` with it in `startup.dart`, and `open()` the engine **
 - **Notifications are off unless configured**, per backend and group; the title is your text and the body the download's
   `displayName`. `userInitiated` without a `running` text is `Failed(notificationsRequired)` and nothing is queued. **Never
   ask for the notification permission in the package**; the app does, with a rationale.
+- **A grant works** (the engine's `grantor`): `enqueue` and `resume` receive the granted request and headers; a renewal
+  after a 401/403 is `cancel` then `enqueue`, and the plugin's late `canceled` update for the old attempt is dropped (told by
+  the task's creation time), so it never cancels the new one.
 - **Auth is what the request carries**: a short-lived grant. Headers sit **in plaintext in the OS task queue** until the
   task ends and a retry sends the same ones (`retries: 0` where that matters). No refresh token; no DPoP (native callbacks
   cannot reach the app's state).
@@ -74,6 +77,6 @@ entitlement. The full list is "Android and iOS setup" in `docs/downloads.md`.
 
 Never write these as fact; no device has answered them: when a notification tap arrives after a cold start relative to
 `resumeFromBackground`; whether a resume with new headers sends them; whether a failed update carries the server's
-response headers; whether the plugin's database delete is scoped to a group; whether an Android task cycling every nine
+response headers; whether the plugin's database delete is scoped to a group; whether its cancel keeps the partial file; whether an Android task cycling every nine
 minutes reuses its stored headers; what happens to a group's updates when the app opened the plugin first; whether the
 package builds for the web.

@@ -1,19 +1,20 @@
-# Testing Dio and `package:http` with `fespalier_dio`
+# Testing Dio and `package:http` with `fespalier_dio` and `fespalier_http`
 
-Since 0.9.0. A test of a `data.dart` or an `action.dart` that goes over HTTP needs no network and no sleeping: a **fake
+Since 0.9.0 (`package:http` helpers moved from `fespalier_dio/http.dart` to `fespalier_http` in 0.15.0). A test of a `data.dart` or an `action.dart` that goes over HTTP needs no network and no sleeping: a **fake
 `HttpClientAdapter`** under Dio, a **`MockClient`** under `package:http`, and **zero delays** in the retriers. What the
 package does is explained in [`fespalier-data`](../../fespalier-data/references/http.md); this page is the traps of
 testing it, and a test of each piece that compiles.
 
-| Trap                                                                      | What to do                                                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dio's chain starts with `Timer.run`, so a request never moves in a test   | A plain `test()` (a real event loop) works as it is. In `testWidgets`, `pumpAndSettle()` runs it, and to look at a request that is held open use `await tester.pump(Duration.zero)`: a bare `pump()` does not elapse the zero-length timers |
-| A request that nobody answers is a test that hangs                        | Answer from the adapter at once, or hold it on a `Completer` you complete yourself. `cancelFuture` (the adapter's third argument) completes when the request's `CancelToken` is cancelled, so it is how a test sees a cancellation          |
-| `MockClient` does not abort by itself                                     | "It is the handler's responsibility": race `(request as Abortable).abortTrigger` and throw `RequestAbortedException`, as a real client does. `ref.abortable(mock)` hands the handler an `AbortableRequest`                                  |
-| `MockClient`'s responses carry no `request`, and are new objects          | Not a problem for `WriteGuardClient`, which marks what it saw by identity. A test that wants `response.request` sets `request:` on the `StreamedResponse` itself                                                                            |
-| `dio_smart_retry` waits 1 s, 3 s and 5 s, and `RetryClient` 500 ms and up | Make the delays a provider and override it with zero: `retryDelays: const [Duration.zero]`, `RetryClient.withDelays(inner, const [Duration.zero])`. They still await a real zero-length timer, so these tests are plain `test()`            |
-| A write must be sent **once**                                             | Count the requests the adapter or the `MockClient` handler saw, not what the caller got: the caller gets the first error either way                                                                                                         |
-| A test that leaves a `ProviderContainer` open                             | `addTearDown(container.dispose)`: the `dio` provider closes its client in `onDispose`, and `ref.abortable` fires its trigger there                                                                                                          |
+| Trap                                                                         | What to do                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dio's chain starts with `Timer.run`, so a request never moves in a test      | A plain `test()` (a real event loop) works as it is. In `testWidgets`, `pumpAndSettle()` runs it, and to look at a request that is held open use `await tester.pump(Duration.zero)`: a bare `pump()` does not elapse the zero-length timers                                                                                                                                                                                                              |
+| A request that nobody answers is a test that hangs                           | Answer from the adapter at once, or hold it on a `Completer` you complete yourself. `cancelFuture` (the adapter's third argument) completes when the request's `CancelToken` is cancelled, so it is how a test sees a cancellation                                                                                                                                                                                                                       |
+| `MockClient` does not abort by itself                                        | "It is the handler's responsibility": race `(request as Abortable).abortTrigger` and throw `RequestAbortedException`, as a real client does. `ref.abortable(mock)` hands the handler an `AbortableRequest`                                                                                                                                                                                                                                               |
+| `MockClient` does not abort, and a test wants to count aborts (since 0.15.0) | `FakeHttpClient(handler)` from `package:fespalier_http/testing.dart` races `abortTrigger` with the handler (no timer), throws `RequestAbortedException`, records every request in `requests` and counts `abortCount`; a trigger that fires after the answer still counts, so assert on the request that was held open. `FakeHttpCredentials(origins: [...])` is an `HttpCredentials` with a canned header that records `authorizeCalls` and `retryCalls` |
+| `MockClient`'s responses carry no `request`, and are new objects             | Not a problem for `WriteGuardClient`, which marks what it saw by identity. A test that wants `response.request` sets `request:` on the `StreamedResponse` itself                                                                                                                                                                                                                                                                                         |
+| `dio_smart_retry` waits 1 s, 3 s and 5 s, and `RetryClient` 500 ms and up    | Make the delays a provider and override it with zero: `retryDelays: const [Duration.zero]`, `RetryClient.withDelays(inner, const [Duration.zero])`. They still await a real zero-length timer, so these tests are plain `test()`                                                                                                                                                                                                                         |
+| A write must be sent **once**                                                | Count the requests the adapter or the `MockClient` handler saw, not what the caller got: the caller gets the first error either way                                                                                                                                                                                                                                                                                                                      |
+| A test that leaves a `ProviderContainer` open                                | `addTearDown(container.dispose)`: the `dio` provider closes its client in `onDispose`, and `ref.abortable` fires its trigger there                                                                                                                                                                                                                                                                                                                       |
 
 ```yaml
 # pubspec.yaml dependencies
@@ -28,7 +29,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
-import 'package:fespalier_dio/http.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
@@ -85,7 +86,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart' show Override;
-import 'package:fespalier_dio/http.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';

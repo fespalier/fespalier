@@ -96,7 +96,7 @@ class Problems extends ConsumerWidget {
 ## Validation errors become form errors
 
 `submit(...).withCrateStackFieldErrors(ref, fieldName: ...)` turns a `422` `VALIDATION_ERROR` into fespalier's
-`FieldErrors`, like `withFieldErrors` in `fespalier_dio`, on the action's own `Future`. CrateStack documents the
+`FieldErrors`, like `withFieldErrors` in `fespalier_dio` (and, for `package:http`, `fespalier_http` since 0.15.0), on the action's own `Future`. CrateStack documents the
 message (`field 'email' is not a valid email address`) but **no structure for `details`**, so the package reads `details`
 when it is a map of field to message (or a list of strings) or a list of `{field|path, message}`, then the documented
 message, then falls back to `FieldErrors({}, message: message)`. **That `details` shape is an assumption**; anything

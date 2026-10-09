@@ -111,6 +111,9 @@ dependencies:
 It depends on go_router (17 or 18), hooks_riverpod 3 and flutter_hooks, and
 `package:fespalier/fespalier.dart` re-exports all three, so you don't add them yourself.
 
+Starting a new app? `fsp create my_app` makes it with fespalier in it and replaces steps 2 and 3
+([`fsp create`](docs/cli.md#fsp-create)); the rest is for an app you already have.
+
 **3. Run `fsp init`** in the project root. It creates a layout, a page, `not_found.dart`,
 `transition.dart` and `app.dart`, writes `lib/app.g.dart`, and never overwrites a file that exists.
 Delete `test/widget_test.dart` if `flutter create` wrote one: it refers to the `MyApp` that `fsp init` replaced.

@@ -4,7 +4,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 
 | Page                                                               | What is in it                                                                                         |
 | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| [Installation and setup](getting-started.md)                       | Install options, companion packages, `fsp init`, CI, platform notes                                   |
+| [Installation and setup](getting-started.md)                       | Install options, companion packages, `fsp create`, `fsp init`, CI, platform notes                     |
 | [Configuration](configuration.md)                                  | Every `fespalier:` key of `pubspec.yaml`, and `route.dart`                                            |
 | [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, exports and receives                                              |
 | [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed per release                                   |

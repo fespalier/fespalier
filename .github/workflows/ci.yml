@@ -573,6 +573,76 @@ jobs:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh
 
+  # `fsp create` (since 0.15.0) against the real flutter: the base app, each optional feature on its
+  # own, and every feature at once, made with this checkout as the packages (`--local-packages`) and
+  # checked with `dart format`, `flutter analyze` and `flutter test`. The cases are not written here:
+  # `create-cases` asks the binary for them (`fsp create --list-features --json`, through
+  # scripts/check-create.sh --list), so a feature that lands is a case from its first change. The
+  # script is `just create-check`.
+  create-cases:
+    name: Cases of fsp create
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      cases: ${{ steps.cases.outputs.cases }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      - name: List the cases
+        id: cases
+        shell: bash
+        run: |
+          scripts/check-create.sh --list | tee "$RUNNER_TEMP/cases.txt"
+          echo "cases=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$RUNNER_TEMP/cases.txt")" >> "$GITHUB_OUTPUT"
+
+  create:
+    name: fsp create (${{ matrix.case }})
+    needs: create-cases
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJson(needs.create-cases.outputs.cases) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Make the app, then dart format, analyze and test it
+        env:
+          CASE: ${{ matrix.case }}
+        run: scripts/check-create.sh "$CASE"
+
   # examples/cose: a CrateStack server (a Rust crate of its own, examples/cose/server) that checks a
   # COSE_Sign1 signature on every request, and the Flutter app that signs them. The `dart` job above
   # already runs the app's tests (its end-to-end test skips there: no server binary); this job

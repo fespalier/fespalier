@@ -15,4 +15,3 @@ export 'src/abort.dart' show FespalierHttpRef;
 export 'src/field_errors.dart' show FespalierHttpFieldErrors;
 export 'src/write_guard_client.dart' show WriteGuardClient;
 export 'src/writes.dart' show HttpWrites;
-export 'src/credentials.dart' show HttpAuthorization, HttpCredentials;

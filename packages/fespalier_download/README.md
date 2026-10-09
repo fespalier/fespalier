@@ -5,8 +5,8 @@ that outlives a screen. A download is a `DownloadRequest` (an id, a URL, a file 
 optionally its size and SHA-256), it is in one `DownloadStatus` at a time (`Queued`, `Waiting`, `Running`, `Paused`,
 `Verifying`, `Complete`, `Failed`, `Cancelled`), and a `DownloadBackend` does the transfer. The package has the
 vocabulary, the telemetry names, the fakes and the engine, `Downloads`, that drives a backend (start, pause, resume, retry,
-cancel, remove, the registry after a restart, sign-out) and the foreground `HttpDownloadBackend`; the providers and a background
-backend come in the releases after it.
+cancel, remove, the registry after a restart, sign-out) and the foreground `HttpDownloadBackend`, a durable registry (`FileDownloadStore`) and the Riverpod
+providers `downloads` and `downloadStatus`; a background backend comes in a release after it.
 
 It is pure Dart over `package:http`: no platform plugin, so it resolves on Flutter 3.32, fespalier's floor, and an app that
 lists it links nothing native.
@@ -37,6 +37,9 @@ dependencies:
 ```
 
 <!-- x-release-please-end -->
+
+It depends on `fespalier_http` (at the same tag, which pub resolves for you) for `HttpCredentials`. List
+`fespalier_http` yourself, with the same `url` and `ref`, only when your code imports it.
 
 ## Requests and files
 
@@ -69,15 +72,64 @@ pause and cancel. It can pause and nothing else (no background, no notifications
 names the base folders (`path_provider` is yours); give the engine `TransferDownloadFiles(bases:)` to delete files. On the
 web every start ends `Failed(unsupported)`. See [the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#the-foreground-backend).
 
+## In a widget
+
+`FileDownloadStore(bases: bases)` is the durable registry: a JSON file in the `support` folder your `DownloadBases` names,
+written by atomic rename (temp file, then rename), never evicting, empty (not an error) when missing or corrupt, wiped by
+`clearAccount()`; its request headers are in plaintext. Override `downloadsEngine` (no default: a `StateError` names the
+override) with a `Downloads` over it, and watch `downloads` (every status by id) or `downloadStatus(id)` in a widget;
+watching opens the engine, and disposing closes it. Act through `ref.read(downloadsEngine)`.
+
+```dart
+Future<List<Override>> startup() async => [
+  downloadsEngine.overrideWithValue(
+    Downloads(
+      backend: HttpDownloadBackend(client: http.Client(), bases: bases),
+      store: FileDownloadStore(bases: bases),
+      files: TransferDownloadFiles(bases: bases),
+    ),
+  ),
+];
+// in a ConsumerWidget: ref.watch(downloadStatus('manual-42'))
+```
+
+See [the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#in-a-widget).
+
+## Credentials
+
+The documented path is a **short-lived capability grant**: before the download starts, in the foreground, the app makes its
+normal signed request and the server answers with a single-file URL and/or headers that expire in minutes. Give the engine
+a `grantor` that returns a `DownloadGrant(url:, headers:)` (its `toString()` prints no field; the registry never stores it):
+
+```dart
+final engine = Downloads(
+  backend: backend,
+  store: store,
+  files: files,
+  grantor: (request, {required renewal}) async => DownloadGrant(url: await signedUrlFor(request.id)),
+);
+```
+
+It is asked before each start, retry and resume, and **once more after a 401 or 403**: the engine cancels the failed
+attempt (the bytes the backend kept stay) and enqueues again with the new grant. A second 401 or 403, or a grantor that
+throws, ends `Failed(unauthorized)`; a cancel, remove, restart or sign-out meanwhile wins. `HttpDownloadBackend(credentials:)`
+takes any `HttpCredentials` (`fespalier_auth`'s `Authorizer`): each send of the foreground transfer is authorized, and a
+4xx asks `retry` for one re-send, at most three sends. Plain `headers` are stored in plaintext; never put a refresh
+token or a long-lived bearer in a request or a grant, and a DPoP proof cannot be signed per send by a background backend.
+The telemetry span's end has `fespalier.download.regranted: true` when a renewal was asked. See
+[the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#credentials).
+
 ## Test it
 
 `package:fespalier_download/testing.dart` has `FakeDownloadBackend` (the test plays the platform with `emit` and `tap`),
-`MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`. A test builds `Downloads(backend:, store:, files:)` over them, calls `open()`,
+`MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`, and `downloadTestOverrides(backend:)` for the
+providers. A test builds `Downloads(backend:, store:, files:)` over them, calls `open()`,
 and plays the platform with `emit`; `replay:` is what the backend reports at open, to test a restart.
 
 ## Rules
 
 - **The engine imports no Riverpod** (`test/engine_test.dart` greps it) and keeps one observer slot that `close()` clears.
+- **The registry is never a `BoundedDataStorage`** and is written by atomic rename; the providers add no timer and no listener.
 - **No timer, no polling, no microtask, no listener of its own**, and nothing that opens a dialog, a menu, a sheet or a
   snack bar: `test/no_timers_test.dart` greps `lib/`, with no exception.
 - **Telemetry carries kinds and results, never a transfer's identity**: `fespalier.download.transfer`,

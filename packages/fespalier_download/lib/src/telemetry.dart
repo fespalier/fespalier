@@ -26,6 +26,11 @@ abstract final class FespalierDownloadConventions {
   /// End attribute of [transfer] when it failed: the `DownloadFailure` name.
   static const String failure = 'fespalier.download.failure';
 
+  /// End attribute of [transfer], present only when it is true (`bool`): the transfer was refused
+  /// (401 or 403) and the engine asked the app's grantor for a renewed grant (since 0.15.0).
+  /// Never the grant, the URL or a header.
+  static const String regranted = 'fespalier.download.regranted';
+
   /// [result] value: the file is in place.
   static const String resultComplete = 'complete';
 

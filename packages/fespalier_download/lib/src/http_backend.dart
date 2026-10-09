@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fespalier_http/fespalier_http.dart' show HttpCredentials;
 import 'package:http/http.dart' as http;
 
 import 'location.dart';
@@ -130,6 +131,7 @@ class HttpDownloadBackend implements DownloadBackend {
     required http.Client client,
     required this.bases,
     TransferFiles? files,
+    this.credentials,
   }) : _client = client,
        _files = files ?? defaultTransferFiles();
 
@@ -138,6 +140,13 @@ class HttpDownloadBackend implements DownloadBackend {
 
   /// The base folders.
   final DownloadBases bases;
+
+  /// The session's credentials for the requests this backend sends itself (since 0.15.0), or
+  /// null for none. Each send asks `authorize`, and a refusal asks `retry`, the way
+  /// `fespalier_auth`'s `SessionClient` does. They live in memory for the send: nothing is
+  /// written to disk. It is a foreground-only path: the operating system's download service has
+  /// no session, so a background backend takes a short-lived grant instead (see [DownloadGrant]).
+  final HttpCredentials? credentials;
 
   DownloadEvents? _events;
   final Map<String, _Entry> _entries = {};
@@ -283,6 +292,7 @@ class HttpDownloadBackend implements DownloadBackend {
         onProgress: (received, total) =>
             _report(id, generation, Running(received, total)),
         onVerifying: () => _report(id, generation, const Verifying()),
+        credentials: credentials,
       );
       attempt.transfer = transfer;
       if (attempt.pauseAsked) transfer.pause();

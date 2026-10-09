@@ -22,6 +22,12 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.14.0 # x-release-please-version
+  # HttpCredentials, which the foreground backend authorizes each send with (since 0.15.0).
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.14.0 # x-release-please-version
   # 1.5.0: abortable requests, which the foreground backend aborts a pause or a cancel with.
   http: ^1.5.0
   # The SHA-256 of a finished file (3.0.6 is the first release whose floor is Dart 3.4).
@@ -40,3 +46,5 @@ dev_dependencies:
 dependency_overrides:
   fespalier:
     path: ../fespalier
+  fespalier_http:
+    path: ../fespalier_http

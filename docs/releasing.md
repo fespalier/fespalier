@@ -76,6 +76,25 @@ does not move): fix the cause and re-run the failed jobs.
 - A manual run of `Release` (_Run workflow_) only builds the five targets and renders the Homebrew and
   Scoop files as a smoke test; it publishes nothing.
 
+**The post-publish smoke.** Once the Release is public, the `post-publish-smoke` workflow (its own file,
+started by the `release: published` event that the publish step raises with the App token) installs the
+`fsp` that users get with `install.sh` at that tag, which checks the archive's SHA-256, then runs
+`fsp create` twice, for the base app and for `--features all`, without `--local-packages`, so the
+generated `pubspec.yaml` depends on the new tag in git. Each app gets `flutter analyze` and
+`flutter test` on `FLUTTER_VERSION` (equal to `ci.yml`'s; `cli/tests/versions.rs` checks it). It is
+the one check that needs the published tag; `ci.yml`'s `create` jobs check the same apps against the
+checkout before.
+
+- It never gates a release. It is a separate workflow, not a job of `Release`, so it cannot fail, delay
+  or cancel one, and the release is already public when it starts. A red run means a user who installs
+  that version may get a broken app: read the failed step (the job summary names the tag and the case),
+  fix forward, and re-run it once the fix is released or the cause is outside the tag (a dependency
+  that moved).
+- Re-run it against any release: _Actions_, _post-publish-smoke_, _Run workflow_, with the tag
+  (`vX.Y.Z`; anything else is refused). Or re-run the failed run from the Actions page.
+- It opens no issue and posts nowhere: the repository has no such pattern, and a write permission
+  would be the only reason for the job to hold more than `contents: read`.
+
 **Repository settings** (not enforceable from a workflow): squash merging only, with the squash commit
 title set to the pull request title and the message to the commit messages; merge commits and rebase
 merges off. The release-please GitHub App must be installed on this repository, and on the tap and the

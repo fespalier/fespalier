@@ -93,3 +93,12 @@ final client = RetryClient(
 `WriteGuardClient` marks what a write's send answered or threw, so `RetryClient` leaves it alone. A write is any
 method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries an `Idempotency-Key` header: that is
 `HttpWrites.isWrite`, the one rule `fespalier_dio`'s `WriteGuard` uses too.
+
+## The wrapping order
+
+`ref.abortable(...)` outermost, in the `data.dart`; under it the session, then `RetryClient`, then
+`WriteGuardClient` next to the network: `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), ...))`.
+`RetryClient` sends a streamed copy of every request, which a `SessionClient` cannot replay after a 401, so the
+retrier goes inside the session unless your API needs a DPoP proof on every attempt.
+[HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md#the-wrapping-order) has the reasons
+and the other order; `fespalier_auth`'s `test/wrapping_order_test.dart` proves both.

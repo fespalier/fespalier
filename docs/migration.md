@@ -27,6 +27,48 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.15.0
+
+- **The `package:http` half of `fespalier_dio` is `fespalier_http`** ([HTTP clients](http.md)).
+  **Breaking, for an app that imports `package:fespalier_dio/http.dart` or `package:fespalier_dio/problem.dart`:**
+  both libraries are removed (not deprecated), as the forms were in 0.11.0. The move is an import rename and a
+  `pubspec.yaml` line; no member changed its name or behaviour. An app that only uses Dio changes nothing:
+  `package:fespalier_dio/fespalier_dio.dart` still exports `problem.dart`.
+
+  ```dart
+  // Before (0.14.0)
+  import 'package:fespalier_dio/http.dart';
+  import 'package:fespalier_dio/problem.dart';
+
+  // After (0.15.0)
+  import 'package:fespalier_http/fespalier_http.dart'; // also exports problem.dart
+  import 'package:fespalier_http/problem.dart';
+  ```
+
+  ```yaml
+  dependencies:
+    fespalier_http: # the same url and ref as fespalier
+      git:
+        url: https://github.com/fespalier/fespalier
+        path: packages/fespalier_http
+        ref: <the 0.15.0 tag, as for fespalier>
+  ```
+
+  `fespalier_dio` depends on `fespalier_http` for the write rule and the problem decoders, so a Dio app resolves it
+  without listing it; list it when you import it. Run `dart pub get`, then search for `fespalier_dio/http.dart` and
+  `fespalier_dio/problem.dart`.
+
+- **`HttpWrites.isWrite` is the one write rule.** `WriteGuard` (Dio) and `WriteGuardClient` (`package:http`) both
+  call it, so they agree on what a write is (any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries
+  an `Idempotency-Key`). Behaviour is unchanged.
+- **`DioHttpClient`** (`package:fespalier_dio/client.dart`) is your Dio as an `http.Client`, for a package that
+  takes one (`packHttpClient`, `TolgeeCdn`) and for `ref.abortable(...)`.
+- **`HttpCredentials`** (`fespalier_http`) is the session for a transfer that is not an `http.Client`. `fespalier_auth`'s
+  `Authorizer` implements it, and `AuthAttempt` implements `HttpAuthorization`; nothing that uses `Authorizer` changes.
+- **Fakes for tests:** `FakeHttpClient` and `FakeHttpCredentials` in `package:fespalier_http/testing.dart`.
+- **`fespalier_auth` depends on `fespalier_http`** (for `HttpCredentials`), so an app that lists `fespalier_auth` and
+  overrides its dependencies by hand adds `fespalier_http` to the same overrides.
+
 ### 0.14.0
 
 - **`fespalier_push` hands the app a `PushToken`, not a `String`** ([Tokens and permission](push.md#tokens-and-permission)).

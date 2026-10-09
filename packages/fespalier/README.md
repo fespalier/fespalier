@@ -19,6 +19,7 @@ import a single package.
 Add it as a git dependency:
 
 <!-- x-release-please-start-version -->
+
 ```yaml
 dependencies:
   fespalier:
@@ -27,6 +28,7 @@ dependencies:
       path: packages/fespalier
       ref: v0.14.0
 ```
+
 <!-- x-release-please-end -->
 
 Needs Dart 3.8 and Flutter 3.32 or newer (go_router 18 needs Flutter 3.44). Works with
@@ -77,7 +79,7 @@ Since 0.9.0 `package:fespalier_adaptive` draws the `nav.dart` menu as a [navigat
 by window width, around a tab layout or a plain one, with no third-party dependency. It changes neither the generated
 code nor a release build that does not use it.
 
-Since 0.9.0 `package:fespalier_dio` puts [Dio and `package:http`](https://github.com/fespalier/fespalier/blob/main/docs/http.md)
+Since 0.9.0 `package:fespalier_dio` (and, for `package:http`, `package:fespalier_http` since 0.15.0) puts [Dio and `package:http`](https://github.com/fespalier/fespalier/blob/main/docs/http.md)
 under a data load and a write: a request is cancelled with the page that made it, a server's validation
 error is the `FieldErrors` of an `action.dart` form, and a write is never sent twice by a retrier. It changes
 neither the generated code nor a release build that does not use it.

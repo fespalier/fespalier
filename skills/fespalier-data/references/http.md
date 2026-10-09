@@ -1,11 +1,12 @@
-# HTTP clients: `fespalier_dio`
+# HTTP clients: `fespalier_http` and `fespalier_dio`
 
-Since 0.9.0. fespalier's core has **no HTTP client**; `package:fespalier_dio` (a repository dependency next to
-fespalier, **same `url` and same `ref`**) is what Dio and `package:http` need to keep three promises of `data.dart` and
-`action.dart`: a load whose page is gone stops, a server's validation error lands under its form field, and a write is
-never sent twice. It adds no file kind, no `fespalier:` key and no `fsp` command, and an app that does not import it is
-byte for byte what it was. It starts no timer and no listener, and has **no retry policy of its own** (a backoff needs a
-timer).
+Since 0.9.0 as `fespalier_dio`; **since 0.15.0 the `package:http` half is `fespalier_http`**. fespalier's core has **no
+HTTP client**; `package:fespalier_http` (for `package:http`) and `package:fespalier_dio` (for Dio), repository
+dependencies next to fespalier with **the same `url` and the same `ref`**, are what the two clients need to keep three
+promises of `data.dart` and `action.dart`: a load whose page is gone stops, a server's validation error lands under its
+form field, and a write is never sent twice. They add no file kind, no `fespalier:` key and no `fsp` command, and an app
+that does not import them is byte for byte what it was. They start no timer and no listener, and have **no retry policy
+of their own** (a backoff needs a timer).
 
 ```yaml
 # pubspec.yaml: the same url and the same ref as fespalier, or pub refuses to resolve
@@ -15,25 +16,54 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: <the tag of your fespalier>
-  fespalier_dio:
+  fespalier_http: # package:http (a Dio-only app can leave it out: fespalier_dio brings it)
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: <the same tag>
+  fespalier_dio: # Dio
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
       ref: <the same tag>
 ```
 
-(A fragment, not a sample: pub resolves the pair only at a release tag. A mismatch fails as it does for
+(A fragment, not a sample: pub resolves them only at a release tag. A mismatch fails as it does for
 `fespalier_auth`: see [`auth-package.md`](../../fespalier-guards/references/auth-package.md).)
 
-| Library                                    | For            | What is in it                                                                          |
-| ------------------------------------------ | -------------- | -------------------------------------------------------------------------------------- |
-| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`              |
-| `package:fespalier_dio/http.dart`          | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient` |
-| `package:fespalier_dio/problem.dart`       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (both libraries above export it)  |
+| Library                                      | For            | What is in it                                                                                                           |
+| -------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_http/fespalier_http.dart` | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`, `HttpWrites`, `HttpCredentials` |
+| `package:fespalier_http/problem.dart`        | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (the other libraries export it)                                    |
+| `package:fespalier_http/testing.dart`        | tests          | `FakeHttpClient`, `FakeHttpCredentials`                                                                                 |
+| `package:fespalier_dio/fespalier_dio.dart`   | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and `problem.dart`                           |
+| `package:fespalier_dio/client.dart`          | Dio            | `DioHttpClient`: the app's Dio as an `http.Client` (since 0.15.0)                                                       |
+
+**On 0.14.0 and earlier** the `package:http` half was `package:fespalier_dio/http.dart` and the decoders
+`package:fespalier_dio/problem.dart`. Both are **removed in 0.15.0, not deprecated**: an app that upgrades changes the
+import to `package:fespalier_http/fespalier_http.dart` or `package:fespalier_http/problem.dart` and adds the pubspec
+line, and nothing else ([`fespalier-migration`](../../fespalier-migration/SKILL.md)). A Dio-only app changes nothing.
 
 An app that uses one client imports one library (`dio` and `http` are pure Dart, so the other is not linked). Importing
 **both** is fine: the two `withFieldErrors()` are on different types (`Future<T>` and `Future<http.Response>`), and the
 more specific one wins.
+
+## One client seam, the order of the layers, and credentials (since 0.15.0)
+
+- **The seam is `package:http`'s `Client`.** Any `http.Client` fits `ref.abortable(...)`, `WriteGuardClient`, a
+  `RetryClient` and a `SessionClient`: `IOClient`, `cronet_http`, `cupertino_http` or `DioHttpClient(dio)`. Whether
+  `cupertino_http` honours an abort is **not checked**: do not promise it. `DioHttpClient` streams the body, returns
+  every status as a response, turns an `Abortable` trigger into a Dio cancel (`RequestAbortedException`), and its
+  `close()` does nothing (the Dio belongs to its provider).
+- **The order** that is proved (`packages/fespalier_auth/test/wrapping_order_test.dart`), outside in:
+  `ref.abortable(...)`, then `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), when:
+WriteGuardClient.readsOnly(), whenError: WriteGuardClient.readErrorsOnly(...)))`. **A retrier outside the session
+  is wrong for a bearer token:** `RetryClient` sends a streamed copy of every request, which `SessionClient` does not
+  send again after a 401, so the 401 is refreshed and returned, not replayed. The retrier outside the session is the
+  choice only when a DPoP proof must be new on every attempt.
+- **`HttpCredentials`** is the session for a transfer that is not an `http.Client`: `covers(uri)`, `authorize(method,
+uri, {previous})` and `retry(attempt, statusCode:, headers:)` with lower-case header names. `fespalier_auth`'s
+  `Authorizer` implements it; `FakeHttpCredentials` and `FakeHttpClient` are the test doubles.
 
 The samples below share one tiny API. `dio` is the app's Dio, with a retry interceptor for reads and the guard for
 writes, and `httpClient` is the same policy for `package:http`.
@@ -51,7 +81,7 @@ import 'package:dio/dio.dart';
 import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
-import 'package:fespalier_dio/http.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
@@ -153,7 +183,7 @@ class ProductPage extends StatelessWidget {
 import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_dio/http.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:my_app/api.dart';
 
 /// package:http: every request of this build goes through one aborting client.
@@ -281,7 +311,7 @@ class NicknamePage extends HookConsumerWidget {
   (Dio wraps whatever it rejects with), and `ActionHandle.fieldErrors` and `useForm` read an `AsyncError` whose error is
   a `FieldErrors`. Use it in an `action.dart`; a `data.dart` that gets a 422 wants its `error.dart`. It works on any
   `Future<T>` that fails with a `DioException`, so a **retrofit** client's `api.updateProfile(...).withFieldErrors()` too,
-  and `Future<http.Response>` has one in `package:fespalier_dio/http.dart` (it returns the response when there is
+  and `Future<http.Response>` has one in `package:fespalier_http/fespalier_http.dart` (it returns the response when there is
   nothing to throw, since `package:http` does not throw for a status).
 - **The rules** (`fieldErrorsOf`): only a status in `statuses` (default `{400, 422}`); the body is a JSON object
   (a decoded map, or a `String` or bytes holding one; bytes are read as UTF-8); the `decoder` names the fields and each
@@ -347,7 +377,7 @@ client's retry layer breaks that promise from below: `dio_smart_retry` retries *
 - **A write** is any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, **unless** it carries an `Idempotency-Key`
   header (any case) or `Options(extra: {WriteGuard.idempotent: true})`, which say it is safe to repeat.
   `Options(extra: {WriteGuard.write: true})` makes any request one. `WriteGuard.isWrite(options)` and
-  `WriteGuardClient.isWrite(request)` are the rule (the second has no `extra`).
+  `WriteGuardClient.isWrite(request)` are the rule (the second has no `extra`); since 0.15.0 both call `HttpWrites.isWrite`, so they cannot disagree.
 - **`WriteGuard` is an interceptor that must be first.** It records the error of a write's first send, and refuses a
   second send of the same `RequestOptions`, handing the caller **the first error** (and a debug build prints the
   message below, once per request, with the method and the path only). `WriteGuard.install(dio)` puts it at index 0,

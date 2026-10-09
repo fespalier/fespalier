@@ -15,7 +15,7 @@ error): an app on 0.7.0 that had an _action_ called `form` beside `action` must 
 `validate()`, throws or returns to say which fields of its input are wrong: the keys are the names of
 the input's fields, `message` is about the input as a whole. Since 0.11.0 it lives in
 `packages/fespalier/lib/src/field_errors.dart`, which `fespalier.dart` exports as before, and a form
-(`fespalier_forms`) is only one thing that shows it; `fespalier_dio`, `fespalier_auth`,
+(`fespalier_forms`) is only one thing that shows it; `fespalier_dio`, `fespalier_http`, `fespalier_auth`,
 `fespalier_cratestack` and `fespalier_sentry` use it without one.
 
 ## `validate()`: the same check in every path

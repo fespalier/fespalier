@@ -173,6 +173,15 @@ impl Install {
     }
 }
 
+/// How the install script's command sets the release: sh syntax, or PowerShell on Windows.
+fn version_env(tag: &str) -> String {
+    if cfg!(windows) {
+        format!("$env:FSP_VERSION='{tag}'")
+    } else {
+        format!("FSP_VERSION={tag}")
+    }
+}
+
 fn stdout(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
@@ -273,7 +282,7 @@ fn json_prints_one_object() {
     assert_eq!(json["method"], "script");
     assert_eq!(json["upToDate"], false);
     let command = json["command"].as_str().unwrap();
-    assert!(command.contains("FSP_VERSION=v99.0.0"), "{command}");
+    assert!(command.contains(&version_env("v99.0.0")), "{command}");
 
     // --json without --check still writes nothing and exits 0.
     let out = install.run(Some(&server), &["--dry-run", "--json"]);
@@ -294,10 +303,21 @@ fn dry_run_says_what_it_would_do_and_changes_nothing() {
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(
-        text.contains("99.0.0") && text.contains("FSP_VERSION=v99.0.0"),
+        text.contains("99.0.0") && text.contains(&version_env("v99.0.0")),
         "{text}"
     );
     assert_eq!(fs::read(&install.exe).unwrap(), before);
+    // The archive is named, a wrapped literal pads nothing, and the path is not the verbatim
+    // form Windows canonicalizes to.
+    let archive = if cfg!(windows) {
+        "fsp-x86_64-pc-windows-msvc.zip"
+    } else {
+        ".tar.gz"
+    };
+    assert!(text.contains("/v99.0.0/fsp-"), "{text}");
+    assert!(text.contains(archive), "{text}");
+    assert!(text.contains("archive against the release"), "{text}");
+    assert!(!text.contains(r"\\?\"), "{text}");
 }
 
 #[test]
@@ -311,7 +331,7 @@ fn an_explicit_version_needs_no_network_and_a_downgrade_is_named() {
         text.contains("0.0.1") && text.contains("downgrade"),
         "{text}"
     );
-    assert!(text.contains("FSP_VERSION=v0.0.1"), "{text}");
+    assert!(text.contains(&version_env("v0.0.1")), "{text}");
 
     let out = install.run(None, &["--version", "latest"]);
     assert_eq!(out.status.code(), Some(1));

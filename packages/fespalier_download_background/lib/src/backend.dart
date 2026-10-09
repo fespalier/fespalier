@@ -48,7 +48,9 @@ class BackgroundDownloaderBackend implements DownloadBackend {
     BackgroundTransport? transport,
     BackgroundPlatform? platform,
     TransferFiles? files,
-  }) : _transport = transport ?? PluginTransport(),
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now,
+       _transport = transport ?? PluginTransport(),
        _platform = platform ?? BackgroundPlatform.current,
        _files = files ?? defaultTransferFiles() {
     _notifications = notifications;
@@ -57,6 +59,7 @@ class BackgroundDownloaderBackend implements DownloadBackend {
   /// The retries and the group.
   final BackgroundOptions options;
 
+  final DateTime Function() _now;
   final BackgroundTransport _transport;
   final BackgroundPlatform _platform;
   final TransferFiles _files;
@@ -74,8 +77,14 @@ class BackgroundDownloaderBackend implements DownloadBackend {
   // The attempts we cancelled: "<id>@<creation time in ms>". The plugin sends a `canceled` update
   // for a task we cancel, and for a retry or a renewed grant that update can arrive after the
   // same id was enqueued again: it must not end the new attempt. A task is told from its
-  // successor by its creation time (kept to the millisecond, as the plugin stores it).
+  // successor by its creation time (kept to the millisecond, as the plugin stores it, and
+  // strictly increasing per id: see [_lastCreation]).
   final Set<String> _stale = {};
+  // The creation time (ms) of the latest attempt enqueued for an id, never reset. Every attempt of
+  // an id gets a strictly later one than the attempt before it, so that the key of a cancelled
+  // attempt can never equal the key of its successor, however fast a retry or a renewed grant
+  // follows the cancel (two `DateTime.now()` in one millisecond are equal).
+  final Map<String, int> _lastCreation = {};
   // The checks of finished files that are still running; open() waits for them.
   final Set<Future<void>> _pending = {};
 
@@ -203,10 +212,17 @@ class BackgroundDownloaderBackend implements DownloadBackend {
         !capabilities.unmetered) {
       return false;
     }
+    final nowMs = _now().millisecondsSinceEpoch;
+    final previous = _lastCreation[id];
+    final created = previous != null && nowMs <= previous
+        ? previous + 1
+        : nowMs;
+    _lastCreation[id] = created;
     final task = downloadTaskOf(
       request,
       authorization: authorization,
       options: options,
+      creationTime: DateTime.fromMillisecondsSinceEpoch(created),
     );
     _bump(id);
     _ended.remove(id);

@@ -63,6 +63,9 @@ BackgroundDownloaderBackend backend(
   platform: platform,
   notifications: notifications,
   files: files ?? FakeTransferFiles(),
+  // A clock that never moves: every attempt of an id is created "in the same millisecond", the
+  // worst case of a fast CI runner. Attempts must still be told apart.
+  now: () => DateTime.fromMillisecondsSinceEpoch(1700000000000),
 );
 
 void main() {
@@ -696,6 +699,28 @@ void main() {
       expect(engine.statusOf('a'), const Queued());
       t.emitStatus(statusOf(second, bd.TaskStatus.running));
       expect(engine.statusOf('a'), const Running(0));
+    });
+
+    test('attempts of one id get strictly increasing creation times', () async {
+      final t = FakeBackgroundTransport();
+      final engine = Downloads(
+        backend: backend(t),
+        store: MemoryDownloadStore(),
+      );
+      await engine.open();
+      await engine.start(request());
+      t.emitStatus(
+        statusOf(
+          t.enqueued.single,
+          bd.TaskStatus.failed,
+          bd.TaskConnectionException('x'),
+        ),
+      );
+      await engine.retry('a');
+      expect(
+        t.enqueued.last.creationTime.isAfter(t.enqueued.first.creationTime),
+        isTrue,
+      );
     });
 
     test(

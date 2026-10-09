@@ -169,15 +169,20 @@ DownloadLocation? locationOf(bd.Task task) {
 ///   operating system's task queue in plaintext until the task ends.
 /// - The size and digest go into `metaData` ([TaskExpectation]).
 ///
+/// [creationTime] is the attempt's identity for one id (the backend makes it strictly increasing);
+/// it defaults to now.
+///
 /// The request must be valid ([DownloadRequest.isValid]).
 bd.DownloadTask downloadTaskOf(
   DownloadRequest request, {
   Map<String, String> authorization = const {},
   BackgroundOptions options = const BackgroundOptions(),
+  DateTime? creationTime,
 }) {
   final (directory, filename) = _split(request.file.path);
   return bd.DownloadTask(
     taskId: request.id,
+    creationTime: creationTime,
     url: request.url.toString(),
     headers: {...request.headers, ...authorization},
     filename: filename,

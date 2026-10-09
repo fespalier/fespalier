@@ -31,7 +31,7 @@ class MyToolsAdapter extends FespalierAdapter {
 ```
 
 The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notification and shortcut
-launches, ...) are packages of this kind; `fespalier_push` (since 0.13.0) is the first, see [Push notifications](push.md), and `fespalier_analytics` is a sink installed in `beforeRun`, see [Analytics](analytics.md). `FespalierAdapter` has nine members, each with a default that
+launches, ...) are packages of this kind; `fespalier_push` (since 0.13.0) is the first, see [Push notifications](push.md), `fespalier_analytics` is a sink installed in `beforeRun`, see [Analytics](analytics.md), and `fespalier_download` (since 0.15.0) opens a typed route from a download's notification tap, see [Notification taps](downloads.md#notification-taps). `FespalierAdapter` has nine members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 
 | Member                      | When it runs                                                                                                   | What it is for                                                                                                                                     |
@@ -211,7 +211,7 @@ Future<void> main() => AppAdapters.zone(() async {
 
 _Since 0.12.0 (a pattern; it needs nothing new in fespalier)._ The pubspec carries no per-adapter options, and
 `launch()` runs before any `ProviderScope` exists, so a provider override cannot hand an adapter the app's own code:
-a push adapter needs your mapping from a payload to a route, an analytics adapter its backend, a bridge its generated
+a push adapter needs your mapping from a payload to a route, a download adapter its backend, store and the mapping from a notification tap, an analytics adapter its backend, a bridge its generated
 client. The one place that runs before the adapters is your `main()`. So an adapter that needs app code is configured
 there, with one static call, before `AppMain.run()`:
 
@@ -225,7 +225,7 @@ Future<void> main() {
 
 Every package that does this has the same shape, so that a second one holds no surprise:
 
-- **`configure` is a static method on an `abstract final class`** (`FespalierPush`, `FespalierAnalytics`), and the
+- **`configure` is a static method on an `abstract final class`** (`FespalierPush`, `FespalierAnalytics`, `FespalierDownload`), and the
   adapter in `fespalier_adapter.dart` reads what it stored. Nothing else is global.
 - **Calling it twice replaces.** A hot restart runs `main()` again, and the second call wins.
 - **An unconfigured adapter says so once and does nothing.** It reports one `FlutterError.reportError` that names the

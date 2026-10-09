@@ -6,6 +6,7 @@ import 'grant.dart';
 import 'ports.dart';
 import 'request.dart';
 import 'status.dart';
+import 'tap.dart';
 import 'transfer_telemetry.dart';
 
 /// Called with each change of a download's status (since 0.15.0).
@@ -64,6 +65,7 @@ class Downloads {
   final Set<String> _reported = {};
 
   DownloadObserver? _observer;
+  DownloadTapObserver? _tapObserver;
   bool _open = false;
   bool _reconciling = false;
   Future<void>? _opening;
@@ -86,6 +88,13 @@ class Downloads {
   /// clears it too, so an engine that outlives its owner holds nothing of it.
   void observe(DownloadObserver? onChange) {
     _observer = onChange;
+  }
+
+  /// Sets the one owner of notification taps, replacing any earlier one; null clears it. A tap
+  /// with no owner is dropped. [close] clears it too. With `FespalierDownload.configure` the
+  /// adapter owns this slot: do not call it on that engine.
+  void observeTaps(DownloadTapObserver? onTap) {
+    _tapObserver = onTap;
   }
 
   /// Opens the backend and settles the registry with what it reports.
@@ -150,6 +159,7 @@ class Downloads {
     _open = false;
     _opening = null;
     _observer = null;
+    _tapObserver = null;
     for (final token in _spans.values) {
       transferFinish(token, const Cancelled());
     }
@@ -476,6 +486,16 @@ class Downloads {
     _notify(id, status);
   }
 
+  void _onTap(String id, DownloadTapKind kind) {
+    final observer = _tapObserver;
+    if (observer == null) return;
+    try {
+      observer(DownloadTap(id, kind, statusOf(id), _requests[id]));
+    } catch (_) {
+      // A tap handler that throws costs its own tap, never the engine.
+    }
+  }
+
   void _notify(String id, DownloadStatus status) {
     final observer = _observer;
     if (observer == null) return;
@@ -497,7 +517,7 @@ final class _Events implements DownloadEvents {
       _engine._onStatus(id, status, httpStatus);
 
   @override
-  void tapped(String id, DownloadTapKind kind) {}
+  void tapped(String id, DownloadTapKind kind) => _engine._onTap(id, kind);
 }
 
 // What an attempt sends: the request (with a grant's URL in place of its own) and the grant's

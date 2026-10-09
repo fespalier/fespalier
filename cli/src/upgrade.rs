@@ -408,7 +408,34 @@ fn current_env() -> Env {
     }
 }
 
-pub fn run(cmd: &UpgradeCmd) -> Result<()> {
+/// The note after an upgrade when the app pins another fespalier than the `fsp` now installed.
+/// `pinned` is the pubspec's `ref:` of `fespalier`; a ref that is not a release tag (a branch, a
+/// commit) cannot be compared and says nothing.
+pub fn ref_note(pinned: Option<&str>, installed: Version) -> Option<String> {
+    let pinned = pinned?;
+    let version = Version::parse(pinned)?;
+    (version != installed).then(|| {
+        format!(
+            "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Update the refs \
+             (fespalier and every companion, the same url and ref), or run `dart run fespalier` \
+             to use the fsp that matches the pin.",
+            pin = version.tag(),
+            tag = installed.tag(),
+        )
+    })
+}
+
+/// Prints [`ref_note`] for the project at `project`, if there is one.
+fn print_ref_note(project: Option<&Path>, installed: Version) {
+    let pinned = project
+        .and_then(|p| crate::config::Pubspec::load(p).ok())
+        .and_then(|p| p.pinned_ref);
+    if let Some(note) = ref_note(pinned.as_deref(), installed) {
+        println!("{note}");
+    }
+}
+
+pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
     let current =
         Version::parse(env!("CARGO_PKG_VERSION")).context("this fsp's own version is not X.Y.Z")?;
     let exe = env::current_exe()
@@ -494,6 +521,7 @@ pub fn run(cmd: &UpgradeCmd) -> Result<()> {
             if !status.success() {
                 return Err(Exit(status.code().unwrap_or(1)).into());
             }
+            print_ref_note(project, target);
         }
         Action::Print(lines) => {
             println!("fsp {current} -> {target}. Run:");
@@ -534,6 +562,7 @@ pub fn run(cmd: &UpgradeCmd) -> Result<()> {
                 "\u{2713} fsp {current} \u{2192} {target} ({})",
                 exe.display()
             );
+            print_ref_note(project, target);
         }
     }
     Ok(())

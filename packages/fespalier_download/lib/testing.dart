@@ -1,8 +1,10 @@
 /// Fakes for testing downloads with no network, no platform and no disk (since 0.15.0):
-/// `FakeDownloadBackend`, `MemoryDownloadStore` and `FakeDownloadFiles`.
+/// `FakeDownloadBackend`, `MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`.
 library;
 
 import 'fespalier_download.dart';
+
+export 'src/fake_transfer_files.dart';
 
 /// A [DownloadBackend] that does nothing by itself: the test plays the platform through
 /// [emit] and [tap] (and [replay], at open), and reads what the engine asked from the lists.

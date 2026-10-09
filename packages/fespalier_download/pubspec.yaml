@@ -22,8 +22,10 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.14.0 # x-release-please-version
-  # 1.5.0: abortable requests (the foreground backend of a later release uses them).
+  # 1.5.0: abortable requests, which the foreground backend aborts a pause or a cancel with.
   http: ^1.5.0
+  # The SHA-256 of a finished file (3.0.6 is the first release whose floor is Dart 3.4).
+  crypto: ">=3.0.6 <4.0.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0

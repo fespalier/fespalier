@@ -5,7 +5,8 @@ that outlives a screen. A download is a `DownloadRequest` (an id, a URL, a file 
 optionally its size and SHA-256), it is in one `DownloadStatus` at a time (`Queued`, `Waiting`, `Running`, `Paused`,
 `Verifying`, `Complete`, `Failed`, `Cancelled`), and a `DownloadBackend` does the transfer. The package has the
 vocabulary, the telemetry names, the fakes and the engine, `Downloads`, that drives a backend (start, pause, resume, retry,
-cancel, remove, the registry after a restart, sign-out); the HTTP backend and the providers come in the releases after it.
+cancel, remove, the registry after a restart, sign-out) and the foreground `HttpDownloadBackend`; the providers and a background
+backend come in the releases after it.
 
 It is pure Dart over `package:http`: no platform plugin, so it resolves on Flutter 3.32, fespalier's floor, and an app that
 lists it links nothing native.
@@ -60,10 +61,18 @@ assert(request.isValid);
 - **Headers may be kept on disk in plaintext** by a backend while a download is queued. Never put a refresh token or a
   long-lived bearer in one; a short-lived URL is the better capability.
 
+## The foreground backend
+
+`HttpDownloadBackend(client:, bases:)` downloads over your `http.Client` while the app runs: `Range` and `If-Range` from a
+`<file>.part` and its `.part.etag` validator, the size and SHA-256 checked before an atomic move, the request aborted on
+pause and cancel. It can pause and nothing else (no background, no notifications, no `unmetered`, which it refuses). `bases`
+names the base folders (`path_provider` is yours); give the engine `TransferDownloadFiles(bases:)` to delete files. On the
+web every start ends `Failed(unsupported)`. See [the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#the-foreground-backend).
+
 ## Test it
 
 `package:fespalier_download/testing.dart` has `FakeDownloadBackend` (the test plays the platform with `emit` and `tap`),
-`MemoryDownloadStore` and `FakeDownloadFiles`. A test builds `Downloads(backend:, store:, files:)` over them, calls `open()`,
+`MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`. A test builds `Downloads(backend:, store:, files:)` over them, calls `open()`,
 and plays the platform with `emit`; `replay:` is what the backend reports at open, to test a restart.
 
 ## Rules

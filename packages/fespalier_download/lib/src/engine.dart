@@ -216,11 +216,15 @@ class Downloads {
     final request = _requests[id];
     final current = statusOf(id);
     if (request == null || current is Complete) return;
-    _bump(id);
+    final generation = _bump(id);
     _requests.remove(id);
     _apply(id, const Cancelled());
     await _backend.cancel(id);
+    // A start of the same id while the backend stopped the old one owns the registry entry and
+    // the files now.
+    if (generation != _generationOf(id)) return;
     await _store.remove(id);
+    if (generation != _generationOf(id)) return;
     await _files?.delete(request.file);
   }
 
@@ -229,13 +233,16 @@ class Downloads {
   Future<void> remove(String id) async {
     final request = _requests[id];
     if (request == null && !_statuses.containsKey(id)) return;
-    _bump(id);
+    final generation = _bump(id);
     _requests.remove(id);
     final span = _spans.remove(id);
     transferFinish(span, const Cancelled());
     if (_statuses.remove(id) != null) _notify(id, const Absent());
     await _backend.cancel(id);
+    // As in cancel: a start during the wait keeps its entry and its files.
+    if (generation != _generationOf(id)) return;
     await _store.remove(id);
+    if (generation != _generationOf(id)) return;
     if (request != null) await _files?.delete(request.file);
   }
 

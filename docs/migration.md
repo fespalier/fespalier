@@ -51,7 +51,7 @@ What changed between releases, newest first, each with a link to the reference s
       git:
         url: https://github.com/fespalier/fespalier
         path: packages/fespalier_http
-        ref: v0.15.0
+        ref: <the 0.15.0 tag, as for fespalier>
   ```
 
   `fespalier_dio` depends on `fespalier_http` for the write rule and the problem decoders, so a Dio app resolves it

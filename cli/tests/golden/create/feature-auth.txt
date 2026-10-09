@@ -1,0 +1,414 @@
+create my_app (package my_app, features: auth)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+edit  android/app/build.gradle.kts: minSdk is at least 24 (the default of Flutter before 3.35 is lower)
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_auth:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_auth
+      ref: v<version>
+  fespalier_forms:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_forms
+      ref: v<version>
+
+dev_dependencies:
+  flutter_secure_storage: ">=10.0.0 <12.0.0"
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:my_app/auth_setup.dart';
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+Future<List<Override>> startup() async => [
+  // fespalier_auth: reads the stored session, with no network, so the first guard is synchronous.
+  ...await restoreAuth(authSetup()),
+];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== lib/auth_setup.dart (new)
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// Where your identity provider plugs in. Every method throws until you write it: the sign-in
+/// form shows the message, and nothing signs in. docs/auth.md has a backend over a JSON API, one
+/// for OpenID Connect and Keycloak (`OidcBackend`), and the recipes for Firebase and Supabase.
+class IdentityBackend extends AuthBackend {
+  const IdentityBackend();
+
+  static final UnimplementedError _todo = UnimplementedError(
+    'connect your identity provider: docs/auth.md',
+  );
+
+  /// What a stored session is tied to: a session another backend stored is dropped at start.
+  @override
+  String get name => 'identity';
+
+  @override
+  Future<AuthSession> signIn(SignInRequest request) async => throw _todo;
+
+  /// Throws `AuthRejected` when the server refused the refresh token (the session is over), and
+  /// anything else when it could not ask (the session stays).
+  @override
+  Future<AuthSession> refresh(AuthSession session) async => throw _todo;
+
+  @override
+  Future<void> signOut(AuthSession session) async => throw _todo;
+}
+
+/// The app's [AuthConfig], read by `startup()` (restoreAuth) and by the tests.
+///
+/// `apiOrigins` is where the session is sent, and nowhere else: add your API's origin
+/// (`Uri.parse('https://api.example.com')`) before calling it with `authHttpClient`.
+AuthConfig authSetup() =>
+    const AuthConfig(backend: IdentityBackend(), apiOrigins: <Uri>[]);
+
+=== lib/app/(signed-in)/guard.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:my_app/app.g.dart';
+
+/// Guards every page in the `(signed-in)` folder: a session, or the sign-in page with where the
+/// user was going. It is synchronous (startup() read the stored session), and signing out moves
+/// the user in that frame (docs/auth.md, "Guarding signed-in routes").
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    requireSignedIn(ref, uri, signIn: (from) => SignInRoute(from: from));
+
+=== lib/app/(signed-in)/account/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:flutter/material.dart';
+
+/// Served at `/account`, behind the guard of the `(signed-in)` folder: a signed-out visit lands
+/// on `/sign-in?from=%2Faccount` and comes back here after signing in.
+class AccountPage extends ConsumerWidget {
+  const AccountPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authUser);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Signed in as ${user?.name ?? user?.id ?? 'someone'}'),
+            // The state turns SignedOut at once, and the guard moves the user to /sign-in.
+            TextButton(
+              onPressed: () => ref.read(authSession.notifier).signOut(),
+              child: const Text('Sign out'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+=== lib/app/sign-in/action.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The input of the action, and so the fields of the sign-in form.
+typedef SignInFields = ({String username, String password});
+
+SignInFields form() => (username: '', password: '');
+
+/// Checked on the device before the backend is asked.
+FieldErrors? validate(SignInFields input) => FieldErrors({
+  if (input.username.trim().isEmpty) 'username': 'Enter your user name',
+  if (input.password.isEmpty) 'password': 'Enter your password',
+});
+
+/// A backend that throws `FieldErrors` for wrong credentials has them shown under their field.
+Future<void> action(Ref ref, {required SignInFields input}) async {
+  await ref
+      .read(authSession.notifier)
+      .signIn(
+        PasswordSignIn(
+          username: input.username.trim(),
+          password: input.password,
+        ),
+      );
+}
+
+=== lib/app/sign-in/guard.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The sign-in page's own guard, beside the guarded folder. Signing in changes the session, this
+/// guard sees it and sends the user back to `from` (or `/`): the page has no navigation code.
+GuardResult guard(Ref ref, {String? from}) =>
+    redirectIfSignedIn(ref, from: from);
+
+=== lib/app/sign-in/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/sign-in`. `SignInRoute.useForm` is generated from action.dart's form(), as on the
+/// contact page of `--features forms`. The page does not navigate: the sign-in guard does.
+class SignInPage extends HookConsumerWidget {
+  const SignInPage({super.key, this.from});
+
+  /// Where the guard that sent the user here was going.
+  final String? from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final form = SignInRoute.useForm(ref);
+    final f = form.fields;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sign in')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          spacing: 16,
+          children: [
+            if (from != null) Text('Sign in to see $from'),
+            TextField(
+              controller: f.username.controller,
+              decoration: InputDecoration(
+                labelText: 'User name',
+                errorText: f.username.error,
+              ),
+            ),
+            TextField(
+              controller: f.password.controller,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                errorText: f.password.error,
+              ),
+            ),
+            if (form.error case final e?) Text('$e'),
+            FilledButton(
+              // Null while the sign-in runs: the button is disabled.
+              onPressed: form.onSubmit,
+              child: Text(form.isPending ? 'Signing in...' : 'Sign in'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+=== test/auth_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_auth/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/auth_setup.dart';
+
+void main() {
+  testWidgets('signed out, /account goes to sign-in with where it was going', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/account'),
+      overrides: fakeAuth(),
+    );
+    expect(currentLocation(tester), '/sign-in?from=%2Faccount');
+    expect(find.text('Sign in to see /account'), findsOneWidget);
+  });
+
+  testWidgets('signed in, /account opens, and signing out leaves it', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/account'),
+      overrides: fakeAuth(
+        signedInAs: const AuthUser(id: 'ada-id', name: 'Ada'),
+      ),
+    );
+    expect(currentLocation(tester), '/account');
+    expect(find.text('Signed in as Ada'), findsOneWidget);
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/sign-in?from=%2Faccount');
+  });
+
+  testWidgets('until you connect a provider, signing in says so', (
+    tester,
+  ) async {
+    // The app's own backend, on an in-memory token store: nothing is stored, nothing is asked.
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/sign-in'),
+      overrides: [
+        authConfig.overrideWithValue(
+          AuthConfig(backend: authSetup().backend, store: MemoryTokenStore()),
+        ),
+        authInitialState.overrideWithValue(const SignedOut()),
+      ],
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'User name'), 'ada');
+    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'pw');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('connect your identity provider: docs/auth.md'),
+      findsOneWidget,
+    );
+    expect(currentLocation(tester), '/sign-in');
+  });
+}

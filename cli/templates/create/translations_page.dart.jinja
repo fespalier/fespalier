@@ -1,0 +1,54 @@
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:{{ package }}/app.g.dart';
+
+/// Served at `/translations`. The texts are keys: `TrText` and `context.tr` look them up in the
+/// language of the route. `lang` is the query parameter that sets the language (app.dart reads it
+/// from the location), and typing it here is what gives `TranslationsRoute` a `lang:` argument.
+class TranslationsPage extends StatefulWidget {
+  const TranslationsPage({super.key, this.lang});
+
+  final String? lang;
+
+  @override
+  State<TranslationsPage> createState() => _TranslationsPageState();
+}
+
+class _TranslationsPageState extends State<TranslationsPage> {
+  int _count = 1;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(context.tr('app.title')),
+      actions: [
+        // Plain buttons, not a menu: each goes to this page in the other language.
+        for (final other in const ['en', 'fr'])
+          TextButton(
+            key: ValueKey('lang-$other'),
+            onPressed: context.routeLocale == other
+                ? null
+                : () => TranslationsRoute(lang: other).go(context),
+            child: Text(other.toUpperCase()),
+          ),
+      ],
+    ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const TrText('hello', style: TextStyle(fontSize: 32)),
+        const TrText('intro'),
+        // An ICU plural: the form comes from the count and the language.
+        Text(context.tr('stock', {'count': _count})),
+        TextButton(
+          onPressed: () => setState(() => _count++),
+          child: Text(context.tr('more')),
+        ),
+        TextButton(
+          onPressed: _count == 0 ? null : () => setState(() => _count--),
+          child: Text(context.tr('less')),
+        ),
+      ],
+    ),
+  );
+}

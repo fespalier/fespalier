@@ -27,6 +27,12 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+{% if assets %}
+  assets:
+{% for asset in assets %}
+    - {{ asset }}
+{% endfor %}
+{% endif %}
 {% if config %}
 
 # Read by the `fsp` generator; docs/configuration.md lists every key.

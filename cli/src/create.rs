@@ -27,6 +27,7 @@ use crate::config::Config;
 use crate::procs;
 use crate::tasks::{self, Cmd};
 
+pub mod compose;
 pub mod plan;
 pub mod recipes;
 
@@ -54,7 +55,7 @@ pub struct CreateCmd {
     /// The `description:` of the pubspec
     #[arg(long, value_name = "TEXT", conflicts_with = "list_features")]
     pub description: Option<String>,
-    /// Optional features to add, comma separated (`--list-features` lists them)
+    /// Optional features to add, comma separated, or `all` (`--list-features` lists them)
     #[arg(
         long,
         value_delimiter = ',',
@@ -192,10 +193,20 @@ fn list_features(json: bool) {
     } else if features.is_empty() {
         println!("no optional features yet: `fsp create <dir>` makes the base app");
     } else {
-        let width = features.iter().map(|f| f.id.len()).max().unwrap_or(0);
+        let width = features
+            .iter()
+            .map(|f| f.id.len())
+            .max()
+            .unwrap_or(0)
+            .max(plan::ALL.len());
         for f in &features {
             println!("{:<width$}  {}", f.id, f.description);
         }
+        println!(
+            "{:<width$}  Every feature above at once (--features {})",
+            plan::ALL,
+            plan::ALL
+        );
     }
 }
 

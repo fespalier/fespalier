@@ -118,7 +118,12 @@ pub fn parse_pins(text: &str) -> Option<Pins> {
 
 /// The hash in a `.sha256` file (`<hex>  <name>`): its first word, as `install.sh` reads it.
 pub fn parse_sidecar(text: &str) -> Option<String> {
-    let word = text.split_whitespace().next()?.to_ascii_lowercase();
+    // A BOM (PowerShell's `Out-File`) and CRLF line ends are not part of the hash.
+    let word = text
+        .trim_start_matches('\u{feff}')
+        .split_whitespace()
+        .next()?
+        .to_ascii_lowercase();
     (word.len() == 64 && word.bytes().all(|b| b.is_ascii_hexdigit())).then_some(word)
 }
 
@@ -273,6 +278,20 @@ impl Drop for Scratch {
     }
 }
 
+/// The `tar` that unpacks the release archive. On Windows it is the `tar.exe` Windows ships in
+/// System32 (bsdtar, which reads a `.zip`): a GNU tar earlier on PATH cannot.
+fn tar_program() -> PathBuf {
+    if cfg!(windows)
+        && let Some(root) = env_nonempty("SystemRoot")
+    {
+        let system = Path::new(&root).join("System32").join("tar.exe");
+        if system.is_file() {
+            return system;
+        }
+    }
+    PathBuf::from("tar")
+}
+
 fn old_path(exe: &Path) -> PathBuf {
     let mut old = exe.as_os_str().to_owned();
     old.push(".old");
@@ -342,7 +361,7 @@ pub fn replace(exe: &Path, target_version: Version, base_url: &str) -> Result<()
 
     fs::create_dir(&scratch.unpacked).context("could not make a folder to unpack into")?;
     let zip = is_windows_target(target);
-    let unpack = Command::new("tar")
+    let unpack = Command::new(tar_program())
         .arg(if zip { "-xf" } else { "-xzf" })
         .arg(&scratch.archive)
         .arg("-C")
@@ -402,15 +421,21 @@ fn make_executable(_: &Path) -> Result<()> {
 /// new one cannot take its place.
 fn install(fresh: &Path, exe: &Path) -> Result<()> {
     if cfg!(windows) {
-        let old = old_path(exe);
-        let _ = fs::remove_file(&old);
-        fs::rename(exe, &old).with_context(|| format!("could not move {} aside", exe.display()))?;
-        if let Err(e) = fs::rename(fresh, exe) {
-            let _ = fs::rename(&old, exe);
-            return Err(anyhow!(e).context("could not move the new fsp in; the old one was kept"));
-        }
-        Ok(())
+        install_beside_old(fresh, exe)
     } else {
         fs::rename(fresh, exe).with_context(|| format!("could not replace {}", exe.display()))
     }
+}
+
+/// The Windows strategy (plain renames, so it is tested on every platform): `exe` moves to
+/// `<exe>.old`, `fresh` takes its place, and `exe` moves back when `fresh` cannot.
+pub(crate) fn install_beside_old(fresh: &Path, exe: &Path) -> Result<()> {
+    let old = old_path(exe);
+    let _ = fs::remove_file(&old);
+    fs::rename(exe, &old).with_context(|| format!("could not move {} aside", exe.display()))?;
+    if let Err(e) = fs::rename(fresh, exe) {
+        let _ = fs::rename(&old, exe);
+        return Err(anyhow!(e).context("could not move the new fsp in; the old one was kept"));
+    }
+    Ok(())
 }

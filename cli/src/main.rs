@@ -138,6 +138,12 @@ enum Cmd {
 }
 
 fn main() {
+    // A Windows upgrade leaves the running binary behind as `fsp.exe.old`; this run is a later
+    // one, so that process is gone. Best effort, and silent (nothing may print here).
+    #[cfg(windows)]
+    if let Ok(exe) = std::env::current_exe() {
+        upgrade_replace::remove_stale_old(&exe);
+    }
     let cli = Cli::parse();
     let result = (|| {
         // The stack is per user, not per app: it needs no project.

@@ -643,6 +643,43 @@ jobs:
           CASE: ${{ matrix.case }}
         run: scripts/check-create.sh "$CASE"
 
+  # The declared floor, for what `fsp create` writes: the base app and the app with every feature, made
+  # (in a temporary folder, by scripts/check-create.sh) on FLUTTER_FLOOR_VERSION, then analyzed and tested.
+  # A new app takes the newest dependencies its Flutter allows, so this proves that the code a person
+  # starts from compiles on the oldest Flutter we claim, as the `floor` job above does for the packages
+  # at their lowest. No `dart format` here (FSP_CREATE_SKIP_FORMAT): its output depends on the SDK, and
+  # the `create` job checks it.
+  create-floor:
+    name: fsp create (Flutter 3.32)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}
+          cache: true
+      - run: flutter --version
+      - name: Make the base app and the app with every feature, then analyze and test them
+        env:
+          FSP_CREATE_SKIP_FORMAT: "1"
+        run: scripts/check-create.sh base all
+
   # examples/cose: a CrateStack server (a Rust crate of its own, examples/cose/server) that checks a
   # COSE_Sign1 signature on every request, and the Flutter app that signs them. The `dart` job above
   # already runs the app's tests (its end-to-end test skips there: no server binary); this job

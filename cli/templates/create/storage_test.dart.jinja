@@ -2,6 +2,9 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
 import 'package:fespalier_storage/testing.dart';
 import 'package:flutter/material.dart';
+{% if "auth" in features %}
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+{% endif %}
 import 'package:flutter_test/flutter_test.dart';
 import 'package:{{ package }}/app.main.g.dart';
 
@@ -9,6 +12,10 @@ void main() {
   // shared_preferences in memory. Without it open() finds no platform and returns null, and
   // nothing is saved (docs/data.md, "A cache on disk: fespalier_storage").
   setUp(fakePrefsStore);
+{% if "auth" in features %}
+  // startup() also restores the signed-in session, which reads the keychain.
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+{% endif %}
 
   testWidgets('startup() gives the data cache a place on disk', (tester) async {
     await tester.pumpWidget(AppMain.root());

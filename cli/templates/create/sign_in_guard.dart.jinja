@@ -1,0 +1,7 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The sign-in page's own guard, beside the guarded folder. Signing in changes the session, this
+/// guard sees it and sends the user back to `from` (or `/`): the page has no navigation code.
+GuardResult guard(Ref ref, {String? from}) =>
+    redirectIfSignedIn(ref, from: from);

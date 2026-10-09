@@ -1,0 +1,30 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:flutter/material.dart';
+
+/// Served at `/account`, behind the guard of the `(signed-in)` folder: a signed-out visit lands
+/// on `/sign-in?from=%2Faccount` and comes back here after signing in.
+class AccountPage extends ConsumerWidget {
+  const AccountPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authUser);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Signed in as ${user?.name ?? user?.id ?? 'someone'}'),
+            // The state turns SignedOut at once, and the guard moves the user to /sign-in.
+            TextButton(
+              onPressed: () => ref.read(authSession.notifier).signOut(),
+              child: const Text('Sign out'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

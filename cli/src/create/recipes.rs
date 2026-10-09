@@ -408,7 +408,11 @@ pub const RECIPES: &[Recipe] = &[
         // The sign-in page is a form on an action (docs/auth.md), which needs the forms package.
         companions: &["fespalier_auth", "fespalier_forms"],
         third_party: &[],
-        dev_third_party: &[],
+        // The tests that start the whole app give the keychain an in-memory store.
+        dev_third_party: &[ThirdParty {
+            name: "flutter_secure_storage",
+            source: Source::Range(">=10.0.0 <12.0.0"),
+        }],
         flutter_floor: "3.32",
         config: &[],
         files: &[

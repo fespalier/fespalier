@@ -1,0 +1,25 @@
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:flutter/material.dart';
+
+/// Served at `/photo`. A `ResponsiveImage` measures its box, multiplies by the device pixel ratio
+/// and asks the CDN (lib/images.dart) for the smallest width that is enough, so this square
+/// downloads a few hundred pixels, not the original. A failed load shows the error view, whose
+/// `retry` loads it again.
+class PhotoPage extends StatelessWidget {
+  const PhotoPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Photo')),
+    body: Center(
+      child: ResponsiveImage(
+        'sample.jpg',
+        width: 160,
+        aspectRatio: 1,
+        errorBuilder: (context, error, retry) => Center(
+          child: TextButton(onPressed: retry, child: const Text('Retry')),
+        ),
+      ),
+    ),
+  );
+}

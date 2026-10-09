@@ -421,6 +421,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "the `download` feature lands with the engine and the adapter",
     ),
     (
+        "fespalier_download_background",
+        "needs Flutter 3.47 and platform setup (a manifest, an AppDelegate), which are the app's own",
+    ),
+    (
         "fespalier_frb",
         "needs a Rust core and flutter_rust_bridge, which are the app's own",
     ),
@@ -463,6 +467,7 @@ pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
     ("fespalier_cratestack", &["fespalier_dio"]),
     ("fespalier_dio", &["fespalier_http"]),
     ("fespalier_download", &["fespalier_http"]),
+    ("fespalier_download_background", &["fespalier_download"]),
     ("fespalier_maps", &["fespalier_download"]),
     ("fespalier_sign_keypair", &["fespalier_auth"]),
 ];

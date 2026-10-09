@@ -870,6 +870,8 @@
         "docs/downloads.md#After a restart",
         "docs/downloads.md#Sign-out",
         "docs/downloads.md#The foreground backend",
+        "docs/downloads.md#The background backend",
+        "docs/downloads.md#Android and iOS setup",
         "docs/downloads.md#Credentials",
         "docs/downloads.md#In a widget",
         "docs/downloads.md#Testing",
@@ -891,7 +893,15 @@
         "packages/fespalier_download/lib/src/transfer_files.dart",
         "packages/fespalier_download/lib/src/transfer_files_io.dart",
         "packages/fespalier_download/lib/src/transfer_files_stub.dart",
-        "packages/fespalier_download/lib/src/transfer_telemetry.dart"
+        "packages/fespalier_download/lib/src/transfer_telemetry.dart",
+        "packages/fespalier_download_background/README.md",
+        "packages/fespalier_download_background/lib/fespalier_download_background.dart",
+        "packages/fespalier_download_background/lib/testing.dart",
+        "packages/fespalier_download_background/lib/src/backend.dart",
+        "packages/fespalier_download_background/lib/src/mapping.dart",
+        "packages/fespalier_download_background/lib/src/platform.dart",
+        "packages/fespalier_download_background/lib/src/plugin_transport.dart",
+        "packages/fespalier_download_background/lib/src/transport.dart"
       ]
     },
     "fespalier-maps": {

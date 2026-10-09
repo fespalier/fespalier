@@ -144,6 +144,7 @@ jobs:
           - packages/fespalier_forms
           - packages/fespalier_maps
           - packages/fespalier_download
+          - packages/fespalier_download_background
           - packages/fespalier_push
           - packages/fespalier_biometrics
           - packages/fespalier_analytics
@@ -201,6 +202,8 @@ jobs:
   # Left out on purpose:
   # - packages/fespalier_sign_keypair: flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so it
   #   does not resolve on 3.32 and the package declares that floor itself.
+  # - packages/fespalier_download_background: background_downloader 9.6 needs Flutter 3.47 (Dart
+  #   3.13), so it does not resolve on 3.32 and the package declares that floor itself.
   # - packages/fespalier_devtools: a web app, not a package; its release build is committed and
   #   compared byte for byte on FLUTTER_VERSION (the `devtools` job), and its lockfile is committed
   #   on purpose, which `pub downgrade` would rewrite.

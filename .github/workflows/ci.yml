@@ -76,6 +76,42 @@ jobs:
           manifest-path: cli/Cargo.toml
           command: check
 
+  # `fsp upgrade` replaces a running fsp.exe on Windows (rename aside, move in, roll back), the
+  # release asset is a .zip, and tar is the bsdtar in System32: only a Windows runner shows it.
+  # Like the `cli` job above, it is not gated by a paths filter (ci.yml has none).
+  cli-windows:
+    name: fsp upgrade (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      # curl and tar ship with Windows 10+; FSP_REQUIRE_CURL=1 fails the tests instead of skipping.
+      - name: Upgrade unit tests
+        run: cargo test upgrade
+        env:
+          FSP_REQUIRE_CURL: "1"
+      - name: Upgrade tests against a fake release server
+        run: cargo test --test upgrade
+        env:
+          FSP_REQUIRE_CURL: "1"
+
   dart:
     name: Runtime + examples (Flutter)
     runs-on: ubuntu-latest

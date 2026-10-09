@@ -346,6 +346,7 @@ mod replace {
         Pins, archive_name, binary_name, not_writable_message, parse_pins, parse_sidecar,
         target_for, verify, version_banner_ok,
     };
+    use std::fs;
 
     /// A copy of the generated `release_checksums.dart` of 0.14.0 (the real file's format).
     const REAL: &str = include_str!("../tests/fixtures/release_checksums.dart");
@@ -518,5 +519,54 @@ mod replace {
         assert!(unix.contains("never uses sudo"), "{unix}");
         let win = not_writable_message(r"C:\Tools", true);
         assert!(win.contains("install.ps1") && win.contains("FSP_INSTALL_DIR"));
+    }
+
+    #[test]
+    fn the_new_binary_moves_in_and_the_running_one_stays_as_old() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("fsp.exe");
+        let fresh = dir.path().join("fresh.exe");
+        fs::write(&exe, "old").unwrap();
+        fs::write(&fresh, "new").unwrap();
+        crate::upgrade_replace::install_beside_old(&fresh, &exe).unwrap();
+        assert_eq!(fs::read_to_string(&exe).unwrap(), "new");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("fsp.exe.old")).unwrap(),
+            "old"
+        );
+        assert!(!fresh.exists());
+    }
+
+    #[test]
+    fn a_stale_old_is_replaced_and_a_failed_move_in_rolls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("fsp.exe");
+        let old = dir.path().join("fsp.exe.old");
+        fs::write(&exe, "current").unwrap();
+        fs::write(&old, "stale").unwrap();
+        // The new binary is not there: the move in fails, and the current one is put back.
+        let err = crate::upgrade_replace::install_beside_old(&dir.path().join("missing"), &exe)
+            .unwrap_err();
+        assert!(
+            format!("{err:#}").contains("the old one was kept"),
+            "{err:#}"
+        );
+        assert_eq!(fs::read_to_string(&exe).unwrap(), "current");
+        assert!(
+            !old.exists(),
+            "the stale .old is gone, the current one is back"
+        );
+    }
+
+    #[test]
+    fn remove_stale_old_deletes_only_the_old_file_and_tolerates_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("fsp.exe");
+        crate::upgrade_replace::remove_stale_old(&exe);
+        fs::write(&exe, "current").unwrap();
+        fs::write(dir.path().join("fsp.exe.old"), "stale").unwrap();
+        crate::upgrade_replace::remove_stale_old(&exe);
+        assert!(exe.exists());
+        assert!(!dir.path().join("fsp.exe.old").exists());
     }
 }

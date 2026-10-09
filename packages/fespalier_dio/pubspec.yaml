@@ -31,6 +31,8 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
       ref: v0.14.0 # x-release-please-version
+  # 1.5.0: Abortable requests, which DioHttpClient turns into a CancelToken (package:fespalier_dio/client.dart).
+  http: ^1.5.0
 
 dev_dependencies:
   # The tests run WriteGuard against the retry interceptor apps actually use, with zero delays.
@@ -38,8 +40,6 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  # Only the tests that import both libraries together use it.
-  http: ^1.5.0
 
 # In this repository the package is built against the fespalier beside it. A dependency's
 # overrides are ignored, so apps never see this.

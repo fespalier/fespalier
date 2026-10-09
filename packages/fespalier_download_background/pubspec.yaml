@@ -16,6 +16,7 @@ dependencies:
   # 9.6.4 is the release this package was written against (its sources were read, not recalled);
   # it asks for Dart 3.13 and Flutter 3.47, which is why this package is outside the floor job.
   background_downloader: ">=9.6.4 <10.0.0"
+  clock: ^1.1.1
   flutter:
     sdk: flutter
   # The same repository dependencies an app writes (same url, path and ref), so they resolve to
@@ -29,6 +30,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_download
+      ref: v0.14.0 # x-release-please-version
+  # HttpWrites, the one rule of which request is a write (since 0.15.0, for uploads).
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
       ref: v0.14.0 # x-release-please-version
 
 dev_dependencies:

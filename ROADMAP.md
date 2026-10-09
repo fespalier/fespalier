@@ -53,8 +53,9 @@ Flutter 3.32, with the lowest dependencies it allows.
   after an app restart, which is why the file packs exist.
 - **`fespalier_download`, the rest.** The request, status and port model ships in 0.15.0 (docs/downloads.md).
   The engine, the foreground HTTP backend, the durable registry and the providers ship with it, and so does
-  `fespalier_download_background` (a backend over the operating system's download service, Flutter 3.47), and notification taps open typed routes through an adapter (`adapters: [fespalier_download]`). Still to
-  come: uploads, and credentials once `fespalier_http` has them. `fespalier_maps` file
+  `fespalier_download_background` (a backend over the operating system's download service, Flutter 3.47, which also uploads
+  a file: `Uploads` sends a non-idempotent request once), and notification taps open typed routes through an adapter
+  (`adapters: [fespalier_download]`). Still to come: credentials once `fespalier_http` has them. `fespalier_maps` file
   packs will move onto it. What a device would show about the background backend is issue #158.
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.

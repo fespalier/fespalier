@@ -14,13 +14,14 @@ the registry after a restart, a **foreground backend**, `HttpDownloadBackend`, t
 while the app runs, a **durable registry**, `FileDownloadStore`, and the **providers** a widget watches (`downloads`,
 `downloadStatus`). A download that must go on while the app is closed is the job of the **background backend**, in the
 separate package `fespalier_download_background` (since 0.15.0, Flutter 3.47 or newer, over `background_downloader`; see
-[The background backend](#the-background-backend)). **Notification taps open typed routes** through an [adapter](#notification-taps) (since 0.15.0). Uploads come in a later release of the
-same line, and this page grows with it.
+[The background backend](#the-background-backend)), which also uploads a file ([Uploads](#uploads)). **Notification taps open typed routes** through an [adapter](#notification-taps) (since 0.15.0), and this page
+grows with it.
 
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
 [The foreground backend](#the-foreground-backend), [The background backend](#the-background-backend),
-[Android and iOS setup](#android-and-ios-setup), [Credentials](#credentials), [In a widget](#in-a-widget), [Notification taps](#notification-taps), [Testing](#testing).
+[Android and iOS setup](#android-and-ios-setup), [Credentials](#credentials), [In a widget](#in-a-widget),
+[Notification taps](#notification-taps), [Uploads](#uploads), [Testing](#testing).
 
 ## Install
 
@@ -442,9 +443,9 @@ the send. A credentials object that throws ends the download `Failed(unauthorize
 grant renewal above still applies, so the two compose. Choose by where the transfer runs: `credentials` for a foreground
 download to your own API, a grant for anything a background backend sends or a CDN that does not know your session.
 
-**Replay.** A transfer sends one `GET`, which is safe to send again, so the re-send above is allowed. A request that is
-not replay-safe (a `POST`, which uploads will be) must be sent once: no retry, no re-send after a 401, and no pause that
-would cycle it. Nothing in this release sends one.
+**Replay.** A download sends one `GET`, which is safe to send again, so the re-send above is allowed. A request that is
+not replay-safe (a `POST` or `PUT` without an `Idempotency-Key`, which is what an upload usually is) must be sent once: no
+retry, no re-send after a 401, and no pause that would cycle it. `Uploads` enforces exactly that; see [Uploads](#uploads).
 
 ## In a widget
 
@@ -580,6 +581,103 @@ fespalier:
 - **Telemetry** is one span, `fespalier.download.open`, from the tap to the navigation call, with
   `fespalier.download.routed` (a boolean) at its end. It carries no id, path, URL or name.
 
+## Uploads
+
+`fespalier_download_background` also uploads a file (since 0.15.0), over `background_downloader` **9.6.4**'s `UploadTask`
+(multipart and binary; `MultiUploadTask` is not used). The operating system runs the upload, so it goes on after the app
+was closed. It is **background only** in this release: `HttpDownloadBackend` downloads, and a foreground upload over an
+`http.Client` (a streamed, abortable request body, with its own replay rules) is not built. On the web every upload ends
+`Failed(unsupported)`.
+
+```dart
+final uploads = Uploads(
+  backend: BackgroundUploaderBackend(
+    notifications: const DownloadNotifications(running: 'Uploading', failed: 'Upload failed'),
+  ),
+  store: FileUploadStore(bases: bases),
+  grantor: grantUploadUrl, // optional: a short-lived address, see below
+);
+await uploads.open(); // in startup(), next to the downloads engine
+await uploads.start(
+  UploadRequest(
+    id: 'receipt-7',
+    url: Uri.parse('https://api.example.com/receipts'),
+    file: const DownloadLocation(DownloadBase.documents, 'outbox/receipt-7.jpg'),
+    fileField: 'receipt',
+    fields: {'orderId': '7'},
+    headers: {'Idempotency-Key': 'receipt-7'},
+  ),
+);
+```
+
+- **A sibling engine, not a mode of `Downloads`.** The two disagree on what a restart means, and on what the engine may
+  delete. A download whose file is whole is complete; an upload whose file is still there has told you nothing about the
+  server. `Downloads` deletes the file on `remove`, `cancel` and sign-out and settles an unmentioned entry from the file;
+  `Uploads` has no file port at all, so **it can never delete the file you sent**, and an entry nobody mentions is
+  `Failed(killed)`, never `Complete`. `Uploads` keeps the rest of the engine's guarantees: a generation per id that drops
+  a late answer of an old attempt, a durable registry that is never evicted (`FileUploadStore`, the file
+  `fespalier_uploads.json` beside the downloads' one, written by atomic rename, wiped by `clearAccount()`), one `observe`
+  slot, no timer, no listener and no Riverpod import. The providers are `uploadsEngine`, `uploads` and `uploadStatus`.
+- **`UploadRequest`** is an id, a URL, a file as a `DownloadBase` and a **relative** path (the same validation as a
+  download: no absolute path, no `..`, no `\`, no NUL), a method (`UploadMethod.post` or `put`), an encoding
+  (`UploadEncoding.multipart`, the default, with `fileField` and string `fields`; or `binary`, the file as the whole body,
+  with no fields), headers, a network and a priority. `isValid` checks all of it. Its `toString()` prints no field. The
+  file must exist when the upload starts, and nothing here moves or deletes it.
+- **Statuses are `DownloadStatus`.** `Queued`, `Waiting`, `Running(sent, total)`, then `Complete(file, bytes)`, where
+  `file` is the file that was sent (untouched) and `bytes` its size, or `Failed`. An upload never shows `Paused` or
+  `Verifying`: the plugin cannot pause an upload. The server's response body is not reported.
+- **Replay safety is a rule, not an option.** An upload is _replay safe_ when it carries an `Idempotency-Key` header,
+  `fespalier_http`'s rule for a write (`HttpWrites.isWrite`; `UploadRequest.replaySafe`). A `POST` or `PUT` without one may
+  already be on the server, so it is sent **once**:
+
+  | Situation                                 | Replay safe (has an `Idempotency-Key`)   | Not replay safe                                                 |
+  | ----------------------------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+  | The platform retries after a failure      | `BackgroundOptions(retries:)`            | None: the task is made with `retries: 0`                        |
+  | Pause and resume                          | The plugin cannot pause an upload        | The same, so no pause cycle can send it twice                   |
+  | 401 or 403                                | One renewed grant, then sent again       | `Failed(unauthorized)`, no renewal                              |
+  | The app was killed, or no answer came     | `Failed(killed)`; `retry` sends it again | `Failed(killed)`; `retry` and `start` refuse                    |
+  | The response was lost (`Failed(network)`) | `retry` sends it again                   | The same: the server may have it (`outcomeUnknown(id)` is true) |
+
+  For a non-replay-safe upload, `Failed(network)`, `Failed(killed)` and `Failed(other)` mean **the outcome is unknown**:
+  `Uploads.outcomeUnknown(id)` says so, `retry` returns false and `start` of the same id does nothing. Ask your server
+  whether it has the upload, then `remove(id)` and `start` it again if you decide to: that decision is yours, never the
+  engine's. A failure that is the server's answer (`rejected`, `unauthorized`) or that happened before anything was sent
+  (`storage`, `invalidRequest`) may be retried. An upload to a pre-signed `PUT` address is a write too by this rule; add an
+  `Idempotency-Key` header (any value, the same on every attempt) when sending it again is harmless.
+
+- **Auth is a grant, as for a download** ([Credentials](#credentials)). `Uploads(grantor:)` takes a function from an
+  `UploadRequest` to a `DownloadGrant`: a short-lived `url` (a pre-signed upload address) and/or headers for one attempt.
+  The headers are written to the operating system's task queue in plaintext until the task ends: never a refresh token or a
+  long-lived bearer. The registry stores the request, never the grant.
+- **Its own group.** Upload tasks are in the plugin group `fespalier.upload`, apart from the downloads' `fespalier.download`,
+  so neither engine's callbacks see the other's updates. The same rules hold: callbacks, tracking and notifications for the
+  group only, registered before `resumeFromBackground`; never the app's `updates` stream and never the plugin's global
+  `start`, `reset`, `configure` or `rescheduleKilledTasks`; the plugin's database is not the registry. `PluginUploadTransport`
+  is in the one file that calls the plugin.
+- **Notifications and priority.** Off unless configured, as for downloads. `DownloadPriority.userInitiated` is priority 0
+  (a user-initiated data transfer job on Android 14 and newer, which needs a visible notification: without a `running` text
+  the upload ends `Failed(notificationsRequired)`). On Android a long upload that is not a user-initiated job meets
+  WorkManager's limit (about nine minutes), and since an upload cannot pause, the plugin's source ends it as a connection failure (`Failed(network)`, an unknown outcome
+  for an upload without a key; read in the source, not run).
+- **Telemetry** is a namespace of its own, so no download name changed: `fespalier.upload.transfer` (start attributes
+  `background`, `network`, `priority`, `encoding` and `replay_safe`; end attributes `result`, `failure`, and `regranted` only
+  when true) and `fespalier.upload.reconciled`, as `FespalierUploadConventions`, pinned by `test/upload_telemetry_test.dart`.
+  Constants, booleans and enum names only: never a URL, an id, a path, a field name or value, a header or an error's text.
+- **What no test shows (UNCHECKED).** There is no device in CI, and `PluginUploadTransport` is run by no test. These are
+  not known and are not claimed: that the operating system sends an upload at all with the app closed; how **your server
+  reads the multipart body** the plugin writes (field order, the `Content-Type` of the file part, large files) and what a
+  binary upload sends as `Content-Disposition`; whether a **non-2xx answer** reaches the app as the status code the mapping
+  reads; how long an upload may run on Android before WorkManager ends it, with and without a user-initiated job; whether
+  WorkManager or the plugin **sends an upload again on its own** after the system stops the worker, beyond the task's
+  `retries`; what is delivered when the downloads engine and the uploads engine **open one after the other** (the plugin's
+  `resumeFromBackground` is global, so the first engine's call can deliver the second group's updates before it has
+  callbacks; those are then settled from the registry as `Failed(killed)`, never as a second send); and whether the platform setup
+  has a step of its own for uploads (the plugin's README, `SETUP_ANDROID.md` and `doc/` name none beyond the download steps
+  above, which was read, not run).
+- **Test it** with `FakeUploadBackend` (`emit`, `replay:`), `MemoryUploadStore` and `uploadTestOverrides`, or, for the
+  backend itself, `FakeUploadTransport` in `package:fespalier_download_background/testing.dart`. The pure
+  `uploadTaskOf` shows exactly what the plugin is handed.
+
 ## Testing
 
 `package:fespalier_download/testing.dart` has the fakes, which need no network, platform or disk:
@@ -602,6 +700,9 @@ reads `calls` (the order: callbacks registered before `resumeFromBackground`), `
 `plans` and `leaked` (an update for a group with no callbacks, which the plugin would send to the app's `updates`
 stream). Build the backend with `transport:`, `platform:` and `files:` (a `FakeTransferFiles`). The mapping functions
 (`downloadTaskOf`, `downloadStatusOf`, `failureOf`, `progressOf`) are pure and public. None of this runs the plugin.
+
+`package:fespalier_download_background/testing.dart` also has the upload fakes, `FakeUploadBackend`, `MemoryUploadStore`,
+`uploadTestOverrides` and `FakeUploadTransport`; see [Uploads](#uploads).
 
 The model needs no widget: `DownloadRequest`, `DownloadLocation` and `DownloadStatus` are plain values, so a unit test
 builds them and checks `isValid` and equality directly. The package's own tests do exactly that, including every refusal

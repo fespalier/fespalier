@@ -317,6 +317,9 @@ pub struct Pubspec {
     pub name: Option<String>,
     /// `fespalier` is listed under `dependencies`.
     pub has_dependency: bool,
+    /// The `ref:` of `fespalier` when it is a dependency from a repository that has one
+    /// (`v0.14.0`); `None` for a path, hosted or ref-less dependency, or none.
+    pub pinned_ref: Option<String>,
     pub config: Config,
 }
 
@@ -1528,9 +1531,18 @@ impl Pubspec {
         if let Some(Value::Mapping(m)) = &raw.dependencies {
             config.forms_dependency = m.contains_key("fespalier_forms");
         }
+        let pinned_ref = raw
+            .dependencies
+            .as_ref()
+            .and_then(|d| d.get("fespalier"))
+            .and_then(|d| d.get("git"))
+            .and_then(|g| g.get("ref"))
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         Ok(Pubspec {
             name: raw.name,
             has_dependency,
+            pinned_ref,
             config,
         })
     }

@@ -2,7 +2,7 @@
 //! redirect, the version order, and the action for a method and the flags.
 
 use crate::upgrade::{
-    Action, Env, Method, Version, detect, plan, script_command, version_from_release_url,
+    Action, Env, Method, Version, detect, plan, ref_note, script_command, version_from_release_url,
 };
 
 fn v(major: u64, minor: u64, patch: u64) -> Version {
@@ -346,6 +346,7 @@ mod replace {
         Pins, archive_name, binary_name, not_writable_message, parse_pins, parse_sidecar,
         target_for, verify, version_banner_ok,
     };
+    use std::fs;
 
     /// A copy of the generated `release_checksums.dart` of 0.14.0 (the real file's format).
     const REAL: &str = include_str!("../tests/fixtures/release_checksums.dart");
@@ -519,4 +520,107 @@ mod replace {
         let win = not_writable_message(r"C:\Tools", true);
         assert!(win.contains("install.ps1") && win.contains("FSP_INSTALL_DIR"));
     }
+
+    #[test]
+    fn the_new_binary_moves_in_and_the_running_one_stays_as_old() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("fsp.exe");
+        let fresh = dir.path().join("fresh.exe");
+        fs::write(&exe, "old").unwrap();
+        fs::write(&fresh, "new").unwrap();
+        crate::upgrade_replace::install_beside_old(&fresh, &exe).unwrap();
+        assert_eq!(fs::read_to_string(&exe).unwrap(), "new");
+        assert_eq!(
+            fs::read_to_string(dir.path().join("fsp.exe.old")).unwrap(),
+            "old"
+        );
+        assert!(!fresh.exists());
+    }
+
+    #[test]
+    fn a_stale_old_is_replaced_and_a_failed_move_in_rolls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("fsp.exe");
+        let old = dir.path().join("fsp.exe.old");
+        fs::write(&exe, "current").unwrap();
+        fs::write(&old, "stale").unwrap();
+        // The new binary is not there: the move in fails, and the current one is put back.
+        let err = crate::upgrade_replace::install_beside_old(&dir.path().join("missing"), &exe)
+            .unwrap_err();
+        assert!(
+            format!("{err:#}").contains("the old one was kept"),
+            "{err:#}"
+        );
+        assert_eq!(fs::read_to_string(&exe).unwrap(), "current");
+        assert!(
+            !old.exists(),
+            "the stale .old is gone, the current one is back"
+        );
+    }
+
+    #[test]
+    fn remove_stale_old_deletes_only_the_old_file_and_tolerates_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = dir.path().join("fsp.exe");
+        crate::upgrade_replace::remove_stale_old(&exe);
+        fs::write(&exe, "current").unwrap();
+        fs::write(dir.path().join("fsp.exe.old"), "stale").unwrap();
+        crate::upgrade_replace::remove_stale_old(&exe);
+        assert!(exe.exists());
+        assert!(!dir.path().join("fsp.exe.old").exists());
+    }
+
+    #[test]
+    fn a_sidecar_with_crlf_a_bom_or_a_binary_marker_still_parses() {
+        let hash = "ab".repeat(32);
+        for text in [
+            format!("{hash}  fsp.zip\r\n"),
+            format!("\u{feff}{hash}  fsp.zip\n"),
+            format!("{hash} *fsp.zip\n"),
+            hash.to_uppercase(),
+        ] {
+            assert_eq!(
+                parse_sidecar(&text).as_deref(),
+                Some(hash.as_str()),
+                "{text:?}"
+            );
+        }
+        assert_eq!(parse_sidecar("not a hash  x\n"), None);
+    }
+
+    #[test]
+    fn the_verbatim_prefix_is_stripped_for_display() {
+        use crate::upgrade::strip_verbatim;
+        use std::path::Path;
+        let strip = |s: &str| strip_verbatim(Path::new(s)).to_string_lossy().into_owned();
+        assert_eq!(
+            strip(r"\\?\C:\Users\me\bin\fsp.exe"),
+            r"C:\Users\me\bin\fsp.exe"
+        );
+        assert_eq!(
+            strip(r"\\?\UNC\host\share\fsp.exe"),
+            r"\\host\share\fsp.exe"
+        );
+        assert_eq!(strip(r"C:\bin\fsp.exe"), r"C:\bin\fsp.exe");
+        assert_eq!(strip("/usr/local/bin/fsp"), "/usr/local/bin/fsp");
+    }
+}
+
+#[test]
+fn the_ref_note_names_a_pin_that_differs() {
+    let note = ref_note(Some("v0.14.0"), v(0, 15, 0)).unwrap();
+    assert!(note.contains("pins fespalier v0.14.0"), "{note}");
+    assert!(
+        note.contains("fsp 0.15.0 writes code for v0.15.0"),
+        "{note}"
+    );
+    assert!(note.contains("every companion"), "{note}");
+    assert!(note.contains("dart run fespalier"), "{note}");
+    // A ref without the `v` is the same release.
+    assert!(ref_note(Some("0.15.0"), v(0, 15, 0)).is_none());
+    assert!(ref_note(Some("v0.15.0"), v(0, 15, 0)).is_none());
+    // No pin, or a ref that is not a release (a branch, a commit): nothing to say.
+    assert!(ref_note(None, v(0, 15, 0)).is_none());
+    assert!(ref_note(Some("main"), v(0, 15, 0)).is_none());
+    assert!(ref_note(Some("3f2a9c1"), v(0, 15, 0)).is_none());
 }

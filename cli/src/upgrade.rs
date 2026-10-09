@@ -6,7 +6,7 @@
 //! the flags. The I/O (the `curl` lookup, `brew`) is at the bottom and small.
 
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::{env, fs};
 
@@ -376,19 +376,71 @@ fn latest_version() -> Result<Version> {
     version_from_release_url(&String::from_utf8_lossy(&out.stdout))
 }
 
-fn current_env() -> Env {
-    Env {
-        home: env_nonempty("HOME").or_else(|| env_nonempty("USERPROFILE")),
-        cargo_home: env_nonempty("CARGO_HOME"),
-        scoop: env_nonempty("SCOOP"),
+/// `\\?\C:\dir` as `C:\dir`, and `\\?\UNC\host\share` as `\\host\share`: what
+/// `fs::canonicalize` returns on Windows, which is no path to show a person or to put in a
+/// command. Any other path is returned as it is.
+pub fn strip_verbatim(path: &Path) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(unc) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{unc}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path.to_path_buf()
     }
 }
 
-pub fn run(cmd: &UpgradeCmd) -> Result<()> {
+/// A folder named by the environment, resolved the way `current_exe` is (long names, no
+/// 8.3 `RUNNER~1`), so that the two can be compared; as given when it does not exist.
+fn resolved(value: String) -> String {
+    fs::canonicalize(&value)
+        .map(|p| strip_verbatim(&p).to_string_lossy().into_owned())
+        .unwrap_or(value)
+}
+
+fn current_env() -> Env {
+    Env {
+        home: env_nonempty("HOME")
+            .or_else(|| env_nonempty("USERPROFILE"))
+            .map(resolved),
+        cargo_home: env_nonempty("CARGO_HOME").map(resolved),
+        scoop: env_nonempty("SCOOP").map(resolved),
+    }
+}
+
+/// The note after an upgrade when the app pins another fespalier than the `fsp` now installed.
+/// `pinned` is the pubspec's `ref:` of `fespalier`; a ref that is not a release tag (a branch, a
+/// commit) cannot be compared and says nothing.
+pub fn ref_note(pinned: Option<&str>, installed: Version) -> Option<String> {
+    let pinned = pinned?;
+    let version = Version::parse(pinned)?;
+    (version != installed).then(|| {
+        format!(
+            "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Update the refs \
+             (fespalier and every companion, the same url and ref), or run `dart run fespalier` \
+             to use the fsp that matches the pin.",
+            pin = version.tag(),
+            tag = installed.tag(),
+        )
+    })
+}
+
+/// Prints [`ref_note`] for the project at `project`, if there is one.
+fn print_ref_note(project: Option<&Path>, installed: Version) {
+    let pinned = project
+        .and_then(|p| crate::config::Pubspec::load(p).ok())
+        .and_then(|p| p.pinned_ref);
+    if let Some(note) = ref_note(pinned.as_deref(), installed) {
+        println!("{note}");
+    }
+}
+
+pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
     let current =
         Version::parse(env!("CARGO_PKG_VERSION")).context("this fsp's own version is not X.Y.Z")?;
     let exe = env::current_exe()
         .and_then(fs::canonicalize)
+        .map(|path| strip_verbatim(&path))
         .context("could not find where fsp is installed")?;
     let dir = exe
         .parent()
@@ -469,6 +521,7 @@ pub fn run(cmd: &UpgradeCmd) -> Result<()> {
             if !status.success() {
                 return Err(Exit(status.code().unwrap_or(1)).into());
             }
+            print_ref_note(project, target);
         }
         Action::Print(lines) => {
             println!("fsp {current} -> {target}. Run:");
@@ -485,8 +538,13 @@ pub fn run(cmd: &UpgradeCmd) -> Result<()> {
             let base = env_nonempty("FSP_BASE_URL").unwrap_or_else(|| BASE_URL.to_string());
             if cmd.dry_run {
                 println!("fsp {current} -> {target}{note}, a script install in {dir}.");
+                let archive = replace::host_target()
+                    .map(replace::archive_name)
+                    .unwrap_or_default();
                 println!(
-                    "Would download {base}/{}/ and replace {} after checking the archive against                      the release's .sha256 and the checksums pinned at the tag. The install                      script does the same:",
+                    "Would download {base}/{}/{archive} and replace {} after checking the archive \
+                     against the release's .sha256 and the checksums pinned at the tag. The \
+                     install script does the same:",
                     target.tag(),
                     exe.display()
                 );
@@ -504,6 +562,7 @@ pub fn run(cmd: &UpgradeCmd) -> Result<()> {
                 "\u{2713} fsp {current} \u{2192} {target} ({})",
                 exe.display()
             );
+            print_ref_note(project, target);
         }
     }
     Ok(())

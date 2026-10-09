@@ -437,13 +437,16 @@ the binary with `curl`, requires its SHA-256 to equal both the release's `.sha25
 tag's `release_checksums.dart` (pins of the same release; a mismatch or no pins is refused, naming both
 values, with nothing changed; `FSP_UPGRADE_ALLOW_UNPINNED=1` is only for a release you staged), unpacks it
 with `tar`, runs the new `fsp --version` (must say `fsp Y`), then renames it over the old binary (Windows:
-`fsp.exe` to `fsp.exe.old` first, rolled back on failure); a folder it cannot write is refused with the
+`fsp.exe` to `fsp.exe.old` first, rolled back on failure; any later `fsp` run deletes the `.old`); a folder it cannot write is refused with the
 `FSP_INSTALL_DIR` install-script alternative, never `sudo`; on success it prints `✓ fsp X → Y (path)`; the copy `dart run fespalier` keeps in its cache and a `target/debug` build are refused
 (the first follows the `ref:` in `pubspec.yaml`: change the `ref` of fespalier and every companion).
 `--check` writes nothing and exits **0** up to date, **3** an update is available, **1** error;
 `--json` is one object (`current`, `latest`, `target`, `method`, `command`, `upToDate`);
-`FSP_RELEASES_URL` and `FSP_BASE_URL` redirect the lookup and the downloads. It never reads a
-pubspec. Messages: `fespalier-troubleshooting`, `references/diagnostics-dev.md`.
+`FSP_RELEASES_URL` and `FSP_BASE_URL` redirect the lookup and the downloads. It needs no project; the
+only pubspec it reads is for a closing note, printed after Homebrew's upgrade or an in-place replace
+(never for `--check`, `--dry-run`, or the printed Scoop and cargo commands): when `dependencies.fespalier` pins a `ref:` that is a release
+tag different from the `fsp` now installed it says to update the refs of fespalier and every companion (same `url` and `ref`) or use
+`dart run fespalier`; a path or hosted dependency, a branch or commit ref, or no project prints nothing. Messages: `fespalier-troubleshooting`, `references/diagnostics-dev.md`.
 
 ### `fsp dev`, `fsp build` and `fsp run` (since 0.9.0)
 

@@ -1831,6 +1831,37 @@ fn config_defaults_and_custom_paths() {
 }
 
 #[test]
+fn pubspec_reads_the_fespalier_ref() {
+    let pin = |y: &str| crate::config::Pubspec::parse(y).unwrap().pinned_ref;
+    let repo = "name: a\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: v0.14.0\n      path: packages/fespalier\n";
+    assert_eq!(pin(repo).as_deref(), Some("v0.14.0"));
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    path: ../x\n"),
+        None
+    );
+    assert_eq!(pin("name: a\ndependencies:\n  fespalier: ^1.0.0\n"), None);
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git: https://x/y\n"),
+        None
+    );
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git:\n      url: u\n"),
+        None
+    );
+    assert_eq!(pin("name: a\n"), None);
+    // Malformed shapes read as no pin, never an error.
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git:\n      ref: [1, 2]\n"),
+        None
+    );
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git: 3\n"),
+        None
+    );
+    assert_eq!(pin("name: a\ndependencies: []\n"), None);
+}
+
+#[test]
 fn config_errors_are_clear() {
     let e = format!(
         "{:#}",

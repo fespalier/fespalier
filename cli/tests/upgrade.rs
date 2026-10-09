@@ -12,7 +12,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
@@ -120,6 +120,12 @@ impl Install {
     /// `relative` is the copy's path under the folder, e.g. `bin/fsp` or `Cellar/fsp/0.1.0/bin/fsp`.
     fn at(relative: &str) -> Self {
         let home = tempfile::tempdir().unwrap();
+        // Windows runs only a file named `.exe`.
+        let relative = if cfg!(windows) {
+            format!("{relative}.exe")
+        } else {
+            relative.to_string()
+        };
         let exe = home.path().join(relative);
         fs::create_dir_all(exe.parent().unwrap()).unwrap();
         let _spawning = SPAWN.lock().unwrap_or_else(PoisonError::into_inner);
@@ -143,6 +149,7 @@ impl Install {
             .args(args)
             .current_dir(self.home.path())
             .env("HOME", self.home.path())
+            .env("USERPROFILE", self.home.path())
             .env_remove("CARGO_HOME")
             .env_remove("SCOOP")
             .env_remove("FSP_BASE_URL")
@@ -163,6 +170,15 @@ impl Install {
         tweak(&mut command);
         let _spawning = SPAWN.lock().unwrap_or_else(PoisonError::into_inner);
         command.output().unwrap()
+    }
+}
+
+/// How the install script's command sets the release: sh syntax, or PowerShell on Windows.
+fn version_env(tag: &str) -> String {
+    if cfg!(windows) {
+        format!("$env:FSP_VERSION='{tag}'")
+    } else {
+        format!("FSP_VERSION={tag}")
     }
 }
 
@@ -266,7 +282,7 @@ fn json_prints_one_object() {
     assert_eq!(json["method"], "script");
     assert_eq!(json["upToDate"], false);
     let command = json["command"].as_str().unwrap();
-    assert!(command.contains("FSP_VERSION=v99.0.0"), "{command}");
+    assert!(command.contains(&version_env("v99.0.0")), "{command}");
 
     // --json without --check still writes nothing and exits 0.
     let out = install.run(Some(&server), &["--dry-run", "--json"]);
@@ -287,10 +303,21 @@ fn dry_run_says_what_it_would_do_and_changes_nothing() {
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let text = stdout(&out);
     assert!(
-        text.contains("99.0.0") && text.contains("FSP_VERSION=v99.0.0"),
+        text.contains("99.0.0") && text.contains(&version_env("v99.0.0")),
         "{text}"
     );
     assert_eq!(fs::read(&install.exe).unwrap(), before);
+    // The archive is named, a wrapped literal pads nothing, and the path is not the verbatim
+    // form Windows canonicalizes to.
+    let archive = if cfg!(windows) {
+        "fsp-x86_64-pc-windows-msvc.zip"
+    } else {
+        ".tar.gz"
+    };
+    assert!(text.contains("/v99.0.0/fsp-"), "{text}");
+    assert!(text.contains(archive), "{text}");
+    assert!(text.contains("archive against the release"), "{text}");
+    assert!(!text.contains(r"\\?\"), "{text}");
 }
 
 #[test]
@@ -304,7 +331,7 @@ fn an_explicit_version_needs_no_network_and_a_downgrade_is_named() {
         text.contains("0.0.1") && text.contains("downgrade"),
         "{text}"
     );
-    assert!(text.contains("FSP_VERSION=v0.0.1"), "{text}");
+    assert!(text.contains(&version_env("v0.0.1")), "{text}");
 
     let out = install.run(None, &["--version", "latest"]);
     assert_eq!(out.status.code(), Some(1));
@@ -453,17 +480,35 @@ fn homebrew_runs_brew_upgrade_with_the_formula() {
 
 // --- Replacing a script install ----------------------------------------------------------------
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 mod replace {
     use super::*;
     use sha2::{Digest, Sha256};
-    use std::os::unix::fs::PermissionsExt;
+
+    /// The binary's file name in the archive and in the install folder.
+    const BIN: &str = if cfg!(windows) { "fsp.exe" } else { "fsp" };
+    /// The archive's extension: the release is a `.zip` on Windows.
+    const EXT: &str = if cfg!(windows) { "zip" } else { "tar.gz" };
 
     const NEW: &str = "9.9.9";
 
+    /// Windows ships bsdtar in System32 (it writes and reads a `.zip`); another tar earlier on
+    /// PATH may not. Mirrors `fsp upgrade`.
+    fn tar() -> PathBuf {
+        if cfg!(windows)
+            && let Ok(root) = std::env::var("SystemRoot")
+        {
+            let system = PathBuf::from(root).join("System32").join("tar.exe");
+            if system.is_file() {
+                return system;
+            }
+        }
+        PathBuf::from("tar")
+    }
+
     fn tar_available() -> bool {
         let _spawning = SPAWN.lock().unwrap_or_else(PoisonError::into_inner);
-        let present = Command::new("tar")
+        let present = Command::new(tar())
             .arg("--version")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -490,28 +535,58 @@ mod replace {
             ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
             ("macos", "x86_64") => "x86_64-apple-darwin",
             ("macos", "aarch64") => "aarch64-apple-darwin",
+            ("windows", "x86_64" | "aarch64") => "x86_64-pc-windows-msvc",
             (os, arch) => panic!("no release target for {os} {arch}"),
         }
     }
 
-    /// A `.tar.gz` holding a tiny `fsp` script that prints `banner`.
+    /// An archive holding a tiny `fsp` that prints `banner`: a script in a `.tar.gz`, or on
+    /// Windows a real `fsp.exe` (built with rustc: a script is not a program there) in a `.zip`.
     fn archive(banner: &str) -> Vec<u8> {
         let dir = tempfile::tempdir().unwrap();
-        let script = dir.path().join("fsp");
-        let tar = dir.path().join("out.tar.gz");
+        let program = dir.path().join(BIN);
+        let out = dir.path().join(format!("out.{EXT}"));
         let _spawning = SPAWN.lock().unwrap_or_else(PoisonError::into_inner);
-        fs::write(&script, format!("#!/bin/sh\necho '{banner}'\n")).unwrap();
-        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
-        let status = Command::new("tar")
-            .arg("-czf")
-            .arg(&tar)
+        write_program(dir.path(), &program, banner);
+        let mut command = Command::new(tar());
+        if cfg!(windows) {
+            command.arg("-a").arg("-cf");
+        } else {
+            command.arg("-czf");
+        }
+        let status = command
+            .arg(&out)
             .arg("-C")
             .arg(dir.path())
-            .arg("fsp")
+            .arg(BIN)
             .status()
             .unwrap();
         assert!(status.success());
-        fs::read(&tar).unwrap()
+        fs::read(&out).unwrap()
+    }
+
+    #[cfg(unix)]
+    fn write_program(_: &Path, program: &Path, banner: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        fs::write(program, format!("#!/bin/sh\necho '{banner}'\n")).unwrap();
+        fs::set_permissions(program, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(windows)]
+    fn write_program(dir: &Path, program: &Path, banner: &str) {
+        let source = dir.join("fixture.rs");
+        fs::write(&source, format!("fn main() {{ println!({banner:?}); }}\n")).unwrap();
+        let status = Command::new("rustc")
+            .arg("-o")
+            .arg(program)
+            .arg(&source)
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "rustc could not build the fixture fsp.exe"
+        );
+        fs::remove_file(&source).unwrap();
     }
 
     fn sha(bytes: &[u8]) -> String {
@@ -544,7 +619,7 @@ mod replace {
             let hash = sha(&bytes);
             let release = Self {
                 bytes,
-                sidecar: Some(format!("{hash}  fsp-{}.tar.gz\n", target())),
+                sidecar: Some(format!("{hash}  fsp-{}.{EXT}\n", target())),
                 pins: Some(pins(NEW, &hash)),
             };
             (release, hash)
@@ -562,10 +637,10 @@ mod replace {
         }
 
         fn serve(&self, latest: &'static str) -> Server {
-            let mut files: Files = vec![(format!("/fsp-{}.tar.gz", target()), self.bytes.clone())];
+            let mut files: Files = vec![(format!("/fsp-{}.{EXT}", target()), self.bytes.clone())];
             if let Some(sidecar) = &self.sidecar {
                 files.push((
-                    format!("/fsp-{}.tar.gz.sha256", target()),
+                    format!("/fsp-{}.{EXT}.sha256", target()),
                     sidecar.clone().into_bytes(),
                 ));
             }
@@ -586,6 +661,14 @@ mod replace {
             .collect()
     }
 
+    /// Whether the installed binary (a script or a program) holds `text`.
+    fn holds(install: &Install, text: &str) -> bool {
+        fs::read(&install.exe)
+            .unwrap()
+            .windows(text.len())
+            .any(|w| w == text.as_bytes())
+    }
+
     /// The binary is as it was, and nothing else is in its folder.
     fn assert_untouched(install: &Install, before: &[u8]) {
         assert_eq!(
@@ -595,7 +678,7 @@ mod replace {
         );
         assert_eq!(
             folder_entries(install),
-            ["fsp"],
+            [BIN],
             "temporary files were left behind"
         );
     }
@@ -621,6 +704,8 @@ mod replace {
         let (release, _) = Release::good();
         let server = release.serve("v9.9.9");
         let install = Install::at("bin/fsp");
+        #[cfg(windows)]
+        let before_install = fs::read(&install.exe).unwrap();
         let out = install.run(Some(&server), &[]);
         assert_eq!(
             out.status.code(),
@@ -634,15 +719,80 @@ mod replace {
             text.contains(&format!("\u{2713} fsp {CURRENT} \u{2192} {NEW}")),
             "{text}"
         );
-        assert!(text.contains("bin/fsp"), "{text}");
-        assert!(
-            fs::read_to_string(&install.exe)
-                .unwrap()
-                .contains("fsp 9.9.9")
+        assert!(text.contains(BIN), "{text}");
+        assert!(holds(&install, "fsp 9.9.9"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&install.exe).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o755);
+            assert_eq!(folder_entries(&install), [BIN]);
+        }
+        // Windows cannot overwrite a running binary: it stays beside the new one as `.old`
+        // until the next run of fsp removes it.
+        #[cfg(windows)]
+        {
+            let mut entries = folder_entries(&install);
+            entries.sort();
+            assert_eq!(entries, [BIN.to_string(), format!("{BIN}.old")]);
+            assert_eq!(
+                fs::read(install.exe.with_extension("exe.old")).unwrap(),
+                before_install,
+            );
+        }
+    }
+
+    #[test]
+    fn an_app_pinning_another_release_is_told_after_the_upgrade() {
+        if !ready() {
+            return;
+        }
+        let (release, _) = Release::good();
+        let server = release.serve("v9.9.9");
+        let install = Install::at("bin/fsp");
+        fs::write(
+            install.home.path().join("pubspec.yaml"),
+            "name: app\ndependencies:\n  fespalier:\n    git:\n      url: https://example.com/fespalier\n      ref: v0.1.0\n      path: packages/fespalier\n",
+        )
+        .unwrap();
+        // A dry run replaces nothing, so it says nothing about the pin.
+        let out = install.run(Some(&server), &["--dry-run"]);
+        assert!(!stdout(&out).contains("pins fespalier"), "{}", stdout(&out));
+        let out = install.run(Some(&server), &[]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&out),
+            stderr(&out)
         );
-        let mode = fs::metadata(&install.exe).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o755);
-        assert_eq!(folder_entries(&install), ["fsp"]);
+        let text = stdout(&out);
+        assert!(text.contains("this app pins fespalier v0.1.0"), "{text}");
+        assert!(text.contains(&format!("writes code for v{NEW}")), "{text}");
+    }
+
+    #[test]
+    fn an_app_pinning_the_installed_release_is_not_told() {
+        if !ready() {
+            return;
+        }
+        let (release, _) = Release::good();
+        let server = release.serve("v9.9.9");
+        let install = Install::at("bin/fsp");
+        fs::write(
+            install.home.path().join("pubspec.yaml"),
+            format!("name: app\ndependencies:\n  fespalier:\n    git:\n      url: u\n      ref: v{NEW}\n"),
+        )
+        .unwrap();
+        let out = install.run(Some(&server), &[]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&out),
+            stderr(&out)
+        );
+        assert!(!stdout(&out).contains("pins fespalier"), "{}", stdout(&out));
     }
 
     #[test]
@@ -692,11 +842,7 @@ mod replace {
             c.env("FSP_UPGRADE_ALLOW_UNPINNED", "1");
         });
         assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
-        assert!(
-            fs::read_to_string(&install.exe)
-                .unwrap()
-                .contains("fsp 9.9.9")
-        );
+        assert!(holds(&install, "fsp 9.9.9"));
     }
 
     #[test]
@@ -742,11 +888,7 @@ mod replace {
         assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
         let text = stdout(&out);
         assert!(text.contains("downgrade"), "{text}");
-        assert!(
-            fs::read_to_string(&install.exe)
-                .unwrap()
-                .contains("fsp 0.0.1")
-        );
+        assert!(holds(&install, "fsp 0.0.1"));
     }
 
     #[test]
@@ -764,6 +906,7 @@ mod replace {
         assert_untouched(&install, &before);
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_folder_that_cannot_be_written_is_refused_without_elevation() {
         if !ready() {
@@ -772,6 +915,7 @@ mod replace {
         let (release, _) = Release::good();
         let server = release.serve("v9.9.9");
         let install = Install::at("bin/fsp");
+        use std::os::unix::fs::PermissionsExt;
         let dir = install.exe.parent().unwrap().to_path_buf();
         fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
         // root writes anywhere; the refusal can only be seen by someone who cannot.

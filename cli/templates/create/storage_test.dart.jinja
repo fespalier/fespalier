@@ -1,0 +1,21 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_storage/fespalier_storage.dart';
+import 'package:fespalier_storage/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.main.g.dart';
+
+void main() {
+  // shared_preferences in memory. Without it open() finds no platform and returns null, and
+  // nothing is saved (docs/data.md, "A cache on disk: fespalier_storage").
+  setUp(fakePrefsStore);
+
+  testWidgets('startup() gives the data cache a place on disk', (tester) async {
+    await tester.pumpWidget(AppMain.root());
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MaterialApp)),
+    );
+    expect(container.read(dataCacheStorage), isA<PrefsDataStorage>());
+  });
+}

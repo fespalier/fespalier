@@ -1,5 +1,4 @@
-create my_app (package my_app, features: alpha, beta)
-note  `beta` needs `alpha`: added it
+create my_app (package my_app, features: connectivity)
 run   flutter create --no-pub --empty --project-name=my_app <staging>
 move  <staging> -> my_app
 run   flutter pub get
@@ -14,7 +13,7 @@ version: 0.1.0+1
 
 environment:
   sdk: ^3.8.0
-  flutter: ">=3.44.0"
+  flutter: ">=3.32.0"
 
 dependencies:
   flutter:
@@ -24,21 +23,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v<version>
-  fespalier_cratestack:
+  fespalier_connectivity:
     git:
       url: https://github.com/fespalier/fespalier
-      path: packages/fespalier_cratestack
+      path: packages/fespalier_connectivity
       ref: v<version>
-  fespalier_storage:
-    git:
-      url: https://github.com/fespalier/fespalier
-      path: packages/fespalier_storage
-      ref: v<version>
-  pinned:
-    git:
-      url: https://example.com/pinned
-      ref: 0123456789abcdef0123456789abcdef01234567
-  zeta: ">=1.0.0 <2.0.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -48,15 +37,16 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-# Read by the `fsp` generator; docs/configuration.md lists every key.
-fespalier:
-  format: true
-  telemetry: true
-  data_retry: none
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
 
 === lib/main.dart (overwrite)
-import 'dart:async';
-
 import 'package:my_app/app.main.g.dart';
 
 // The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
@@ -90,7 +80,6 @@ class AboutPage extends StatelessWidget {
 === lib/app/app.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
-import 'package:zeta/zeta.dart';
 
 /// The app around the router: theme, title, locales. The generated main() builds it
 /// (lib/app.main.g.dart) and gives it the router.
@@ -163,28 +152,16 @@ class HomePage extends StatelessWidget {
 }
 
 === lib/app/startup.dart (new)
-import 'dart:async';
-
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
-import 'package:zeta/zeta.dart';
-
-Future<void> zone(Future<void> Function() body) => runZoned(body);
+import 'package:fespalier_connectivity/fespalier_connectivity.dart';
 
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
 /// overridden in the app's ProviderScope, so the first frame already has them.
-Future<List<Override>> startup() async {
-  // beta: the sink comes first.
-  installSink();
-  await restoreSession();
-  // beta: last of the statements.
-  betaSetup();
-  return [
-    // alpha: its provider.
-    alphaProvider.overrideWithValue(1),
-    betaProvider.overrideWithValue(await openBeta()),
-  ];
-}
+List<Override> startup() => [
+  // fespalier_connectivity: refetchOnReconnect follows the network.
+  reconnectSignal.overrideWith(ConnectivitySignal.new),
+];
 
 === lib/app/transition.dart (new)
 import 'package:fespalier/fespalier.dart';
@@ -195,26 +172,58 @@ import 'package:flutter/widgets.dart';
 Page<void> transition(LocalKey key, Widget child) =>
     Transitions.material(key, child);
 
-=== lib/app/alpha/page.dart (new)
-import 'package:flutter/material.dart';
-import 'package:my_app/app.g.dart';
+=== test/connectivity_test.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_connectivity/fespalier_connectivity.dart';
+import 'package:fespalier_connectivity/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
 
-/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
-/// route's name (AboutPage becomes AboutRoute).
-class AboutPage extends StatelessWidget {
-  const AboutPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Every folder under lib/app/ is a path.'),
-        TextButton(
-          onPressed: () => const HomeRoute().go(context),
-          child: const Text('Home'),
-        ),
-      ],
-    ),
+/// The providers startup.dart sets up, over a fake network (a widget test that reaches
+/// connectivity_plus without one fails: docs/data.md, "Reconnects: fespalier_connectivity").
+ProviderContainer start(FakeConnectivity network) {
+  final container = ProviderContainer(
+    overrides: [
+      connectivitySource.overrideWithValue(network),
+      reconnectSignal.overrideWith(ConnectivitySignal.new),
+    ],
   );
+  addTearDown(container.dispose);
+  return container;
+}
+
+/// Ends a test: a container disposes what nothing listens to on a zero-duration timer, which
+/// has to fire before testWidgets looks for timers left over.
+Future<void> end(WidgetTester tester, ProviderContainer container) async {
+  container.dispose();
+  await tester.pump(const Duration(milliseconds: 1));
+}
+
+void main() {
+  testWidgets('a network coming back fires reconnectSignal', (tester) async {
+    final network = FakeConnectivity();
+    final container = start(network);
+    final fires = <int>[];
+    container.listen(reconnectSignal, (_, count) => fires.add(count));
+    await tester.pump();
+    network.offline();
+    expect(fires, isEmpty, reason: 'losing the network is not a reconnect');
+    network.online();
+    expect(fires, [1]);
+    await end(tester, container);
+  });
+
+  testWidgets('hasNetwork is false only once the device says so', (
+    tester,
+  ) async {
+    final network = FakeConnectivity();
+    final container = start(network);
+    container.listen(hasNetwork, (_, _) {});
+    await tester.pump();
+    expect(container.read(hasNetwork), isTrue);
+    network.offline();
+    expect(container.read(hasNetwork), isFalse);
+    network.online();
+    expect(container.read(hasNetwork), isTrue);
+    await end(tester, container);
+  });
 }

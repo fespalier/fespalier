@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, bail};
 use serde::Serialize;
 
-use super::recipes::{Recipe, Source, companion_closure};
+use super::compose;
+use super::recipes::Recipe;
 use crate::{init, templates};
 
 /// The tag of fespalier every dependency of a new app is pinned to: this `fsp`'s own version.
@@ -311,22 +312,8 @@ fn name_of_dir(dir: &Path) -> Result<String> {
     }
 }
 
-/// `text` as a YAML scalar: as it is when that reads back the same, else in single quotes.
-fn scalar(text: &str) -> String {
-    let plain = text
-        .chars()
-        .next()
-        .is_some_and(|c| c.is_ascii_alphanumeric() || c == '/')
-        && !text.ends_with(' ')
-        && text
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || " ._,()/+-".contains(c));
-    if plain {
-        text.to_string()
-    } else {
-        format!("'{}'", text.replace('\'', "''"))
-    }
-}
+/// What `--features all` is called: every feature of the table at once.
+pub const ALL: &str = "all";
 
 /// The features asked for, resolved against `table`: unknown ones refused, requirements added
 /// (each with a note), conflicts refused, in the table's order.
@@ -336,7 +323,18 @@ pub fn resolve_features<'t>(
 ) -> Result<(Vec<&'t Recipe>, Vec<String>)> {
     let mut chosen: Vec<&Recipe> = vec![];
     let mut notes = vec![];
-    let mut queue: Vec<(String, Option<&str>)> = wanted.iter().map(|w| (w.clone(), None)).collect();
+    // `all` is every feature in the table; it is not an id of the table's own.
+    let mut queue: Vec<(String, Option<&str>)> = wanted
+        .iter()
+        .flat_map(|w| {
+            if w == ALL {
+                table.iter().map(|r| r.id.to_string()).collect()
+            } else {
+                vec![w.clone()]
+            }
+        })
+        .map(|id| (id, None))
+        .collect();
     queue.reverse();
     while let Some((id, needed_by)) = queue.pop() {
         if chosen.iter().any(|r| r.id == id) {
@@ -348,7 +346,7 @@ pub fn resolve_features<'t>(
             }
             let known: Vec<&str> = table.iter().map(|r| r.id).collect();
             bail!(
-                "unknown feature `{id}`; the features are {} (`fsp create --list-features`)",
+                "unknown feature `{id}`; the features are {}, or {ALL} (`fsp create --list-features`)",
                 known.join(", ")
             );
         };
@@ -371,131 +369,9 @@ pub fn resolve_features<'t>(
     Ok((chosen, notes))
 }
 
-/// One entry of `dependencies:` or `dependency_overrides:`, as the template writes it.
-#[derive(Serialize)]
-struct Dep {
-    name: String,
-    /// `name:` alone, or `name: "<range>"`.
-    head: String,
-    /// The lines nested under `name:`.
-    lines: Vec<String>,
-}
-
-#[derive(Serialize)]
-struct Override {
-    name: String,
-    path: String,
-}
-
-#[derive(Serialize)]
-struct PubspecCx<'a> {
-    name: &'a str,
-    description: String,
-    floor: String,
-    deps: Vec<Dep>,
-    config: Vec<&'a str>,
-    overrides: Vec<Override>,
-}
-
-/// The pubspec of the app: a function of the name, the features and where the packages come from.
-fn pubspec(
-    name: &str,
-    description: &str,
-    features: &[&Recipe],
-    local: Option<&str>,
-) -> Result<String> {
-    let mut companions: Vec<&str> = features
-        .iter()
-        .flat_map(|r| r.companions.iter().copied())
-        .collect();
-    companions.sort_unstable();
-    companions.dedup();
-    let package_dep = |package: &str| -> Dep {
-        let lines = match local {
-            Some(root) => vec![format!(
-                "path: {}",
-                scalar(&format!("{root}/packages/{package}"))
-            )],
-            None => vec![
-                "git:".to_string(),
-                format!("  url: {REPO_URL}"),
-                format!("  path: packages/{package}"),
-                format!("  ref: {REF}"),
-            ],
-        };
-        Dep {
-            name: package.to_string(),
-            head: format!("{package}:"),
-            lines,
-        }
-    };
-    let mut deps = vec![package_dep("fespalier")];
-    deps.extend(companions.iter().map(|c| package_dep(c)));
-    for tp in features.iter().flat_map(|r| r.third_party.iter()) {
-        let (head, lines) = match tp.source {
-            Source::Range(range) => (format!("{}: \"{range}\"", tp.name), vec![]),
-            Source::Git { url, commit } => (
-                format!("{}:", tp.name),
-                vec![
-                    "git:".to_string(),
-                    format!("  url: {url}"),
-                    format!("  ref: {commit}"),
-                ],
-            ),
-        };
-        deps.push(Dep {
-            name: tp.name.to_string(),
-            head,
-            lines,
-        });
-    }
-    deps.sort_by(|a, b| a.name.cmp(&b.name));
-    deps.dedup_by(|a, b| a.name == b.name);
-    if let Some(dep) = deps.iter().find(|d| d.name == name) {
-        bail!(
-            "the app cannot be named `{name}`: it depends on a package of that name ({})",
-            dep.name
-        );
-    }
-    let overrides = match local {
-        Some(root) if !companions.is_empty() => {
-            let mut all = companion_closure(&companions);
-            all.push("fespalier".to_string());
-            all.sort();
-            all.into_iter()
-                .map(|package| Override {
-                    path: scalar(&format!("{root}/packages/{package}")),
-                    name: package,
-                })
-                .collect()
-        }
-        _ => vec![],
-    };
-    let floor = features
-        .iter()
-        .map(|r| r.flutter_floor)
-        .chain([BASE_FLOOR])
-        .max_by_key(|f| floor_of(f))
-        .unwrap_or(BASE_FLOOR);
-    Ok(templates::render(
-        "create/pubspec.yaml",
-        PubspecCx {
-            name,
-            description: scalar(description),
-            floor: floor.to_string(),
-            deps,
-            config: features
-                .iter()
-                .flat_map(|r| r.config.iter().copied())
-                .collect(),
-            overrides,
-        },
-    ))
-}
-
-/// The Dart files of the starting app: `fsp init`'s five, the home page with a link in it, and
-/// an about page for the link to go to.
-fn starter_files(package: &str) -> Vec<PlannedFile> {
+/// The Dart files of the starting app: `fsp init`'s five, the home page with a link in it, an
+/// about page for the link to go to, and `startup.dart` when a feature has something to start.
+fn starter_files(package: &str, features: &[&Recipe]) -> Result<Vec<PlannedFile>> {
     #[derive(Serialize)]
     struct Cx<'a> {
         package: &'a str,
@@ -508,10 +384,10 @@ fn starter_files(package: &str) -> Vec<PlannedFile> {
     let mut files: Vec<PlannedFile> = init::STARTERS
         .iter()
         .map(|kind| {
-            let content = if *kind == "page" {
-                templates::render("create/home.dart", Cx { package })
-            } else {
-                init::starter(kind, package)
+            let content = match *kind {
+                "page" => templates::render("create/home.dart", Cx { package }),
+                "app" => compose::app_dart(&init::starter(kind, package), features),
+                _ => init::starter(kind, package),
             };
             new(format!("lib/app/{kind}.dart"), content)
         })
@@ -520,8 +396,11 @@ fn starter_files(package: &str) -> Vec<PlannedFile> {
         "lib/app/about/page.dart".to_string(),
         templates::render("create/about.dart", Cx { package }),
     ));
+    if let Some(startup) = compose::startup_dart(features)? {
+        files.push(new("lib/app/startup.dart".to_string(), startup));
+    }
     files.sort_by(|a, b| a.path.cmp(&b.path));
-    files
+    Ok(files)
 }
 
 /// Decides everything. Refuses, in this order: a bad `--project-name`, `--org` or `--platforms`,
@@ -586,16 +465,19 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
     let mut files = vec![
         PlannedFile {
             path: "pubspec.yaml".to_string(),
-            content: pubspec(&name, description, &features, local)?,
+            content: compose::pubspec(&name, description, &features, local)?,
             action: Action::Overwrite,
         },
         PlannedFile {
             path: "lib/main.dart".to_string(),
-            content: templates::render("create/main.dart", serde_json::json!({ "package": name })),
+            content: compose::main_dart(
+                &templates::render("create/main.dart", serde_json::json!({ "package": name })),
+                &features,
+            ),
             action: Action::Overwrite,
         },
     ];
-    files.extend(starter_files(&name));
+    files.extend(starter_files(&name, &features)?);
     for recipe in &features {
         for (template, path) in recipe.files {
             files.push(PlannedFile {

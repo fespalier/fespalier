@@ -569,6 +569,41 @@ mod replace {
         assert!(exe.exists());
         assert!(!dir.path().join("fsp.exe.old").exists());
     }
+
+    #[test]
+    fn a_sidecar_with_crlf_a_bom_or_a_binary_marker_still_parses() {
+        let hash = "ab".repeat(32);
+        for text in [
+            format!("{hash}  fsp.zip\r\n"),
+            format!("\u{feff}{hash}  fsp.zip\n"),
+            format!("{hash} *fsp.zip\n"),
+            hash.to_uppercase(),
+        ] {
+            assert_eq!(
+                parse_sidecar(&text).as_deref(),
+                Some(hash.as_str()),
+                "{text:?}"
+            );
+        }
+        assert_eq!(parse_sidecar("not a hash  x\n"), None);
+    }
+
+    #[test]
+    fn the_verbatim_prefix_is_stripped_for_display() {
+        use crate::upgrade::strip_verbatim;
+        use std::path::Path;
+        let strip = |s: &str| strip_verbatim(Path::new(s)).to_string_lossy().into_owned();
+        assert_eq!(
+            strip(r"\\?\C:\Users\me\bin\fsp.exe"),
+            r"C:\Users\me\bin\fsp.exe"
+        );
+        assert_eq!(
+            strip(r"\\?\UNC\host\share\fsp.exe"),
+            r"\\host\share\fsp.exe"
+        );
+        assert_eq!(strip(r"C:\bin\fsp.exe"), r"C:\bin\fsp.exe");
+        assert_eq!(strip("/usr/local/bin/fsp"), "/usr/local/bin/fsp");
+    }
 }
 
 #[test]

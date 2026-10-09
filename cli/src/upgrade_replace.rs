@@ -118,7 +118,12 @@ pub fn parse_pins(text: &str) -> Option<Pins> {
 
 /// The hash in a `.sha256` file (`<hex>  <name>`): its first word, as `install.sh` reads it.
 pub fn parse_sidecar(text: &str) -> Option<String> {
-    let word = text.split_whitespace().next()?.to_ascii_lowercase();
+    // A BOM (PowerShell's `Out-File`) and CRLF line ends are not part of the hash.
+    let word = text
+        .trim_start_matches('\u{feff}')
+        .split_whitespace()
+        .next()?
+        .to_ascii_lowercase();
     (word.len() == 64 && word.bytes().all(|b| b.is_ascii_hexdigit())).then_some(word)
 }
 

@@ -1,2 +1,10 @@
+# Text files are LF on every checkout, so a Windows build reads the same bytes.
+* text=auto eol=lf
+
 # The DevTools extension's build is generated: no diffs for it, and no language stats.
 packages/fespalier/extension/devtools/build/** linguist-generated=true -diff
+
+# Windows batch files keep the bytes they were committed with (CRLF).
+*.bat -text
+*.cmd -text
+*.ps1 text eol=lf

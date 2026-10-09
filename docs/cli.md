@@ -60,6 +60,8 @@ Since 0.15.0. `fsp create my_app` makes a new Flutter app with fespalier in it, 
 ```sh
 fsp create my_app                      # the base app: two pages and a layout
 fsp create my_app --org com.example --platforms android,ios,web
+fsp create my_app --features storage,connectivity   # the base app plus optional features
+fsp create my_app --features all       # every optional feature
 fsp create my_app --dry-run            # print every file and command; write and run nothing
 fsp create --list-features             # the optional features (--json: one object per line)
 ```
@@ -75,18 +77,25 @@ What it does, in order:
 
 If a step before the move fails, the app is not made. If a later one fails, the app stays, and the message says which step failed and the commands that finish the job (`cd my_app`, then `flutter pub get && fsp gen && fsp test`).
 
-| Flag                    | What it does                                                                                                                                                                                                                                   |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--project-name <name>` | The Dart package name. The default is the folder's name, lower case with `-` and spaces as `_`; a name that is a Dart keyword, starts with a digit or is the name of a dependency is refused.                                                  |
-| `--org <org>`           | The organization for the Android and iOS identifiers, `flutter create`'s `--org`.                                                                                                                                                              |
-| `--platforms <a,b>`     | `android`, `ios`, `linux`, `macos`, `web` and `windows`; the default is all of them.                                                                                                                                                           |
-| `--description <text>`  | The pubspec's `description:`.                                                                                                                                                                                                                  |
-| `--features <a,b>`      | Optional features to add. A feature another one needs is added with it, with a note; two that conflict are refused; one that needs a newer Flutter than the one installed is refused. There are none yet: `--list-features` shows what exists. |
-| `--list-features`       | Print the features and exit, as `id  description` lines, or with `--json` one object per line (`id`, `description`, `flutter`, `requires`, `conflicts`, `companions`).                                                                         |
-| `--no-pub-get`          | Write the app and generate, but leave `flutter pub get` to you.                                                                                                                                                                                |
-| `--offline`             | Pass `--offline` to `flutter pub get`.                                                                                                                                                                                                         |
-| `--dry-run`             | Print the plan (the commands, then every file in full) on stderr and write nothing. It does not run Flutter, so it checks no Flutter version.                                                                                                  |
-| `--json`                | Print events to stdout, one JSON object per line, and keep the text for people on stderr (Flutter's own output goes there too).                                                                                                                |
+| Flag                    | What it does                                                                                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--project-name <name>` | The Dart package name. The default is the folder's name, lower case with `-` and spaces as `_`; a name that is a Dart keyword, starts with a digit or is the name of a dependency is refused.                                                        |
+| `--org <org>`           | The organization for the Android and iOS identifiers, `flutter create`'s `--org`.                                                                                                                                                                    |
+| `--platforms <a,b>`     | `android`, `ios`, `linux`, `macos`, `web` and `windows`; the default is all of them.                                                                                                                                                                 |
+| `--description <text>`  | The pubspec's `description:`.                                                                                                                                                                                                                        |
+| `--features <a,b>`      | Optional features to add, or `all` for every one of them. A feature another one needs is added with it, with a note; two that conflict are refused; one that needs a newer Flutter than the one installed is refused. The features are listed below. |
+| `--list-features`       | Print the features and exit, as `id  description` lines (the last is `all`), or with `--json` one object per line (`id`, `description`, `flutter`, `requires`, `conflicts`, `companions`; `all` is not one of them).                                 |
+| `--no-pub-get`          | Write the app and generate, but leave `flutter pub get` to you.                                                                                                                                                                                      |
+| `--offline`             | Pass `--offline` to `flutter pub get`.                                                                                                                                                                                                               |
+| `--dry-run`             | Print the plan (the commands, then every file in full) on stderr and write nothing. It does not run Flutter, so it checks no Flutter version.                                                                                                        |
+| `--json`                | Print events to stdout, one JSON object per line, and keep the text for people on stderr (Flutter's own output goes there too).                                                                                                                      |
+
+**Features** (since 0.15.0). Each one adds its companion package to the pubspec (at the same tag as `fespalier`), what the app needs to start in `lib/app/startup.dart`, and a passing test in `test/`. CI makes an app with each feature alone and with all of them, and runs `dart format`, `flutter analyze` and `flutter test` on it:
+
+- `storage`: [`fespalier_storage`](data.md#a-cache-on-disk-fespalier_storage). `startup()` opens a `PrefsDataStorage` and gives it to `dataCacheStorage`, so a `data.dart` with a `dataCache` is on the first frame at the next start. The test starts the app over an in-memory preferences store and checks that the cache has its place on disk.
+- `connectivity`: [`fespalier_connectivity`](data.md#reconnects-fespalier_connectivity). `startup()` sets `reconnectSignal` to `ConnectivitySignal`, so `Freshness(refetchOnReconnect: true)` works. The test uses `FakeConnectivity` to check the signal and `hasNetwork`.
+
+`lib/app/startup.dart` is written once for all of them: its imports are sorted, its steps run in a fixed order (telemetry sinks first, then the session, then the rest) and it is `async` only when a step awaits.
 
 The events of `--json` are `run` (`command`, before each command and, with `--dry-run`, for each one planned), `file` (`path` and `action`, which is `new` or `overwrite`, and with `--dry-run` the file's `content`), `done` (`dir`, `name`, `features` and `dry_run`) and, when the command fails, `error` (`message`).
 

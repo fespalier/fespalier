@@ -15,6 +15,7 @@ use clap::Args;
 use serde_json::json;
 
 use crate::Exit;
+use crate::upgrade_replace as replace;
 
 /// Where releases are found (the redirect of `/releases/latest`).
 const RELEASES_URL: &str = "https://github.com/fespalier/fespalier/releases/latest";
@@ -215,8 +216,7 @@ pub enum Action {
     Brew,
     /// Print these commands for the person to run.
     Print(Vec<String>),
-    /// A script install: the binary is replaced in place. Until that lands, print the install
-    /// script's command, which does the same.
+    /// A script install: the binary is replaced in place, after the archive is checked.
     Script,
 }
 
@@ -324,7 +324,7 @@ pub fn plan(
 
 // --- Running -----------------------------------------------------------------------------------
 
-fn env_nonempty(name: &str) -> Option<String> {
+pub fn env_nonempty(name: &str) -> Option<String> {
     env::var(name).ok().filter(|v| !v.is_empty())
 }
 
@@ -482,15 +482,28 @@ pub fn run(cmd: &UpgradeCmd) -> Result<()> {
             } else {
                 ""
             };
-            println!("fsp {current} -> {target}{note}, a script install in {dir}.");
             let base = env_nonempty("FSP_BASE_URL").unwrap_or_else(|| BASE_URL.to_string());
-            println!(
-                "fsp does not replace its own binary yet; the archives are under {base}/{}/. Run:",
-                target.tag()
-            );
-            if let Some(command) = &plan.command {
-                println!("  {command}");
+            if cmd.dry_run {
+                println!("fsp {current} -> {target}{note}, a script install in {dir}.");
+                println!(
+                    "Would download {base}/{}/ and replace {} after checking the archive against                      the release's .sha256 and the checksums pinned at the tag. The install                      script does the same:",
+                    target.tag(),
+                    exe.display()
+                );
+                if let Some(command) = &plan.command {
+                    println!("  {command}");
+                }
+                return Ok(());
             }
+            if current > target {
+                println!("fsp {current} -> {target}: a downgrade, as asked.");
+            }
+            replace::remove_stale_old(&exe);
+            replace::replace(&exe, target, &base)?;
+            println!(
+                "\u{2713} fsp {current} \u{2192} {target} ({})",
+                exe.display()
+            );
         }
     }
     Ok(())

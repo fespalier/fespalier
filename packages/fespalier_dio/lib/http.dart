@@ -1,16 +1,5 @@
-/// `package:http` for fespalier (since 0.9.0): requests aborted with the provider that made them,
-/// server validation errors as an action's `FieldErrors`, and writes that `RetryClient` leaves
-/// alone.
-///
-/// A separate library from `package:fespalier_dio/fespalier_dio.dart`, so an app that uses
-/// `package:http` links no Dio, and the other way round.
-///
-/// ```dart
-/// final client = ref.abortable(http.Client()); // in a data.dart, before the first await
-/// ```
+/// Moved to `package:fespalier_http/fespalier_http.dart` in 0.15.0. This library only exports it,
+/// until the next release removes it: change the import.
 library;
 
-export 'problem.dart';
-export 'src/http_abort.dart' show FespalierHttpRef;
-export 'src/http_field_errors.dart' show FespalierHttpFieldErrors;
-export 'src/write_guard_client.dart' show WriteGuardClient;
+export 'package:fespalier_http/fespalier_http.dart';

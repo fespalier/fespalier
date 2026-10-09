@@ -40,7 +40,7 @@ dev_dependencies:
     sdk: flutter
 
 # fespalier_sign_keypair and fespalier_cratestack depend on fespalier (the first through
-# fespalier_auth, the second through fespalier_dio) by repository tag, as an app does; here all
+# fespalier_auth, the second through fespalier_dio and fespalier_http) by repository tag, as an app does; here all
 # are the checkout's.
 dependency_overrides:
   fespalier:
@@ -49,6 +49,8 @@ dependency_overrides:
     path: ../../packages/fespalier_auth
   fespalier_dio:
     path: ../../packages/fespalier_dio
+  fespalier_http:
+    path: ../../packages/fespalier_http
 
 flutter:
   uses-material-design: true

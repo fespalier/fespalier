@@ -207,13 +207,14 @@ fn a_checkout_overrides_each_companion_and_what_it_needs() {
         .lines()
         .filter_map(|l| l.strip_prefix("  ").and_then(|l| l.strip_suffix(':')))
         .collect();
-    // cratestack depends on dio, which the app does not name.
+    // cratestack depends on dio, and dio on http, which the app does not name.
     assert_eq!(
         names,
         [
             "fespalier",
             "fespalier_cratestack",
             "fespalier_dio",
+            "fespalier_http",
             "fespalier_storage"
         ]
     );
@@ -782,7 +783,12 @@ fn companion_deps_are_what_the_pubspecs_depend_on() {
 fn the_closure_of_a_companion_names_what_it_needs() {
     assert_eq!(
         recipes::companion_closure(&["fespalier_cratestack", "fespalier_otel"]),
-        ["fespalier_cratestack", "fespalier_dio", "fespalier_otel"]
+        [
+            "fespalier_cratestack",
+            "fespalier_dio",
+            "fespalier_http",
+            "fespalier_otel"
+        ]
     );
     assert_eq!(
         recipes::companion_closure(&["fespalier_sign_keypair"]),

@@ -104,6 +104,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "needs a Rust core and flutter_rust_bridge, which are the app's own",
     ),
     (
+        "fespalier_http",
+        "the `http` feature lands once fespalier_http has DioHttpClient and its docs",
+    ),
+    (
         "fespalier_image",
         "not yet: it becomes the `image` feature in a later release",
     ),
@@ -147,6 +151,7 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
 /// is overridden. `create_tests` compares this table with the pubspecs.
 pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
     ("fespalier_cratestack", &["fespalier_dio"]),
+    ("fespalier_dio", &["fespalier_http"]),
     ("fespalier_sign_keypair", &["fespalier_auth"]),
 ];
 

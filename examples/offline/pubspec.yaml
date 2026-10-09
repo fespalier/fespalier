@@ -21,12 +21,14 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_cratestack depends on fespalier and fespalier_dio by git, as an app does; here both are the checkout's.
+# fespalier_cratestack depends on fespalier, fespalier_dio and fespalier_http by git, as an app does; here all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
   fespalier_dio:
     path: ../../packages/fespalier_dio
+  fespalier_http:
+    path: ../../packages/fespalier_http
 
 flutter:
   uses-material-design: true

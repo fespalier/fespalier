@@ -1,10 +1,12 @@
 import 'package:http/http.dart' as http;
 
+import 'writes.dart';
+
 /// What [WriteGuardClient] saw of each response, by identity: true when it answered a write.
-final Expando<bool> _writeResponses = Expando<bool>('fespalier_dio responses');
+final Expando<bool> _writeResponses = Expando<bool>('fespalier_http responses');
 
 /// The errors a write's send threw through a [WriteGuardClient], by identity.
-final Expando<bool> _writeErrors = Expando<bool>('fespalier_dio errors');
+final Expando<bool> _writeErrors = Expando<bool>('fespalier_http errors');
 
 /// Marks what a write's send answered or threw, so `RetryClient` can leave writes alone (since
 /// 0.9.0): fespalier never retries a write, and `RetryClient` retries a 503 on every method.
@@ -28,16 +30,11 @@ final class WriteGuardClient extends http.BaseClient {
   /// The client every request goes to. [close] closes it.
   final http.Client inner;
 
-  static const Set<String> _safeMethods = {'GET', 'HEAD', 'OPTIONS', 'TRACE'};
-
-  /// Whether [request] is a write (the `WriteGuard` rule: any method but `GET`, `HEAD`, `OPTIONS`
-  /// and `TRACE`; an `Idempotency-Key` header makes it repeatable, so not one).
-  static bool isWrite(http.BaseRequest request) {
-    if (_safeMethods.contains(request.method.toUpperCase())) return false;
-    return !request.headers.keys.any(
-      (k) => k.toLowerCase() == 'idempotency-key',
-    );
-  }
+  /// Whether [request] is a write (the [HttpWrites] rule, shared with `WriteGuard`: any method
+  /// but `GET`, `HEAD`, `OPTIONS` and `TRACE`; an `Idempotency-Key` header makes it repeatable, so
+  /// not one).
+  static bool isWrite(http.BaseRequest request) =>
+      HttpWrites.isWrite(request.method, request.headers.keys);
 
   /// [when], for reads only: for `RetryClient(when:)`. By default [retryOn503], `RetryClient`'s own
   /// rule.

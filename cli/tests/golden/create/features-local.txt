@@ -53,6 +53,8 @@ dependency_overrides:
     path: /check out/packages/fespalier_cratestack
   fespalier_dio:
     path: /check out/packages/fespalier_dio
+  fespalier_http:
+    path: /check out/packages/fespalier_http
   fespalier_storage:
     path: /check out/packages/fespalier_storage
 

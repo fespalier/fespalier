@@ -1,0 +1,36 @@
+name: fespalier_http
+description: package:http for fespalier — requests aborted with their page, server validation errors on fespalier_forms forms, and writes that are never retried.
+version: 0.14.0 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_http
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.14.0 # x-release-please-version
+  # 1.5.0: Abortable requests.
+  http: ^1.5.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# In this repository the package is built against the fespalier beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier

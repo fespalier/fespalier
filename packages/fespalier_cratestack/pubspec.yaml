@@ -51,5 +51,7 @@ dependency_overrides:
     path: ../fespalier
   fespalier_dio:
     path: ../fespalier_dio
+  fespalier_http:
+    path: ../fespalier_http
   fespalier_connectivity:
     path: ../fespalier_connectivity

@@ -1,7 +1,8 @@
 # fespalier_dio
 
-Dio and `package:http` for [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): a load whose page is
-gone stops, a server's validation error lands under its form field, and a write is never sent twice. fespalier
+Dio for [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): a load whose page is
+gone stops, a server's validation error lands under its form field, and a write is never sent twice.
+The `package:http` half moved to [`fespalier_http`](../fespalier_http/README.md) in 0.15.0. fespalier
 itself is unchanged: no `fsp` change, no `fespalier:` key, and the same `app.g.dart`. It starts no timer and no
 listener, and it has no retry policy of its own (a backoff needs a timer).
 
@@ -22,6 +23,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.14.0
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.14.0
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
@@ -31,15 +37,15 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`), both pure Dart.
+Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_http` (the write rule and the problem decoders both clients share), which brings `http` (`^1.5.0`). All of them are pure Dart.
 
-## Three libraries
+## Libraries
 
-| Library                                    | For            | What is in it                                                                          |
-| ------------------------------------------ | -------------- | -------------------------------------------------------------------------------------- |
-| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`              |
-| `package:fespalier_dio/http.dart`          | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient` |
-| `package:fespalier_dio/problem.dart`       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (both libraries above export it)  |
+| Library                                    | For            | What is in it                                                                                 |
+| ------------------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
+| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and `problem.dart` |
+| `package:fespalier_dio/http.dart`          | `package:http` | moved to `package:fespalier_http/fespalier_http.dart`; removed in 0.15.0                      |
+| `package:fespalier_dio/problem.dart`       | no client      | moved to `package:fespalier_http/problem.dart`; removed in 0.15.0                             |
 
 An app that uses one client imports one library, and links nothing of the other client.
 
@@ -55,7 +61,7 @@ Future<Product> data(Ref ref, {required int id}) async {
 ```
 
 The token is cancelled in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds. For
-`package:http`, `ref.abortable(client)` wraps a client so that every request through it is aborted the same way
+`package:http` (`fespalier_http`), `ref.abortable(client)` wraps a client so that every request through it is aborted the same way
 (`ref.abortTrigger()` is the trigger of one `AbortableRequest`).
 
 ## Server validation errors on a form
@@ -96,5 +102,5 @@ final dio = Provider<Dio>((ref) {
 
 `WriteGuard` refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries
 an `Idempotency-Key` header) and hands the caller the error of the first, except after a 401, which is what an
-authentication refresh sends again. For `package:http`:
+authentication refresh sends again. For `package:http` (`fespalier_http`):
 `RetryClient(WriteGuardClient(inner), when: WriteGuardClient.readsOnly(), whenError: WriteGuardClient.readErrorsOnly(...))`.

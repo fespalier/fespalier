@@ -22,7 +22,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                          |
 | [Translations](i18n-tolgee.md)                                     | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL                    |
 | [Maps](maps.md)                                                    | A pin picker that returns a place with `fespalier_maps`: MapLibre, geocoder, position                 |
-| [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, locations, status, fakes             |
+| [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, status, the engine, restarts, fakes  |
 | [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens              |
 | [Analytics](analytics.md)                                          | Screen views by route pattern with consent, `fespalier_analytics`: sink, backends, testing            |
 | [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |
@@ -53,7 +53,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [data.md](data.md): `data.dart`: a function, a selector or a provider · Retries and reloads · Freshness: `staleTime`, resume and reconnect · Reconnects: fespalier_connectivity · A cache that survives a restart: `dataCache` · A cache on disk: fespalier_storage · A Rust core's changes: fespalier_frb · Providers per page instance: fespalier_riverpod · Typed helpers on the route · From a location to its data · Section data
 - [actions.md](actions.md): `action.dart`: typed writes · `validate()` and `FieldErrors` · Optimistic updates: `optimistic()`
 - [forms.md](forms.md): Forms: `form()` and `validate()` (form() since 0.11.0; validate() is in actions.md)
-- [http.md](http.md): HTTP clients: fespalier_dio · Cancelling a load whose page is gone · Server validation errors on forms · Writes are never retried, over HTTP too
+- [http.md](http.md): HTTP clients: fespalier_http and fespalier_dio · Cancelling a load whose page is gone · Server validation errors on forms · Writes are never retried, over HTTP too · One seam for any client · The wrapping order · Credentials for clients that are not an http.Client
 - [app-startup.md](app-startup.md): `main()`: app.dart, startup.dart and splash.dart
 - [adapters.md](adapters.md): Adapters in the generated `main()`
 - [push.md](push.md): Push notifications: fespalier_push · Install · Configure · Mapping a payload · Cold start and taps · Tokens and permission · Testing

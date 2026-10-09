@@ -45,10 +45,15 @@ Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and on 
 | ------------------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
 | `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and `problem.dart` |
 | `package:fespalier_dio/client.dart`        | `package:http` | `DioHttpClient`: your Dio as an `http.Client` (since 0.15.0)                                  |
-| `package:fespalier_dio/http.dart`          | `package:http` | moved to `package:fespalier_http/fespalier_http.dart`; removed in 0.15.0                      |
-| `package:fespalier_dio/problem.dart`       | no client      | moved to `package:fespalier_http/problem.dart`; removed in 0.15.0                             |
 
-An app that uses one client imports one library, and links nothing of the other client.
+`package:fespalier_dio/http.dart` and `problem.dart` moved to [`fespalier_http`](../fespalier_http/README.md) and were removed in 0.15.0: change the import. An app that uses one client imports one library, and links nothing of the other client.
+
+`DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
+translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
+The body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
+`Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
+`ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
+passes through. `cupertino_http` is not claimed to honour an abort.
 
 `DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
 translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.

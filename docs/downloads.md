@@ -8,12 +8,16 @@ fespalier's floor, and an app that lists it links nothing native.
 fespalier itself has no download feature: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the
 same bytes. The package is a companion, installed like `fespalier_flags`.
 
-**What is in this release, and what is not.** This release is the model, the telemetry names and the fakes. It has **no
-engine** (nothing starts, pauses or resumes a transfer yet), no HTTP backend, no providers and no background backend over
-the operating system's download service. Those come in later releases of the same line, and this page grows with them. A
-download you need today is `fespalier_maps`' file packs ([Maps](maps.md#file-packs)), which will move onto this package.
+**What is in this release, and what is not.** This release is the model, the telemetry names, the fakes and the engine,
+`Downloads`, which starts, pauses, resumes, retries, cancels and removes a download over a backend you give it and
+settles the registry after a restart. It has **no HTTP backend** (the engine has nothing to download with yet), no
+providers and no background backend over the operating system's download service. Those come in later releases of the
+same line, and this page grows with them. A download you need today is `fespalier_maps`' file packs
+([Maps](maps.md#file-packs)), which will move onto this package.
 
-Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status), [Testing](#testing).
+Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
+[Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
+[Testing](#testing).
 
 ## Install
 
@@ -77,7 +81,7 @@ A download is in one `DownloadStatus` at a time, a sealed family you can `switch
 HTTP error that asking again will not fix), `unauthorized` (401 or 403), `sizeMismatch`, `hashMismatch`, `storage`,
 `notificationsRequired`, `killed` and `other`. Every status prints its state and numbers, never a path.
 
-The ports are the seams a later engine is built on, and an app does not call them: `DownloadBackend` (the transfer
+The ports are the seams the engine is built on, and an app does not call them: `DownloadBackend` (the transfer
 machinery, with `DownloadCapabilities` saying what it can do and `DownloadEvents` as the way back), `DownloadStore` (the
 durable list of what the app asked for: it is a registry, not a cache, so nothing is evicted) and `DownloadFiles`.
 
@@ -87,13 +91,80 @@ durable list of what the app asked for: it is a registry, not a cache, so nothin
 names: **never a URL, an id, a path, a display name, a header or an error's text**. `FespalierDownloadConventions` has
 them, and `test/telemetry_test.dart` pins each one.
 
+## Starting a download
+
+`Downloads` is the engine. It imports no Riverpod, so it works in a test or a background isolate as it is; a later release
+adds the providers on top.
+
+```dart
+final downloads = Downloads(backend: backend, store: store, files: files);
+await downloads.open(); // before anything else
+downloads.observe((id, status) => debugPrint('$id is $status')); // one owner
+
+await downloads.start(request);
+downloads.statusOf('manual-42'); // Queued, then what the backend reports
+await downloads.pause('manual-42'); // true when the backend took the request
+await downloads.resume('manual-42');
+await downloads.retry('manual-42'); // from Failed only
+await downloads.cancel('manual-42'); // stops it for good: Cancelled, nothing kept
+await downloads.remove('manual-42'); // also deletes the file: Absent
+final path = await downloads.pathOf('manual-42'); // null unless Complete
+```
+
+- **`start` never throws for a bad request.** An invalid request, or a `file` that is not a safe relative path, ends
+  `Failed(invalidRequest)` and is not registered, so there is nothing to `retry`: start it again once it is right. A
+  `userInitiated` request on a backend whose capabilities have no notifications ends `Failed(notificationsRequired)`.
+  Starting an id that is already queued, running, paused or complete does nothing: it is the same download. Calling
+  `start` before `open` is a `StateError`.
+- **The backend reports, the engine does not guess.** `pause` and `resume` ask the backend and return what it answered;
+  the status moves when the backend says so (`Paused`, `Running`), except that a resumed download shows `Queued` at once.
+  A backend that cannot pause (its `capabilities.pause` is false) makes `pause` return false.
+- **`retry` starts a `Failed` download again** from the request the registry holds. After `sizeMismatch` or `hashMismatch`
+  it deletes the file first; after a network failure it keeps the bytes so the backend can go on from them.
+- **`statuses` and `statusOf`** are the whole state: `statusOf` answers `Absent` for an id it does not know. A 401 or 403
+  that the backend reports with a failed status ends `Failed(unauthorized)`.
+- **`observe` is one owner slot.** A second call replaces the first, `observe(null)` clears it, and `close()` clears it
+  too, so an engine that outlives a screen holds nothing of it. An observer that throws costs only its own update.
+- **Generations drop what is stale.** Each id has a generation that a cancel, a remove, a restart and a sign-out move on.
+  An event for an id the engine no longer knows, or for a download that has ended, is dropped; so is the rest of a
+  `start` whose download was cancelled or cleared while it waited on the backend. A backend must not report on a
+  transfer it was told to cancel: the engine cannot tell a late report of an old attempt from a new one once the same id
+  has been started again.
+- **Telemetry.** Each transfer is one `fespalier.download.transfer` span from its start to the state it ends in
+  (`result`, and `failure` when it failed). Its attributes are only the constants of `FespalierDownloadConventions`:
+  never a URL, an id, a path, a display name, a header or an error's text. With no sink installed the cost is a null check.
+
+## After a restart
+
+`open()` loads the registry from the `DownloadStore`, opens the backend and settles what ended while the app was not
+running. Every entry starts as `Queued`; the backend then replays what it knows through `DownloadEvents` while it opens.
+
+- A download the backend reports finished or failed ends `Complete` or `Failed`, and is reported once as
+  `fespalier.download.reconciled` (the same `result` and `failure` attributes as a transfer).
+- A download the backend reports as running goes on: it gets a transfer span with `resumed` true.
+- A download the backend does not mention at all ends `Complete` when `DownloadFiles` finds its file (with the size the
+  request names, when it names one) and `Failed(killed)` otherwise. Without a `DownloadFiles` it is `Failed(killed)`, so
+  give the engine one when the backend does not replay finished downloads.
+- A report about an id that is not in the registry is dropped: the backend's tasks that are not ours are not ours.
+
+A completed download keeps its registry entry, so `statusOf` and `pathOf` still answer after the next restart. Only
+`remove`, `cancel` and [sign-out](#sign-out) drop an entry. Calling `open` twice does the work once; `close()`
+unregisters from the backend and clears the observer, and the transfers the platform owns go on.
+
+## Sign-out
+
+`clearAccount()` ends everything the signed-in person had: it cancels every download, deletes the files and the registry,
+moves every generation on and reports `Absent` for each id to the observer. Nothing an earlier attempt was still doing,
+and no event that arrives afterwards, reaches the next account. Call it where the app signs out, before the next person
+can sign in, as `crateStackAccount.clear` is in `fespalier_cratestack`.
+
 ## Testing
 
 `package:fespalier_download/testing.dart` has the fakes, which need no network, platform or disk:
 
 - `FakeDownloadBackend`: records what is asked (`enqueued`, `paused`, `resumed`, `cancelled`, `authorizations`), answers
   as `accepts` and `capabilities` say, and plays the platform through `emit(id, status, httpStatus:)` and
-  `tap(id)` once a listener has called `open`.
+  `tap(id)` once a listener has called `open`. `replay: {id: status}` is what the platform reports at `open`, to test a restart.
 - `MemoryDownloadStore`: a registry in memory (`entries`, `clearCalls`).
 - `FakeDownloadFiles`: files as a map of sizes (`put`, `deleted`).
 

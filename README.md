@@ -147,32 +147,33 @@ Next: [Installation and setup](docs/getting-started.md) (CI, committing `app.g.d
 `fsp` and the Dart package `fespalier` are what you need. Every other package is optional and is a git
 dependency at the same release tag ([Companion packages](docs/getting-started.md#companion-packages)).
 
-| Package                  | What it adds                                                                           | Docs                                                                               |
-| ------------------------ | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `fsp`                    | the generator and the commands around it                                               | [CLI reference](docs/cli.md)                                                       |
-| `fespalier`              | the runtime `app.g.dart` imports, and `testing.dart`                                   | [File kinds](docs/file-kinds.md)                                                   |
-| `fespalier_otel`         | OpenTelemetry spans for navigations, guards, data and actions                          | [Observability](docs/observability.md#telemetry)                                   |
-| `fespalier_sentry`       | Sentry errors tagged with the route and the file                                       | [Sentry](docs/observability.md#sentry-fespalier_sentry)                            |
-| `fespalier_auth`         | signed-in routes: session, guards, refresh, OpenID Connect                             | [Authentication](docs/auth.md)                                                     |
-| `fespalier_sign_keypair` | device-bound tokens (DPoP) for `fespalier_auth`                                        | [DPoP](docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair)          |
-| `fespalier_flags`        | feature flags that guards watch                                                        | [Feature flags](docs/guards.md#feature-flags-fespalier_flags)                      |
-| `fespalier_storage`      | a `dataCache` on shared_preferences or Hive                                            | [A cache on disk](docs/data.md#a-cache-on-disk-fespalier_storage)                  |
-| `fespalier_connectivity` | a reconnect signal and a `hasNetwork` provider                                         | [Reconnects](docs/data.md#reconnects-fespalier_connectivity)                       |
-| `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                                     | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
-| `fespalier_image`        | responsive CDN images                                                                  | [Images](docs/responsive-images.md)                                                |
-| `fespalier_forms`        | the form of an `action.dart`: typed fields, validation, server errors (since 0.11.0)   | [Forms](docs/forms.md)                                                             |
-| `fespalier_maps`         | a MapLibre pin picker that returns a place (since 0.13.0)                              | [Maps](docs/maps.md)                                                               |
-| `fespalier_download`     | downloads that outlive a screen: request, status and ports, with fakes (since 0.15.0)  | [Downloads](docs/downloads.md)                                                     |
-| `fespalier_biometrics`   | a biometric unlock guard that never prompts twice (since 0.13.0)                       | [Biometric unlock](docs/guards.md#biometric-unlock-fespalier_biometrics)           |
-| `fespalier_frb`          | a Rust core's change stream: providers rebuilt by its events (since 0.13.0)            | [A Rust core's changes](docs/data.md#a-rust-cores-changes-fespalier_frb)           |
-| `fespalier_riverpod`     | a provider per page instance: two pushes, two states (since 0.13.0)                    | [Page state](docs/data.md#providers-per-page-instance-fespalier_riverpod)          |
-| `fespalier_dio`          | Dio and `package:http`: cancellation, field errors, writes never retried               | [HTTP clients](docs/http.md)                                                       |
-| `fespalier_cratestack`   | a CrateStack client behind `data.dart` and `action.dart`, offline-first (since 0.10.0) | [CrateStack](docs/cratestack.md), [Offline-first](docs/offline-first.md)           |
-| `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0)               | [Translations](docs/i18n-tolgee.md)                                                |
-| `fespalier_push`         | notification taps open typed routes, cold start and warm (since 0.13.0)                | [Push notifications](docs/push.md)                                                 |
-| `fespalier_analytics`    | screen views by route pattern, sent only with consent (since 0.13.0)                   | [Analytics](docs/analytics.md)                                                     |
-| DevTools extension       | routes, guards, data and actions in Flutter DevTools                                   | [DevTools extension](docs/devtools.md)                                             |
-| Editor plugins           | `fsp` diagnostics in VS Code and IntelliJ                                              | [Editor plugins](docs/cli.md#editor-plugins)                                       |
+| Package                  | What it adds                                                                                      | Docs                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `fsp`                    | the generator and the commands around it                                                          | [CLI reference](docs/cli.md)                                                       |
+| `fespalier`              | the runtime `app.g.dart` imports, and `testing.dart`                                              | [File kinds](docs/file-kinds.md)                                                   |
+| `fespalier_otel`         | OpenTelemetry spans for navigations, guards, data and actions                                     | [Observability](docs/observability.md#telemetry)                                   |
+| `fespalier_sentry`       | Sentry errors tagged with the route and the file                                                  | [Sentry](docs/observability.md#sentry-fespalier_sentry)                            |
+| `fespalier_auth`         | signed-in routes: session, guards, refresh, OpenID Connect                                        | [Authentication](docs/auth.md)                                                     |
+| `fespalier_sign_keypair` | device-bound tokens (DPoP) for `fespalier_auth`                                                   | [DPoP](docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair)          |
+| `fespalier_flags`        | feature flags that guards watch                                                                   | [Feature flags](docs/guards.md#feature-flags-fespalier_flags)                      |
+| `fespalier_storage`      | a `dataCache` on shared_preferences or Hive                                                       | [A cache on disk](docs/data.md#a-cache-on-disk-fespalier_storage)                  |
+| `fespalier_connectivity` | a reconnect signal and a `hasNetwork` provider                                                    | [Reconnects](docs/data.md#reconnects-fespalier_connectivity)                       |
+| `fespalier_adaptive`     | menus as a bar, a rail or a drawer by window width                                                | [Adaptive navigation](docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) |
+| `fespalier_image`        | responsive CDN images                                                                             | [Images](docs/responsive-images.md)                                                |
+| `fespalier_forms`        | the form of an `action.dart`: typed fields, validation, server errors (since 0.11.0)              | [Forms](docs/forms.md)                                                             |
+| `fespalier_maps`         | a MapLibre pin picker that returns a place (since 0.13.0)                                         | [Maps](docs/maps.md)                                                               |
+| `fespalier_download`     | downloads that outlive a screen: request, status, ports and the engine, with fakes (since 0.15.0) | [Downloads](docs/downloads.md)                                                     |
+| `fespalier_biometrics`   | a biometric unlock guard that never prompts twice (since 0.13.0)                                  | [Biometric unlock](docs/guards.md#biometric-unlock-fespalier_biometrics)           |
+| `fespalier_frb`          | a Rust core's change stream: providers rebuilt by its events (since 0.13.0)                       | [A Rust core's changes](docs/data.md#a-rust-cores-changes-fespalier_frb)           |
+| `fespalier_riverpod`     | a provider per page instance: two pushes, two states (since 0.13.0)                               | [Page state](docs/data.md#providers-per-page-instance-fespalier_riverpod)          |
+| `fespalier_http`         | `package:http`: abort with the page, field errors, writes never retried (since 0.15.0)            | [HTTP clients](docs/http.md)                                                       |
+| `fespalier_dio`          | Dio: cancellation, field errors, writes never retried, `DioHttpClient`                            | [HTTP clients](docs/http.md)                                                       |
+| `fespalier_cratestack`   | a CrateStack client behind `data.dart` and `action.dart`, offline-first (since 0.10.0)            | [CrateStack](docs/cratestack.md), [Offline-first](docs/offline-first.md)           |
+| `fespalier_tolgee`       | translations from Tolgee or your own server, offline-safe (since 0.10.0)                          | [Translations](docs/i18n-tolgee.md)                                                |
+| `fespalier_push`         | notification taps open typed routes, cold start and warm (since 0.13.0)                           | [Push notifications](docs/push.md)                                                 |
+| `fespalier_analytics`    | screen views by route pattern, sent only with consent (since 0.13.0)                              | [Analytics](docs/analytics.md)                                                     |
+| DevTools extension       | routes, guards, data and actions in Flutter DevTools                                              | [DevTools extension](docs/devtools.md)                                             |
+| Editor plugins           | `fsp` diagnostics in VS Code and IntelliJ                                                         | [Editor plugins](docs/cli.md#editor-plugins)                                       |
 
 ## Documentation
 

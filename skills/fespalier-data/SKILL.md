@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 validate() with FieldErrors and optimistic(), and its forms: form() and useForm, which are the fespalier_forms package since 0.11.0 and a breaking move out of fespalier, with opt-in drafts: FormDraft, formDraftStorage, formDraftScope, clearFormDrafts, DraftCodec), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.13.0 fespalier_frb (a Rust core's change stream held in one subscription, a topic provider that a data.dart watches so a matching event rebuilds it, InvalidationTable, and initRustCore for startup()), and since 0.13.0 fespalier_riverpod (a provider per page instance: two pushes of one route are two states, a query change or a remount is one, holdForPage keeps state the page reads but does not watch, usePageInstance), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 validate() with FieldErrors and optimistic(), and its forms: form() and useForm, which are the fespalier_forms package since 0.11.0 and a breaking move out of fespalier, with opt-in drafts: FormDraft, formDraftStorage, formDraftScope, clearFormDrafts, DraftCodec), and since 0.9.0 fespalier_dio and fespalier_http (the package:http half since 0.15.0, on 0.14.0 and earlier fespalier_dio/http.dart), which tie Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.13.0 fespalier_frb (a Rust core's change stream held in one subscription, a topic provider that a data.dart watches so a matching event rebuilds it, InvalidationTable, and initRustCore for startup()), and since 0.13.0 fespalier_riverpod (a provider per page instance: two pushes of one route are two states, a query change or a remount is one, holdForPage keeps state the page reads but does not watch, usePageInstance), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -236,11 +236,13 @@ errors, drafts, a sample that compiles with its test),
 [`references/optimistic.md`](references/optimistic.md) (`validate()`, `FieldErrors` and `optimistic()`)
 have every rule.
 
-## HTTP clients: `fespalier_dio` (since 0.9.0)
+## HTTP clients: `fespalier_http` and `fespalier_dio` (since 0.9.0, split in 0.15.0)
 
-The core has no HTTP client. `package:fespalier_dio` (a repository dependency next to fespalier, **same `url` and
-`ref`**) makes Dio and `package:http` keep three promises. It changes no generated code, file kind, key or command,
-and starts no timer.
+The core has no HTTP client. `package:fespalier_dio` (Dio) and, **since 0.15.0**, `package:fespalier_http`
+(`package:http`; on 0.14.0 and earlier it was `package:fespalier_dio/http.dart`, **removed in 0.15.0, not
+deprecated**: change the import to `package:fespalier_http/fespalier_http.dart`), repository dependencies next to
+fespalier with **the same `url` and `ref`**, make the two clients keep three promises. They change no generated code,
+file kind, key or command, and start no timer.
 
 ```dart
 final cancel = ref.cancelToken();                       // Dio, in a data.dart: before the first await
@@ -264,10 +266,16 @@ WriteGuard.install(dio);                                // the last call on the 
 - **A write is never sent twice.** `dio_smart_retry` and `RetryClient` retry writes by default. `WriteGuard.install(dio)`
   puts a guard **first** that refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS`, `TRACE`, unless
   it has an `Idempotency-Key` header or `extra[WriteGuard.idempotent]`) and returns the first error, except after a 401
-  (an auth refresh). `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put
+  (an auth refresh); `HttpWrites.isWrite` is that one rule for both clients (since 0.15.0). `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put
   `WriteGuardClient(inner)` inside the `RetryClient` and pass it `when: WriteGuardClient.readsOnly()` and
   `whenError: WriteGuardClient.readErrorsOnly(rule)`. A retrier **before** the guard gives `WriteNotRetried`.
 - **Keep one retry layer**: Riverpod's data retry and an HTTP retrier multiply each other's attempts.
+- **The layers, outside in (since 0.15.0, proved by a test):** `ref.abortable(...)`, then
+  `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), ...))`. A retrier _outside_ the session
+  sends the session a streamed copy that it will not send again after a 401, so use it only for DPoP. Any
+  `http.Client` fits the seam, `DioHttpClient(dio)` (`package:fespalier_dio/client.dart`) included; `HttpCredentials`
+  (`Authorizer` implements it) is the session for a transfer that is not an `http.Client`. Do not claim
+  `cupertino_http` honours an abort: it is unchecked.
 - **Not in it:** a retry policy of its own (a backoff needs a timer), logging, tracing (use `otel_dio` or `sentry_dio`).
 
 [`references/http.md`](references/http.md) has the samples that compile and every rule; its tests are in
@@ -335,8 +343,8 @@ Read these before inventing a pattern; each compiles and has widget tests
 | An offline banner stays up after the network came back (0.9.0) | A hand-written signal that never asks again on a resume (iOS drops background events): use `fespalier_connectivity`                                                             |
 | The form forgot what I typed (0.8.1)                           | The data loaded again while the fields were untouched: only fields the user changed are kept                                                                                    |
 | The page flashes the old value after a save                    | `optimistic()` patches another type than the page shows, or the data is not in `invalidates`                                                                                    |
-| A request outlives its page (0.9.0)                            | `fespalier_dio`: the token was asked after an `await`, or not given to the request (`references/http.md`)                                                                       |
-| A 422 is not under its field (0.9.0)                           | `fespalier_dio`: `withFieldErrors()` is missing or found no field: statuses, decoder, names (`references/http.md`)                                                              |
+| A request outlives its page (0.9.0)                            | `fespalier_dio` or `fespalier_http`: the token was asked after an `await`, or not given to the request (`references/http.md`)                                                   |
+| A 422 is not under its field (0.9.0)                           | `fespalier_dio` or `fespalier_http`: `withFieldErrors()` is missing or found no field: statuses, decoder, names (`references/http.md`)                                          |
 | A write is retried, or `WriteNotRetried` (0.9.0)               | `WriteGuard` is not first (`WriteGuard.install(dio)` last), or the retrier has no `readsOnly` (`references/http.md`)                                                            |
 | Another account's data shows offline (0.10.0)                  | Impossible by design: every `serve` answer, intent and row is keyed by `crateStackScope`. A copy that did show means the scope is not the signed-in user (`fespalier-offline`)  |
 | A queued write never sends (0.10.0)                            | `fespalier_cratestack`: nothing watches `autoSync`, no trigger runs, or the intent is another account's (`fespalier-troubleshooting`, its `diagnostics-cratestack.md`)          |

@@ -5,16 +5,21 @@ library;
 import 'fespalier_download.dart';
 
 /// A [DownloadBackend] that does nothing by itself: the test plays the platform through
-/// [emit] and [tap], and reads what the engine asked from the lists.
+/// [emit] and [tap] (and [replay], at open), and reads what the engine asked from the lists.
 class FakeDownloadBackend implements DownloadBackend {
   /// A fake. [capabilities] is what it claims; [accepts] decides whether [enqueue] succeeds.
   FakeDownloadBackend({
     this.capabilities = const DownloadCapabilities(pause: true),
     this.accepts = true,
-  });
+    Map<String, DownloadStatus> replay = const {},
+  }) : replay = {...replay};
 
   @override
   final DownloadCapabilities capabilities;
+
+  /// What the platform reports at [open], as a backend that kept downloads while the app was
+  /// closed would, by download id.
+  final Map<String, DownloadStatus> replay;
 
   /// Whether [enqueue] and [resume] answer true.
   bool accepts;
@@ -66,6 +71,9 @@ class FakeDownloadBackend implements DownloadBackend {
   @override
   Future<void> open(DownloadEvents events) async {
     _events = events;
+    for (final entry in replay.entries) {
+      events.status(entry.key, entry.value);
+    }
   }
 
   @override

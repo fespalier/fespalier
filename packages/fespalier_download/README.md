@@ -3,9 +3,9 @@
 Downloads for [fespalier](https://github.com/fespalier/fespalier) (since 0.15.0): the model and the ports of a file transfer
 that outlives a screen. A download is a `DownloadRequest` (an id, a URL, a file as a base folder and a relative path, and
 optionally its size and SHA-256), it is in one `DownloadStatus` at a time (`Queued`, `Waiting`, `Running`, `Paused`,
-`Verifying`, `Complete`, `Failed`, `Cancelled`), and a `DownloadBackend` does the transfer. This first release of the
-package is the vocabulary, the telemetry names and the fakes; the engine that drives a backend, the HTTP backend and the
-providers come in the releases after it.
+`Verifying`, `Complete`, `Failed`, `Cancelled`), and a `DownloadBackend` does the transfer. The package has the
+vocabulary, the telemetry names, the fakes and the engine, `Downloads`, that drives a backend (start, pause, resume, retry,
+cancel, remove, the registry after a restart, sign-out); the HTTP backend and the providers come in the releases after it.
 
 It is pure Dart over `package:http`: no platform plugin, so it resolves on Flutter 3.32, fespalier's floor, and an app that
 lists it links nothing native.
@@ -63,10 +63,12 @@ assert(request.isValid);
 ## Test it
 
 `package:fespalier_download/testing.dart` has `FakeDownloadBackend` (the test plays the platform with `emit` and `tap`),
-`MemoryDownloadStore` and `FakeDownloadFiles`.
+`MemoryDownloadStore` and `FakeDownloadFiles`. A test builds `Downloads(backend:, store:, files:)` over them, calls `open()`,
+and plays the platform with `emit`; `replay:` is what the backend reports at open, to test a restart.
 
 ## Rules
 
+- **The engine imports no Riverpod** (`test/engine_test.dart` greps it) and keeps one observer slot that `close()` clears.
 - **No timer, no polling, no microtask, no listener of its own**, and nothing that opens a dialog, a menu, a sheet or a
   snack bar: `test/no_timers_test.dart` greps `lib/`, with no exception.
 - **Telemetry carries kinds and results, never a transfer's identity**: `fespalier.download.transfer`,

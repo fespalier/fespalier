@@ -18,7 +18,9 @@ class FakeDownloadBackend implements DownloadBackend {
     this.capabilities = const DownloadCapabilities(pause: true),
     this.accepts = true,
     Map<String, DownloadStatus> replay = const {},
-  }) : replay = {...replay};
+    List<(String, DownloadTapKind)> replayTaps = const [],
+  }) : replay = {...replay},
+       replayTaps = [...replayTaps];
 
   @override
   final DownloadCapabilities capabilities;
@@ -26,6 +28,10 @@ class FakeDownloadBackend implements DownloadBackend {
   /// What the platform reports at [open], as a backend that kept downloads while the app was
   /// closed would, by download id.
   final Map<String, DownloadStatus> replay;
+
+  /// The notification taps the platform delivers at [open], after [replay], as a tap that
+  /// started the app would be (since 0.15.0).
+  final List<(String, DownloadTapKind)> replayTaps;
 
   /// Whether [enqueue] and [resume] answer true.
   bool accepts;
@@ -79,6 +85,9 @@ class FakeDownloadBackend implements DownloadBackend {
     _events = events;
     for (final entry in replay.entries) {
       events.status(entry.key, entry.value);
+    }
+    for (final (id, kind) in replayTaps) {
+      events.tapped(id, kind);
     }
   }
 

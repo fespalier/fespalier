@@ -1,6 +1,6 @@
 ---
 name: fespalier-downloads
-description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, the background backend of fespalier_download_background (BackgroundDownloaderBackend over background_downloader on Flutter 3.47: the operating system keeps the transfer going, only its own plugin group, notifications off unless configured, userInitiated refused without them, headers in plaintext in the OS queue, the Android and iOS setup, what no device has checked), and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles, FakeBackgroundTransport and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
+description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, the background backend of fespalier_download_background (BackgroundDownloaderBackend over background_downloader on Flutter 3.47: the operating system keeps the transfer going, only its own plugin group, notifications off unless configured, userInitiated refused without them, headers in plaintext in the OS queue, the Android and iOS setup, what no device has checked), the notification-tap adapter (`fespalier: adapters: [fespalier_download]`, `FespalierDownload.configure(backend:, store:, notifications:, route:)` in `main()`, `DownloadTap`, `DownloadTarget`, `DownloadRoute`, `Downloads.observeTaps`, the `fespalier.download.open` telemetry), and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles, FakeBackgroundTransport and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
 ---
 
 # fespalier-downloads
@@ -16,10 +16,10 @@ and the ports of a transfer engine. It adds no file kind, no `fespalier:` key an
 same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
 predates 0.15.0 has no such package.
 
-**Not built yet in this release: notification taps as routes and uploads.** The engine, `Downloads`, the foreground
+**Not built yet in this release: uploads.** The engine, `Downloads`, the foreground
 `HttpDownloadBackend`, the `FileDownloadStore` registry, the providers and the background backend
 (`fespalier_download_background`, Flutter 3.47, [`references/background.md`](references/background.md)) exist (since 0.15.0);
-do not write tap routing or an upload: they do not exist. A download that must go on while the app is closed uses the
+do not write an upload: it does not exist. Notification taps as routes are an adapter (below). A download that must go on while the app is closed uses the
 background backend. What no device has answered about it (issue #158) is listed there as UNCHECKED: never state those as fact.
 
 ## The foreground backend
@@ -165,3 +165,40 @@ test that plays a platform are [`references/fakes.md`](references/fakes.md).
 - **The web cannot download this way**: the foreground backend ends every start there as `Failed(DownloadFailure.unsupported)`;
   hand the browser the URL instead.
 - **The package never asks for notification permission**, now or later. The app does.
+
+## Notification taps
+
+`fespalier_download` (since 0.15.0) is an adapter: `fespalier: adapters: [fespalier_download]` makes `fsp gen` import
+`package:fespalier_download/fespalier_adapter.dart`, with no `fsp` change. It is the `fespalier_push` shape, for the tap on a
+download's notification.
+
+- **One call in `main()`, before `AppMain.run()`**: `FespalierDownload.configure(backend:, store:, notifications:, route:)`
+  (also `files:`, `grantor:`, `clock:` as `Downloads` takes them). It **builds the engine** and the adapter binds it to
+  `downloadsEngine`, so `startup()` does not override that provider. Calling it twice replaces. Unconfigured, the adapter
+  reports one `FlutterError` and does nothing; it never throws. A test calls it with the fakes
+  (`FakeDownloadBackend(replayTaps: [(id, DownloadTapKind.body)])` is a tap that started the app, `backend.tap(id)` one while
+  running) and `FespalierDownload.debugReset()` after.
+- **`route: DownloadTarget? Function(DownloadTap)`.** A `DownloadTap` has `id`, `kind`, `status` and `request` (null for an
+  id the engine does not know); `DownloadTarget.to(TypedRoute(...), open: DownloadOpen.go | push)`. Null, no `route:` or a
+  throw means the tap opens the app and goes nowhere. `toString()` prints no field.
+- **Cold start**: `launch()` opens the engine and answers the first replayed tap as the initial location, marked
+  `NavigationSource.notification`. **Warm**: `attach` takes the engine's one tap slot (`Downloads.observeTaps`, the
+  adapter's: never call it on that engine) and `go`es or `push`es inside `navigateFrom`. The cold tap seen again is dropped
+  once. Taps between `launch()` and `attach` are replayed in order.
+- **UNCHECKED on a device** ([#158](https://github.com/fespalier/fespalier/issues/158)): whether the plugin delivers a
+  cold-start tap before or after `resumeFromBackground`. Do not state either as fact; the adapter works both ways (initial
+  location, or a `go` from the first page).
+- **Telemetry**: `fespalier.download.open` with `fespalier.download.routed`, never an id, path, URL or name. The package asks
+  for no notification permission; the app does.
+- It adds no listener: the slot is a callback, and `no_timers_test.dart` has no exception.
+
+## The example
+
+`examples/downloads` (since 0.15.0, in the fespalier repository) is the wiring end to end on the foreground backend:
+`configureDownloads()` in `lib/setup.dart` (`HttpDownloadBackend`, `FileDownloadStore`, `TransferDownloadFiles`, a grantor and
+`tapTarget`) called from `main()` before `AppMain.run()`, with `adapters: [fespalier_download]` in the pubspec and **no
+`startup.dart`** (the adapter binds `downloadsEngine`). `/` has a card per case with the buttons that match
+`downloadStatus`, `/files/:id` is the page a tap opens, and `--dart-define=LARGE_URL`, `LARGE_SHA256`, `LARGE_BYTES` (and
+`SMALL_*`) point it at another file. Its README is the run steps for the device test of issue #157, written for someone who
+does not know fespalier. Its tests boot `AppMain.root()` over `FakeDownloadBackend` after `configureDownloads(backend:, store:,
+files:)`, and call `FespalierDownload.debugReset()` in `setUp` and `tearDown`.

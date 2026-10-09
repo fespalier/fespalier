@@ -897,9 +897,13 @@
         "docs/downloads.md#Android and iOS setup",
         "docs/downloads.md#Credentials",
         "docs/downloads.md#In a widget",
+        "docs/downloads.md#Notification taps",
         "docs/downloads.md#Testing",
         "packages/fespalier_download/README.md",
+        "packages/fespalier_download/lib/fespalier_adapter.dart",
         "packages/fespalier_download/lib/fespalier_download.dart",
+        "packages/fespalier_download/lib/src/configure.dart",
+        "packages/fespalier_download/lib/src/tap.dart",
         "packages/fespalier_download/lib/testing.dart",
         "packages/fespalier_download/lib/src/engine.dart",
         "packages/fespalier_download/lib/src/fake_transfer_files.dart",
@@ -924,7 +928,9 @@
         "packages/fespalier_download_background/lib/src/mapping.dart",
         "packages/fespalier_download_background/lib/src/platform.dart",
         "packages/fespalier_download_background/lib/src/plugin_transport.dart",
-        "packages/fespalier_download_background/lib/src/transport.dart"
+        "packages/fespalier_download_background/lib/src/transport.dart",
+        "docs/examples.md#downloads",
+        "examples/downloads"
       ]
     },
     "fespalier-maps": {

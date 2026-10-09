@@ -10,6 +10,7 @@ above; pass --project`).
 
 | Command                                                      | What it does                                                                                                                                                                                                                                                                                                   |
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fsp create <dir> [flags]`                                   | Since 0.15.0: a **new** app (`flutter create --empty`, the pubspec, `lib/main.dart`, `lib/app/`, then `pub get`, `gen` and `fsp test`); takes no `--project`; see the section below                                                                                                                            |
 | `fsp init`                                                   | Writes `layout.dart`, `page.dart`, `not_found.dart`, `transition.dart` and, since 0.8.1, `app.dart` (not with `main: manual`) under `lib/app/` (never overwrites: `skip  ... (exists)`), then `gen`, then prints what is left to do (the `main.dart` that runs `AppMain`, since 0.8.1)                         |
 | `fsp gen [--format] [--json]`                                | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
 | `fsp check [--json]`                                         | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
@@ -370,6 +371,36 @@ tree keeps it. There is no `--redirect`, `--present` or `--meta` flag.
 After `fsp new '(account)' --layout`, `gen` warns `folder has no page.dart and
 no routes below it; skipped` until a route exists inside the group. That is
 expected.
+
+### `fsp create` (since 0.15.0)
+
+```sh
+fsp create my_app                                  # the base app
+fsp create my_app --org com.example --platforms android,ios,web
+fsp create my_app --dry-run --json                 # the plan as JSON lines; nothing is written or run
+fsp create --list-features [--json]                # the optional features (none in 0.15.0)
+```
+
+For a **new** app; use `fsp init` for one that exists. `<dir>` must not exist or be empty, `--project` is
+refused (`fsp create takes the new app's folder as its argument`), and Flutter 3.32 or newer must be on
+`PATH`. It runs `flutter create --no-pub --empty` into a sibling folder `.<dir>.fsp-create-<pid>`, writes
+`pubspec.yaml` whole (fespalier by git at the tag of the `fsp` you run, never a version you type),
+`lib/main.dart` (`AppMain.run()`) and `lib/app/` (`fsp init`'s five files, a home page with a typed link to
+`about/page.dart`), moves the folder into place, then `flutter pub get`, `gen` and `fsp test` in the same
+process. `fsp test` needs no `test:` key, so there is no hand-written test.
+
+- **Failure.** Before the move nothing is left behind. After it the app stays, and the message names the
+  step (`flutter pub get failed`, `fsp gen failed`) and the commands that finish the job.
+- **Flags.** `--project-name` (default: the folder's name, lower case, `-` as `_`), `--org`, `--platforms`
+  (`android,ios,linux,macos,web,windows`), `--description`, `--features a,b`, `--no-pub-get`, `--offline`
+  (for `pub get`), `--dry-run` (stderr: the commands and every file; it does not run Flutter), `--json`
+  (stdout: `run`, `file`, `done`, `error` events as JSON lines, with `content` on a dry run's `file`; text
+  and Flutter's own output on stderr).
+- **Features.** `--features` takes ids from `--list-features`; one that another needs is added with a note,
+  two that conflict or one above the installed Flutter are refused, an unknown id says what there is. The
+  table is `cli/src/create/recipes.rs`; 0.15.0 has none, so `--features x` fails with ``unknown feature
+`x`: `fsp create` has no optional features yet``. The messages are in `fespalier-troubleshooting`,
+  `references/diagnostics-create.md`.
 
 ### `fsp telemetry` (since 0.8.1)
 

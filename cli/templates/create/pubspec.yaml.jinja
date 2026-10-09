@@ -1,0 +1,53 @@
+name: {{ name }}
+description: {{ description }}
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">={{ floor }}.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+{% for dep in deps %}
+  {{ dep.head }}
+{% for line in dep.lines %}
+    {{ line }}
+{% endfor %}
+{% endfor %}
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+{% if config %}
+
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+{% for line in config %}
+  {{ line }}
+{% endfor %}
+{% else %}
+
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
+{% endif %}
+{% if overrides %}
+
+# `fsp create --local-packages`: the packages come from a checkout of fespalier, not from git.
+dependency_overrides:
+{% for dep in overrides %}
+  {{ dep.name }}:
+    path: {{ dep.path }}
+{% endfor %}
+{% endif %}

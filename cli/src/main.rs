@@ -1,5 +1,6 @@
 mod adapters;
 mod config;
+mod create;
 mod daemon;
 mod dart;
 mod dev;
@@ -123,6 +124,8 @@ enum Cmd {
     Build(tasks::BuildCmd),
     /// Run a task from `tasks:` in pubspec.yaml; with no name, list them
     Run(tasks::RunCmd),
+    /// Make a new Flutter app with fespalier in it: `fsp create my_app` (optional features with --features)
+    Create(create::CreateCmd),
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
@@ -141,13 +144,17 @@ fn main() {
             let project = find_project(cli.project.clone()).ok();
             return telemetry_stack::run(cmd, project.as_deref());
         }
+        // A new app has no project yet: its folder is the argument, and `--project` is refused.
+        if let Cmd::Create(cmd) = &cli.cmd {
+            return create::run(cmd, cli.project.as_deref());
+        }
         // So is the installed `fsp` itself.
         if let Cmd::Upgrade(cmd) = &cli.cmd {
             return upgrade::run(cmd);
         }
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Telemetry(_) | Cmd::Upgrade(_) => {
+            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) => {
                 unreachable!("handled before the project is looked up")
             }
             Cmd::Gen { format, json } => {
@@ -478,6 +485,8 @@ mod bench;
 mod case_tests;
 #[cfg(test)]
 mod cli_tests;
+#[cfg(test)]
+mod create_tests;
 #[cfg(test)]
 mod daemon_tests;
 #[cfg(test)]

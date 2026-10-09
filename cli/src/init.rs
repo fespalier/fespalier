@@ -9,12 +9,19 @@ use crate::config::{MainMode, Pubspec};
 use crate::scan::FileStyle;
 use crate::templates;
 
-const STARTERS: [&str; 5] = ["layout", "page", "not_found", "transition", "app"];
+pub const STARTERS: [&str; 5] = ["layout", "page", "not_found", "transition", "app"];
 
 /// What the starter templates are rendered with.
 #[derive(serde::Serialize)]
 struct Starter<'a> {
     package: &'a str,
+}
+
+/// The text of the starter file `kind` (one of [`STARTERS`]) for the package `package`: what
+/// `fsp init` writes, and `fsp create` writes the same.
+#[must_use]
+pub fn starter(kind: &str, package: &str) -> String {
+    templates::render(&format!("init/{kind}.dart"), Starter { package })
 }
 
 pub fn run(project: &Path) -> Result<()> {
@@ -53,11 +60,7 @@ pub fn run(project: &Path) -> Result<()> {
             eprintln!("  skip  {shown} (exists)");
             continue;
         }
-        let starter = Starter { package: &package };
-        fs::write(
-            &path,
-            templates::render(&format!("init/{kind}.dart"), starter),
-        )?;
+        fs::write(&path, starter(kind, &package))?;
         eprintln!("  new   {shown}");
     }
 

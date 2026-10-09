@@ -1,6 +1,10 @@
 /// Fakes for testing downloads with no network, no platform and no disk (since 0.15.0):
-/// `FakeDownloadBackend`, `MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`.
+/// `FakeDownloadBackend`, `MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`, and
+/// `downloadTestOverrides` for the providers.
 library;
+
+import 'package:clock/clock.dart' show Clock;
+import 'package:fespalier/startup.dart' show Override;
 
 import 'fespalier_download.dart';
 
@@ -191,3 +195,33 @@ class FakeDownloadFiles implements DownloadFiles {
     sizes.remove(location);
   }
 }
+
+/// The overrides that bind `downloadsEngine` (and so `downloads` and `downloadStatus`) to an
+/// engine over the fakes (since 0.15.0), for `ProviderScope(overrides: ...)` or
+/// `pumpRouter(overrides: ...)`. The test keeps [backend] to play the platform with
+/// `emit`, and [store] and [files] to read what the engine kept.
+///
+/// ```dart
+/// final backend = FakeDownloadBackend();
+/// final container = ProviderContainer(overrides: downloadTestOverrides(backend: backend));
+/// container.listen(downloads, (_, _) {});
+/// await container.read(downloadsEngine).start(request);
+/// backend.emit('map', const Running(10, 100));
+/// ```
+///
+/// The container's dispose closes the engine, as in an app.
+List<Override> downloadTestOverrides({
+  required FakeDownloadBackend backend,
+  DownloadStore? store,
+  DownloadFiles? files,
+  Clock? clock,
+}) => [
+  downloadsEngine.overrideWithValue(
+    Downloads(
+      backend: backend,
+      store: store ?? MemoryDownloadStore(),
+      files: files ?? FakeDownloadFiles(),
+      clock: clock,
+    ),
+  ),
+];

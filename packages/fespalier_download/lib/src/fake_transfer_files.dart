@@ -93,8 +93,11 @@ class FakeTransferFiles implements TransferFiles {
     final failure = failRename;
     if (failure != null) throw failure;
     final file = _files.remove(from);
-    if (file == null) throw StateError('no file to rename');
-    _files[to] = file;
+    final text = _texts.remove(from);
+    if (file == null && text == null) throw StateError('no file to rename');
+    // Text and bytes are one file on a disk: the move takes whichever the path held.
+    if (file != null) _files[to] = file;
+    if (text != null) _texts[to] = text;
     renames.add('$from -> $to');
   }
 

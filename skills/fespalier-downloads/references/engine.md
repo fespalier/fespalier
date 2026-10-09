@@ -40,6 +40,9 @@ span; an entry nobody mentions ends `Complete` if `DownloadFiles` finds its file
 and `Failed(killed)` otherwise. Test it with `FakeDownloadBackend(replay: {...})` over a `MemoryDownloadStore` that already
 holds the entries.
 
+The registry in an app is `FileDownloadStore` (since 0.15.0), a JSON file written by atomic rename that never evicts; the
+providers are in [`SKILL.md`](../SKILL.md#in-a-widget).
+
 ## Telemetry
 
 One `fespalier.download.transfer` span per attempt, ended by the state it reaches (`result` and `failure`), and

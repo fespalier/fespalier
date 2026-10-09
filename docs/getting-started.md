@@ -1,6 +1,6 @@
 # Installation and setup
 
-The [README](../README.md#getting-started) has the 60-second path: install `fsp`, add the package, run `fsp init`. This page has the rest: every way to install `fsp`, the companion packages, what `fsp init` writes, how to keep `app.g.dart` in CI, and platform notes.
+The [README](../README.md#getting-started) has the 60-second path: install `fsp`, then `fsp create` (a new app) or add the package and run `fsp init` (an app you have). This page has the rest: every way to install `fsp`, the companion packages, what `fsp create` and `fsp init` write, how to keep `app.g.dart` in CI, and platform notes.
 
 ## Requirements
 
@@ -96,9 +96,21 @@ companion you added):
 Because every version of fespalier_flags from path depends on fespalier from git https://github.com/fespalier/fespalier at v0.7.0 in packages/fespalier and demo depends on fespalier from git https://github.com/fespalier/fespalier at v0.6.0 in packages/fespalier, fespalier_flags from path is forbidden.
 ```
 
+## fsp create
+
+Since 0.15.0. For a new app, `fsp create` does what `flutter create`, adding the dependency, `fsp init` and `fsp gen` do by hand:
+
+```sh
+fsp create my_app
+cd my_app
+fsp dev
+```
+
+It needs Flutter 3.32 or newer on `PATH`, and it makes the folder `my_app` with the platform folders, a `pubspec.yaml` that depends on `fespalier` at the release tag of the `fsp` you ran, `lib/main.dart`, the starter files of `fsp init` under `lib/app/` with a second page, the generated `lib/app.g.dart` and `lib/app.main.g.dart`, and a smoke test per route in `test/routes/`. `flutter pub get` has run. The flags (`--org`, `--platforms`, `--project-name`, `--dry-run`, `--json`) and what happens when a step fails are in [`fsp create`](cli.md#fsp-create) of the CLI reference.
+
 ## fsp init
 
-Run `fsp init` in the project root:
+For an app that already exists, run `fsp init` in the project root:
 
 ```sh
 fsp init

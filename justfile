@@ -236,6 +236,13 @@ web-routes:
 dev-e2e:
     scripts/check-dev-e2e.sh
 
+# `fsp create` against the real flutter: the base app and each optional feature, made with this checkout
+# as the packages (`--local-packages`) and checked with `dart format`, `flutter analyze` and `flutter test`.
+# Name cases to run only those (`just create-check base`). Needs Flutter and network; about two minutes per
+# case, and not part of `just ci` (CI's `create` job runs it)
+create-check *cases:
+    scripts/check-create.sh {{ cases }}
+
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
 # `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.32

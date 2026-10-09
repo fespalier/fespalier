@@ -900,3 +900,84 @@ fn the_cose_example_server_builds_with_the_generators_rust() {
         );
     }
 }
+
+/// `fsp create` writes the version it is, and spells it out nowhere: the pubspec it plans (for
+/// every feature at once) pins fespalier and every companion to `ref: v<this version>` at one
+/// url, and nothing in its sources or templates carries a version for release-please to miss.
+#[test]
+fn fsp_create_pins_every_package_to_this_version() {
+    let cargo = env!("CARGO_PKG_VERSION");
+    let fsp = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(args)
+            .current_dir(root())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "fsp {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let listed = fsp(&["create", "--list-features", "--json"]);
+    let ids: Vec<String> = listed
+        .lines()
+        .map(|l| {
+            let feature: serde_json::Value = serde_json::from_str(l).unwrap();
+            feature["id"].as_str().unwrap().to_string()
+        })
+        .collect();
+    let mut args = vec!["create", "app_under_test", "--dry-run", "--json"];
+    let features = ids.join(",");
+    if !ids.is_empty() {
+        args.extend(["--features", &features]);
+    }
+    let events = fsp(&args);
+    let pubspec = events
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|e| e["event"] == "file" && e["path"] == "pubspec.yaml")
+        .expect("a pubspec.yaml file event")["content"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let refs = versions_after(&pubspec, "ref: v");
+    assert!(!refs.is_empty(), "{pubspec}");
+    for (line, v) in &refs {
+        assert_eq!(v, cargo, "pubspec.yaml:{line}: `ref: v{v}`\n{pubspec}");
+    }
+    // Every package at the tag is at the one repository.
+    let urls = pubspec
+        .lines()
+        .filter(|l| {
+            l.trim()
+                .starts_with("url: https://github.com/fespalier/fespalier")
+        })
+        .count();
+    assert_eq!(urls, refs.len(), "{pubspec}");
+    // The sources spell out no version of their own.
+    for dir in ["cli/src/create", "cli/templates/create"] {
+        for entry in fs::read_dir(root().join(dir)).unwrap() {
+            let path = entry.unwrap().path();
+            let text = fs::read_to_string(&path).unwrap();
+            for marker in MARKERS {
+                for (line, v) in versions_after(&text, marker) {
+                    assert!(
+                        !looks_like_a_version(&v),
+                        "{}:{line}: spells out `{marker}{v}`",
+                        path.display()
+                    );
+                }
+            }
+            assert!(!text.contains("x-release-please"), "{}", path.display());
+        }
+    }
+    let create = read("cli/src/create.rs");
+    assert!(
+        versions_after(&create, "ref: v")
+            .iter()
+            .all(|(_, v)| !looks_like_a_version(v)),
+        "cli/src/create.rs spells out a ref"
+    );
+}

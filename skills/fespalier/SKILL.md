@@ -135,6 +135,7 @@ cargo install --git https://github.com/fespalier/fespalier --tag v0.14.0 fespali
 <!-- x-release-please-end -->
 
 ```sh
+fsp create my_app                          # a new app with fespalier in it, gen and a smoke test per route (0.15.0)
 fsp init                                   # starter layout/page/not_found/transition, then gen
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
@@ -151,7 +152,8 @@ fsp telemetry [--grafana | --lan | --stop | --reset]   # a local OpenTelemetry s
 fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 
-`fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
+For a **new** app, `fsp create my_app` (since 0.15.0) replaces `flutter create`, the dependency, `fsp init` and the
+`main.dart` below: see `references/cli-and-config.md`. `fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
 `Future<void> main() => AppMain.run();`, with the generated `lib/app.main.g.dart` running
 `lib/app/app.dart` (and `startup.dart`, `splash.dart`); see
 [`references/app-main.md`](references/app-main.md). Before 0.8.1, and with `main: manual`, it prints

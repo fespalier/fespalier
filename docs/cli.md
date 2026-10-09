@@ -5,7 +5,8 @@ Every `fsp` command, the generated file, the editor plugins and `fsp dev`. For `
 ## The generator
 
 ```sh
-fsp init                # first-time setup: starter files, then gen
+fsp create my_app       # a new Flutter app with fespalier in it, ready to run (since 0.15.0)
+fsp init                # first-time setup of an existing app: starter files, then gen
 fsp gen                 # check lib/app/, write lib/app.g.dart
 fsp gen --format        # ...and run `dart format` on it
 fsp routes              # print the route table (--json: one object per route)
@@ -49,6 +50,43 @@ All commands take `--project <dir>` (default: the nearest folder with a `pubspec
 - **A `(group)` target** (`'(account)'`) gets no `page.dart`, since a group has no URL of its own. After `fsp new '(account)' --layout` the generator warns "folder has no page.dart and no routes below it; skipped" until you add a route inside the group. That is expected.
 
 `fsp gen`, `check` and `watch` also look at the string paths in `lib/` (see [Checking string paths](#checking-string-paths)).
+
+### fsp create
+
+Since 0.15.0. `fsp create my_app` makes a new Flutter app with fespalier in it, and leaves it with a green `flutter test`:
+
+```sh
+fsp create my_app                      # the base app: two pages and a layout
+fsp create my_app --org com.example --platforms android,ios,web
+fsp create my_app --dry-run            # print every file and command; write and run nothing
+fsp create --list-features             # the optional features (--json: one object per line)
+```
+
+It needs Flutter 3.32 or newer on `PATH` and a folder that does not exist or is empty (to add fespalier to an app you already have, use [`fsp init`](getting-started.md#fsp-init)). It does not read a project, so `--project` is refused: the folder is the argument.
+
+What it does, in order:
+
+1. `flutter create --empty --no-pub` into a folder next to the app, `.my_app.fsp-create-<pid>`, so a failure leaves nothing behind.
+2. Writes `pubspec.yaml` whole (fespalier by git at the tag of the `fsp` you run, `flutter_lints`, a commented [`tasks:`](#tasks-commands-around-flutter-run) example), `lib/main.dart` (`AppMain.run()`) and `lib/app/`: the files [`fsp init`](getting-started.md#fsp-init) writes, plus a home page that links to an about page with a typed route.
+3. Moves the folder to `my_app`. This is before `pub get` because the platform files and the package config hold absolute paths.
+4. `flutter pub get`, then `fsp gen` and [`fsp test`](route-tests.md) in the same process: `fsp test` needs no `test:` key, so the app starts with a smoke test per route.
+
+If a step before the move fails, the app is not made. If a later one fails, the app stays, and the message says which step failed and the commands that finish the job (`cd my_app`, then `flutter pub get && fsp gen && fsp test`).
+
+| Flag                    | What it does                                                                                                                                                                                                                                   |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--project-name <name>` | The Dart package name. The default is the folder's name, lower case with `-` and spaces as `_`; a name that is a Dart keyword, starts with a digit or is the name of a dependency is refused.                                                  |
+| `--org <org>`           | The organization for the Android and iOS identifiers, `flutter create`'s `--org`.                                                                                                                                                              |
+| `--platforms <a,b>`     | `android`, `ios`, `linux`, `macos`, `web` and `windows`; the default is all of them.                                                                                                                                                           |
+| `--description <text>`  | The pubspec's `description:`.                                                                                                                                                                                                                  |
+| `--features <a,b>`      | Optional features to add. A feature another one needs is added with it, with a note; two that conflict are refused; one that needs a newer Flutter than the one installed is refused. There are none yet: `--list-features` shows what exists. |
+| `--list-features`       | Print the features and exit, as `id  description` lines, or with `--json` one object per line (`id`, `description`, `flutter`, `requires`, `conflicts`, `companions`).                                                                         |
+| `--no-pub-get`          | Write the app and generate, but leave `flutter pub get` to you.                                                                                                                                                                                |
+| `--offline`             | Pass `--offline` to `flutter pub get`.                                                                                                                                                                                                         |
+| `--dry-run`             | Print the plan (the commands, then every file in full) on stderr and write nothing. It does not run Flutter, so it checks no Flutter version.                                                                                                  |
+| `--json`                | Print events to stdout, one JSON object per line, and keep the text for people on stderr (Flutter's own output goes there too).                                                                                                                |
+
+The events of `--json` are `run` (`command`, before each command and, with `--dry-run`, for each one planned), `file` (`path` and `action`, which is `new` or `overwrite`, and with `--dry-run` the file's `content`), `done` (`dir`, `name`, `features` and `dry_run`) and, when the command fails, `error` (`message`).
 
 ### fsp routes
 

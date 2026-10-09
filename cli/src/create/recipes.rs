@@ -521,6 +521,88 @@ pub const RECIPES: &[Recipe] = &[
             ..Startup::NONE
         },
     },
+    Recipe {
+        id: "http",
+        description: "An http.Client provider and a page that loads JSON through it (fespalier_http): the request is aborted when the page goes away; --dart-define=API_URL sets the server.",
+        companions: &["fespalier_http"],
+        // The app imports package:http itself (the client, and the response a test builds).
+        // 1.5.0 is the first release with abortable requests, which fespalier_http needs.
+        third_party: &[ThirdParty {
+            name: "http",
+            source: Source::Range("^1.5.0"),
+        }],
+        dev_third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/api.dart", "lib/api.dart"),
+            ("create/headlines_data.dart", "lib/app/headlines/data.dart"),
+            ("create/headlines_page.dart", "lib/app/headlines/page.dart"),
+            ("create/http_test.dart", "test/http_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            // A page that loads from a server has no network in `fsp test`'s smoke test.
+            smoke_skip: &[(
+                "/headlines",
+                "needs an http client: test/http_test.dart serves it from a FakeHttpClient",
+            )],
+            ..Startup::NONE
+        },
+    },
+    Recipe {
+        id: "download",
+        description: "Downloads that outlive a screen (fespalier_download, the foreground backend): a /downloads page with a start button and the download's status; --dart-define=DOWNLOAD_URL sets the file.",
+        companions: &["fespalier_download"],
+        // The foreground backend takes an http.Client. The package names no plugin for the base
+        // folders (application support, cache, documents), so the app adds one.
+        third_party: &[
+            ThirdParty {
+                name: "http",
+                source: Source::Range("^1.5.0"),
+            },
+            ThirdParty {
+                name: "path_provider",
+                source: Source::Range("^2.1.0"),
+            },
+        ],
+        dev_third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/downloads.dart", "lib/downloads.dart"),
+            ("create/downloads_page.dart", "lib/app/downloads/page.dart"),
+            ("create/download_test.dart", "test/download_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &[
+                "package:fespalier_download/fespalier_download.dart",
+                "package:http/http.dart as http",
+                "package:path_provider/path_provider.dart",
+            ],
+            decls: &[
+                "/// Where each base folder of a download is on this device. fespalier_download names no\n/// plugin for it, so the app does (docs/downloads.md, \"The foreground backend\").\nFuture<String> appBases(DownloadBase base) async => switch (base) {\n  DownloadBase.support => (await getApplicationSupportDirectory()).path,\n  DownloadBase.cache => (await getApplicationCacheDirectory()).path,\n  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,\n};",
+            ],
+            steps: &[Step {
+                kind: StepKind::Override,
+                phase: Phase::Rest,
+                comment: "fespalier_download: the engine, over a foreground transfer (it stops with the app).",
+                code: "downloadsEngine.overrideWithValue(\n  Downloads(\n    backend: HttpDownloadBackend(client: http.Client(), bases: appBases),\n    store: FileDownloadStore(bases: appBases),\n    files: TransferDownloadFiles(bases: appBases),\n  ),\n),",
+                awaits: false,
+            }],
+            // The page reads the engine, which only startup() (or a test's overrides) provides.
+            smoke_skip: &[(
+                "/downloads",
+                "needs the downloads engine: test/download_test.dart overrides it with fakes",
+            )],
+            ..Startup::NONE
+        },
+    },
 ];
 
 /// Every `packages/fespalier_*` (the Flutter packages of this repository, except the DevTools
@@ -546,23 +628,15 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     ),
     (
         "fespalier_dio",
-        "waits for the planned fespalier_http package, which the `http` feature will use",
-    ),
-    (
-        "fespalier_download",
-        "the `download` feature lands with the engine and the adapter",
+        "an app that wants Dio adds it itself; the `http` feature scaffolds package:http (fespalier_http), and `DioHttpClient` makes a Dio fit it",
     ),
     (
         "fespalier_download_background",
-        "needs Flutter 3.47 and platform setup (a manifest, an AppDelegate), which are the app's own",
+        "needs Flutter 3.47 and platform setup (a manifest, an AppDelegate), which are the app's own; the `download` feature is the foreground backend",
     ),
     (
         "fespalier_frb",
         "needs a Rust core and flutter_rust_bridge, which are the app's own",
-    ),
-    (
-        "fespalier_http",
-        "the `http` feature lands once fespalier_http has DioHttpClient and its docs",
     ),
     (
         "fespalier_maps",

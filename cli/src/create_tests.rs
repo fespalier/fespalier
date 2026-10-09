@@ -1452,15 +1452,16 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
             (
                 vec![r.id],
                 2 + match r.id {
-                    "forms" | "flags" | "i18n" | "image" => 1,
+                    "forms" | "flags" | "i18n" | "image" | "http" | "download" => 1,
                     "auth" => 2,
                     _ => 0,
                 },
             )
         })
         .collect();
-    // The two of the base app, /contact, /labs, /account, /sign-in, /translations and /photo.
-    cases.push((vec!["all"], 8));
+    // The two of the base app, /contact, /labs, /account, /sign-in, /translations, /photo,
+    // /headlines and /downloads.
+    cases.push((vec!["all"], 10));
     for (features, routes) in cases {
         let dir = tempfile::tempdir().unwrap();
         let plan = plan_of(RECIPES, &features);
@@ -1730,6 +1731,95 @@ fn image_asks_a_template_cdn_and_holds_no_key() {
     assert!(
         startup.contains("imageCdnProvider.overrideWithValue(appImages),"),
         "{startup}"
+    );
+}
+
+// --- http and download --------------------------------------------------------------------------
+
+/// docs/http.md: the request is made through `ref.abortable(client)` before the first `await`,
+/// from a client provider that closes its client and a configurable base URL, and the test
+/// serves it from `FakeHttpClient`. No Dio.
+#[test]
+fn http_loads_through_an_abortable_client_and_is_tested_on_the_fake() {
+    let plan = plan_of(RECIPES, &["http"]);
+    let api = file(&plan, "lib/api.dart");
+    assert!(
+        api.contains("String.fromEnvironment(\n  'API_URL'"),
+        "{api}"
+    );
+    assert!(api.contains("ref.onDispose(client.close);"), "{api}");
+    let data = file(&plan, "lib/app/headlines/data.dart");
+    assert!(
+        data.contains("ref.abortable(ref.watch(httpClient))"),
+        "{data}"
+    );
+    let first_await = data.find("await").unwrap();
+    assert!(data.find("ref.abortable").unwrap() < first_await, "{data}");
+    let test = file(&plan, "test/http_test.dart");
+    assert!(test.contains("FakeHttpClient("), "{test}");
+    assert!(test.contains("client.abortCount, 1"), "{test}");
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(pubspec.contains("  http: \"^1.5.0\"\n"), "{pubspec}");
+    assert!(pubspec.contains("  fespalier_http:\n    git:"), "{pubspec}");
+    assert!(!pubspec.contains("dio"), "{pubspec}");
+    assert!(pubspec.contains("    skip: [/headlines]\n"), "{pubspec}");
+}
+
+/// docs/downloads.md, "In a widget": the engine is overridden at startup over a foreground
+/// backend whose base folders the app names with `path_provider`, and the test plays the
+/// platform with the fake backend. The page says where the background backend is.
+#[test]
+fn download_overrides_the_engine_over_a_foreground_backend_and_is_tested_on_the_fake() {
+    let plan = plan_of(RECIPES, &["download"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    for needle in [
+        "downloadsEngine.overrideWithValue(",
+        "HttpDownloadBackend(",
+        "FileDownloadStore(bases: appBases)",
+        "TransferDownloadFiles(bases: appBases)",
+        "import 'package:http/http.dart' as http;",
+        "import 'package:path_provider/path_provider.dart';",
+    ] {
+        assert!(startup.contains(needle), "{needle}\n{startup}");
+    }
+    let page = file(&plan, "lib/app/downloads/page.dart");
+    assert!(page.contains("fespalier_download_background"), "{page}");
+    assert!(page.contains("ref.watch(downloads)"), "{page}");
+    let test = file(&plan, "test/download_test.dart");
+    assert!(test.contains("downloadTestOverrides("), "{test}");
+    assert!(test.contains("FakeDownloadBackend()"), "{test}");
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(
+        pubspec.contains("  path_provider: \"^2.1.0\"\n"),
+        "{pubspec}"
+    );
+    assert!(pubspec.contains("    skip: [/downloads]\n"), "{pubspec}");
+    // The background package needs Flutter 3.47 and platform setup: it is not a dependency.
+    assert!(
+        !pubspec.contains("fespalier_download_background"),
+        "{pubspec}"
+    );
+}
+
+/// The two share `package:http`: one line in the pubspec, and at a checkout the overrides hold
+/// everything `fespalier_download` depends on (`fespalier_http`) though no feature names it.
+#[test]
+fn http_and_download_share_one_http_dependency_and_a_checkout_overrides_the_closure() {
+    let plan = plan_of(RECIPES, &["http", "download"]);
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert_eq!(
+        pubspec.matches("\n  http: \"^1.5.0\"\n").count(),
+        1,
+        "{pubspec}"
+    );
+    let mut req = request("my_app");
+    req.features = vec!["download".into()];
+    req.local_packages = Some("/checkout".into());
+    let local = ok(&req, RECIPES);
+    let pubspec = file(&local, "pubspec.yaml");
+    assert!(
+        pubspec.contains("  fespalier_http:\n    path: /checkout/packages/fespalier_http\n"),
+        "{pubspec}"
     );
 }
 

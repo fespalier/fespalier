@@ -1,4 +1,4 @@
-create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags, otel, sentry, auth, i18n, image)
+create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags, otel, sentry, auth, i18n, image, http, download)
 run   flutter create --no-pub --empty --project-name=my_app <staging>
 edit  android/app/build.gradle.kts: minSdk is at least 24 (the default of Flutter before 3.35 is lower)
 move  <staging> -> my_app
@@ -27,10 +27,14 @@ dependencies:
     path: /checkout/packages/fespalier_auth
   fespalier_connectivity:
     path: /checkout/packages/fespalier_connectivity
+  fespalier_download:
+    path: /checkout/packages/fespalier_download
   fespalier_flags:
     path: /checkout/packages/fespalier_flags
   fespalier_forms:
     path: /checkout/packages/fespalier_forms
+  fespalier_http:
+    path: /checkout/packages/fespalier_http
   fespalier_image:
     path: /checkout/packages/fespalier_image
   fespalier_otel:
@@ -43,10 +47,12 @@ dependencies:
     path: /checkout/packages/fespalier_tolgee
   flutter_localizations:
     sdk: flutter
+  http: "^1.5.0"
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
       ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+  path_provider: "^2.1.0"
   sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
@@ -66,7 +72,9 @@ fespalier:
   telemetry: true
   test:
     # /translations needs the translation scope: test/i18n_test.dart opens it through the app's own App.
-    skip: [/translations]
+    # /headlines needs an http client: test/http_test.dart serves it from a FakeHttpClient.
+    # /downloads needs the downloads engine: test/download_test.dart overrides it with fakes.
+    skip: [/translations, /headlines, /downloads]
 
 # `fsp create --local-packages`: the packages come from a checkout of fespalier, not from git.
 dependency_overrides:
@@ -78,6 +86,8 @@ dependency_overrides:
     path: /checkout/packages/fespalier_auth
   fespalier_connectivity:
     path: /checkout/packages/fespalier_connectivity
+  fespalier_download:
+    path: /checkout/packages/fespalier_download
   fespalier_flags:
     path: /checkout/packages/fespalier_flags
   fespalier_forms:
@@ -156,6 +166,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_connectivity/fespalier_connectivity.dart';
+import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
 import 'package:fespalier_image/fespalier_image.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
@@ -164,9 +175,11 @@ import 'package:fespalier_storage/fespalier_storage.dart';
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
+import 'package:http/http.dart' as http;
 import 'package:my_app/auth_setup.dart';
 import 'package:my_app/images.dart';
 import 'package:otel_zone/otel_zone.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// The name spans carry as `service.name`.
@@ -189,6 +202,14 @@ Future<void> startObservability(Future<void> Function() body) async {
   );
   await body();
 }
+
+/// Where each base folder of a download is on this device. fespalier_download names no
+/// plugin for it, so the app does (docs/downloads.md, "The foreground backend").
+Future<String> appBases(DownloadBase base) async => switch (base) {
+  DownloadBase.support => (await getApplicationSupportDirectory()).path,
+  DownloadBase.cache => (await getApplicationCacheDirectory()).path,
+  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,
+};
 
 /// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
 /// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
@@ -231,6 +252,14 @@ Future<List<Override>> startup() async {
     ),
     // fespalier_image: which CDN the images come from (lib/images.dart).
     imageCdnProvider.overrideWithValue(appImages),
+    // fespalier_download: the engine, over a foreground transfer (it stops with the app).
+    downloadsEngine.overrideWithValue(
+      Downloads(
+        backend: HttpDownloadBackend(client: http.Client(), bases: appBases),
+        store: FileDownloadStore(bases: appBases),
+        files: TransferDownloadFiles(bases: appBases),
+      ),
+    ),
   ];
 }
 
@@ -1232,5 +1261,257 @@ void main() {
     await tester.tap(find.text('Retry'));
     await tester.pump();
     expect(images.requested, [url, url]);
+  });
+}
+
+=== lib/api.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:http/http.dart' as http;
+
+/// Where the API is: `--dart-define=API_URL=https://api.myapp.dev`. The default is a placeholder,
+/// so a run without it fails to connect and the page shows its error view.
+const String apiUrl = String.fromEnvironment(
+  'API_URL',
+  defaultValue: 'https://api.example.com',
+);
+
+/// The client every request of the app goes through. A `data.dart` asks for it with
+/// `ref.abortable(ref.watch(httpClient))`, so the request stops when its page is gone
+/// (docs/http.md, "Cancelling a load whose page is gone"). A test replaces it with a
+/// `FakeHttpClient` (fespalier_http/testing.dart).
+///
+/// This is the one place to wrap it: a retrier for reads, `WriteGuardClient` so a write is never
+/// sent twice, and a session once you sign users in (`authHttpClient` of fespalier_auth, or
+/// `SessionClient`). docs/http.md, "The wrapping order", has the order that works.
+final httpClient = Provider<http.Client>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return client;
+});
+
+=== lib/app/headlines/data.dart (new)
+import 'dart:convert';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:my_app/api.dart';
+
+/// Loads what `/headlines` shows. `ref.abortable` ties every request of this build to the page:
+/// when the page is left, or this runs again, the request is aborted instead of running to the
+/// end for nobody. Ask for it before the first `await`.
+Future<List<String>> data(Ref ref) async {
+  final client = ref.abortable(ref.watch(httpClient));
+  final response = await client.get(Uri.parse('$apiUrl/headlines'));
+  if (response.statusCode != 200) {
+    throw StateError('GET /headlines answered HTTP ${response.statusCode}');
+  }
+  return [
+    for (final item in jsonDecode(response.body) as List<Object?>)
+      (item! as Map<String, Object?>)['title']! as String,
+  ];
+}
+
+=== lib/app/headlines/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/headlines`. data.dart loaded `titles` (matched by type) before this is built;
+/// loading.dart shows meanwhile and error.dart if the request failed.
+class HeadlinesPage extends StatelessWidget {
+  const HeadlinesPage({super.key, required this.titles});
+
+  final List<String> titles;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Headlines')),
+    body: ListView(
+      children: [for (final title in titles) ListTile(title: Text(title))],
+    ),
+  );
+}
+
+=== test/http_test.dart (new)
+import 'dart:async';
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_http/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:my_app/api.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  testWidgets('the headlines are loaded through the client, abortable', (
+    tester,
+  ) async {
+    // No network: the fake answers from a handler and records what was sent.
+    final client = FakeHttpClient(
+      (request, body) =>
+          http.Response('[{"title": "One"}, {"title": "Two"}]', 200),
+    );
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/headlines'),
+      overrides: [httpClient.overrideWithValue(client)],
+    );
+    expect(find.text('One'), findsOneWidget);
+    expect(find.text('Two'), findsOneWidget);
+    expect(client.requests.single.url, Uri.parse('$apiUrl/headlines'));
+    expect(client.requests.single.abortable, isTrue);
+  });
+
+  testWidgets('leaving the page aborts a request that is still running', (
+    tester,
+  ) async {
+    // A server that never answers.
+    final client = FakeHttpClient(
+      (request, body) => Completer<http.Response>().future,
+    );
+    final router = AppRoutes.router(initialLocation: '/headlines');
+    // Not settled: the loading view is on screen and the request is out.
+    await pumpRouter(
+      tester,
+      router,
+      overrides: [httpClient.overrideWithValue(client)],
+      settle: false,
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(1));
+    expect(client.abortCount, 0);
+
+    router.go('/');
+    await tester.pumpAndSettle(); // the page is gone, and so is its provider
+    expect(client.abortCount, 1);
+  });
+}
+
+=== lib/downloads.dart (new)
+import 'package:fespalier_download/fespalier_download.dart';
+
+/// The file the sample page downloads: `--dart-define=DOWNLOAD_URL=https://files.myapp.dev/a.pdf`.
+/// The default is a placeholder, so a run without it ends the download as failed.
+const String downloadUrl = String.fromEnvironment(
+  'DOWNLOAD_URL',
+  defaultValue: 'https://files.example.com/sample.pdf',
+);
+
+/// A download is a request: an id, a URL and where the file goes, as a base folder and a relative
+/// path (never an absolute one: an iOS container's path changes between launches). Add `bytes`
+/// and `sha256` to have the file checked before it is moved into place. A URL that grants access
+/// should be short-lived: never put a long-lived token in a header (docs/downloads.md, "Requests
+/// and files").
+final DownloadRequest sampleDownload = DownloadRequest(
+  id: 'sample',
+  url: Uri.parse(downloadUrl),
+  file: const DownloadLocation(DownloadBase.support, 'downloads/sample.pdf'),
+);
+
+=== lib/app/downloads/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/downloads.dart';
+
+/// Served at `/downloads`. Watching `downloads` opens the engine, which settles what a restart
+/// left (lib/app/startup.dart builds it); `downloadStatus` rebuilds this only when this one
+/// download changes. The engine here is the foreground one: a transfer stops when the app is
+/// closed. For downloads that go on while it is closed, use fespalier_download_background
+/// (docs/downloads.md, "The background backend"; it needs Flutter 3.47 and platform setup).
+class DownloadsPage extends ConsumerWidget {
+  const DownloadsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(downloads);
+    final status = ref.watch(downloadStatus(sampleDownload.id));
+    final engine = ref.read(downloadsEngine);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Downloads')),
+      body: Center(
+        child: switch (status) {
+          Running(:final received, :final total) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  value: total == null ? null : received / total,
+                ),
+              ),
+              TextButton(
+                onPressed: () => engine.pause(sampleDownload.id),
+                child: const Text('Pause'),
+              ),
+            ],
+          ),
+          Paused() => FilledButton(
+            onPressed: () => engine.resume(sampleDownload.id),
+            child: const Text('Resume'),
+          ),
+          Queued() || Waiting() || Verifying() => const Text('Working...'),
+          Complete() => const Text('Downloaded'),
+          Failed() => FilledButton(
+            onPressed: () => engine.retry(sampleDownload.id),
+            child: const Text('Try again'),
+          ),
+          _ => FilledButton(
+            onPressed: () => engine.start(sampleDownload),
+            child: const Text('Download'),
+          ),
+        },
+      ),
+    );
+  }
+}
+
+=== test/download_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:fespalier_download/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/downloads.dart';
+
+void main() {
+  testWidgets('a download starts, shows its progress and ends', (tester) async {
+    // No network and no disk: the fake backend plays the transfer.
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+    expect(backend.enqueued.single.id, sampleDownload.id);
+
+    backend.emit(sampleDownload.id, const Running(50, 100));
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    backend.emit(sampleDownload.id, Complete(sampleDownload.file, 100));
+    await tester.pump();
+    expect(find.text('Downloaded'), findsOneWidget);
+  });
+
+  testWidgets('a failed download can be tried again', (tester) async {
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+
+    backend.emit(sampleDownload.id, const Failed(DownloadFailure.network));
+    await tester.pump();
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    expect(backend.enqueued, hasLength(2));
   });
 }

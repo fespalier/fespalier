@@ -22,6 +22,14 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.14.0 # x-release-please-version
+  # File packs download through it: the resumable HTTP transfer (Range, If-Range, size and
+  # SHA-256 checks, the atomic move) is fespalier_download's, since 0.15.0. The same url and ref as
+  # fespalier, so an app writes one tag for both.
+  fespalier_download:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_download
+      ref: v0.14.0 # x-release-please-version
   # The MapLibre binding: lib/maplibre.dart is the only file that imports it. 0.27.1 is the
   # first release whose offline-region calls this package relies on (the database path, region
   # metadata that may be null, whole-degree bounds read back on iOS); it asks for Flutter 3.29,
@@ -30,8 +38,8 @@ dependencies:
   # The device position: lib/geolocator.dart is the only file that imports it.
   geolocator: ">=14.0.0 <15.0.0"
   # File packs download with an http.Client the app provides (so its timeouts, proxy and
-  # certificates apply) and check the file with a SHA-256. 1.5.0 is the first http release
-  # with abortable requests (Dart 3.4), and crypto 3.0.6 the first whose floor is Dart 3.4.
+  # certificates apply). 1.5.0 is the first http release with abortable requests (Dart 3.4), and
+  # crypto 3.0.6 the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
   http: ">=1.5.0 <2.0.0"
   crypto: ">=3.0.6 <4.0.0"
 
@@ -48,3 +56,7 @@ dev_dependencies:
 dependency_overrides:
   fespalier:
     path: ../fespalier
+  fespalier_download:
+    path: ../fespalier_download
+  fespalier_http:
+    path: ../fespalier_http

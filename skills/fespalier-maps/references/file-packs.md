@@ -51,7 +51,9 @@ certificates apply to the download). The package never closes it. `start` withou
   crypto: ">=3.0.6 <4.0.0"
 ```
 
-(`crypto` is only for the test below, which hashes its fake body; the package brings its own.)
+(`crypto` is only for the test below, which hashes its fake body.) Since 0.15.0 the transfer is `fespalier_download`'s
+(`HttpTransfer`): list `fespalier_download` next to `fespalier_maps`, with the same git `url` and `ref`. The API, the
+statuses and the failures below did not change; a 401 or 403 is still `PackFailure.rejected`.
 
 ```dart
 // lib/offline/file_scope.dart

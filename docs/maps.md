@@ -35,7 +35,7 @@ then. The tag must be a release that contains the package (0.13.0 or later). The
 release-please keeps current, is in [the package's README](../packages/fespalier_maps/README.md#install).
 
 The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`), `geolocator` (`>=14.0.0 <15.0.0`) and, for the file packs,
-`http` (`>=1.5.0 <2.0.0`, the first release with abortable requests) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side. An app
+`http` (`>=1.5.0 <2.0.0`, the first release with abortable requests) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side, and on [`fespalier_download`](downloads.md), which does the file packs' transfer (list it next to `fespalier_maps` with the same `ref`). An app
 that lists the package links the two plugins: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
 whether or not it is imported. Both ranges resolve on Flutter 3.32, fespalier's floor, with the lowest versions they
 allow (CI's `floor` job runs `flutter pub downgrade`, `flutter analyze` and `flutter test` on the package). Two things
@@ -243,7 +243,9 @@ final status = ref.watch(tilePackStatus('douala'));
 ## File packs
 
 A file pack is **one file**, a [PMTiles](https://docs.protomaps.com/pmtiles/) archive (any single file works), fetched over
-HTTP into a directory your app owns (since 0.13.0). Where a MapLibre region cannot continue after a restart, **a file pack
+HTTP into a directory your app owns (since 0.13.0). Since 0.15.0 the transfer itself is [fespalier_download](downloads.md)'s
+(`HttpTransfer` and its file port, [the foreground backend](downloads.md#the-foreground-backend)): `FilePacks` keeps its API and its
+states, and a refusal for credentials (401, 403) is still `rejected`. Where a MapLibre region cannot continue after a restart, **a file pack
 does**: the bytes arrive in `<destination>.part`, a transfer that stops leaves them, and the next attempt asks the server
 for the rest with `Range: bytes=<size of the partial file>-`. Pieces:
 
@@ -439,7 +441,8 @@ arithmetic, `tileCount(bounds, minZoom:, maxZoom:)`, is tested against values wo
 ## Not built yet
 
 Markers, routes and other overlays, clustering, search-as-you-type, a geocoder of the package's own, a download that
-continues in the background when the app is closed (a file pack resumes when the app is opened and starts it again), a
+continues in the background when the app is closed (a file pack resumes when the app is opened and starts it again; the
+background transfer is [fespalier_download](downloads.md)'s to grow, and file packs do not use it yet), a
 retry policy with backoff (it would need a timer: the app decides when to call `resume`), several files for one pack, and
 a web-specific surface (`maplibre_gl` has a web implementation, but nothing here has run on it, and it has no offline
 regions and no local files).

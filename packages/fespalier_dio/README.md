@@ -55,6 +55,13 @@ The body is streamed (`ResponseType.stream`), every status is a response (`valid
 `ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
 passes through. `cupertino_http` is not claimed to honour an abort.
 
+`DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
+translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
+The body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
+`Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
+`ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
+passes through. `cupertino_http` is not claimed to honour an abort.
+
 ## Cancel a load whose page is gone
 
 ```dart

@@ -6,7 +6,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/i18n examples/maps examples/adopt examples/offline examples/cose"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/i18n examples/maps examples/adopt examples/offline examples/cose"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
 examples := "shop features tabs minimal telemetry auth plugins i18n maps adopt offline cose"
@@ -86,7 +86,7 @@ flutter:
     done
 
 # What CI's `floor` job runs: the package, its companions that claim Flutter 3.32 and examples/minimal.
-floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/minimal"
+floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/minimal"
 
 # Needs a Flutter 3.32 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
 # `git clone --depth 1 -b 3.32.8 https://github.com/flutter/flutter ~/flutter-3.32`. Each pubspec.lock

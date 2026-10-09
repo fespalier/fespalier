@@ -444,6 +444,16 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   (`fespalier_image`; `lib/images.dart` with a `TemplateUrlBuilder` and no signing key, `imageCdnProvider` in
   `startup()`, `/photo`; the test uses `FakeImages`). A feature can also give the composer a whole
   `app_template`, `assets`, `smoke_skip` and `android_min_sdk`.
+  Also since 0.15.0: `http` (`fespalier_http` and `http` ^1.5.0, no Dio; `lib/api.dart` has the `httpClient` provider that closes
+  its client and `apiUrl` from `--dart-define=API_URL`; `lib/app/headlines/data.dart` loads through
+  `ref.abortable(ref.watch(httpClient))` before its first `await`; the test serves it from `FakeHttpClient` and counts an
+  abort when the page is left; `/headlines` is in `test: skip:`; session, retry and `WriteGuardClient` are the app's, in the
+  order of docs/http.md, "The wrapping order") and `download` (`fespalier_download` and `path_provider`; `startup()`
+  overrides `downloadsEngine` with a `Downloads` over `HttpDownloadBackend`, `FileDownloadStore` and
+  `TransferDownloadFiles`, the base folders from `path_provider` in `appBases`; `/downloads` shows `downloadStatus`; the test
+  uses `downloadTestOverrides` and `FakeDownloadBackend`; `/downloads` is in `test: skip:`; the background package
+  `fespalier_download_background` needs Flutter 3.47 and platform setup, so it is not a feature, and `--local-packages`
+  overrides `fespalier_http` for `download` through `COMPANION_DEPS`).
   The messages are in `fespalier-troubleshooting`, `references/diagnostics-create.md`.
 
 ### `fsp telemetry` (since 0.8.1)

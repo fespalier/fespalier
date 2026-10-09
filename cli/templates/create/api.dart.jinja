@@ -1,0 +1,23 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:http/http.dart' as http;
+
+/// Where the API is: `--dart-define=API_URL=https://api.myapp.dev`. The default is a placeholder,
+/// so a run without it fails to connect and the page shows its error view.
+const String apiUrl = String.fromEnvironment(
+  'API_URL',
+  defaultValue: 'https://api.example.com',
+);
+
+/// The client every request of the app goes through. A `data.dart` asks for it with
+/// `ref.abortable(ref.watch(httpClient))`, so the request stops when its page is gone
+/// (docs/http.md, "Cancelling a load whose page is gone"). A test replaces it with a
+/// `FakeHttpClient` (fespalier_http/testing.dart).
+///
+/// This is the one place to wrap it: a retrier for reads, `WriteGuardClient` so a write is never
+/// sent twice, and a session once you sign users in (`authHttpClient` of fespalier_auth, or
+/// `SessionClient`). docs/http.md, "The wrapping order", has the order that works.
+final httpClient = Provider<http.Client>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return client;
+});

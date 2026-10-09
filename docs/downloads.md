@@ -129,7 +129,8 @@ final path = await downloads.pathOf('manual-42'); // null unless Complete
   An event for an id the engine no longer knows, or for a download that has ended, is dropped; so is the rest of a
   `start` whose download was cancelled or cleared while it waited on the backend. A backend must not report on a
   transfer it was told to cancel: the engine cannot tell a late report of an old attempt from a new one once the same id
-  has been started again.
+  has been started again. The same holds for `cancel` and `remove` themselves: if the id is started again while the
+  backend is still stopping the old download, they stop there and leave the new download's registry entry and files alone.
 - **Telemetry.** Each transfer is one `fespalier.download.transfer` span from its start to the state it ends in
   (`result`, and `failure` when it failed). Its attributes are only the constants of `FespalierDownloadConventions`:
   never a URL, an id, a path, a display name, a header or an error's text. With no sink installed the cost is a null check.

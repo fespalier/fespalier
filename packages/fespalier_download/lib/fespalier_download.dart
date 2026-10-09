@@ -5,6 +5,7 @@
 /// The fakes are in `package:fespalier_download/testing.dart`.
 library;
 
+export 'src/configure.dart';
 export 'src/engine.dart';
 export 'src/file_store.dart';
 export 'src/grant.dart';
@@ -14,6 +15,7 @@ export 'src/ports.dart';
 export 'src/providers.dart';
 export 'src/request.dart';
 export 'src/status.dart';
+export 'src/tap.dart';
 export 'src/telemetry.dart';
 export 'src/transfer.dart';
 export 'src/transfer_files.dart';

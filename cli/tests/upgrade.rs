@@ -723,6 +723,59 @@ mod replace {
     }
 
     #[test]
+    fn an_app_pinning_another_release_is_told_after_the_upgrade() {
+        if !ready() {
+            return;
+        }
+        let (release, _) = Release::good();
+        let server = release.serve("v9.9.9");
+        let install = Install::at("bin/fsp");
+        fs::write(
+            install.home.path().join("pubspec.yaml"),
+            "name: app\ndependencies:\n  fespalier:\n    git:\n      url: https://example.com/fespalier\n      ref: v0.1.0\n      path: packages/fespalier\n",
+        )
+        .unwrap();
+        // A dry run replaces nothing, so it says nothing about the pin.
+        let out = install.run(Some(&server), &["--dry-run"]);
+        assert!(!stdout(&out).contains("pins fespalier"), "{}", stdout(&out));
+        let out = install.run(Some(&server), &[]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&out),
+            stderr(&out)
+        );
+        let text = stdout(&out);
+        assert!(text.contains("this app pins fespalier v0.1.0"), "{text}");
+        assert!(text.contains(&format!("writes code for v{NEW}")), "{text}");
+    }
+
+    #[test]
+    fn an_app_pinning_the_installed_release_is_not_told() {
+        if !ready() {
+            return;
+        }
+        let (release, _) = Release::good();
+        let server = release.serve("v9.9.9");
+        let install = Install::at("bin/fsp");
+        fs::write(
+            install.home.path().join("pubspec.yaml"),
+            format!("name: app\ndependencies:\n  fespalier:\n    git:\n      url: u\n      ref: v{NEW}\n"),
+        )
+        .unwrap();
+        let out = install.run(Some(&server), &[]);
+        assert_eq!(
+            out.status.code(),
+            Some(0),
+            "{}{}",
+            stdout(&out),
+            stderr(&out)
+        );
+        assert!(!stdout(&out).contains("pins fespalier"), "{}", stdout(&out));
+    }
+
+    #[test]
     fn a_bad_hash_against_the_sidecar_is_refused() {
         if !ready() {
             return;

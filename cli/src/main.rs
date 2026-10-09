@@ -157,7 +157,9 @@ fn main() {
         }
         // So is the installed `fsp` itself.
         if let Cmd::Upgrade(cmd) = &cli.cmd {
-            return upgrade::run(cmd);
+            // Only the closing note reads the project, and it may be none.
+            let project = find_project(cli.project.clone()).ok();
+            return upgrade::run(cmd, project.as_deref());
         }
         let project = find_project(cli.project)?;
         match cli.cmd {

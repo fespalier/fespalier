@@ -2,7 +2,7 @@
 //! redirect, the version order, and the action for a method and the flags.
 
 use crate::upgrade::{
-    Action, Env, Method, Version, detect, plan, script_command, version_from_release_url,
+    Action, Env, Method, Version, detect, plan, ref_note, script_command, version_from_release_url,
 };
 
 fn v(major: u64, minor: u64, patch: u64) -> Version {
@@ -569,4 +569,23 @@ mod replace {
         assert!(exe.exists());
         assert!(!dir.path().join("fsp.exe.old").exists());
     }
+}
+
+#[test]
+fn the_ref_note_names_a_pin_that_differs() {
+    let note = ref_note(Some("v0.14.0"), v(0, 15, 0)).unwrap();
+    assert!(note.contains("pins fespalier v0.14.0"), "{note}");
+    assert!(
+        note.contains("fsp 0.15.0 writes code for v0.15.0"),
+        "{note}"
+    );
+    assert!(note.contains("every companion"), "{note}");
+    assert!(note.contains("dart run fespalier"), "{note}");
+    // A ref without the `v` is the same release.
+    assert!(ref_note(Some("0.15.0"), v(0, 15, 0)).is_none());
+    assert!(ref_note(Some("v0.15.0"), v(0, 15, 0)).is_none());
+    // No pin, or a ref that is not a release (a branch, a commit): nothing to say.
+    assert!(ref_note(None, v(0, 15, 0)).is_none());
+    assert!(ref_note(Some("main"), v(0, 15, 0)).is_none());
+    assert!(ref_note(Some("3f2a9c1"), v(0, 15, 0)).is_none());
 }

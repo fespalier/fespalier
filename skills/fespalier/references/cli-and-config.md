@@ -423,8 +423,14 @@ Looks up the latest release (the redirect of GitHub's `releases/latest`, by the 
 API, no token), tells how this `fsp` was installed from its canonical path, and acts by that:
 Homebrew (`Cellar/fsp/`) runs `brew upgrade fespalier/tap/fsp`; Scoop (`scoop/apps/fsp/` or under
 `$SCOOP`) and cargo (`$CARGO_HOME/bin`) print their command; the install script's folder gets the
-`install.sh` command that replaces it (`--version vX.Y.Z` picks the release; Homebrew and Scoop are
-refused it); the copy `dart run fespalier` keeps in its cache and a `target/debug` build are refused
+binary replaced in place (`--version vX.Y.Z` picks the release, a downgrade prints a notice; Homebrew and
+Scoop are refused it). The in-place replace downloads `fsp-<target>.tar.gz` (`.zip` on Windows) next to
+the binary with `curl`, requires its SHA-256 to equal both the release's `.sha256` and the pin in the
+tag's `release_checksums.dart` (pins of the same release; a mismatch or no pins is refused, naming both
+values, with nothing changed; `FSP_UPGRADE_ALLOW_UNPINNED=1` is only for a release you staged), unpacks it
+with `tar`, runs the new `fsp --version` (must say `fsp Y`), then renames it over the old binary (Windows:
+`fsp.exe` to `fsp.exe.old` first, rolled back on failure); a folder it cannot write is refused with the
+`FSP_INSTALL_DIR` install-script alternative, never `sudo`; on success it prints `✓ fsp X → Y (path)`; the copy `dart run fespalier` keeps in its cache and a `target/debug` build are refused
 (the first follows the `ref:` in `pubspec.yaml`: change the `ref` of fespalier and every companion).
 `--check` writes nothing and exits **0** up to date, **3** an update is available, **1** error;
 `--json` is one object (`current`, `latest`, `target`, `method`, `command`, `upToDate`);

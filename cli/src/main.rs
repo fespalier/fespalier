@@ -39,6 +39,7 @@ mod tasks;
 mod telemetry_stack;
 mod templates;
 mod upgrade;
+mod upgrade_replace;
 mod watch;
 
 use std::path::{Path, PathBuf};

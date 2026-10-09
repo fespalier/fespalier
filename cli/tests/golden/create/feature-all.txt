@@ -1,4 +1,4 @@
-create my_app (package my_app, features: storage, connectivity)
+create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags)
 run   flutter create --no-pub --empty --project-name=my_app <staging>
 move  <staging> -> my_app
 run   flutter pub get
@@ -23,10 +23,25 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v<version>
+  fespalier_adaptive:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_adaptive
+      ref: v<version>
   fespalier_connectivity:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_connectivity
+      ref: v<version>
+  fespalier_flags:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_flags
+      ref: v<version>
+  fespalier_forms:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_forms
       ref: v<version>
   fespalier_storage:
     git:
@@ -58,30 +73,6 @@ import 'package:my_app/app.main.g.dart';
 // ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
 Future<void> main() => AppMain.run();
 
-=== lib/app/about/page.dart (new)
-import 'package:flutter/material.dart';
-import 'package:my_app/app.g.dart';
-
-/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
-/// route's name (AboutPage becomes AboutRoute).
-class AboutPage extends StatelessWidget {
-  const AboutPage({super.key});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Every folder under lib/app/ is a path.'),
-        TextButton(
-          onPressed: () => const HomeRoute().go(context),
-          child: const Text('Home'),
-        ),
-      ],
-    ),
-  );
-}
-
 === lib/app/app.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
@@ -98,26 +89,6 @@ class App extends StatelessWidget {
       MaterialApp.router(title: 'my_app', routerConfig: router);
 }
 
-=== lib/app/layout.dart (new)
-import 'package:flutter/material.dart';
-
-/// Wraps every page below this folder; `child` is the page.
-///
-/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
-/// something to paint on under the Scaffold's body.
-class AppLayout extends StatelessWidget {
-  const AppLayout({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Material(type: MaterialType.transparency, child: child),
-    ),
-  );
-}
-
 === lib/app/not_found.dart (new)
 import 'package:flutter/material.dart';
 
@@ -132,34 +103,11 @@ class NotFoundPage extends StatelessWidget {
       Center(child: Text('Nothing at ${uri.path}'));
 }
 
-=== lib/app/page.dart (new)
-import 'package:flutter/material.dart';
-import 'package:my_app/app.g.dart';
-
-/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
-/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
-class HomePage extends StatelessWidget {
-  const HomePage({super.key});
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Hello from fespalier'),
-        TextButton(
-          onPressed: () => const AboutRoute().go(context),
-          child: const Text('About'),
-        ),
-      ],
-    ),
-  );
-}
-
 === lib/app/startup.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_connectivity/fespalier_connectivity.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
 
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
@@ -169,6 +117,10 @@ Future<List<Override>> startup() async => [
   dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
   // fespalier_connectivity: refetchOnReconnect follows the network.
   reconnectSignal.overrideWith(ConnectivitySignal.new),
+  // fespalier_flags: where flag values come from (--dart-define=LABS=true turns /labs on).
+  flagSource.overrideWithValue(
+    const ConstFlags({'labs': bool.fromEnvironment('LABS')}),
+  ),
 ];
 
 === lib/app/transition.dart (new)
@@ -179,6 +131,274 @@ import 'package:flutter/widgets.dart';
 /// Try Transitions.cupertino, fade, slide or none.
 Page<void> transition(LocalKey key, Widget child) =>
     Transitions.material(key, child);
+
+=== devtools_options.yaml (new)
+description: This file stores settings for Dart & Flutter DevTools.
+documentation: https://docs.flutter.dev/tools/devtools/extensions#configure-extension-enablement-states
+extensions:
+  - fespalier: true
+
+=== test/devtools_test.dart (new)
+import 'dart:io';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  test('devtools_options.yaml turns the fespalier extension on', () {
+    // docs/devtools.md, "How to see it": committed, so DevTools does not ask once per project.
+    final options = File('devtools_options.yaml').readAsStringSync();
+    expect(options, contains('- fespalier: true'));
+  });
+
+  testWidgets('a debug build has the extension, and the router runs with it', (
+    tester,
+  ) async {
+    // A const that is false in release builds: nothing of DevTools is compiled into those.
+    expect(kFespalierDevTools, isTrue);
+    // AppRoutes.router() hands its router to the extension.
+    await pumpRouter(tester, AppRoutes.router());
+    expect(currentLocation(tester), '/');
+  });
+}
+
+=== lib/app/(tabs)/layout.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Which folder is which tab, left to right (without it the tabs follow folder order). Each
+/// folder next to this file is one tab with a navigation stack and a state of its own.
+const tabs = ['(home)', 'about'];
+
+/// Asking for a `StatefulNavigationShell` instead of a `child` makes this a tab layout. The bar
+/// is the menu: the `nav.dart` in each tab's folder says what the tab is called and its icon, and
+/// `AdaptiveNavScaffold` shows `AppMenu.watch` as a `NavigationBar` on a phone, a
+/// `NavigationRail` on a tablet and a `NavigationDrawer` on a wide window (docs/layouts.md,
+/// "A bar, a rail or a drawer"). A tab keeps its state when the window changes size.
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+    shell: navigationShell,
+    // `under:` the tab layout's folder, so each entry knows its tab: tapping the current one
+    // goes back to its first page.
+    menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+  );
+}
+
+=== lib/app/(tabs)/(home)/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/`: the folder `(home)` is a tab and, being in parentheses, adds nothing to the path.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Text('Hello from fespalier'));
+}
+
+=== lib/app/(tabs)/(home)/nav.dart (new)
+import 'package:fespalier/nav.dart';
+import 'package:flutter/material.dart';
+
+/// What the Home tab is called in the bar, the rail and the drawer.
+const nav = Nav(
+  label: 'Home',
+  icon: Icons.home_outlined,
+  selectedIcon: Icons.home,
+);
+
+=== lib/app/(tabs)/about/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/about`: the folder gives the path, and the class gives the route's name
+/// (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Text('Every folder next to layout.dart is a tab.'));
+}
+
+=== lib/app/(tabs)/about/nav.dart (new)
+import 'package:fespalier/nav.dart';
+import 'package:flutter/material.dart';
+
+/// What the About tab is called in the bar, the rail and the drawer.
+const nav = Nav(
+  label: 'About',
+  icon: Icons.info_outline,
+  selectedIcon: Icons.info,
+);
+
+=== test/adaptive_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+/// Sizes the window in logical pixels (a test's own is 800 x 600).
+void resize(WidgetTester tester, double width) {
+  tester.view.physicalSize = Size(width, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
+void main() {
+  testWidgets('the menu is a bar, a rail or a drawer by window width', (
+    tester,
+  ) async {
+    resize(tester, 400);
+    await pumpRouter(tester, AppRoutes.router());
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(NavigationDrawer), findsNothing);
+
+    // The destinations come from the nav.dart of each tab.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('About'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/about');
+
+    resize(tester, 800);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+
+    resize(tester, 1300);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationDrawer), findsOneWidget);
+    // Resizing keeps the tab.
+    expect(currentLocation(tester), '/about');
+  });
+}
+
+=== lib/app/contact/action.dart (new)
+import 'package:fespalier/fespalier.dart';
+
+/// The input of the action, and so the fields of its form: a record with named fields.
+typedef ContactFields = ({String name, String message});
+
+/// The form starts empty. (A form that edits something takes the data it starts from.)
+ContactFields form() => (name: '', message: '');
+
+/// Checked on the device before the action runs, and live in the form after a first submit.
+FieldErrors? validate(ContactFields input) => FieldErrors({
+  if (input.name.trim().isEmpty) 'name': 'Enter your name',
+  if (input.message.trim().isEmpty) 'message': 'Write a message',
+});
+
+/// The write. Send `input` to your server here; it can throw
+/// `FieldErrors({'name': '...'})` to show an error under a field.
+Future<void> action(Ref ref, {required ContactFields input}) async {}
+
+=== lib/app/contact/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/contact`. `ContactRoute.useForm` is generated from action.dart's form(): a typed
+/// field per field of the action's input, an error per field, and a submit that is null while the
+/// action runs. It is a real hook, so the page is a [HookConsumerWidget].
+class ContactPage extends HookConsumerWidget {
+  const ContactPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final form = ContactRoute.useForm(ref);
+    final f = form.fields;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Contact')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          spacing: 16,
+          children: [
+            TextField(
+              controller: f.name.controller,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                errorText: f.name.error,
+              ),
+            ),
+            TextField(
+              controller: f.message.controller,
+              decoration: InputDecoration(
+                labelText: 'Message',
+                errorText: f.message.error,
+              ),
+            ),
+            if (form.error case final e?) Text('$e'),
+            FilledButton(
+              // Null while the action runs: the button is disabled.
+              onPressed: form.onSubmit,
+              child: Text(form.isPending ? 'Sending...' : 'Send'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+=== test/forms_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_forms/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/app/contact/action.dart';
+
+void main() {
+  test('an empty contact is refused with an error per field', () {
+    expect(
+      validate(form()),
+      isFieldErrors({'name': 'Enter your name', 'message': 'Write a message'}),
+    );
+    expect(validate((name: 'Ann', message: 'Hi')), isFieldErrors({}));
+  });
+
+  testWidgets('submitting the empty form shows the errors under the fields', (
+    tester,
+  ) async {
+    await pumpRouter(tester, AppRoutes.router(initialLocation: '/contact'));
+    expect(find.text('Enter your name'), findsNothing);
+
+    await tester.tap(find.text('Send'));
+    await tester.pump();
+    expect(find.text('Enter your name'), findsOneWidget);
+    expect(find.text('Write a message'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Ann');
+    await tester.pump();
+    expect(find.text('Enter your name'), findsNothing);
+  });
+
+  testWidgets('a valid form runs the action and shows no error', (
+    tester,
+  ) async {
+    await pumpRouter(tester, AppRoutes.router(initialLocation: '/contact'));
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Ann');
+    await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Hi');
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter your name'), findsNothing);
+    expect(find.text('Write a message'), findsNothing);
+  });
+}
 
 === test/storage_test.dart (new)
 import 'package:fespalier/fespalier.dart';
@@ -256,5 +476,74 @@ void main() {
     network.online();
     expect(container.read(hasNetwork), isTrue);
     await end(tester, container);
+  });
+}
+
+=== lib/flags.dart (new)
+import 'package:fespalier_flags/fespalier_flags.dart';
+
+/// /labs is there while this flag is on (lib/app/labs/guard.dart). Declare each flag once,
+/// `const`: a flag is its fallback (off) whenever the source has no value for its key.
+const labs = BoolFlag('labs');
+
+=== lib/app/labs/guard.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/flags.dart';
+
+/// /labs is there while the `labs` flag is on. The guard watches the flag, so turning it off
+/// takes the app off /labs, with no navigation (docs/guards.md, "Feature flags").
+GuardResult guard(Ref ref) =>
+    flagGuard(ref, labs, orElse: const HomeRoute().location);
+
+=== lib/app/labs/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/labs`, behind the `labs` flag. Run with `--dart-define=LABS=true` to see it.
+class LabsPage extends StatelessWidget {
+  const LabsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Labs')),
+    body: const Center(child: Text('The labs flag is on.')),
+  );
+}
+
+=== test/flags_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_flags/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  testWidgets('/labs is there with the flag on, and goes with it', (
+    tester,
+  ) async {
+    final flags = FakeFlags({'labs': true});
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/labs'),
+      overrides: [flagSource.overrideWithValue(flags)],
+    );
+    expect(currentLocation(tester), '/labs');
+
+    // Delivered synchronously; one frame later the guard has run again.
+    flags.set('labs', false);
+    await tester.pump();
+    expect(currentLocation(tester), '/');
+  });
+
+  testWidgets('a deep link to /labs lands on / while the flag is off', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/labs'),
+      overrides: [flagSource.overrideWithValue(FakeFlags())],
+    );
+    expect(currentLocation(tester), '/');
   });
 }

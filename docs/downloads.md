@@ -10,14 +10,15 @@ same bytes. The package is a companion, installed like `fespalier_flags`.
 
 **What is in this release, and what is not.** This release is the model, the telemetry names, the fakes, the engine,
 `Downloads`, which starts, pauses, resumes, retries, cancels and removes a download over a backend you give it and settles
-the registry after a restart, and a **foreground backend**, `HttpDownloadBackend`, that downloads over an `http.Client`
-while the app runs. It has no providers and no background backend over the operating system's download service. Those
-come in later releases of the same line, and this page grows with them. A download that must go on while the app is
-closed is not possible with this package yet.
+the registry after a restart, a **foreground backend**, `HttpDownloadBackend`, that downloads over an `http.Client`
+while the app runs, a **durable registry**, `FileDownloadStore`, and the **providers** a widget watches (`downloads`,
+`downloadStatus`). It has no background backend over the operating system's download service yet. That comes in a later
+release of the same line, and this page grows with it. A download that must go on while the app is closed is not
+possible with this package yet.
 
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
-[The foreground backend](#the-foreground-backend), [Testing](#testing).
+[The foreground backend](#the-foreground-backend), [In a widget](#in-a-widget), [Testing](#testing).
 
 ## Install
 
@@ -148,7 +149,8 @@ running. Every entry starts as `Queued`; the backend then replays what it knows 
   give the engine one when the backend does not replay finished downloads.
 - A report about an id that is not in the registry is dropped: the backend's tasks that are not ours are not ours.
 
-A completed download keeps its registry entry, so `statusOf` and `pathOf` still answer after the next restart. Only
+The registry is `FileDownloadStore` (see [In a widget](#in-a-widget)): a JSON file, so the list survives a
+restart whatever the backend. A completed download keeps its registry entry, so `statusOf` and `pathOf` still answer after the next restart. Only
 `remove`, `cancel` and [sign-out](#sign-out) drop an entry. Calling `open` twice does the work once; `close()`
 unregisters from the backend and clears the observer, and the transfers the platform owns go on.
 
@@ -212,6 +214,85 @@ Underneath, `HttpTransfer` is the transfer of one file, with no state beyond the
 `TransferFiles` the path-level file port it drives (`dart:io` by default). They are exported for a backend of your own;
 most apps never touch them.
 
+## In a widget
+
+Three pieces connect the engine to the widget tree. **`FileDownloadStore`** is the durable registry: one JSON file,
+`fespalier_downloads.json`, in the folder your `DownloadBases` names for `DownloadBase.support`. Every change writes
+`fespalier_downloads.json.tmp` and renames it over the file, so a crash between the two leaves the previous file whole, and
+writes are queued in order. It is never a `BoundedDataStorage` (that evicts the oldest entries; a download the person asked
+for must not vanish). A missing, unreadable or corrupt file is an empty registry and never throws; an entry that is not
+valid is skipped and the rest kept. A write that fails (a full disk) is dropped and the list in memory stays right for the
+run, so a download never fails because its registry could not be saved. `clear()`, which sign-out calls, deletes the file.
+It needs no `path_provider` of its own: the base folder comes from the same `DownloadBases` function the backend uses. On
+the web, where there are no files, the registry is in memory only (every start ends `Failed(unsupported)` there anyway).
+**A request's headers are written to this file in plaintext**: never a long-lived credential in a header.
+
+**`downloadsEngine`** is the provider of the `Downloads` engine, and it has **no default**: reading it without an override
+throws a `StateError` that names the override to add. Build the engine once and override the provider with it:
+
+```dart
+// lib/app/startup.dart
+Future<String> bases(DownloadBase base) async => switch (base) {
+  DownloadBase.support => (await getApplicationSupportDirectory()).path,
+  DownloadBase.cache => (await getTemporaryDirectory()).path,
+  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,
+};
+
+Future<List<Override>> startup() async => [
+  downloadsEngine.overrideWithValue(
+    Downloads(
+      backend: HttpDownloadBackend(client: http.Client(), bases: bases),
+      store: FileDownloadStore(bases: bases),
+      files: TransferDownloadFiles(bases: bases),
+    ),
+  ),
+];
+```
+
+**`downloads`** is a `NotifierProvider` holding the status of every download by id, and **`downloadStatus(id)`** is an
+auto-dispose family that rebuilds a widget only when that one download changes (`Absent` when none is known). Watching
+`downloads` opens the engine (so the restart settling of [After a restart](#after-a-restart) happens) and fills the
+engine's one `observe` slot; when the provider is disposed the observer is cleared and the engine is closed (the transfers
+the platform owns go on). An engine that cannot open (a store that threw) leaves `downloads` empty. The providers hold no
+timer and no listener of their own, and the engine itself still imports no Riverpod. Because the slot is the provider's,
+do not call `observe` on an engine that `downloads` watches.
+
+```dart
+class ManualTile extends ConsumerWidget {
+  const ManualTile({super.key});
+
+  static final request = DownloadRequest(
+    id: 'manual-42',
+    url: Uri.parse('https://files.example.com/manual-42.pdf'),
+    file: const DownloadLocation(DownloadBase.support, 'manuals/manual-42.pdf'),
+  );
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(downloads); // opens the engine; the page is the owner
+    final status = ref.watch(downloadStatus('manual-42'));
+    final engine = ref.read(downloadsEngine);
+    return switch (status) {
+      Running(:final received, :final total) => LinearProgressIndicator(
+        value: total == null ? null : received / total,
+      ),
+      Complete() => const Text('Downloaded'),
+      Failed() => TextButton(
+        onPressed: () => engine.retry('manual-42'),
+        child: const Text('Try again'),
+      ),
+      _ => FilledButton(
+        onPressed: () => engine.start(request),
+        child: const Text('Download'),
+      ),
+    };
+  }
+}
+```
+
+Acting goes through the engine (`ref.read(downloadsEngine).start(...)`); the state comes back through `downloads`. Call
+`clearAccount()` where the app signs out, as [Sign-out](#sign-out) says.
+
 ## Testing
 
 `package:fespalier_download/testing.dart` has the fakes, which need no network, platform or disk:
@@ -221,6 +302,9 @@ most apps never touch them.
   `tap(id)` once a listener has called `open`. `replay: {id: status}` is what the platform reports at `open`, to test a restart.
 - `MemoryDownloadStore`: a registry in memory (`entries`, `clearCalls`).
 - `FakeDownloadFiles`: files as a map of sizes (`put`, `deleted`).
+- `downloadTestOverrides(backend:, store:, files:)`: the overrides that bind `downloadsEngine` (so `downloads` and
+  `downloadStatus`) to an engine over the fakes, for a `ProviderContainer` or `ProviderScope`. The test keeps the backend and
+  plays the platform with `emit`; disposing the container closes the engine, as in an app.
 - `FakeTransferFiles`: the path-level files of a transfer in memory (`putBytes`, `bytesOf`, `renames`, `failWrites`,
   `failRename`, `failDelete`, `unsupported` for the web), to test `HttpDownloadBackend` with a `MockClient`.
 

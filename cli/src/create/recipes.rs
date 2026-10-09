@@ -65,7 +65,9 @@ pub struct Step {
     pub phase: Phase,
     /// A `//` comment line above it (without the `//`); empty for none.
     pub comment: &'static str,
-    /// Dart on one line, formatted as `dart format` leaves it.
+    /// Dart formatted as `dart format` leaves it, for the indent it is written at: one line, or
+    /// several when `dart format` would wrap it (the lines after the first are indented
+    /// relative to it, and the composer adds the indent of the list it goes in).
     pub code: &'static str,
     /// Whether `code` awaits: `startup()` is then `async`. The tests check it against `code`.
     pub awaits: bool,
@@ -115,6 +117,9 @@ pub struct Recipe {
     pub config: &'static [&'static str],
     /// `(template, path)`: files it writes, the path relative to the app.
     pub files: &'static [(&'static str, &'static str)],
+    /// Files of the base app that it takes out because it writes its own in their place (the
+    /// tabs layout replaces the root layout and the home page). Paths of the base app only.
+    pub replaces: &'static [&'static str],
     /// What it adds to `startup.dart`, `app.dart` and `main.dart`.
     pub startup: Startup,
     /// Features it needs; they are added when not asked for.
@@ -126,6 +131,75 @@ pub struct Recipe {
 /// The features `fsp create` can add (one change per group; the rest follow).
 pub const RECIPES: &[Recipe] = &[
     Recipe {
+        id: "devtools",
+        description: "devtools_options.yaml, so Flutter DevTools shows the fespalier tab (routes, guards, data, actions) without asking.",
+        companions: &[],
+        third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/devtools_options.yaml", "devtools_options.yaml"),
+            ("create/devtools_test.dart", "test/devtools_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup::NONE,
+    },
+    Recipe {
+        id: "adaptive",
+        description: "Tabs as a bar, a rail or a drawer by window width (fespalier_adaptive); the same as --template tabs.",
+        companions: &["fespalier_adaptive"],
+        third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/tabs_layout.dart", "lib/app/(tabs)/layout.dart"),
+            (
+                "create/tabs_home_page.dart",
+                "lib/app/(tabs)/(home)/page.dart",
+            ),
+            (
+                "create/tabs_home_nav.dart",
+                "lib/app/(tabs)/(home)/nav.dart",
+            ),
+            (
+                "create/tabs_about_page.dart",
+                "lib/app/(tabs)/about/page.dart",
+            ),
+            (
+                "create/tabs_about_nav.dart",
+                "lib/app/(tabs)/about/nav.dart",
+            ),
+            ("create/adaptive_test.dart", "test/adaptive_test.dart"),
+        ],
+        replaces: &[
+            "lib/app/layout.dart",
+            "lib/app/page.dart",
+            "lib/app/about/page.dart",
+        ],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup::NONE,
+    },
+    Recipe {
+        id: "forms",
+        description: "A form on an action (fespalier_forms): /contact, with typed fields and errors under them.",
+        companions: &["fespalier_forms"],
+        third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/contact_action.dart", "lib/app/contact/action.dart"),
+            ("create/contact_page.dart", "lib/app/contact/page.dart"),
+            ("create/forms_test.dart", "test/forms_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup::NONE,
+    },
+    Recipe {
         id: "storage",
         description: "A dataCache on disk (fespalier_storage): the last value is on the first frame at the next start.",
         companions: &["fespalier_storage"],
@@ -133,6 +207,7 @@ pub const RECIPES: &[Recipe] = &[
         flutter_floor: "3.32",
         config: &[],
         files: &[("create/storage_test.dart", "test/storage_test.dart")],
+        replaces: &[],
         requires: &[],
         conflicts: &[],
         startup: Startup {
@@ -161,6 +236,7 @@ pub const RECIPES: &[Recipe] = &[
             "create/connectivity_test.dart",
             "test/connectivity_test.dart",
         )],
+        replaces: &[],
         requires: &[],
         conflicts: &[],
         startup: Startup {
@@ -178,6 +254,34 @@ pub const RECIPES: &[Recipe] = &[
             ..Startup::NONE
         },
     },
+    Recipe {
+        id: "flags",
+        description: "A feature flag behind a route guard (fespalier_flags): /labs is there while the labs flag is on.",
+        companions: &["fespalier_flags"],
+        third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/flags.dart", "lib/flags.dart"),
+            ("create/labs_guard.dart", "lib/app/labs/guard.dart"),
+            ("create/labs_page.dart", "lib/app/labs/page.dart"),
+            ("create/flags_test.dart", "test/flags_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &["package:fespalier_flags/fespalier_flags.dart"],
+            steps: &[Step {
+                kind: StepKind::Override,
+                phase: Phase::Rest,
+                comment: "fespalier_flags: where flag values come from (--dart-define=LABS=true turns /labs on).",
+                code: "flagSource.overrideWithValue(\n  const ConstFlags({'labs': bool.fromEnvironment('LABS')}),\n),",
+                awaits: false,
+            }],
+            ..Startup::NONE
+        },
+    },
 ];
 
 /// Every `packages/fespalier_*` (the Flutter packages of this repository, except the DevTools
@@ -189,10 +293,6 @@ pub const RECIPES: &[Recipe] = &[
     reason = "only the tests read it: it is the record of why a package is not a feature"
 )]
 pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
-    (
-        "fespalier_adaptive",
-        "not yet: it becomes the `adaptive` feature and `--template tabs` in a later release",
-    ),
     (
         "fespalier_analytics",
         "needs a vendor SDK and its console setup (docs/adapters.md); the app brings its backend",
@@ -216,14 +316,6 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     (
         "fespalier_download",
         "the `download` feature lands with the engine and the adapter",
-    ),
-    (
-        "fespalier_flags",
-        "not yet: it becomes the `flags` feature in a later release",
-    ),
-    (
-        "fespalier_forms",
-        "not yet: it becomes the `forms` feature in a later release",
     ),
     (
         "fespalier_frb",

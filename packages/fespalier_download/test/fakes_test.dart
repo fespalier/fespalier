@@ -66,6 +66,18 @@ void main() {
       expect(() => backend.emit('a', const Queued()), throwsStateError);
     });
 
+    test('replays what it was given to the listener at open', () async {
+      final backend = FakeDownloadBackend(
+        replay: {
+          'a': const Running(1, 2),
+          'b': const Failed(DownloadFailure.killed),
+        },
+      );
+      final listener = Recorder();
+      await backend.open(listener);
+      expect(listener.log, ['a Running(1/2)', 'b Failed(killed)']);
+    });
+
     test('can refuse, and capabilities bound pause', () async {
       final refusing = FakeDownloadBackend(accepts: false);
       expect(await refusing.enqueue(request('a')), isFalse);

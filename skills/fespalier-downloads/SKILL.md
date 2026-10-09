@@ -191,3 +191,14 @@ download's notification.
 - **Telemetry**: `fespalier.download.open` with `fespalier.download.routed`, never an id, path, URL or name. The package asks
   for no notification permission; the app does.
 - It adds no listener: the slot is a callback, and `no_timers_test.dart` has no exception.
+
+## The example
+
+`examples/downloads` (since 0.15.0, in the fespalier repository) is the wiring end to end on the foreground backend:
+`configureDownloads()` in `lib/setup.dart` (`HttpDownloadBackend`, `FileDownloadStore`, `TransferDownloadFiles`, a grantor and
+`tapTarget`) called from `main()` before `AppMain.run()`, with `adapters: [fespalier_download]` in the pubspec and **no
+`startup.dart`** (the adapter binds `downloadsEngine`). `/` has a card per case with the buttons that match
+`downloadStatus`, `/files/:id` is the page a tap opens, and `--dart-define=LARGE_URL`, `LARGE_SHA256`, `LARGE_BYTES` (and
+`SMALL_*`) point it at another file. Its README is the run steps for the device test of issue #157, written for someone who
+does not know fespalier. Its tests boot `AppMain.root()` over `FakeDownloadBackend` after `configureDownloads(backend:, store:,
+files:)`, and call `FespalierDownload.debugReset()` in `setUp` and `tearDown`.

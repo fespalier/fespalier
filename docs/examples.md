@@ -175,6 +175,25 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 - tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token and revocation callbacks, with `source=notification` read from `RecordingTelemetry`.
 - analytics tests through `AppMain.root()` ([Analytics](analytics.md)): the first screen as a view named by `screenName`, nothing sent while undecided or after a refusal, a notification tap as a view with its source, a screen named `null` skipped, and no segment value in anything the backend is given.
 
+## downloads
+
+`examples/downloads` (since 0.15.0) is [`fespalier_download`](../packages/fespalier_download) with the foreground backend ([Downloads](downloads.md)), and the app a person tests downloads on a phone or a desktop with, no code to write:
+
+- `adapters: [fespalier_download]`; `main.dart` calls `FespalierDownload.configure(...)` (through `configureDownloads()`) before `AppMain.run()`, with `HttpDownloadBackend`, `FileDownloadStore` and `TransferDownloadFiles`, a demo grantor and the mapping from a notification tap to a route;
+- `/` is one card per case of the device test ([issue #157](https://github.com/fespalier/fespalier/issues/157)): a large file with a SHA-256, a small one, and a wrong checksum, each with the buttons that make sense for its `downloadStatus` (start, pause, resume, retry, cancel, remove), and a sign-out that calls `clearAccount()`;
+- `/files/:id` is the detail page a notification tap opens: the status, the size and SHA-256 the file must have, the file and the partial file on disk, and where the finished file is;
+- the files and digests are `--dart-define`s with public defaults (two Alpine Linux 3.22.0 files whose published SHA-256 was checked by downloading them);
+- tests through `AppMain.root()` over `FakeDownloadBackend`, `MemoryDownloadStore` and `FakeDownloadFiles`: statuses from the backend, each button reaching the engine, a restart settled as `Failed (killed)`, sign-out, and a notification tap, cold and warm, opening the detail page.
+
+```sh
+cd examples/downloads
+flutter create . --platforms=android,ios,macos,linux,windows,web   # adds platform folders only; keep the ones you test on
+flutter pub get
+flutter run -d <device id>
+```
+
+The [README](../examples/downloads/README.md) has the run steps for a tester, one per case, with what each must show and what to report; it needs no knowledge of fespalier.
+
 ## cose
 
 [`examples/cose`](../examples/cose) is a full stack: a [`fespalier_cratestack`](../packages/fespalier_cratestack) app and the CrateStack server it talks to, in which every request is a **COSE_Sign1** message signed by a device key ([`fespalier_sign_keypair`](../packages/fespalier_sign_keypair)) and every answer is a COSE_Sign1 message signed by the server. Its [README](../examples/cose/README.md) has the design as built, a sequence diagram of a signed call, the life of the device key, and every status the server answers with.

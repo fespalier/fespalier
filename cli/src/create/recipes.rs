@@ -92,6 +92,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "waits for the planned fespalier_http package, which the `http` feature will use",
     ),
     (
+        "fespalier_download",
+        "the `download` feature lands with the engine and the adapter",
+    ),
+    (
         "fespalier_flags",
         "not yet: it becomes the `flags` feature in a later release",
     ),

@@ -103,6 +103,7 @@ jobs:
           - packages/fespalier_tolgee
           - packages/fespalier_forms
           - packages/fespalier_maps
+          - packages/fespalier_download
           - packages/fespalier_push
           - packages/fespalier_biometrics
           - packages/fespalier_analytics
@@ -189,6 +190,7 @@ jobs:
           - packages/fespalier_tolgee
           - packages/fespalier_forms
           - packages/fespalier_maps
+          - packages/fespalier_download
           - packages/fespalier_push
           - packages/fespalier_biometrics
           - packages/fespalier_analytics

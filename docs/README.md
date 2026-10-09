@@ -22,6 +22,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                          |
 | [Translations](i18n-tolgee.md)                                     | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL                    |
 | [Maps](maps.md)                                                    | A pin picker that returns a place with `fespalier_maps`: MapLibre, geocoder, position                 |
+| [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, locations, status, fakes             |
 | [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens              |
 | [Analytics](analytics.md)                                          | Screen views by route pattern with consent, `fespalier_analytics`: sink, backends, testing            |
 | [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |

@@ -30,3 +30,12 @@ export 'src/mapping.dart'
 export 'src/platform.dart';
 export 'src/plugin_transport.dart';
 export 'src/transport.dart';
+export 'src/file_upload_store.dart';
+export 'src/upload_backend.dart';
+export 'src/upload_mapping.dart';
+export 'src/upload_ports.dart';
+export 'src/upload_providers.dart';
+export 'src/upload_request.dart';
+export 'src/upload_telemetry.dart' show FespalierUploadConventions;
+export 'src/upload_transport.dart';
+export 'src/uploads.dart';

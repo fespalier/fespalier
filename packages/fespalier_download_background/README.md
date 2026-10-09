@@ -86,6 +86,45 @@ transfer. The `Downloads` engine, the providers and the registry are `fespalier_
   `grantor` on the engine, `enqueue` and `resume` get the granted request and headers; a renewal after a 401 is a cancel and
   a new task, and the late `canceled` update of the old one is dropped.
 
+## Uploads
+
+`Uploads` (since 0.15.0) sends a file over `background_downloader` 9.6.4's `UploadTask`, with `BackgroundUploaderBackend`, an
+`UploadStore` (`FileUploadStore`, `fespalier_uploads.json`) and the providers `uploadsEngine`, `uploads` and `uploadStatus`.
+It is a sibling of `Downloads` on purpose: it has no file port, so it never deletes the file you send, and after a restart an
+entry nobody mentions is `Failed(killed)`, never `Complete`. The full guide, with the replay table, is
+[Uploads](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#uploads).
+
+```dart
+final uploads = Uploads(
+  backend: BackgroundUploaderBackend(),
+  store: FileUploadStore(bases: bases),
+);
+await uploads.open();
+await uploads.start(
+  UploadRequest(
+    id: 'receipt-7',
+    url: Uri.parse('https://api.example.com/receipts'),
+    file: const DownloadLocation(DownloadBase.documents, 'outbox/receipt-7.jpg'),
+    headers: {'Idempotency-Key': 'receipt-7'},
+  ),
+);
+```
+
+- **Replay safety.** Only an upload with an `Idempotency-Key` (`fespalier_http`'s `HttpWrites.isWrite`) is retried by the
+  platform, renewed after a 401 or 403 and sent again by `retry`. Any other upload is sent **once**: `retries: 0`, no
+  renewal, and a kill or a lost response ends it `Failed` with `outcomeUnknown(id)` true; `retry` and `start` of that id
+  then do nothing until you `remove` it. The plugin cannot pause an upload, so no pause cycle can send it twice.
+- **Multipart** (`fileField`, string `fields`) or **binary** (the file is the body), `POST` or `PUT`; the file is a base
+  folder and a relative path, never absolute. Background only: the web ends `Failed(unsupported)`, and there is no foreground
+  upload backend.
+- **Its own group** (`fespalier.upload`), the same rules as the downloads', telemetry in a namespace of its own
+  (`fespalier.upload.transfer`, `FespalierUploadConventions`), constants only.
+- **Test it** with `FakeUploadBackend`, `MemoryUploadStore`, `uploadTestOverrides` or `FakeUploadTransport`
+  (`testing.dart`).
+- **UNCHECKED on a device:** that the system sends an upload with the app closed, how a server reads the plugin's multipart
+  body, how a non-2xx answer reaches the app, how long an Android upload may run, whether WorkManager sends it again on its
+  own, and what is delivered when the two engines open one after the other. Listed in the guide.
+
 ## Rules
 
 - **Only its own group** (`fespalier.download`): callbacks are registered, tracked and configured for that group. The

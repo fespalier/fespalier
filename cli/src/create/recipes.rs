@@ -467,7 +467,10 @@ pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
     ("fespalier_cratestack", &["fespalier_dio"]),
     ("fespalier_dio", &["fespalier_http"]),
     ("fespalier_download", &["fespalier_http"]),
-    ("fespalier_download_background", &["fespalier_download"]),
+    (
+        "fespalier_download_background",
+        &["fespalier_download", "fespalier_http"],
+    ),
     ("fespalier_maps", &["fespalier_download"]),
     ("fespalier_sign_keypair", &["fespalier_auth"]),
 ];

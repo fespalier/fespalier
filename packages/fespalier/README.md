@@ -19,6 +19,7 @@ import a single package.
 Add it as a git dependency:
 
 <!-- x-release-please-start-version -->
+
 ```yaml
 dependencies:
   fespalier:
@@ -27,6 +28,7 @@ dependencies:
       path: packages/fespalier
       ref: v0.14.0
 ```
+
 <!-- x-release-please-end -->
 
 Needs Dart 3.8 and Flutter 3.32 or newer (go_router 18 needs Flutter 3.44). Works with

@@ -159,6 +159,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_image`        | responsive CDN images                                                                  | [Images](docs/responsive-images.md)                                                |
 | `fespalier_forms`        | the form of an `action.dart`: typed fields, validation, server errors (since 0.11.0)   | [Forms](docs/forms.md)                                                             |
 | `fespalier_maps`         | a MapLibre pin picker that returns a place (since 0.13.0)                              | [Maps](docs/maps.md)                                                               |
+| `fespalier_download`     | downloads that outlive a screen: request, status and ports, with fakes (since 0.15.0)  | [Downloads](docs/downloads.md)                                                     |
 | `fespalier_biometrics`   | a biometric unlock guard that never prompts twice (since 0.13.0)                       | [Biometric unlock](docs/guards.md#biometric-unlock-fespalier_biometrics)           |
 | `fespalier_frb`          | a Rust core's change stream: providers rebuilt by its events (since 0.13.0)            | [A Rust core's changes](docs/data.md#a-rust-cores-changes-fespalier_frb)           |
 | `fespalier_riverpod`     | a provider per page instance: two pushes, two states (since 0.13.0)                    | [Page state](docs/data.md#providers-per-page-instance-fespalier_riverpod)          |

@@ -824,6 +824,23 @@
         "packages/fespalier_cratestack/lib/src/dio/portal.dart"
       ]
     },
+    "fespalier-downloads": {
+      "covers": [
+        "docs/downloads.md",
+        "docs/downloads.md#Install",
+        "docs/downloads.md#Requests and files",
+        "docs/downloads.md#Status",
+        "docs/downloads.md#Testing",
+        "packages/fespalier_download/README.md",
+        "packages/fespalier_download/lib/fespalier_download.dart",
+        "packages/fespalier_download/lib/testing.dart",
+        "packages/fespalier_download/lib/src/location.dart",
+        "packages/fespalier_download/lib/src/ports.dart",
+        "packages/fespalier_download/lib/src/request.dart",
+        "packages/fespalier_download/lib/src/status.dart",
+        "packages/fespalier_download/lib/src/telemetry.dart"
+      ]
+    },
     "fespalier-maps": {
       "covers": [
         "docs/maps.md",

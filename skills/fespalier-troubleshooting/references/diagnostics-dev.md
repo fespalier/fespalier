@@ -87,3 +87,18 @@ lib/app.g.dart changed`), but a change that only a restart picks up (a `const` t
   Windows). It cannot after a SIGKILL of `fsp` itself: flutter sees the end of its stdin and stops, the `with` groups do not.
 - **The terminal looks broken afterwards.** `fsp dev` puts it back when it ends or panics; `reset` fixes one it did not get the chance to.
 - **`fsp telemetry` in `with`.** It starts its stack and returns, so it belongs in `before` (`before: fsp telemetry`), or press `t`.
+
+## `fsp upgrade` (since 0.15.0)
+
+`cli/src/upgrade.rs`; user documentation: [Upgrading fsp](https://github.com/fespalier/fespalier/blob/main/docs/getting-started.md#upgrading-fsp).
+It needs no project. Printed to stderr, exit 1, unless noted; `--check` exits 3 (not 1) when an update exists.
+
+| Message                                                                                                                          | Cause and fix                                                                                                                                                    |
+| -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `this fsp is the one `dart run fespalier` keeps for fespalier X; it follows the ref: in pubspec.yaml. ...`                       | The binary is the launcher's cached copy. Do not upgrade it: change the `ref:` of fespalier and every companion to the release you want, then `flutter pub get`. |
+| `this fsp is a build of the source tree; ...`                                                                                    | A `target/debug` or `target/release` binary. Update the checkout and rebuild, or install a release.                                                              |
+| `Homebrew installs only the release it has; to install vX.Y.Z run the install script with FSP_VERSION=vX.Y.Z set` (also `Scoop`) | `--version` on a package-manager install. Use the install script with `FSP_VERSION`, or drop `--version`.                                                        |
+| `fsp upgrade needs `curl` on PATH to look up the latest release ...`                                                             | `curl` is missing. Install it (macOS, Linux and Windows 10+ include it), or run the install script.                                                              |
+| `could not look up the latest release at URL: ...`                                                                               | No network, a proxy that `curl` does not see (`HTTPS_PROXY`), or a bad `FSP_RELEASES_URL`.                                                                       |
+| `no release was found at URL` / `the latest release is tagged `X`, not vX.Y.Z`                                                   | The repository has no release yet, or its latest tag is not a plain `vX.Y.Z`. Pass `--version`.                                                                  |
+| `--version wants a release tag like v1.2.3, not `X``                                                                             | Pre-release suffixes and non-versions are refused.                                                                                                               |

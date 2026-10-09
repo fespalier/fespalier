@@ -49,7 +49,10 @@ jobs:
           workspaces: cli
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      # The upgrade tests use the system curl; FSP_REQUIRE_CURL=1 fails them instead of skipping.
       - run: cargo test
+        env:
+          FSP_REQUIRE_CURL: "1"
       - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs and docs, launcher)
         run: cargo test --test versions
       - name: Examples check cleanly

@@ -37,6 +37,7 @@ mod smoke;
 mod tasks;
 mod telemetry_stack;
 mod templates;
+mod upgrade;
 mod watch;
 
 use std::path::{Path, PathBuf};
@@ -128,6 +129,8 @@ enum Cmd {
     New(scaffold::NewCmd),
     /// Start a local OpenTelemetry stack with fespalier's dashboards: a collector, OpenObserve, and Grafana with --grafana (needs Docker)
     Telemetry(telemetry_stack::TelemetryCmd),
+    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
+    Upgrade(upgrade::UpgradeCmd),
 }
 
 fn main() {
@@ -138,9 +141,15 @@ fn main() {
             let project = find_project(cli.project.clone()).ok();
             return telemetry_stack::run(cmd, project.as_deref());
         }
+        // So is the installed `fsp` itself.
+        if let Cmd::Upgrade(cmd) = &cli.cmd {
+            return upgrade::run(cmd);
+        }
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Telemetry(_) => unreachable!("handled before the project is looked up"),
+            Cmd::Telemetry(_) | Cmd::Upgrade(_) => {
+                unreachable!("handled before the project is looked up")
+            }
             Cmd::Gen { format, json } => {
                 let mut cfg = Config::load(&project)?;
                 cfg.format |= format;
@@ -555,6 +564,8 @@ mod tasks_tests;
 mod telemetry_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upgrade_tests;
 #[cfg(test)]
 mod url_state_tests;
 #[cfg(test)]

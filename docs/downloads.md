@@ -187,6 +187,9 @@ final downloads = Downloads(
   it in `<file>.part.etag`. A file at its destination is always whole and checked: the part is moved there, atomically,
   only when it has the `bytes` and the `sha256` the request names (the digest is computed in another isolate, so a large
   file does not take frames).
+- **Who uses it.** The foreground transfer is the one `fespalier_maps`' file packs run on (since 0.15.0): `FilePacks` builds an
+  `HttpTransfer` per attempt and maps its result to a `PackStatus` (a 401 or 403 stays `rejected` there), so the two packages
+  resume, verify and move a file the same way. See [File packs](maps.md#file-packs).
 - **Resuming.** A pause, a network failure and an app restart leave the part. The next attempt asks for
   `Range: bytes=<size of the part>-` with `If-Range: <validator>`, and appends. A server that ignores `Range` (it answers 200) makes the transfer start again from the first byte; a 206 whose validator is not the part's, or at another offset,
   and a 416 to a part the server no longer has the end of, each restart once. A part with no validator and no `sha256`

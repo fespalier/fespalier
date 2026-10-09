@@ -1,7 +1,7 @@
 /// Dio for fespalier (since 0.9.0): requests cancelled with the provider that made them, server
 /// validation errors as an action's `FieldErrors`, and writes that are never retried.
 ///
-/// A separate library from `package:fespalier_dio/http.dart`, so an app that uses `package:http`
+/// A separate library from `package:fespalier_http/fespalier_http.dart`, so an app that uses `package:http`
 /// links no Dio, and the other way round.
 ///
 /// ```dart
@@ -14,7 +14,7 @@
 /// ```
 library;
 
-export 'problem.dart';
+export 'package:fespalier_http/problem.dart';
 export 'src/dio_cancel.dart' show FespalierDioRef;
 export 'src/dio_field_errors.dart' show FespalierDioFieldErrors;
 export 'src/write_guard.dart' show WriteGuard, WriteNotRetried;

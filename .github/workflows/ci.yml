@@ -93,6 +93,7 @@ jobs:
           - packages/fespalier_storage
           - packages/fespalier_connectivity
           - packages/fespalier_image
+          - packages/fespalier_http
           - packages/fespalier_dio
           - packages/fespalier_cratestack
           - packages/fespalier_sentry
@@ -178,6 +179,7 @@ jobs:
           - packages/fespalier_flags
           - packages/fespalier_storage
           - packages/fespalier_connectivity
+          - packages/fespalier_http
           - packages/fespalier_dio
           - packages/fespalier_cratestack
           - packages/fespalier_sentry

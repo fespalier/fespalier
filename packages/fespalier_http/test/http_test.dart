@@ -6,7 +6,7 @@ import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart'
     show FutureProvider, Provider, ProviderContainer, ProviderSubscription, Ref;
-import 'package:fespalier_dio/http.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';

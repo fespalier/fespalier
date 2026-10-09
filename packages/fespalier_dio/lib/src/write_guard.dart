@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpWrites;
 import 'package:flutter/foundation.dart' show debugPrint;
 
 /// M-D1: what a debug build prints, once per request, when [WriteGuard] refuses to send a write
@@ -42,8 +43,6 @@ final class WriteGuard extends Interceptor {
   static const String _refused = 'fespalier.refused';
   static const String _warned = 'fespalier.warned';
 
-  static const Set<String> _safeMethods = {'GET', 'HEAD', 'OPTIONS', 'TRACE'};
-
   /// Puts a WriteGuard first in [dio]'s interceptors, once. Call it after adding the others.
   ///
   /// Calling it again moves the guard back to the front: there is never more than one.
@@ -53,18 +52,19 @@ final class WriteGuard extends Interceptor {
       ..insert(0, const WriteGuard());
   }
 
-  /// Whether [options] is a write by the rule above.
+  /// Whether [options] is a write by the rule above (`HttpWrites`, the one `WriteGuardClient`
+  /// uses too).
   ///
   /// `extra[write]` makes a request one, and an `Idempotency-Key` header or `extra[idempotent]`
   /// makes a write repeatable (so it is not one).
   static bool isWrite(RequestOptions options) {
     final extra = options.extra;
     if (extra[idempotent] == true) return false;
-    if (options.headers.keys.any((k) => k.toLowerCase() == 'idempotency-key')) {
-      return false;
-    }
-    return extra[write] == true ||
-        !_safeMethods.contains(options.method.toUpperCase());
+    return HttpWrites.isWrite(
+      options.method,
+      options.headers.keys,
+      declared: extra[write] == true,
+    );
   }
 
   /// [evaluator], except that a write is never retried: for `RetryInterceptor(retryEvaluator:)`.

@@ -378,7 +378,8 @@ expected.
 fsp create my_app                                  # the base app
 fsp create my_app --org com.example --platforms android,ios,web
 fsp create my_app --dry-run --json                 # the plan as JSON lines; nothing is written or run
-fsp create --list-features [--json]                # the optional features (none in 0.15.0)
+fsp create my_app --features storage,connectivity  # or --features all
+fsp create --list-features [--json]                # the optional features
 ```
 
 For a **new** app; use `fsp init` for one that exists. `<dir>` must not exist or be empty, `--project` is
@@ -396,11 +397,18 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   (for `pub get`), `--dry-run` (stderr: the commands and every file; it does not run Flutter), `--json`
   (stdout: `run`, `file`, `done`, `error` events as JSON lines, with `content` on a dry run's `file`; text
   and Flutter's own output on stderr).
-- **Features.** `--features` takes ids from `--list-features`; one that another needs is added with a note,
-  two that conflict or one above the installed Flutter are refused, an unknown id says what there is. The
-  table is `cli/src/create/recipes.rs`; 0.15.0 has none, so `--features x` fails with ``unknown feature
-`x`: `fsp create` has no optional features yet``. The messages are in `fespalier-troubleshooting`,
-  `references/diagnostics-create.md`.
+- **Features.** `--features` takes ids from `--list-features`, or `all` (every feature of the table; `all` is
+  not in the `--json` listing). One that another needs is added with a note, two that conflict or one above the
+  installed Flutter are refused, an unknown id says what there is. The table is `cli/src/create/recipes.rs`.
+  0.15.0 has `storage` (`fespalier_storage`: `startup()` awaits `PrefsDataStorage.open()` into
+  `dataCacheStorage`; the test boots `AppMain.root()` over `fakePrefsStore`) and `connectivity`
+  (`fespalier_connectivity`: `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`; the test
+  uses `FakeConnectivity`). Each writes a pubspec dependency at the same tag as `fespalier`, its lines in
+  `lib/app/startup.dart` and a file in `test/`. Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
+  `lib/app/app.dart`, `lib/main.dart`) are never written by one feature but composed from all of them
+  (`cli/src/create/compose.rs`): imports sorted and deduplicated, startup steps in a fixed order (telemetry
+  sinks, then `restoreAuth`, then the rest), `startup()` async only when a step awaits, at most one `zone()`.
+  The messages are in `fespalier-troubleshooting`, `references/diagnostics-create.md`.
 
 ### `fsp telemetry` (since 0.8.1)
 

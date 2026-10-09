@@ -1,0 +1,54 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_connectivity/fespalier_connectivity.dart';
+import 'package:fespalier_connectivity/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// The providers startup.dart sets up, over a fake network (a widget test that reaches
+/// connectivity_plus without one fails: docs/data.md, "Reconnects: fespalier_connectivity").
+ProviderContainer start(FakeConnectivity network) {
+  final container = ProviderContainer(
+    overrides: [
+      connectivitySource.overrideWithValue(network),
+      reconnectSignal.overrideWith(ConnectivitySignal.new),
+    ],
+  );
+  addTearDown(container.dispose);
+  return container;
+}
+
+/// Ends a test: a container disposes what nothing listens to on a zero-duration timer, which
+/// has to fire before testWidgets looks for timers left over.
+Future<void> end(WidgetTester tester, ProviderContainer container) async {
+  container.dispose();
+  await tester.pump(const Duration(milliseconds: 1));
+}
+
+void main() {
+  testWidgets('a network coming back fires reconnectSignal', (tester) async {
+    final network = FakeConnectivity();
+    final container = start(network);
+    final fires = <int>[];
+    container.listen(reconnectSignal, (_, count) => fires.add(count));
+    await tester.pump();
+    network.offline();
+    expect(fires, isEmpty, reason: 'losing the network is not a reconnect');
+    network.online();
+    expect(fires, [1]);
+    await end(tester, container);
+  });
+
+  testWidgets('hasNetwork is false only once the device says so', (
+    tester,
+  ) async {
+    final network = FakeConnectivity();
+    final container = start(network);
+    container.listen(hasNetwork, (_, _) {});
+    await tester.pump();
+    expect(container.read(hasNetwork), isTrue);
+    network.offline();
+    expect(container.read(hasNetwork), isFalse);
+    network.online();
+    expect(container.read(hasNetwork), isTrue);
+    await end(tester, container);
+  });
+}

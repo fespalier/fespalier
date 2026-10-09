@@ -59,6 +59,8 @@ dependency_overrides:
     path: /check out/packages/fespalier_storage
 
 === lib/main.dart (overwrite)
+import 'dart:async';
+
 import 'package:my_app/app.main.g.dart';
 
 // The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
@@ -92,6 +94,7 @@ class AboutPage extends StatelessWidget {
 === lib/app/app.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
+import 'package:zeta/zeta.dart';
 
 /// The app around the router: theme, title, locales. The generated main() builds it
 /// (lib/app.main.g.dart) and gives it the router.
@@ -161,6 +164,30 @@ class HomePage extends StatelessWidget {
       ],
     ),
   );
+}
+
+=== lib/app/startup.dart (new)
+import 'dart:async';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/startup.dart';
+import 'package:zeta/zeta.dart';
+
+Future<void> zone(Future<void> Function() body) => runZoned(body);
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+Future<List<Override>> startup() async {
+  // beta: the sink comes first.
+  installSink();
+  await restoreSession();
+  // beta: last of the statements.
+  betaSetup();
+  return [
+    // alpha: its provider.
+    alphaProvider.overrideWithValue(1),
+    betaProvider.overrideWithValue(await openBeta()),
+  ];
 }
 
 === lib/app/transition.dart (new)

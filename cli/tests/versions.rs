@@ -726,6 +726,16 @@ fn the_weekly_maestro_workflow_builds_with_the_flutter_of_ci() {
     );
 }
 
+#[test]
+fn the_post_publish_smoke_runs_the_flutter_of_ci() {
+    // `post-publish-smoke.yml` checks the app `fsp create` makes on the Flutter that CI tests it on.
+    assert_eq!(
+        flutter_version(".github/workflows/post-publish-smoke.yml"),
+        flutter_version(".github/workflows/ci.yml"),
+        "FLUTTER_VERSION differs between post-publish-smoke.yml (left) and ci.yml (right)"
+    );
+}
+
 /// The `dir:` entries of the matrix of ci.yml's `floor` job, in order.
 fn floor_matrix(ci: &str) -> Vec<String> {
     let job = ci

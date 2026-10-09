@@ -41,6 +41,7 @@ examples/tabs/       a tab layout (StatefulShellRoute), with widget tests
 examples/telemetry/  the route lifecycle, OpenTelemetry and Sentry, with widget tests
 examples/auth/       fespalier_auth: sign-in, guards, refresh and Keycloak, with widget tests
 examples/plugins/    fespalier_push and fespalier_analytics through adapters, with widget tests
+examples/downloads/  fespalier_download: a list of downloads, a detail page a notification tap opens, one button per device-test case, with widget tests
 examples/cose/       a full stack: a fespalier_cratestack app with a COSE_Sign1 transport, and server/, the Rust
                      CrateStack server it talks to (its own Cargo.lock); `just cose` runs both
 examples/i18n/       fespalier_tolgee: a $lang segment, bundled catalogs, a language switch, with widget tests

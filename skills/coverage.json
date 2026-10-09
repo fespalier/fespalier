@@ -905,7 +905,9 @@
         "packages/fespalier_download_background/lib/src/mapping.dart",
         "packages/fespalier_download_background/lib/src/platform.dart",
         "packages/fespalier_download_background/lib/src/plugin_transport.dart",
-        "packages/fespalier_download_background/lib/src/transport.dart"
+        "packages/fespalier_download_background/lib/src/transport.dart",
+        "docs/examples.md#downloads",
+        "examples/downloads"
       ]
     },
     "fespalier-maps": {

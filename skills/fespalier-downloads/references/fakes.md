@@ -19,6 +19,8 @@ backend.tap('manual-42'); // DownloadTapKind.body
   `resumed`, `cancelled`, `cancelAllCalls` and the last `notifications`.
 - `accepts: false` makes `enqueue` and `resume` answer false. `capabilities` without `pause` makes `pause` and `resume`
   answer false.
+- `FakeDownloadBackend(replay: {id: status})` reports those statuses to the listener inside `open`, as a backend that kept
+  downloads while the app was closed would: the way to test `Downloads.open()` after a restart.
 - `resolve(location)` answers `/fake/<base>/<path>`: a stand-in that is not stored anywhere.
 
 ## MemoryDownloadStore

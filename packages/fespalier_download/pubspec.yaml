@@ -12,6 +12,7 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
+  clock: ^1.1.1
   flutter:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to

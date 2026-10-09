@@ -1,6 +1,6 @@
 ---
 name: fespalier-downloads
-description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model and ports only in this release, no engine yet: DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, and FakeDownloadBackend, MemoryDownloadStore and FakeDownloadFiles in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
+description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports and the Downloads engine, no backend yet: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, and FakeDownloadBackend, MemoryDownloadStore and FakeDownloadFiles in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
 ---
 
 # fespalier-downloads
@@ -16,9 +16,9 @@ and the ports of a transfer engine. It adds no file kind, no `fespalier:` key an
 same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
 predates 0.15.0 has no such package.
 
-**Not built yet in this release: the engine, an HTTP backend, providers, a background backend and notification taps.**
-Nothing starts, pauses or resumes a transfer, so do not write `Downloads`, `downloads` or `downloadStatus` code: they do
-not exist. If an app needs a resumable download today, `fespalier_maps`' file packs
+**Not built yet in this release: an HTTP backend, providers, a background backend and notification taps.** The engine,
+`Downloads`, exists (since 0.15.0) but has nothing to download with until a backend does: do not write `downloads` or
+`downloadStatus` provider code, or an `HttpDownloadBackend`; they do not exist. If an app needs a resumable download today, `fespalier_maps`' file packs
 ([`fespalier-maps`](../fespalier-maps/SKILL.md)) are the only one, and they will move onto this package.
 
 ## Install
@@ -43,12 +43,12 @@ a real tag in an app, but never in these pages, where `cli/tests/versions.rs` wo
 
 ## The shape of it
 
-| You import                                           | For                                                                                                                                                                                                                                                                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `package:fespalier_download/fespalier_download.dart` | `DownloadRequest`, `DownloadLocation`, `DownloadBase`, `DownloadNetwork`, `DownloadPriority`, `DownloadStatus` and its cases, `WaitReason`, `DownloadFailure`, the ports `DownloadBackend`, `DownloadEvents`, `DownloadCapabilities`, `DownloadStore`, `DownloadFiles`, `FespalierDownloadConventions` |
-| `package:fespalier_download/testing.dart`            | `FakeDownloadBackend`, `MemoryDownloadStore`, `FakeDownloadFiles`                                                                                                                                                                                                                                      |
+| You import                                           | For                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_download/fespalier_download.dart` | `DownloadRequest`, `DownloadLocation`, `DownloadBase`, `DownloadNetwork`, `DownloadPriority`, `DownloadStatus` and its cases, `WaitReason`, `DownloadFailure`, the ports `DownloadBackend`, `DownloadEvents`, `DownloadCapabilities`, `DownloadStore`, `DownloadFiles`, `Downloads`, `DownloadObserver`, `FespalierDownloadConventions` |
+| `package:fespalier_download/testing.dart`            | `FakeDownloadBackend` (with `replay:`), `MemoryDownloadStore`, `FakeDownloadFiles`                                                                                                                                                                                                                                                      |
 
-The model in detail, with the exact refusals of `isValid`, is [`references/model.md`](references/model.md). The fakes and a
+The engine in detail, with the restart and sign-out rules, is [`references/engine.md`](references/engine.md). The model in detail, with the exact refusals of `isValid`, is [`references/model.md`](references/model.md). The fakes and a
 test that plays a platform are [`references/fakes.md`](references/fakes.md).
 
 ## Golden rules
@@ -69,10 +69,18 @@ test that plays a platform are [`references/fakes.md`](references/fakes.md).
   values are constants, booleans and enum names, never a URL, an id, a path, a display name, a header or an error's text.
   If you add a span of your own, keep those out of it too.
 
+- **`Downloads` imports no Riverpod and is yours to own** (since 0.15.0): `open()` it before `start`, give `observe` one
+  owner, `close()` it when that owner goes, and call `clearAccount()` at sign-out.
+- **`start` never throws for a bad request**: an invalid request or location is `Failed(invalidRequest)`, a
+  `userInitiated` request with no notifications on the backend is `Failed(notificationsRequired)`. Neither is registered,
+  so `retry` does nothing for them: fix the request and `start` again.
+
 ## Traps
 
 - **`Failed(DownloadFailure)` carries a value, not a message.** There is no error text to show; map each failure to your
   own copy. `unauthorized` (401 or 403) is the one a later engine will answer by asking for a fresh grant.
+- **A restart settles the registry once, at `open()`.** Give the engine a `DownloadFiles` unless the backend replays
+  finished downloads: an entry nobody mentions is `Failed(killed)` without one.
 - **`Running.total` is null when the server did not say**: do not divide by it without a check.
 - **A switch over `DownloadStatus` is exhaustive** (it is sealed): a new case in a later release is a compile error in your
   `switch`, which is the point.

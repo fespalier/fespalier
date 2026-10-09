@@ -337,3 +337,186 @@ fn the_json_command_names_the_target() {
     );
     assert!(windows.ends_with("install.ps1 | iex"), "{windows}");
 }
+
+// --- Replacing in place: names, pins, verification -------------------------------------------
+
+mod replace {
+    use crate::upgrade::Version;
+    use crate::upgrade_replace::{
+        Pins, archive_name, binary_name, not_writable_message, parse_pins, parse_sidecar,
+        target_for, verify, version_banner_ok,
+    };
+
+    /// A copy of the generated `release_checksums.dart` of 0.14.0 (the real file's format).
+    const REAL: &str = include_str!("../tests/fixtures/release_checksums.dart");
+    const LINUX: &str = "x86_64-unknown-linux-gnu";
+    const HASH: &str = "9cb6ef7f8ad8045743eef9b3dd3355348f761f22da2a2976372867296d18bf06";
+    const OTHER: &str = "0000000000000000000000000000000000000000000000000000000000000001";
+
+    fn v(major: u64, minor: u64, patch: u64) -> Version {
+        Version(major, minor, patch)
+    }
+
+    fn pins() -> Pins {
+        parse_pins(REAL).unwrap()
+    }
+
+    #[test]
+    fn the_real_pins_file_is_read() {
+        let pins = pins();
+        assert_eq!(pins.version, "0.14.0");
+        assert_eq!(pins.checksums.len(), 5);
+        assert_eq!(pins.get(LINUX), Some(HASH));
+        assert_eq!(
+            pins.get("x86_64-pc-windows-msvc"),
+            Some("48b0144d086252bcdbc10d53a385f0fb6a3cd7107eb4a5aa42ddb24faa1f767e")
+        );
+        assert_eq!(pins.get("riscv64-unknown-linux-gnu"), None);
+    }
+
+    #[test]
+    fn a_file_without_pins_is_read_as_empty_or_not_at_all() {
+        let empty = "// header with `''` in a comment\nconst pinnedVersion = '';\n\
+                     const pinnedChecksums = <String, String>{};\n";
+        let pins = parse_pins(empty).unwrap();
+        assert_eq!(pins.version, "");
+        assert!(pins.checksums.is_empty());
+        assert_eq!(parse_pins("<html>404</html>"), None);
+        assert_eq!(parse_pins(""), None);
+    }
+
+    #[test]
+    fn a_sidecar_is_its_first_word() {
+        assert_eq!(
+            parse_sidecar(&format!("{HASH}  fsp-x.tar.gz\n")),
+            Some(HASH.into())
+        );
+        assert_eq!(
+            parse_sidecar(&format!("{}\n", HASH.to_uppercase())),
+            Some(HASH.into())
+        );
+        assert_eq!(parse_sidecar("not a hash"), None);
+        assert_eq!(parse_sidecar(""), None);
+    }
+
+    #[test]
+    fn archives_and_binaries_are_named_per_target() {
+        assert_eq!(archive_name(LINUX), "fsp-x86_64-unknown-linux-gnu.tar.gz");
+        assert_eq!(
+            archive_name("aarch64-apple-darwin"),
+            "fsp-aarch64-apple-darwin.tar.gz"
+        );
+        assert_eq!(
+            archive_name("x86_64-pc-windows-msvc"),
+            "fsp-x86_64-pc-windows-msvc.zip"
+        );
+        assert_eq!(binary_name(LINUX), "fsp");
+        assert_eq!(binary_name("x86_64-pc-windows-msvc"), "fsp.exe");
+    }
+
+    #[test]
+    fn the_host_maps_to_the_five_release_targets() {
+        assert_eq!(target_for("linux", "x86_64"), Some(LINUX));
+        assert_eq!(
+            target_for("linux", "aarch64"),
+            Some("aarch64-unknown-linux-gnu")
+        );
+        assert_eq!(target_for("macos", "x86_64"), Some("x86_64-apple-darwin"));
+        assert_eq!(target_for("macos", "aarch64"), Some("aarch64-apple-darwin"));
+        assert_eq!(
+            target_for("windows", "x86_64"),
+            Some("x86_64-pc-windows-msvc")
+        );
+        assert_eq!(
+            target_for("windows", "aarch64"),
+            Some("x86_64-pc-windows-msvc")
+        );
+        assert_eq!(target_for("linux", "riscv64"), None);
+        assert_eq!(target_for("freebsd", "x86_64"), None);
+    }
+
+    fn check(sidecar: &str, pins: Option<&Pins>, allow: bool) -> Result<(), String> {
+        verify(HASH, sidecar, pins, LINUX, v(0, 14, 0), allow)
+    }
+
+    #[test]
+    fn a_download_that_both_sources_vouch_for_is_accepted() {
+        assert_eq!(check(&format!("{HASH}  a\n"), Some(&pins()), false), Ok(()));
+    }
+
+    #[test]
+    fn a_mismatch_with_the_sidecar_names_both_values() {
+        let err = check(&format!("{OTHER}  a\n"), Some(&pins()), false).unwrap_err();
+        assert!(
+            err.contains(HASH) && err.contains(OTHER) && err.contains(".sha256"),
+            "{err}"
+        );
+        // Even the dev escape hatch does not excuse a wrong hash.
+        assert!(check(OTHER, Some(&pins()), true).is_err());
+        assert!(
+            check("garbage", Some(&pins()), true)
+                .unwrap_err()
+                .contains("SHA-256")
+        );
+    }
+
+    #[test]
+    fn a_mismatch_with_the_pin_names_both_values() {
+        let mut changed = pins();
+        changed.checksums[4].1 = OTHER.to_string();
+        let err = check(HASH, Some(&changed), false).unwrap_err();
+        assert!(
+            err.contains(HASH) && err.contains(OTHER) && err.contains("pinned"),
+            "{err}"
+        );
+        assert!(check(HASH, Some(&changed), true).is_err());
+    }
+
+    #[test]
+    fn pins_of_another_version_are_refused_unless_staged() {
+        let err = verify(HASH, HASH, Some(&pins()), LINUX, v(0, 15, 0), false).unwrap_err();
+        assert!(err.contains("0.14.0") && err.contains("0.15.0"), "{err}");
+        assert_eq!(
+            verify(HASH, HASH, Some(&pins()), LINUX, v(0, 15, 0), true),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn missing_pins_are_refused_unless_staged() {
+        let blank = Pins {
+            version: String::new(),
+            checksums: vec![],
+        };
+        for pins in [None, Some(&blank)] {
+            let err = check(HASH, pins, false).unwrap_err();
+            assert!(err.contains("FSP_UPGRADE_ALLOW_UNPINNED=1"), "{err}");
+            assert_eq!(check(HASH, pins, true), Ok(()));
+        }
+    }
+
+    #[test]
+    fn a_target_the_pins_lack_is_refused_even_when_staged() {
+        let mut no_linux = pins();
+        no_linux.checksums.retain(|(t, _)| t != LINUX);
+        let err = check(HASH, Some(&no_linux), true).unwrap_err();
+        assert!(err.contains(LINUX), "{err}");
+    }
+
+    #[test]
+    fn the_new_binary_must_say_which_release_it_is() {
+        assert!(version_banner_ok("fsp 0.15.0\n", v(0, 15, 0)));
+        assert!(!version_banner_ok("fsp 0.14.0\n", v(0, 15, 0)));
+        assert!(!version_banner_ok("fsp 0.15.0-rc1\n", v(0, 15, 0)));
+        assert!(!version_banner_ok("", v(0, 15, 0)));
+    }
+
+    #[test]
+    fn an_unwritable_folder_names_the_install_script() {
+        let unix = not_writable_message("/usr/local/bin", false);
+        assert!(unix.contains("/usr/local/bin") && unix.contains("FSP_INSTALL_DIR="));
+        assert!(unix.contains("never uses sudo"), "{unix}");
+        let win = not_writable_message(r"C:\Tools", true);
+        assert!(win.contains("install.ps1") && win.contains("FSP_INSTALL_DIR"));
+    }
+}

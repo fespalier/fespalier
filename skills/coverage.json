@@ -111,6 +111,7 @@
         "cli/src/templates.rs",
         "cli/src/tasks.rs",
         "cli/src/upgrade.rs",
+        "cli/src/upgrade_replace.rs",
         "cli/src/procs.rs",
         "cli/src/daemon.rs",
         "cli/src/dev.rs",

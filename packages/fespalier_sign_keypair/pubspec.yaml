@@ -47,3 +47,5 @@ dependency_overrides:
     path: ../fespalier
   fespalier_auth:
     path: ../fespalier_auth
+  fespalier_http:
+    path: ../fespalier_http

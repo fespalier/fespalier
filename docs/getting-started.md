@@ -86,16 +86,18 @@ fsp upgrade             # upgrade
 
 It reads the latest release from GitHub with the system `curl` (so `HTTPS_PROXY` and your certificate store apply), works out how this `fsp` was installed from where the binary is, and hands the upgrade to that installer:
 
-| Installed with             | `fsp upgrade`                                                                                                                                       |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Homebrew                   | runs `brew upgrade fespalier/tap/fsp` (run `brew update` first when the tap has no newer release yet)                                               |
-| Scoop                      | prints `scoop update` and `scoop update fsp`                                                                                                        |
-| `cargo install`            | prints the `cargo install --git ... --tag <tag> --locked fespalier` line for the latest release                                                     |
-| The install script         | names the folder the binary is in and prints the `install.sh` (or `install.ps1`) command that replaces it; `--version vX.Y.Z` picks another release |
-| `dart run fespalier`       | refuses: see below                                                                                                                                  |
-| A build of the source tree | refuses; update the checkout                                                                                                                        |
+| Installed with             | `fsp upgrade`                                                                                                                     |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Homebrew                   | runs `brew upgrade fespalier/tap/fsp` (run `brew update` first when the tap has no newer release yet)                             |
+| Scoop                      | prints `scoop update` and `scoop update fsp`                                                                                      |
+| `cargo install`            | prints the `cargo install --git ... --tag <tag> --locked fespalier` line for the latest release                                   |
+| The install script         | replaces the binary in place, after checking the download (below); `--version vX.Y.Z` picks another release, a downgrade included |
+| `dart run fespalier`       | refuses: see below                                                                                                                |
+| A build of the source tree | refuses; update the checkout                                                                                                      |
 
 `fsp upgrade --check --json` prints one object (`current`, `latest`, `target`, `method`, `command`, `upToDate`) for scripts. `FSP_RELEASES_URL` (where the latest release is looked up) and `FSP_BASE_URL` (where archives are downloaded from) point it at a mirror.
+
+**What replacing in place does.** It downloads `fsp-<target>.tar.gz` (`.zip` on Windows) into the folder the binary is in, with the system `curl`, and only installs it when its SHA-256 equals both the release's `.sha256` and the checksum that the release's tag pins in `release_checksums.dart` (the file `dart run fespalier` trusts too; the pins must be those of the same release). A mismatch stops with both values and changes nothing; so does a release without pins (set `FSP_UPGRADE_ALLOW_UNPINNED=1` only for a release you staged yourself). It unpacks with the system `tar`, runs the new `fsp --version` and requires `fsp <release>`, then renames it over the old one. On Windows the running `fsp.exe` is renamed to `fsp.exe.old` first (the next `fsp upgrade` deletes it), and moved back if the new one cannot take its place. Temporary files are removed on every path. When the folder is not writable, `fsp upgrade` says so and shows the install script with `FSP_INSTALL_DIR` for a folder you own; it never uses `sudo`. On success it prints `✓ fsp X → Y (path)`; asking for an older release with `--version` prints a downgrade notice first.
 
 The `fsp` that `dart run fespalier` keeps in its cache is not upgraded by `fsp upgrade`: it is the one for the version your `pubspec.yaml` pins, and it changes when you change that `ref:`. Move the `ref:` of fespalier and of every companion package to the release you want, then `flutter pub get`.
 

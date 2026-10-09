@@ -28,6 +28,12 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.14.0 # x-release-please-version
+  # HttpCredentials, which the Authorizer implements (since 0.15.0).
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.14.0 # x-release-please-version
   # SecureTokenStore. Both majors: only read/write/delete and the Apple accessibility option are used.
   flutter_secure_storage: ">=10.0.0 <12.0.0"
   # 1.5.0: Abortable requests, which a replayed request keeps (the abort trigger is copied).
@@ -43,3 +49,5 @@ dev_dependencies:
 dependency_overrides:
   fespalier:
     path: ../fespalier
+  fespalier_http:
+    path: ../fespalier_http

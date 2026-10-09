@@ -792,7 +792,7 @@ fn the_closure_of_a_companion_names_what_it_needs() {
     );
     assert_eq!(
         recipes::companion_closure(&["fespalier_sign_keypair"]),
-        ["fespalier_auth", "fespalier_sign_keypair"]
+        ["fespalier_auth", "fespalier_http", "fespalier_sign_keypair"]
     );
 }
 

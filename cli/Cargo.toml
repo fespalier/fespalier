@@ -29,6 +29,7 @@ ratatui = { version = "0.30", default-features = false, features = ["crossterm"]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml_ng = "0.10.0"
+sha2 = "0.10"
 tree-sitter = "0.26"
 tree-sitter-dart = "0.2"
 

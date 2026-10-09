@@ -1,4 +1,4 @@
-create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags)
+create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags, otel, sentry)
 run   flutter create --no-pub --empty --project-name=my_app <staging>
 move  <staging> -> my_app
 run   flutter pub get
@@ -13,7 +13,7 @@ version: 0.1.0+1
 
 environment:
   sdk: ^3.8.0
-  flutter: ">=3.32.0"
+  flutter: ">=3.35.0"
 
 dependencies:
   flutter:
@@ -43,13 +43,29 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_forms
       ref: v<version>
+  fespalier_otel:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_otel
+      ref: v<version>
+  fespalier_sentry:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_sentry
+      ref: v<version>
   fespalier_storage:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_storage
       ref: v<version>
+  otel_zone:
+    git:
+      url: https://github.com/vaam-apps/flutter-otel-zone
+      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+  sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
+  dartastic_opentelemetry: "^1.1.0-beta.15"
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
@@ -57,14 +73,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
-# fespalier:
-#   tasks:
-#     dev:
-#       before: dart run build_runner build -d # one-shot, before flutter run
-#       with:
-#         build_runner: dart run build_runner watch -d # long-running, next to it
-#     codegen: dart run build_runner build -d # fsp run codegen
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+  telemetry: true
 
 === lib/main.dart (overwrite)
 import 'package:my_app/app.main.g.dart';
@@ -108,19 +119,75 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_connectivity/fespalier_connectivity.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:fespalier_sentry/fespalier_sentry.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
+import 'package:otel_zone/otel_zone.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+/// The name spans carry as `service.name`.
+const String serviceName = 'my_app';
+
+/// The OpenTelemetry SDK. A release build without an endpoint exports nothing: pass
+/// --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://... to send spans to a collector.
+final OtelZone observability = OtelZone(
+  OtelZoneConfig(serviceName: serviceName, endpoint: FespalierOtel.endpoint()),
+);
+
+/// Brings the SDK up (it never throws), then runs [body]. This is the start of the process, not
+/// of the app: a test that builds the app does not start the SDK, and the sink that startup()
+/// installs reports once it is up.
+Future<void> startObservability(Future<void> Function() body) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await observability.start(
+    serviceVersion: '0.1.0',
+    resourceAttributes: {...FespalierOtel.resourceAttributes},
+  );
+  await body();
+}
+
+/// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
+/// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
+/// --dart-define=SENTRY_DSN=https://... sends events to your project.
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(
+    options,
+    dsn: const String.fromEnvironment('SENTRY_DSN'),
+  ),
+  appRunner: () => startObservability(body),
+);
 
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
 /// overridden in the app's ProviderScope, so the first frame already has them.
-Future<List<Override>> startup() async => [
-  // fespalier_storage: a dataCache is saved here (null: nothing is saved).
-  dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
-  // fespalier_connectivity: refetchOnReconnect follows the network.
-  reconnectSignal.overrideWith(ConnectivitySignal.new),
-  // fespalier_flags: where flag values come from (--dart-define=LABS=true turns /labs on).
-  flagSource.overrideWithValue(
-    const ConstFlags({'labs': bool.fromEnvironment('LABS')}),
-  ),
+Future<List<Override>> startup() async {
+  // One slot for every sink, before the router exists so the first navigation is reported.
+  FespalierTelemetry.install(
+    FespalierTelemetry.combine([
+      FespalierOtel(isReady: () => observability.isReady),
+      FespalierSentry(),
+    ]),
+  );
+  return [
+    // fespalier_storage: a dataCache is saved here (null: nothing is saved).
+    dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+    // fespalier_connectivity: refetchOnReconnect follows the network.
+    reconnectSignal.overrideWith(ConnectivitySignal.new),
+    // fespalier_flags: where flag values come from (--dart-define=LABS=true turns /labs on).
+    flagSource.overrideWithValue(
+      const ConstFlags({'labs': bool.fromEnvironment('LABS')}),
+    ),
+  ];
+}
+
+List<ProviderObserver> get providerObservers => [
+  ?observability.riverpodObserver(),
+];
+
+List<NavigatorObserver> get routerObservers => [
+  ?observability.routeObserver(),
+  if (kIsWeb) FespalierSentry.navigatorObserver(),
 ];
 
 === lib/app/transition.dart (new)
@@ -545,5 +612,90 @@ void main() {
       overrides: [flagSource.overrideWithValue(FakeFlags())],
     );
     expect(currentLocation(tester), '/');
+  });
+}
+
+=== test/otel_test.dart (new)
+import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:dartastic_opentelemetry/testing.dart';
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+// The SDK with an in-memory exporter: what a collector would receive, with no network.
+final InMemorySpanExporter exporter = InMemorySpanExporter();
+
+void main() {
+  setUpAll(() async {
+    await OTel.initialize(
+      serviceName: 'my_app',
+      serviceVersion: '0.1.0',
+      resourceAttributes: OTel.attributesFromMap(
+        FespalierOtel.resourceAttributes,
+      ),
+      enableLogs: false,
+      enableMetrics: false,
+      detectPlatformResources: false,
+      spanProcessor: SimpleSpanProcessor(exporter),
+    );
+  });
+  setUp(() {
+    exporter.clear();
+    FespalierTelemetry.install(FespalierOtel());
+  });
+  tearDown(() => FespalierTelemetry.install(null));
+
+  testWidgets('a navigation is a span, and the page entering is its event', (
+    tester,
+  ) async {
+    final router = AppRoutes.router();
+    await pumpRouter(tester, router);
+    exporter.clear();
+    router.go('/about');
+    await tester.pumpAndSettle();
+    final spans = exporter.findSpansByName('navigate /about');
+    expect(spans, hasLength(1), reason: '${exporter.spanNames}');
+    expect(spans.single.spanEvents?.map((e) => e.name), [
+      'fespalier.page.enter',
+    ]);
+  });
+}
+
+=== test/sentry_test.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_sentry/fespalier_sentry.dart';
+import 'package:fespalier_sentry/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  tearDown(() => FespalierTelemetry.install(null));
+
+  testWidgets('a page change is a breadcrumb, and an error knows its screen', (
+    tester,
+  ) async {
+    // A real Sentry hub whose transport keeps what it would send: no network, no DSN.
+    final sentry = RecordingSentry(
+      configure: (options) => FespalierSentry.configure(
+        options,
+        dsn: 'https://key@sentry.invalid/1',
+      ),
+    );
+    FespalierTelemetry.install(FespalierSentry(hub: sentry.hub));
+    final router = AppRoutes.router();
+    await pumpRouter(tester, router);
+    router.go('/about');
+    await tester.pumpAndSettle();
+    expect(sentry.breadcrumbs, contains('navigation enter /about'));
+
+    // What Sentry's own integrations do with an uncaught error.
+    await sentry.hub.captureException(StateError('crash'));
+    await tester.pump();
+    final event = (await sentry.sent()).single;
+    expect(event['transaction'], '/about');
+    expect(event['tags'], containsPair('fespalier.route', '/about'));
   });
 }

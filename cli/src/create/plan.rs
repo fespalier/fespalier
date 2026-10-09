@@ -385,13 +385,9 @@ pub fn resolve_features<'t>(
 }
 
 /// What `--template` does to the features asked for: `tabs` adds the feature that is the tabs
-/// template (with a note, unless it was asked for), and `minimal` refuses it and takes it out of
-/// `all`. Returns the note.
-fn apply_template(
-    template: Option<Template>,
-    wanted: &mut Vec<String>,
-    table: &[Recipe],
-) -> Result<Option<String>> {
+/// template (with a note, unless it was asked for), and `minimal` refuses it (and [`expand_all`]
+/// leaves it out of `all`). Returns the note.
+fn apply_template(template: Option<Template>, wanted: &mut Vec<String>) -> Result<Option<String>> {
     match template {
         None => Ok(None),
         Some(Template::Tabs) => {
@@ -407,23 +403,49 @@ fn apply_template(
                     "`--template minimal` and the `{TABS_FEATURE}` feature cannot be combined: `{TABS_FEATURE}` is the tabs template"
                 );
             }
-            *wanted = wanted
-                .iter()
-                .flat_map(|w| {
-                    if w == ALL {
-                        table
-                            .iter()
-                            .map(|r| r.id.to_string())
-                            .filter(|id| id != TABS_FEATURE)
-                            .collect()
-                    } else {
-                        vec![w.clone()]
-                    }
-                })
-                .collect();
             Ok(None)
         }
     }
+}
+
+/// `all` is every feature of the table that this Flutter can run (the whole table when no Flutter
+/// was asked, as in a dry run), without the tabs template under `--template minimal`. A feature
+/// left out for its Flutter floor is a note; asking for it by name is still an error. Returns the
+/// notes.
+fn expand_all(
+    wanted: &mut Vec<String>,
+    table: &[Recipe],
+    flutter: Option<FlutterVersion>,
+    template: Option<Template>,
+) -> Vec<String> {
+    let mut notes = vec![];
+    if !wanted.iter().any(|w| w == ALL) {
+        return notes;
+    }
+    let mut ids = vec![];
+    for recipe in table {
+        if template == Some(Template::Minimal) && recipe.id == TABS_FEATURE {
+            continue;
+        }
+        match flutter {
+            Some(v) if !v.at_least(recipe.flutter_floor) => notes.push(format!(
+                "`{}` needs Flutter {} or newer, and this is Flutter {v}: left out of `{ALL}`",
+                recipe.id, recipe.flutter_floor
+            )),
+            _ => ids.push(recipe.id.to_string()),
+        }
+    }
+    *wanted = wanted
+        .iter()
+        .flat_map(|w| {
+            if w == ALL {
+                ids.clone()
+            } else {
+                vec![w.clone()]
+            }
+        })
+        .collect();
+    notes
 }
 
 /// The Dart files of the starting app: `fsp init`'s five, the home page with a link in it, an
@@ -453,7 +475,7 @@ fn starter_files(package: &str, features: &[&Recipe]) -> Result<Vec<PlannedFile>
         "lib/app/about/page.dart".to_string(),
         templates::render("create/about.dart", Cx { package }),
     ));
-    if let Some(startup) = compose::startup_dart(features)? {
+    if let Some(startup) = compose::startup_dart(package, features)? {
         files.push(new("lib/app/startup.dart".to_string(), startup));
     }
     // A feature that brings its own layout and pages takes the base app's out.
@@ -503,8 +525,11 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
         DirState::NotADirectory => bail!("{} exists and is a file", req.dir.display()),
     }
     let mut wanted = req.features.clone();
-    let tabs_note = apply_template(req.template, &mut wanted, table)?;
-    let (features, mut notes) = resolve_features(table, &wanted)?;
+    let tabs_note = apply_template(req.template, &mut wanted)?;
+    let mut left_out = expand_all(&mut wanted, table, req.flutter, req.template);
+    let (features, notes) = resolve_features(table, &wanted)?;
+    left_out.extend(notes);
+    let mut notes = left_out;
     notes.extend(tabs_note);
     if let Some(flutter) = req.flutter {
         if !flutter.at_least(BASE_FLOOR) {

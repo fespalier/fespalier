@@ -25,6 +25,7 @@ fn request(dir: &str) -> Request {
         platforms: vec![],
         description: None,
         features: vec![],
+        template: None,
         local_packages: None,
         no_pub_get: false,
         offline: false,
@@ -60,6 +61,7 @@ const SYNTHETIC: &[Recipe] = &[
             main_imports: &["dart:async"],
             ..Startup::NONE
         },
+        replaces: &[],
         requires: &[],
         conflicts: &["gamma"],
     },
@@ -112,6 +114,7 @@ const SYNTHETIC: &[Recipe] = &[
             zone: Some("Future<void> zone(Future<void> Function() body) => runZoned(body);"),
             ..Startup::NONE
         },
+        replaces: &[],
         requires: &["alpha"],
         conflicts: &[],
     },
@@ -124,6 +127,7 @@ const SYNTHETIC: &[Recipe] = &[
         config: &[],
         files: &[],
         startup: Startup::NONE,
+        replaces: &[],
         requires: &[],
         conflicts: &["alpha"],
     },
@@ -502,6 +506,7 @@ fn the_starter_app_generates_and_gets_route_smoke_tests_without_config() {
 #[test]
 fn created_files_are_dart_format_clean() {
     let mut checked = 0;
+    let mut seen = BTreeSet::new();
     let mut cases: Vec<(&str, &[Recipe], Vec<String>)> = vec![
         ("app", RECIPES, vec![]),
         ("a_much_longer_package_name_than_usual", RECIPES, vec![]),
@@ -528,6 +533,10 @@ fn created_files_are_dart_format_clean() {
         let plan = ok(&req, table);
         write_plan(dir.path(), &plan);
         for file in plan.files.iter().filter(|f| f.path.ends_with(".dart")) {
+            // The same text is formatted once: most files do not change from one case to the next.
+            if !seen.insert(file.content.clone()) {
+                continue;
+            }
             let path = dir.path().join(&file.path);
             let (formatted, warning) = crate::format::format_dart(&file.content, &path);
             if warning.is_some() {
@@ -580,6 +589,7 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
         .map(|f| f.path.clone())
         .collect();
     let mut written: Vec<(String, &str)> = vec![];
+    let mut replaced: Vec<(String, &str)> = vec![];
     for r in table {
         let id = r.id;
         let well_formed = id.chars().next().is_some_and(|c| c.is_ascii_lowercase())
@@ -631,6 +641,15 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
                 }
             }
         }
+        for path in r.replaces {
+            if !base_paths.contains(*path) {
+                bad.push(format!("{id}: replaces `{path}`, which the base app lacks"));
+            }
+            if let Some((_, other)) = replaced.iter().find(|(p, _)| p == path) {
+                bad.push(format!("{id}: `{path}` is also replaced by `{other}`"));
+            }
+            replaced.push(((*path).to_string(), id));
+        }
         for (_, path) in r.files {
             if path.starts_with('/')
                 || path.contains("..")
@@ -672,8 +691,10 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
         }
         for step in r.startup.steps {
             let code = step.code;
-            if code.contains('\n') || step.comment.contains('\n') || code.is_empty() {
-                bad.push(format!("{id}: `{code}` is not one line"));
+            // A step is one line, or several that `dart format` wrapped (none blank).
+            let wrapped_badly = code.lines().any(|l| l.trim().is_empty());
+            if step.comment.contains('\n') || code.is_empty() || wrapped_badly {
+                bad.push(format!("{id}: `{code}` is not a well-formed step"));
             }
             if code.contains("await ") != step.awaits {
                 bad.push(format!("{id}: `{code}`: `awaits` disagrees with the code"));
@@ -1129,11 +1150,16 @@ fn imports_are_sorted_and_deduplicated() {
 
 #[test]
 fn the_order_features_were_asked_in_changes_nothing() {
-    let one = plan_of(RECIPES, &["storage", "connectivity"]).describe("<staging>");
-    let two = plan_of(RECIPES, &["connectivity", "storage"]).describe("<staging>");
+    let mut ids: Vec<&str> = RECIPES.iter().map(|r| r.id).collect();
+    let one = plan_of(RECIPES, &ids).describe("<staging>");
+    ids.reverse();
+    let two = plan_of(RECIPES, &ids).describe("<staging>");
     let three = plan_of(RECIPES, &["all"]).describe("<staging>");
     assert_eq!(one, two);
     assert_eq!(one, three);
+    let a = plan_of(RECIPES, &["storage", "connectivity"]).describe("<staging>");
+    let b = plan_of(RECIPES, &["connectivity", "storage"]).describe("<staging>");
+    assert_eq!(a, b);
 }
 
 // --- the features -------------------------------------------------------------------------------
@@ -1240,8 +1266,174 @@ fn storage_and_connectivity_start_up_as_the_docs_say() {
         .map(|f| f.path.as_str())
         .filter(|p| p.starts_with("test/"))
         .collect();
+    assert!(tests.contains(&"test/storage_test.dart"), "{tests:?}");
+    assert!(tests.contains(&"test/connectivity_test.dart"), "{tests:?}");
+}
+
+// --- devtools, forms, flags and the tabs template -----------------------------------------------
+
+/// The first fenced block of `lang` after the heading `heading` of a docs page.
+fn docs_block(page: &str, heading: &str, lang: &str) -> String {
+    let text = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../docs")
+            .join(page),
+    )
+    .unwrap();
+    let after = text
+        .split(heading)
+        .nth(1)
+        .unwrap_or_else(|| panic!("{heading}"));
+    let fence = format!("```{lang}\n");
+    let body = after
+        .split(&fence)
+        .nth(1)
+        .unwrap_or_else(|| panic!("{heading}"));
+    format!("{}\n", body.split("```").next().unwrap().trim_end())
+}
+
+#[test]
+fn devtools_commits_the_options_file_the_docs_show() {
+    let plan = plan_of(RECIPES, &["devtools"]);
     assert_eq!(
-        tests,
-        ["test/storage_test.dart", "test/connectivity_test.dart"]
+        file(&plan, "devtools_options.yaml"),
+        docs_block("devtools.md", "## How to see it", "yaml")
     );
+    // The extension ships in fespalier itself: no dependency, nothing in startup.
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert_eq!(pubspec.matches("git:").count(), 1, "{pubspec}");
+    assert!(plan.files.iter().all(|f| f.path != "lib/app/startup.dart"));
+}
+
+#[test]
+fn forms_depends_on_the_package_and_has_a_form_beside_its_action() {
+    let plan = plan_of(RECIPES, &["forms"]);
+    assert!(file(&plan, "pubspec.yaml").contains("  fespalier_forms:\n    git:"));
+    let action = file(&plan, "lib/app/contact/action.dart");
+    assert!(action.contains("ContactFields form()") && action.contains("validate("));
+    assert!(file(&plan, "lib/app/contact/page.dart").contains("ContactRoute.useForm(ref)"));
+}
+
+#[test]
+fn flags_gate_a_route_and_start_from_a_const_source() {
+    let plan = plan_of(RECIPES, &["flags"]);
+    assert!(file(&plan, "lib/app/labs/guard.dart").contains("flagGuard(ref, labs, orElse:"));
+    assert!(file(&plan, "lib/flags.dart").contains("const labs = BoolFlag('labs');"));
+    // docs/guards.md, "Where flag values come from".
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        startup.contains(
+            "  flagSource.overrideWithValue(\n    const ConstFlags({'labs': bool.fromEnvironment('LABS')}),\n  ),\n"
+        ),
+        "{startup}"
+    );
+    assert!(
+        startup.contains("List<Override> startup() => ["),
+        "{startup}"
+    );
+    assert!(file(&plan, "test/flags_test.dart").contains("FakeFlags({'labs': true})"));
+}
+
+#[test]
+fn the_tabs_template_is_the_adaptive_feature() {
+    let mut tabs = request("my_app");
+    tabs.template = Some(plan::Template::Tabs);
+    let tabs = ok(&tabs, RECIPES);
+    let adaptive = plan_of(RECIPES, &["adaptive"]);
+    assert_eq!(tabs.features, ["adaptive"]);
+    assert_eq!(tabs.files, adaptive.files);
+    assert_eq!(tabs.notes, ["`--template tabs` needs `adaptive`: added it"]);
+    assert!(adaptive.notes.is_empty());
+    golden("template-tabs", &tabs.describe("<staging>"));
+
+    // Asking for both says nothing; the tabs take the base app's layout and pages out.
+    let mut both = request("my_app");
+    both.template = Some(plan::Template::Tabs);
+    both.features = vec!["adaptive".into()];
+    assert!(ok(&both, RECIPES).notes.is_empty());
+    let paths: Vec<&str> = tabs.files.iter().map(|f| f.path.as_str()).collect();
+    for gone in [
+        "lib/app/layout.dart",
+        "lib/app/page.dart",
+        "lib/app/about/page.dart",
+    ] {
+        assert!(!paths.contains(&gone), "{gone} in {paths:?}");
+    }
+    for there in [
+        "lib/app/(tabs)/layout.dart",
+        "lib/app/(tabs)/(home)/page.dart",
+        "lib/app/(tabs)/(home)/nav.dart",
+        "lib/app/(tabs)/about/page.dart",
+        "lib/app/(tabs)/about/nav.dart",
+        "lib/app/not_found.dart",
+        "lib/app/transition.dart",
+        "lib/app/app.dart",
+    ] {
+        assert!(paths.contains(&there), "{there} not in {paths:?}");
+    }
+    assert!(file(&tabs, "pubspec.yaml").contains("  fespalier_adaptive:\n    git:"));
+    // docs/layouts.md, "A bar, a rail or a drawer": the scaffold around AppMenu.watch.
+    let layout = file(&tabs, "lib/app/(tabs)/layout.dart");
+    assert!(layout.contains("import 'package:fespalier_adaptive/material.dart';"));
+    assert!(layout.contains("AppMenu.watch(ref, under: '(tabs)')"));
+    assert!(layout.contains("shell: navigationShell"));
+}
+
+#[test]
+fn the_minimal_template_is_the_base_app_and_refuses_the_tabs() {
+    let mut minimal = request("my_app");
+    minimal.template = Some(plan::Template::Minimal);
+    assert_eq!(
+        ok(&minimal, RECIPES).describe("<staging>"),
+        ok(&request("my_app"), RECIPES).describe("<staging>")
+    );
+    minimal.features = vec!["adaptive".into()];
+    assert!(err(&minimal, RECIPES).contains("the tabs template"));
+    // `all` with it is everything else.
+    minimal.features = vec!["all".into()];
+    let plan = ok(&minimal, RECIPES);
+    let others: Vec<&str> = RECIPES
+        .iter()
+        .map(|r| r.id)
+        .filter(|id| *id != "adaptive")
+        .collect();
+    assert_eq!(plan.features, others);
+    assert!(plan.files.iter().any(|f| f.path == "lib/app/page.dart"));
+}
+
+/// Each real feature alone, the tabs and all of them: the app generates (`forms.rs` finds the
+/// dependency, the tab layout is read as one) and `fsp test` writes a smoke test per route.
+#[test]
+fn every_real_app_generates_and_gets_route_smoke_tests() {
+    let mut cases: Vec<(Vec<&str>, usize)> = RECIPES
+        .iter()
+        .map(|r| {
+            (
+                vec![r.id],
+                2 + usize::from(r.id == "forms" || r.id == "flags"),
+            )
+        })
+        .collect();
+    cases.push((vec!["all"], 4));
+    for (features, routes) in cases {
+        let dir = tempfile::tempdir().unwrap();
+        let plan = plan_of(RECIPES, &features);
+        write_plan(dir.path(), &plan);
+        let cfg = crate::config::Config::load(dir.path())
+            .unwrap()
+            .for_scaffolding();
+        let outcome = crate::gen_with(dir.path(), &cfg, true)
+            .unwrap_or_else(|e| panic!("{features:?}: {e:#}"));
+        assert_eq!(outcome.routes, routes, "{features:?}");
+        let app = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+        let tabs = plan.features.contains(&"adaptive");
+        assert_eq!(app.contains("TabsLayout"), tabs, "{features:?}");
+        assert_eq!(app.contains("AppLayout"), !tabs, "{features:?}");
+        assert_eq!(
+            app.contains("package:fespalier_forms/fespalier_forms.dart"),
+            plan.features.contains(&"forms"),
+            "{features:?}"
+        );
+        crate::smoke::run(dir.path(), false).unwrap_or_else(|e| panic!("{features:?}: {e:#}"));
+    }
 }

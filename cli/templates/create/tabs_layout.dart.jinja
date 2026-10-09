@@ -1,0 +1,27 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
+import 'package:flutter/material.dart';
+import 'package:{{ package }}/app.g.dart';
+
+/// Which folder is which tab, left to right (without it the tabs follow folder order). Each
+/// folder next to this file is one tab with a navigation stack and a state of its own.
+const tabs = ['(home)', 'about'];
+
+/// Asking for a `StatefulNavigationShell` instead of a `child` makes this a tab layout. The bar
+/// is the menu: the `nav.dart` in each tab's folder says what the tab is called and its icon, and
+/// `AdaptiveNavScaffold` shows `AppMenu.watch` as a `NavigationBar` on a phone, a
+/// `NavigationRail` on a tablet and a `NavigationDrawer` on a wide window (docs/layouts.md,
+/// "A bar, a rail or a drawer"). A tab keeps its state when the window changes size.
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+    shell: navigationShell,
+    // `under:` the tab layout's folder, so each entry knows its tab: tapping the current one
+    // goes back to its first page.
+    menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+  );
+}

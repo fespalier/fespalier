@@ -1,0 +1,47 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:{{ package }}/app.g.dart';
+
+/// Served at `/contact`. `ContactRoute.useForm` is generated from action.dart's form(): a typed
+/// field per field of the action's input, an error per field, and a submit that is null while the
+/// action runs. It is a real hook, so the page is a [HookConsumerWidget].
+class ContactPage extends HookConsumerWidget {
+  const ContactPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final form = ContactRoute.useForm(ref);
+    final f = form.fields;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Contact')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          spacing: 16,
+          children: [
+            TextField(
+              controller: f.name.controller,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                errorText: f.name.error,
+              ),
+            ),
+            TextField(
+              controller: f.message.controller,
+              decoration: InputDecoration(
+                labelText: 'Message',
+                errorText: f.message.error,
+              ),
+            ),
+            if (form.error case final e?) Text('$e'),
+            FilledButton(
+              // Null while the action runs: the button is disabled.
+              onPressed: form.onSubmit,
+              child: Text(form.isPending ? 'Sending...' : 'Send'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

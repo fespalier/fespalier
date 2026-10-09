@@ -31,7 +31,7 @@ pub mod compose;
 pub mod plan;
 pub mod recipes;
 
-use plan::{DirState, FlutterVersion, Plan, Request};
+use plan::{DirState, FlutterVersion, Plan, Request, Template};
 
 #[derive(Args)]
 pub struct CreateCmd {
@@ -55,6 +55,14 @@ pub struct CreateCmd {
     /// The `description:` of the pubspec
     #[arg(long, value_name = "TEXT", conflicts_with = "list_features")]
     pub description: Option<String>,
+    /// The app to start from: `minimal` (default), or `tabs`, which is the `adaptive` feature
+    #[arg(
+        long,
+        value_enum,
+        value_name = "TEMPLATE",
+        conflicts_with = "list_features"
+    )]
+    pub template: Option<Template>,
     /// Optional features to add, comma separated, or `all` (`--list-features` lists them)
     #[arg(
         long,
@@ -153,6 +161,7 @@ fn create(cmd: &CreateCmd, report: &Report) -> Result<()> {
         platforms: cmd.platforms.clone(),
         description: cmd.description.clone(),
         features: cmd.features.clone(),
+        template: cmd.template,
         local_packages: local,
         no_pub_get: cmd.no_pub_get,
         offline: cmd.offline,

@@ -4,9 +4,9 @@
 # `flutter analyze` and `flutter test`.
 #
 # The cases are `base` (no features), one per feature that `fsp create --list-features --json`
-# lists, and `all` (every feature at once, when there are two or more). Name the cases on the
-# command line to run only those; with none, every case runs; `--list` prints them. CI's `create` job runs one case per
-# matrix entry, with the same script.
+# lists (`adaptive` is made with `--template tabs`), and `all` (every feature at once, when there
+# are two or more). Name the cases on the command line to run only those; with none, every case
+# runs; `--list` prints them. CI's `create` job runs one case per matrix entry, with the same script.
 #
 # The apps depend on this checkout (`--local-packages`), not on a git tag, so what is checked is
 # the code under review. Web is the only platform made: the checks need no other. Needs Flutter
@@ -46,9 +46,17 @@ trap 'rm -rf "$work"' EXIT
 
 check() {
   local name=$1 features
+  # What `fsp create` is given besides the folder, the checkout and the platform.
+  local -a args=()
   case "$name" in
     base) features="" ;;
     all) features=all ;;
+    # The tabs are the `adaptive` feature (create_tests.rs pins that the two make the same app), so
+    # this case asks for them with --template, which is the flag a person types.
+    adaptive)
+      features=adaptive
+      args=(--template tabs)
+      ;;
     *)
       printf '%s\n' "$ids" | grep -qx "$name" || {
         echo "::error::no feature called $name (fsp create --list-features)" >&2
@@ -57,13 +65,10 @@ check() {
       features=$name
       ;;
   esac
+  [ -z "$features" ] || [ "${#args[@]}" -gt 0 ] || args=(--features "$features")
   local app="app_$name"
-  echo "== create $name${features:+ (--features $features)}"
-  if [ -n "$features" ]; then
-    "$fsp" create "$work/$app" --local-packages "$root" --platforms web --features "$features"
-  else
-    "$fsp" create "$work/$app" --local-packages "$root" --platforms web
-  fi
+  echo "== create $name${args[*]:+ (${args[*]})}"
+  "$fsp" create "$work/$app" --local-packages "$root" --platforms web ${args[@]+"${args[@]}"}
   (
     cd "$work/$app"
     # Generated files are left as the generator wrote them (`format:` is off), like the examples.

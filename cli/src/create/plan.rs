@@ -32,6 +32,19 @@ pub const PLATFORMS: [&str; 6] = ["android", "ios", "linux", "macos", "web", "wi
 /// The description of an app made without `--description`.
 const DEFAULT_DESCRIPTION: &str = "A new fespalier app.";
 
+/// `--template`: which app the base is. `tabs` is the `adaptive` feature (a tab layout shown as a
+/// bar, a rail or a drawer), so choosing it adds that feature, and the feature chooses it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Template {
+    /// A home page and an about page that link to each other.
+    Minimal,
+    /// Two tabs, Home and About, in a layout that adapts to the window's width.
+    Tabs,
+}
+
+/// The feature whose files are the `tabs` template's.
+pub const TABS_FEATURE: &str = "adaptive";
+
 /// What is at the folder the app goes to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DirState {
@@ -98,6 +111,8 @@ pub struct Request {
     pub description: Option<String>,
     /// `--features`, as typed.
     pub features: Vec<String>,
+    /// `--template`; `None` is whatever the features say (the base app, or tabs with `adaptive`).
+    pub template: Option<Template>,
     /// `--local-packages`: an absolute path to a checkout of fespalier.
     pub local_packages: Option<String>,
     pub no_pub_get: bool,
@@ -369,6 +384,48 @@ pub fn resolve_features<'t>(
     Ok((chosen, notes))
 }
 
+/// What `--template` does to the features asked for: `tabs` adds the feature that is the tabs
+/// template (with a note, unless it was asked for), and `minimal` refuses it and takes it out of
+/// `all`. Returns the note.
+fn apply_template(
+    template: Option<Template>,
+    wanted: &mut Vec<String>,
+    table: &[Recipe],
+) -> Result<Option<String>> {
+    match template {
+        None => Ok(None),
+        Some(Template::Tabs) => {
+            let asked = wanted.iter().any(|w| w == TABS_FEATURE || w == ALL);
+            if !asked {
+                wanted.push(TABS_FEATURE.to_string());
+            }
+            Ok((!asked).then(|| format!("`--template tabs` needs `{TABS_FEATURE}`: added it")))
+        }
+        Some(Template::Minimal) => {
+            if wanted.iter().any(|w| w == TABS_FEATURE) {
+                bail!(
+                    "`--template minimal` and the `{TABS_FEATURE}` feature cannot be combined: `{TABS_FEATURE}` is the tabs template"
+                );
+            }
+            *wanted = wanted
+                .iter()
+                .flat_map(|w| {
+                    if w == ALL {
+                        table
+                            .iter()
+                            .map(|r| r.id.to_string())
+                            .filter(|id| id != TABS_FEATURE)
+                            .collect()
+                    } else {
+                        vec![w.clone()]
+                    }
+                })
+                .collect();
+            Ok(None)
+        }
+    }
+}
+
 /// The Dart files of the starting app: `fsp init`'s five, the home page with a link in it, an
 /// about page for the link to go to, and `startup.dart` when a feature has something to start.
 fn starter_files(package: &str, features: &[&Recipe]) -> Result<Vec<PlannedFile>> {
@@ -399,6 +456,12 @@ fn starter_files(package: &str, features: &[&Recipe]) -> Result<Vec<PlannedFile>
     if let Some(startup) = compose::startup_dart(features)? {
         files.push(new("lib/app/startup.dart".to_string(), startup));
     }
+    // A feature that brings its own layout and pages takes the base app's out.
+    files.retain(|f| {
+        !features
+            .iter()
+            .any(|r| r.replaces.contains(&f.path.as_str()))
+    });
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
 }
@@ -439,7 +502,10 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
         ),
         DirState::NotADirectory => bail!("{} exists and is a file", req.dir.display()),
     }
-    let (features, notes) = resolve_features(table, &req.features)?;
+    let mut wanted = req.features.clone();
+    let tabs_note = apply_template(req.template, &mut wanted, table)?;
+    let (features, mut notes) = resolve_features(table, &wanted)?;
+    notes.extend(tabs_note);
     if let Some(flutter) = req.flutter {
         if !flutter.at_least(BASE_FLOOR) {
             bail!(

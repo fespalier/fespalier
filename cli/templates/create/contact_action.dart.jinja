@@ -1,0 +1,17 @@
+import 'package:fespalier/fespalier.dart';
+
+/// The input of the action, and so the fields of its form: a record with named fields.
+typedef ContactFields = ({String name, String message});
+
+/// The form starts empty. (A form that edits something takes the data it starts from.)
+ContactFields form() => (name: '', message: '');
+
+/// Checked on the device before the action runs, and live in the form after a first submit.
+FieldErrors? validate(ContactFields input) => FieldErrors({
+  if (input.name.trim().isEmpty) 'name': 'Enter your name',
+  if (input.message.trim().isEmpty) 'message': 'Write a message',
+});
+
+/// The write. Send `input` to your server here; it can throw
+/// `FieldErrors({'name': '...'})` to show an error under a field.
+Future<void> action(Ref ref, {required ContactFields input}) async {}

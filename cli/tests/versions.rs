@@ -262,7 +262,7 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 19] = [
+const COMPANIONS: [&str; 20] = [
     "packages/fespalier_otel/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
@@ -271,6 +271,7 @@ const COMPANIONS: [&str; 19] = [
     "packages/fespalier_storage/pubspec.yaml",
     "packages/fespalier_connectivity/pubspec.yaml",
     "packages/fespalier_image/pubspec.yaml",
+    "packages/fespalier_http/pubspec.yaml",
     "packages/fespalier_dio/pubspec.yaml",
     "packages/fespalier_cratestack/pubspec.yaml",
     "packages/fespalier_sentry/pubspec.yaml",
@@ -417,6 +418,7 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_storage/README.md",
         "packages/fespalier_connectivity/README.md",
         "packages/fespalier_image/README.md",
+        "packages/fespalier_http/README.md",
         "packages/fespalier_dio/README.md",
         "packages/fespalier_cratestack/README.md",
         "packages/fespalier_sentry/README.md",
@@ -475,6 +477,8 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier_connectivity/README.md",
         "packages/fespalier_image/pubspec.yaml",
         "packages/fespalier_image/README.md",
+        "packages/fespalier_http/pubspec.yaml",
+        "packages/fespalier_http/README.md",
         "packages/fespalier_dio/pubspec.yaml",
         "packages/fespalier_dio/README.md",
         "packages/fespalier_cratestack/pubspec.yaml",

@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart' show FieldErrors;
 
-import 'problem.dart';
+import 'package:fespalier_http/problem.dart';
 
 /// Server validation errors as an action's [FieldErrors] (since 0.9.0).
 extension FespalierDioFieldErrors<T> on Future<T> {

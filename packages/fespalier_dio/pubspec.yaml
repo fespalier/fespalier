@@ -12,7 +12,6 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
-  # Pure Dart, both: an app pays only for the library it imports (fespalier_dio.dart or http.dart).
   # 5.7.0: the lowest the floor job can test. The tests run WriteGuard against dio_smart_retry,
   # whose own constraint is `dio: ^5.7.0`, so `flutter pub downgrade` cannot resolve anything
   # lower; a constraint no run exercises is not claimed (the library alone compiles on 5.4.0).
@@ -26,8 +25,12 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.14.0 # x-release-please-version
-  # 1.5.0: Abortable requests.
-  http: ^1.5.0
+  # The package:http half, and the write rule and the problem decoders both clients share.
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.14.0 # x-release-please-version
 
 dev_dependencies:
   # The tests run WriteGuard against the retry interceptor apps actually use, with zero delays.
@@ -35,9 +38,13 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+  # Only the tests that import both libraries together use it.
+  http: ^1.5.0
 
 # In this repository the package is built against the fespalier beside it. A dependency's
 # overrides are ignored, so apps never see this.
 dependency_overrides:
   fespalier:
     path: ../fespalier
+  fespalier_http:
+    path: ../fespalier_http

@@ -51,6 +51,10 @@ Flutter 3.32, with the lowest dependencies it allows.
   offline region packs (download with progress, pause, resume, storage) and PMTiles file packs
   (resumable over HTTP Range, checked, written atomically); MapLibre's own downloads cannot resume
   after an app restart, which is why the file packs exist.
+- **`fespalier_download`, the rest.** The request, status and port model ships in 0.15.0 (docs/downloads.md).
+  Still to come: the engine (start, pause, resume, retry, cancel, a registry that survives a restart), the
+  foreground HTTP backend, providers, a background backend over the operating system's download service,
+  notification taps as routes, and uploads. `fespalier_maps` file packs will move onto it.
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
 - **The four telemetry attributes documented as not emitted**: `fespalier.data.attempt`,

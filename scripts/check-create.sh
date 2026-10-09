@@ -4,8 +4,8 @@
 # `flutter analyze` and `flutter test`.
 #
 # The cases are `base` (no features), one per feature that `fsp create --list-features --json`
-# lists (`adaptive` is made with `--template tabs`), and `all` (every feature at once, when there
-# are two or more). Name the cases on the command line to run only those; with none, every case
+# lists (`adaptive` is made with `--template tabs`), `telemetry` (`otel` and `sentry` together, the
+# pair that composes) and `all` (every feature at once, when there are two or more). Name the cases on the command line to run only those; with none, every case
 # runs; `--list` prints them. CI's `create` job runs one case per matrix entry, with the same script.
 #
 # The apps depend on this checkout (`--local-packages`), not on a git tag, so what is checked is
@@ -30,6 +30,8 @@ ids=$("$fsp" create --list-features --json | sed -n 's/^{"id":"\([a-z0-9_]*\)".*
 
 all_cases=(base)
 for id in $ids; do all_cases+=("$id"); done
+# `telemetry` is the pair that has to compose (one FespalierTelemetry.combine, one zone): otel and sentry.
+if printf '%s\n' "$ids" | grep -qx otel && printf '%s\n' "$ids" | grep -qx sentry; then all_cases+=(telemetry); fi
 if [ "$(printf '%s\n' "$ids" | grep -c .)" -ge 2 ]; then all_cases+=(all); fi
 
 # `--list` prints the cases, one per line: CI builds its matrix from it.
@@ -51,6 +53,7 @@ check() {
   case "$name" in
     base) features="" ;;
     all) features=all ;;
+    telemetry) features=otel,sentry ;;
     # The tabs are the `adaptive` feature (create_tests.rs pins that the two make the same app), so
     # this case asks for them with --template, which is the flag a person types.
     adaptive)

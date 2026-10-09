@@ -212,7 +212,7 @@ fn list_features(json: bool) {
             println!("{:<width$}  {}", f.id, f.description);
         }
         println!(
-            "{:<width$}  Every feature above at once (--features {})",
+            "{:<width$}  Every feature above that your Flutter runs, at once (--features {})",
             plan::ALL,
             plan::ALL
         );

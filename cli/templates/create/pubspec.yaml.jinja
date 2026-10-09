@@ -18,6 +18,9 @@ dependencies:
 {% endfor %}
 
 dev_dependencies:
+{% for dep in dev_deps %}
+  {{ dep.head }}
+{% endfor %}
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

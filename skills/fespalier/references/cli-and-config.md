@@ -378,7 +378,7 @@ expected.
 fsp create my_app                                  # the base app
 fsp create my_app --org com.example --platforms android,ios,web
 fsp create my_app --dry-run --json                 # the plan as JSON lines; nothing is written or run
-fsp create my_app --features storage,connectivity  # or --features all
+fsp create my_app --features storage,connectivity  # or --features all (every one your Flutter runs)
 fsp create my_app --template tabs                  # the `adaptive` feature: tabs as a bar, rail or drawer
 fsp create --list-features [--json]                # the optional features
 ```
@@ -399,8 +399,8 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   `--template minimal` with `adaptive` is refused, with `all` it leaves `adaptive` out), `--dry-run` (stderr: the commands and every file; it does not run Flutter), `--json`
   (stdout: `run`, `file`, `done`, `error` events as JSON lines, with `content` on a dry run's `file`; text
   and Flutter's own output on stderr).
-- **Features.** `--features` takes ids from `--list-features`, or `all` (every feature of the table; `all` is
-  not in the `--json` listing). One that another needs is added with a note, two that conflict or one above the
+- **Features.** `--features` takes ids from `--list-features`, or `all` (every feature of the table that the
+  installed Flutter runs, with a note for each left out; `all` is not in the `--json` listing). One that another needs is added with a note, two that conflict or one above the
   installed Flutter are refused, an unknown id says what there is. The table is `cli/src/create/recipes.rs`.
   0.15.0 has `storage` (`fespalier_storage`: `startup()` awaits `PrefsDataStorage.open()` into
   `dataCacheStorage`; the test boots `AppMain.root()` over `fakePrefsStore`) and `connectivity`
@@ -415,10 +415,21 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   an `action()` and a page on `ContactRoute.useForm`; the test uses `isFieldErrors`) and `flags`
   (`fespalier_flags`; `lib/flags.dart`, a `flagGuard` in `lib/app/labs/guard.dart`, `flagSource` from
   `--dart-define=LABS=true` in `startup()`; the test uses `FakeFlags`). The `forms` and `flags` pages have a
-  `Scaffold` of their own and are opened by URL. Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
+  `Scaffold` of their own and are opened by URL. Also since 0.15.0: `otel` (`fespalier_otel` and `otel_zone` by
+  commit, `telemetry: true`; `startup()` installs `FespalierOtel(isReady:)` (sync), the `zone()` starts the SDK first
+  (`startObservability(body)`, inside `runGuarded` except on the web), so a test that builds the app does not
+  start it, plus `providerObservers` and `routerObservers`;
+  the test reads spans from `dartastic_opentelemetry`'s in-memory exporter; **Flutter 3.35 or newer**, because
+  `otel_zone` needs Dart 3.9, so `all` on 3.32 leaves it out and naming it is refused) and `sentry`
+  (`fespalier_sentry` and `sentry_flutter` `>=9.26.0 <10.0.0`, `telemetry: true`; `zone()` is `SentryFlutter.init`
+  with `FespalierSentry.configure` and `SENTRY_DSN`, empty meaning off; the test uses `RecordingSentry`). With both,
+  the composer makes one `FespalierTelemetry.install(FespalierTelemetry.combine([...]))` and keeps Sentry's
+  `zone()`: `otel`'s is a fallback used only when no other feature has one (docs/observability.md "Wiring
+  Sentry" says why). Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
   `lib/app/app.dart`, `lib/main.dart`) are never written by one feature but composed from all of them
   (`cli/src/create/compose.rs`): imports sorted and deduplicated, startup steps in a fixed order (telemetry
-  sinks, then `restoreAuth`, then the rest), `startup()` async only when a step awaits, at most one `zone()`.
+  sinks, then `restoreAuth`, then the rest), `startup()` async only when a step awaits, at most one `zone()` (two
+  features that each have one are an error naming both; `weak_zone` is the exception above).
   The messages are in `fespalier-troubleshooting`, `references/diagnostics-create.md`.
 
 ### `fsp telemetry` (since 0.8.1)

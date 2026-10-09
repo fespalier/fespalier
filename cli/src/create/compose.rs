@@ -21,7 +21,7 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 
 use super::plan::{BASE_FLOOR, REF, REPO_URL, floor_of};
-use super::recipes::{Recipe, Source, Step, StepKind, companion_closure};
+use super::recipes::{Phase, Recipe, Source, Startup, StepKind, ThirdParty, companion_closure};
 use crate::templates;
 
 /// `text` as a YAML scalar: as it is when that reads back the same, else in single quotes.
@@ -62,8 +62,33 @@ struct PubspecCx<'a> {
     description: String,
     floor: String,
     deps: Vec<Dep>,
+    dev_deps: Vec<Dep>,
     config: Vec<&'a str>,
     overrides: Vec<Override>,
+}
+
+/// The entries of `dependencies:` (or `dev_dependencies:`) for third-party packages.
+fn third_party<'a>(packages: impl Iterator<Item = &'a ThirdParty>) -> Vec<Dep> {
+    packages
+        .map(|tp| {
+            let (head, lines) = match tp.source {
+                Source::Range(range) => (format!("{}: \"{range}\"", tp.name), vec![]),
+                Source::Git { url, commit } => (
+                    format!("{}:", tp.name),
+                    vec![
+                        "git:".to_string(),
+                        format!("  url: {url}"),
+                        format!("  ref: {commit}"),
+                    ],
+                ),
+            };
+            Dep {
+                name: tp.name.to_string(),
+                head,
+                lines,
+            }
+        })
+        .collect()
 }
 
 /// The pubspec of the app: a function of the name, the features and where the packages come from.
@@ -100,24 +125,12 @@ pub fn pubspec(
     };
     let mut deps = vec![package_dep("fespalier")];
     deps.extend(companions.iter().map(|c| package_dep(c)));
-    for tp in features.iter().flat_map(|r| r.third_party.iter()) {
-        let (head, lines) = match tp.source {
-            Source::Range(range) => (format!("{}: \"{range}\"", tp.name), vec![]),
-            Source::Git { url, commit } => (
-                format!("{}:", tp.name),
-                vec![
-                    "git:".to_string(),
-                    format!("  url: {url}"),
-                    format!("  ref: {commit}"),
-                ],
-            ),
-        };
-        deps.push(Dep {
-            name: tp.name.to_string(),
-            head,
-            lines,
-        });
-    }
+    deps.extend(third_party(
+        features.iter().flat_map(|r| r.third_party.iter()),
+    ));
+    let mut dev_deps = third_party(features.iter().flat_map(|r| r.dev_third_party.iter()));
+    dev_deps.sort_by(|a, b| a.name.cmp(&b.name));
+    dev_deps.dedup_by(|a, b| a.name == b.name);
     deps.sort_by(|a, b| a.name.cmp(&b.name));
     deps.dedup_by(|a, b| a.name == b.name);
     if let Some(dep) = deps.iter().find(|d| d.name == name) {
@@ -140,6 +153,13 @@ pub fn pubspec(
         }
         _ => vec![],
     };
+    // Two features may ask for the same key (`telemetry: true`); it is written once.
+    let mut config: Vec<&str> = vec![];
+    for line in features.iter().flat_map(|r| r.config.iter().copied()) {
+        if !config.contains(&line) {
+            config.push(line);
+        }
+    }
     let floor = features
         .iter()
         .map(|r| r.flutter_floor)
@@ -153,10 +173,8 @@ pub fn pubspec(
             description: scalar(description),
             floor: floor.to_string(),
             deps,
-            config: features
-                .iter()
-                .flat_map(|r| r.config.iter().copied())
-                .collect(),
+            dev_deps,
+            config,
             overrides,
         },
     ))
@@ -196,7 +214,16 @@ fn import_block(mut imports: Vec<(String, String)>) -> String {
 /// `import '<uri>';` for each URI.
 fn plain_imports<'a>(uris: impl IntoIterator<Item = &'a str>) -> Vec<(String, String)> {
     uris.into_iter()
-        .map(|uri| (uri.to_string(), format!("import '{uri}';")))
+        .map(|entry| {
+            // `package:a/a.dart show b`: the URI, then what follows it in the directive.
+            let (uri, rest) = entry.split_once(' ').unwrap_or((entry, ""));
+            let tail = if rest.is_empty() {
+                String::new()
+            } else {
+                format!(" {rest}")
+            };
+            (uri.to_string(), format!("import '{uri}'{tail};"))
+        })
         .collect()
 }
 
@@ -245,35 +272,144 @@ pub fn main_dart(template: &str, features: &[&Recipe]) -> String {
     merge_imports(template, &extra)
 }
 
-/// `lib/app/startup.dart`, or `None` when no feature adds anything to it.
-pub fn startup_dart(features: &[&Recipe]) -> Result<Option<String>> {
-    let mut zones = features.iter().filter(|r| r.startup.zone.is_some());
-    let zone = zones.next();
-    if let Some(first) = zone
-        && let Some(second) = zones.next()
-    {
-        bail!(
-            "`{}` and `{}` both wrap main() in a zone(); an app has one",
-            first.id,
-            second.id
-        );
+/// The lines of `decl` with a `const x = '<string>';` that is too long for 80 columns broken after
+/// the `=`, as `dart format` does (a string cannot be broken, so the name of a long package moves
+/// to its own line).
+fn wrap_const(decl: &str) -> String {
+    decl.lines()
+        .map(|line| match line.split_once(" = ") {
+            Some((head, value))
+                if line.starts_with("const ") && value.starts_with('\'') && line.len() > 80 =>
+            {
+                format!("{head} =\n    {value}")
+            }
+            _ => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A step as written: the composer makes some of its own (the sink install).
+struct Written {
+    kind: StepKind,
+    phase: Phase,
+    comment: String,
+    code: String,
+    awaits: bool,
+}
+
+/// `FespalierTelemetry.install(...)` for the sinks of the chosen features: one sink as it is,
+/// several in one `combine`, formatted the way `dart format` leaves it (a line when it fits in 80
+/// columns, the arguments one per line when it does not).
+fn install_sinks(sinks: &[&str]) -> Option<String> {
+    match sinks {
+        [] => None,
+        [sink] => {
+            let line = format!("FespalierTelemetry.install({sink});");
+            Some(if line.len() + 2 <= 80 {
+                line
+            } else {
+                format!("FespalierTelemetry.install(\n  {sink},\n);")
+            })
+        }
+        many => {
+            let mut code =
+                String::from("FespalierTelemetry.install(\n  FespalierTelemetry.combine([\n");
+            for sink in many {
+                let _ = writeln!(code, "    {sink},");
+            }
+            code.push_str("  ]),\n);");
+            Some(code)
+        }
     }
-    // Phase first, then the table's order (the sort is stable).
-    let mut steps: Vec<&Step> = features
-        .iter()
-        .flat_map(|r| r.startup.steps.iter())
+}
+
+/// `lib/app/startup.dart`, or `None` when no feature adds anything to it. `name` is the app's
+/// package name.
+pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> {
+    let startups = || features.iter().map(|r| (r.id, &r.startup));
+    let one_of = |pick: fn(&Startup) -> Option<&'static str>| -> Result<Option<&'static str>> {
+        let mut found = startups().filter_map(|(id, s)| pick(s).map(|z| (id, z)));
+        let first = found.next();
+        if let Some((first_id, _)) = first
+            && let Some((second_id, _)) = found.next()
+        {
+            bail!("`{first_id}` and `{second_id}` both wrap main() in a zone(); an app has one");
+        }
+        Ok(first.map(|(_, z)| z))
+    };
+    // The zone of a feature wins; the weak one (otel_zone's, which Sentry's makes redundant) is
+    // used only when no feature has one.
+    let strong = one_of(|s| s.zone)?;
+    let wrapper = one_of(|s| s.body_wrapper)?;
+    let zone = match strong {
+        Some(zone) => {
+            // A feature whose SDK starts with the process has the zone call it before the body.
+            let body = wrapper.map_or_else(|| "body".to_string(), |w| format!("() => {w}(body)"));
+            if wrapper.is_some() && !zone.contains("{body}") {
+                bail!(
+                    "a feature starts something before main() runs, and the zone() of another cannot pass it the body"
+                );
+            }
+            Some(zone.replace("{body}", &body))
+        }
+        None => one_of(|s| s.weak_zone)?.map(str::to_string),
+    };
+    let sinks: Vec<&str> = startups()
+        .flat_map(|(_, s)| s.sinks.iter().copied())
         .collect();
+    let mut steps: Vec<Written> = vec![];
+    if let Some(code) = install_sinks(&sinks) {
+        let comment = if sinks.len() > 1 {
+            "One slot for every sink, before the router exists so the first navigation is reported."
+        } else {
+            "Before the router exists, so the first navigation is reported."
+        };
+        steps.push(Written {
+            kind: StepKind::Statement,
+            phase: Phase::Telemetry,
+            comment: comment.to_string(),
+            code,
+            awaits: false,
+        });
+    }
+    steps.extend(
+        startups()
+            .flat_map(|(_, s)| s.steps.iter())
+            .map(|step| Written {
+                kind: step.kind,
+                phase: step.phase,
+                comment: step.comment.to_string(),
+                code: step.code.to_string(),
+                awaits: step.awaits,
+            }),
+    );
+    // Phase first, then the table's order (the sort is stable); the sink install is the first
+    // of the telemetry phase.
     steps.sort_by_key(|s| s.phase);
-    if steps.is_empty() && zone.is_none() {
+    let decls: Vec<String> = startups()
+        .flat_map(|(_, s)| s.decls.iter())
+        .map(|d| wrap_const(&d.replace("{name}", name)))
+        .collect();
+    let provider_observers: Vec<&str> = startups()
+        .flat_map(|(_, s)| s.provider_observers.iter().copied())
+        .collect();
+    let router_observers: Vec<&str> = startups()
+        .flat_map(|(_, s)| s.router_observers.iter().copied())
+        .collect();
+    if steps.is_empty()
+        && zone.is_none()
+        && provider_observers.is_empty()
+        && router_observers.is_empty()
+    {
         return Ok(None);
     }
-    let of_kind = |kind: StepKind| -> Vec<&Step> {
-        steps.iter().copied().filter(|s| s.kind == kind).collect()
-    };
+    let of_kind =
+        |kind: StepKind| -> Vec<&Written> { steps.iter().filter(|s| s.kind == kind).collect() };
     let statements = of_kind(StepKind::Statement);
     let overrides = of_kind(StepKind::Override);
     let awaits = steps.iter().any(|s| s.awaits);
-    let line = |out: &mut String, indent: &str, step: &Step| {
+    let line = |out: &mut String, indent: &str, step: &Written| {
         if !step.comment.is_empty() {
             let _ = writeln!(out, "{indent}// {}", step.comment);
         }
@@ -289,41 +425,80 @@ pub fn startup_dart(features: &[&Recipe]) -> Result<Option<String>> {
             .chain(["package:fespalier/startup.dart"]),
     ));
     out.push('\n');
-    if let Some(zone) = zone.and_then(|r| r.startup.zone) {
+    for decl in &decls {
+        out.push_str(decl);
+        out.push_str("\n\n");
+    }
+    if let Some(zone) = &zone {
         out.push_str(zone);
         out.push_str("\n\n");
     }
-    let (ret, async_) = match (awaits, overrides.is_empty()) {
-        (true, false) => ("Future<List<Override>>", " async"),
-        (false, false) => ("List<Override>", ""),
-        (true, true) => ("Future<void>", " async"),
-        (false, true) => ("void", ""),
-    };
-    out.push_str(
-        "/// Runs once before the app (docs/app-startup.md); the providers it returns are\n",
-    );
-    out.push_str(
-        "/// overridden in the app's ProviderScope, so the first frame already has them.\n",
-    );
-    if statements.is_empty() {
-        let _ = writeln!(out, "{ret} startup(){async_} => [");
-        for step in &overrides {
-            line(&mut out, "  ", step);
-        }
-        out.push_str("];\n");
-    } else {
-        let _ = writeln!(out, "{ret} startup(){async_} {{");
-        for step in &statements {
-            line(&mut out, "  ", step);
-        }
-        if !overrides.is_empty() {
-            out.push_str("  return [\n");
+    if !steps.is_empty() {
+        let (ret, async_) = match (awaits, overrides.is_empty()) {
+            (true, false) => ("Future<List<Override>>", " async"),
+            (false, false) => ("List<Override>", ""),
+            (true, true) => ("Future<void>", " async"),
+            (false, true) => ("void", ""),
+        };
+        out.push_str(
+            "/// Runs once before the app (docs/app-startup.md); the providers it returns are\n",
+        );
+        out.push_str(
+            "/// overridden in the app's ProviderScope, so the first frame already has them.\n",
+        );
+        if statements.is_empty() {
+            let _ = writeln!(out, "{ret} startup(){async_} => [");
             for step in &overrides {
-                line(&mut out, "    ", step);
+                line(&mut out, "  ", step);
             }
-            out.push_str("  ];\n");
+            out.push_str("];\n");
+        } else {
+            let _ = writeln!(out, "{ret} startup(){async_} {{");
+            for step in &statements {
+                line(&mut out, "  ", step);
+            }
+            if !overrides.is_empty() {
+                out.push_str("  return [\n");
+                for step in &overrides {
+                    line(&mut out, "    ", step);
+                }
+                out.push_str("  ];\n");
+            }
+            out.push_str("}\n");
         }
-        out.push_str("}\n");
+    }
+    for (header, elements) in [
+        (
+            "List<ProviderObserver> get providerObservers",
+            &provider_observers,
+        ),
+        (
+            "List<NavigatorObserver> get routerObservers",
+            &router_observers,
+        ),
+    ] {
+        if elements.is_empty() {
+            continue;
+        }
+        if !out.ends_with("\n\n") {
+            out.push('\n');
+        }
+        // On one line when it fits in 80 columns, else one element per line: `dart format`
+        // joins a list that fits, trailing comma or not.
+        let joined: Vec<&str> = elements
+            .iter()
+            .map(|e| e.strip_suffix(',').unwrap_or(e))
+            .collect();
+        let one_line = format!("{header} => [{}];", joined.join(", "));
+        if one_line.len() <= 80 {
+            let _ = writeln!(out, "{one_line}");
+        } else {
+            let _ = writeln!(out, "{header} => [");
+            for element in elements {
+                let _ = writeln!(out, "  {element}");
+            }
+            out.push_str("];\n");
+        }
     }
     Ok(Some(out))
 }

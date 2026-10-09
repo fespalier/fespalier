@@ -6,10 +6,6 @@
 /// A dependency that is not fespalier's: a version range, or a git commit (never a tag: a tag
 /// `ref: v…` would be read as fespalier's own version by `cli/tests/versions.rs`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "the recipes that use these land with the features; the plan and the tests already read them"
-)]
 pub enum Source {
     /// `name: "<range>"`. The range is third party: it is written outside any release-please
     /// annotation, and never holds fespalier's version.
@@ -34,7 +30,7 @@ pub struct ThirdParty {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[allow(
     dead_code,
-    reason = "the features that need the earlier phases land later; the composer and its tests already read them"
+    reason = "the auth feature that needs the Session phase lands later; the composer and its tests already read it"
 )]
 pub enum Phase {
     /// A telemetry sink (`FespalierTelemetry.install`, `combine`).
@@ -47,10 +43,6 @@ pub enum Phase {
 
 /// What a step is in the body of `startup()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(
-    dead_code,
-    reason = "statements land with the telemetry and auth features; the composer and its tests already read them"
-)]
 pub enum StepKind {
     /// A statement, ending with `;`, run before the overrides are returned.
     Statement,
@@ -78,11 +70,31 @@ pub struct Step {
 /// features, so no feature writes one of those files itself.
 #[derive(Debug, Clone, Copy)]
 pub struct Startup {
-    /// Library URIs `startup.dart` imports (`package:fespalier/fespalier.dart`).
+    /// Library URIs `startup.dart` imports (`package:fespalier/fespalier.dart`), or a URI and the
+    /// rest of the directive (`package:flutter/foundation.dart show kIsWeb`).
     pub imports: &'static [&'static str],
     pub steps: &'static [Step],
+    /// Top-level declarations of `startup.dart` (formatted Dart, `{name}` is the app's package
+    /// name), written after the imports: a value the steps and the observers share.
+    pub decls: &'static [&'static str],
     /// A whole `zone()` function (formatted Dart) for `startup.dart`; at most one feature has it.
+    /// It passes `{body}` where the app's body goes (see [`body_wrapper`](Self::body_wrapper)).
     pub zone: Option<&'static str>,
+    /// A `zone()` that is used only when no feature has a [`zone`](Self::zone) of its own: the
+    /// zone of a library that another zone makes redundant. At most one feature has it.
+    pub weak_zone: Option<&'static str>,
+    /// The name of a top-level `Future<void> f(Future<void> Function() body)` (in
+    /// [`decls`](Self::decls)) that must run before the app's `body` inside the zone: the zone of
+    /// another feature passes `{body}` through it. A library that has to start with the process
+    /// and not with the app (a test that builds the app does not start it) is wrapped this way.
+    pub body_wrapper: Option<&'static str>,
+    /// Dart expressions of telemetry sinks. The composer installs them all in one slot, first
+    /// thing in `startup()`: `FespalierTelemetry.install(sink)`, and `combine([...])` for several.
+    pub sinks: &'static [&'static str],
+    /// Elements of the `providerObservers` list (each with its trailing comma).
+    pub provider_observers: &'static [&'static str],
+    /// Elements of the `routerObservers` list (each with its trailing comma).
+    pub router_observers: &'static [&'static str],
     /// Library URIs `app.dart` imports besides its own.
     pub app_imports: &'static [&'static str],
     /// Library URIs `main.dart` imports besides its own.
@@ -94,7 +106,13 @@ impl Startup {
     pub const NONE: Startup = Startup {
         imports: &[],
         steps: &[],
+        decls: &[],
         zone: None,
+        weak_zone: None,
+        body_wrapper: None,
+        sinks: &[],
+        provider_observers: &[],
+        router_observers: &[],
         app_imports: &[],
         main_imports: &[],
     };
@@ -111,6 +129,8 @@ pub struct Recipe {
     pub companions: &'static [&'static str],
     /// Dependencies of other repositories.
     pub third_party: &'static [ThirdParty],
+    /// Dependencies of other repositories that only its tests need (`dev_dependencies:`).
+    pub dev_third_party: &'static [ThirdParty],
     /// The lowest Flutter it works on, `major.minor`.
     pub flutter_floor: &'static str,
     /// Lines of the `fespalier:` section of the pubspec, each as written under the key.
@@ -135,6 +155,7 @@ pub const RECIPES: &[Recipe] = &[
         description: "devtools_options.yaml, so Flutter DevTools shows the fespalier tab (routes, guards, data, actions) without asking.",
         companions: &[],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[
@@ -151,6 +172,7 @@ pub const RECIPES: &[Recipe] = &[
         description: "Tabs as a bar, a rail or a drawer by window width (fespalier_adaptive); the same as --template tabs.",
         companions: &["fespalier_adaptive"],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[
@@ -187,6 +209,7 @@ pub const RECIPES: &[Recipe] = &[
         description: "A form on an action (fespalier_forms): /contact, with typed fields and errors under them.",
         companions: &["fespalier_forms"],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[
@@ -204,6 +227,7 @@ pub const RECIPES: &[Recipe] = &[
         description: "A dataCache on disk (fespalier_storage): the last value is on the first frame at the next start.",
         companions: &["fespalier_storage"],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[("create/storage_test.dart", "test/storage_test.dart")],
@@ -230,6 +254,7 @@ pub const RECIPES: &[Recipe] = &[
         description: "reconnectSignal and hasNetwork (fespalier_connectivity): refetchOnReconnect works.",
         companions: &["fespalier_connectivity"],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[(
@@ -259,6 +284,7 @@ pub const RECIPES: &[Recipe] = &[
         description: "A feature flag behind a route guard (fespalier_flags): /labs is there while the labs flag is on.",
         companions: &["fespalier_flags"],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[
@@ -279,6 +305,83 @@ pub const RECIPES: &[Recipe] = &[
                 code: "flagSource.overrideWithValue(\n  const ConstFlags({'labs': bool.fromEnvironment('LABS')}),\n),",
                 awaits: false,
             }],
+            ..Startup::NONE
+        },
+    },
+    Recipe {
+        id: "otel",
+        description: "OpenTelemetry spans for navigations, guards, data and actions (fespalier_otel, on otel_zone); a release build exports nothing without OTEL_EXPORTER_OTLP_ENDPOINT.",
+        companions: &["fespalier_otel"],
+        third_party: &[ThirdParty {
+            name: "otel_zone",
+            source: Source::Git {
+                url: "https://github.com/vaam-apps/flutter-otel-zone",
+                commit: "a9648533f6f8f0a6bfb341b368e8be0747b7dc21",
+            },
+        }],
+        dev_third_party: &[ThirdParty {
+            name: "dartastic_opentelemetry",
+            source: Source::Range("^1.1.0-beta.15"),
+        }],
+        // otel_zone needs Dart 3.9 (it depends on talker_riverpod_logger), which is Flutter 3.35.
+        flutter_floor: "3.35",
+        config: &["telemetry: true"],
+        files: &[("create/otel_test.dart", "test/otel_test.dart")],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &[
+                "package:fespalier/fespalier.dart",
+                "package:fespalier_otel/fespalier_otel.dart",
+                "package:flutter/foundation.dart show kIsWeb",
+                "package:flutter/widgets.dart show WidgetsFlutterBinding",
+                "package:otel_zone/otel_zone.dart",
+            ],
+            decls: &[
+                "/// The name spans carry as `service.name`.\nconst String serviceName = '{name}';",
+                "/// The OpenTelemetry SDK. A release build without an endpoint exports nothing: pass\n/// --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://... to send spans to a collector.\nfinal OtelZone observability = OtelZone(\n  OtelZoneConfig(serviceName: serviceName, endpoint: FespalierOtel.endpoint()),\n);",
+                "/// Brings the SDK up (it never throws), then runs [body]. This is the start of the process, not\n/// of the app: a test that builds the app does not start the SDK, and the sink that startup()\n/// installs reports once it is up.\nFuture<void> startObservability(Future<void> Function() body) async {\n  WidgetsFlutterBinding.ensureInitialized();\n  await observability.start(\n    serviceVersion: '0.1.0',\n    resourceAttributes: {...FespalierOtel.resourceAttributes},\n  );\n  await body();\n}",
+            ],
+            body_wrapper: Some("startObservability"),
+            // Sentry's zone wins when both are chosen: it is the outermost, and a second zone
+            // would send uncaught async errors to Talker only (docs/observability.md).
+            weak_zone: Some(
+                "/// otel_zone's guarded zone. It never runs its body on the web (docs/observability.md),\n/// so the web runs the body as it is.\nFuture<void> zone(Future<void> Function() body) {\n  Future<void> run() => startObservability(body);\n  return kIsWeb ? run() : observability.runGuarded(run);\n}",
+            ),
+            sinks: &["FespalierOtel(isReady: () => observability.isReady)"],
+            provider_observers: &["?observability.riverpodObserver(),"],
+            router_observers: &["?observability.routeObserver(),"],
+            ..Startup::NONE
+        },
+    },
+    Recipe {
+        id: "sentry",
+        description: "Errors and crashes in Sentry, tagged with the route, the file and the action (fespalier_sentry); sends nothing while SENTRY_DSN is empty.",
+        companions: &["fespalier_sentry"],
+        third_party: &[ThirdParty {
+            name: "sentry_flutter",
+            source: Source::Range(">=9.26.0 <10.0.0"),
+        }],
+        dev_third_party: &[],
+        flutter_floor: "3.32",
+        config: &["telemetry: true"],
+        files: &[("create/sentry_test.dart", "test/sentry_test.dart")],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &[
+                "package:fespalier/fespalier.dart",
+                "package:fespalier_sentry/fespalier_sentry.dart",
+                "package:flutter/foundation.dart show kIsWeb",
+                "package:sentry_flutter/sentry_flutter.dart",
+            ],
+            zone: Some(
+                "/// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a\n/// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:\n/// --dart-define=SENTRY_DSN=https://... sends events to your project.\nFuture<void> zone(Future<void> Function() body) => SentryFlutter.init(\n  (options) => FespalierSentry.configure(\n    options,\n    dsn: const String.fromEnvironment('SENTRY_DSN'),\n  ),\n  appRunner: {body},\n);",
+            ),
+            sinks: &["FespalierSentry()"],
+            router_observers: &["if (kIsWeb) FespalierSentry.navigatorObserver(),"],
             ..Startup::NONE
         },
     },
@@ -334,20 +437,12 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "needs a tile source, a style and platform setup, which are the app's own",
     ),
     (
-        "fespalier_otel",
-        "not yet: it becomes the `otel` feature in a later release",
-    ),
-    (
         "fespalier_push",
         "needs a vendor SDK and device setup (docs/adapters.md); the app brings its source",
     ),
     (
         "fespalier_riverpod",
         "nothing to scaffold: it adds providers per page instance, used where a page needs them",
-    ),
-    (
-        "fespalier_sentry",
-        "not yet: it becomes the `sentry` feature in a later release",
     ),
     (
         "fespalier_sign_keypair",

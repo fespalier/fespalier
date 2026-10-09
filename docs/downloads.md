@@ -8,16 +8,16 @@ fespalier's floor, and an app that lists it links nothing native.
 fespalier itself has no download feature: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the
 same bytes. The package is a companion, installed like `fespalier_flags`.
 
-**What is in this release, and what is not.** This release is the model, the telemetry names, the fakes and the engine,
-`Downloads`, which starts, pauses, resumes, retries, cancels and removes a download over a backend you give it and
-settles the registry after a restart. It has **no HTTP backend** (the engine has nothing to download with yet), no
-providers and no background backend over the operating system's download service. Those come in later releases of the
-same line, and this page grows with them. A download you need today is `fespalier_maps`' file packs
-([Maps](maps.md#file-packs)), which will move onto this package.
+**What is in this release, and what is not.** This release is the model, the telemetry names, the fakes, the engine,
+`Downloads`, which starts, pauses, resumes, retries, cancels and removes a download over a backend you give it and settles
+the registry after a restart, and a **foreground backend**, `HttpDownloadBackend`, that downloads over an `http.Client`
+while the app runs. It has no providers and no background backend over the operating system's download service. Those
+come in later releases of the same line, and this page grows with them. A download that must go on while the app is
+closed is not possible with this package yet.
 
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
-[Testing](#testing).
+[The foreground backend](#the-foreground-backend), [Testing](#testing).
 
 ## Install
 
@@ -158,6 +158,56 @@ moves every generation on and reports `Absent` for each id to the observer. Noth
 and no event that arrives afterwards, reaches the next account. Call it where the app signs out, before the next person
 can sign in, as `crateStackAccount.clear` is in `fespalier_cratestack`.
 
+## The foreground backend
+
+`HttpDownloadBackend` (since 0.15.0) is a `DownloadBackend` that runs each download as a resumable HTTP transfer in the
+app's own process, with the `http.Client` you give it, so its timeouts, proxy and certificates apply. It is pure Dart: the
+base folders are yours to name, because the package depends on no plugin.
+
+```dart
+Future<String> bases(DownloadBase base) async => switch (base) {
+  DownloadBase.support => (await getApplicationSupportDirectory()).path,
+  DownloadBase.cache => (await getApplicationCacheDirectory()).path,
+  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,
+};
+
+final downloads = Downloads(
+  backend: HttpDownloadBackend(client: client, bases: bases),
+  store: store,
+  files: TransferDownloadFiles(bases: bases),
+);
+```
+
+- **What it can do, honestly.** Its capabilities are `pause` and nothing else: no background, no notifications, no
+  user-initiated priority, no `unmetered`, and a transfer does not survive the app being closed. A request with
+  `DownloadNetwork.unmetered` is refused (`start` ends `Failed(other)`): the foreground cannot tell a metered network from
+  another, and spending mobile data the app said not to is worse than not starting. It runs every start at once.
+- **Where the bytes go.** They arrive in `<file>.part`, with the server's `ETag` (a strong one) or `Last-Modified` beside
+  it in `<file>.part.etag`. A file at its destination is always whole and checked: the part is moved there, atomically,
+  only when it has the `bytes` and the `sha256` the request names (the digest is computed in another isolate, so a large
+  file does not take frames).
+- **Resuming.** A pause, a network failure and an app restart leave the part. The next attempt asks for
+  `Range: bytes=<size of the part>-` with `If-Range: <validator>`, and appends. A server that ignores `Range` (it answers 200) makes the transfer start again from the first byte; a 206 whose validator is not the part's, or at another offset,
+  and a 416 to a part the server no longer has the end of, each restart once. A part with no validator and no `sha256`
+  starts again from the first byte, since nothing says it belongs to the file the server has now. After a restart the
+  engine finds the download ended (`Failed(killed)`), and `retry` goes on from the part.
+- **Cancel.** `cancel` and `remove` abort the request in flight (the client must honour `http.Abortable`, as the
+  `package:http` clients do), so a connection that sends nothing cannot hold them up. A transfer that was running or paused
+  loses its part; one that already ended keeps it, so `retry` can continue. Give the engine a `TransferDownloadFiles` so
+  `remove`, `cancel` and sign-out also delete the finished file, the part and the validator.
+- **Failures** are values: `network` (no connection, a body that ended short), `rejected` (any other HTTP error, with the
+  status code), `unauthorized` (401 or 403), `sizeMismatch`, `hashMismatch`, `storage` (a write or a move the device refused)
+  and `unsupported`. A mismatch deletes the part.
+- **The web.** Where there is no `dart:io`, the file store answers `UnsupportedError` and every start ends
+  `Failed(DownloadFailure.unsupported)` before any request is made; the package compiles for the web all the same. Hand the
+  browser the URL instead.
+- **Telemetry** is the engine's `fespalier.download.transfer` span, with `background` false. The transfer itself reports
+  nothing, and a URL, an id, a path or a header never leave it.
+
+Underneath, `HttpTransfer` is the transfer of one file, with no state beyond the attempt (`run`, `pause`, `stop`), and
+`TransferFiles` the path-level file port it drives (`dart:io` by default). They are exported for a backend of your own;
+most apps never touch them.
+
 ## Testing
 
 `package:fespalier_download/testing.dart` has the fakes, which need no network, platform or disk:
@@ -167,6 +217,8 @@ can sign in, as `crateStackAccount.clear` is in `fespalier_cratestack`.
   `tap(id)` once a listener has called `open`. `replay: {id: status}` is what the platform reports at `open`, to test a restart.
 - `MemoryDownloadStore`: a registry in memory (`entries`, `clearCalls`).
 - `FakeDownloadFiles`: files as a map of sizes (`put`, `deleted`).
+- `FakeTransferFiles`: the path-level files of a transfer in memory (`putBytes`, `bytesOf`, `renames`, `failWrites`,
+  `failRename`, `failDelete`, `unsupported` for the web), to test `HttpDownloadBackend` with a `MockClient`.
 
 The model needs no widget: `DownloadRequest`, `DownloadLocation` and `DownloadStatus` are plain values, so a unit test
 builds them and checks `isValid` and equality directly. The package's own tests do exactly that, including every refusal

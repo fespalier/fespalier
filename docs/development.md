@@ -21,7 +21,8 @@ packages/fespalier_storage/   dataCache storages on shared_preferences and Hive,
 packages/fespalier_connectivity/   reconnectSignal from connectivity_plus, and hasNetwork for offline banners (since 0.9.0)
 packages/fespalier_adaptive/   nav.dart menus as a bar, a rail or a drawer by window width
 packages/fespalier_image/   responsive CDN images (ResponsiveImage, the URL builders), with FakeImages for tests
-packages/fespalier_dio/   Dio and package:http: requests cancelled with their page, server field errors, writes never retried
+packages/fespalier_http/  package:http (since 0.15.0): requests aborted with their page, server field errors, writes never retried, HttpCredentials
+packages/fespalier_dio/   Dio: requests cancelled with their page, server field errors, writes never retried, DioHttpClient (an http.Client over a Dio)
 packages/fespalier_sentry/   Sentry: errors tagged with the route and the file, page breadcrumbs, optional screen-load transactions
 packages/fespalier_tolgee/   translations from Tolgee's CDN with a bundled fallback and route locales (since 0.10.0)
 packages/fespalier_forms/   the form of an action.dart: ActionForm, typed fields, useActionForm (since 0.11.0)

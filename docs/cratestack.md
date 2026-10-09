@@ -292,7 +292,7 @@ recognises, row by row:
 | any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only            |
 
 **Validation errors become form errors.** `withCrateStackFieldErrors(ref)` turns a `422` `VALIDATION_ERROR` into
-fespalier's `FieldErrors`, like `withFieldErrors` in `fespalier_dio` does. CrateStack documents the message
+fespalier's `FieldErrors`, like `withFieldErrors` in `fespalier_http` and `fespalier_dio` do. CrateStack documents the message
 (`field 'email' is not a valid email address`) but no per-field structure for `details`, so the package reads
 `details` when it is a map of field to message or a list of `{field|path, message}`, and falls back to the
 message. That shape is an assumption; anything else is tolerated, not an error. `fieldName: (key) => ...` maps

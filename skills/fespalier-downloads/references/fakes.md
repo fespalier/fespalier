@@ -33,6 +33,13 @@ to the constructor to start from a registry that "survived a restart"; it is cop
 A `DownloadFiles` over `sizes`, a map from `DownloadLocation` to a byte count. `put(location, bytes)` makes a file appear as
 a finished transfer would; `delete` is recorded in `deleted` and is not an error when there is no file.
 
+## FakeTransferFiles
+
+A `TransferFiles` (the path level a transfer writes through) in a map: `putBytes`, `putText`, `bytesOf`, `textOf`, `paths`,
+`renames`, `hashes`. `failWrites`, `failRename` and `failDelete` make that call throw; `unsupported = true` is the web
+(`isSupported` false, every call an `UnsupportedError`). Test `HttpDownloadBackend` with it and a `MockClient` from
+`package:http/testing.dart` whose streamed response honours the request's `abortTrigger`.
+
 ## What a model test looks like
 
 The model is plain values, so no widget or fake is needed:

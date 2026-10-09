@@ -12,13 +12,15 @@ same bytes. The package is a companion, installed like `fespalier_flags`.
 `Downloads`, which starts, pauses, resumes, retries, cancels and removes a download over a backend you give it and settles
 the registry after a restart, a **foreground backend**, `HttpDownloadBackend`, that downloads over an `http.Client`
 while the app runs, a **durable registry**, `FileDownloadStore`, and the **providers** a widget watches (`downloads`,
-`downloadStatus`). It has no background backend over the operating system's download service yet. That comes in a later
-release of the same line, and this page grows with it. A download that must go on while the app is closed is not
-possible with this package yet.
+`downloadStatus`). A download that must go on while the app is closed is the job of the **background backend**, in the
+separate package `fespalier_download_background` (since 0.15.0, Flutter 3.47 or newer, over `background_downloader`; see
+[The background backend](#the-background-backend)). Notification taps as routes and uploads come in a later release of the
+same line, and this page grows with it.
 
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
-[The foreground backend](#the-foreground-backend), [In a widget](#in-a-widget), [Testing](#testing).
+[The foreground backend](#the-foreground-backend), [The background backend](#the-background-backend),
+[Android and iOS setup](#android-and-ios-setup), [In a widget](#in-a-widget), [Testing](#testing).
 
 ## Install
 
@@ -211,6 +213,171 @@ Underneath, `HttpTransfer` is the transfer of one file, with no state beyond the
 `TransferFiles` the path-level file port it drives (`dart:io` by default). They are exported for a backend of your own;
 most apps never touch them.
 
+## The background backend
+
+`fespalier_download_background` (since 0.15.0) is a second package with a `DownloadBackend` over
+[`background_downloader`](https://pub.dev/packages/background_downloader): the **operating system** runs the transfer
+(WorkManager, and user-initiated data transfer jobs on Android 14 and newer; a background `URLSession` on iOS), so it
+goes on while the app is in the background and after the app was closed. It is a package of its own, and not part of
+`fespalier_download`, because `background_downloader` 9.6 needs Dart 3.13 and **Flutter 3.47**: an app on an older
+Flutter keeps the foreground backend and resolves as before, and the package is left out of CI's `floor` job as
+`fespalier_sign_keypair` is. The install block is in
+[the package's README](../packages/fespalier_download_background/README.md#install). It was written against
+`background_downloader` **9.6.4**, whose sources and documentation were read, not recalled.
+
+```dart
+final engine = Downloads(
+  backend: BackgroundDownloaderBackend(
+    notifications: const DownloadNotifications(
+      running: 'Downloading',
+      complete: 'Download finished',
+      failed: 'Download failed',
+    ),
+  ),
+  store: FileDownloadStore(bases: bases),
+  files: TransferDownloadFiles(bases: bases),
+);
+await engine.open(); // before anything of your own calls FileDownloader().start()
+await engine.start(
+  DownloadRequest(
+    id: 'manual-42',
+    url: grantUrl, // short-lived, from a signed request made in the foreground
+    file: const DownloadLocation(DownloadBase.support, 'manuals/manual-42.pdf'),
+    bytes: 1048576,
+    sha256: digest,
+    priority: DownloadPriority.userInitiated,
+    displayName: 'Manual 42',
+  ),
+);
+```
+
+- **What it can do, honestly.** On Android and iOS: pause, resume across a restart, background, `userInitiated` and
+  `unmetered`. `notifications` is true only when you gave it a `running` text. On the desktop it can pause and nothing else
+  (the plugin has no operating-system background mode there, no notification and no network constraint), and a request with
+  `DownloadNetwork.unmetered` is refused. On the web (and Fuchsia) every start ends `Failed(DownloadFailure.unsupported)`
+  and the plugin is never touched.
+- **What a request becomes.** The id is the task id; the file is the plugin's base folder (`support` is the application
+  support folder, `cache` the temporary one, `documents` the documents folder), a sub-folder and a file name, never an
+  absolute path. `userInitiated` is priority 0, which the plugin runs as a **user-initiated data transfer job on Android 14
+  and newer** (when a notification is configured and the job service is declared, see
+  [Android and iOS setup](#android-and-ios-setup)) and as a plain high-priority task elsewhere; `background` is the
+  plugin's default priority 5. Every task allows pause, which is also how the plugin continues a long download across
+  WorkManager's nine-minute cycles (without it, or without priority 0, an Android task stops at the limit).
+  `DownloadNetwork.unmetered` is `requiresWiFi`: on Android 9 and newer a true Wi-Fi requirement, and on iOS "no
+  cellular", which a metered hotspot satisfies. **A foreground service is never asked for**: the plugin's
+  `runInForeground` configuration, which would make it a `dataSync` foreground service, is global to the app, and this
+  package never sets a global.
+- **Only its own group.** The tasks are in the plugin group `fespalier.download`, and callbacks are registered, tracked
+  (`trackTasksInGroup`) and configured (notifications) for that group alone. The app's own `FileDownloader().updates`
+  stream, a single-subscription stream that belongs to the app, is never listened to, and the plugin's global `start`,
+  `reset`, `configure` and `rescheduleKilledTasks` are never called (the last has no group parameter and would enqueue
+  the app's own tracked tasks again): `test/no_timers_test.dart` greps for each. Callbacks are registered **before**
+  `resumeFromBackground`, so what finished while the app was away reaches the engine. **Open the engine before the app
+  calls `FileDownloader().start()` or `resumeFromBackground()` itself**: the plugin delivers what it kept once, and an
+  update for a group with no callbacks goes to the app's `updates` stream, not to the engine.
+- **The plugin's database is not the registry.** It prunes itself (ten days, 500 records) whenever the app asks it to, and it is the plugin's. The
+  registry is the engine's `FileDownloadStore`. At `open()` the plugin's records for the group are replayed to the engine
+  as hints. A task the plugin still lists as running or enqueued that the operating system no longer has is **not**
+  enqueued again from the stored task (the grant it carries may have expired): the engine ends it `Failed(killed)` unless
+  its file is whole, and `retry` starts it again, with a fresh grant.
+- **The file is checked.** The size and the SHA-256 of the request travel in the task (its `metaData`, which holds no
+  URL, header or name), and when the plugin says a download finished, the backend reports `Verifying`, compares them and
+  reports `Complete` or `Failed(sizeMismatch)` or `Failed(hashMismatch)`. That includes a download that finished while the
+  app was away: `open()` waits for those checks before the engine settles the registry.
+- **Failures are values.** An HTTP 401 or 403 is `unauthorized` (and the engine reads the code); any other HTTP error is
+  `rejected`; a plugin `notFound` is `rejected` with 404; a connection error is `network`; a file system error is
+  `storage`; a resume that could not be done is `killed`. Only the exception's type and code are read, never its text.
+- **Notifications are off unless you configure them,** per backend (`notifications:` or `configureNotifications`), for its
+  own group only: the title is your text and the body is the download's `displayName`. A `userInitiated` request on a
+  backend without a `running` notification ends `Failed(notificationsRequired)` and nothing is queued, because Android
+  requires a visible notification for a user-initiated job. **The package never asks for the notification permission**,
+  on either platform: that is the app's, with a rationale of its own (`FileDownloader().permissions` or any permission
+  package); the plugin shows no notification while it is not granted.
+- **Auth is what the request carries.** The documented path is a short-lived capability: the app makes its normal signed
+  request in the foreground, the server answers with a short-lived URL (or a download-scoped header), and that is what the
+  task holds. **The headers of a task are written to the operating system's task queue in plaintext until it ends,** and a
+  retry sends the same ones; set `BackgroundOptions(retries: 0)` where a stale grant must not be replayed. Never a refresh
+  token, never a long-lived bearer. A proof per request (DPoP) cannot be done: the plugin's native callbacks run with no
+  access to the app's state or its plugins. On a 401 or 403 the engine ends the download `Failed(unauthorized)`, and `retry`
+  (with a fresh grant) starts it again.
+- **Telemetry** is the engine's `fespalier.download.transfer` span with `background` true. The backend reports nothing
+  of its own, and a URL, an id, a path, a header or an error's text never leave it.
+- **What no test shows (UNCHECKED).** There is no device in CI: `PluginTransport`, the one file that calls the plugin, is
+  a thin layer that no test runs, and the backend's logic is tested through `FakeBackgroundTransport`. These depend on
+  behaviour of the operating system and the plugin that nobody has run on a device, and are tracked in
+  [issue #158](https://github.com/fespalier/fespalier/issues/158): when a notification tap arrives after a **cold start**
+  relative to `resumeFromBackground` (the engine's `tapped` is wired in 0.15.0 only as far as the backend reporting it);
+  whether a **resume with new headers** is sent with them (the backend passes them; whether the plugin uses them is not
+  known); whether a **failed update carries the server's headers**, or only the status code the plugin documents in its
+  exception; whether the plugin's **database delete is scoped to the group** (its source deletes record by record for the
+  group, which was read, not run); whether an Android task that **cycles every nine minutes reuses the headers** it was
+  enqueued with (which would replay an expired grant); how an update for a group with no callbacks arrives when the app
+  opened the plugin first; and whether the package builds for the web (the web path never calls the plugin, but the
+  plugin's own web support was not compiled here).
+
+## Android and iOS setup
+
+These steps are the plugin's, read from `background_downloader` 9.6.4's README and `doc/`, and nothing here is done for
+you. Follow the plugin's current README where it moves.
+
+**Android.**
+
+- **Kotlin 2.1.0 or newer** in the app (`org.jetbrains.kotlin.android` version `2.1.0` or later in `settings.gradle`). The
+  plugin itself is built with Kotlin 2.3.20 and compiles against Android SDK 36. Its README says the minimum API is 21;
+  its `build.gradle` sets `minSdkVersion 23`, so treat 23 as the floor.
+- **`android.permission.POST_NOTIFICATIONS`** in the app's `AndroidManifest.xml`, for Android 13 (API 33) and newer, and
+  a runtime request for it that the app makes (this package does not):
+
+  ```xml
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  ```
+
+- **User-initiated jobs (Android 14 and newer).** `userInitiated` requests run as user-initiated data transfer jobs, which
+  have no execution time limit. The plugin's documentation asks for this in the app's manifest, and falls back to
+  WorkManager when the permission is missing:
+
+  ```xml
+  <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+
+  <service
+      android:name="com.bbflight.background_downloader.UIDTJobService"
+      android:permission="android.permission.BIND_JOB_SERVICE"
+      android:exported="true"
+      android:foregroundServiceType="dataSync" />
+  ```
+
+  The `foregroundServiceType` is the plugin's own attribute on its job service: it is **not** a foreground service that
+  this package starts, and the plugin's separate global switch for one (`runInForeground`) stays off. The plugin's own
+  manifest declares the same service, so the merge supplies it even without this block; whether that alone is enough on a
+  device is UNCHECKED, so declare it as the plugin's README says.
+
+- **`android:launchMode="singleTask"`** on the main activity, which the plugin asks for so that a notification tap reaches
+  the running app.
+- **Without** user-initiated jobs, Android limits a standard task to nine minutes (two minutes for a priority below 5):
+  every task here allows pause so that the plugin resumes across the cycles.
+
+**iOS.**
+
+- **iOS 14.0 or newer.** A background `URLSession` needs no capability or manifest entry; the plugin's README says "no
+  special setup is required". iOS requires HTTPS unless App Transport Security is relaxed. A background transfer must
+  finish within the system resource timeout (four hours by default).
+- **Notifications:** set the notification centre's delegate in `AppDelegate.swift`, or the plugin's notifications do not
+  show while the app is open:
+
+  ```swift
+  UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
+  ```
+
+  iOS shows no progress bar and one `running` notification, which changes only when the state does.
+
+- **Photo Library keys.** The plugin can move files into the Photo Library, so Apple wants `Info.plist` usage strings
+  even if you never do; this package never does. With Swift Package Manager, set `BYPASS_PERMISSION_IOSADDTOPHOTOLIBRARY=1`
+  and `BYPASS_PERMISSION_IOSCHANGEPHOTOLIBRARY=1` in the environment of `flutter build ios` to compile that code out
+  (CocoaPods: the `-D BYPASS_PERMISSION_…` Swift flags in the `Podfile`). `flutter clean` after changing them.
+
+**macOS** needs `com.apple.security.network.client` in both entitlements files; **Windows and Linux** need nothing. The
+desktop has no operating-system background mode, so a download there stops with the app.
+
 ## In a widget
 
 Three pieces connect the engine to the widget tree. **`FileDownloadStore`** is the durable registry: one JSON file,
@@ -304,6 +471,14 @@ Acting goes through the engine (`ref.read(downloadsEngine).start(...)`); the sta
   plays the platform with `emit`; disposing the container closes the engine, as in an app.
 - `FakeTransferFiles`: the path-level files of a transfer in memory (`putBytes`, `bytesOf`, `renames`, `failWrites`,
   `failRename`, `failDelete`, `unsupported` for the web), to test `HttpDownloadBackend` with a `MockClient`.
+
+`package:fespalier_download_background/testing.dart` has `FakeBackgroundTransport`, which plays `background_downloader`
+for one group so that `BackgroundDownloaderBackend` runs without a plugin or a device: the test plays the operating system
+with `emitStatus`, `emitProgress` and `tap`, seeds the plugin's `records`, `active` ids and `undelivered` updates, and
+reads `calls` (the order: callbacks registered before `resumeFromBackground`), `enqueued`, `paused`, `resumed`, `cancelled`,
+`plans` and `leaked` (an update for a group with no callbacks, which the plugin would send to the app's `updates`
+stream). Build the backend with `transport:`, `platform:` and `files:` (a `FakeTransferFiles`). The mapping functions
+(`downloadTaskOf`, `downloadStatusOf`, `failureOf`, `progressOf`) are pure and public. None of this runs the plugin.
 
 The model needs no widget: `DownloadRequest`, `DownloadLocation` and `DownloadStatus` are plain values, so a unit test
 builds them and checks `isValid` and equality directly. The package's own tests do exactly that, including every refusal

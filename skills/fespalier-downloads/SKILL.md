@@ -1,6 +1,6 @@
 ---
 name: fespalier-downloads
-description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
+description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, the background backend of fespalier_download_background (BackgroundDownloaderBackend over background_downloader on Flutter 3.47: the operating system keeps the transfer going, only its own plugin group, notifications off unless configured, userInitiated refused without them, headers in plaintext in the OS queue, the Android and iOS setup, what no device has checked), and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles, FakeBackgroundTransport and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
 ---
 
 # fespalier-downloads
@@ -16,9 +16,11 @@ and the ports of a transfer engine. It adds no file kind, no `fespalier:` key an
 same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
 predates 0.15.0 has no such package.
 
-**Not built yet in this release: a background backend and notification taps.** The engine, `Downloads`, the foreground
-`HttpDownloadBackend`, the `FileDownloadStore` registry and the providers exist (since 0.15.0); do not write a background
-backend or tap routing: they do not exist. A download that must go on while the app is closed is not possible yet.
+**Not built yet in this release: notification taps as routes and uploads.** The engine, `Downloads`, the foreground
+`HttpDownloadBackend`, the `FileDownloadStore` registry, the providers and the background backend
+(`fespalier_download_background`, Flutter 3.47, [`references/background.md`](references/background.md)) exist (since 0.15.0);
+do not write tap routing or an upload: they do not exist. A download that must go on while the app is closed uses the
+background backend. What no device has answered about it (issue #158) is listed there as UNCHECKED: never state those as fact.
 
 ## The foreground backend
 
@@ -37,6 +39,25 @@ backend or tap routing: they do not exist. A download that must go on while the 
   `storage`, `unsupported`. On the web every start is `Failed(unsupported)` before a request: hand the browser the URL.
 - **The client must honour `http.Abortable`** (the `package:http` clients do) or a pause cannot free a silent connection.
 - `HttpTransfer` and `TransferFiles` are the pieces under it, exported for a backend of your own.
+
+## The background backend
+
+`BackgroundDownloaderBackend` (package `fespalier_download_background`, since 0.15.0, written against `background_downloader`
+9.6.4) hands the transfer to the operating system: WorkManager and user-initiated jobs on Android, a background
+`URLSession` on iOS. It needs Flutter 3.47, so it is not in the 3.32 floor job; an older app keeps `HttpDownloadBackend`.
+
+- **Configure notifications or `userInitiated` is refused**: `BackgroundDownloaderBackend(notifications: DownloadNotifications(running: …))`.
+  A `userInitiated` request without a `running` text is `Failed(notificationsRequired)`, because Android requires a visible
+  notification for a user-initiated job. **The package never asks for the notification permission**; the app does.
+- **`open()` the engine before the app calls `FileDownloader().start()` itself**, and never call the plugin's global
+  `start`, `reset`, `configure` or `rescheduleKilledTasks` for these tasks. The backend registers callbacks for its own
+  group `fespalier.download` before `resumeFromBackground` and never listens to the app's `updates` stream. The plugin's
+  database is not the registry: a task the system lost is `Failed(killed)` and `retry` asks for a fresh grant.
+- **A short-lived grant, not a header credential**: headers are in plaintext in the OS task queue until the task ends, and a
+  retry sends the same ones (`BackgroundOptions(retries: 0)` where that matters). No refresh token, no DPoP.
+- **Setup is the plugin's and the app's** (Kotlin 2.1, `POST_NOTIFICATIONS`, `RUN_USER_INITIATED_JOBS` and the job service,
+  iOS 14 and the notification delegate): "Android and iOS setup" in `docs/downloads.md`.
+- **Test with `FakeBackgroundTransport`**; no test runs the plugin.
 
 ## In a widget
 
@@ -84,6 +105,7 @@ a real tag in an app, but never in these pages, where `cli/tests/versions.rs` wo
 `package:fespalier_download/fespalier_download.dart` also exports `FileDownloadStore`, `downloadsEngine`, `downloads`,
 `DownloadsNotifier` and `downloadStatus`, and `testing.dart` has `downloadTestOverrides`.
 
+The background backend in detail, with its setup and what is unchecked, is [`references/background.md`](references/background.md).
 The engine in detail, with the restart and sign-out rules, is [`references/engine.md`](references/engine.md). The model in detail, with the exact refusals of `isValid`, is [`references/model.md`](references/model.md). The fakes and a
 test that plays a platform are [`references/fakes.md`](references/fakes.md).
 

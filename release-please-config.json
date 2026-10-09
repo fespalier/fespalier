@@ -205,6 +205,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_download_background/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_download_background/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier_push/pubspec.yaml"
         },
         {

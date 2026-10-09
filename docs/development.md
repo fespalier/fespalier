@@ -28,6 +28,7 @@ packages/fespalier_tolgee/   translations from Tolgee's CDN with a bundled fallb
 packages/fespalier_forms/   the form of an action.dart: ActionForm, typed fields, useActionForm (since 0.11.0)
 packages/fespalier_maps/   a MapLibre pin picker that returns a place, with Geocoder and PositionSource seams (since 0.13.0)
 packages/fespalier_download/   downloads: DownloadRequest, DownloadStatus and the backend ports, with fakes (since 0.15.0)
+packages/fespalier_download_background/   the background download backend over background_downloader, Flutter 3.47 (since 0.15.0)
 packages/fespalier_push/   notification taps open typed routes: PushSource, linkRoute, an adapter (since 0.13.0)
 packages/fespalier_analytics/   screen views by route pattern, with consent: AnalyticsBackend, AnalyticsSink, an adapter (since 0.13.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)

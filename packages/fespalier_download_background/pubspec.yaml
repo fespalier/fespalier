@@ -1,6 +1,6 @@
 name: fespalier_download_background
 description: "Background downloads for fespalier: a DownloadBackend over background_downloader (WorkManager and user-initiated jobs on Android, URLSession on iOS), with the mapping tested without the plugin."
-version: 0.14.0 # x-release-please-version
+version: 0.15.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -25,18 +25,18 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
   fespalier_download:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_download
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
   # HttpWrites, the one rule of which request is a write (since 0.15.0, for uploads).
   fespalier_http:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
 
 dev_dependencies:
   flutter_lints: ^6.0.0

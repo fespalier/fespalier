@@ -1,6 +1,6 @@
 name: fespalier_image
 description: Network images sized by their layout and fetched from an image CDN (imgproxy and EmgR, Cloudinary, imgix, Thumbor, a URL template or a srcset), for fespalier apps.
-version: 0.14.0 # x-release-please-version
+version: 0.15.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -20,7 +20,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
 
 dev_dependencies:
   # Only the signing tests use it, to check each builder's payload against the providers' published

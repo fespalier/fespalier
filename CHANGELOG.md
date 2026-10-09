@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.15.0](https://github.com/fespalier/fespalier/compare/v0.14.0...v0.15.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **dio:** the package:http libraries live in fespalier_http only ([#149](https://github.com/fespalier/fespalier/issues/149))
+
+### Features
+
+* **cli:** fsp create --features auth,i18n,image ([#169](https://github.com/fespalier/fespalier/issues/169)) ([777a8a0](https://github.com/fespalier/fespalier/commit/777a8a0ffbe0acae0c9e65819a6cdcbf4b3fc6e3))
+* **cli:** fsp create --features devtools,forms,flags,adaptive and --template tabs ([#162](https://github.com/fespalier/fespalier/issues/162)) ([c3d04d3](https://github.com/fespalier/fespalier/commit/c3d04d3ce6d531287eeb6708b48333a166569212))
+* **cli:** fsp create --features http,download ([#173](https://github.com/fespalier/fespalier/issues/173)) ([17d09a1](https://github.com/fespalier/fespalier/commit/17d09a1f510aa8157f6f46ead4e21f0aa632debf))
+* **cli:** fsp create --features otel,sentry ([#166](https://github.com/fespalier/fespalier/issues/166)) ([5b2d2c1](https://github.com/fespalier/fespalier/commit/5b2d2c15b86f9c3e91aaf0bdb647f995c6f1d724))
+* **cli:** fsp create --features storage,connectivity ([#152](https://github.com/fespalier/fespalier/issues/152)) ([4c5f819](https://github.com/fespalier/fespalier/commit/4c5f81945c8ae46b0e26a6020c5263df0fba9678))
+* **cli:** fsp create, a new app with fespalier ([#144](https://github.com/fespalier/fespalier/issues/144)) ([ce06f50](https://github.com/fespalier/fespalier/commit/ce06f50079f5cdc47c7140eb3f1fd04b8f083b05))
+* **cli:** fsp upgrade --check, --dry-run, --json and --version ([#140](https://github.com/fespalier/fespalier/issues/140)) ([6e27751](https://github.com/fespalier/fespalier/commit/6e2775197b9e8721eb9278f51cb473e52aa4ace3))
+* **cli:** fsp upgrade names an app pin that differs from the new fsp ([#161](https://github.com/fespalier/fespalier/issues/161)) ([4a8fc58](https://github.com/fespalier/fespalier/commit/4a8fc58c4c64436f062840f2bd9da27d41fa3e56))
+* **cli:** fsp upgrade replaces a script-installed fsp, checked against the tag's pinned checksums ([#148](https://github.com/fespalier/fespalier/issues/148)) ([bd0380b](https://github.com/fespalier/fespalier/commit/bd0380bf77b3779c5d3d6e0120e390112d6adc8e))
+* **dio:** DioHttpClient, Dio as an http.Client ([#147](https://github.com/fespalier/fespalier/issues/147)) ([ccb6ece](https://github.com/fespalier/fespalier/commit/ccb6ece365865a554067e407f9d9289395fa4d6e))
+* **dio:** the package:http libraries live in fespalier_http only ([#149](https://github.com/fespalier/fespalier/issues/149)) ([a1ae06f](https://github.com/fespalier/fespalier/commit/a1ae06f2b97e97b81578cc510027f8b095da1768))
+* **download:** a durable registry and the providers ([#163](https://github.com/fespalier/fespalier/issues/163)) ([2b4df39](https://github.com/fespalier/fespalier/commit/2b4df3923339279a22ce6b9fadc040d0ae35f95d))
+* **download:** background uploads that never send a write twice ([#176](https://github.com/fespalier/fespalier/issues/176)) ([4782336](https://github.com/fespalier/fespalier/commit/47823369458a36b18d48a6a8d9518311eab04215))
+* **download:** fespalier_download_background, downloads through the OS ([#168](https://github.com/fespalier/fespalier/issues/168)) ([5292b81](https://github.com/fespalier/fespalier/commit/5292b8103123bec0bbb239966f603be8fa9107e1))
+* **download:** fespalier_download, the download model and a fake backend ([#145](https://github.com/fespalier/fespalier/issues/145)) ([9f442b7](https://github.com/fespalier/fespalier/commit/9f442b7937069666b7266933a8c574e0a7043c62))
+* **download:** notification taps open typed routes ([#171](https://github.com/fespalier/fespalier/issues/171)) ([43beb8f](https://github.com/fespalier/fespalier/commit/43beb8f63ebb3d241409b6ebf96f1782e1722a02))
+* **download:** short-lived grants and HttpCredentials for downloads ([#165](https://github.com/fespalier/fespalier/issues/165)) ([78cd54f](https://github.com/fespalier/fespalier/commit/78cd54f80fe7f5b824b6750a97074fcea38a18c6))
+* **download:** the Downloads engine ([#150](https://github.com/fespalier/fespalier/issues/150)) ([709bee9](https://github.com/fespalier/fespalier/commit/709bee9a14bb23257eb582e28e0e3266ed60f29e))
+* **download:** the foreground HTTP backend ([#160](https://github.com/fespalier/fespalier/issues/160)) ([609cfb3](https://github.com/fespalier/fespalier/commit/609cfb34101eb4a1aacd156754ae4ecbd3b9f468))
+* **http,auth:** HttpCredentials, which fespalier_auth's Authorizer implements ([#146](https://github.com/fespalier/fespalier/issues/146)) ([61528c0](https://github.com/fespalier/fespalier/commit/61528c09a0e0af215c4bdad03c3736ce387cd320))
+* **http:** fespalier_http, the package:http half of fespalier_dio ([#142](https://github.com/fespalier/fespalier/issues/142)) ([ca21410](https://github.com/fespalier/fespalier/commit/ca2141077449113a85a81e4ee4742de989188b88))
+
+
+### Bug Fixes
+
+* **cli:** fsp upgrade on Windows, tested on a Windows runner ([#151](https://github.com/fespalier/fespalier/issues/151)) ([3c4e8c7](https://github.com/fespalier/fespalier/commit/3c4e8c75ceb91fcead9583d800cdbcf267cb6073))
+
+
+### Refactoring
+
+* **maps:** file packs download through fespalier_download ([#164](https://github.com/fespalier/fespalier/issues/164)) ([aa3cc91](https://github.com/fespalier/fespalier/commit/aa3cc912b26b36347045a17278b504452fe6cd98))
+
+
+### Documentation
+
+* **examples:** examples/downloads, every [#157](https://github.com/fespalier/fespalier/issues/157) case on one screen ([#172](https://github.com/fespalier/fespalier/issues/172)) ([8bdfc47](https://github.com/fespalier/fespalier/commit/8bdfc4736455a306dcb48d4f2f5a0b7c251eb55c))
+
+
+### Continuous Integration
+
+* a post-publish smoke of fsp create against the released tag ([#175](https://github.com/fespalier/fespalier/issues/175)) ([cc9b4f5](https://github.com/fespalier/fespalier/commit/cc9b4f5e50665865f2f5403b6d2b277e6f6e442d))
+* **skills:** override the whole fespalier_* closure of the companions a sample imports ([#141](https://github.com/fespalier/fespalier/issues/141)) ([be67add](https://github.com/fespalier/fespalier/commit/be67addecaa69609d453f1f01aaae5aad752b7df))
+
 ## [0.14.0](https://github.com/fespalier/fespalier/compare/v0.13.1...v0.14.0) (2026-10-08)
 
 

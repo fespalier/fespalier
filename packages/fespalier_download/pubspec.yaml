@@ -1,6 +1,6 @@
 name: fespalier_download
 description: "Downloads for fespalier: the request, status and port model of a file transfer that survives the app, with fakes. Pure Dart over package:http."
-version: 0.14.0 # x-release-please-version
+version: 0.15.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -21,13 +21,13 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
   # HttpCredentials, which the foreground backend authorizes each send with (since 0.15.0).
   fespalier_http:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
   # 1.5.0: abortable requests, which the foreground backend aborts a pause or a cancel with.
   http: ^1.5.0
   # The SHA-256 of a finished file (3.0.6 is the first release whose floor is Dart 3.4).

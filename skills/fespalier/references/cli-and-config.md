@@ -379,6 +379,7 @@ fsp create my_app                                  # the base app
 fsp create my_app --org com.example --platforms android,ios,web
 fsp create my_app --dry-run --json                 # the plan as JSON lines; nothing is written or run
 fsp create my_app --features storage,connectivity  # or --features all
+fsp create my_app --template tabs                  # the `adaptive` feature: tabs as a bar, rail or drawer
 fsp create --list-features [--json]                # the optional features
 ```
 
@@ -394,7 +395,8 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   step (`flutter pub get failed`, `fsp gen failed`) and the commands that finish the job.
 - **Flags.** `--project-name` (default: the folder's name, lower case, `-` as `_`), `--org`, `--platforms`
   (`android,ios,linux,macos,web,windows`), `--description`, `--features a,b`, `--no-pub-get`, `--offline`
-  (for `pub get`), `--dry-run` (stderr: the commands and every file; it does not run Flutter), `--json`
+  (for `pub get`), `--template minimal|tabs` (`tabs` is the `adaptive` feature: either one gives the same app;
+  `--template minimal` with `adaptive` is refused, with `all` it leaves `adaptive` out), `--dry-run` (stderr: the commands and every file; it does not run Flutter), `--json`
   (stdout: `run`, `file`, `done`, `error` events as JSON lines, with `content` on a dry run's `file`; text
   and Flutter's own output on stderr).
 - **Features.** `--features` takes ids from `--list-features`, or `all` (every feature of the table; `all` is
@@ -404,7 +406,16 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   `dataCacheStorage`; the test boots `AppMain.root()` over `fakePrefsStore`) and `connectivity`
   (`fespalier_connectivity`: `reconnectSignal.overrideWith(ConnectivitySignal.new)` in `startup()`; the test
   uses `FakeConnectivity`). Each writes a pubspec dependency at the same tag as `fespalier`, its lines in
-  `lib/app/startup.dart` and a file in `test/`. Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
+  `lib/app/startup.dart` and a file in `test/`. Also since 0.15.0: `devtools` (a committed
+  `devtools_options.yaml` with `- fespalier: true`, from `docs/devtools.md` "How to see it"; no dependency),
+  `adaptive` (`fespalier_adaptive`; takes out the base app's `layout.dart`, `page.dart` and `about/page.dart`
+  and writes `lib/app/(tabs)/layout.dart` with `AdaptiveNavScaffold`, a `nav.dart` and page in `(home)` and
+  `about`, and a test that resizes the window to see a bar, a rail and a drawer; it is what
+  `--template tabs` asks for), `forms` (`fespalier_forms`; `lib/app/contact/` with `form()`, `validate()`,
+  an `action()` and a page on `ContactRoute.useForm`; the test uses `isFieldErrors`) and `flags`
+  (`fespalier_flags`; `lib/flags.dart`, a `flagGuard` in `lib/app/labs/guard.dart`, `flagSource` from
+  `--dart-define=LABS=true` in `startup()`; the test uses `FakeFlags`). The `forms` and `flags` pages have a
+  `Scaffold` of their own and are opened by URL. Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
   `lib/app/app.dart`, `lib/main.dart`) are never written by one feature but composed from all of them
   (`cli/src/create/compose.rs`): imports sorted and deduplicated, startup steps in a fixed order (telemetry
   sinks, then `restoreAuth`, then the rest), `startup()` async only when a step awaits, at most one `zone()`.
@@ -442,8 +453,11 @@ with `tar`, runs the new `fsp --version` (must say `fsp Y`), then renames it ove
 (the first follows the `ref:` in `pubspec.yaml`: change the `ref` of fespalier and every companion).
 `--check` writes nothing and exits **0** up to date, **3** an update is available, **1** error;
 `--json` is one object (`current`, `latest`, `target`, `method`, `command`, `upToDate`);
-`FSP_RELEASES_URL` and `FSP_BASE_URL` redirect the lookup and the downloads. It never reads a
-pubspec. Messages: `fespalier-troubleshooting`, `references/diagnostics-dev.md`.
+`FSP_RELEASES_URL` and `FSP_BASE_URL` redirect the lookup and the downloads. It needs no project; the
+only pubspec it reads is for a closing note, printed after Homebrew's upgrade or an in-place replace
+(never for `--check`, `--dry-run`, or the printed Scoop and cargo commands): when `dependencies.fespalier` pins a `ref:` that is a release
+tag different from the `fsp` now installed it says to update the refs of fespalier and every companion (same `url` and `ref`) or use
+`dart run fespalier`; a path or hosted dependency, a branch or commit ref, or no project prints nothing. Messages: `fespalier-troubleshooting`, `references/diagnostics-dev.md`.
 
 ### `fsp dev`, `fsp build` and `fsp run` (since 0.9.0)
 

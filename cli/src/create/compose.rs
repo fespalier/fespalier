@@ -277,7 +277,9 @@ pub fn startup_dart(features: &[&Recipe]) -> Result<Option<String>> {
         if !step.comment.is_empty() {
             let _ = writeln!(out, "{indent}// {}", step.comment);
         }
-        let _ = writeln!(out, "{indent}{}", step.code);
+        for code_line in step.code.lines() {
+            let _ = writeln!(out, "{indent}{code_line}");
+        }
     };
 
     let mut out = import_block(plain_imports(

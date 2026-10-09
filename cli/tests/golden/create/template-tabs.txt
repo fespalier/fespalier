@@ -1,0 +1,216 @@
+create my_app (package my_app, features: adaptive)
+note  `--template tabs` needs `adaptive`: added it
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_adaptive:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_adaptive
+      ref: v<version>
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== lib/app/(tabs)/layout.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_adaptive/material.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Which folder is which tab, left to right (without it the tabs follow folder order). Each
+/// folder next to this file is one tab with a navigation stack and a state of its own.
+const tabs = ['(home)', 'about'];
+
+/// Asking for a `StatefulNavigationShell` instead of a `child` makes this a tab layout. The bar
+/// is the menu: the `nav.dart` in each tab's folder says what the tab is called and its icon, and
+/// `AdaptiveNavScaffold` shows `AppMenu.watch` as a `NavigationBar` on a phone, a
+/// `NavigationRail` on a tablet and a `NavigationDrawer` on a wide window (docs/layouts.md,
+/// "A bar, a rail or a drawer"). A tab keeps its state when the window changes size.
+class TabsLayout extends StatelessWidget {
+  const TabsLayout({super.key, required this.navigationShell});
+
+  final StatefulNavigationShell navigationShell;
+
+  @override
+  Widget build(BuildContext context) => AdaptiveNavScaffold(
+    shell: navigationShell,
+    // `under:` the tab layout's folder, so each entry knows its tab: tapping the current one
+    // goes back to its first page.
+    menu: (ref) => AppMenu.watch(ref, under: '(tabs)'),
+  );
+}
+
+=== lib/app/(tabs)/(home)/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/`: the folder `(home)` is a tab and, being in parentheses, adds nothing to the path.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Text('Hello from fespalier'));
+}
+
+=== lib/app/(tabs)/(home)/nav.dart (new)
+import 'package:fespalier/nav.dart';
+import 'package:flutter/material.dart';
+
+/// What the Home tab is called in the bar, the rail and the drawer.
+const nav = Nav(
+  label: 'Home',
+  icon: Icons.home_outlined,
+  selectedIcon: Icons.home,
+);
+
+=== lib/app/(tabs)/about/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/about`: the folder gives the path, and the class gives the route's name
+/// (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Text('Every folder next to layout.dart is a tab.'));
+}
+
+=== lib/app/(tabs)/about/nav.dart (new)
+import 'package:fespalier/nav.dart';
+import 'package:flutter/material.dart';
+
+/// What the About tab is called in the bar, the rail and the drawer.
+const nav = Nav(
+  label: 'About',
+  icon: Icons.info_outline,
+  selectedIcon: Icons.info,
+);
+
+=== test/adaptive_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+/// Sizes the window in logical pixels (a test's own is 800 x 600).
+void resize(WidgetTester tester, double width) {
+  tester.view.physicalSize = Size(width, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
+void main() {
+  testWidgets('the menu is a bar, a rail or a drawer by window width', (
+    tester,
+  ) async {
+    resize(tester, 400);
+    await pumpRouter(tester, AppRoutes.router());
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(NavigationDrawer), findsNothing);
+
+    // The destinations come from the nav.dart of each tab.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('About'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/about');
+
+    resize(tester, 800);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+
+    resize(tester, 1300);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationDrawer), findsOneWidget);
+    // Resizing keeps the tab.
+    expect(currentLocation(tester), '/about');
+  });
+}

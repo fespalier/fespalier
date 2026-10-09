@@ -1,0 +1,9 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/flags.dart';
+
+/// /labs is there while the `labs` flag is on. The guard watches the flag, so turning it off
+/// takes the app off /labs, with no navigation (docs/guards.md, "Feature flags").
+GuardResult guard(Ref ref) =>
+    flagGuard(ref, labs, orElse: const HomeRoute().location);

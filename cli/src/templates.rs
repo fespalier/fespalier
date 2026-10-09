@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use minijinja::Environment;
 use serde::Serialize;
 
-const TEMPLATES: [(&str, &str); 29] = [
+const TEMPLATES: [(&str, &str); 44] = [
     ("app.g.dart", include_str!("../templates/app.g.dart.jinja")),
     (
         "main.g.dart",
@@ -119,6 +119,66 @@ const TEMPLATES: [(&str, &str); 29] = [
     (
         "create/connectivity_test.dart",
         include_str!("../templates/create/connectivity_test.dart.jinja"),
+    ),
+    (
+        "create/devtools_options.yaml",
+        include_str!("../templates/create/devtools_options.yaml.jinja"),
+    ),
+    (
+        "create/devtools_test.dart",
+        include_str!("../templates/create/devtools_test.dart.jinja"),
+    ),
+    (
+        "create/flags.dart",
+        include_str!("../templates/create/flags.dart.jinja"),
+    ),
+    (
+        "create/labs_guard.dart",
+        include_str!("../templates/create/labs_guard.dart.jinja"),
+    ),
+    (
+        "create/labs_page.dart",
+        include_str!("../templates/create/labs_page.dart.jinja"),
+    ),
+    (
+        "create/flags_test.dart",
+        include_str!("../templates/create/flags_test.dart.jinja"),
+    ),
+    (
+        "create/contact_action.dart",
+        include_str!("../templates/create/contact_action.dart.jinja"),
+    ),
+    (
+        "create/contact_page.dart",
+        include_str!("../templates/create/contact_page.dart.jinja"),
+    ),
+    (
+        "create/forms_test.dart",
+        include_str!("../templates/create/forms_test.dart.jinja"),
+    ),
+    (
+        "create/tabs_layout.dart",
+        include_str!("../templates/create/tabs_layout.dart.jinja"),
+    ),
+    (
+        "create/tabs_home_nav.dart",
+        include_str!("../templates/create/tabs_home_nav.dart.jinja"),
+    ),
+    (
+        "create/tabs_home_page.dart",
+        include_str!("../templates/create/tabs_home_page.dart.jinja"),
+    ),
+    (
+        "create/tabs_about_nav.dart",
+        include_str!("../templates/create/tabs_about_nav.dart.jinja"),
+    ),
+    (
+        "create/tabs_about_page.dart",
+        include_str!("../templates/create/tabs_about_page.dart.jinja"),
+    ),
+    (
+        "create/adaptive_test.dart",
+        include_str!("../templates/create/adaptive_test.dart.jinja"),
     ),
 ];
 

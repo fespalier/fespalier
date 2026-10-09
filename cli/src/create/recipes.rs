@@ -15,6 +15,8 @@ pub enum Source {
         url: &'static str,
         commit: &'static str,
     },
+    /// `name:` with `sdk: <sdk>` under it: `flutter_localizations` is part of the Flutter SDK.
+    Sdk(&'static str),
 }
 
 /// One third-party package a feature adds to `dependencies:`.
@@ -28,10 +30,6 @@ pub struct ThirdParty {
 /// the table's order). Telemetry sinks go first, because `docs/observability.md` has the sink
 /// installed before anything that reports through it (`restoreAuth` included).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[allow(
-    dead_code,
-    reason = "the auth feature that needs the Session phase lands later; the composer and its tests already read it"
-)]
 pub enum Phase {
     /// A telemetry sink (`FespalierTelemetry.install`, `combine`).
     Telemetry,
@@ -66,7 +64,8 @@ pub struct Step {
 }
 
 /// What a feature adds to the files that every feature shares: `lib/app/startup.dart`,
-/// `lib/app/app.dart` and `lib/main.dart`. `compose.rs` merges the fragments of all the chosen
+/// `lib/app/app.dart`, `lib/main.dart` and the pubspec's `flutter: assets:`, `test:` and Android
+/// `minSdk`. `compose.rs` merges the fragments of all the chosen
 /// features, so no feature writes one of those files itself.
 #[derive(Debug, Clone, Copy)]
 pub struct Startup {
@@ -99,6 +98,20 @@ pub struct Startup {
     pub app_imports: &'static [&'static str],
     /// Library URIs `main.dart` imports besides its own.
     pub main_imports: &'static [&'static str],
+    /// A template for the whole of `lib/app/app.dart`, in place of the starter's, for a feature
+    /// that changes what `MaterialApp.router` is given (`{{ package }}` is the app's name). At most
+    /// one feature has it, and the composer adds the other features' [`app_imports`](Self::app_imports).
+    pub app_template: Option<&'static str>,
+    /// Entries of `flutter: assets:` in the pubspec (`assets/i18n/`).
+    pub assets: &'static [&'static str],
+    /// Routes `fsp test` leaves out of the route smoke tests (`test: skip:` in the pubspec), each
+    /// with why: a page that needs more than a bare `pumpRouter` gives it, and has a test of its
+    /// own that sets that up.
+    pub smoke_skip: &'static [(&'static str, &'static str)],
+    /// The lowest Android `minSdk` the feature's plugins run on. Flutter's own default is 21
+    /// before Flutter 3.35 (24 since), so `fsp create` raises it in `android/app/build.gradle.kts`
+    /// when the app is made with Android and the default is lower.
+    pub android_min_sdk: Option<u32>,
 }
 
 impl Startup {
@@ -115,6 +128,10 @@ impl Startup {
         router_observers: &[],
         app_imports: &[],
         main_imports: &[],
+        app_template: None,
+        assets: &[],
+        smoke_skip: &[],
+        android_min_sdk: None,
     };
 }
 
@@ -385,6 +402,125 @@ pub const RECIPES: &[Recipe] = &[
             ..Startup::NONE
         },
     },
+    Recipe {
+        id: "auth",
+        description: "Signed-in routes (fespalier_auth): a guard on /account, a sign-in form, restoreAuth at startup and a backend that says to connect your identity provider.",
+        // The sign-in page is a form on an action (docs/auth.md), which needs the forms package.
+        companions: &["fespalier_auth", "fespalier_forms"],
+        third_party: &[],
+        // The tests that start the whole app give the keychain an in-memory store.
+        dev_third_party: &[ThirdParty {
+            name: "flutter_secure_storage",
+            source: Source::Range(">=10.0.0 <12.0.0"),
+        }],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/auth_setup.dart", "lib/auth_setup.dart"),
+            ("create/auth_guard.dart", "lib/app/(signed-in)/guard.dart"),
+            (
+                "create/account_page.dart",
+                "lib/app/(signed-in)/account/page.dart",
+            ),
+            ("create/sign_in_action.dart", "lib/app/sign-in/action.dart"),
+            ("create/sign_in_guard.dart", "lib/app/sign-in/guard.dart"),
+            ("create/sign_in_page.dart", "lib/app/sign-in/page.dart"),
+            ("create/auth_test.dart", "test/auth_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &[
+                "package:fespalier_auth/fespalier_auth.dart",
+                "package:{name}/auth_setup.dart",
+            ],
+            steps: &[Step {
+                kind: StepKind::Override,
+                phase: Phase::Session,
+                comment: "fespalier_auth: reads the stored session, with no network, so the first guard is synchronous.",
+                code: "...await restoreAuth(authSetup()),",
+                awaits: true,
+            }],
+            // flutter_secure_storage, the token store: Android 7.0 (docs/auth.md, "Installing").
+            android_min_sdk: Some(24),
+            ..Startup::NONE
+        },
+    },
+    Recipe {
+        id: "i18n",
+        description: "Translated texts (fespalier_tolgee): bundled English and French catalogs, the language from ?lang=, ICU plurals; no key, no network.",
+        companions: &["fespalier_tolgee"],
+        // The Material strings of each language (docs/i18n-tolgee.md, "The scope").
+        third_party: &[ThirdParty {
+            name: "flutter_localizations",
+            source: Source::Sdk("flutter"),
+        }],
+        dev_third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/i18n_en.arb", "assets/i18n/en.arb"),
+            ("create/i18n_fr.arb", "assets/i18n/fr.arb"),
+            (
+                "create/translations_page.dart",
+                "lib/app/translations/page.dart",
+            ),
+            ("create/i18n_test.dart", "test/i18n_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &["package:fespalier_tolgee/fespalier_tolgee.dart"],
+            steps: &[Step {
+                kind: StepKind::Override,
+                phase: Phase::Rest,
+                comment: "fespalier_tolgee: the catalogs bundled in assets/i18n/ (a local read, never the network).",
+                code: "translationsConfig.overrideWithValue(\n  Translations(\n    bundled: await BundledTranslations.load(locales: const ['en', 'fr']),\n    baseLocale: 'en',\n  ),\n),",
+                awaits: true,
+            }],
+            app_template: Some("create/i18n_app.dart"),
+            assets: &["assets/i18n/"],
+            // The page reads the translator from the scope, which only the app's own App has.
+            smoke_skip: &[(
+                "/translations",
+                "needs the translation scope: test/i18n_test.dart opens it through the app's own App",
+            )],
+            ..Startup::NONE
+        },
+    },
+    Recipe {
+        id: "image",
+        description: "Responsive images (fespalier_image): a ResponsiveImage that asks the CDN for the width its box needs, through a URL template; no signing key.",
+        companions: &["fespalier_image"],
+        third_party: &[],
+        dev_third_party: &[],
+        flutter_floor: "3.32",
+        config: &[],
+        files: &[
+            ("create/images.dart", "lib/images.dart"),
+            ("create/photo_page.dart", "lib/app/photo/page.dart"),
+            ("create/image_test.dart", "test/image_test.dart"),
+        ],
+        replaces: &[],
+        requires: &[],
+        conflicts: &[],
+        startup: Startup {
+            imports: &[
+                "package:fespalier_image/fespalier_image.dart",
+                "package:{name}/images.dart",
+            ],
+            steps: &[Step {
+                kind: StepKind::Override,
+                phase: Phase::Rest,
+                comment: "fespalier_image: which CDN the images come from (lib/images.dart).",
+                code: "imageCdnProvider.overrideWithValue(appImages),",
+                awaits: false,
+            }],
+            ..Startup::NONE
+        },
+    },
 ];
 
 /// Every `packages/fespalier_*` (the Flutter packages of this repository, except the DevTools
@@ -399,10 +535,6 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     (
         "fespalier_analytics",
         "needs a vendor SDK and its console setup (docs/adapters.md); the app brings its backend",
-    ),
-    (
-        "fespalier_auth",
-        "not yet: it becomes the `auth` feature in a later release",
     ),
     (
         "fespalier_biometrics",
@@ -433,10 +565,6 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "the `http` feature lands once fespalier_http has DioHttpClient and its docs",
     ),
     (
-        "fespalier_image",
-        "not yet: it becomes the `image` feature in a later release",
-    ),
-    (
         "fespalier_maps",
         "needs a tile source, a style and platform setup, which are the app's own",
     ),
@@ -451,10 +579,6 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     (
         "fespalier_sign_keypair",
         "needs Flutter 3.44 and a git dependency of another repository",
-    ),
-    (
-        "fespalier_tolgee",
-        "not yet: it becomes the `i18n` feature in a later release",
     ),
 ];
 

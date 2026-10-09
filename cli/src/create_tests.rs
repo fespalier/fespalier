@@ -642,6 +642,11 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
                         bad.push(format!("{id}: {} is not a third-party range", tp.name));
                     }
                 }
+                Source::Sdk(sdk) => {
+                    if sdk != "flutter" {
+                        bad.push(format!("{id}: {} is of the `{sdk}` SDK", tp.name));
+                    }
+                }
             }
         }
         for path in r.replaces {
@@ -677,6 +682,7 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
             };
             let name = rest.split('/').next().unwrap_or_default();
             name == "fespalier"
+                || name == "{name}"
                 || name == "flutter"
                 || r.companions.contains(&name)
                 || r.third_party.iter().any(|t| t.name == name)
@@ -1445,11 +1451,16 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
         .map(|r| {
             (
                 vec![r.id],
-                2 + usize::from(r.id == "forms" || r.id == "flags"),
+                2 + match r.id {
+                    "forms" | "flags" | "i18n" | "image" => 1,
+                    "auth" => 2,
+                    _ => 0,
+                },
             )
         })
         .collect();
-    cases.push((vec!["all"], 4));
+    // The two of the base app, /contact, /labs, /account, /sign-in, /translations and /photo.
+    cases.push((vec!["all"], 8));
     for (features, routes) in cases {
         let dir = tempfile::tempdir().unwrap();
         let plan = plan_of(RECIPES, &features);
@@ -1466,7 +1477,8 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
         assert_eq!(app.contains("AppLayout"), !tabs, "{features:?}");
         assert_eq!(
             app.contains("package:fespalier_forms/fespalier_forms.dart"),
-            plan.features.contains(&"forms"),
+            // The sign-in form of `auth` is a form too.
+            plan.features.contains(&"forms") || plan.features.contains(&"auth"),
             "{features:?}"
         );
         crate::smoke::run(dir.path(), false).unwrap_or_else(|e| panic!("{features:?}: {e:#}"));
@@ -1617,4 +1629,136 @@ fn otel_needs_flutter_3_35_and_all_leaves_it_out_below() {
     // `--template minimal` still takes the tabs out of `all`, on any Flutter.
     req.template = Some(plan::Template::Minimal);
     assert!(!ok(&req, RECIPES).features.contains(&"adaptive"));
+}
+
+// --- auth, i18n and image -----------------------------------------------------------------------
+
+/// docs/auth.md: the session is restored after the telemetry sink (`docs/observability.md`) and
+/// before the rest, the backend throws until the app connects its own, and the secure storage
+/// plugin needs Android 24, which only Android apps are edited for.
+#[test]
+fn auth_restores_the_session_after_the_sink_and_raises_the_android_floor() {
+    let plan = plan_of(RECIPES, &["auth", "storage", "sentry"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    let at = |needle: &str| {
+        startup
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle}\n{startup}"))
+    };
+    assert!(at("FespalierTelemetry.install(") < at("...await restoreAuth(authSetup()),"));
+    assert!(at("...await restoreAuth(authSetup()),") < at("dataCacheStorage.overrideWithValue"));
+    assert!(
+        startup.contains("import 'package:my_app/auth_setup.dart';"),
+        "{startup}"
+    );
+    let setup = file(&plan, "lib/auth_setup.dart");
+    for method in ["signIn", "refresh", "signOut"] {
+        assert!(setup.contains(&format!("{method}(")), "{method}");
+    }
+    assert_eq!(
+        setup
+            .matches("connect your identity provider: docs/auth.md")
+            .count(),
+        1
+    );
+    assert!(
+        file(&plan, "pubspec.yaml").contains("fespalier_forms:"),
+        "the sign-in form"
+    );
+    assert_eq!(plan.android_min_sdk, Some(24));
+    // Android is in the default platforms; a web-only app has no Gradle file to edit.
+    let mut req = request("my_app");
+    req.features = vec!["auth".into()];
+    req.platforms = vec!["web".into()];
+    assert_eq!(ok(&req, RECIPES).android_min_sdk, None);
+    req.platforms = vec!["ios".into(), "android".into()];
+    assert_eq!(ok(&req, RECIPES).android_min_sdk, Some(24));
+    assert_eq!(ok(&request("my_app"), RECIPES).android_min_sdk, None);
+}
+
+/// The only app.dart that is not the starter's is the translation scope's, with the assets and the
+/// route that cannot be smoke tested without it named in the pubspec.
+#[test]
+fn i18n_wraps_the_router_in_the_scope_and_declares_its_assets() {
+    let plan = plan_of(RECIPES, &["i18n"]);
+    let app = file(&plan, "lib/app/app.dart");
+    assert!(app.contains("TranslationScope.routerConfig("), "{app}");
+    assert!(
+        app.contains("GlobalMaterialLocalizations.delegates"),
+        "{app}"
+    );
+    assert!(app.contains("title: 'my_app'"), "{app}");
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(
+        pubspec.contains("  flutter_localizations:\n    sdk: flutter\n"),
+        "{pubspec}"
+    );
+    assert!(
+        pubspec.contains("  assets:\n    - assets/i18n/\n"),
+        "{pubspec}"
+    );
+    assert!(
+        pubspec.contains("  test:\n    # /translations needs"),
+        "{pubspec}"
+    );
+    assert!(pubspec.contains("    skip: [/translations]\n"), "{pubspec}");
+    // The catalogs are ARB with their ICU plural intact (jinja did not read the `{#`).
+    for locale in ["en", "fr"] {
+        let arb = file(&plan, &format!("assets/i18n/{locale}.arb"));
+        assert!(arb.contains(&format!("\"@@locale\": \"{locale}\"")));
+        assert!(arb.contains("{# "), "{arb}");
+    }
+    // No key, no network: nothing remote is configured.
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        !startup.contains("TolgeeCdn") && !startup.contains("remote:"),
+        "{startup}"
+    );
+    assert!(plan.android_min_sdk.is_none());
+}
+
+/// The image feature has a template builder and no way to hold a key.
+#[test]
+fn image_asks_a_template_cdn_and_holds_no_key() {
+    let plan = plan_of(RECIPES, &["image"]);
+    let images = file(&plan, "lib/images.dart");
+    assert!(images.contains("TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}')"));
+    for forbidden in ["signer", "secret", "salt", "hmac", "apikey"] {
+        assert!(!images.to_lowercase().contains(forbidden), "{forbidden}");
+    }
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        startup.contains("imageCdnProvider.overrideWithValue(appImages),"),
+        "{startup}"
+    );
+}
+
+/// Two features that both write app.dart are refused, naming both.
+#[test]
+fn two_app_templates_are_refused_naming_both() {
+    const TWO: &[Recipe] = &[
+        Recipe {
+            id: "one",
+            startup: Startup {
+                app_template: Some("create/i18n_app.dart"),
+                ..Startup::NONE
+            },
+            ..SYNTHETIC[2]
+        },
+        Recipe {
+            id: "two",
+            startup: Startup {
+                app_template: Some("create/i18n_app.dart"),
+                ..Startup::NONE
+            },
+            ..SYNTHETIC[2]
+        },
+    ];
+    let mut req = request("my_app");
+    req.features = vec!["one".into(), "two".into()];
+    let message = err(&req, TWO);
+    assert!(
+        message.contains("`one` and `two` both write lib/app/app.dart"),
+        "{message}"
+    );
 }

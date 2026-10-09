@@ -166,6 +166,9 @@ pub struct Plan {
     pub files: Vec<PlannedFile>,
     /// The arguments of `flutter` that resolve the dependencies; `None` with `--no-pub-get`.
     pub pub_get: Option<Vec<String>>,
+    /// The Android `minSdk` to raise [`ANDROID_GRADLE`] to after `flutter create`, when a feature's
+    /// plugin needs more than Flutter's default; `None` for no edit.
+    pub android_min_sdk: Option<u32>,
 }
 
 /// `fsp create --list-features --json`: one line per feature.
@@ -462,15 +465,15 @@ fn starter_files(package: &str, features: &[&Recipe]) -> Result<Vec<PlannedFile>
     };
     let mut files: Vec<PlannedFile> = init::STARTERS
         .iter()
-        .map(|kind| {
+        .map(|kind| -> Result<PlannedFile> {
             let content = match *kind {
                 "page" => templates::render("create/home.dart", Cx { package }),
-                "app" => compose::app_dart(&init::starter(kind, package), features),
+                "app" => compose::app_dart(package, &init::starter(kind, package), features)?,
                 _ => init::starter(kind, package),
             };
-            new(format!("lib/app/{kind}.dart"), content)
+            Ok(new(format!("lib/app/{kind}.dart"), content))
         })
-        .collect();
+        .collect::<Result<_>>()?;
     files.push(new(
         "lib/app/about/page.dart".to_string(),
         templates::render("create/about.dart", Cx { package }),
@@ -569,11 +572,17 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
         },
     ];
     files.extend(starter_files(&name, &features)?);
+    // A test that starts the whole app (`AppMain.root()`) runs the startup of every feature, so it
+    // needs to know which ones there are (`features`).
+    let ids: Vec<&str> = features.iter().map(|r| r.id).collect();
     for recipe in &features {
         for (template, path) in recipe.files {
             files.push(PlannedFile {
                 path: (*path).to_string(),
-                content: templates::render(template, serde_json::json!({ "package": name })),
+                content: templates::render(
+                    template,
+                    serde_json::json!({ "package": name, "features": ids }),
+                ),
                 action: Action::New,
             });
         }
@@ -606,7 +615,22 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
         flutter_create,
         files,
         pub_get,
+        android_min_sdk: android_min_sdk(&features, &req.platforms),
     })
+}
+
+/// The Gradle file of the app module that `flutter create` writes (Kotlin DSL, since Flutter 3.29).
+pub const ANDROID_GRADLE: &str = "android/app/build.gradle.kts";
+
+/// The `minSdk` the features' plugins need, when the app has an Android folder to raise it in.
+fn android_min_sdk(features: &[&Recipe], platforms: &[String]) -> Option<u32> {
+    if !platforms.is_empty() && !platforms.iter().any(|p| p == "android") {
+        return None;
+    }
+    features
+        .iter()
+        .filter_map(|r| r.startup.android_min_sdk)
+        .max()
 }
 
 impl Plan {
@@ -634,6 +658,12 @@ impl Plan {
             "run   flutter {} {staging}",
             self.flutter_create.join(" ")
         );
+        if let Some(min) = self.android_min_sdk {
+            let _ = writeln!(
+                out,
+                "edit  {ANDROID_GRADLE}: minSdk is at least {min} (the default of Flutter before 3.35 is lower)"
+            );
+        }
         let _ = writeln!(out, "move  {staging} -> {}", self.dir.display());
         if let Some(args) = &self.pub_get {
             let _ = writeln!(out, "run   flutter {}", args.join(" "));

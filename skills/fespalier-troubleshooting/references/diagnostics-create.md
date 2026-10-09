@@ -33,6 +33,13 @@ stdout). The user documentation is the docs section
 | ``note: `{a}` needs Flutter {n} or newer, and this is Flutter {v}: left out of `all` ``                               | Not an error: `--features all` is every feature the installed Flutter runs, and `{a}` (`otel`, which needs Dart 3.9) is above it. Upgrade Flutter to get it; asking for `{a}` by name is refused with the next message.                                                                                                      |
 | `--local-packages {p}: no such folder` / `not a checkout of fespalier (no packages/fespalier/pubspec.yaml)`           | The hidden flag for CI and contributors: give the root of a checkout of the fespalier repository.                                                                                                                                                                                                                            |
 
+## Android
+
+| Message                                                                                                                                                   | Cause and fix                                                                                                                                                                                        |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edit  android/app/build.gradle.kts (minSdk 24 or more)`                                                                                                  | Not an error: the `auth` feature's token store needs Android 7.0, and Flutter before 3.35 defaults to 21, so the `minSdk` line was made `maxOf(flutter.minSdkVersion, 24)`.                          |
+| ``note: android/app/build.gradle.kts has no `minSdk = flutter.minSdkVersion` line; set minSdk to at least 24 yourself (flutter_secure_storage needs it)`` | The Gradle file is not the one `flutter create` writes (another shape, or already edited). Set `minSdk` to 24 or more in `defaultConfig`, or the Android build refuses the plugin's higher `minSdk`. |
+
 ## Flutter
 
 | Message                                                                                                                 | Cause and fix                                                                                                                                                |

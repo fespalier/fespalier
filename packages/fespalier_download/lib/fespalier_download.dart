@@ -7,6 +7,7 @@ library;
 
 export 'src/engine.dart';
 export 'src/file_store.dart';
+export 'src/grant.dart';
 export 'src/http_backend.dart';
 export 'src/location.dart';
 export 'src/ports.dart';

@@ -577,6 +577,7 @@ void main() {
       FespalierDownloadConventions.priority,
       FespalierDownloadConventions.result,
       FespalierDownloadConventions.failure,
+      FespalierDownloadConventions.regranted,
     };
     final values = <Object>{
       true,

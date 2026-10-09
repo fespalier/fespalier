@@ -38,6 +38,9 @@ dependencies:
 
 <!-- x-release-please-end -->
 
+It depends on `fespalier_http` (at the same tag, which pub resolves for you) for `HttpCredentials`. List
+`fespalier_http` yourself, with the same `url` and `ref`, only when your code imports it.
+
 ## Requests and files
 
 ```dart
@@ -91,6 +94,30 @@ Future<List<Override>> startup() async => [
 ```
 
 See [the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#in-a-widget).
+
+## Credentials
+
+The documented path is a **short-lived capability grant**: before the download starts, in the foreground, the app makes its
+normal signed request and the server answers with a single-file URL and/or headers that expire in minutes. Give the engine
+a `grantor` that returns a `DownloadGrant(url:, headers:)` (its `toString()` prints no field; the registry never stores it):
+
+```dart
+final engine = Downloads(
+  backend: backend,
+  store: store,
+  files: files,
+  grantor: (request, {required renewal}) async => DownloadGrant(url: await signedUrlFor(request.id)),
+);
+```
+
+It is asked before each start, retry and resume, and **once more after a 401 or 403**: the engine cancels the failed
+attempt (the bytes the backend kept stay) and enqueues again with the new grant. A second 401 or 403, or a grantor that
+throws, ends `Failed(unauthorized)`; a cancel, remove, restart or sign-out meanwhile wins. `HttpDownloadBackend(credentials:)`
+takes any `HttpCredentials` (`fespalier_auth`'s `Authorizer`): each send of the foreground transfer is authorized, and a
+4xx asks `retry` for one re-send, at most three sends. Plain `headers` are stored in plaintext; never put a refresh
+token or a long-lived bearer in a request or a grant, and a DPoP proof cannot be signed per send by a background backend.
+The telemetry span's end has `fespalier.download.regranted: true` when a renewal was asked. See
+[the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#credentials).
 
 ## Test it
 

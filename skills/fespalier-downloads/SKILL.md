@@ -38,6 +38,26 @@ backend or tap routing: they do not exist. A download that must go on while the 
 - **The client must honour `http.Abortable`** (the `package:http` clients do) or a pause cannot free a silent connection.
 - `HttpTransfer` and `TransferFiles` are the pieces under it, exported for a backend of your own.
 
+## Credentials
+
+(Since 0.15.0.) Authenticate a download with a **short-lived capability grant**, not a stored credential: the app makes its
+normal signed request in the foreground and the server answers with a single-file URL and/or headers that expire in minutes.
+`Downloads(grantor: (request, {required renewal}) async => DownloadGrant(url: ..., headers: ...))` asks it before each start,
+retry and resume (`renewal: false`; null sends the request as it is) and **once more after a 401 or 403** (`renewal: true`):
+the engine cancels the failed attempt, keeps the bytes the backend can continue from, and enqueues again with the new grant.
+A second 401 or 403, a grantor that throws, or a grant URL that is not a valid http(s) URL ends `Failed(unauthorized)`. A
+cancel, remove, restart or `clearAccount()` while the grant request is in flight wins. The registry stores the request, never
+the grant; `DownloadGrant.toString()` prints no field; the span end carries `fespalier.download.regranted: true` after a renewal.
+
+- **`HttpDownloadBackend(credentials: HttpCredentials)`** (from `fespalier_http`; `fespalier_auth`'s `Authorizer` is one)
+  authorizes each send of the foreground transfer with `authorize('GET', url)` and asks `retry` after a 4xx for one re-send, at
+  most three sends, as `SessionClient` does; a credentials object that throws ends `Failed(unauthorized)`. It is foreground
+  only. For anything an operating-system backend sends, use a grant.
+- **Plain `DownloadRequest.headers` are persisted in plaintext** (the registry, and a background backend's queue). Never a
+  refresh token or a long-lived bearer. DPoP per send cannot work in the background: the native callbacks cannot sign.
+- A request that is not replay-safe (a `POST`) is sent once: no re-send after a 401, no pause cycling. Nothing sends one in
+  this release (uploads come later).
+
 ## In a widget
 
 (Since 0.15.0.) Build one `Downloads(backend:, store: FileDownloadStore(bases: bases), files: TransferDownloadFiles(bases: bases))`
@@ -76,13 +96,13 @@ a real tag in an app, but never in these pages, where `cli/tests/versions.rs` wo
 
 ## The shape of it
 
-| You import                                           | For                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package:fespalier_download/fespalier_download.dart` | `DownloadRequest`, `DownloadLocation`, `DownloadBase`, `DownloadNetwork`, `DownloadPriority`, `DownloadStatus` and its cases, `WaitReason`, `DownloadFailure`, the ports `DownloadBackend`, `DownloadEvents`, `DownloadCapabilities`, `DownloadStore`, `DownloadFiles`, `Downloads`, `DownloadObserver`, `HttpDownloadBackend`, `DownloadBases`, `TransferDownloadFiles`, `HttpTransfer`, `TransferFiles`, `FespalierDownloadConventions` |
-| `package:fespalier_download/testing.dart`            | `FakeDownloadBackend` (with `replay:`), `MemoryDownloadStore`, `FakeDownloadFiles`, `FakeTransferFiles`                                                                                                                                                                                                                                                                                                                                   |
+| You import                                           | For                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_download/fespalier_download.dart` | `DownloadRequest`, `DownloadLocation`, `DownloadBase`, `DownloadNetwork`, `DownloadPriority`, `DownloadStatus` and its cases, `WaitReason`, `DownloadFailure`, the ports `DownloadBackend`, `DownloadEvents`, `DownloadCapabilities`, `DownloadStore`, `DownloadFiles`, `Downloads`, `DownloadObserver`, `HttpDownloadBackend`, `DownloadBases`, `TransferDownloadFiles`, `HttpTransfer`, `TransferFiles`, `DownloadGrant`, `DownloadGrantor`, `FespalierDownloadConventions` |
+| `package:fespalier_download/testing.dart`            | `FakeDownloadBackend` (with `replay:`), `MemoryDownloadStore`, `FakeDownloadFiles`, `FakeTransferFiles`                                                                                                                                                                                                                                                                                                                                                                       |
 
 `package:fespalier_download/fespalier_download.dart` also exports `FileDownloadStore`, `downloadsEngine`, `downloads`,
-`DownloadsNotifier` and `downloadStatus`, and `testing.dart` has `downloadTestOverrides`.
+`DownloadsNotifier` and `downloadStatus`, and `DownloadGrant` and `DownloadGrantor` (since 0.15.0, see Credentials); `testing.dart` has `downloadTestOverrides`.
 
 The engine in detail, with the restart and sign-out rules, is [`references/engine.md`](references/engine.md). The model in detail, with the exact refusals of `isValid`, is [`references/model.md`](references/model.md). The fakes and a
 test that plays a platform are [`references/fakes.md`](references/fakes.md).
@@ -98,7 +118,7 @@ test that plays a platform are [`references/fakes.md`](references/fakes.md).
   `request.url`: the URL can be a capability.
 - **No long-lived credential in `headers`.** A backend may keep them on disk in plaintext while a download is queued. The
   documented path is a short-lived capability: make the normal signed request in the foreground, get a short-lived URL back,
-  and put that in the request. Never a refresh token, never a long-lived bearer.
+  and return it from the engine's `grantor` (see Credentials). Never a refresh token, never a long-lived bearer.
 - **The registry is never a cache.** A `DownloadStore` keeps what the app asked for until `remove` or `clear` (sign-out);
   it must not be a `BoundedDataStorage`, which evicts.
 - **Telemetry names are the contract**, `fespalier.download.transfer`, `.reconciled` and `.open`: add, never rename. Their
@@ -114,7 +134,7 @@ test that plays a platform are [`references/fakes.md`](references/fakes.md).
 ## Traps
 
 - **`Failed(DownloadFailure)` carries a value, not a message.** There is no error text to show; map each failure to your
-  own copy. `unauthorized` (401 or 403) is the one a later engine will answer by asking for a fresh grant.
+  own copy. `unauthorized` (401 or 403) is what remains after the engine's one renewed grant (or with no grantor).
 - **A restart settles the registry once, at `open()`.** Give the engine a `DownloadFiles` unless the backend replays
   finished downloads: an entry nobody mentions is `Failed(killed)` without one.
 - **`Running.total` is null when the server did not say**: do not divide by it without a check.

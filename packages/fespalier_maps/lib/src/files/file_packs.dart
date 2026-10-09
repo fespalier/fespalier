@@ -2,6 +2,14 @@ import 'dart:async';
 
 import 'package:fespalier/fespalier.dart'
     show Notifier, NotifierProvider, Provider, TelemetryOutcome;
+import 'package:fespalier_download/fespalier_download.dart'
+    show
+        DownloadFailure,
+        HttpTransfer,
+        TransferDone,
+        TransferFailed,
+        TransferPaused,
+        TransferStopped;
 import 'package:http/http.dart' as http;
 
 import '../offline/status.dart';
@@ -9,7 +17,7 @@ import '../offline/tile_packs.dart' show StorageUse;
 import '../telemetry.dart';
 import 'request.dart';
 import 'store.dart';
-import 'store_stub.dart' if (dart.library.io) 'store_io.dart';
+import 'transfer_adapter.dart';
 
 /// The HTTP client file packs download with. It has **no default**: the app overrides it with
 /// the client it already has (one with its own timeouts, certificates and proxy), and a test with
@@ -43,46 +51,25 @@ final filePackStatus = Provider.autoDispose.family<PackStatus, String>(
   (ref, key) => ref.watch(filePacks)[key] ?? const Absent(),
 );
 
-final RegExp _contentRange = RegExp(
-  r'^bytes\s+(\d+)-(\d+)/(\d+|\*)$',
-  caseSensitive: false,
-);
-final RegExp _unsatisfied = RegExp(r'^bytes\s+\*/(\d+)$', caseSensitive: false);
-
-/// How far one transfer is told about: at least this many bytes, or a 200th of the file.
-const int _reportStep = 64 * 1024;
-
-enum _Step { verify, stop, restart }
-
 final class _Run {
   final Completer<void> done = Completer<void>();
 
-  // Completes to abort the request in flight (a pause, a removal, the end of the provider): a
-  // connection that sends nothing cannot hold them up.
-  final Completer<void> abort = Completer<void>();
+  // The transfer in flight, once there is one: a pause or a removal that comes before it exists
+  // is applied to it as it is made.
+  HttpTransfer? transfer;
+  bool stopped = false;
+  bool pausing = false;
 
+  // Aborts the request in flight (a removal, the end of the provider): a connection that sends
+  // nothing cannot hold them up.
   void stop() {
-    if (!abort.isCompleted) abort.complete();
+    stopped = true;
+    transfer?.stop();
   }
-}
 
-// The body of a response and whether the transfer took it: a body nobody reads is cancelled.
-final class _Body {
-  _Body(this.response);
-
-  final http.StreamedResponse response;
-  bool taken = false;
-}
-
-// Cancels a response body that is not wanted (an error status, a restart) after its first event,
-// without waiting for the rest. No `listen` here: `await for` is the subscription.
-Future<void> _abandon(http.StreamedResponse response) async {
-  try {
-    await for (final _ in response.stream) {
-      break;
-    }
-  } catch (_) {
-    // The connection is being thrown away anyway.
+  void pause() {
+    pausing = true;
+    transfer?.pause();
   }
 }
 
@@ -115,6 +102,7 @@ Future<void> _abandon(http.StreamedResponse response) async {
 /// the paths, the key or the hash.
 class FilePacks extends Notifier<Map<String, PackStatus>> {
   late PackFileStore _files;
+  late HttpTransferFiles _transferFiles;
 
   // Per key: the definition, for resuming and for deleting its files.
   final Map<String, FilePackRequest> _requests = {};
@@ -125,14 +113,13 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   final Map<String, _Run> _runs = {};
   // Keys being removed: a start of one takes the key over.
   final Set<String> _removing = {};
-  // Keys whose running transfer was asked to pause.
-  final Set<String> _pausing = {};
   // Per key: the telemetry operation of the running download.
   final Map<String, Object?> _spans = {};
 
   @override
   Map<String, PackStatus> build() {
     _files = ref.read(packFileStore);
+    _transferFiles = HttpTransferFiles(_files);
     ref.onDispose(() {
       // The transfers are aborted, see the unmounted notifier and close their files.
       for (final run in _runs.values) {
@@ -178,8 +165,21 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     _set(key, Failed(reason));
   }
 
-  static PackFailure _storeFailure(Object error) =>
-      error is UnsupportedError ? PackFailure.unsupported : PackFailure.storage;
+  // The failures of the shared transfer, in this package's words. A refusal for credentials
+  // (401, 403) is `rejected`, as it was before file packs rode on fespalier_download.
+  static PackFailure _packFailure(DownloadFailure failure) => switch (failure) {
+    DownloadFailure.unsupported => PackFailure.unsupported,
+    DownloadFailure.network => PackFailure.network,
+    DownloadFailure.rejected ||
+    DownloadFailure.unauthorized => PackFailure.rejected,
+    DownloadFailure.sizeMismatch => PackFailure.sizeMismatch,
+    DownloadFailure.hashMismatch => PackFailure.hashMismatch,
+    DownloadFailure.storage => PackFailure.storage,
+    DownloadFailure.invalidRequest ||
+    DownloadFailure.notificationsRequired ||
+    DownloadFailure.killed ||
+    DownloadFailure.other => PackFailure.other,
+  };
 
   /// Downloads [request], continuing a partial file of an earlier attempt. Does nothing while a
   /// download of the same key is running or paused. A pack whose file is already at the
@@ -221,7 +221,6 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     // A pack that was paused is the same download going on: its operation stays open.
     final continuing = state[key] is Paused && _spans.containsKey(key);
     final generation = _bump(key);
-    _pausing.remove(key);
     _removing.remove(key);
     _requests[key] = request;
     if (!continuing) {
@@ -261,7 +260,6 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
         );
       }
     } finally {
-      if (_current(key, generation)) _pausing.remove(key);
       if (identical(_runs[key], run)) _runs.remove(key);
       run.done.complete();
     }
@@ -274,343 +272,47 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     _Run run,
   ) async {
     final key = r.key;
-    var offset = 0;
-    try {
-      final done = await _files.length(r.destination);
-      if (!_current(key, generation)) return;
-      if (done != null) {
-        if (r.bytes == null || done == r.bytes) {
-          _endSpan(key, MapsTelemetry.resultComplete);
-          _set(key, Complete(bytes: done));
-          return;
-        }
-        // The file of another size stays: the move at the end replaces it atomically.
-      }
-      offset = await _files.length(r.partial) ?? 0;
-    } catch (error) {
-      if (_current(key, generation)) _fail(key, _storeFailure(error));
-      return;
-    }
-    if (!_current(key, generation)) return;
-    var restarted = false;
-    while (true) {
-      try {
-        if (offset > 0 && r.bytes != null && offset > r.bytes!) {
-          await _dropPartial(r);
-          offset = 0;
-        }
-      } catch (error) {
-        if (_current(key, generation)) _fail(key, _storeFailure(error));
-        return;
-      }
-      final step = await _fetch(r, generation, client, run, offset);
-      if (!_current(key, generation)) return;
-      switch (step) {
-        case _Step.stop:
-          return;
-        case _Step.verify:
-          await _verify(r, generation);
-          return;
-        case _Step.restart:
-          if (restarted) {
-            _fail(key, PackFailure.rejected);
-            return;
-          }
-          restarted = true;
-          try {
-            await _dropPartial(r);
-          } catch (error) {
-            if (_current(key, generation)) _fail(key, _storeFailure(error));
-            return;
-          }
-          offset = 0;
-      }
-    }
-  }
-
-  Future<void> _dropPartial(FilePackRequest r) async {
-    await _files.delete(r.partial);
-    await _files.delete(r.validator);
-  }
-
-  /// One request, from [offset]: the partial file is appended to, or emptied when the server
-  /// sent the whole body.
-  Future<_Step> _fetch(
-    FilePackRequest r,
-    int generation,
-    http.Client client,
-    _Run run,
-    int offset,
-  ) async {
-    final key = r.key;
-    if (r.bytes != null && offset == r.bytes) return _Step.verify;
-    String? validator;
-    if (offset > 0) {
-      try {
-        validator = await _files.readText(r.validator);
-      } catch (error) {
-        if (_current(key, generation)) _fail(key, _storeFailure(error));
-        return _Step.stop;
-      }
-      // Without a validator nothing says the partial file belongs to the file the server has
-      // now: only a hash (checked at the end) makes a blind continuation safe. Otherwise the
-      // transfer starts from the first byte and the partial file is emptied when it begins.
-      if (validator == null && r.sha256 == null) offset = 0;
-    }
-    // This transfer's own run, passed down: after the awaits above a removal may have stopped it
-    // and a new start put another in the map, whose trigger must not be taken here. A request
-    // is never sent once its run was stopped.
-    if (!_current(key, generation)) return _Step.stop;
-    if (run.abort.isCompleted) {
-      if (_pausing.remove(key)) _setPaused(key, offset, r.bytes);
-      return _Step.stop;
-    }
-    // Aborted by the run (pause, removal, dispose) or, when the transfer is done with the
-    // response, by this request's own completer, so a body that never sends a byte is freed.
-    final done = Completer<void>();
-    final request = http.AbortableRequest(
-      'GET',
-      r.url,
-      abortTrigger: Future.any([run.abort.future, done.future]),
+    if (run.stopped || !_current(key, generation)) return;
+    final transfer = HttpTransfer(
+      client: client,
+      files: _transferFiles,
+      url: r.url,
+      destination: r.destination,
+      headers: r.headers,
+      bytes: r.bytes,
+      sha256: r.sha256,
+      onProgress: (received, total) {
+        if (!_current(key, generation)) return;
+        _set(
+          key,
+          Downloading(progress: _fraction(received, total), bytes: received),
+        );
+      },
     );
-    request.headers.addAll(r.headers);
-    request.headers.remove('range');
-    request.headers.remove('if-range');
-    // Offsets count the bytes on the wire: a compressed body would make them mean nothing.
-    request.headers['accept-encoding'] = 'identity';
-    if (offset > 0) {
-      request.headers['range'] = 'bytes=$offset-';
-      if (validator != null) request.headers['if-range'] = validator;
-    }
-    final http.StreamedResponse response;
-    try {
-      response = await client.send(request);
-    } catch (_) {
-      if (!_current(key, generation)) return _Step.stop;
-      if (_pausing.remove(key)) {
-        _setPaused(key, offset, r.bytes);
-      } else {
-        _fail(key, PackFailure.network);
-      }
-      return _Step.stop;
-    }
-    final body = _Body(response);
-    try {
-      return await _handle(r, generation, offset, validator, body);
-    } finally {
-      if (!body.taken) unawaited(_abandon(response));
-      if (!done.isCompleted) done.complete();
+    run.transfer = transfer;
+    if (run.pausing) transfer.pause();
+    final result = await transfer.run();
+    if (!_current(key, generation)) return;
+    switch (result) {
+      case TransferDone(:final bytes):
+        _endSpan(key, MapsTelemetry.resultComplete);
+        _set(key, Complete(bytes: bytes));
+      case TransferPaused(:final received, :final total):
+        _set(
+          key,
+          Paused(progress: _fraction(received, total), bytes: received),
+        );
+      case TransferFailed(:final failure):
+        _fail(key, _packFailure(failure));
+      case TransferStopped():
+        break;
     }
   }
-
-  Future<_Step> _handle(
-    FilePackRequest r,
-    int generation,
-    int offset,
-    String? validator,
-    _Body body,
-  ) async {
-    final key = r.key;
-    final response = body.response;
-    if (!_current(key, generation)) return _Step.stop;
-    if (_pausing.remove(key)) {
-      _setPaused(key, offset, r.bytes);
-      return _Step.stop;
-    }
-
-    var append = false;
-    int? total;
-    switch (response.statusCode) {
-      case 416:
-        final unsatisfied = _unsatisfied.firstMatch(
-          response.headers['content-range'] ?? '',
-        );
-        final size = int.tryParse(unsatisfied?.group(1) ?? '');
-        if (offset > 0 && size == offset) return _Step.verify;
-        if (offset > 0) return _Step.restart;
-        _fail(key, PackFailure.rejected);
-        return _Step.stop;
-      case 206:
-        final range = _contentRange.firstMatch(
-          response.headers['content-range'] ?? '',
-        );
-        if (range == null || int.parse(range.group(1)!) != offset) {
-          return _Step.restart;
-        }
-        // A server or CDN that ignored If-Range may be sending another file's tail: the
-        // validator of this answer must be the one the partial file was started with.
-        if (offset > 0 &&
-            validator != null &&
-            _validatorOf(response.headers) != validator) {
-          return _Step.restart;
-        }
-        total = int.tryParse(range.group(3)!);
-        append = offset > 0;
-      case 200:
-        // The whole body: the server ignored Range, or If-Range said the file changed.
-        final length = response.contentLength;
-        total = length != null && length > 0 ? length : null;
-        offset = 0;
-      default:
-        _fail(key, PackFailure.rejected);
-        return _Step.stop;
-    }
-    if (r.bytes != null && total != null && total != r.bytes) {
-      try {
-        await _dropPartial(r);
-      } catch (_) {
-        // The failure below is what the app learns.
-      }
-      if (_current(key, generation)) _fail(key, PackFailure.sizeMismatch);
-      return _Step.stop;
-    }
-    final expected = r.bytes ?? total;
-
-    var received = offset;
-    PackFailure? failure;
-    var paused = false;
-    PackFileSink? sink;
-    try {
-      // A new file starts: the old validator goes first, so a crash leaves no validator that
-      // belongs to bytes of another file.
-      if (!append) await _files.delete(r.validator);
-      sink = await _files.open(r.partial, append: append);
-      if (!append) {
-        final tag = _validatorOf(response.headers);
-        if (tag != null) await _files.writeText(r.validator, tag);
-      }
-    } catch (error) {
-      failure = _storeFailure(error);
-    }
-    if (failure == null && _current(key, generation)) {
-      body.taken = true;
-      _set(
-        key,
-        Downloading(progress: _fraction(received, expected), bytes: received),
-      );
-      var reported = received;
-      final step = expected == null ? _reportStep : expected ~/ 200;
-      try {
-        await for (final chunk in response.stream) {
-          if (!_current(key, generation)) break;
-          try {
-            await sink!.add(chunk);
-          } catch (error) {
-            failure = _storeFailure(error);
-            break;
-          }
-          received += chunk.length;
-          if (!_current(key, generation)) break;
-          if (_pausing.contains(key)) {
-            paused = true;
-            break;
-          }
-          if (received - reported >=
-              (step < _reportStep ? _reportStep : step)) {
-            reported = received;
-            _set(
-              key,
-              Downloading(
-                progress: _fraction(received, expected),
-                bytes: received,
-              ),
-            );
-          }
-        }
-      } catch (_) {
-        failure ??= PackFailure.network;
-      }
-    }
-    try {
-      await sink?.close();
-    } catch (error) {
-      failure ??= _storeFailure(error);
-    }
-    // A pause aborts the request: the error that reads as a broken connection is a pause.
-    if (_pausing.contains(key) && failure == PackFailure.network) {
-      failure = null;
-      paused = true;
-    }
-    if (!_current(key, generation)) return _Step.stop;
-    if (paused) {
-      _pausing.remove(key);
-      _setPaused(key, received, expected);
-      return _Step.stop;
-    }
-    if (failure != null) {
-      _fail(key, failure);
-      return _Step.stop;
-    }
-    if (expected != null && received != expected) {
-      if (received < expected) {
-        // The body ended short without an error: the connection is what failed.
-        _fail(key, PackFailure.network);
-      } else {
-        try {
-          await _dropPartial(r);
-        } catch (_) {
-          // The failure below is what the app learns.
-        }
-        if (_current(key, generation)) _fail(key, PackFailure.sizeMismatch);
-      }
-      return _Step.stop;
-    }
-    return _Step.verify;
-  }
-
-  void _setPaused(String key, int received, int? expected) => _set(
-    key,
-    Paused(progress: _fraction(received, expected), bytes: received),
-  );
 
   static double _fraction(int received, int? expected) =>
       expected == null || expected <= 0
       ? 0
       : (received / expected).clamp(0.0, 1.0);
-
-  /// The `ETag` of a response (a strong one) or else its `Last-Modified`: what `If-Range` sends
-  /// back. Null when the server gave neither.
-  static String? _validatorOf(Map<String, String> headers) {
-    final etag = headers['etag'];
-    if (etag != null && etag.isNotEmpty && !etag.startsWith('W/')) return etag;
-    final modified = headers['last-modified'];
-    return modified != null && modified.isNotEmpty ? modified : null;
-  }
-
-  /// The partial file is whole: check it, then move it to its destination.
-  Future<void> _verify(FilePackRequest r, int generation) async {
-    final key = r.key;
-    try {
-      final size = await _files.length(r.partial);
-      if (!_current(key, generation)) return;
-      if (size == null || (r.bytes != null && size != r.bytes)) {
-        await _dropPartial(r);
-        if (_current(key, generation)) _fail(key, PackFailure.sizeMismatch);
-        return;
-      }
-      final hash = r.sha256;
-      if (hash != null) {
-        final actual = await _files.sha256(r.partial);
-        if (!_current(key, generation)) return;
-        if (actual != hash.toLowerCase()) {
-          await _dropPartial(r);
-          if (_current(key, generation)) _fail(key, PackFailure.hashMismatch);
-          return;
-        }
-      }
-      await _files.rename(r.partial, r.destination);
-      try {
-        await _files.delete(r.validator);
-      } catch (_) {
-        // A leftover validator is harmless: the next partial file overwrites it.
-      }
-      if (!_current(key, generation)) return;
-      _endSpan(key, MapsTelemetry.resultComplete);
-      _set(key, Complete(bytes: size));
-    } catch (error) {
-      if (_current(key, generation)) _fail(key, _storeFailure(error));
-    }
-  }
 
   /// Pauses a running transfer: the request is aborted (so a connection that sends nothing cannot
   /// hold it, provided [packHttpClient] honours `http.Abortable`), the partial file is kept, and
@@ -620,8 +322,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
     if (state[key] is! Downloading) return;
     final run = _runs[key];
     if (run == null) return;
-    _pausing.add(key);
-    run.stop();
+    run.pause();
     await run.done.future;
   }
 
@@ -647,7 +348,6 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   /// name: [refresh] with its request first.
   Future<void> remove(String key) async {
     final generation = _bump(key);
-    _pausing.remove(key);
     _removing.add(key);
     _endSpan(
       key,

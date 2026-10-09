@@ -33,7 +33,10 @@ dependencies:
 
 Needs Dart 3.8 and Flutter 3.32 or newer. `flutter_secure_storage` (the token store) is the only
 plugin it brings; on Android its minSdk is 24. The rest is pure Dart: `http`, `crypto` (PKCE), `clock`
-and `dio` (tree-shaken unless you import `package:fespalier_auth/dio.dart`).
+and `dio` (tree-shaken unless you import `package:fespalier_auth/dio.dart`). It depends on
+`fespalier_http` (at the same tag, which pub resolves for you) for one interface: since 0.15.0 the
+`Authorizer` is an `HttpCredentials`, and an `AuthAttempt` an `HttpAuthorization`, so a transfer
+that is not an `http.Client` can take it as it is.
 
 ## Wire it
 

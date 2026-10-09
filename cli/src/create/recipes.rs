@@ -154,6 +154,7 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
 /// app resolves a companion's own git dependency on the others at the checkout only when each
 /// is overridden. `create_tests` compares this table with the pubspecs.
 pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
+    ("fespalier_auth", &["fespalier_http"]),
     ("fespalier_cratestack", &["fespalier_dio"]),
     ("fespalier_dio", &["fespalier_http"]),
     ("fespalier_sign_keypair", &["fespalier_auth"]),

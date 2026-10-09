@@ -1,5 +1,4 @@
-create my_app (package my_app, features: alpha, beta)
-note  `beta` needs `alpha`: added it
+create my_app (package my_app, features: storage)
 run   flutter create --no-pub --empty --project-name=my_app <staging>
 move  <staging> -> my_app
 run   flutter pub get
@@ -14,7 +13,7 @@ version: 0.1.0+1
 
 environment:
   sdk: ^3.8.0
-  flutter: ">=3.44.0"
+  flutter: ">=3.32.0"
 
 dependencies:
   flutter:
@@ -24,21 +23,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v<version>
-  fespalier_cratestack:
-    git:
-      url: https://github.com/fespalier/fespalier
-      path: packages/fespalier_cratestack
-      ref: v<version>
   fespalier_storage:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_storage
       ref: v<version>
-  pinned:
-    git:
-      url: https://example.com/pinned
-      ref: 0123456789abcdef0123456789abcdef01234567
-  zeta: ">=1.0.0 <2.0.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -48,15 +37,16 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-# Read by the `fsp` generator; docs/configuration.md lists every key.
-fespalier:
-  format: true
-  telemetry: true
-  data_retry: none
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
 
 === lib/main.dart (overwrite)
-import 'dart:async';
-
 import 'package:my_app/app.main.g.dart';
 
 // The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
@@ -90,7 +80,6 @@ class AboutPage extends StatelessWidget {
 === lib/app/app.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
-import 'package:zeta/zeta.dart';
 
 /// The app around the router: theme, title, locales. The generated main() builds it
 /// (lib/app.main.g.dart) and gives it the router.
@@ -163,28 +152,16 @@ class HomePage extends StatelessWidget {
 }
 
 === lib/app/startup.dart (new)
-import 'dart:async';
-
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
-import 'package:zeta/zeta.dart';
-
-Future<void> zone(Future<void> Function() body) => runZoned(body);
+import 'package:fespalier_storage/fespalier_storage.dart';
 
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
 /// overridden in the app's ProviderScope, so the first frame already has them.
-Future<List<Override>> startup() async {
-  // beta: the sink comes first.
-  installSink();
-  await restoreSession();
-  // beta: last of the statements.
-  betaSetup();
-  return [
-    // alpha: its provider.
-    alphaProvider.overrideWithValue(1),
-    betaProvider.overrideWithValue(await openBeta()),
-  ];
-}
+Future<List<Override>> startup() async => [
+  // fespalier_storage: a dataCache is saved here (null: nothing is saved).
+  dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+];
 
 === lib/app/transition.dart (new)
 import 'package:fespalier/fespalier.dart';
@@ -195,26 +172,25 @@ import 'package:flutter/widgets.dart';
 Page<void> transition(LocalKey key, Widget child) =>
     Transitions.material(key, child);
 
-=== lib/app/alpha/page.dart (new)
+=== test/storage_test.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_storage/fespalier_storage.dart';
+import 'package:fespalier_storage/testing.dart';
 import 'package:flutter/material.dart';
-import 'package:my_app/app.g.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.main.g.dart';
 
-/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
-/// route's name (AboutPage becomes AboutRoute).
-class AboutPage extends StatelessWidget {
-  const AboutPage({super.key});
+void main() {
+  // shared_preferences in memory. Without it open() finds no platform and returns null, and
+  // nothing is saved (docs/data.md, "A cache on disk: fespalier_storage").
+  setUp(fakePrefsStore);
 
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const Text('Every folder under lib/app/ is a path.'),
-        TextButton(
-          onPressed: () => const HomeRoute().go(context),
-          child: const Text('Home'),
-        ),
-      ],
-    ),
-  );
+  testWidgets('startup() gives the data cache a place on disk', (tester) async {
+    await tester.pumpWidget(AppMain.root());
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MaterialApp)),
+    );
+    expect(container.read(dataCacheStorage), isA<PrefsDataStorage>());
+  });
 }

@@ -48,7 +48,7 @@ check() {
   local name=$1 features
   case "$name" in
     base) features="" ;;
-    all) features=$(printf '%s\n' "$ids" | paste -sd, -) ;;
+    all) features=all ;;
     *)
       printf '%s\n' "$ids" | grep -qx "$name" || {
         echo "::error::no feature called $name (fsp create --list-features)" >&2
@@ -67,7 +67,10 @@ check() {
   (
     cd "$work/$app"
     # Generated files are left as the generator wrote them (`format:` is off), like the examples.
-    find lib test -name '*.dart' ! -name '*.g.dart' -print0 | xargs -0 dart format --set-exit-if-changed
+    # FSP_CREATE_SKIP_FORMAT=1 (the floor job): dart format's output depends on the SDK, and the `dart` job checks it.
+    if [ -z "${FSP_CREATE_SKIP_FORMAT:-}" ]; then
+      find lib test -name '*.dart' ! -name '*.g.dart' -print0 | xargs -0 dart format --set-exit-if-changed
+    fi
     flutter analyze
     flutter test
   )

@@ -9,9 +9,11 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::create::compose;
 use crate::create::plan::{self, Action, BASE_FLOOR, DirState, FlutterVersion, REF, Request};
 use crate::create::recipes::{
-    self, COMPANION_DEPS, NOT_A_CREATE_FEATURE, RECIPES, Recipe, Source, ThirdParty,
+    self, COMPANION_DEPS, NOT_A_CREATE_FEATURE, Phase, RECIPES, Recipe, Source, Startup, Step,
+    StepKind, ThirdParty,
 };
 
 fn request(dir: &str) -> Request {
@@ -30,9 +32,9 @@ fn request(dir: &str) -> Request {
     }
 }
 
-/// Three made-up features, so the composer is tested while the real table is empty: a pubspec
-/// with a companion and a range, a feature that needs another and has a floor and a git
-/// dependency, and one that conflicts.
+/// Three made-up features, so the composer is tested on shapes the real table does not have
+/// (yet): a pubspec with a companion and a range, a feature that needs another and has a floor, a
+/// git dependency, statements in every phase and a zone, and one that conflicts.
 const SYNTHETIC: &[Recipe] = &[
     Recipe {
         id: "alpha",
@@ -45,6 +47,19 @@ const SYNTHETIC: &[Recipe] = &[
         flutter_floor: "3.32",
         config: &["format: true"],
         files: &[("create/about.dart", "lib/app/alpha/page.dart")],
+        startup: Startup {
+            imports: &["package:fespalier/fespalier.dart", "package:zeta/zeta.dart"],
+            steps: &[Step {
+                kind: StepKind::Override,
+                phase: Phase::Rest,
+                comment: "alpha: its provider.",
+                code: "alphaProvider.overrideWithValue(1),",
+                awaits: false,
+            }],
+            app_imports: &["package:zeta/zeta.dart"],
+            main_imports: &["dart:async"],
+            ..Startup::NONE
+        },
         requires: &[],
         conflicts: &["gamma"],
     },
@@ -62,6 +77,41 @@ const SYNTHETIC: &[Recipe] = &[
         flutter_floor: "3.44",
         config: &["telemetry: true", "data_retry: none"],
         files: &[],
+        startup: Startup {
+            imports: &["dart:async", "package:fespalier/fespalier.dart"],
+            steps: &[
+                Step {
+                    kind: StepKind::Override,
+                    phase: Phase::Rest,
+                    comment: "",
+                    code: "betaProvider.overrideWithValue(await openBeta()),",
+                    awaits: true,
+                },
+                Step {
+                    kind: StepKind::Statement,
+                    phase: Phase::Rest,
+                    comment: "beta: last of the statements.",
+                    code: "betaSetup();",
+                    awaits: false,
+                },
+                Step {
+                    kind: StepKind::Statement,
+                    phase: Phase::Telemetry,
+                    comment: "beta: the sink comes first.",
+                    code: "installSink();",
+                    awaits: false,
+                },
+                Step {
+                    kind: StepKind::Statement,
+                    phase: Phase::Session,
+                    comment: "",
+                    code: "await restoreSession();",
+                    awaits: true,
+                },
+            ],
+            zone: Some("Future<void> zone(Future<void> Function() body) => runZoned(body);"),
+            ..Startup::NONE
+        },
         requires: &["alpha"],
         conflicts: &[],
     },
@@ -73,6 +123,7 @@ const SYNTHETIC: &[Recipe] = &[
         flutter_floor: "3.32",
         config: &[],
         files: &[],
+        startup: Startup::NONE,
         requires: &[],
         conflicts: &["alpha"],
     },
@@ -306,7 +357,7 @@ fn it_refuses_unknown_and_conflicting_features() {
     let mut req = request("app");
     req.features = vec!["nope".into()];
     assert_eq!(
-        err(&req, RECIPES),
+        err(&req, &[]),
         "unknown feature `nope`: `fsp create` has no optional features yet"
     );
     let message = err(&req, SYNTHETIC);
@@ -451,11 +502,26 @@ fn the_starter_app_generates_and_gets_route_smoke_tests_without_config() {
 #[test]
 fn created_files_are_dart_format_clean() {
     let mut checked = 0;
-    for (name, table, features) in [
+    let mut cases: Vec<(&str, &[Recipe], Vec<String>)> = vec![
         ("app", RECIPES, vec![]),
         ("a_much_longer_package_name_than_usual", RECIPES, vec![]),
         ("my_app", SYNTHETIC, vec!["beta".to_string()]),
-    ] {
+        ("my_app", SYNTHETIC, vec!["gamma".to_string()]),
+    ];
+    // Each real feature alone, each pair, and all of them, under a short and a long name.
+    for (i, a) in RECIPES.iter().enumerate() {
+        cases.push(("my_app", RECIPES, vec![a.id.to_string()]));
+        for b in &RECIPES[i + 1..] {
+            cases.push(("my_app", RECIPES, vec![a.id.to_string(), b.id.to_string()]));
+        }
+    }
+    cases.push(("my_app", RECIPES, vec!["all".to_string()]));
+    cases.push((
+        "a_much_longer_package_name_than_usual",
+        RECIPES,
+        vec!["all".to_string()],
+    ));
+    for (name, table, features) in cases {
         let dir = tempfile::tempdir().unwrap();
         let mut req = request(name);
         req.features = features;
@@ -495,6 +561,14 @@ fn packages() -> Vec<String> {
     assert!(all.len() >= 15, "{all:?}");
     all
 }
+
+/// The files only the composer writes: a feature cannot have its own template for them.
+const SHARED: [&str; 4] = [
+    "pubspec.yaml",
+    "lib/main.dart",
+    "lib/app/app.dart",
+    "lib/app/startup.dart",
+];
 
 /// What is wrong with a feature table, as sentences; empty when it is fine.
 fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
@@ -558,7 +632,11 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
             }
         }
         for (_, path) in r.files {
-            if path.starts_with('/') || path.contains("..") || base_paths.contains(*path) {
+            if path.starts_with('/')
+                || path.contains("..")
+                || base_paths.contains(*path)
+                || SHARED.contains(path)
+            {
                 bad.push(format!("{id}: `{path}` is not a new path inside the app"));
             }
             if let Some((_, other)) = written.iter().find(|(p, _)| p == path) {
@@ -566,6 +644,56 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
             }
             written.push(((*path).to_string(), id));
         }
+    }
+    for r in table {
+        let id = r.id;
+        let packages_ok = |uri: &str| -> bool {
+            let Some(rest) = uri.strip_prefix("package:") else {
+                return uri.starts_with("dart:");
+            };
+            let name = rest.split('/').next().unwrap_or_default();
+            name == "fespalier"
+                || name == "flutter"
+                || r.companions.contains(&name)
+                || r.third_party.iter().any(|t| t.name == name)
+        };
+        for uri in r
+            .startup
+            .imports
+            .iter()
+            .chain(r.startup.app_imports)
+            .chain(r.startup.main_imports)
+        {
+            if !packages_ok(uri) {
+                bad.push(format!(
+                    "{id}: imports `{uri}`, which is not fespalier, a companion or a dependency of it"
+                ));
+            }
+        }
+        for step in r.startup.steps {
+            let code = step.code;
+            if code.contains('\n') || step.comment.contains('\n') || code.is_empty() {
+                bad.push(format!("{id}: `{code}` is not one line"));
+            }
+            if code.contains("await ") != step.awaits {
+                bad.push(format!("{id}: `{code}`: `awaits` disagrees with the code"));
+            }
+            let end = match step.kind {
+                StepKind::Override => ',',
+                StepKind::Statement => ';',
+            };
+            if !code.ends_with(end) {
+                bad.push(format!("{id}: `{code}` should end with `{end}`"));
+            }
+        }
+        if let Some(zone) = r.startup.zone
+            && !zone.contains("zone(Future<void> Function() body)")
+        {
+            bad.push(format!("{id}: the zone is not a `zone(...)` function"));
+        }
+    }
+    if table.iter().filter(|r| r.startup.zone.is_some()).count() > 1 {
+        bad.push("two features wrap main() in a zone()".to_string());
     }
     // `requires` has no cycle: following it from any feature ends.
     for r in table {
@@ -675,6 +803,39 @@ fn the_checks_of_the_table_bite() {
             ..base
         }),
         "not a new path",
+    );
+    has(
+        with(Recipe {
+            files: &[("create/about.dart", "lib/app/startup.dart")],
+            ..base
+        }),
+        "not a new path",
+    );
+    has(
+        with(Recipe {
+            startup: Startup {
+                steps: &[Step {
+                    kind: StepKind::Override,
+                    phase: Phase::Rest,
+                    comment: "",
+                    code: "x.overrideWithValue(await y())",
+                    awaits: false,
+                }],
+                ..Startup::NONE
+            },
+            ..base
+        }),
+        "`awaits` disagrees",
+    );
+    has(
+        with(Recipe {
+            startup: Startup {
+                imports: &["package:somebody_else/x.dart"],
+                ..Startup::NONE
+            },
+            ..base
+        }),
+        "which is not fespalier, a companion",
     );
     // Two features writing one path.
     let a = Recipe {
@@ -807,5 +968,280 @@ fn the_features_list_says_what_the_table_says() {
     assert_eq!(
         json,
         r#"{"id":"alpha","description":"First.","flutter":"3.32","requires":[],"conflicts":["gamma"],"companions":["fespalier_storage"]}"#
+    );
+}
+
+// --- the composer -------------------------------------------------------------------------------
+
+fn plan_of(table: &[Recipe], features: &[&str]) -> plan::Plan {
+    let mut req = request("my_app");
+    req.features = features.iter().map(|f| (*f).to_string()).collect();
+    ok(&req, table)
+}
+
+fn file<'p>(plan: &'p plan::Plan, path: &str) -> &'p str {
+    &plan
+        .files
+        .iter()
+        .find(|f| f.path == path)
+        .unwrap_or_else(|| panic!("no {path} in the plan"))
+        .content
+}
+
+#[test]
+fn the_base_app_has_no_startup_file() {
+    let plan = ok(&request("my_app"), RECIPES);
+    assert!(plan.files.iter().all(|f| f.path != "lib/app/startup.dart"));
+    // A feature without a step adds none either.
+    let plan = plan_of(SYNTHETIC, &["gamma"]);
+    assert!(plan.files.iter().all(|f| f.path != "lib/app/startup.dart"));
+}
+
+#[test]
+fn startup_runs_telemetry_first_then_the_session_then_the_rest() {
+    let plan = plan_of(SYNTHETIC, &["beta"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    let at = |needle: &str| {
+        startup
+            .find(needle)
+            .unwrap_or_else(|| panic!("no `{needle}` in\n{startup}"))
+    };
+    assert!(at("installSink();") < at("await restoreSession();"));
+    assert!(at("await restoreSession();") < at("betaSetup();"));
+    // The statements come before the list, and the list keeps the table's order (alpha, beta).
+    assert!(at("betaSetup();") < at("return ["));
+    assert!(at("alphaProvider") < at("betaProvider"));
+    // One step awaits, so startup() is async, and the zone is there once.
+    assert!(startup.contains("Future<List<Override>> startup() async {"));
+    assert_eq!(startup.matches("Future<void> zone(").count(), 1);
+}
+
+#[test]
+fn startup_is_async_only_when_a_step_awaits() {
+    let plan = plan_of(SYNTHETIC, &["alpha"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        startup.contains("List<Override> startup() => [\n  // alpha: its provider.\n"),
+        "{startup}"
+    );
+    assert!(!startup.contains("async"), "{startup}");
+    let plan = plan_of(RECIPES, &["connectivity"]);
+    assert!(!file(&plan, "lib/app/startup.dart").contains("async"));
+    let plan = plan_of(RECIPES, &["storage"]);
+    assert!(file(&plan, "lib/app/startup.dart").contains("Future<List<Override>> startup() async"));
+}
+
+/// The shapes `startup()` takes besides the list of overrides.
+#[test]
+fn a_startup_of_statements_only_returns_nothing() {
+    let sink = Recipe {
+        id: "sink",
+        startup: Startup {
+            steps: &[Step {
+                kind: StepKind::Statement,
+                phase: Phase::Telemetry,
+                comment: "",
+                code: "installSink();",
+                awaits: false,
+            }],
+            ..Startup::NONE
+        },
+        ..SYNTHETIC[2]
+    };
+    let startup = compose::startup_dart(&[&sink]).unwrap().unwrap();
+    assert!(
+        startup.contains("void startup() {\n  installSink();\n}\n"),
+        "{startup}"
+    );
+    let waits = Recipe {
+        startup: Startup {
+            steps: &[Step {
+                kind: StepKind::Statement,
+                phase: Phase::Rest,
+                comment: "",
+                code: "await warmUp();",
+                awaits: true,
+            }],
+            ..Startup::NONE
+        },
+        ..sink
+    };
+    let startup = compose::startup_dart(&[&waits]).unwrap().unwrap();
+    assert!(
+        startup.contains("Future<void> startup() async {"),
+        "{startup}"
+    );
+}
+
+#[test]
+fn two_zones_are_refused_naming_both() {
+    let zoned = |id| Recipe {
+        id,
+        startup: Startup {
+            zone: Some("Future<void> zone(Future<void> Function() body) => body();"),
+            ..Startup::NONE
+        },
+        ..SYNTHETIC[2]
+    };
+    let (a, b) = (zoned("one"), zoned("two"));
+    let message = format!("{:#}", compose::startup_dart(&[&a, &b]).unwrap_err());
+    assert_eq!(
+        message,
+        "`one` and `two` both wrap main() in a zone(); an app has one"
+    );
+    // A zone alone is a startup file (and `startup()` returns nothing).
+    let startup = compose::startup_dart(&[&a]).unwrap().unwrap();
+    assert!(startup.contains("void startup() {\n}\n") || startup.contains("void startup()"));
+}
+
+#[test]
+fn imports_are_sorted_and_deduplicated() {
+    let plan = plan_of(SYNTHETIC, &["beta"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    // One block, `dart:` apart from `package:` by a blank line, as `dart format` leaves it.
+    assert!(
+        startup.starts_with(
+            "import 'dart:async';\n\nimport 'package:fespalier/fespalier.dart';\nimport 'package:fespalier/startup.dart';\nimport 'package:zeta/zeta.dart';\n\n"
+        ),
+        "{startup}"
+    );
+    // app.dart and main.dart get their features' libraries in the same block.
+    let app = file(&plan, "lib/app/app.dart");
+    assert!(
+        app.starts_with(
+            "import 'package:fespalier/fespalier.dart';\nimport 'package:flutter/material.dart';\nimport 'package:zeta/zeta.dart';\n\n"
+        ),
+        "{app}"
+    );
+    let main = file(&plan, "lib/main.dart");
+    assert!(
+        main.starts_with("import 'dart:async';\n\nimport 'package:my_app/app.main.g.dart';\n"),
+        "{main}"
+    );
+    // Without anything to add a file is left as it is, show clauses and all.
+    let source = "import 'package:b/b.dart' show b;\nimport 'package:a/a.dart';\n\nvoid f() {}\n";
+    assert_eq!(compose::merge_imports(source, &[]), source);
+    assert_eq!(
+        compose::merge_imports(source, &["package:a/a.dart", "dart:io", "package:c/c.dart"]),
+        "import 'dart:io';\n\nimport 'package:a/a.dart';\nimport 'package:b/b.dart' show b;\nimport 'package:c/c.dart';\n\nvoid f() {}\n"
+    );
+}
+
+#[test]
+fn the_order_features_were_asked_in_changes_nothing() {
+    let one = plan_of(RECIPES, &["storage", "connectivity"]).describe("<staging>");
+    let two = plan_of(RECIPES, &["connectivity", "storage"]).describe("<staging>");
+    let three = plan_of(RECIPES, &["all"]).describe("<staging>");
+    assert_eq!(one, two);
+    assert_eq!(one, three);
+}
+
+// --- the features -------------------------------------------------------------------------------
+
+/// Every id of the real table, and `all`.
+fn real_cases() -> Vec<Vec<&'static str>> {
+    let mut cases: Vec<Vec<&str>> = RECIPES.iter().map(|r| vec![r.id]).collect();
+    cases.push(vec!["all"]);
+    cases
+}
+
+#[test]
+fn golden_of_each_real_feature_alone_and_of_all() {
+    for features in real_cases() {
+        let plan = plan_of(RECIPES, &features);
+        golden(
+            &format!("feature-{}", features[0]),
+            &plan.describe("<staging>"),
+        );
+    }
+    let mut req = request("my_app");
+    req.features = vec!["all".into()];
+    req.local_packages = Some("/checkout".into());
+    golden(
+        "feature-all-local",
+        &ok(&req, RECIPES).describe("<staging>"),
+    );
+}
+
+#[test]
+fn all_is_every_feature_of_the_table() {
+    let ids: Vec<&str> = RECIPES.iter().map(|r| r.id).collect();
+    assert_eq!(plan_of(RECIPES, &["all"]).features, ids);
+    // It is asking for each one, so a conflict between two of them is still a conflict.
+    let mut req = request("my_app");
+    req.features = vec!["all".into()];
+    assert_eq!(
+        err(&req, SYNTHETIC),
+        "`alpha` and `gamma` cannot be combined"
+    );
+}
+
+#[test]
+fn every_real_feature_is_pinned_and_overridden_at_the_checkout() {
+    let plan = plan_of(RECIPES, &["all"]);
+    let pubspec = file(&plan, "pubspec.yaml");
+    let companions: BTreeSet<&str> = RECIPES
+        .iter()
+        .flat_map(|r| r.companions.iter().copied())
+        .collect();
+    let refs = pubspec
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("ref: "))
+        .count();
+    let tagged = pubspec
+        .lines()
+        .filter(|l| l.trim() == format!("ref: {REF}"))
+        .count();
+    // fespalier and each companion, all at this version's tag.
+    assert_eq!(tagged, 1 + companions.len(), "{pubspec}");
+    assert_eq!(refs, tagged, "{pubspec}");
+    for companion in &companions {
+        assert!(
+            pubspec.contains(&format!("  {companion}:\n    git:")),
+            "{pubspec}"
+        );
+    }
+    // At a checkout the overrides are the app's packages and what they depend on, nothing else.
+    let mut req = request("my_app");
+    req.features = vec!["all".into()];
+    req.local_packages = Some("/checkout".into());
+    let local = ok(&req, RECIPES);
+    let pubspec = file(&local, "pubspec.yaml");
+    let overrides = pubspec.split("dependency_overrides:\n").nth(1).unwrap();
+    let names: Vec<&str> = overrides
+        .lines()
+        .filter_map(|l| l.strip_prefix("  ").and_then(|l| l.strip_suffix(':')))
+        .collect();
+    let mut want: Vec<String> =
+        recipes::companion_closure(&companions.iter().copied().collect::<Vec<_>>());
+    want.push("fespalier".to_string());
+    want.sort();
+    assert_eq!(names, want);
+    assert!(!pubspec.contains("git:"), "{pubspec}");
+}
+
+#[test]
+fn storage_and_connectivity_start_up_as_the_docs_say() {
+    let plan = plan_of(RECIPES, &["all"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    // docs/data.md, "A cache on disk" and "Reconnects": one override each, the disk one awaited.
+    assert!(
+        startup.contains("dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),"),
+        "{startup}"
+    );
+    assert!(
+        startup.contains("reconnectSignal.overrideWith(ConnectivitySignal.new),"),
+        "{startup}"
+    );
+    assert!(startup.contains("Future<List<Override>> startup() async => ["));
+    let tests: Vec<&str> = plan
+        .files
+        .iter()
+        .map(|f| f.path.as_str())
+        .filter(|p| p.starts_with("test/"))
+        .collect();
+    assert_eq!(
+        tests,
+        ["test/storage_test.dart", "test/connectivity_test.dart"]
     );
 }

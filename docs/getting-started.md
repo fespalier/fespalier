@@ -135,7 +135,7 @@ cd my_app
 fsp dev
 ```
 
-It needs Flutter 3.32 or newer on `PATH`, and it makes the folder `my_app` with the platform folders, a `pubspec.yaml` that depends on `fespalier` at the release tag of the `fsp` you ran, `lib/main.dart`, the starter files of `fsp init` under `lib/app/` with a second page, the generated `lib/app.g.dart` and `lib/app.main.g.dart`, and a smoke test per route in `test/routes/`. `flutter pub get` has run. The flags (`--org`, `--platforms`, `--project-name`, `--dry-run`, `--json`) and what happens when a step fails are in [`fsp create`](cli.md#fsp-create) of the CLI reference.
+It needs Flutter 3.32 or newer on `PATH`, and it makes the folder `my_app` with the platform folders, a `pubspec.yaml` that depends on `fespalier` at the release tag of the `fsp` you ran, `lib/main.dart`, the starter files of `fsp init` under `lib/app/` with a second page, the generated `lib/app.g.dart` and `lib/app.main.g.dart`, and a smoke test per route in `test/routes/`. `flutter pub get` has run. `--features storage,connectivity` (or `all`) adds optional features, each with its companion package, its lines in `lib/app/startup.dart` and a test: `storage` is a [`dataCache` on disk](data.md#a-cache-on-disk-fespalier_storage), `connectivity` is [`reconnectSignal` and `hasNetwork`](data.md#reconnects-fespalier_connectivity); `fsp create --list-features` lists them. The flags (`--org`, `--platforms`, `--project-name`, `--dry-run`, `--json`) and what happens when a step fails are in [`fsp create`](cli.md#fsp-create) of the CLI reference.
 
 ## fsp init
 

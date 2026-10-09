@@ -38,12 +38,16 @@ Object? transferBegin(
   }
 }
 
-/// Ends the span [transferBegin] started, with how it ended. Never throws, and never carries an
-/// error.
-void transferFinish(Object? token, DownloadStatus status) {
+/// Ends the span [transferBegin] started, with how it ended; [regranted] is whether the engine
+/// asked for a renewed grant after a refusal. Never throws, and never carries an error.
+void transferFinish(
+  Object? token,
+  DownloadStatus status, {
+  bool regranted = false,
+}) {
   if (token == null) return;
   try {
-    FespalierTelemetry.finish(token, _end(status));
+    FespalierTelemetry.finish(token, _end(status, regranted: regranted));
   } catch (_) {
     // As above.
   }
@@ -66,7 +70,7 @@ void reconciledReport(DownloadStatus status) {
   }
 }
 
-TelemetryEnd _end(DownloadStatus status) {
+TelemetryEnd _end(DownloadStatus status, {bool regranted = false}) {
   return TelemetryEnd(
     status is Failed ? TelemetryOutcome.error : TelemetryOutcome.ok,
     isAsync: true,
@@ -78,6 +82,7 @@ TelemetryEnd _end(DownloadStatus status) {
       },
       if (status is Failed)
         FespalierDownloadConventions.failure: status.failure.name,
+      if (regranted) FespalierDownloadConventions.regranted: true,
     },
   );
 }

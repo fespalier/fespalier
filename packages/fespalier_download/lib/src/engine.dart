@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:clock/clock.dart' as time;
 
+import 'grant.dart';
 import 'ports.dart';
 import 'request.dart';
 import 'status.dart';
@@ -20,18 +23,28 @@ typedef DownloadObserver = void Function(String id, DownloadStatus status);
 ///
 /// It starts no timer and listens to nothing: the backend calls in through [DownloadEvents], and
 /// [observe] is a callback the owner hands over.
+///
+/// **Credentials.** With a `grantor` the engine asks the app, in the foreground, for a
+/// [DownloadGrant] before each start, retry and resume, and **once more** when the transfer
+/// answers 401 or 403: it cancels the failed attempt (the bytes a backend kept stay where it
+/// allows) and enqueues again with the new grant. A second 401 or 403, or a grantor that throws,
+/// ends the download `Failed(unauthorized)`. A cancel, a remove, a restart or a sign-out during
+/// the request wins: its answer is dropped.
 class Downloads {
   /// An engine over [backend] and [store]. [files] lets it delete a file on [remove] and
-  /// [cancel] and check what a restart left; [clock] is for a test.
+  /// [cancel] and check what a restart left; [clock] is for a test; [grantor] makes the
+  /// short-lived credentials of an attempt (see above).
   Downloads({
     required DownloadBackend backend,
     required DownloadStore store,
     DownloadFiles? files,
     time.Clock? clock,
+    DownloadGrantor? grantor,
   }) : _backend = backend,
        _store = store,
        _files = files,
-       _clock = clock {
+       _clock = clock,
+       _grantor = grantor {
     _events = _Events(this);
   }
 
@@ -39,6 +52,9 @@ class Downloads {
   final DownloadStore _store;
   final DownloadFiles? _files;
   final time.Clock? _clock;
+  final DownloadGrantor? _grantor;
+  // The ids whose attempt chain has asked for a renewed grant after a 401 or 403: one each.
+  final Set<String> _regranted = {};
   late final _Events _events;
 
   final Map<String, DownloadStatus> _statuses = {};
@@ -179,7 +195,16 @@ class Downloads {
   Future<bool> resume(String id) async {
     if (statusOf(id) is! Paused) return false;
     final generation = _generationOf(id);
-    final ok = await _backend.resume(id);
+    final request = _requests[id];
+    var headers = const <String, String>{};
+    if (request != null && _grantor != null) {
+      // A resumed transfer keeps its address: a grant's URL that expired meanwhile is renewed
+      // by the 401 it earns, so only the headers matter here.
+      final granted = await _ask(id, request, generation, renewal: false);
+      if (granted == null) return false;
+      headers = granted.headers;
+    }
+    final ok = await _backend.resume(id, authorization: headers);
     if (!ok) return false;
     if (generation == _generationOf(id) && statusOf(id) is Paused) {
       _apply(id, const Queued());
@@ -218,6 +243,7 @@ class Downloads {
     if (request == null || current is Complete) return;
     final generation = _bump(id);
     _requests.remove(id);
+    _regranted.remove(id);
     _apply(id, const Cancelled());
     await _backend.cancel(id);
     // A start of the same id while the backend stopped the old one owns the registry entry and
@@ -235,6 +261,7 @@ class Downloads {
     if (request == null && !_statuses.containsKey(id)) return;
     final generation = _bump(id);
     _requests.remove(id);
+    _regranted.remove(id);
     final span = _spans.remove(id);
     transferFinish(span, const Cancelled());
     if (_statuses.remove(id) != null) _notify(id, const Absent());
@@ -272,6 +299,7 @@ class Downloads {
     }
     _spans.clear();
     _requests.clear();
+    _regranted.clear();
     _statuses.clear();
     _reported.clear();
     for (final id in known) {
@@ -318,11 +346,74 @@ class Downloads {
       background: _backend.capabilities.background,
     );
     _apply(id, const Queued());
+    _regranted.remove(id);
     await _store.put(StoredDownload(request, generation: generation));
     if (generation != _generationOf(id)) return;
-    final accepted = await _backend.enqueue(request);
+    final granted = await _ask(id, request, generation, renewal: false);
+    if (granted == null) return;
+    final accepted = await _backend.enqueue(
+      granted.request,
+      authorization: granted.headers,
+    );
     if (generation != _generationOf(id)) return;
     if (!accepted) _apply(id, const Failed(DownloadFailure.other));
+  }
+
+  // Asks the grantor (if there is one) for the attempt of [generation]. Null means the attempt
+  // is over: a newer one owns the id, or the grant failed and the download ended
+  // Failed(unauthorized). The grant is used for this attempt and kept nowhere.
+  Future<_Granted?> _ask(
+    String id,
+    DownloadRequest request,
+    int generation, {
+    required bool renewal,
+  }) async {
+    final grantor = _grantor;
+    if (grantor == null) return _Granted(request, const {});
+    DownloadGrant? grant;
+    try {
+      grant = await grantor(request, renewal: renewal);
+    } catch (_) {
+      // Nothing of the error is kept: it may name the account or the file.
+      if (generation == _generationOf(id)) {
+        _apply(id, const Failed(DownloadFailure.unauthorized));
+      }
+      return null;
+    }
+    if (generation != _generationOf(id)) return null;
+    if (grant == null) return _Granted(request, const {});
+    final sent = grant.applyTo(request);
+    if (!sent.isValid) {
+      _apply(id, const Failed(DownloadFailure.unauthorized));
+      return null;
+    }
+    return _Granted(sent, Map.of(grant.headers));
+  }
+
+  // The transfer was refused (401 or 403): the one renewal. The failed attempt is cancelled, which
+  // keeps the bytes a backend can continue from, and the download is enqueued again with a new
+  // grant. Everything after an await is dropped when the generation moved (a cancel, a remove, a
+  // restart or a sign-out during the foreground request).
+  Future<void> _regrant(String id, DownloadRequest request) async {
+    _regranted.add(id);
+    final generation = _bump(id);
+    _apply(id, const Queued());
+    try {
+      final granted = await _ask(id, request, generation, renewal: true);
+      if (granted == null) return;
+      await _backend.cancel(id);
+      if (generation != _generationOf(id)) return;
+      final accepted = await _backend.enqueue(
+        granted.request,
+        authorization: granted.headers,
+      );
+      if (generation != _generationOf(id)) return;
+      if (!accepted) _apply(id, const Failed(DownloadFailure.other));
+    } catch (_) {
+      if (generation == _generationOf(id)) {
+        _apply(id, const Failed(DownloadFailure.other));
+      }
+    }
   }
 
   void _onStatus(String id, DownloadStatus status, int? httpStatus) {
@@ -334,6 +425,14 @@ class Downloads {
     }
     var next = status;
     if (next is Failed && (httpStatus == 401 || httpStatus == 403)) {
+      final request = _requests[id];
+      if (_grantor != null &&
+          request != null &&
+          !_reconciling &&
+          !_regranted.contains(id)) {
+        unawaited(_regrant(id, request));
+        return;
+      }
       next = const Failed(DownloadFailure.unauthorized);
     }
     if (next is Absent) return;
@@ -357,8 +456,9 @@ class Downloads {
         status is Complete || status is Failed || status is Cancelled;
     if (terminal) {
       final span = _spans.remove(id);
+      final regranted = _regranted.remove(id);
       if (span != null) {
-        transferFinish(span, status);
+        transferFinish(span, status, regranted: regranted);
       } else if (reconciled && status is! Cancelled) {
         reconciledReport(status);
       }
@@ -398,4 +498,13 @@ final class _Events implements DownloadEvents {
 
   @override
   void tapped(String id, DownloadTapKind kind) {}
+}
+
+// What an attempt sends: the request (with a grant's URL in place of its own) and the grant's
+// headers.
+final class _Granted {
+  const _Granted(this.request, this.headers);
+
+  final DownloadRequest request;
+  final Map<String, String> headers;
 }

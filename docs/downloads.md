@@ -18,7 +18,7 @@ possible with this package yet.
 
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
-[The foreground backend](#the-foreground-backend), [In a widget](#in-a-widget), [Testing](#testing).
+[The foreground backend](#the-foreground-backend), [Credentials](#credentials), [In a widget](#in-a-widget), [Testing](#testing).
 
 ## Install
 
@@ -27,7 +27,7 @@ then. The tag must be a release that contains the package (0.15.0 or later). The
 release-please keeps current, is in [the package's README](../packages/fespalier_download/README.md#install).
 
 The package depends on `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests), a pure Dart package, and on
-fespalier. It resolves on Flutter 3.32 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
+fespalier and `fespalier_http` (for `HttpCredentials`; list it yourself, with the same `url` and `ref`, only if your code imports it). It resolves on Flutter 3.32 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
 `flutter analyze` and `flutter test` on the package).
 
 ## Requests and files
@@ -213,6 +213,66 @@ final downloads = Downloads(
 Underneath, `HttpTransfer` is the transfer of one file, with no state beyond the attempt (`run`, `pause`, `stop`), and
 `TransferFiles` the path-level file port it drives (`dart:io` by default). They are exported for a backend of your own;
 most apps never touch them.
+
+## Credentials
+
+A download is a request the operating system may send **later, in another process, with no access to your app's session,
+its plugins or its signing key**. That decides what credentials can be (since 0.15.0).
+
+**The documented path is a short-lived capability grant.** Before the download starts, in the foreground, the app makes a
+normal signed request (a `fespalier_http` client, so the session, its refresh and its proofs apply there), and the server
+answers with something good for one file for a few minutes: a single-file URL and/or headers scoped to that download. The
+transfer carries only that.
+
+```dart
+Future<DownloadGrant?> grant(DownloadRequest request, {required bool renewal}) async {
+  final answer = await signedClient.post(Uri.parse('https://api.example.com/files/${request.id}/grant'));
+  return DownloadGrant(url: Uri.parse(urlOf(answer))); // expires in minutes, names one file
+}
+
+final downloads = Downloads(backend: backend, store: store, files: files, grantor: grant);
+```
+
+- **`DownloadGrant`** is a `url` (replaces the request's own for this attempt) and `headers` (added for this attempt),
+  either or both. Its `toString()` prints no field. The engine never stores it: the registry keeps the request as you made
+  it, so a grant URL is not in `fespalier_downloads.json`. (A background backend may still keep the request it was handed
+  in plaintext while it is queued, which is why a grant must expire.)
+- **When it is asked.** The `grantor` is called before each `start`, `retry` and `resume` (`renewal: false`), and **once
+  more after a 401 or 403** (`renewal: true`). Return null to send the request as it is.
+- **After a 401 or 403 the engine asks once.** It cancels the failed attempt, keeping the bytes the backend can continue
+  from (the foreground backend keeps its `.part`, and the new attempt sends `Range`), and enqueues again with the new
+  grant. A second 401 or 403 ends `Failed(unauthorized)`; so does a grantor that throws or a grant whose URL is not a valid
+  http or https URL. Nothing of the error is kept. There is no retry loop and no timer.
+- **A newer state wins.** A `cancel`, `remove`, restart or `clearAccount` while the grant request is in flight drops its
+  answer: nothing reaches the backend after it.
+- **A resumed transfer keeps its address.** On `resume` only the grant's headers are used; an expired URL earns its 401 and
+  is renewed then.
+- **Telemetry.** The transfer span's end carries `fespalier.download.regranted: true` when a renewal was asked (absent
+  otherwise). Never the grant, a URL or a header.
+
+**Plain headers are allowed, and they are stored in plaintext.** `DownloadRequest.headers` may be kept by a backend, on
+disk, while a download is queued; `FileDownloadStore` keeps them in the registry. Use them for something that is public
+or expires in minutes, never for a credential you would mind finding in a backup.
+
+**Never a refresh token or a long-lived bearer** in a request or a grant: anything a background backend persists can be
+read back from the device, and a download has no way to refresh a token itself.
+
+**Why not the session's own credentials in the background.** A DPoP proof is bound to one method, one URL and a fresh
+nonce and timestamp, so it would have to be signed for each send, by a key the operating system's native callbacks cannot
+reach. Authenticating every send is therefore possible only where your Dart code makes the send.
+
+**The foreground backend can do exactly that.** `HttpDownloadBackend(credentials: credentials)` takes any
+`HttpCredentials` from `fespalier_http` (`fespalier_auth`'s `Authorizer` is one). For each request it sends it asks
+`credentials.authorize('GET', url)` and adds the headers it returns (nothing for an origin the credentials do not cover),
+and after a 4xx answer it asks `credentials.retry(attempt, statusCode:, headers:)` and, if told to, sends again with
+`authorize(..., previous: attempt)`, at most three sends, the way `SessionClient` does. The credentials live in memory for
+the send. A credentials object that throws ends the download `Failed(unauthorized)`. When the refusal stands, the engine's
+grant renewal above still applies, so the two compose. Choose by where the transfer runs: `credentials` for a foreground
+download to your own API, a grant for anything a background backend sends or a CDN that does not know your session.
+
+**Replay.** A transfer sends one `GET`, which is safe to send again, so the re-send above is allowed. A request that is
+not replay-safe (a `POST`, which uploads will be) must be sent once: no retry, no re-send after a 401, and no pause that
+would cycle it. Nothing in this release sends one.
 
 ## In a widget
 

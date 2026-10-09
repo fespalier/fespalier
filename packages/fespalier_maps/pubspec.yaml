@@ -58,3 +58,5 @@ dependency_overrides:
     path: ../fespalier
   fespalier_download:
     path: ../fespalier_download
+  fespalier_http:
+    path: ../fespalier_http

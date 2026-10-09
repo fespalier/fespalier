@@ -27,6 +27,8 @@ dependency_overrides:
     path: ../../packages/fespalier
   fespalier_download:
     path: ../../packages/fespalier_download
+  fespalier_http:
+    path: ../../packages/fespalier_http
 
 flutter:
   uses-material-design: true

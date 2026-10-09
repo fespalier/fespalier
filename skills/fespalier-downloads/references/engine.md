@@ -49,3 +49,14 @@ One `fespalier.download.transfer` span per attempt, ended by the state it reache
 `fespalier.download.reconciled` for what ended while the app was away. Constants, booleans and enum names only. A test that
 records the sink and checks every string against `FespalierDownloadConventions` is the pattern in
 `packages/fespalier_download/test/engine_test.dart`.
+
+## Grants (since 0.15.0)
+
+`Downloads(grantor:)` takes a `DownloadGrantor`, `FutureOr<DownloadGrant?> Function(DownloadRequest, {required bool renewal})`.
+The engine calls it with `renewal: false` before the backend sees a start, a retry or a resume (a resume uses only the grant's
+headers), and with `renewal: true` once per attempt chain when a backend reports a failure with HTTP status 401 or 403 (never
+while reconciling at `open()`). The renewal moves the id's generation on, shows `Queued`, waits for the grant, then
+`backend.cancel(id)` and `backend.enqueue(grantedRequest, authorization: grant.headers)`. A second 401 or 403 is
+`Failed(unauthorized)`, as is a throwing grantor or a grant whose URL makes an invalid request. Every wait is
+guarded by the generation, so a cancel, remove, restart or `clearAccount()` meanwhile means the answer is dropped.
+`start`, `retry` and a renewal reset nothing in the registry: it holds the request as the app made it, never the grant.

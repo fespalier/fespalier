@@ -24,6 +24,10 @@ void main() {
     expect(FespalierDownloadConventions.result, 'fespalier.download.result');
     expect(FespalierDownloadConventions.failure, 'fespalier.download.failure');
     expect(
+      FespalierDownloadConventions.regranted,
+      'fespalier.download.regranted',
+    );
+    expect(
       FespalierDownloadConventions.reconciled,
       'fespalier.download.reconciled',
     );
@@ -105,6 +109,7 @@ void main() {
       FespalierDownloadConventions.priority,
       FespalierDownloadConventions.result,
       FespalierDownloadConventions.failure,
+      FespalierDownloadConventions.regranted,
       FespalierDownloadConventions.reconciled,
       FespalierDownloadConventions.open,
       FespalierDownloadConventions.routed,

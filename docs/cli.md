@@ -61,6 +61,7 @@ Since 0.15.0. `fsp create my_app` makes a new Flutter app with fespalier in it, 
 fsp create my_app                      # the base app: two pages and a layout
 fsp create my_app --org com.example --platforms android,ios,web
 fsp create my_app --features storage,connectivity   # the base app plus optional features
+fsp create my_app --template tabs      # two tabs, as a bar, a rail or a drawer by window width
 fsp create my_app --features all       # every optional feature
 fsp create my_app --dry-run            # print every file and command; write and run nothing
 fsp create --list-features             # the optional features (--json: one object per line)
@@ -83,6 +84,7 @@ If a step before the move fails, the app is not made. If a later one fails, the 
 | `--org <org>`           | The organization for the Android and iOS identifiers, `flutter create`'s `--org`.                                                                                                                                                                    |
 | `--platforms <a,b>`     | `android`, `ios`, `linux`, `macos`, `web` and `windows`; the default is all of them.                                                                                                                                                                 |
 | `--description <text>`  | The pubspec's `description:`.                                                                                                                                                                                                                        |
+| `--template <name>`     | `minimal` (the default) or `tabs`. `tabs` is the `adaptive` feature: asking for either gives the same app, and `--template minimal` with `adaptive` is refused (with `all` it leaves `adaptive` out).                                                |
 | `--features <a,b>`      | Optional features to add, or `all` for every one of them. A feature another one needs is added with it, with a note; two that conflict are refused; one that needs a newer Flutter than the one installed is refused. The features are listed below. |
 | `--list-features`       | Print the features and exit, as `id  description` lines (the last is `all`), or with `--json` one object per line (`id`, `description`, `flutter`, `requires`, `conflicts`, `companions`; `all` is not one of them).                                 |
 | `--no-pub-get`          | Write the app and generate, but leave `flutter pub get` to you.                                                                                                                                                                                      |
@@ -94,6 +96,12 @@ If a step before the move fails, the app is not made. If a later one fails, the 
 
 - `storage`: [`fespalier_storage`](data.md#a-cache-on-disk-fespalier_storage). `startup()` opens a `PrefsDataStorage` and gives it to `dataCacheStorage`, so a `data.dart` with a `dataCache` is on the first frame at the next start. The test starts the app over an in-memory preferences store and checks that the cache has its place on disk.
 - `connectivity`: [`fespalier_connectivity`](data.md#reconnects-fespalier_connectivity). `startup()` sets `reconnectSignal` to `ConnectivitySignal`, so `Freshness(refetchOnReconnect: true)` works. The test uses `FakeConnectivity` to check the signal and `hasNetwork`.
+- `devtools`: a committed `devtools_options.yaml` that turns the `fespalier` extension on, as [How to see it](devtools.md#how-to-see-it) shows, so DevTools does not ask once per project. It adds no dependency. The test checks the file and that a debug build has the extension.
+- `adaptive`: [`fespalier_adaptive`](layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive), and `--template tabs` is the same thing. The base app's layout and two pages are replaced by a tab layout, `lib/app/(tabs)/layout.dart`, with a `nav.dart` and a page in each tab's folder (Home and About), shown by `AdaptiveNavScaffold` as a `NavigationBar` on a phone, a `NavigationRail` on a tablet and a `NavigationDrawer` on a wide window. The test resizes the window and checks each, and that a tab keeps its place.
+- `forms`: [`fespalier_forms`](forms.md). `lib/app/contact/action.dart` has an `action()` with a `form()` and a `validate()`, and its page builds the generated `ContactRoute.useForm`. The test uses `isFieldErrors` and drives the page: errors under the fields, then a valid submit.
+- `flags`: [`fespalier_flags`](guards.md#feature-flags-fespalier_flags). `lib/flags.dart` declares a `BoolFlag('labs')`, `lib/app/labs/guard.dart` is `flagGuard` on it, and `startup()` gives `flagSource` a `ConstFlags` read from `--dart-define=LABS=true`. The test uses `FakeFlags`: `/labs` is there with the flag on and goes with it.
+
+The pages of `forms` and `flags` have a `Scaffold` of their own, so they look the same under the base layout and the tabs; open them by their URL (`/contact`, `/labs`).
 
 `lib/app/startup.dart` is written once for all of them: its imports are sorted, its steps run in a fixed order (telemetry sinks first, then the session, then the rest) and it is `async` only when a step awaits.
 

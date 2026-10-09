@@ -1,0 +1,243 @@
+create my_app (package my_app, features: flags)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_flags:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_flags
+      ref: v<version>
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+List<Override> startup() => [
+  // fespalier_flags: where flag values come from (--dart-define=LABS=true turns /labs on).
+  flagSource.overrideWithValue(
+    const ConstFlags({'labs': bool.fromEnvironment('LABS')}),
+  ),
+];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== lib/flags.dart (new)
+import 'package:fespalier_flags/fespalier_flags.dart';
+
+/// /labs is there while this flag is on (lib/app/labs/guard.dart). Declare each flag once,
+/// `const`: a flag is its fallback (off) whenever the source has no value for its key.
+const labs = BoolFlag('labs');
+
+=== lib/app/labs/guard.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/flags.dart';
+
+/// /labs is there while the `labs` flag is on. The guard watches the flag, so turning it off
+/// takes the app off /labs, with no navigation (docs/guards.md, "Feature flags").
+GuardResult guard(Ref ref) =>
+    flagGuard(ref, labs, orElse: const HomeRoute().location);
+
+=== lib/app/labs/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/labs`, behind the `labs` flag. Run with `--dart-define=LABS=true` to see it.
+class LabsPage extends StatelessWidget {
+  const LabsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Labs')),
+    body: const Center(child: Text('The labs flag is on.')),
+  );
+}
+
+=== test/flags_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_flags/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  testWidgets('/labs is there with the flag on, and goes with it', (
+    tester,
+  ) async {
+    final flags = FakeFlags({'labs': true});
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/labs'),
+      overrides: [flagSource.overrideWithValue(flags)],
+    );
+    expect(currentLocation(tester), '/labs');
+
+    // Delivered synchronously; one frame later the guard has run again.
+    flags.set('labs', false);
+    await tester.pump();
+    expect(currentLocation(tester), '/');
+  });
+
+  testWidgets('a deep link to /labs lands on / while the flag is off', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/labs'),
+      overrides: [flagSource.overrideWithValue(FakeFlags())],
+    );
+    expect(currentLocation(tester), '/');
+  });
+}

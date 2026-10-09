@@ -1,0 +1,35 @@
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_flags/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+
+void main() {
+  testWidgets('/labs is there with the flag on, and goes with it', (
+    tester,
+  ) async {
+    final flags = FakeFlags({'labs': true});
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/labs'),
+      overrides: [flagSource.overrideWithValue(flags)],
+    );
+    expect(currentLocation(tester), '/labs');
+
+    // Delivered synchronously; one frame later the guard has run again.
+    flags.set('labs', false);
+    await tester.pump();
+    expect(currentLocation(tester), '/');
+  });
+
+  testWidgets('a deep link to /labs lands on / while the flag is off', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/labs'),
+      overrides: [flagSource.overrideWithValue(FakeFlags())],
+    );
+    expect(currentLocation(tester), '/');
+  });
+}

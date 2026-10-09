@@ -45,6 +45,7 @@ const SYNTHETIC: &[Recipe] = &[
             name: "zeta",
             source: Source::Range(">=1.0.0 <2.0.0"),
         }],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &["format: true"],
         files: &[("create/about.dart", "lib/app/alpha/page.dart")],
@@ -76,6 +77,7 @@ const SYNTHETIC: &[Recipe] = &[
                 commit: "0123456789abcdef0123456789abcdef01234567",
             },
         }],
+        dev_third_party: &[],
         flutter_floor: "3.44",
         config: &["telemetry: true", "data_retry: none"],
         files: &[],
@@ -123,6 +125,7 @@ const SYNTHETIC: &[Recipe] = &[
         description: "Third.",
         companions: &[],
         third_party: &[],
+        dev_third_party: &[],
         flutter_floor: "3.32",
         config: &[],
         files: &[],
@@ -624,7 +627,7 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
                 bad.push(format!("{id}: names itself"));
             }
         }
-        for tp in r.third_party {
+        for tp in r.third_party.iter().chain(r.dev_third_party) {
             match tp.source {
                 Source::Git { commit, .. } => {
                     if commit.len() != 40 || !commit.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -667,6 +670,8 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
     for r in table {
         let id = r.id;
         let packages_ok = |uri: &str| -> bool {
+            // `package:flutter/foundation.dart show kIsWeb`: the URI is the first word.
+            let uri = uri.split(' ').next().unwrap_or_default();
             let Some(rest) = uri.strip_prefix("package:") else {
                 return uri.starts_with("dart:");
             };
@@ -707,14 +712,30 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
                 bad.push(format!("{id}: `{code}` should end with `{end}`"));
             }
         }
-        if let Some(zone) = r.startup.zone
-            && !zone.contains("zone(Future<void> Function() body)")
-        {
-            bad.push(format!("{id}: the zone is not a `zone(...)` function"));
+        for zone in [r.startup.zone, r.startup.weak_zone].into_iter().flatten() {
+            if !zone.contains("zone(Future<void> Function() body)") {
+                bad.push(format!("{id}: the zone is not a `zone(...)` function"));
+            }
         }
     }
     if table.iter().filter(|r| r.startup.zone.is_some()).count() > 1 {
         bad.push("two features wrap main() in a zone()".to_string());
+    }
+    // A feature that starts with the process needs every zone to pass it the body.
+    if table.iter().any(|r| r.startup.body_wrapper.is_some()) {
+        for r in table {
+            if r.startup.zone.is_some_and(|z| !z.contains("{body}")) {
+                bad.push(format!("{}: its zone() does not pass `{{body}}` on", r.id));
+            }
+        }
+    }
+    if table
+        .iter()
+        .filter(|r| r.startup.weak_zone.is_some())
+        .count()
+        > 1
+    {
+        bad.push("two features have a fallback zone()".to_string());
     }
     // `requires` has no cycle: following it from any feature ends.
     for r in table {
@@ -1069,7 +1090,7 @@ fn a_startup_of_statements_only_returns_nothing() {
         },
         ..SYNTHETIC[2]
     };
-    let startup = compose::startup_dart(&[&sink]).unwrap().unwrap();
+    let startup = compose::startup_dart("app", &[&sink]).unwrap().unwrap();
     assert!(
         startup.contains("void startup() {\n  installSink();\n}\n"),
         "{startup}"
@@ -1087,7 +1108,7 @@ fn a_startup_of_statements_only_returns_nothing() {
         },
         ..sink
     };
-    let startup = compose::startup_dart(&[&waits]).unwrap().unwrap();
+    let startup = compose::startup_dart("app", &[&waits]).unwrap().unwrap();
     assert!(
         startup.contains("Future<void> startup() async {"),
         "{startup}"
@@ -1105,14 +1126,15 @@ fn two_zones_are_refused_naming_both() {
         ..SYNTHETIC[2]
     };
     let (a, b) = (zoned("one"), zoned("two"));
-    let message = format!("{:#}", compose::startup_dart(&[&a, &b]).unwrap_err());
+    let message = format!("{:#}", compose::startup_dart("app", &[&a, &b]).unwrap_err());
     assert_eq!(
         message,
         "`one` and `two` both wrap main() in a zone(); an app has one"
     );
-    // A zone alone is a startup file (and `startup()` returns nothing).
-    let startup = compose::startup_dart(&[&a]).unwrap().unwrap();
-    assert!(startup.contains("void startup() {\n}\n") || startup.contains("void startup()"));
+    // A zone alone is a startup file, and `startup()` is not needed (one export is enough).
+    let startup = compose::startup_dart("app", &[&a]).unwrap().unwrap();
+    assert!(startup.contains("Future<void> zone("), "{startup}");
+    assert!(!startup.contains("startup()"), "{startup}");
 }
 
 #[test]
@@ -1210,10 +1232,18 @@ fn every_real_feature_is_pinned_and_overridden_at_the_checkout() {
         .iter()
         .flat_map(|r| r.companions.iter().copied())
         .collect();
-    let refs = pubspec
+    // Any other `ref:` is a third party's, pinned by a commit and never by a `v…` tag.
+    let (tags, commits): (Vec<&str>, Vec<&str>) = pubspec
         .lines()
         .filter_map(|l| l.trim().strip_prefix("ref: "))
-        .count();
+        .partition(|r| r.starts_with('v'));
+    assert!(
+        commits
+            .iter()
+            .all(|c| c.len() == 40 && c.chars().all(|c| c.is_ascii_hexdigit())),
+        "{pubspec}"
+    );
+    let refs = tags.len();
     let tagged = pubspec
         .lines()
         .filter(|l| l.trim() == format!("ref: {REF}"))
@@ -1243,7 +1273,11 @@ fn every_real_feature_is_pinned_and_overridden_at_the_checkout() {
     want.push("fespalier".to_string());
     want.sort();
     assert_eq!(names, want);
-    assert!(!pubspec.contains("git:"), "{pubspec}");
+    // fespalier's own repository is not fetched; a third party's (otel_zone) still is.
+    assert!(
+        !pubspec.contains("url: https://github.com/fespalier/"),
+        "{pubspec}"
+    );
 }
 
 #[test]
@@ -1259,7 +1293,8 @@ fn storage_and_connectivity_start_up_as_the_docs_say() {
         startup.contains("reconnectSignal.overrideWith(ConnectivitySignal.new),"),
         "{startup}"
     );
-    assert!(startup.contains("Future<List<Override>> startup() async => ["));
+    // The telemetry sinks of `all` come first, in statements, before the overrides are returned.
+    assert!(startup.contains("Future<List<Override>> startup() async {"));
     let tests: Vec<&str> = plan
         .files
         .iter()
@@ -1436,4 +1471,150 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
         );
         crate::smoke::run(dir.path(), false).unwrap_or_else(|e| panic!("{features:?}: {e:#}"));
     }
+}
+
+// --- otel and sentry ----------------------------------------------------------------------------
+
+/// docs/observability.md, "Wiring Sentry": next to each other the two sinks are installed in one
+/// `combine`, and the zone stays Sentry's (`otel_zone`'s `runGuarded` would send an uncaught async
+/// error to Talker only, so a second zone is not an option).
+#[test]
+fn otel_and_sentry_share_one_sink_slot_and_sentrys_zone() {
+    let pair = plan_of(RECIPES, &["sentry", "otel"]);
+    assert_eq!(pair.features, ["otel", "sentry"], "the table's order");
+    let startup = file(&pair, "lib/app/startup.dart");
+    assert_eq!(
+        startup
+            .matches("zone(Future<void> Function() body)")
+            .count(),
+        1
+    );
+    assert!(startup.contains("SentryFlutter.init("), "{startup}");
+    assert!(!startup.contains("runGuarded"), "{startup}");
+    assert_eq!(startup.matches("FespalierTelemetry.install(").count(), 1);
+    assert!(
+        startup.contains("FespalierTelemetry.combine(["),
+        "{startup}"
+    );
+    assert!(startup.contains("FespalierSentry(),"), "{startup}");
+    assert!(
+        startup.contains("FespalierOtel(isReady: () => observability.isReady),"),
+        "{startup}"
+    );
+    // The SDK starts with the process, inside Sentry's zone and before the app's body, and
+    // `startup()` (which a test of the app runs) only installs the sinks, with no await.
+    assert!(
+        startup.contains("appRunner: () => startObservability(body),"),
+        "{startup}"
+    );
+    assert!(startup.contains("void startup() {"), "{startup}");
+    assert_eq!(
+        startup.matches("observability.start(").count(),
+        1,
+        "{startup}"
+    );
+    // The observers of both are there.
+    assert!(
+        startup.contains("?observability.routeObserver(),"),
+        "{startup}"
+    );
+    assert!(
+        startup.contains("FespalierSentry.navigatorObserver()"),
+        "{startup}"
+    );
+    // `telemetry: true` once, for the generated file to tell the sinks about every site.
+    let pubspec = file(&pair, "pubspec.yaml");
+    assert_eq!(pubspec.matches("telemetry: true").count(), 1, "{pubspec}");
+    golden("feature-otel-sentry", &pair.describe("<staging>"));
+}
+
+#[test]
+fn otel_alone_guards_the_zone_off_the_web_and_sentry_alone_has_no_otel() {
+    let otel = plan_of(RECIPES, &["otel"]);
+    let startup = file(&otel, "lib/app/startup.dart");
+    // docs/observability.md, "OpenTelemetry with otel_zone": runGuarded never runs on the web.
+    assert!(
+        startup.contains("kIsWeb ? run() : observability.runGuarded(run)"),
+        "{startup}"
+    );
+    assert!(!startup.contains("Sentry"), "{startup}");
+    assert!(
+        startup.contains("Future<void> run() => startObservability(body);"),
+        "{startup}"
+    );
+    let sentry = plan_of(RECIPES, &["sentry"]);
+    let startup = file(&sentry, "lib/app/startup.dart");
+    assert!(
+        startup.contains("FespalierTelemetry.install(FespalierSentry());"),
+        "{startup}"
+    );
+    assert!(!startup.contains("observability"), "{startup}");
+    assert!(!startup.contains("combine"), "{startup}");
+    assert!(startup.contains("appRunner: body,"), "{startup}");
+    assert!(file(&sentry, "pubspec.yaml").contains("telemetry: true"));
+}
+
+/// The third parties are pinned the way `cli/tests/versions.rs` needs: `otel_zone` by a commit (it
+/// forces `go_router` 17, which fespalier accepts), Sentry by a range, neither as a `ref: v…`.
+#[test]
+fn otel_and_sentry_third_parties_are_never_tags() {
+    let plan = plan_of(RECIPES, &["otel", "sentry"]);
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(
+        pubspec.contains(concat!(
+            "  otel_zone:\n    git:\n",
+            "      url: https://github.com/vaam-apps/flutter-otel-zone\n",
+            "      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21\n"
+        )),
+        "{pubspec}"
+    );
+    assert!(
+        pubspec.contains("  sentry_flutter: \">=9.26.0 <10.0.0\"\n"),
+        "{pubspec}"
+    );
+    // The SDK's test exporter is for the tests alone.
+    let (deps, dev) = pubspec.split_once("dev_dependencies:").unwrap();
+    assert!(dev.contains("dartastic_opentelemetry"), "{pubspec}");
+    assert!(!deps.contains("dartastic_opentelemetry"), "{pubspec}");
+    // examples/telemetry pins the same two.
+    let example = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/telemetry/pubspec.yaml"),
+    )
+    .unwrap();
+    assert!(example.contains("ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21"));
+    assert!(example.contains("sentry_flutter: \">=9.26.0 <10.0.0\""));
+}
+
+/// `otel_zone` needs Dart 3.9, so `otel` needs Flutter 3.35: asking for it on 3.32 is refused, and
+/// `all` (what the 3.32 floor job makes) is every feature that Flutter can run, with a note.
+#[test]
+fn otel_needs_flutter_3_35_and_all_leaves_it_out_below() {
+    let mut req = request("my_app");
+    req.flutter = FlutterVersion::parse("3.32.8");
+    req.features = vec!["otel".into()];
+    assert_eq!(
+        err(&req, RECIPES),
+        "`otel` needs Flutter 3.35 or newer, and this is Flutter 3.32.8; leave it out, or upgrade"
+    );
+    req.features = vec!["all".into()];
+    let old = ok(&req, RECIPES);
+    assert!(!old.features.contains(&"otel"), "{:?}", old.features);
+    assert!(old.features.contains(&"sentry"));
+    assert_eq!(
+        old.notes,
+        ["`otel` needs Flutter 3.35 or newer, and this is Flutter 3.32.8: left out of `all`"]
+    );
+    assert!(file(&old, "pubspec.yaml").contains("flutter: \">=3.32.0\""));
+    // Naming it is still an error, alone or with its pair.
+    req.features = vec!["otel".into(), "sentry".into()];
+    assert!(err(&req, RECIPES).contains("`otel` needs Flutter 3.35"));
+    // On 3.35 the whole table is there, and the app declares the floor the table needs.
+    req.features = vec!["all".into()];
+    req.flutter = FlutterVersion::parse("3.35.0");
+    let new = ok(&req, RECIPES);
+    assert!(new.features.contains(&"otel") && new.notes.is_empty());
+    assert!(file(&new, "pubspec.yaml").contains("flutter: \">=3.35.0\""));
+    // `--template minimal` still takes the tabs out of `all`, on any Flutter.
+    req.template = Some(plan::Template::Minimal);
+    assert!(!ok(&req, RECIPES).features.contains(&"adaptive"));
 }

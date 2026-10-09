@@ -1,0 +1,260 @@
+create my_app (package my_app, features: otel)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_otel:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_otel
+      ref: v<version>
+  otel_zone:
+    git:
+      url: https://github.com/vaam-apps/flutter-otel-zone
+      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+
+dev_dependencies:
+  dartastic_opentelemetry: "^1.1.0-beta.15"
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+  telemetry: true
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
+import 'package:otel_zone/otel_zone.dart';
+
+/// The name spans carry as `service.name`.
+const String serviceName = 'my_app';
+
+/// The OpenTelemetry SDK. A release build without an endpoint exports nothing: pass
+/// --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://... to send spans to a collector.
+final OtelZone observability = OtelZone(
+  OtelZoneConfig(serviceName: serviceName, endpoint: FespalierOtel.endpoint()),
+);
+
+/// Brings the SDK up (it never throws), then runs [body]. This is the start of the process, not
+/// of the app: a test that builds the app does not start the SDK, and the sink that startup()
+/// installs reports once it is up.
+Future<void> startObservability(Future<void> Function() body) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await observability.start(
+    serviceVersion: '0.1.0',
+    resourceAttributes: {...FespalierOtel.resourceAttributes},
+  );
+  await body();
+}
+
+/// otel_zone's guarded zone. It never runs its body on the web (docs/observability.md),
+/// so the web runs the body as it is.
+Future<void> zone(Future<void> Function() body) {
+  Future<void> run() => startObservability(body);
+  return kIsWeb ? run() : observability.runGuarded(run);
+}
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+void startup() {
+  // Before the router exists, so the first navigation is reported.
+  FespalierTelemetry.install(
+    FespalierOtel(isReady: () => observability.isReady),
+  );
+}
+
+List<ProviderObserver> get providerObservers => [
+  ?observability.riverpodObserver(),
+];
+
+List<NavigatorObserver> get routerObservers => [?observability.routeObserver()];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== test/otel_test.dart (new)
+import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:dartastic_opentelemetry/testing.dart';
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+// The SDK with an in-memory exporter: what a collector would receive, with no network.
+final InMemorySpanExporter exporter = InMemorySpanExporter();
+
+void main() {
+  setUpAll(() async {
+    await OTel.initialize(
+      serviceName: 'my_app',
+      serviceVersion: '0.1.0',
+      resourceAttributes: OTel.attributesFromMap(
+        FespalierOtel.resourceAttributes,
+      ),
+      enableLogs: false,
+      enableMetrics: false,
+      detectPlatformResources: false,
+      spanProcessor: SimpleSpanProcessor(exporter),
+    );
+  });
+  setUp(() {
+    exporter.clear();
+    FespalierTelemetry.install(FespalierOtel());
+  });
+  tearDown(() => FespalierTelemetry.install(null));
+
+  testWidgets('a navigation is a span, and the page entering is its event', (
+    tester,
+  ) async {
+    final router = AppRoutes.router();
+    await pumpRouter(tester, router);
+    exporter.clear();
+    router.go('/about');
+    await tester.pumpAndSettle();
+    final spans = exporter.findSpansByName('navigate /about');
+    expect(spans, hasLength(1), reason: '${exporter.spanNames}');
+    expect(spans.single.spanEvents?.map((e) => e.name), [
+      'fespalier.page.enter',
+    ]);
+  });
+}

@@ -20,6 +20,10 @@ env:
   # from here. Exact, like FLUTTER_VERSION: the last 3.32 patch release. cli/tests/versions.rs checks
   # that the minor still matches what the pubspecs and READMEs claim.
   FLUTTER_FLOOR_VERSION: 3.32.8
+  # The oldest Flutter the `otel` feature of `fsp create` runs on (its recipe says 3.35): otel_zone
+  # depends on talker_riverpod_logger, which needs Dart 3.9. The `create-floor` job makes the apps
+  # with `otel` on it. Exact, like the others.
+  FLUTTER_OTEL_FLOOR_VERSION: 3.35.0
 
 jobs:
   cli:
@@ -682,8 +686,9 @@ jobs:
           CASE: ${{ matrix.case }}
         run: scripts/check-create.sh "$CASE"
 
-  # The declared floor, for what `fsp create` writes: the base app and the app with every feature, made
-  # (in a temporary folder, by scripts/check-create.sh) on FLUTTER_FLOOR_VERSION, then analyzed and tested.
+  # The declared floor, for what `fsp create` writes: the base app and the app with every feature that
+  # Flutter runs (`all`), made (in a temporary folder, by scripts/check-create.sh) on FLUTTER_FLOOR_VERSION,
+  # then analyzed and tested; then `otel`, which needs a newer Flutter, on FLUTTER_OTEL_FLOOR_VERSION.
   # A new app takes the newest dependencies its Flutter allows, so this proves that the code a person
   # starts from compiles on the oldest Flutter we claim, as the `floor` job above does for the packages
   # at their lowest. No `dart format` here (FSP_CREATE_SKIP_FORMAT): its output depends on the SDK, and
@@ -718,6 +723,18 @@ jobs:
         env:
           FSP_CREATE_SKIP_FORMAT: "1"
         run: scripts/check-create.sh base all
+      # `all` above leaves `otel` out (it needs Flutter 3.35, and says so); this is the Flutter it
+      # does run on, with the two features that compose.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_OTEL_FLOOR_VERSION }}
+          cache: true
+      - run: flutter --version
+      - name: Make the apps with otel, alone and with sentry, then analyze and test them
+        env:
+          FSP_CREATE_SKIP_FORMAT: "1"
+        run: scripts/check-create.sh otel telemetry
 
   # examples/cose: a CrateStack server (a Rust crate of its own, examples/cose/server) that checks a
   # COSE_Sign1 signature on every request, and the Flutter app that signs them. The `dart` job above

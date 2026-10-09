@@ -136,6 +136,9 @@ refuses `//x`, backslashes, foreign hosts) and **one call in `main()` before `Ap
 `FespalierPush.configure(source:, route:, onToken:, onTokenRevoked:)`; unconfigured, it reports once and does nothing. Details and the testing
 recipe: [`references/push.md`](references/push.md); the vendor recipes: [`references/push-sources.md`](references/push-sources.md).
 
+A tap on a **download's** notification works the same way (`adapters: [fespalier_download]`, since 0.15.0, configured with
+`FespalierDownload.configure(backend:, store:, route:)` before `AppMain.run()`); the skill is `fespalier-downloads`, "Notification taps".
+
 ## Not-found views
 
 A `not_found.dart` at the root is the app-wide one (without it users see a plain

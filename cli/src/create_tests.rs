@@ -642,6 +642,11 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
                         bad.push(format!("{id}: {} is not a third-party range", tp.name));
                     }
                 }
+                Source::Sdk(sdk) => {
+                    if sdk != "flutter" {
+                        bad.push(format!("{id}: {} is of the `{sdk}` SDK", tp.name));
+                    }
+                }
             }
         }
         for path in r.replaces {
@@ -677,6 +682,7 @@ fn table_problems(table: &[Recipe], packages: &[String]) -> Vec<String> {
             };
             let name = rest.split('/').next().unwrap_or_default();
             name == "fespalier"
+                || name == "{name}"
                 || name == "flutter"
                 || r.companions.contains(&name)
                 || r.third_party.iter().any(|t| t.name == name)
@@ -1445,11 +1451,17 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
         .map(|r| {
             (
                 vec![r.id],
-                2 + usize::from(r.id == "forms" || r.id == "flags"),
+                2 + match r.id {
+                    "forms" | "flags" | "i18n" | "image" | "http" | "download" => 1,
+                    "auth" => 2,
+                    _ => 0,
+                },
             )
         })
         .collect();
-    cases.push((vec!["all"], 4));
+    // The two of the base app, /contact, /labs, /account, /sign-in, /translations, /photo,
+    // /headlines and /downloads.
+    cases.push((vec!["all"], 10));
     for (features, routes) in cases {
         let dir = tempfile::tempdir().unwrap();
         let plan = plan_of(RECIPES, &features);
@@ -1466,7 +1478,8 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
         assert_eq!(app.contains("AppLayout"), !tabs, "{features:?}");
         assert_eq!(
             app.contains("package:fespalier_forms/fespalier_forms.dart"),
-            plan.features.contains(&"forms"),
+            // The sign-in form of `auth` is a form too.
+            plan.features.contains(&"forms") || plan.features.contains(&"auth"),
             "{features:?}"
         );
         crate::smoke::run(dir.path(), false).unwrap_or_else(|e| panic!("{features:?}: {e:#}"));
@@ -1617,4 +1630,225 @@ fn otel_needs_flutter_3_35_and_all_leaves_it_out_below() {
     // `--template minimal` still takes the tabs out of `all`, on any Flutter.
     req.template = Some(plan::Template::Minimal);
     assert!(!ok(&req, RECIPES).features.contains(&"adaptive"));
+}
+
+// --- auth, i18n and image -----------------------------------------------------------------------
+
+/// docs/auth.md: the session is restored after the telemetry sink (`docs/observability.md`) and
+/// before the rest, the backend throws until the app connects its own, and the secure storage
+/// plugin needs Android 24, which only Android apps are edited for.
+#[test]
+fn auth_restores_the_session_after_the_sink_and_raises_the_android_floor() {
+    let plan = plan_of(RECIPES, &["auth", "storage", "sentry"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    let at = |needle: &str| {
+        startup
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle}\n{startup}"))
+    };
+    assert!(at("FespalierTelemetry.install(") < at("...await restoreAuth(authSetup()),"));
+    assert!(at("...await restoreAuth(authSetup()),") < at("dataCacheStorage.overrideWithValue"));
+    assert!(
+        startup.contains("import 'package:my_app/auth_setup.dart';"),
+        "{startup}"
+    );
+    let setup = file(&plan, "lib/auth_setup.dart");
+    for method in ["signIn", "refresh", "signOut"] {
+        assert!(setup.contains(&format!("{method}(")), "{method}");
+    }
+    assert_eq!(
+        setup
+            .matches("connect your identity provider: docs/auth.md")
+            .count(),
+        1
+    );
+    assert!(
+        file(&plan, "pubspec.yaml").contains("fespalier_forms:"),
+        "the sign-in form"
+    );
+    assert_eq!(plan.android_min_sdk, Some(24));
+    // Android is in the default platforms; a web-only app has no Gradle file to edit.
+    let mut req = request("my_app");
+    req.features = vec!["auth".into()];
+    req.platforms = vec!["web".into()];
+    assert_eq!(ok(&req, RECIPES).android_min_sdk, None);
+    req.platforms = vec!["ios".into(), "android".into()];
+    assert_eq!(ok(&req, RECIPES).android_min_sdk, Some(24));
+    assert_eq!(ok(&request("my_app"), RECIPES).android_min_sdk, None);
+}
+
+/// The only app.dart that is not the starter's is the translation scope's, with the assets and the
+/// route that cannot be smoke tested without it named in the pubspec.
+#[test]
+fn i18n_wraps_the_router_in_the_scope_and_declares_its_assets() {
+    let plan = plan_of(RECIPES, &["i18n"]);
+    let app = file(&plan, "lib/app/app.dart");
+    assert!(app.contains("TranslationScope.routerConfig("), "{app}");
+    assert!(
+        app.contains("GlobalMaterialLocalizations.delegates"),
+        "{app}"
+    );
+    assert!(app.contains("title: 'my_app'"), "{app}");
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(
+        pubspec.contains("  flutter_localizations:\n    sdk: flutter\n"),
+        "{pubspec}"
+    );
+    assert!(
+        pubspec.contains("  assets:\n    - assets/i18n/\n"),
+        "{pubspec}"
+    );
+    assert!(
+        pubspec.contains("  test:\n    # /translations needs"),
+        "{pubspec}"
+    );
+    assert!(pubspec.contains("    skip: [/translations]\n"), "{pubspec}");
+    // The catalogs are ARB with their ICU plural intact (jinja did not read the `{#`).
+    for locale in ["en", "fr"] {
+        let arb = file(&plan, &format!("assets/i18n/{locale}.arb"));
+        assert!(arb.contains(&format!("\"@@locale\": \"{locale}\"")));
+        assert!(arb.contains("{# "), "{arb}");
+    }
+    // No key, no network: nothing remote is configured.
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        !startup.contains("TolgeeCdn") && !startup.contains("remote:"),
+        "{startup}"
+    );
+    assert!(plan.android_min_sdk.is_none());
+}
+
+/// The image feature has a template builder and no way to hold a key.
+#[test]
+fn image_asks_a_template_cdn_and_holds_no_key() {
+    let plan = plan_of(RECIPES, &["image"]);
+    let images = file(&plan, "lib/images.dart");
+    assert!(images.contains("TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}')"));
+    for forbidden in ["signer", "secret", "salt", "hmac", "apikey"] {
+        assert!(!images.to_lowercase().contains(forbidden), "{forbidden}");
+    }
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        startup.contains("imageCdnProvider.overrideWithValue(appImages),"),
+        "{startup}"
+    );
+}
+
+// --- http and download --------------------------------------------------------------------------
+
+/// docs/http.md: the request is made through `ref.abortable(client)` before the first `await`,
+/// from a client provider that closes its client and a configurable base URL, and the test
+/// serves it from `FakeHttpClient`. No Dio.
+#[test]
+fn http_loads_through_an_abortable_client_and_is_tested_on_the_fake() {
+    let plan = plan_of(RECIPES, &["http"]);
+    let api = file(&plan, "lib/api.dart");
+    assert!(
+        api.contains("String.fromEnvironment(\n  'API_URL'"),
+        "{api}"
+    );
+    assert!(api.contains("ref.onDispose(client.close);"), "{api}");
+    let data = file(&plan, "lib/app/headlines/data.dart");
+    assert!(
+        data.contains("ref.abortable(ref.watch(httpClient))"),
+        "{data}"
+    );
+    let first_await = data.find("await").unwrap();
+    assert!(data.find("ref.abortable").unwrap() < first_await, "{data}");
+    let test = file(&plan, "test/http_test.dart");
+    assert!(test.contains("FakeHttpClient("), "{test}");
+    assert!(test.contains("client.abortCount, 1"), "{test}");
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(pubspec.contains("  http: \"^1.5.0\"\n"), "{pubspec}");
+    assert!(pubspec.contains("  fespalier_http:\n    git:"), "{pubspec}");
+    assert!(!pubspec.contains("dio"), "{pubspec}");
+    assert!(pubspec.contains("    skip: [/headlines]\n"), "{pubspec}");
+}
+
+/// docs/downloads.md, "In a widget": the engine is overridden at startup over a foreground
+/// backend whose base folders the app names with `path_provider`, and the test plays the
+/// platform with the fake backend. The page says where the background backend is.
+#[test]
+fn download_overrides_the_engine_over_a_foreground_backend_and_is_tested_on_the_fake() {
+    let plan = plan_of(RECIPES, &["download"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    for needle in [
+        "downloadsEngine.overrideWithValue(",
+        "HttpDownloadBackend(",
+        "FileDownloadStore(bases: appBases)",
+        "TransferDownloadFiles(bases: appBases)",
+        "import 'package:http/http.dart' as http;",
+        "import 'package:path_provider/path_provider.dart';",
+    ] {
+        assert!(startup.contains(needle), "{needle}\n{startup}");
+    }
+    let page = file(&plan, "lib/app/downloads/page.dart");
+    assert!(page.contains("fespalier_download_background"), "{page}");
+    assert!(page.contains("ref.watch(downloads)"), "{page}");
+    let test = file(&plan, "test/download_test.dart");
+    assert!(test.contains("downloadTestOverrides("), "{test}");
+    assert!(test.contains("FakeDownloadBackend()"), "{test}");
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(
+        pubspec.contains("  path_provider: \"^2.1.0\"\n"),
+        "{pubspec}"
+    );
+    assert!(pubspec.contains("    skip: [/downloads]\n"), "{pubspec}");
+    // The background package needs Flutter 3.47 and platform setup: it is not a dependency.
+    assert!(
+        !pubspec.contains("fespalier_download_background"),
+        "{pubspec}"
+    );
+}
+
+/// The two share `package:http`: one line in the pubspec, and at a checkout the overrides hold
+/// everything `fespalier_download` depends on (`fespalier_http`) though no feature names it.
+#[test]
+fn http_and_download_share_one_http_dependency_and_a_checkout_overrides_the_closure() {
+    let plan = plan_of(RECIPES, &["http", "download"]);
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert_eq!(
+        pubspec.matches("\n  http: \"^1.5.0\"\n").count(),
+        1,
+        "{pubspec}"
+    );
+    let mut req = request("my_app");
+    req.features = vec!["download".into()];
+    req.local_packages = Some("/checkout".into());
+    let local = ok(&req, RECIPES);
+    let pubspec = file(&local, "pubspec.yaml");
+    assert!(
+        pubspec.contains("  fespalier_http:\n    path: /checkout/packages/fespalier_http\n"),
+        "{pubspec}"
+    );
+}
+
+/// Two features that both write app.dart are refused, naming both.
+#[test]
+fn two_app_templates_are_refused_naming_both() {
+    const TWO: &[Recipe] = &[
+        Recipe {
+            id: "one",
+            startup: Startup {
+                app_template: Some("create/i18n_app.dart"),
+                ..Startup::NONE
+            },
+            ..SYNTHETIC[2]
+        },
+        Recipe {
+            id: "two",
+            startup: Startup {
+                app_template: Some("create/i18n_app.dart"),
+                ..Startup::NONE
+            },
+            ..SYNTHETIC[2]
+        },
+    ];
+    let mut req = request("my_app");
+    req.features = vec!["one".into(), "two".into()];
+    let message = err(&req, TWO);
+    assert!(
+        message.contains("`one` and `two` both write lib/app/app.dart"),
+        "{message}"
+    );
 }

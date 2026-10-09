@@ -68,6 +68,7 @@ jobs:
           cargo run --quiet -- check --project ../examples/telemetry
           cargo run --quiet -- check --project ../examples/auth
           cargo run --quiet -- check --project ../examples/plugins
+          cargo run --quiet -- check --project ../examples/downloads
           cargo run --quiet -- check --project ../examples/cose
           cargo run --quiet -- check --project ../examples/i18n
           cargo run --quiet -- check --project ../examples/maps
@@ -157,6 +158,7 @@ jobs:
           - examples/telemetry
           - examples/auth
           - examples/plugins
+          - examples/downloads
           - examples/cose
           - examples/i18n
           - examples/maps

@@ -151,7 +151,7 @@ There is no device in CI. `PluginTransport`, the one file that calls `background
 following depend on behaviour of the operating system and the plugin that nobody has run on a device; they are tracked in
 [issue #158](https://github.com/fespalier/fespalier/issues/158) and are **UNCHECKED**:
 
-- when a notification tap arrives after a cold start, relative to `resumeFromBackground`;
+- when a notification tap arrives after a cold start, relative to `resumeFromBackground` (the `fespalier_download` adapter answers a cold tap in `launch()` and a later one as a warm tap, so the app works either way);
 - whether a resume with new headers is sent with them;
 - whether a failed update carries the server's response headers (the plugin documents the status code in its exception);
 - whether the plugin's database delete is scoped to the group (its source says so; it was read, not run);

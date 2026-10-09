@@ -1,0 +1,51 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:{{ package }}/app.g.dart';
+
+/// Served at `/sign-in`. `SignInRoute.useForm` is generated from action.dart's form(), as on the
+/// contact page of `--features forms`. The page does not navigate: the sign-in guard does.
+class SignInPage extends HookConsumerWidget {
+  const SignInPage({super.key, this.from});
+
+  /// Where the guard that sent the user here was going.
+  final String? from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final form = SignInRoute.useForm(ref);
+    final f = form.fields;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sign in')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          spacing: 16,
+          children: [
+            if (from != null) Text('Sign in to see $from'),
+            TextField(
+              controller: f.username.controller,
+              decoration: InputDecoration(
+                labelText: 'User name',
+                errorText: f.username.error,
+              ),
+            ),
+            TextField(
+              controller: f.password.controller,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                errorText: f.password.error,
+              ),
+            ),
+            if (form.error case final e?) Text('$e'),
+            FilledButton(
+              // Null while the sign-in runs: the button is disabled.
+              onPressed: form.onSubmit,
+              child: Text(form.isPending ? 'Signing in...' : 'Sign in'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

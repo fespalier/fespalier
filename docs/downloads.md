@@ -14,14 +14,14 @@ the registry after a restart, a **foreground backend**, `HttpDownloadBackend`, t
 while the app runs, a **durable registry**, `FileDownloadStore`, and the **providers** a widget watches (`downloads`,
 `downloadStatus`). A download that must go on while the app is closed is the job of the **background backend**, in the
 separate package `fespalier_download_background` (since 0.15.0, Flutter 3.47 or newer, over `background_downloader`; see
-[The background backend](#the-background-backend)), which also uploads a file ([Uploads](#uploads)). Notification taps as
-routes come in a later release of the same line, and this page grows with it.
+[The background backend](#the-background-backend)), which also uploads a file ([Uploads](#uploads)). **Notification taps open typed routes** through an [adapter](#notification-taps) (since 0.15.0), and this page
+grows with it.
 
 Contents: [Install](#install), [Requests and files](#requests-and-files), [Status](#status),
 [Starting a download](#starting-a-download), [After a restart](#after-a-restart), [Sign-out](#sign-out),
 [The foreground backend](#the-foreground-backend), [The background backend](#the-background-backend),
 [Android and iOS setup](#android-and-ios-setup), [Credentials](#credentials), [In a widget](#in-a-widget),
-[Uploads](#uploads), [Testing](#testing).
+[Notification taps](#notification-taps), [Uploads](#uploads), [Testing](#testing).
 
 ## Install
 
@@ -314,7 +314,7 @@ await engine.start(
   a thin layer that no test runs, and the backend's logic is tested through `FakeBackgroundTransport`. These depend on
   behaviour of the operating system and the plugin that nobody has run on a device, and are tracked in
   [issue #158](https://github.com/fespalier/fespalier/issues/158): when a notification tap arrives after a **cold start**
-  relative to `resumeFromBackground` (the engine's `tapped` is wired in 0.15.0 only as far as the backend reporting it);
+  relative to `resumeFromBackground` (the backend reports the tap; the engine hands it to the adapter, [Notification taps](#notification-taps));
   whether a **resume with new headers** is sent with them (the backend passes them; whether the plugin uses them is not
   known); whether a **failed update carries the server's headers**, or only the status code the plugin documents in its
   exception; whether the plugin's **database delete is scoped to the group** (its source deletes record by record for the
@@ -526,6 +526,61 @@ class ManualTile extends ConsumerWidget {
 Acting goes through the engine (`ref.read(downloadsEngine).start(...)`); the state comes back through `downloads`. Call
 `clearAccount()` where the app signs out, as [Sign-out](#sign-out) says.
 
+## Notification taps
+
+_Since 0.15.0._ A tap on a download's notification (the progress notification a background backend shows, or its completion)
+can open a typed route, with the same shape as `fespalier_push`: the package ships an [adapter](adapters.md), and the app
+configures it in `main()`.
+
+```dart
+// lib/main.dart
+Future<void> main() {
+  FespalierDownload.configure( // before the adapters run
+    backend: BackgroundDownloaderBackend(),
+    store: FileDownloadStore(bases: bases),
+    notifications: const DownloadNotifications(running: 'Downloading', complete: 'Done'),
+    route: (tap) => switch (tap.request?.id) {
+      final id? when id.startsWith('manual-') => DownloadTarget.to(ManualRoute(id: id)),
+      _ => null,
+    },
+  );
+  return AppMain.run();
+}
+```
+
+```yaml
+# pubspec.yaml
+fespalier:
+  adapters: [fespalier_download]
+```
+
+- **`FespalierDownload.configure` builds the engine.** It takes the `backend` and the `store` (and, as `Downloads` does,
+  `files`, `grantor` and `clock`), and the adapter binds that engine to `downloadsEngine`: the app's `startup()` does not
+  override the provider. The `notifications` are handed to the backend once the engine is open. The package never asks for
+  the notification permission.
+- **`route` maps a `DownloadTap` to a `DownloadTarget`.** The tap holds the download's `id`, the `kind` (`body` or `action`),
+  the `status` the engine had and the `request` it holds for that id (null for an id it does not know: map it to nothing).
+  `DownloadTarget.to(route)` takes a typed route and `DownloadOpen.go` (the default) or `push`. `null`, no `route:` and a
+  `route` that throws all mean: the tap opens the app and navigates nowhere (a throw is reported). It must be quick and
+  synchronous.
+- **A cold start is the initial location.** The adapter's `launch()` opens the engine, so the first frame waits for the
+  registry file and the backend's own start. The tap the backend replays while it opens becomes an `InboundLaunch` marked
+  `NavigationSource.notification`, and the guards still run. **Which comes first on a cold start, the tap or the backend's
+  replay of its tasks, is UNCHECKED on a device** ([issue #158](https://github.com/fespalier/fespalier/issues/158)): if the
+  plugin delivers the tap after `open` finished, it arrives as a warm tap, which `go`es from the first page. Both work; the
+  difference is whether the router starts at the target.
+- **A warm tap is a navigation.** In `attach(router, container)` the adapter takes the engine's one tap slot
+  (`Downloads.observeTaps`) and calls `router.go` (or `push`) inside `navigateFrom(NavigationSource.notification, ...)`. The
+  slot is the adapter's: do not call `observeTaps` on that engine. Taps heard between `launch()` and `attach` are replayed
+  in order. The cold-start tap seen again as a warm tap is dropped once; the same notification tapped again later opens
+  again.
+- **Unconfigured, it says so once.** A pubspec that lists `fespalier_download` under `adapters:` and a `main()` that never
+  called `configure` reports one `FlutterError` and the adapter does nothing; it never throws. `AppMain.root()` in a widget
+  test runs no `main()`, so the test calls `configure` with the fakes first (`FakeDownloadBackend(replayTaps: [...])`
+  plays a tap that started the app, `backend.tap(id)` one while it runs); `FespalierDownload.debugReset()` clears it.
+- **Telemetry** is one span, `fespalier.download.open`, from the tap to the navigation call, with
+  `fespalier.download.routed` (a boolean) at its end. It carries no id, path, URL or name.
+
 ## Uploads
 
 `fespalier_download_background` also uploads a file (since 0.15.0), over `background_downloader` **9.6.4**'s `UploadTask`
@@ -629,7 +684,7 @@ await uploads.start(
 
 - `FakeDownloadBackend`: records what is asked (`enqueued`, `paused`, `resumed`, `cancelled`, `authorizations`), answers
   as `accepts` and `capabilities` say, and plays the platform through `emit(id, status, httpStatus:)` and
-  `tap(id)` once a listener has called `open`. `replay: {id: status}` is what the platform reports at `open`, to test a restart.
+  `tap(id)` once a listener has called `open`. `replay: {id: status}` is what the platform reports at `open`, to test a restart, and `replayTaps: [(id, kind)]` the notification taps it delivers then, to test a cold start.
 - `MemoryDownloadStore`: a registry in memory (`entries`, `clearCalls`).
 - `FakeDownloadFiles`: files as a map of sizes (`put`, `deleted`).
 - `downloadTestOverrides(backend:, store:, files:)`: the overrides that bind `downloadsEngine` (so `downloads` and

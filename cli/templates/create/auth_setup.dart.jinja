@@ -1,0 +1,34 @@
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// Where your identity provider plugs in. Every method throws until you write it: the sign-in
+/// form shows the message, and nothing signs in. docs/auth.md has a backend over a JSON API, one
+/// for OpenID Connect and Keycloak (`OidcBackend`), and the recipes for Firebase and Supabase.
+class IdentityBackend extends AuthBackend {
+  const IdentityBackend();
+
+  static final UnimplementedError _todo = UnimplementedError(
+    'connect your identity provider: docs/auth.md',
+  );
+
+  /// What a stored session is tied to: a session another backend stored is dropped at start.
+  @override
+  String get name => 'identity';
+
+  @override
+  Future<AuthSession> signIn(SignInRequest request) async => throw _todo;
+
+  /// Throws `AuthRejected` when the server refused the refresh token (the session is over), and
+  /// anything else when it could not ask (the session stays).
+  @override
+  Future<AuthSession> refresh(AuthSession session) async => throw _todo;
+
+  @override
+  Future<void> signOut(AuthSession session) async => throw _todo;
+}
+
+/// The app's [AuthConfig], read by `startup()` (restoreAuth) and by the tests.
+///
+/// `apiOrigins` is where the session is sent, and nowhere else: add your API's origin
+/// (`Uri.parse('https://api.example.com')`) before calling it with `authHttpClient`.
+AuthConfig authSetup() =>
+    const AuthConfig(backend: IdentityBackend(), apiOrigins: <Uri>[]);

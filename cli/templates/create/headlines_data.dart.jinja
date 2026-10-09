@@ -1,0 +1,20 @@
+import 'dart:convert';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:{{ package }}/api.dart';
+
+/// Loads what `/headlines` shows. `ref.abortable` ties every request of this build to the page:
+/// when the page is left, or this runs again, the request is aborted instead of running to the
+/// end for nobody. Ask for it before the first `await`.
+Future<List<String>> data(Ref ref) async {
+  final client = ref.abortable(ref.watch(httpClient));
+  final response = await client.get(Uri.parse('$apiUrl/headlines'));
+  if (response.statusCode != 200) {
+    throw StateError('GET /headlines answered HTTP ${response.statusCode}');
+  }
+  return [
+    for (final item in jsonDecode(response.body) as List<Object?>)
+      (item! as Map<String, Object?>)['title']! as String,
+  ];
+}

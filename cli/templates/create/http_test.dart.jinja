@@ -1,0 +1,53 @@
+import 'dart:async';
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_http/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:{{ package }}/api.dart';
+import 'package:{{ package }}/app.g.dart';
+
+void main() {
+  testWidgets('the headlines are loaded through the client, abortable', (
+    tester,
+  ) async {
+    // No network: the fake answers from a handler and records what was sent.
+    final client = FakeHttpClient(
+      (request, body) =>
+          http.Response('[{"title": "One"}, {"title": "Two"}]', 200),
+    );
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/headlines'),
+      overrides: [httpClient.overrideWithValue(client)],
+    );
+    expect(find.text('One'), findsOneWidget);
+    expect(find.text('Two'), findsOneWidget);
+    expect(client.requests.single.url, Uri.parse('$apiUrl/headlines'));
+    expect(client.requests.single.abortable, isTrue);
+  });
+
+  testWidgets('leaving the page aborts a request that is still running', (
+    tester,
+  ) async {
+    // A server that never answers.
+    final client = FakeHttpClient(
+      (request, body) => Completer<http.Response>().future,
+    );
+    final router = AppRoutes.router(initialLocation: '/headlines');
+    // Not settled: the loading view is on screen and the request is out.
+    await pumpRouter(
+      tester,
+      router,
+      overrides: [httpClient.overrideWithValue(client)],
+      settle: false,
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(1));
+    expect(client.abortCount, 0);
+
+    router.go('/');
+    await tester.pumpAndSettle(); // the page is gone, and so is its provider
+    expect(client.abortCount, 1);
+  });
+}

@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use minijinja::Environment;
 use serde::Serialize;
 
-const TEMPLATES: [(&str, &str); 46] = [
+const TEMPLATES: [(&str, &str); 68] = [
     ("app.g.dart", include_str!("../templates/app.g.dart.jinja")),
     (
         "main.g.dart",
@@ -187,6 +187,94 @@ const TEMPLATES: [(&str, &str); 46] = [
     (
         "create/sentry_test.dart",
         include_str!("../templates/create/sentry_test.dart.jinja"),
+    ),
+    (
+        "create/auth_setup.dart",
+        include_str!("../templates/create/auth_setup.dart.jinja"),
+    ),
+    (
+        "create/auth_guard.dart",
+        include_str!("../templates/create/auth_guard.dart.jinja"),
+    ),
+    (
+        "create/account_page.dart",
+        include_str!("../templates/create/account_page.dart.jinja"),
+    ),
+    (
+        "create/sign_in_action.dart",
+        include_str!("../templates/create/sign_in_action.dart.jinja"),
+    ),
+    (
+        "create/sign_in_guard.dart",
+        include_str!("../templates/create/sign_in_guard.dart.jinja"),
+    ),
+    (
+        "create/sign_in_page.dart",
+        include_str!("../templates/create/sign_in_page.dart.jinja"),
+    ),
+    (
+        "create/auth_test.dart",
+        include_str!("../templates/create/auth_test.dart.jinja"),
+    ),
+    (
+        "create/i18n_app.dart",
+        include_str!("../templates/create/i18n_app.dart.jinja"),
+    ),
+    (
+        "create/i18n_en.arb",
+        include_str!("../templates/create/i18n_en.arb.jinja"),
+    ),
+    (
+        "create/i18n_fr.arb",
+        include_str!("../templates/create/i18n_fr.arb.jinja"),
+    ),
+    (
+        "create/translations_page.dart",
+        include_str!("../templates/create/translations_page.dart.jinja"),
+    ),
+    (
+        "create/i18n_test.dart",
+        include_str!("../templates/create/i18n_test.dart.jinja"),
+    ),
+    (
+        "create/images.dart",
+        include_str!("../templates/create/images.dart.jinja"),
+    ),
+    (
+        "create/photo_page.dart",
+        include_str!("../templates/create/photo_page.dart.jinja"),
+    ),
+    (
+        "create/image_test.dart",
+        include_str!("../templates/create/image_test.dart.jinja"),
+    ),
+    (
+        "create/api.dart",
+        include_str!("../templates/create/api.dart.jinja"),
+    ),
+    (
+        "create/headlines_data.dart",
+        include_str!("../templates/create/headlines_data.dart.jinja"),
+    ),
+    (
+        "create/headlines_page.dart",
+        include_str!("../templates/create/headlines_page.dart.jinja"),
+    ),
+    (
+        "create/http_test.dart",
+        include_str!("../templates/create/http_test.dart.jinja"),
+    ),
+    (
+        "create/downloads.dart",
+        include_str!("../templates/create/downloads.dart.jinja"),
+    ),
+    (
+        "create/downloads_page.dart",
+        include_str!("../templates/create/downloads_page.dart.jinja"),
+    ),
+    (
+        "create/download_test.dart",
+        include_str!("../templates/create/download_test.dart.jinja"),
     ),
 ];
 

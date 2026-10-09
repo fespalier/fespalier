@@ -1,5 +1,6 @@
-create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags, otel, sentry)
+create my_app (package my_app, features: devtools, adaptive, forms, storage, connectivity, flags, otel, sentry, auth, i18n, image, http, download)
 run   flutter create --no-pub --empty --project-name=my_app <staging>
+edit  android/app/build.gradle.kts: minSdk is at least 24 (the default of Flutter before 3.35 is lower)
 move  <staging> -> my_app
 run   flutter pub get
 run   fsp gen
@@ -22,36 +23,58 @@ dependencies:
     path: /checkout/packages/fespalier
   fespalier_adaptive:
     path: /checkout/packages/fespalier_adaptive
+  fespalier_auth:
+    path: /checkout/packages/fespalier_auth
   fespalier_connectivity:
     path: /checkout/packages/fespalier_connectivity
+  fespalier_download:
+    path: /checkout/packages/fespalier_download
   fespalier_flags:
     path: /checkout/packages/fespalier_flags
   fespalier_forms:
     path: /checkout/packages/fespalier_forms
+  fespalier_http:
+    path: /checkout/packages/fespalier_http
+  fespalier_image:
+    path: /checkout/packages/fespalier_image
   fespalier_otel:
     path: /checkout/packages/fespalier_otel
   fespalier_sentry:
     path: /checkout/packages/fespalier_sentry
   fespalier_storage:
     path: /checkout/packages/fespalier_storage
+  fespalier_tolgee:
+    path: /checkout/packages/fespalier_tolgee
+  flutter_localizations:
+    sdk: flutter
+  http: "^1.5.0"
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
       ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+  path_provider: "^2.1.0"
   sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
   dartastic_opentelemetry: "^1.1.0-beta.15"
+  flutter_secure_storage: ">=10.0.0 <12.0.0"
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/i18n/
 
 # Read by the `fsp` generator; docs/configuration.md lists every key.
 fespalier:
   telemetry: true
+  test:
+    # /translations needs the translation scope: test/i18n_test.dart opens it through the app's own App.
+    # /headlines needs an http client: test/http_test.dart serves it from a FakeHttpClient.
+    # /downloads needs the downloads engine: test/download_test.dart overrides it with fakes.
+    skip: [/translations, /headlines, /downloads]
 
 # `fsp create --local-packages`: the packages come from a checkout of fespalier, not from git.
 dependency_overrides:
@@ -59,18 +82,28 @@ dependency_overrides:
     path: /checkout/packages/fespalier
   fespalier_adaptive:
     path: /checkout/packages/fespalier_adaptive
+  fespalier_auth:
+    path: /checkout/packages/fespalier_auth
   fespalier_connectivity:
     path: /checkout/packages/fespalier_connectivity
+  fespalier_download:
+    path: /checkout/packages/fespalier_download
   fespalier_flags:
     path: /checkout/packages/fespalier_flags
   fespalier_forms:
     path: /checkout/packages/fespalier_forms
+  fespalier_http:
+    path: /checkout/packages/fespalier_http
+  fespalier_image:
+    path: /checkout/packages/fespalier_image
   fespalier_otel:
     path: /checkout/packages/fespalier_otel
   fespalier_sentry:
     path: /checkout/packages/fespalier_sentry
   fespalier_storage:
     path: /checkout/packages/fespalier_storage
+  fespalier_tolgee:
+    path: /checkout/packages/fespalier_tolgee
 
 === lib/main.dart (overwrite)
 import 'package:my_app/app.main.g.dart';
@@ -81,18 +114,37 @@ Future<void> main() => AppMain.run();
 
 === lib/app/app.dart (new)
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 /// The app around the router: theme, title, locales. The generated main() builds it
 /// (lib/app.main.g.dart) and gives it the router.
-class App extends StatelessWidget {
+///
+/// `routerConfig` is the translation scope's, never the router itself: it puts a TranslationScope
+/// around go_router's navigator, so the first frame is already in the route's language. The
+/// language is the `lang` query of the location (`/translations?lang=fr`) and, when a location has
+/// none, the one before it. For a language in the path (`/fr/products`) see docs/i18n-tolgee.md,
+/// "Locales and the URL". The Material delegates are required: without them an AppBar in a
+/// language Material has no strings for throws.
+class App extends ConsumerWidget {
   const App({super.key, required this.router});
 
   final GoRouter router;
 
   @override
-  Widget build(BuildContext context) =>
-      MaterialApp.router(title: 'my_app', routerConfig: router);
+  Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
+    title: 'my_app',
+    routerConfig: TranslationScope.routerConfig(
+      router,
+      localeOf: (uri) => uri.queryParameters['lang'],
+    ),
+    supportedLocales: ref
+        .watch(translationsConfig)
+        .supportedLocales
+        .map(localeFromTag),
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+  );
 }
 
 === lib/app/not_found.dart (new)
@@ -112,14 +164,22 @@ class NotFoundPage extends StatelessWidget {
 === lib/app/startup.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_connectivity/fespalier_connectivity.dart';
+import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
+import 'package:fespalier_image/fespalier_image.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:fespalier_sentry/fespalier_sentry.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
+import 'package:http/http.dart' as http;
+import 'package:my_app/auth_setup.dart';
+import 'package:my_app/images.dart';
 import 'package:otel_zone/otel_zone.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// The name spans carry as `service.name`.
@@ -143,6 +203,14 @@ Future<void> startObservability(Future<void> Function() body) async {
   await body();
 }
 
+/// Where each base folder of a download is on this device. fespalier_download names no
+/// plugin for it, so the app does (docs/downloads.md, "The foreground backend").
+Future<String> appBases(DownloadBase base) async => switch (base) {
+  DownloadBase.support => (await getApplicationSupportDirectory()).path,
+  DownloadBase.cache => (await getApplicationCacheDirectory()).path,
+  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,
+};
+
 /// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
 /// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
 /// --dart-define=SENTRY_DSN=https://... sends events to your project.
@@ -165,6 +233,8 @@ Future<List<Override>> startup() async {
     ]),
   );
   return [
+    // fespalier_auth: reads the stored session, with no network, so the first guard is synchronous.
+    ...await restoreAuth(authSetup()),
     // fespalier_storage: a dataCache is saved here (null: nothing is saved).
     dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
     // fespalier_connectivity: refetchOnReconnect follows the network.
@@ -172,6 +242,23 @@ Future<List<Override>> startup() async {
     // fespalier_flags: where flag values come from (--dart-define=LABS=true turns /labs on).
     flagSource.overrideWithValue(
       const ConstFlags({'labs': bool.fromEnvironment('LABS')}),
+    ),
+    // fespalier_tolgee: the catalogs bundled in assets/i18n/ (a local read, never the network).
+    translationsConfig.overrideWithValue(
+      Translations(
+        bundled: await BundledTranslations.load(locales: const ['en', 'fr']),
+        baseLocale: 'en',
+      ),
+    ),
+    // fespalier_image: which CDN the images come from (lib/images.dart).
+    imageCdnProvider.overrideWithValue(appImages),
+    // fespalier_download: the engine, over a foreground transfer (it stops with the app).
+    downloadsEngine.overrideWithValue(
+      Downloads(
+        backend: HttpDownloadBackend(client: http.Client(), bases: appBases),
+        store: FileDownloadStore(bases: appBases),
+        files: TransferDownloadFiles(bases: appBases),
+      ),
     ),
   ];
 }
@@ -467,6 +554,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
 import 'package:fespalier_storage/testing.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/app.main.g.dart';
 
@@ -474,6 +562,8 @@ void main() {
   // shared_preferences in memory. Without it open() finds no platform and returns null, and
   // nothing is saved (docs/data.md, "A cache on disk: fespalier_storage").
   setUp(fakePrefsStore);
+  // startup() also restores the signed-in session, which reads the keychain.
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
 
   testWidgets('startup() gives the data cache a place on disk', (tester) async {
     await tester.pumpWidget(AppMain.root());
@@ -692,5 +782,736 @@ void main() {
     final event = (await sentry.sent()).single;
     expect(event['transaction'], '/about');
     expect(event['tags'], containsPair('fespalier.route', '/about'));
+  });
+}
+
+=== lib/auth_setup.dart (new)
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// Where your identity provider plugs in. Every method throws until you write it: the sign-in
+/// form shows the message, and nothing signs in. docs/auth.md has a backend over a JSON API, one
+/// for OpenID Connect and Keycloak (`OidcBackend`), and the recipes for Firebase and Supabase.
+class IdentityBackend extends AuthBackend {
+  const IdentityBackend();
+
+  static final UnimplementedError _todo = UnimplementedError(
+    'connect your identity provider: docs/auth.md',
+  );
+
+  /// What a stored session is tied to: a session another backend stored is dropped at start.
+  @override
+  String get name => 'identity';
+
+  @override
+  Future<AuthSession> signIn(SignInRequest request) async => throw _todo;
+
+  /// Throws `AuthRejected` when the server refused the refresh token (the session is over), and
+  /// anything else when it could not ask (the session stays).
+  @override
+  Future<AuthSession> refresh(AuthSession session) async => throw _todo;
+
+  @override
+  Future<void> signOut(AuthSession session) async => throw _todo;
+}
+
+/// The app's [AuthConfig], read by `startup()` (restoreAuth) and by the tests.
+///
+/// `apiOrigins` is where the session is sent, and nowhere else: add your API's origin
+/// (`Uri.parse('https://api.example.com')`) before calling it with `authHttpClient`.
+AuthConfig authSetup() =>
+    const AuthConfig(backend: IdentityBackend(), apiOrigins: <Uri>[]);
+
+=== lib/app/(signed-in)/guard.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:my_app/app.g.dart';
+
+/// Guards every page in the `(signed-in)` folder: a session, or the sign-in page with where the
+/// user was going. It is synchronous (startup() read the stored session), and signing out moves
+/// the user in that frame (docs/auth.md, "Guarding signed-in routes").
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    requireSignedIn(ref, uri, signIn: (from) => SignInRoute(from: from));
+
+=== lib/app/(signed-in)/account/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:flutter/material.dart';
+
+/// Served at `/account`, behind the guard of the `(signed-in)` folder: a signed-out visit lands
+/// on `/sign-in?from=%2Faccount` and comes back here after signing in.
+class AccountPage extends ConsumerWidget {
+  const AccountPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authUser);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account')),
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Signed in as ${user?.name ?? user?.id ?? 'someone'}'),
+            // The state turns SignedOut at once, and the guard moves the user to /sign-in.
+            TextButton(
+              onPressed: () => ref.read(authSession.notifier).signOut(),
+              child: const Text('Sign out'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+=== lib/app/sign-in/action.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The input of the action, and so the fields of the sign-in form.
+typedef SignInFields = ({String username, String password});
+
+SignInFields form() => (username: '', password: '');
+
+/// Checked on the device before the backend is asked.
+FieldErrors? validate(SignInFields input) => FieldErrors({
+  if (input.username.trim().isEmpty) 'username': 'Enter your user name',
+  if (input.password.isEmpty) 'password': 'Enter your password',
+});
+
+/// A backend that throws `FieldErrors` for wrong credentials has them shown under their field.
+Future<void> action(Ref ref, {required SignInFields input}) async {
+  await ref
+      .read(authSession.notifier)
+      .signIn(
+        PasswordSignIn(
+          username: input.username.trim(),
+          password: input.password,
+        ),
+      );
+}
+
+=== lib/app/sign-in/guard.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The sign-in page's own guard, beside the guarded folder. Signing in changes the session, this
+/// guard sees it and sends the user back to `from` (or `/`): the page has no navigation code.
+GuardResult guard(Ref ref, {String? from}) =>
+    redirectIfSignedIn(ref, from: from);
+
+=== lib/app/sign-in/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/sign-in`. `SignInRoute.useForm` is generated from action.dart's form(), as on the
+/// contact page of `--features forms`. The page does not navigate: the sign-in guard does.
+class SignInPage extends HookConsumerWidget {
+  const SignInPage({super.key, this.from});
+
+  /// Where the guard that sent the user here was going.
+  final String? from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final form = SignInRoute.useForm(ref);
+    final f = form.fields;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sign in')),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          spacing: 16,
+          children: [
+            if (from != null) Text('Sign in to see $from'),
+            TextField(
+              controller: f.username.controller,
+              decoration: InputDecoration(
+                labelText: 'User name',
+                errorText: f.username.error,
+              ),
+            ),
+            TextField(
+              controller: f.password.controller,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                errorText: f.password.error,
+              ),
+            ),
+            if (form.error case final e?) Text('$e'),
+            FilledButton(
+              // Null while the sign-in runs: the button is disabled.
+              onPressed: form.onSubmit,
+              child: Text(form.isPending ? 'Signing in...' : 'Sign in'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+=== test/auth_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_auth/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/auth_setup.dart';
+
+void main() {
+  testWidgets('signed out, /account goes to sign-in with where it was going', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/account'),
+      overrides: fakeAuth(),
+    );
+    expect(currentLocation(tester), '/sign-in?from=%2Faccount');
+    expect(find.text('Sign in to see /account'), findsOneWidget);
+  });
+
+  testWidgets('signed in, /account opens, and signing out leaves it', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/account'),
+      overrides: fakeAuth(
+        signedInAs: const AuthUser(id: 'ada-id', name: 'Ada'),
+      ),
+    );
+    expect(currentLocation(tester), '/account');
+    expect(find.text('Signed in as Ada'), findsOneWidget);
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/sign-in?from=%2Faccount');
+  });
+
+  testWidgets('until you connect a provider, signing in says so', (
+    tester,
+  ) async {
+    // The app's own backend, on an in-memory token store: nothing is stored, nothing is asked.
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/sign-in'),
+      overrides: [
+        authConfig.overrideWithValue(
+          AuthConfig(backend: authSetup().backend, store: MemoryTokenStore()),
+        ),
+        authInitialState.overrideWithValue(const SignedOut()),
+      ],
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'User name'), 'ada');
+    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'pw');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('connect your identity provider: docs/auth.md'),
+      findsOneWidget,
+    );
+    expect(currentLocation(tester), '/sign-in');
+  });
+}
+
+=== assets/i18n/en.arb (new)
+{
+  "@@locale": "en",
+  "app.title": "Translations",
+  "hello": "Hello",
+  "intro": "This text comes from assets/i18n/en.arb.",
+  "stock": "{count, plural, =0 {Sold out} one {# item in stock} other {# items in stock}}",
+  "more": "Add one",
+  "less": "Remove one"
+}
+
+=== assets/i18n/fr.arb (new)
+{
+  "@@locale": "fr",
+  "app.title": "Traductions",
+  "hello": "Bonjour",
+  "intro": "Ce texte vient de assets/i18n/fr.arb.",
+  "stock": "{count, plural, =0 {Épuisé} one {# article en stock} other {# articles en stock}}",
+  "more": "En ajouter un",
+  "less": "En retirer un"
+}
+
+=== lib/app/translations/page.dart (new)
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/translations`. The texts are keys: `TrText` and `context.tr` look them up in the
+/// language of the route. `lang` is the query parameter that sets the language (app.dart reads it
+/// from the location), and typing it here is what gives `TranslationsRoute` a `lang:` argument.
+class TranslationsPage extends StatefulWidget {
+  const TranslationsPage({super.key, this.lang});
+
+  final String? lang;
+
+  @override
+  State<TranslationsPage> createState() => _TranslationsPageState();
+}
+
+class _TranslationsPageState extends State<TranslationsPage> {
+  int _count = 1;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(context.tr('app.title')),
+      actions: [
+        // Plain buttons, not a menu: each goes to this page in the other language.
+        for (final other in const ['en', 'fr'])
+          TextButton(
+            key: ValueKey('lang-$other'),
+            onPressed: context.routeLocale == other
+                ? null
+                : () => TranslationsRoute(lang: other).go(context),
+            child: Text(other.toUpperCase()),
+          ),
+      ],
+    ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const TrText('hello', style: TextStyle(fontSize: 32)),
+        const TrText('intro'),
+        // An ICU plural: the form comes from the count and the language.
+        Text(context.tr('stock', {'count': _count})),
+        TextButton(
+          onPressed: () => setState(() => _count++),
+          child: Text(context.tr('more')),
+        ),
+        TextButton(
+          onPressed: _count == 0 ? null : () => setState(() => _count--),
+          child: Text(context.tr('less')),
+        ),
+      ],
+    ),
+  );
+}
+
+=== test/i18n_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/app/app.dart';
+
+/// Opens the app at [location] with the catalogs in assets/i18n/, as startup() reads them. The
+/// app's own App is passed: pumpRouter's default has no translation scope.
+Future<void> open(WidgetTester tester, String location) async {
+  final bundled = (await tester.runAsync(
+    () => BundledTranslations.load(locales: const ['en', 'fr']),
+  ))!;
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: location),
+    app: (router) => App(router: router),
+    overrides: [
+      translationsConfig.overrideWithValue(
+        Translations(bundled: bundled, baseLocale: 'en'),
+      ),
+    ],
+  );
+}
+
+void main() {
+  testWidgets('the first frame is translated, and ?lang= opens it in French', (
+    tester,
+  ) async {
+    await open(tester, '/translations');
+    expect(find.text('Hello'), findsOneWidget);
+
+    await open(tester, '/translations?lang=fr');
+    expect(find.text('Bonjour'), findsOneWidget);
+    expect(find.text('Hello'), findsNothing);
+  });
+
+  testWidgets('switching the language changes the location and the text', (
+    tester,
+  ) async {
+    await open(tester, '/translations?lang=en');
+    expect(find.text('Hello'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('lang-fr')));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/translations?lang=fr');
+    expect(find.text('Bonjour'), findsOneWidget);
+    // The Material strings follow the route too.
+    expect(
+      Localizations.localeOf(tester.element(find.byType(Scaffold).first)),
+      const Locale('fr'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('lang-en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hello'), findsOneWidget);
+  });
+
+  testWidgets('an ICU plural picks the form of the count', (tester) async {
+    await open(tester, '/translations?lang=fr');
+    expect(find.text('1 article en stock'), findsOneWidget);
+    await tester.tap(find.text('En ajouter un'));
+    await tester.pump();
+    expect(find.text('2 articles en stock'), findsOneWidget);
+    await tester.tap(find.text('En retirer un'));
+    await tester.tap(find.text('En retirer un'));
+    await tester.pump();
+    expect(find.text('Épuisé'), findsOneWidget);
+  });
+}
+
+=== lib/images.dart (new)
+import 'package:fespalier_image/fespalier_image.dart';
+
+/// Where the images are served from: `--dart-define=IMAGES_URL=https://img.example.com`. A public
+/// address, never a key (docs/responsive-images.md, "Signed image URLs").
+const String imagesUrl = String.fromEnvironment(
+  'IMAGES_URL',
+  defaultValue: 'https://images.example.com',
+);
+
+/// How the app asks for an image: a URL template, with the width the box needs in `{width}`.
+/// Swap the builder for your CDN's (`ImgproxyUrlBuilder`, `CloudinaryUrlBuilder`, `ImgixUrlBuilder`,
+/// `ThumborUrlBuilder`): docs/responsive-images.md, "URL builders".
+const ImageCdn appImages = ImageCdn(
+  builder: TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}'),
+  quality: 80,
+);
+
+=== lib/app/photo/page.dart (new)
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:flutter/material.dart';
+
+/// Served at `/photo`. A `ResponsiveImage` measures its box, multiplies by the device pixel ratio
+/// and asks the CDN (lib/images.dart) for the smallest width that is enough, so this square
+/// downloads a few hundred pixels, not the original. A failed load shows the error view, whose
+/// `retry` loads it again.
+class PhotoPage extends StatelessWidget {
+  const PhotoPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Photo')),
+    body: Center(
+      child: ResponsiveImage(
+        'sample.jpg',
+        width: 160,
+        aspectRatio: 1,
+        errorBuilder: (context, error, retry) => Center(
+          child: TextButton(onPressed: retry, child: const Text('Retry')),
+        ),
+      ),
+    ),
+  );
+}
+
+=== test/image_test.dart (new)
+import 'dart:ui' as ui;
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_image/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/images.dart';
+
+void main() {
+  late ui.Image image;
+  setUpAll(() async => image = await createTestImage(width: 8, height: 8));
+
+  testWidgets('the photo asks the CDN for the width its box needs', (
+    tester,
+  ) async {
+    // Loads go through FakeImages: no network, and the test sees every URL.
+    final images = FakeImages(image: image);
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/photo'),
+      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+    );
+    // A 160-point box at the test view's 3x pixel ratio is 480 pixels: the 640 bucket.
+    expect(images.requested, ['$imagesUrl/sample.jpg?w=640&q=80']);
+    expect(find.byType(RawImage), findsOneWidget);
+  });
+
+  testWidgets('a failed load shows the retry, and retrying asks again', (
+    tester,
+  ) async {
+    final images = FakeImages();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/photo'),
+      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+    );
+    final url = images.requested.single;
+    images.fail(url);
+    await tester.pumpAndSettle(); // the error reaches the widget a frame later
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(images.requested, [url, url]);
+  });
+}
+
+=== lib/api.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:http/http.dart' as http;
+
+/// Where the API is: `--dart-define=API_URL=https://api.myapp.dev`. The default is a placeholder,
+/// so a run without it fails to connect and the page shows its error view.
+const String apiUrl = String.fromEnvironment(
+  'API_URL',
+  defaultValue: 'https://api.example.com',
+);
+
+/// The client every request of the app goes through. A `data.dart` asks for it with
+/// `ref.abortable(ref.watch(httpClient))`, so the request stops when its page is gone
+/// (docs/http.md, "Cancelling a load whose page is gone"). A test replaces it with a
+/// `FakeHttpClient` (fespalier_http/testing.dart).
+///
+/// This is the one place to wrap it: a retrier for reads, `WriteGuardClient` so a write is never
+/// sent twice, and a session once you sign users in (`authHttpClient` of fespalier_auth, or
+/// `SessionClient`). docs/http.md, "The wrapping order", has the order that works.
+final httpClient = Provider<http.Client>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return client;
+});
+
+=== lib/app/headlines/data.dart (new)
+import 'dart:convert';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:my_app/api.dart';
+
+/// Loads what `/headlines` shows. `ref.abortable` ties every request of this build to the page:
+/// when the page is left, or this runs again, the request is aborted instead of running to the
+/// end for nobody. Ask for it before the first `await`.
+Future<List<String>> data(Ref ref) async {
+  final client = ref.abortable(ref.watch(httpClient));
+  final response = await client.get(Uri.parse('$apiUrl/headlines'));
+  if (response.statusCode != 200) {
+    throw StateError('GET /headlines answered HTTP ${response.statusCode}');
+  }
+  return [
+    for (final item in jsonDecode(response.body) as List<Object?>)
+      (item! as Map<String, Object?>)['title']! as String,
+  ];
+}
+
+=== lib/app/headlines/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/headlines`. data.dart loaded `titles` (matched by type) before this is built;
+/// loading.dart shows meanwhile and error.dart if the request failed.
+class HeadlinesPage extends StatelessWidget {
+  const HeadlinesPage({super.key, required this.titles});
+
+  final List<String> titles;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Headlines')),
+    body: ListView(
+      children: [for (final title in titles) ListTile(title: Text(title))],
+    ),
+  );
+}
+
+=== test/http_test.dart (new)
+import 'dart:async';
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_http/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:my_app/api.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  testWidgets('the headlines are loaded through the client, abortable', (
+    tester,
+  ) async {
+    // No network: the fake answers from a handler and records what was sent.
+    final client = FakeHttpClient(
+      (request, body) =>
+          http.Response('[{"title": "One"}, {"title": "Two"}]', 200),
+    );
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/headlines'),
+      overrides: [httpClient.overrideWithValue(client)],
+    );
+    expect(find.text('One'), findsOneWidget);
+    expect(find.text('Two'), findsOneWidget);
+    expect(client.requests.single.url, Uri.parse('$apiUrl/headlines'));
+    expect(client.requests.single.abortable, isTrue);
+  });
+
+  testWidgets('leaving the page aborts a request that is still running', (
+    tester,
+  ) async {
+    // A server that never answers.
+    final client = FakeHttpClient(
+      (request, body) => Completer<http.Response>().future,
+    );
+    final router = AppRoutes.router(initialLocation: '/headlines');
+    // Not settled: the loading view is on screen and the request is out.
+    await pumpRouter(
+      tester,
+      router,
+      overrides: [httpClient.overrideWithValue(client)],
+      settle: false,
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(1));
+    expect(client.abortCount, 0);
+
+    router.go('/');
+    await tester.pumpAndSettle(); // the page is gone, and so is its provider
+    expect(client.abortCount, 1);
+  });
+}
+
+=== lib/downloads.dart (new)
+import 'package:fespalier_download/fespalier_download.dart';
+
+/// The file the sample page downloads: `--dart-define=DOWNLOAD_URL=https://files.myapp.dev/a.pdf`.
+/// The default is a placeholder, so a run without it ends the download as failed.
+const String downloadUrl = String.fromEnvironment(
+  'DOWNLOAD_URL',
+  defaultValue: 'https://files.example.com/sample.pdf',
+);
+
+/// A download is a request: an id, a URL and where the file goes, as a base folder and a relative
+/// path (never an absolute one: an iOS container's path changes between launches). Add `bytes`
+/// and `sha256` to have the file checked before it is moved into place. A URL that grants access
+/// should be short-lived: never put a long-lived token in a header (docs/downloads.md, "Requests
+/// and files").
+final DownloadRequest sampleDownload = DownloadRequest(
+  id: 'sample',
+  url: Uri.parse(downloadUrl),
+  file: const DownloadLocation(DownloadBase.support, 'downloads/sample.pdf'),
+);
+
+=== lib/app/downloads/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/downloads.dart';
+
+/// Served at `/downloads`. Watching `downloads` opens the engine, which settles what a restart
+/// left (lib/app/startup.dart builds it); `downloadStatus` rebuilds this only when this one
+/// download changes. The engine here is the foreground one: a transfer stops when the app is
+/// closed. For downloads that go on while it is closed, use fespalier_download_background
+/// (docs/downloads.md, "The background backend"; it needs Flutter 3.47 and platform setup).
+class DownloadsPage extends ConsumerWidget {
+  const DownloadsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(downloads);
+    final status = ref.watch(downloadStatus(sampleDownload.id));
+    final engine = ref.read(downloadsEngine);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Downloads')),
+      body: Center(
+        child: switch (status) {
+          Running(:final received, :final total) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  value: total == null ? null : received / total,
+                ),
+              ),
+              TextButton(
+                onPressed: () => engine.pause(sampleDownload.id),
+                child: const Text('Pause'),
+              ),
+            ],
+          ),
+          Paused() => FilledButton(
+            onPressed: () => engine.resume(sampleDownload.id),
+            child: const Text('Resume'),
+          ),
+          Queued() || Waiting() || Verifying() => const Text('Working...'),
+          Complete() => const Text('Downloaded'),
+          Failed() => FilledButton(
+            onPressed: () => engine.retry(sampleDownload.id),
+            child: const Text('Try again'),
+          ),
+          _ => FilledButton(
+            onPressed: () => engine.start(sampleDownload),
+            child: const Text('Download'),
+          ),
+        },
+      ),
+    );
+  }
+}
+
+=== test/download_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:fespalier_download/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/downloads.dart';
+
+void main() {
+  testWidgets('a download starts, shows its progress and ends', (tester) async {
+    // No network and no disk: the fake backend plays the transfer.
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+    expect(backend.enqueued.single.id, sampleDownload.id);
+
+    backend.emit(sampleDownload.id, const Running(50, 100));
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    backend.emit(sampleDownload.id, Complete(sampleDownload.file, 100));
+    await tester.pump();
+    expect(find.text('Downloaded'), findsOneWidget);
+  });
+
+  testWidgets('a failed download can be tried again', (tester) async {
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+
+    backend.emit(sampleDownload.id, const Failed(DownloadFailure.network));
+    await tester.pump();
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    expect(backend.enqueued, hasLength(2));
   });
 }

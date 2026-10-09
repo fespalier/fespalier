@@ -119,16 +119,40 @@ token or a long-lived bearer in a request or a grant, and a DPoP proof cannot be
 The telemetry span's end has `fespalier.download.regranted: true` when a renewal was asked. See
 [the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#credentials).
 
+## Notification taps
+
+An [adapter](https://github.com/fespalier/fespalier/blob/main/docs/adapters.md) (`fespalier: adapters: [fespalier_download]`)
+opens a typed route from a tap on a download's notification: a tap that cold-starts the app is the initial location, one
+while the app runs is a `go` (or `push`), both marked `source=notification`. The engine is built by one call in `main()`
+before `AppMain.run()`, and the adapter binds it to `downloadsEngine`:
+
+```dart
+FespalierDownload.configure(
+  backend: BackgroundDownloaderBackend(),
+  store: FileDownloadStore(bases: bases),
+  notifications: const DownloadNotifications(running: 'Downloading'),
+  route: (tap) => switch (tap.request?.id) {
+    final id? when id.startsWith('manual-') => DownloadTarget.to(ManualRoute(id: id)),
+    _ => null,
+  },
+);
+```
+
+Unconfigured, it reports one `FlutterError` and does nothing. The tap slot of the engine (`observeTaps`) is the adapter's.
+Which comes first on a cold start, the tap or the backend's replay, is UNCHECKED on a device
+([#158](https://github.com/fespalier/fespalier/issues/158)). See
+[the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#notification-taps).
+
 ## Test it
 
 `package:fespalier_download/testing.dart` has `FakeDownloadBackend` (the test plays the platform with `emit` and `tap`),
 `MemoryDownloadStore`, `FakeDownloadFiles` and `FakeTransferFiles`, and `downloadTestOverrides(backend:)` for the
 providers. A test builds `Downloads(backend:, store:, files:)` over them, calls `open()`,
-and plays the platform with `emit`; `replay:` is what the backend reports at open, to test a restart.
+and plays the platform with `emit`; `replay:` is what the backend reports at open, to test a restart, and `replayTaps:` the notification taps it delivers then.
 
 ## Rules
 
-- **The engine imports no Riverpod** (`test/engine_test.dart` greps it) and keeps one observer slot that `close()` clears.
+- **The engine imports no Riverpod** (`test/engine_test.dart` greps it) and keeps one observer slot and one tap slot (the adapter's) that `close()` clears.
 - **The registry is never a `BoundedDataStorage`** and is written by atomic rename; the providers add no timer and no listener.
 - **No timer, no polling, no microtask, no listener of its own**, and nothing that opens a dialog, a menu, a sheet or a
   snack bar: `test/no_timers_test.dart` greps `lib/`, with no exception.

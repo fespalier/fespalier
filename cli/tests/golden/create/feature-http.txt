@@ -1,0 +1,280 @@
+create my_app (package my_app, features: http)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v<version>
+  http: "^1.5.0"
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+  test:
+    # /headlines needs an http client: test/http_test.dart serves it from a FakeHttpClient.
+    skip: [/headlines]
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== lib/api.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:http/http.dart' as http;
+
+/// Where the API is: `--dart-define=API_URL=https://api.myapp.dev`. The default is a placeholder,
+/// so a run without it fails to connect and the page shows its error view.
+const String apiUrl = String.fromEnvironment(
+  'API_URL',
+  defaultValue: 'https://api.example.com',
+);
+
+/// The client every request of the app goes through. A `data.dart` asks for it with
+/// `ref.abortable(ref.watch(httpClient))`, so the request stops when its page is gone
+/// (docs/http.md, "Cancelling a load whose page is gone"). A test replaces it with a
+/// `FakeHttpClient` (fespalier_http/testing.dart).
+///
+/// This is the one place to wrap it: a retrier for reads, `WriteGuardClient` so a write is never
+/// sent twice, and a session once you sign users in (`authHttpClient` of fespalier_auth, or
+/// `SessionClient`). docs/http.md, "The wrapping order", has the order that works.
+final httpClient = Provider<http.Client>((ref) {
+  final client = http.Client();
+  ref.onDispose(client.close);
+  return client;
+});
+
+=== lib/app/headlines/data.dart (new)
+import 'dart:convert';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:my_app/api.dart';
+
+/// Loads what `/headlines` shows. `ref.abortable` ties every request of this build to the page:
+/// when the page is left, or this runs again, the request is aborted instead of running to the
+/// end for nobody. Ask for it before the first `await`.
+Future<List<String>> data(Ref ref) async {
+  final client = ref.abortable(ref.watch(httpClient));
+  final response = await client.get(Uri.parse('$apiUrl/headlines'));
+  if (response.statusCode != 200) {
+    throw StateError('GET /headlines answered HTTP ${response.statusCode}');
+  }
+  return [
+    for (final item in jsonDecode(response.body) as List<Object?>)
+      (item! as Map<String, Object?>)['title']! as String,
+  ];
+}
+
+=== lib/app/headlines/page.dart (new)
+import 'package:flutter/material.dart';
+
+/// Served at `/headlines`. data.dart loaded `titles` (matched by type) before this is built;
+/// loading.dart shows meanwhile and error.dart if the request failed.
+class HeadlinesPage extends StatelessWidget {
+  const HeadlinesPage({super.key, required this.titles});
+
+  final List<String> titles;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Headlines')),
+    body: ListView(
+      children: [for (final title in titles) ListTile(title: Text(title))],
+    ),
+  );
+}
+
+=== test/http_test.dart (new)
+import 'dart:async';
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_http/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:my_app/api.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  testWidgets('the headlines are loaded through the client, abortable', (
+    tester,
+  ) async {
+    // No network: the fake answers from a handler and records what was sent.
+    final client = FakeHttpClient(
+      (request, body) =>
+          http.Response('[{"title": "One"}, {"title": "Two"}]', 200),
+    );
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/headlines'),
+      overrides: [httpClient.overrideWithValue(client)],
+    );
+    expect(find.text('One'), findsOneWidget);
+    expect(find.text('Two'), findsOneWidget);
+    expect(client.requests.single.url, Uri.parse('$apiUrl/headlines'));
+    expect(client.requests.single.abortable, isTrue);
+  });
+
+  testWidgets('leaving the page aborts a request that is still running', (
+    tester,
+  ) async {
+    // A server that never answers.
+    final client = FakeHttpClient(
+      (request, body) => Completer<http.Response>().future,
+    );
+    final router = AppRoutes.router(initialLocation: '/headlines');
+    // Not settled: the loading view is on screen and the request is out.
+    await pumpRouter(
+      tester,
+      router,
+      overrides: [httpClient.overrideWithValue(client)],
+      settle: false,
+    );
+    await tester.pump();
+    expect(client.requests, hasLength(1));
+    expect(client.abortCount, 0);
+
+    router.go('/');
+    await tester.pumpAndSettle(); // the page is gone, and so is its provider
+    expect(client.abortCount, 1);
+  });
+}

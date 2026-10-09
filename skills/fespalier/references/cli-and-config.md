@@ -430,6 +430,30 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   (`cli/src/create/compose.rs`): imports sorted and deduplicated, startup steps in a fixed order (telemetry
   sinks, then `restoreAuth`, then the rest), `startup()` async only when a step awaits, at most one `zone()` (two
   features that each have one are an error naming both; `weak_zone` is the exception above).
+  Also since 0.15.0: `auth` (`fespalier_auth` and `fespalier_forms`; `/account` under a `(signed-in)` folder
+  with `requireSignedIn`, `/sign-in` as a form on an action with `redirectIfSignedIn`, `restoreAuth(authSetup())`
+  in the Session phase of `startup()` (after the telemetry sink, before the rest); `IdentityBackend` in
+  `lib/auth_setup.dart` throws `UnimplementedError('connect your identity provider: docs/auth.md')` from every
+  method; the test uses `fakeAuth`. `flutter_secure_storage` needs Android `minSdk` 24 and Flutter's default is 21
+  before 3.35 (read in `FlutterExtension.kt` of both SDKs), so with an Android folder `fsp create` rewrites
+  `minSdk = flutter.minSdkVersion` in `android/app/build.gradle.kts` to `maxOf(flutter.minSdkVersion, 24)`
+  (`cli/src/create/android.rs`; a file without that line is left, with a note)), `i18n` (`fespalier_tolgee`
+  and `flutter_localizations`; bundled `assets/i18n/{en,fr}.arb`, no key and no `remote:`; `app.dart` is the
+  scope's `TranslationScope.routerConfig` with `localeOf` on the `lang` query; `/translations`, which `fsp test`
+  skips through `test: skip:` in the pubspec because it needs the scope; the test switches language) and `image`
+  (`fespalier_image`; `lib/images.dart` with a `TemplateUrlBuilder` and no signing key, `imageCdnProvider` in
+  `startup()`, `/photo`; the test uses `FakeImages`). A feature can also give the composer a whole
+  `app_template`, `assets`, `smoke_skip` and `android_min_sdk`.
+  Also since 0.15.0: `http` (`fespalier_http` and `http` ^1.5.0, no Dio; `lib/api.dart` has the `httpClient` provider that closes
+  its client and `apiUrl` from `--dart-define=API_URL`; `lib/app/headlines/data.dart` loads through
+  `ref.abortable(ref.watch(httpClient))` before its first `await`; the test serves it from `FakeHttpClient` and counts an
+  abort when the page is left; `/headlines` is in `test: skip:`; session, retry and `WriteGuardClient` are the app's, in the
+  order of docs/http.md, "The wrapping order") and `download` (`fespalier_download` and `path_provider`; `startup()`
+  overrides `downloadsEngine` with a `Downloads` over `HttpDownloadBackend`, `FileDownloadStore` and
+  `TransferDownloadFiles`, the base folders from `path_provider` in `appBases`; `/downloads` shows `downloadStatus`; the test
+  uses `downloadTestOverrides` and `FakeDownloadBackend`; `/downloads` is in `test: skip:`; the background package
+  `fespalier_download_background` needs Flutter 3.47 and platform setup, so it is not a feature, and `--local-packages`
+  overrides `fespalier_http` for `download` through `COMPANION_DEPS`).
   The messages are in `fespalier-troubleshooting`, `references/diagnostics-create.md`.
 
 ### `fsp telemetry` (since 0.8.1)

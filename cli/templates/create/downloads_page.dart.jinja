@@ -1,0 +1,56 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:flutter/material.dart';
+import 'package:{{ package }}/downloads.dart';
+
+/// Served at `/downloads`. Watching `downloads` opens the engine, which settles what a restart
+/// left (lib/app/startup.dart builds it); `downloadStatus` rebuilds this only when this one
+/// download changes. The engine here is the foreground one: a transfer stops when the app is
+/// closed. For downloads that go on while it is closed, use fespalier_download_background
+/// (docs/downloads.md, "The background backend"; it needs Flutter 3.47 and platform setup).
+class DownloadsPage extends ConsumerWidget {
+  const DownloadsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(downloads);
+    final status = ref.watch(downloadStatus(sampleDownload.id));
+    final engine = ref.read(downloadsEngine);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Downloads')),
+      body: Center(
+        child: switch (status) {
+          Running(:final received, :final total) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  value: total == null ? null : received / total,
+                ),
+              ),
+              TextButton(
+                onPressed: () => engine.pause(sampleDownload.id),
+                child: const Text('Pause'),
+              ),
+            ],
+          ),
+          Paused() => FilledButton(
+            onPressed: () => engine.resume(sampleDownload.id),
+            child: const Text('Resume'),
+          ),
+          Queued() || Waiting() || Verifying() => const Text('Working...'),
+          Complete() => const Text('Downloaded'),
+          Failed() => FilledButton(
+            onPressed: () => engine.retry(sampleDownload.id),
+            child: const Text('Try again'),
+          ),
+          _ => FilledButton(
+            onPressed: () => engine.start(sampleDownload),
+            child: const Text('Download'),
+          ),
+        },
+      ),
+    );
+  }
+}

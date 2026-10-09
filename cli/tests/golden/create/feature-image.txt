@@ -1,0 +1,268 @@
+create my_app (package my_app, features: image)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_image:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_image
+      ref: v<version>
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
+# fespalier:
+#   tasks:
+#     dev:
+#       before: dart run build_runner build -d # one-shot, before flutter run
+#       with:
+#         build_runner: dart run build_runner watch -d # long-running, next to it
+#     codegen: dart run build_runner build -d # fsp run codegen
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:my_app/images.dart';
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+List<Override> startup() => [
+  // fespalier_image: which CDN the images come from (lib/images.dart).
+  imageCdnProvider.overrideWithValue(appImages),
+];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== lib/images.dart (new)
+import 'package:fespalier_image/fespalier_image.dart';
+
+/// Where the images are served from: `--dart-define=IMAGES_URL=https://img.example.com`. A public
+/// address, never a key (docs/responsive-images.md, "Signed image URLs").
+const String imagesUrl = String.fromEnvironment(
+  'IMAGES_URL',
+  defaultValue: 'https://images.example.com',
+);
+
+/// How the app asks for an image: a URL template, with the width the box needs in `{width}`.
+/// Swap the builder for your CDN's (`ImgproxyUrlBuilder`, `CloudinaryUrlBuilder`, `ImgixUrlBuilder`,
+/// `ThumborUrlBuilder`): docs/responsive-images.md, "URL builders".
+const ImageCdn appImages = ImageCdn(
+  builder: TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}'),
+  quality: 80,
+);
+
+=== lib/app/photo/page.dart (new)
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:flutter/material.dart';
+
+/// Served at `/photo`. A `ResponsiveImage` measures its box, multiplies by the device pixel ratio
+/// and asks the CDN (lib/images.dart) for the smallest width that is enough, so this square
+/// downloads a few hundred pixels, not the original. A failed load shows the error view, whose
+/// `retry` loads it again.
+class PhotoPage extends StatelessWidget {
+  const PhotoPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Photo')),
+    body: Center(
+      child: ResponsiveImage(
+        'sample.jpg',
+        width: 160,
+        aspectRatio: 1,
+        errorBuilder: (context, error, retry) => Center(
+          child: TextButton(onPressed: retry, child: const Text('Retry')),
+        ),
+      ),
+    ),
+  );
+}
+
+=== test/image_test.dart (new)
+import 'dart:ui' as ui;
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_image/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/images.dart';
+
+void main() {
+  late ui.Image image;
+  setUpAll(() async => image = await createTestImage(width: 8, height: 8));
+
+  testWidgets('the photo asks the CDN for the width its box needs', (
+    tester,
+  ) async {
+    // Loads go through FakeImages: no network, and the test sees every URL.
+    final images = FakeImages(image: image);
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/photo'),
+      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+    );
+    // A 160-point box at the test view's 3x pixel ratio is 480 pixels: the 640 bucket.
+    expect(images.requested, ['$imagesUrl/sample.jpg?w=640&q=80']);
+    expect(find.byType(RawImage), findsOneWidget);
+  });
+
+  testWidgets('a failed load shows the retry, and retrying asks again', (
+    tester,
+  ) async {
+    final images = FakeImages();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/photo'),
+      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+    );
+    final url = images.requested.single;
+    images.fail(url);
+    await tester.pumpAndSettle(); // the error reaches the widget a frame later
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(images.requested, [url, url]);
+  });
+}

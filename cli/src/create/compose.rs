@@ -63,7 +63,8 @@ struct PubspecCx<'a> {
     floor: String,
     deps: Vec<Dep>,
     dev_deps: Vec<Dep>,
-    config: Vec<&'a str>,
+    config: Vec<String>,
+    assets: Vec<&'a str>,
     overrides: Vec<Override>,
 }
 
@@ -73,6 +74,7 @@ fn third_party<'a>(packages: impl Iterator<Item = &'a ThirdParty>) -> Vec<Dep> {
         .map(|tp| {
             let (head, lines) = match tp.source {
                 Source::Range(range) => (format!("{}: \"{range}\"", tp.name), vec![]),
+                Source::Sdk(sdk) => (format!("{}:", tp.name), vec![format!("sdk: {sdk}")]),
                 Source::Git { url, commit } => (
                     format!("{}:", tp.name),
                     vec![
@@ -154,12 +156,18 @@ pub fn pubspec(
         _ => vec![],
     };
     // Two features may ask for the same key (`telemetry: true`); it is written once.
-    let mut config: Vec<&str> = vec![];
+    let mut config: Vec<String> = vec![];
     for line in features.iter().flat_map(|r| r.config.iter().copied()) {
-        if !config.contains(&line) {
-            config.push(line);
+        if !config.iter().any(|c| c == line) {
+            config.push(line.to_string());
         }
     }
+    config.extend(smoke_skip_lines(features));
+    let mut assets: Vec<&str> = features
+        .iter()
+        .flat_map(|r| r.startup.assets.iter().copied())
+        .collect();
+    assets.dedup();
     let floor = features
         .iter()
         .map(|r| r.flutter_floor)
@@ -175,9 +183,31 @@ pub fn pubspec(
             deps,
             dev_deps,
             config,
+            assets,
             overrides,
         },
     ))
+}
+
+/// The `test:` section of the pubspec's `fespalier:` key that leaves out the routes the features
+/// say `fsp test` cannot open on its own, each with the reason: none when no feature says so.
+fn smoke_skip_lines(features: &[&Recipe]) -> Vec<String> {
+    let skips: Vec<&(&str, &str)> = features
+        .iter()
+        .flat_map(|r| r.startup.smoke_skip.iter())
+        .collect();
+    if skips.is_empty() {
+        return vec![];
+    }
+    let mut lines = vec!["test:".to_string()];
+    lines.extend(
+        skips
+            .iter()
+            .map(|(route, why)| format!("  # {route} {why}.")),
+    );
+    let routes: Vec<&str> = skips.iter().map(|(route, _)| *route).collect();
+    lines.push(format!("  skip: [{}]", routes.join(", ")));
+    lines
 }
 
 /// Which group of an import block a library is in: `dart:`, then `package:`, then the rest.
@@ -252,14 +282,27 @@ pub fn merge_imports(source: &str, extra: &[&str]) -> String {
     out
 }
 
-/// `lib/app/app.dart`: the starter with the libraries the features import in it.
-#[must_use]
-pub fn app_dart(starter: &str, features: &[&Recipe]) -> String {
+/// `lib/app/app.dart`: the starter, or the template of the one feature that has its own, with the
+/// libraries the features import in it. `name` is the app's package name.
+pub fn app_dart(name: &str, starter: &str, features: &[&Recipe]) -> Result<String> {
+    let mut templates = features
+        .iter()
+        .filter_map(|r| r.startup.app_template.map(|t| (r.id, t)));
+    let own = templates.next();
+    if let Some((first, _)) = own
+        && let Some((second, _)) = templates.next()
+    {
+        bail!("`{first}` and `{second}` both write lib/app/app.dart; an app has one");
+    }
+    let base = own.map_or_else(
+        || starter.to_string(),
+        |(_, template)| templates::render(template, serde_json::json!({ "package": name })),
+    );
     let extra: Vec<&str> = features
         .iter()
         .flat_map(|r| r.startup.app_imports.iter().copied())
         .collect();
-    merge_imports(starter, &extra)
+    Ok(merge_imports(&base, &extra))
 }
 
 /// `lib/main.dart`: the template with the libraries the features import in it.
@@ -418,12 +461,13 @@ pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> 
         }
     };
 
-    let mut out = import_block(plain_imports(
-        features
-            .iter()
-            .flat_map(|r| r.startup.imports.iter().copied())
-            .chain(["package:fespalier/startup.dart"]),
-    ));
+    let uris: Vec<String> = features
+        .iter()
+        .flat_map(|r| r.startup.imports.iter().copied())
+        .chain(["package:fespalier/startup.dart"])
+        .map(|uri| uri.replace("{name}", name))
+        .collect();
+    let mut out = import_block(plain_imports(uris.iter().map(String::as_str)));
     out.push('\n');
     for decl in &decls {
         out.push_str(decl);

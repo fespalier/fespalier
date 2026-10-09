@@ -27,6 +27,7 @@ use crate::config::Config;
 use crate::procs;
 use crate::tasks::{self, Cmd};
 
+pub mod android;
 pub mod compose;
 pub mod plan;
 pub mod recipes;
@@ -397,6 +398,26 @@ fn move_into_place(staging: &Path, dir: &Path) -> io::Result<()> {
     fs::remove_dir(staging)
 }
 
+/// Raises `minSdk` in the app's Gradle file (`create/android.rs`). A missing file means no Android
+/// folder; a file of a shape it does not know is left as it is, with the line to write by hand.
+fn raise_android_min_sdk(root: &Path, min: u32) -> Result<()> {
+    let path = root.join(plan::ANDROID_GRADLE);
+    let Ok(text) = fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    match android::raise_min_sdk(&text, min) {
+        Some(edited) => {
+            fs::write(&path, edited).with_context(|| format!("writing {}", path.display()))?;
+            eprintln!("  edit  {} (minSdk {min} or more)", plan::ANDROID_GRADLE);
+        }
+        None => eprintln!(
+            "note: {} has no `minSdk = flutter.minSdkVersion` line; set minSdk to at least {min} yourself (flutter_secure_storage needs it)",
+            plan::ANDROID_GRADLE
+        ),
+    }
+    Ok(())
+}
+
 fn execute(plan: &Plan, abs: &Path, report: &Report) -> Result<()> {
     procs::install_signals().map_err(anyhow::Error::msg)?;
     let parent = abs.parent().unwrap_or(Path::new("."));
@@ -421,6 +442,10 @@ fn execute(plan: &Plan, abs: &Path, report: &Report) -> Result<()> {
         fs::write(&path, &file.content).with_context(|| format!("writing {}", path.display()))?;
         report.event(&json!({ "event": "file", "path": file.path, "action": file.action.word() }));
         eprintln!("  {:<5} {}", file.action.word(), file.path);
+    }
+
+    if let Some(min) = plan.android_min_sdk {
+        raise_android_min_sdk(&staging.path, min)?;
     }
 
     move_into_place(&staging.path, abs)

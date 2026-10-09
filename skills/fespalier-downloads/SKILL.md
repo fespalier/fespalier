@@ -1,6 +1,6 @@
 ---
 name: fespalier-downloads
-description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles and FakeTransferFiles in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
+description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
 ---
 
 # fespalier-downloads
@@ -16,9 +16,9 @@ and the ports of a transfer engine. It adds no file kind, no `fespalier:` key an
 same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
 predates 0.15.0 has no such package.
 
-**Not built yet in this release: providers, a background backend and notification taps.** The engine, `Downloads`, and the
-foreground `HttpDownloadBackend` exist (since 0.15.0); do not write `downloads` or `downloadStatus` provider code, or a
-background backend: they do not exist. A download that must go on while the app is closed is not possible yet.
+**Not built yet in this release: a background backend and notification taps.** The engine, `Downloads`, the foreground
+`HttpDownloadBackend`, the `FileDownloadStore` registry and the providers exist (since 0.15.0); do not write a background
+backend or tap routing: they do not exist. A download that must go on while the app is closed is not possible yet.
 
 ## The foreground backend
 
@@ -37,6 +37,22 @@ background backend: they do not exist. A download that must go on while the app 
   `storage`, `unsupported`. On the web every start is `Failed(unsupported)` before a request: hand the browser the URL.
 - **The client must honour `http.Abortable`** (the `package:http` clients do) or a pause cannot free a silent connection.
 - `HttpTransfer` and `TransferFiles` are the pieces under it, exported for a backend of your own.
+
+## In a widget
+
+(Since 0.15.0.) Build one `Downloads(backend:, store: FileDownloadStore(bases: bases), files: TransferDownloadFiles(bases: bases))`
+and override `downloadsEngine` with it in `startup.dart` (`downloadsEngine.overrideWithValue(engine)`). The provider has no
+default: without the override it throws a `StateError` naming it. In a `ConsumerWidget`, `ref.watch(downloads)` (a
+`Map<String, DownloadStatus>`; it opens the engine) and `ref.watch(downloadStatus(id))` (rebuilds only for that id; `Absent`
+when unknown); act with `ref.read(downloadsEngine).start/pause/resume/retry/cancel/remove`. Disposing `downloads` clears the
+engine's observer and closes it. Do not call `observe` yourself on an engine `downloads` watches: the slot is the provider's.
+
+- **`FileDownloadStore` is the registry** (since 0.15.0): a JSON file `fespalier_downloads.json` in the `support` folder of
+  your `DownloadBases`, written by atomic rename, never evicting (do not swap in a `BoundedDataStorage` or the `fespalier_storage`
+  storages), empty when missing or corrupt, deleted by `clearAccount()`. In memory only on the web. Request **headers are in it
+  in plaintext**, so a short-lived URL, not a header credential.
+- **Test**: `downloadTestOverrides(backend: FakeDownloadBackend())` in a `ProviderContainer`; `backend.emit(id, status)` moves
+  `downloads` and `downloadStatus`. Read a provider after an `emit` before asserting: Riverpod batches listener calls.
 
 ## Install
 
@@ -64,6 +80,9 @@ a real tag in an app, but never in these pages, where `cli/tests/versions.rs` wo
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `package:fespalier_download/fespalier_download.dart` | `DownloadRequest`, `DownloadLocation`, `DownloadBase`, `DownloadNetwork`, `DownloadPriority`, `DownloadStatus` and its cases, `WaitReason`, `DownloadFailure`, the ports `DownloadBackend`, `DownloadEvents`, `DownloadCapabilities`, `DownloadStore`, `DownloadFiles`, `Downloads`, `DownloadObserver`, `HttpDownloadBackend`, `DownloadBases`, `TransferDownloadFiles`, `HttpTransfer`, `TransferFiles`, `FespalierDownloadConventions` |
 | `package:fespalier_download/testing.dart`            | `FakeDownloadBackend` (with `replay:`), `MemoryDownloadStore`, `FakeDownloadFiles`, `FakeTransferFiles`                                                                                                                                                                                                                                                                                                                                   |
+
+`package:fespalier_download/fespalier_download.dart` also exports `FileDownloadStore`, `downloadsEngine`, `downloads`,
+`DownloadsNotifier` and `downloadStatus`, and `testing.dart` has `downloadTestOverrides`.
 
 The engine in detail, with the restart and sign-out rules, is [`references/engine.md`](references/engine.md). The model in detail, with the exact refusals of `isValid`, is [`references/model.md`](references/model.md). The fakes and a
 test that plays a platform are [`references/fakes.md`](references/fakes.md).

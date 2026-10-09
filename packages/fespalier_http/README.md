@@ -37,11 +37,11 @@ and on nothing else: an app that uses `package:http` links no Dio.
 
 ## Libraries
 
-| Library                                      | What is in it                                                                                        |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Library                                      | What is in it                                                                                                           |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `package:fespalier_http/fespalier_http.dart` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`, `HttpWrites`, `HttpCredentials` |
-| `package:fespalier_http/problem.dart`        | no client: `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (the library above exports it)       |
-| `package:fespalier_http/testing.dart`        | `FakeHttpClient` (answers from a handler, honours an abort, records requests), `FakeHttpCredentials` |
+| `package:fespalier_http/problem.dart`        | no client: `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (the library above exports it)                          |
+| `package:fespalier_http/testing.dart`        | `FakeHttpClient` (answers from a handler, honours an abort, records requests), `FakeHttpCredentials`                    |
 
 The seam is `package:http`'s own `Client`, `BaseRequest` and `StreamedResponse`: whatever is an `http.Client`
 (`IOClient`, `cupertino_http`, `RetryClient`, a `MockClient`) fits. `HttpCredentials` is the session's

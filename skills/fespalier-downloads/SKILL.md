@@ -1,6 +1,6 @@
 ---
 name: fespalier-downloads
-description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, the background backend of fespalier_download_background (BackgroundDownloaderBackend over background_downloader on Flutter 3.47: the operating system keeps the transfer going, only its own plugin group, notifications off unless configured, userInitiated refused without them, headers in plaintext in the OS queue, the Android and iOS setup, what no device has checked), and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles, FakeBackgroundTransport and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
+description: "Files downloaded in a fespalier app with fespalier_download (since 0.15.0) — the model, ports, the Downloads engine and the foreground HttpDownloadBackend: Downloads (open, start, pause, resume, retry, cancel, remove, pathOf, statusOf, observe, clearAccount, reconciliation after a restart), DownloadRequest (id, URL, a DownloadLocation of a DownloadBase and a relative path, headers, size, sha256, DownloadNetwork, DownloadPriority) and its isValid, DownloadLocation.isValid refusing an absolute path, .., a backslash and NUL, the sealed DownloadStatus family (Absent, Queued, Waiting, Running, Paused, Verifying, Complete, Failed, Cancelled) with WaitReason and DownloadFailure, the DownloadBackend, DownloadStore and DownloadFiles ports, the fespalier.download telemetry that never carries a URL, an id or a path, HttpDownloadBackend (Range and If-Range resume from a .part file, size and sha256 checks, pause only, the web ends unsupported), TransferDownloadFiles, the FileDownloadStore registry (one JSON file written by atomic rename, never evicted, wiped at sign-out), the downloadsEngine, downloads and downloadStatus providers for a widget, the background backend of fespalier_download_background (BackgroundDownloaderBackend over background_downloader on Flutter 3.47: the operating system keeps the transfer going, only its own plugin group, notifications off unless configured, userInitiated refused without them, headers in plaintext in the OS queue, the Android and iOS setup, what no device has checked), background uploads (Uploads, a sibling engine of Downloads with no file port, UploadRequest of a DownloadLocation as multipart or binary POST or PUT, BackgroundUploaderBackend in its own plugin group, FileUploadStore, and the replay rule: only an upload with an Idempotency-Key is retried, renewed after a 401 or sent again, any other is sent once and ends Failed with outcomeUnknown), and FakeDownloadBackend, MemoryDownloadStore, FakeDownloadFiles, FakeTransferFiles, FakeBackgroundTransport, FakeUploadBackend, MemoryUploadStore and downloadTestOverrides in tests. Load before adding a file download, an offline file, a progress screen or a resumable transfer, or when a request is not valid, a path is refused, or a test needs a download with no network."
 ---
 
 # fespalier-downloads
@@ -16,10 +16,11 @@ and the ports of a transfer engine. It adds no file kind, no `fespalier:` key an
 same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
 predates 0.15.0 has no such package.
 
-**Not built yet in this release: notification taps as routes and uploads.** The engine, `Downloads`, the foreground
-`HttpDownloadBackend`, the `FileDownloadStore` registry, the providers and the background backend
-(`fespalier_download_background`, Flutter 3.47, [`references/background.md`](references/background.md)) exist (since 0.15.0);
-do not write tap routing or an upload: they do not exist. A download that must go on while the app is closed uses the
+**Not built yet in this release: notification taps as routes, and a foreground upload.** The engine, `Downloads`, the
+foreground `HttpDownloadBackend`, the `FileDownloadStore` registry, the providers, the background backend
+(`fespalier_download_background`, Flutter 3.47, [`references/background.md`](references/background.md)) and background
+uploads ([`references/uploads.md`](references/uploads.md)) exist (since 0.15.0); do not write tap routing or an upload over
+an `http.Client`: they do not exist. A download that must go on while the app is closed uses the
 background backend. What no device has answered about it (issue #158) is listed there as UNCHECKED: never state those as fact.
 
 ## The foreground backend
@@ -59,6 +60,24 @@ background backend. What no device has answered about it (issue #158) is listed 
   iOS 14 and the notification delegate): "Android and iOS setup" in `docs/downloads.md`.
 - **Test with `FakeBackgroundTransport`**; no test runs the plugin.
 
+## Uploads
+
+(Since 0.15.0, `fespalier_download_background`, over `background_downloader` 9.6.4; background only, the web is `Failed(unsupported)`.)
+`Uploads(backend: BackgroundUploaderBackend(), store: FileUploadStore(bases: bases))` sends a file, a `DownloadLocation`
+(base plus relative path), as multipart (`fileField`, string `fields`) or binary, `POST` or `PUT`. It is a **sibling of
+`Downloads`**: no file port, so nothing it does deletes the file you sent, and an entry nobody mentions after a restart is
+`Failed(killed)`, never `Complete`. Details: [`references/uploads.md`](references/uploads.md).
+
+- **Replay safety is the rule.** Only an upload with an `Idempotency-Key` header (`HttpWrites.isWrite`, `replaySafe`) is
+  retried by the platform, renewed after a 401 or 403, or sent again by `retry`. Any other is sent **once** (`retries: 0`, no
+  pause in the plugin): a kill or a lost response ends it `Failed` with `outcomeUnknown(id)` true, and `retry` and `start`
+  refuse it until the app `remove`s it on purpose. Never re-send a non-idempotent upload to unstick it.
+- **Auth is a grant** (`Uploads(grantor:)`), headers in plaintext in the OS queue; its own plugin group `fespalier.upload`;
+  telemetry in its own namespace, `fespalier.upload.*`, constants only.
+- **UNCHECKED on a device**: the system sending an upload with the app closed, a server reading the plugin's multipart body,
+  a non-2xx answer's status, how long an Android upload may run, WorkManager sending it again by itself, the two engines
+  opening one after the other. Never state those as fact.
+
 ## Credentials
 
 (Since 0.15.0.) Authenticate a download with a **short-lived capability grant**, not a stored credential: the app makes its
@@ -76,8 +95,8 @@ the grant; `DownloadGrant.toString()` prints no field; the span end carries `fes
   only. For anything an operating-system backend sends, use a grant.
 - **Plain `DownloadRequest.headers` are persisted in plaintext** (the registry, and a background backend's queue). Never a
   refresh token or a long-lived bearer. DPoP per send cannot work in the background: the native callbacks cannot sign.
-- A request that is not replay-safe (a `POST`) is sent once: no re-send after a 401, no pause cycling. Nothing sends one in
-  this release (uploads come later).
+- A request that is not replay-safe (a `POST` or `PUT` without an `Idempotency-Key`) is sent once: no re-send after a 401,
+  no pause cycling. `Uploads` is what sends one (see Uploads).
 
 ## In a widget
 
@@ -125,7 +144,7 @@ a real tag in an app, but never in these pages, where `cli/tests/versions.rs` wo
 `package:fespalier_download/fespalier_download.dart` also exports `FileDownloadStore`, `downloadsEngine`, `downloads`,
 `DownloadsNotifier` and `downloadStatus`, and `DownloadGrant` and `DownloadGrantor` (since 0.15.0, see Credentials); `testing.dart` has `downloadTestOverrides`.
 
-The background backend in detail, with its setup and what is unchecked, is [`references/background.md`](references/background.md).
+The background backend in detail, with its setup and what is unchecked, is [`references/background.md`](references/background.md); uploads (`Uploads`, `UploadRequest`, `BackgroundUploaderBackend`, `FileUploadStore`, `FespalierUploadConventions`, and the fakes `FakeUploadBackend`, `MemoryUploadStore`, `FakeUploadTransport`, all from `package:fespalier_download_background`) are [`references/uploads.md`](references/uploads.md).
 The engine in detail, with the restart and sign-out rules, is [`references/engine.md`](references/engine.md). The model in detail, with the exact refusals of `isValid`, is [`references/model.md`](references/model.md). The fakes and a
 test that plays a platform are [`references/fakes.md`](references/fakes.md).
 

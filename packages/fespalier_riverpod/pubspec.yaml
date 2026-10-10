@@ -1,6 +1,6 @@
 name: fespalier_riverpod
 description: "Riverpod providers per page instance for fespalier: /c/1 pushed twice is two states, a query change or a remount is the same one, and a tab parked in the background can keep its state."
-version: 0.14.0 # x-release-please-version
+version: 0.15.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -21,7 +21,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.14.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
 
 dev_dependencies:
   flutter_lints: ^6.0.0

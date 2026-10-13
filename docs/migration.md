@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.16.0
+
+- **A plugin that throws is not asked again** ([Biometric unlock](guards.md#biometric-unlock-fespalier_biometrics), [Push](push.md), [Offline-first](offline-first.md), [Change feeds](data.md)). `biometricAvailable`, `pushPermission`, `pendingIntents` and `ChangeFeed.latest` did not set `retry:`, so Riverpod 3's default re-asked a throwing plugin or store up to ten times over about 50 seconds, with a `Timer`. They now keep the error and ask once; `ref.invalidate(provider)` asks again.
+- **A notification tap while the app starts is opened** ([Push](push.md#cold-start-and-taps)). It was lost (`launch()` runs before `runApp`, `attach` after the first frame, and nobody listened to `taps` in between). `launch()` now keeps the latest tap and `attach` opens it once; the cold-start notification seen again on `taps` is still opened once. A `PushSource.taps` on a platform channel must return one stream every time, because `taps` is listened to twice while the app starts.
+- **`fsp check` refuses a step folder that is no Dart enum constant** ([Multi-page forms](forms.md)): `final`, `new`, `default`, `in`, `values`, `index`, a name that starts with a digit (`2fa`), or two folders that become one constant. They used to pass and write a step enum that did not compile; rename the folder and its key in `steps`.
+
 ### 0.15.0
 
 - **The `package:http` half of `fespalier_dio` is `fespalier_http`** ([HTTP clients](http.md)).

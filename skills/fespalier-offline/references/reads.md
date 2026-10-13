@@ -119,8 +119,9 @@ is named `Served` so it does not clash with fespalier's `Freshness`.
   in-memory store, Hive, `PrefsDataStorage`) `serve` returns a `Served`, not a `Future`: the saved copy is on the first
   frame. A `Future` store costs one `loading.dart` frame.
 - **What counts as offline** is `CrateStackErrors.classify`: your reader for the generated client's exception, then
-  `DioFailures.read` (connection errors and timeouts, `text/html`, a bare `502`, `503`, `504`, `511`; a bare `500` is
-  `CrateStackUnavailable`, not offline; a certificate that does not verify is unknown, not offline).
+  `DioFailures.read` (connection errors and timeouts, `text/html`, and any `5xx` without a CrateStack envelope: a bare `500` too
+  since 0.16.0, before it was `CrateStackUnavailable`; a `5xx` in the envelope is `CrateStackUnavailable`; a
+  certificate that does not verify is unknown, not offline).
 
 ## `ReadCache`
 

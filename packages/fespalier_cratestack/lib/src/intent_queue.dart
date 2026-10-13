@@ -214,11 +214,15 @@ final class IntentQueue {
   }
 
   /// Sends every pending intent, oldest first, one at a time, skipping a subject with an undecided
-  /// earlier one; stops at the first [CrateStackOffline], and when the account changes. The answers:
+  /// earlier one; stops at the first [CrateStackOffline], and when the account changes. **Each
+  /// intent is read from the store again right before it is sent** (since 0.16.0): one that was
+  /// accepted, discarded or wiped while the drain was busy with an earlier one is not sent. The
+  /// answers:
   ///
   /// - success: deleted, its `touches` bumped;
-  /// - no answer, `409` with `Retry-After` (or `TRANSACTION_ABORTED`), `401`: `pending`, the same key;
-  /// - `5xx` or an unreadable envelope: `pending`, the next key (`attempt + 1`);
+  /// - no answer (a `5xx` without a CrateStack envelope included, since 0.16.0), `409` with
+  ///   `Retry-After` (or `TRANSACTION_ABORTED`), `401`: `pending`, the same key;
+  /// - a `5xx` in CrateStack's envelope: `pending`, the next key (`attempt + 1`);
   /// - `422 idempotency_key_conflict` (a bug: the stored body changed): `failed`;
   /// - `409` without `Retry-After`: `conflict`;
   /// - any other `4xx`: `failed`, with the wire code only.
@@ -251,11 +255,17 @@ final class IntentQueue {
       if (subject != null && blocked.contains(subject)) continue;
       _inFlight.add(saved.id);
       try {
-        final sending = saved.status == IntentStatus.sent
-            ? saved
-            : saved.copyWith(status: IntentStatus.sent);
-        if (sending != saved) {
-          await _write(scope, generation, sending);
+        // The listing is old by now: a submit may have got this intent accepted, the person may
+        // have discarded it, or the account may have been wiped while the earlier ones were sent.
+        // Work from what is stored now (its key may have moved on), and send nothing that is gone.
+        final current = await _read(prefix, saved.id);
+        if (_scope() != scope || _wipes.of(scope) != generation) break;
+        if (current == null || !current.undecided) continue;
+        final sending = current.status == IntentStatus.sent
+            ? current
+            : current.copyWith(status: IntentStatus.sent);
+        if (sending != current && !await _write(scope, generation, sending)) {
+          continue;
         }
         try {
           await _transport().send(
@@ -360,15 +370,24 @@ final class IntentQueue {
     final keys = await _store.keys(prefix);
     final intents = <Intent>[];
     for (final key in keys) {
-      final text = await _store.read(key);
-      if (text == null) continue;
-      try {
-        intents.add(Intent.fromJson(jsonDecode(text)));
-      } on Object {
-        // Not an intent this version can read: left where it is, never sent.
-      }
+      final intent = await _readKey(key);
+      if (intent != null) intents.add(intent);
     }
     return intents..sort((a, b) => a.seq.compareTo(b.seq));
+  }
+
+  /// The intent stored under [prefix] and [id] now, or null when it is gone or cannot be read.
+  Future<Intent?> _read(String prefix, String id) => _readKey('$prefix$id');
+
+  Future<Intent?> _readKey(String key) async {
+    final text = await _store.read(key);
+    if (text == null) return null;
+    try {
+      return Intent.fromJson(jsonDecode(text));
+    } on Object {
+      // Not an intent this version can read: left where it is, never sent.
+      return null;
+    }
   }
 
   /// Every intent of this account, oldest first. Empty while nobody is signed in.

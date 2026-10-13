@@ -112,8 +112,14 @@ await uploads.start(
 
 - **Replay safety.** Only an upload with an `Idempotency-Key` (`fespalier_http`'s `HttpWrites.isWrite`) is retried by the
   platform, renewed after a 401 or 403 and sent again by `retry`. Any other upload is sent **once**: `retries: 0`, no
-  renewal, and a kill or a lost response ends it `Failed` with `outcomeUnknown(id)` true; `retry` and `start` of that id
-  then do nothing until you `remove` it. The plugin cannot pause an upload, so no pause cycle can send it twice.
+  renewal, and a kill, a lost response or, since 0.16.0, a `5xx`, `408` or `499` (the server may have run it) ends it
+  `Failed` with `outcomeUnknown(id)` true; `retry` and `start` of that id then do nothing until you `remove` it. Only a
+  `4xx` that proves nothing was applied is `Failed(rejected)`. The plugin cannot pause an upload, so no pause cycle can
+  send it twice.
+- **The registry remembers a write** (since 0.16.0). An upload whose entry cannot be saved ends `Failed(storage)` before
+  anything is sent, and a registry file that exists and cannot be read starts no upload without an `Idempotency-Key`
+  (`UploadStoreException`); `retry` and the next `open()` or `clearAccount()` recover. See the docs'
+  [Uploads](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#uploads).
 - **Multipart** (`fileField`, string `fields`) or **binary** (the file is the body), `POST` or `PUT`; the file is a base
   folder and a relative path, never absolute. Background only: the web ends `Failed(unsupported)`, and there is no foreground
   upload backend.

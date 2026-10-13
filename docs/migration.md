@@ -29,6 +29,24 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
+Nothing is renamed and no import changes. The generated `app.g.dart` is unchanged. The fixes below make a write that
+could be sent twice be sent once, stop a provider from starting a hidden timer, keep a notification tap that used to
+be lost and refuse a step name that never compiled, so an app sees different outcomes in these places:
+
+- **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
+  On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an
+  `Idempotency-Key` again after a `500` or `504`, which could run the write twice. Now only a client error that proves
+  nothing was applied is `rejected`; the others are `other`, `outcomeUnknown(id)` is true for an upload without a
+  key, and `retry` and `start` refuse it until you `remove` it on purpose. A download is unchanged.
+- **An upload whose registry entry cannot be saved is `Failed(storage)` and is not sent.** `UploadStore.put` may throw
+  (`UploadStoreException` from `FileUploadStore`), and `FileUploadStore` no longer reads an unreadable file as empty:
+  `load` and `put` throw and leave the file alone, and an upload without a key is not started until the registry can be
+  read (the next `open()`) or `clearAccount()` empties it. Handle `Failed(storage)` with `retry`.
+- **A `5xx` without a CrateStack envelope keeps an intent's key** ([CrateStack with fespalier](cratestack.md)). A bare
+  `500` is `CrateStackOffline`, not `CrateStackUnavailable`; only a `5xx` in the envelope moves to the next key. A read
+  behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
+- **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
+  while the drain was busy is not sent from a stale list.
 - **A plugin that throws is not asked again** ([Biometric unlock](guards.md#biometric-unlock-fespalier_biometrics), [Push](push.md), [Offline-first](offline-first.md), [Change feeds](data.md)). `biometricAvailable`, `pushPermission`, `pendingIntents` and `ChangeFeed.latest` did not set `retry:`, so Riverpod 3's default re-asked a throwing plugin or store up to ten times over about 50 seconds, with a `Timer`. They now keep the error and ask once; `ref.invalidate(provider)` asks again.
 - **A notification tap while the app starts is opened** ([Push](push.md#cold-start-and-taps)). It was lost (`launch()` runs before `runApp`, `attach` after the first frame, and nobody listened to `taps` in between). `launch()` now keeps the latest tap and `attach` opens it once; the cold-start notification seen again on `taps` is still opened once. A `PushSource.taps` on a platform channel must return one stream every time, because `taps` is listened to twice while the app starts.
 - **`fsp check` refuses a step folder that is no Dart enum constant** ([Multi-page forms](forms.md)): `final`, `new`, `default`, `in`, `values`, `index`, a name that starts with a digit (`2fa`), or two folders that become one constant. They used to pass and write a step enum that did not compile; rename the folder and its key in `steps`.

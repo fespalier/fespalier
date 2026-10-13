@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (no regenerate needed for these: a plugin that throws is an AsyncError and nothing retries it, a notification tap while the app starts is opened once instead of lost, and fsp check refuses a step folder that is no Dart enum constant), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (an upload ends Failed(other), an unknown outcome, after a 5xx, 408 or 499 and Failed(storage) when its registry entry cannot be saved; a CrateStack 5xx without an envelope keeps the intent's key and reads as offline; a plugin that throws is an AsyncError that nothing retries, a notification tap while the app starts is opened once instead of lost, and fsp check refuses a step folder that is no Dart enum constant), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -33,27 +33,55 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.15 to 0.16: what to check
 
-These fixes need no change to `lib/app.g.dart` and no new dependency; read the items that name something your app uses.
-Bump the `ref:` of `fespalier` and every companion to the 0.16.0 tag, then:
+0.16.0 keeps `app.g.dart` as it is (regenerate anyway, per the rule above) and fixes the places where a write could be
+sent twice, a provider started a hidden timer, a notification tap was lost and a step name did not compile. Nothing is
+renamed, and no import changes; some outcomes an app sees are different. Bump the `ref:` of
+`fespalier` and every companion to the 0.16.0 tag, then:
 
-1. **A plugin that throws is not asked again.** `biometricAvailable` (`fespalier_biometrics`), `pushPermission`
+1. **`fespalier_download_background`: a `5xx`, `408` or `499` on an upload is `Failed(other)`, not `Failed(rejected)`.**
+   Only a client error that proves nothing was applied (`400`, `404`, `413`, `422`, ...) stays `rejected`. For an
+   upload without an `Idempotency-Key` the new `other` is an unknown outcome: `outcomeUnknown(id)` is true, and `retry`
+   and `start` refuse it (on 0.15.0 `retry` sent the write again after a `500` or `504`, which could run it twice).
+   Search for `DownloadFailure.rejected` in the code that handles an upload and decide what an unknown outcome shows:
+   ask your server, then `remove(id)` and `start` again, or give the upload an `Idempotency-Key`. Downloads are
+   unchanged.
+2. **`fespalier_download_background`: an upload whose registry entry cannot be saved ends `Failed(storage)` and is not
+   sent.** `UploadStore.put` may now throw `UploadStoreException` (`FileUploadStore` does, on a failed write), and
+   `FileUploadStore` no longer reads an unreadable file as an empty registry: `load` and `put` throw, the file is left
+   alone, and until the next `open()` reads it (or `clearAccount()` deletes it) an upload **without** a key ends
+   `Failed(storage)`. A custom `UploadStore` that swallows its failures keeps the old behaviour: let `put` throw.
+   Handle `Failed(storage)` on an upload (`retry`); the two debug lines are in `fespalier-troubleshooting`.
+3. **`fespalier_cratestack`: a `5xx` without a CrateStack envelope keeps the intent's key.** A bare `500`, a proxy's
+   `520`, a panic handler's text is now `CrateStackOffline` (as `502`, `503`, `504` and `511` were), not
+   `CrateStackUnavailable`: the write may have committed, and a new key would run it twice. Only a `5xx` in the
+   envelope (`code` and `message`) is `CrateStackUnavailable` and moves to the next key. Visible effects: a read behind
+   `serve` falls back to the saved copy on a bare `5xx` (it threw before), `DioFailures.read` and
+   `CrateStackFailure.fromResponse` return `CrateStackOffline` for it, and `drain` stops at it as it stops at any
+   `CrateStackOffline`. Search for `CrateStackUnavailable` in your own reader and tests; one that expected a bare `500`
+   to be unavailable now sees offline.
+4. **`fespalier_cratestack`: `drain` reads each intent again before it sends it.** An intent without a `subject` that a
+   concurrent `submit` got accepted (or that was discarded, or wiped by a sign-out) while the drain was busy with an
+   earlier one is no longer sent a second time. Nothing to change.
+5. **A plugin that throws is not asked again.** `biometricAvailable` (`fespalier_biometrics`), `pushPermission`
    (`fespalier_push`), `pendingIntents` (`fespalier_cratestack`) and `ChangeFeed.latest` (`fespalier_frb`) now pass
    `retry: (_, _) => null`. Before, Riverpod 3's default re-asked a plugin or store that threw an `Exception` up to ten
    times over about 50 seconds, with a `Timer` (a widget test whose fake threw ended with a pending timer; a `ChangeFeed`
    opened its single-subscription stream again). Now the provider is an `AsyncError`, read once. If you relied on the
    retries, call `ref.invalidate(provider)` where you want to ask again.
-2. **A notification tap while the app starts is opened (`fespalier_push`).** It was lost: `launch()` runs before `runApp`,
+6. **A notification tap while the app starts is opened (`fespalier_push`).** It was lost: `launch()` runs before `runApp`,
    `attach` after `startup()` and the first frame, and nobody listened to `taps` in between. Now `launch()` keeps the
    latest tap (one, never a queue) and `attach` opens it once, as a warm tap, after the first frame. The cold-start
    notification seen again on `taps` is still opened once (by id; without an id, by an equal payload). Two things to
    check: a `PushSource.taps` built on a platform channel must return **one** stream every time (a `late final`
    field), because `taps` is now listened to twice while the app starts; and a test that taps between
    `AppAdapters.launch()` and `pumpWidget` now sees that tap open. See `docs/push.md`, "Cold start and taps".
-3. **`fsp check` refuses a step folder that is no Dart enum constant.** A `steps` key written as `final`, `new`, `default`
+7. **`fsp check` refuses a step folder that is no Dart enum constant.** A `steps` key written as `final`, `new`, `default`
    or `in`, a name every enum has (`values`, `index`, `hashCode`...), a name that starts with a digit (`2fa`), or two
    folders that become one constant (`contact_info`, `contact-info`) passed `fsp check` and then wrote a step enum that
    `flutter analyze` rejected, so no building app changes. Rename the folder and its key in `steps` (`final_step`,
    `step_2fa`); the messages are in [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md).
+
+Details: `docs/migration.md`, "0.16.0".
 
 ## 0.14 to 0.15: what to check
 

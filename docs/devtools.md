@@ -21,6 +21,7 @@ Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flut
   - Since 0.8.1 a provider fespalier built also shows how many listeners it has, and **Holders** lists who keeps it: the page's view, a section's view, a `prefetch` / `preload` handle (and for how long), a `RouteLink` preload, and how many other listeners there are (`ref.watch` or `listen` in your code, or another provider).
   - A `data.dart` that returns or selects the app's own provider is shown too, marked `app provider`, with the state the page saw (since 0.8.1).
 - **What did that action do?** The _Actions_ tab lists the runs of the `action.dart` functions, newest first: the function, its key and input, `running`, `done` or `error`, how long it took and what it returned or threw.
+- **What do my adapters say?** Since 0.16.0 the _Adapters_ tab has a card for each package that called `DevToolsAdapters.show` (see [Adapters](adapters.md)): its title or package name, when it last showed, and its values, each with its type. A package may let you set a value from here (the local override of a flag, a notification to simulate): that key has a text field and a **Set** button, which asks the app to call the package's `onEdit` with the key and the text, and says why when the app refuses. The tab is empty until a package shows something: `No adapter has shown anything yet. Packages such as fespalier_flags and fespalier_launch list their state here (since 0.16.0).`
 - **Open in IDE.** A route's details under _Routes_ (and each guard, data and action file listed there) have a button that asks the IDE to open the file.
 
 ## How to see it
@@ -62,6 +63,8 @@ In a release build they are the identity (`watchData` is exactly `ref.watch`) an
 - an `onDispose`, an `onAddListener` and an `onRemoveListener` callback per build of a `data.dart` provider (the last two count its listeners; since 0.8.1);
 - lists of what happened, which stop at 100 locations, 200 guard decisions, 100 action runs, and the providers that are alive plus the last 50 disposed. The views, the prefetch handles and the `RouteLink` preloads it lists as holders are held weakly.
 
+Since 0.16.0 an adapter package that calls `DevToolsAdapters.show` adds one entry (at most 32 adapters with 64 values each, the values already turned to text) and posts an event; the call is empty in a release build. It starts no timer and listens to nothing.
+
 There is no timer, no frame, no read of a provider, no listener on a provider, and nothing that answers unless DevTools asks.
 
 **A guard or a data function that answers at once still does:** the wrapper returns the very object it was given, so a synchronous guard stays synchronous and a `Future` is the `Future` go_router or Riverpod awaits. The only thing added to a `Future` is a side `then` that records how it ended and handles its own errors. A `Stream` is not listened to. A bug in any of it is printed once and dropped; it never changes what a navigation, a guard, a provider or an action does. `--dart-define=fespalier.devtools=false` takes it out of a debug build too.
@@ -88,17 +91,18 @@ The extension and the app talk through `dart:developer`'s service extensions and
 
 The records are in [`packages/fespalier/lib/src/devtools/protocol.dart`](../packages/fespalier/lib/src/devtools/protocol.dart), which imports nothing.
 
-| Service extension          | Parameters                                                               | Answers                                                                                   |
-| -------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `ext.fespalier.hello`      | none                                                                     | the protocol, whether the app registered and attached a router, and its `features`        |
-| `ext.fespalier.tree`       | none                                                                     | the route tree, as `fsp routes --graph json` prints it                                    |
-| `ext.fespalier.snapshot`   | none                                                                     | the location, the stack, the history and the number of the last event                     |
-| `ext.fespalier.match`      | `location`                                                               | the route a location is and its parsed parameters; it runs no guard and builds nothing    |
-| `ext.fespalier.navigate`   | `mode` (`go`, `push`, `replace` or `pop`) and `location` (not for `pop`) | `{"ok": true}` once the router has been asked                                             |
-| `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions` or `all`)                         | `{"ok": true}`; what was named is emptied and the event counter goes on                   |
-| `ext.fespalier.invalidate` | `id` (a data record's)                                                   | `{"ok": true}` when that provider was alive and was invalidated, `{"ok": false}` when not |
-| `ext.fespalier.open`       | `file` (one of the tree's, relative to the app folder)                   | `{"ok": true}` once the IDE was asked, with a `package:` URI                              |
-| `ext.fespalier.holders`    | `id` (a data record's)                                                   | who holds that provider now (since 0.8.1): `{found, alive, listeners, others, holders}`   |
+| Service extension           | Parameters                                                               | Answers                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `ext.fespalier.hello`       | none                                                                     | the protocol, whether the app registered and attached a router, and its `features`                     |
+| `ext.fespalier.tree`        | none                                                                     | the route tree, as `fsp routes --graph json` prints it                                                 |
+| `ext.fespalier.snapshot`    | none                                                                     | the location, the stack, the history and the number of the last event                                  |
+| `ext.fespalier.match`       | `location`                                                               | the route a location is and its parsed parameters; it runs no guard and builds nothing                 |
+| `ext.fespalier.navigate`    | `mode` (`go`, `push`, `replace` or `pop`) and `location` (not for `pop`) | `{"ok": true}` once the router has been asked                                                          |
+| `ext.fespalier.clear`       | `what` (`history`, `guards`, `actions` or `all`)                         | `{"ok": true}`; what was named is emptied and the event counter goes on                                |
+| `ext.fespalier.invalidate`  | `id` (a data record's)                                                   | `{"ok": true}` when that provider was alive and was invalidated, `{"ok": false}` when not              |
+| `ext.fespalier.open`        | `file` (one of the tree's, relative to the app folder)                   | `{"ok": true}` once the IDE was asked, with a `package:` URI                                           |
+| `ext.fespalier.holders`     | `id` (a data record's)                                                   | who holds that provider now (since 0.8.1): `{found, alive, listeners, others, holders}`                |
+| `ext.fespalier.adapterEdit` | `adapter`, `key` and `value` (the text typed; it may be empty)           | `{"ok": true}` once the adapter's `onEdit` ran, `{"ok": false, "reason": ...}` when not (since 0.16.0) |
 
 | Event                  | Posted when                                                                          | Carries                                     |
 | ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------- |
@@ -107,14 +111,16 @@ The records are in [`packages/fespalier/lib/src/devtools/protocol.dart`](../pack
 | `fespalier:guard`      | a guard or `redirect.dart` answers, and again (same `seq`) when an async one settles | the number and the `record` of the decision |
 | `fespalier:data`       | a `data.dart` provider is built, settles, fails, is built again or is disposed       | the number and the `record` of the provider |
 | `fespalier:action`     | an action starts and when it ends                                                    | the number and the `record` of the run      |
+| `fespalier:adapter`    | an adapter shows or hides its values (since 0.16.0)                                  | the number and the `record` of the adapter  |
 
-`hello`'s `features` lists what the app can answer: `navigation`, `match`, `navigate`, `guards`, `data`, `actions`, `open`, `holders` and `watched` (the last two since 0.8.1). A reader that finds one of the features missing finds those lists empty.
+`hello`'s `features` lists what the app can answer: `navigation`, `match`, `navigate`, `guards`, `data`, `actions`, `open`, `holders` and `watched` (the last two since 0.8.1) and `adapters` (since 0.16.0). A reader that finds one of the features missing finds those lists empty.
 
-The `snapshot` has a `guards`, a `data` and an `actions` list, and a navigation record names the `guards` behind it. The records:
+The `snapshot` has a `guards`, a `data` and an `actions` list (and, since 0.16.0, an `adapters` list, which an older app does not send: read it as empty), and a navigation record names the `guards` behind it. The records:
 
 - guard: `{seq, at, site, uri, fullPath, result, location, async, ms, error}`
 - data: `{id, site, key, container, state, builds, created, updated, value, error, via, provider, listeners}`
 - action: `{seq, site, key, input, state, started, ms, result, error}`
+- adapter (since 0.16.0): `{seq, adapter, title, at, values: [{key, value, editable}], truncated, removed}`
 
 A `site` is a key of the tree's `sites`.
 
@@ -125,5 +131,7 @@ Since 0.8.1 a data record's `via` is `build` (fespalier built the provider) or `
 - `alive` is null when it can't be known;
 - `others` is `listeners` minus the holders;
 - `found` is false for an id that is not tracked.
+
+Since 0.16.0 an `adapter` record is what one package shows: `adapter` is its package name, each `value` is a `{type, text}` like any user value, `editable` says whether `adapterEdit` takes that key, `truncated` that the package gave more than the 64 values the app keeps, and `removed` that it hid its values (the reader drops it; `values` is then empty). One record is kept for each adapter, at most 32 (the one shown least recently goes, with a `removed` event), and the snapshot lists them by package name. `adapterEdit` answers `{"protocol": 1, "ok": false, "reason": "no adapter fespalier_flags is shown"}` for an adapter that shows nothing, ``"reason": "`limit` of fespalier_flags is not editable"`` for a key that is not editable, and `"reason": "onEdit threw: ..."` when the callback threw; a missing `adapter` or `key` is the usual error.
 
 An error is a JSON-RPC error with the code `-32602` for a missing or bad parameter and `-32000` otherwise, and its detail says what was wrong. Events are posted only while a tool listens.

@@ -241,6 +241,9 @@ Not `RouteLink`: a link the **platform** opens. `docs/navigation.md` has the pag
    write). Wildcard first domain and Team ID rules still apply. Gotcha: YAML 1.2 `out: no` is a folder named `no/`.
 2. Serve `web/.well-known/assetlinks.json` and `apple-app-site-association` at `https://<domain>/.well-known/`, as JSON,
    with no redirect.
+   The same `links.domains` gives the app the other direction (since 0.16.0): `AppRoutes.urlOf(const OrderRoute(id: 42))`
+   is `Uri.parse('https://shop.example.com/orders/42')`, for a share sheet, a notification payload or an `og:url`
+   (`locale:` picks a localized spelling, the mount prefix is in it). It exists only when the first domain is usable.
 3. On a device: `adb shell am start -a android.intent.action.VIEW -d "https://shop.example.com/orders/42" com.example.shop`
    (`adb shell pm get-app-links <package>` lists each domain's verification), `xcrun simctl openurl booted <url>`.
 4. In a widget test, `await sendPlatformLink(tester, Uri.parse('https://shop.example.com/orders/42'))` after `pumpRouter`

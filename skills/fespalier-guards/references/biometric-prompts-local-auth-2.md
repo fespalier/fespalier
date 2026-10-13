@@ -9,7 +9,7 @@ biometrics enrolled" or "no passcode set" on top of your unlock page, which is t
 outcome (`unavailable`) tells the page to show instead.
 
 The sample is built by `just skill-samples`; nothing runs the plugin at test time. Last built on 2026-10-07 against
-`local_auth` 2.3.0, the last 2.x. The range below is the one that resolves on the Flutter 3.32 floor.
+`local_auth` 2.3.0, the last 2.x. The range below is the one that resolves on the Flutter 3.35 floor.
 
 ```yaml
 # pubspec.yaml dependencies

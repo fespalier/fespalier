@@ -37,7 +37,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_http` (the write rule and the problem decoders both clients share), which brings `http` (`^1.5.0`). All of them are pure Dart.
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_http` (the write rule and the problem decoders both clients share), which brings `http` (`^1.5.0`). All of them are pure Dart.
 
 ## Libraries
 

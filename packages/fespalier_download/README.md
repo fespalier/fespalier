@@ -8,7 +8,7 @@ vocabulary, the telemetry names, the fakes and the engine, `Downloads`, that dri
 cancel, remove, the registry after a restart, sign-out) and the foreground `HttpDownloadBackend`, a durable registry (`FileDownloadStore`) and the Riverpod
 providers `downloads` and `downloadStatus`; a background backend comes in a release after it.
 
-It is pure Dart over `package:http`: no platform plugin, so it resolves on Flutter 3.32, fespalier's floor, and an app that
+It is pure Dart over `package:http`: no platform plugin, so it resolves on Flutter 3.35, fespalier's floor, and an app that
 lists it links nothing native.
 
 fespalier itself has no download feature: no file kind, no `fespalier:` key, no `fsp` command, and the generated code is the

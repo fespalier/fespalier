@@ -165,7 +165,7 @@ At run time (a `FlutterError.reportError` report, library `fespalier`):
 Symptoms with no message:
 
 - **`leave()` never runs on a tab switch.** By design: the page is parked, not gone. Use drafts for what a parked tab holds.
-- **A page leaves without asking when the whole `ShellRoute` is popped (Flutter below 3.38).** go_router 17.0 to 17.3 skips the leaf's `onExit`; fixed in 17.4.0.
+- **A page leaves without asking when the whole `ShellRoute` is popped (Flutter below 3.38).** go_router before 17.4 (17.2.3 at most below Flutter 3.38) skips the leaf's `onExit`; fixed in 17.4.0.
 - **The iOS swipe does nothing on a page with a `leave.dart`.** It is off while the page has no registered source or a dirty one; with all sources clean it pops and asks.
 - **A sign-out redirect asks.** A guard's redirect is asked like any navigation: check auth in `leave()`, or `leaveWithoutAsking(router, signOut)`.
 - **A `leave()` in the parent folder is asked too.** go_router asks every exiting match, deepest first; it is not inherited, both run.

@@ -30,7 +30,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-The package needs Dart 3.8 and Flutter 3.32 or newer. `shared_preferences` and `path_provider` are flutter.dev plugins
+The package needs Dart 3.9 and Flutter 3.35 or newer. `shared_preferences` and `path_provider` are flutter.dev plugins
 most apps have; `hive_ce` is pure Dart (no plugin). Dart that an app does not use is not in its release build.
 
 ## Wire it

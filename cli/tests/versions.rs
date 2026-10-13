@@ -778,7 +778,7 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
         "the floor job must install Flutter from FLUTTER_FLOOR_VERSION, not a second spelling"
     );
     // The job runs exactly the packages that claim the floor (and `examples/minimal`), so a new
-    // companion that says `flutter: ">=3.32.0"` is run there from its first PR. fespalier_devtools
+    // companion that says `flutter: ">=3.35.0"` is run there from its first PR. fespalier_devtools
     // claims it too but is an app whose build and lockfile are committed (see the job's comment).
     let matrix = floor_matrix(&ci);
     let recipe: Vec<String> = read("justfile")

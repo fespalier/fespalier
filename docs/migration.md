@@ -29,6 +29,9 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
+0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, and fixes the places where a write could be sent twice, so an app
+sees different outcomes in these places:
+
 - **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
   Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
   `flutter: ">=3.35.0"` (`fespalier_sign_keypair`, Flutter 3.44, and `fespalier_download_background`, Flutter 3.47, keep
@@ -50,8 +53,6 @@ What changed between releases, newest first, each with a link to the reference s
   asserted on a platform payload with no leading slash. On 17.2.3 neither needs a workaround.
 - `fsp create --features all` now includes `otel` on every supported Flutter, and an app it makes declares
   `sdk: ^3.9.0` and `flutter: ">=3.35.0"`.
-
-0.16.0 also fixes the places where a write could be sent twice, so an app sees different outcomes in these places:
 
 - **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
   On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an

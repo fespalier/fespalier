@@ -12,6 +12,10 @@
 /// provider or an action returns (the very object goes through, and a synchronous one stays
 /// synchronous): every path runs inside a `try`, and a bug here is printed once and dropped.
 ///
+/// What the adapters show (since 0.16.0): [DevToolsAdapters.show] and [DevToolsAdapters.hide] keep a
+/// few named values of each adapter package, bounded (32 adapters, 64 values each), for the
+/// extension's _Adapters_ tab. They post when called, and nothing else: no timer, no listener.
+///
 /// Who holds a provider (since 0.8.1): the views, the prefetch handles and the `RouteLink`
 /// preloads of fespalier itself are recorded, weakly, and listed when DevTools asks
 /// (`ext.fespalier.holders`). Riverpod does not export who else listens to a provider, so for one
@@ -304,6 +308,7 @@ SnapshotRecord _snapshot() {
     guards: List.of(_guards),
     data: [for (final e in _data.values) e.toRecord()],
     actions: [for (final a in _actions) a.toRecord()],
+    adapters: _adapterRecords(),
   );
 }
 
@@ -1222,6 +1227,128 @@ void _postAction(_ActionEntry entry) => _post(
 );
 
 // ---------------------------------------------------------------------------------------------
+// What the adapters show (since 0.16.0)
+
+/// How many adapters the tab keeps; past it the one shown least recently is dropped.
+const int _adapterLimit = 32;
+
+/// How many values of one adapter are kept.
+const int _adapterValueLimit = 64;
+
+/// What one adapter showed last.
+final class _Adapter {
+  _Adapter(this.name, this.title, this.values, this.truncated, this.onEdit)
+    : seq = ++_seq,
+      at = DateTime.now().millisecondsSinceEpoch;
+
+  final String name;
+  final String? title;
+  final int seq;
+  final int at;
+  final bool truncated;
+
+  /// The values, as text already: nothing the adapter gave is kept alive.
+  final List<AdapterValueRecord> values;
+
+  /// What `adapterEdit` calls for an editable key.
+  final void Function(String key, String text)? onEdit;
+
+  bool isEditable(String key) =>
+      onEdit != null && values.any((v) => v.key == key && v.editable);
+
+  AdapterRecord toRecord({bool removed = false}) => AdapterRecord(
+    seq: seq,
+    adapter: name,
+    title: title,
+    at: at,
+    values: removed ? const [] : values,
+    truncated: truncated,
+    removed: removed,
+  );
+}
+
+/// The adapters shown now, the one shown least recently first.
+final Map<String, _Adapter> _adapters = {};
+
+/// The adapters, by name: a [SnapshotRecord]'s.
+List<AdapterRecord> _adapterRecords() => [
+  for (final name in _adapters.keys.toList()..sort())
+    _adapters[name]!.toRecord(),
+];
+
+/// What an adapter package shows in the _Adapters_ tab of fespalier's DevTools extension (since
+/// 0.16.0): a few named values (the flags it resolved, the last notification it opened), and those
+/// a developer may set from there. Behind [kFespalierDevTools]: in a release build these are empty
+/// calls. Build the values under the same check (`if (kFespalierDevTools) DevToolsAdapters.show(...)`)
+/// so a release build does not even make the map. It starts no timer and listens to nothing: call
+/// [show] when your state changes, and [hide] from the `ref.onDispose` of the provider that showed
+/// it. A bug here is printed once and dropped, like the rest of the DevTools support.
+abstract final class DevToolsAdapters {
+  /// Shows [values] under [adapter] (your package's name), replacing what it showed before. A value
+  /// is shown as its type and the start of its `toString()` (200 characters), made now: the
+  /// map is not kept. The first 64 keys are kept, and at most 32 adapters (the one shown least
+  /// recently is dropped).
+  ///
+  /// [editable] names the keys a developer may set from DevTools: [onEdit] gets the key and the
+  /// text typed, in the app, and usually ends with another [show]. Without [onEdit] no key is
+  /// editable. The registry holds [onEdit] until [hide] or the next [show], so do not let it keep
+  /// a `Ref` alive that should be gone.
+  static void show(
+    String adapter,
+    Map<String, Object?> values, {
+    String? title,
+    Set<String> editable = const {},
+    void Function(String key, String text)? onEdit,
+  }) {
+    if (!kFespalierDevTools) return;
+    try {
+      final kept = <AdapterValueRecord>[];
+      for (final e in values.entries) {
+        if (kept.length >= _adapterValueLimit) break;
+        kept.add(
+          AdapterValueRecord(
+            key: e.key,
+            value: Shown.of(e.value),
+            editable: onEdit != null && editable.contains(e.key),
+          ),
+        );
+      }
+      _adapters.remove(adapter);
+      final entry = _adapters[adapter] = _Adapter(
+        adapter,
+        title,
+        kept,
+        values.length > kept.length,
+        onEdit,
+      );
+      while (_adapters.length > _adapterLimit) {
+        final dropped = _adapters.remove(_adapters.keys.first)!;
+        _postAdapter(dropped.toRecord(removed: true));
+      }
+      _postAdapter(entry.toRecord());
+    } catch (e) {
+      _report(e);
+    }
+  }
+
+  /// Removes [adapter]'s values from the tab. Nothing happens when it showed none.
+  static void hide(String adapter) {
+    if (!kFespalierDevTools) return;
+    try {
+      final entry = _adapters.remove(adapter);
+      if (entry != null) _postAdapter(entry.toRecord(removed: true));
+    } catch (e) {
+      _report(e);
+    }
+  }
+}
+
+void _postAdapter(AdapterRecord record) => _post(
+  DevToolsEvents.adapter,
+  () => {DevToolsEventPayload.record: record.toJson()},
+);
+
+// ---------------------------------------------------------------------------------------------
 // Service extensions and events
 
 /// A failed call: what `ServiceExtensionResponse.error` is made of.
@@ -1285,6 +1412,7 @@ final Map<String, _Handler> _handlers = {
   DevToolsMethods.invalidate: _invalidate,
   DevToolsMethods.open: _open,
   DevToolsMethods.holders: _holdersResponse,
+  DevToolsMethods.adapterEdit: _adapterEdit,
 };
 
 Map<String, Object?> _ok() => const {'protocol': devToolsProtocol, 'ok': true};
@@ -1313,6 +1441,7 @@ Map<String, Object?> _hello(Map<String, String> params) => HelloRecord(
     DevToolsFeatures.open,
     DevToolsFeatures.holders,
     DevToolsFeatures.watched,
+    DevToolsFeatures.adapters,
   ],
 ).toJson();
 
@@ -1492,6 +1621,34 @@ Map<String, Object?> _holdersResponse(Map<String, String> params) {
   ).toJson();
 }
 
+/// `{"protocol": 1, "ok": false, "reason": …}`: the app was asked and said no.
+Map<String, Object?> _refused(String reason) => {
+  'protocol': devToolsProtocol,
+  'ok': false,
+  'reason': reason,
+};
+
+/// Sets an editable value of an adapter (since 0.16.0): the `onEdit` the adapter gave
+/// `DevToolsAdapters.show` is called with the key and the text, once. An adapter or key that is not
+/// shown (or not editable), and an `onEdit` that throws, are answers with a reason, not errors. The
+/// text may be empty.
+Map<String, Object?> _adapterEdit(Map<String, String> params) {
+  final adapter = _param(params, 'adapter');
+  final key = _param(params, 'key');
+  final text = params['value'] ?? '';
+  final entry = _adapters[adapter];
+  if (entry == null) return _refused('no adapter $adapter is shown');
+  if (!entry.isEditable(key)) {
+    return _refused('`$key` of $adapter is not editable');
+  }
+  try {
+    entry.onEdit!(key, text);
+  } catch (e) {
+    return _refused('onEdit threw: ${_errorText(e)}');
+  }
+  return _ok();
+}
+
 /// Asks the IDE to open `file` (relative to the app folder, one of the tree's) the way
 /// Riverpod's DevTools does: a `navigate` event on the `ToolEvent` stream, with a `package:` URI.
 Map<String, Object?> _open(Map<String, String> params) {
@@ -1628,6 +1785,7 @@ void debugDevToolsReset() {
   _untraced = null;
   _holderKind = HolderKind.prefetch;
   _actions.clear();
+  _adapters.clear();
   _dataSeq = 0;
   _containerSeq = 0;
   _containerIds = Expando<int>('fespalier containers');

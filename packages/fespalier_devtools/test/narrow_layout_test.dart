@@ -13,6 +13,7 @@ void main() {
       'snapshot_catalog',
       'snapshot_pushed',
       'snapshot_not_found',
+      'snapshot_adapters',
     ]) {
       testWidgets('nothing overflows at $width wide, with $snapshot', (
         tester,
@@ -44,6 +45,7 @@ void main() {
         await tester.tap(find.byKey(const Key('goto-match')));
         await settle(tester);
         await openTab(tester, 'Stack');
+        await openTab(tester, 'Adapters');
         await openTab(tester, 'Routes');
         await tester.enterText(
           find.byKey(const Key('routes-filter')),

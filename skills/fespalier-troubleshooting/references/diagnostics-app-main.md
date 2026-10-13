@@ -47,7 +47,7 @@ Not an `fsp` diagnostic: a `FlutterError` printed once when the app runs. An ada
   telemetry in `beforeRun()`, so a later call installs nothing the first navigation sees). Nothing is recorded until it is called.
 - ``fespalier_analytics records no screen: this app's router does not report page events to telemetry. Set `telemetry: true`under`fespalier:`in pubspec.yaml and run`fsp gen```(since 0.13.0):
 the app was generated without`telemetry: true`, so no page event reaches the sink (`telemetryFollows(router)`is false). Turn
-it on and run`fsp gen`. A backend that never gets a call while consent is `undecided`or`denied` is not this: that is the rule.
+it on and run`fsp gen`. A backend that never gets a call while consent is`undecided`or`denied` is not this: that is the rule.
 
 ## Root files
 

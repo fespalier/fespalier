@@ -138,8 +138,9 @@ The rules that keep it honest:
   a list only.
 - **Every answer is per account.** The scope (`crateStackScope`) is part of every key, so one account's copy never
   reaches another; while nobody is signed in nothing is read or saved.
-- **A gateway or a captive portal counts as offline**: an HTML page where JSON was expected, or `502`, `503`, `504`,
-  `511` with no CrateStack envelope. A bare `500` does not (the server did answer). With Dio add
+- **A gateway or a captive portal counts as offline**: an HTML page where JSON was expected, or any `5xx` with no
+  CrateStack envelope (since 0.16.0 a bare `500` too: whoever answered may have done so after the commit; before
+  0.16.0 only `502`, `503`, `504` and `511`). A `5xx` in the envelope does not (the server did answer). With Dio add
   `CrateStackPortalInterceptor` (`fespalier-cratestack`).
 - **`Freshness` says _when_ a read runs again; `serve` says _where_ its answer comes from. Never combine `serve` with
   `dataCache`**: `serve` keeps its own copy, per account.
@@ -181,7 +182,8 @@ switch (out) {
   pretending the order is already cancelled.
 - **A stored call.** It is encoded once, saved **before** it is sent, then sent from the saved text every time:
   every attempt is byte-identical, which a server's idempotency check compares. The key is `<id>#<attempt>`; a stored
-  failure (`5xx`) moves to the next attempt, everything else keeps the key.
+  failure (a `5xx` in CrateStack's envelope) moves to the next attempt, everything else keeps the key, a bare `5xx`
+  included (since 0.16.0).
 - **Never expiring**, and **ordered per subject**: an intent waits behind an undecided earlier one with the same
   `subject`, a `submit` behind one is saved and `Queued` **without being sent**. Other subjects do not wait.
 - **JSON-native only** (maps, lists, strings, numbers, booleans, `null`): a `DateTime` throws before anything is saved

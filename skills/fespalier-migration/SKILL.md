@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (Flutter 3.35 and Dart 3.9 are the floor: upgrade Flutter, go_router's lower bound is 17.2.3), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (Flutter 3.35 and Dart 3.9 are the floor: upgrade Flutter, go_router's lower bound is 17.2.3; an upload ends Failed(other), an unknown outcome, after a 5xx, 408 or 499 and Failed(storage) when its registry entry cannot be saved; a CrateStack 5xx without an envelope keeps the intent's key and reads as offline), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -33,9 +33,10 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.15 to 0.16: what to check
 
-0.16.0 is a **breaking** release for an app on Flutter 3.32 to 3.34: the floor is now Flutter 3.35 and Dart 3.9. The
-generated `app.g.dart` is unchanged (regenerate and read the diff anyway: the rule above stands), and no file kind, key or
-command changed. Bump the `ref:` of `fespalier` and every companion to the 0.16.0 tag, then:
+0.16.0 is a **breaking** release for an app on Flutter 3.32 to 3.34: the floor is now Flutter 3.35 and Dart 3.9. It
+also fixes the places where a write could be sent twice, so some outcomes an app sees are different. The generated
+`app.g.dart` is unchanged (regenerate and read the diff anyway: the rule above stands), and no file kind, key or command
+changed. Bump the `ref:` of `fespalier` and every companion to the 0.16.0 tag, then:
 
 1. **Flutter 3.35 or newer (Dart 3.9 or newer) is needed** (since 0.16.0). `fespalier` and every companion that was in the
    3.32 floor job now say `sdk: ^3.9.0` and `flutter: ">=3.35.0"`; `fespalier_sign_keypair` (Flutter 3.44) and
@@ -55,8 +56,34 @@ command changed. Bump the `ref:` of `fespalier` and every companion to the 0.16.
    What the floor still tolerates is go_router's and Flutter's own, and is true on every Flutter that has it: go_router 17
    builds the page a `go` lands on one frame after the location changes (go_router 18 builds it in the same frame), a
    `ShellRoute` pop skips the leaf's `onExit` before go_router 17.4, and Flutter before 3.38 drops a link's `linkUrl`.
-4. **Nothing else moves**: `fsp create --features all` now includes `otel` on every supported Flutter (it needed 3.35
-   before), and an `fsp create` app declares `sdk: ^3.9.0` and `flutter: ">=3.35.0"`. Details: `docs/migration.md`, "0.16.0".
+4. **`fsp create`**: `--features all` now includes `otel` on every supported Flutter (it needed 3.35
+   before), and an `fsp create` app declares `sdk: ^3.9.0` and `flutter: ">=3.35.0"`.
+5. **`fespalier_download_background`: a `5xx`, `408` or `499` on an upload is `Failed(other)`, not `Failed(rejected)`.**
+   Only a client error that proves nothing was applied (`400`, `404`, `413`, `422`, ...) stays `rejected`. For an
+   upload without an `Idempotency-Key` the new `other` is an unknown outcome: `outcomeUnknown(id)` is true, and `retry`
+   and `start` refuse it (on 0.15.0 `retry` sent the write again after a `500` or `504`, which could run it twice).
+   Search for `DownloadFailure.rejected` in the code that handles an upload and decide what an unknown outcome shows:
+   ask your server, then `remove(id)` and `start` again, or give the upload an `Idempotency-Key`. Downloads are
+   unchanged.
+6. **`fespalier_download_background`: an upload whose registry entry cannot be saved ends `Failed(storage)` and is not
+   sent.** `UploadStore.put` may now throw `UploadStoreException` (`FileUploadStore` does, on a failed write), and
+   `FileUploadStore` no longer reads an unreadable file as an empty registry: `load` and `put` throw, the file is left
+   alone, and until the next `open()` reads it (or `clearAccount()` deletes it) an upload **without** a key ends
+   `Failed(storage)`. A custom `UploadStore` that swallows its failures keeps the old behaviour: let `put` throw.
+   Handle `Failed(storage)` on an upload (`retry`); the two debug lines are in `fespalier-troubleshooting`.
+7. **`fespalier_cratestack`: a `5xx` without a CrateStack envelope keeps the intent's key.** A bare `500`, a proxy's
+   `520`, a panic handler's text is now `CrateStackOffline` (as `502`, `503`, `504` and `511` were), not
+   `CrateStackUnavailable`: the write may have committed, and a new key would run it twice. Only a `5xx` in the
+   envelope (`code` and `message`) is `CrateStackUnavailable` and moves to the next key. Visible effects: a read behind
+   `serve` falls back to the saved copy on a bare `5xx` (it threw before), `DioFailures.read` and
+   `CrateStackFailure.fromResponse` return `CrateStackOffline` for it, and `drain` stops at it as it stops at any
+   `CrateStackOffline`. Search for `CrateStackUnavailable` in your own reader and tests; one that expected a bare `500`
+   to be unavailable now sees offline.
+8. **`fespalier_cratestack`: `drain` reads each intent again before it sends it.** An intent without a `subject` that a
+   concurrent `submit` got accepted (or that was discarded, or wiped by a sign-out) while the drain was busy with an
+   earlier one is no longer sent a second time. Nothing to change.
+
+Details: `docs/migration.md`, "0.16.0".
 
 ## 0.14 to 0.15: what to check
 

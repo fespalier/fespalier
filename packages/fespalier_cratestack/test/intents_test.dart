@@ -2,6 +2,8 @@
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
+import 'package:dio/dio.dart';
+import 'package:fespalier_cratestack/dio.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_cratestack/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +36,34 @@ Rig rig({String? scope = 'u1'}) {
     revision: (tag) => container.read(crateStackRevision(tag)),
   );
 }
+
+/// A server that runs the call, then answers [error] once: the commit happened and the answer is
+/// a layer's, not the server's.
+final class _AnswerAfterRun implements CrateStackTransport {
+  _AnswerAfterRun(this.inner, this.error);
+
+  final FakeCrateStackTransport inner;
+  final Object error;
+  bool answered = false;
+
+  @override
+  Future<Object?> send(CrateStackCall call, {String? idempotencyKey}) async {
+    final output = await inner.send(call, idempotencyKey: idempotencyKey);
+    if (answered || inner.offline) return output;
+    answered = true;
+    throw error;
+  }
+}
+
+DioException dioStatusError(int status, {Object? data}) => DioException(
+  requestOptions: RequestOptions(),
+  type: DioExceptionType.badResponse,
+  response: Response<Object?>(
+    requestOptions: RequestOptions(),
+    statusCode: status,
+    data: data,
+  ),
+);
 
 /// The key of the [n]th call.
 String? keyOf(FakeCrateStackTransport t, int n) => t.calls[n].idempotencyKey;
@@ -210,12 +240,93 @@ void main() {
       );
     });
 
-    test('a bare 500 (no envelope) is unavailable too, not offline', () {
+    test('a 5xx with an envelope: the server said it, the next key', () {
       expect(
-        CrateStackFailure.fromResponse(status: 500),
+        CrateStackFailure.fromResponse(
+          status: 500,
+          body: {'code': 'INTERNAL', 'message': 'oops'},
+        ),
         isA<CrateStackUnavailable>(),
       );
     });
+  });
+
+  group('a 5xx without an envelope may have landed: the same key', () {
+    // The server commits the write and a layer in front answers a bare 500 (a panic after the
+    // commit, a proxy's error). Under a new key the server cannot tell it is the same call.
+    Future<Rig> committedThenAnswered(Object error) async {
+      final fake = FakeCrateStackTransport()
+        ..on('cancelOrder', (input) => {'cancelled': true});
+      final transport = _AnswerAfterRun(fake, error);
+      final store = InMemoryLocalStore();
+      final container = containerFor(
+        transport: transport,
+        store: store,
+        extra: [
+          crateStackErrors.overrideWithValue(
+            const CrateStackErrors([DioFailures.read]),
+          ),
+        ],
+      );
+      return (
+        transport: fake,
+        store: store,
+        queue: container.read(intentQueue),
+        revision: (String tag) => container.read(crateStackRevision(tag)),
+      );
+    }
+
+    for (final (label, data) in [
+      ('no body', null),
+      ('a plain-text body', 'Internal Server Error'),
+      ('JSON that is no envelope', {'error': 'boom'}),
+    ]) {
+      test('submit: a bare 500 with $label keeps the key', () async {
+        final r = await committedThenAnswered(dioStatusError(500, data: data));
+        final out = await submitCancel(r.queue);
+        final queued = (out as Queued<Object?>).intent;
+        expect(queued.attempt, 0, reason: 'not the next key');
+        expect(queued.failures, 0);
+        expect(queued.idempotencyKey, endsWith('#0'));
+        final report = await r.queue.drain();
+        expect(report.accepted, 1);
+        expect(keyOf(r.transport, 1), keyOf(r.transport, 0));
+        expect(
+          r.transport.runs('cancelOrder'),
+          1,
+          reason: 'the replay is answered from the store: the write ran once',
+        );
+      });
+
+      test('drain: a bare 500 with $label keeps the key', () async {
+        final r = await committedThenAnswered(dioStatusError(500, data: data));
+        r.transport.offline = true;
+        await submitCancel(r.queue);
+        r.transport.offline = false;
+        // The first drain's send commits, then the layer answers.
+        final first = await r.queue.drain();
+        expect(first.accepted, 0);
+        expect(first.retained, 0, reason: 'no answer: it is offline');
+        final intent = only(await r.queue.list());
+        expect(intent.attempt, 0);
+        expect(intent.failures, 0);
+        final second = await r.queue.drain();
+        expect(second.accepted, 1);
+        expect(keyOf(r.transport, 2), keyOf(r.transport, 1));
+        expect(r.transport.runs('cancelOrder'), 1);
+      });
+    }
+
+    test(
+      'an envelope that says the server did not store it moves on',
+      () async {
+        final r = await committedThenAnswered(
+          dioStatusError(500, data: {'code': 'INTERNAL', 'message': 'oops'}),
+        );
+        final out = await submitCancel(r.queue);
+        expect((out as Queued<Object?>).intent.attempt, 1);
+      },
+    );
   });
 
   group('refusals', () {

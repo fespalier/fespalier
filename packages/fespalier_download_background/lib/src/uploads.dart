@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:clock/clock.dart' as time;
 import 'package:fespalier_download/fespalier_download.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
+import 'upload_outcome.dart';
 import 'upload_ports.dart';
 import 'upload_request.dart';
 import 'upload_telemetry.dart';
@@ -39,9 +41,24 @@ typedef UploadGrantor = FutureOr<DownloadGrant?> Function(
 /// | 401 or 403 | one renewed grant, then sent again | `Failed(unauthorized)` |
 /// | killed, or no answer after a restart | `Failed(killed)`; [retry] sends it again | `Failed(killed)`; [retry] and [start] refuse (see [outcomeUnknown]) |
 /// | a lost response (`Failed(network)`) | [retry] sends it again | the same: the server may have it |
+/// | a `5xx`, `408` or `499` | `Failed(other)`; [retry] sends it again | `Failed(other)`; [retry] and [start] refuse: the same |
+/// | another `4xx` (`400`, `404`, `413`, `422`, ...) | `Failed(rejected)`; [retry] sends it again | the same: the server refused it |
+///
+/// **An answer that is not a refusal is not a `rejected`** (since 0.16.0). A gateway's `502` or
+/// `504`, or the server's own `500` after it committed, says nothing about whether the write ran,
+/// so those, and `408` and `499`, end `Failed(other)` and are an unknown outcome. Before 0.16.0
+/// they ended `Failed(rejected)` and [retry] sent the write again.
 ///
 /// To send it again anyway, [remove] it and [start] it: that is the app's decision, made after
 /// asking its server.
+///
+/// **The registry is what remembers that a write may have been sent** (since 0.16.0), so an upload
+/// is handed to the platform only once its entry is saved: when the store throws, the upload ends
+/// `Failed(storage)` and nothing is sent ([retry] tries again). When the registry exists and cannot
+/// be read, [open] still succeeds, but an upload without an `Idempotency-Key` is not started
+/// (`Failed(storage)`) until the next [open] reads it or [clearAccount] empties it: nothing says
+/// which writes it held. An upload with a key is not affected by the read. Both leave a
+/// debug-only line (see `fespalier-troubleshooting`).
 class Uploads {
   /// An engine over the backend and the store. `clock` is for a test; `grantor` makes the short-lived
   /// credentials of an attempt.
@@ -70,6 +87,8 @@ class Uploads {
   UploadObserver? _observer;
   bool _open = false;
   bool _reconciling = false;
+  // False while the registry exists and could not be read: nothing remembers what was sent.
+  bool _registryReadable = true;
   Future<void>? _opening;
 
   /// When this engine last changed a status (null before the first change). Read through
@@ -88,7 +107,8 @@ class Uploads {
 
   /// Whether the upload [id] ended without an answer and was not replay safe, so that the server
   /// may or may not have it: `Failed(network)`, `Failed(killed)` or `Failed(other)` of an upload
-  /// without an `Idempotency-Key`. Ask the server before deciding to send it again.
+  /// without an `Idempotency-Key`. That includes an answer that is not a refusal: a `5xx`, a `408`
+  /// or a `499` (since 0.16.0). Ask the server before deciding to send it again.
   bool outcomeUnknown(String id) {
     final request = _requests[id];
     final current = _statuses[id];
@@ -118,7 +138,21 @@ class Uploads {
   Future<void> open() => _opening ??= _open0();
 
   Future<void> _open0() async {
-    final stored = await _store.load();
+    Map<String, StoredUpload> stored;
+    try {
+      stored = await _store.load();
+      _registryReadable = true;
+    } catch (error) {
+      // Nothing of the error is kept: it can name a path.
+      stored = const {};
+      _registryReadable = false;
+      _say(
+        'fespalier_download_background: the uploads registry could not be loaded '
+        '(${_reasonOf(error)}), so an upload without an Idempotency-Key is not '
+        'started: it may have been sent before and nothing remembers it. Restart '
+        'the app, or call clearAccount after asking your server what it received',
+      );
+    }
     _requests
       ..clear()
       ..addEntries(stored.entries.map((e) => MapEntry(e.key, e.value.request)));
@@ -177,6 +211,10 @@ class Uploads {
     final current = statusOf(id);
     if (_isActive(current) || current is Complete) return;
     if (current is Failed && !_mayResend(id)) return;
+    if (!_registryReadable && !request.replaySafe) {
+      _failEarly(id, DownloadFailure.storage);
+      return;
+    }
     if (request.priority == DownloadPriority.userInitiated &&
         !_backend.capabilities.notifications) {
       _failEarly(id, DownloadFailure.notificationsRequired);
@@ -194,6 +232,7 @@ class Uploads {
     final current = statusOf(id);
     final request = _requests[id];
     if (current is! Failed || request == null || !_mayResend(id)) return false;
+    if (!_registryReadable && !request.replaySafe) return false;
     if (current.failure == DownloadFailure.notificationsRequired &&
         !_backend.capabilities.notifications &&
         request.priority == DownloadPriority.userInitiated) {
@@ -218,7 +257,7 @@ class Uploads {
     _apply(id, const Cancelled());
     await _backend.cancel(id);
     if (generation != _generationOf(id)) return;
-    await _store.remove(id);
+    await _forget(id);
   }
 
   /// Forgets the upload [id]: stops it and drops it from the registry. The status becomes
@@ -232,14 +271,20 @@ class Uploads {
     if (_statuses.remove(id) != null) _notify(id, const Absent());
     await _backend.cancel(id);
     if (generation != _generationOf(id)) return;
-    await _store.remove(id);
+    await _forget(id);
   }
 
   /// Sign-out: cancels every upload and drops the registry, and moves every generation on so that
   /// nothing an earlier attempt was going to do, and no later event, reaches the next account.
   /// The files are not touched.
   Future<void> clearAccount() async {
-    final stored = await _store.load();
+    Map<String, StoredUpload> stored;
+    try {
+      stored = await _store.load();
+    } catch (_) {
+      // Unreadable: the sign-out goes on, and clearing it below is what repairs it.
+      stored = const {};
+    }
     for (final id in {
       ..._generations.keys,
       ...stored.keys,
@@ -261,6 +306,17 @@ class Uploads {
     }
     await _backend.cancelAll();
     await _store.clear();
+    _registryReadable = true;
+  }
+
+  // Drops an entry. A store that cannot is not a reason to fail a cancel: a stale entry reads as an
+  // upload the platform no longer has (`Failed(killed)`), which is the safe direction.
+  Future<void> _forget(String id) async {
+    try {
+      await _store.remove(id);
+    } catch (_) {
+      // Nothing of the error is kept: it can name a path.
+    }
   }
 
   bool _mayResend(String id) {
@@ -293,7 +349,20 @@ class Uploads {
     );
     _apply(id, const Queued());
     _regranted.remove(id);
-    await _store.put(StoredUpload(request, generation: generation));
+    // The entry first: it is what says, after a restart, that this write may have been sent. An
+    // upload whose entry was not kept is not handed to the platform at all.
+    try {
+      await _store.put(StoredUpload(request, generation: generation));
+    } catch (error) {
+      if (generation != _generationOf(id)) return;
+      _say(
+        'fespalier_download_background: an upload was not started, because its '
+        'entry could not be saved in the registry (${_reasonOf(error)}): after a '
+        'restart nothing would say it was sent',
+      );
+      _apply(id, const Failed(DownloadFailure.storage));
+      return;
+    }
     if (generation != _generationOf(id)) return;
     final granted = await _ask(id, request, generation, renewal: false);
     if (granted == null) return;
@@ -380,6 +449,14 @@ class Uploads {
       }
       next = const Failed(DownloadFailure.unauthorized);
     }
+    // `rejected` says the server refused the write. A 5xx, a 408 or a 499 says no such thing: the
+    // write may have committed before a gateway or the server's error handler answered.
+    if (next is Failed &&
+        next.failure == DownloadFailure.rejected &&
+        httpStatus != null &&
+        !provesNothingApplied(httpStatus)) {
+      next = const Failed(DownloadFailure.other);
+    }
     // An upload cannot pause: a backend that says so is wrong, and it is not shown.
     if (next is Absent || next is Paused) return;
     if (next is Cancelled) {
@@ -405,6 +482,14 @@ class Uploads {
       }
     }
     _notify(id, status);
+  }
+
+  // The text of a store's own exception is constant; anything else may name a path.
+  String _reasonOf(Object error) =>
+      error is UploadStoreException ? error.message : '${error.runtimeType}';
+
+  void _say(String message) {
+    if (kDebugMode) debugPrint(message);
   }
 
   void _notify(String id, DownloadStatus status) {

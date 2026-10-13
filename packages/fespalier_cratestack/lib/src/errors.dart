@@ -13,7 +13,9 @@ sealed class CrateStackFailure implements Exception {
   ///
   /// `401` is [CrateStackUnauthenticated]; `409` is [CrateStackInFlight] with [retryAfter] or the code
   /// `TRANSACTION_ABORTED` and a [CrateStackConflict] without; any other `4xx` is [CrateStackRefused]; anything else (`5xx`,
-  /// a status that is no error) is [CrateStackUnavailable].
+  /// a status that is no error) is [CrateStackUnavailable]: the server itself said it failed, and
+  /// that is the only answer that moves an intent to its next key (since 0.16.0 a `5xx` **without**
+  /// an envelope never gets here: see [fromResponse]).
   factory CrateStackFailure.fromEnvelope({
     required int status,
     required String code,
@@ -45,8 +47,12 @@ sealed class CrateStackFailure implements Exception {
   /// ([CrateStackFailure.fromEnvelope]). Without one, a `502`, `503`, `504` or `511`, and any page
   /// of type `text/html` (a gateway's or a captive portal's, even with a `200`), is
   /// [CrateStackOffline]: nobody that knows CrateStack answered, so the call may have landed. A
-  /// bare `401` is unauthenticated, a bare `4xx` is refused with the code `HTTP_<status>`, a bare
-  /// `5xx` is [CrateStackUnavailable].
+  /// bare `401` is unauthenticated and a bare `4xx` is refused with the code `HTTP_<status>`.
+  /// **Every other answer without an envelope is [CrateStackOffline]** (since 0.16.0), a bare
+  /// `500` included: a layer in front of the server, or a panic after the commit, answers it, and
+  /// only the server's own envelope says that the write was not stored. An intent keeps its key
+  /// for it, so the server can answer the replay from what it stored. Before 0.16.0 a bare `5xx`
+  /// was [CrateStackUnavailable], the next key, and the write could run twice.
   static CrateStackFailure? fromResponse({
     required int status,
     Object? body,
@@ -90,13 +96,14 @@ sealed class CrateStackFailure implements Exception {
         message: '',
       );
     }
-    return CrateStackUnavailable(status: status);
+    // A 5xx (or a status nobody expects) from someone who is not CrateStack: it may have landed.
+    return CrateStackOffline(cause ?? 'HTTP $status');
   }
 }
 
-/// No answer: no network, a dropped connection, a timeout, or a gateway or captive-portal page
-/// (an HTML `200`, or a `502`, `503`, `504` or `511` without a CrateStack envelope). The call may
-/// have landed.
+/// No answer: no network, a dropped connection, a timeout, or an answer that is not CrateStack's
+/// (an HTML `200`, or any `5xx` without a CrateStack envelope: a gateway's, a captive portal's, a
+/// panic handler's). The call may have landed.
 ///
 /// Only this one makes a read fall back to the store, and it keeps an intent's key.
 final class CrateStackOffline extends CrateStackFailure {
@@ -140,8 +147,12 @@ final class CrateStackRefused extends CrateStackFailure implements DataRefusal {
   String toString() => 'CrateStackRefused($status $code)';
 }
 
-/// The server answered with a stored failure (`5xx`, an unreadable envelope): moves an intent to
-/// its next key.
+/// The server answered with a failure in CrateStack's own envelope (a `5xx` that has `code` and
+/// `message`): it did not apply the write and may have stored the failure under the key, so an
+/// intent moves to its next key.
+///
+/// **Only an envelope makes this** (since 0.16.0). A `5xx` without one is [CrateStackOffline]:
+/// whoever answered may have done so after the commit, and a new key would run the write twice.
 final class CrateStackUnavailable extends CrateStackFailure {
   /// A server failure.
   const CrateStackUnavailable({required this.status, this.code});

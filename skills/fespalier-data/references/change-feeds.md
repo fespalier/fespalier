@@ -131,7 +131,8 @@ class OrderPage extends StatelessWidget {
   catches up on resume). A watcher that missed more than the log holds, or whose core was restarted, rebuilds anyway.
   Do not "fix" a burst with a debounce: a debounce is a timer.
 - **A stream error** stays in `changes.latest` as an `AsyncError` (watch it for a "live updates stopped" banner); no topic
-  rebuilds on it, and the next event works.
+  rebuilds on it, and the next event works. The function you gave `ChangeFeed` is not called again after a failure of its
+  own either: `latest` does not retry (since 0.16.0; Riverpod's default would call it again, with a `Timer`).
 - **`changes.any`** is a topic of every event (an `int` that counts each event, a burst included), for a provider that depends on
   the whole core.
 - **Cost.** Each watched key runs its matcher once per event. Tens or hundreds of keys: nothing. A core that emits thousands of

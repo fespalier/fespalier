@@ -34,6 +34,8 @@ dependencies:
   hive_ce: ^2.16.0
 
 dev_dependencies:
+  # retry_test.dart counts the timers a store that throws leaves behind (none).
+  fake_async: ^1.3.0
   # Proves the reconnect trigger with the real ConnectivitySignal and FakeConnectivity; lib/ never imports it.
   fespalier_connectivity:
     git:

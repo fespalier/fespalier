@@ -415,6 +415,10 @@ final intentQueue = Provider<IntentQueue>((ref) {
 /// The undecided intents (pending or being sent), for "3 changes waiting" and a row's
 /// "cancelling...": read again on each change to the queue. Pass a subject for one thing's, null
 /// for all.
+///
+/// A store that throws is an `AsyncError`, read once: no retry, which would be a `Timer` (since
+/// 0.16.0; Riverpod's default re-read the store up to ten times). The next change to the queue
+/// reads it again.
 final pendingIntents = FutureProvider.autoDispose.family<List<Intent>, String?>(
   (ref, subject) async {
     ref
@@ -427,4 +431,5 @@ final pendingIntents = FutureProvider.autoDispose.family<List<Intent>, String?>(
           intent,
     ];
   },
+  retry: (_, _) => null,
 );

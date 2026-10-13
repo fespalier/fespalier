@@ -29,9 +29,24 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
-0.16.0 breaks no import and leaves `app.g.dart` unchanged. It fixes outcomes an app may have worked around, so read
-these before deleting a workaround.
+Nothing is renamed and no import changes (one port, `DownloadBackend.resume`, gains a named parameter: see the last
+item). The generated `app.g.dart` is unchanged. The fixes below make a write that could be sent twice be sent once, and
+make three outcomes of the network packages right, so an app sees different outcomes in these places:
 
+- **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
+  On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an
+  `Idempotency-Key` again after a `500` or `504`, which could run the write twice. Now only a client error that proves
+  nothing was applied is `rejected`; the others are `other`, `outcomeUnknown(id)` is true for an upload without a
+  key, and `retry` and `start` refuse it until you `remove` it on purpose. A download is unchanged.
+- **An upload whose registry entry cannot be saved is `Failed(storage)` and is not sent.** `UploadStore.put` may throw
+  (`UploadStoreException` from `FileUploadStore`), and `FileUploadStore` no longer reads an unreadable file as empty:
+  `load` and `put` throw and leave the file alone, and an upload without a key is not started until the registry can be
+  read (the next `open()`) or `clearAccount()` empties it. Handle `Failed(storage)` with `retry`.
+- **A `5xx` without a CrateStack envelope keeps an intent's key** ([CrateStack with fespalier](cratestack.md)). A bare
+  `500` is `CrateStackOffline`, not `CrateStackUnavailable`; only a `5xx` in the envelope moves to the next key. A read
+  behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
+- **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
+  while the drain was busy is not sent from a stale list.
 - **A request with a body is sent again after a 401 through `DioHttpClient`** ([HTTP clients](http.md)). An
   `http.Request` (`get`, `post`, `put`, `patch`, `delete`) goes to Dio as bytes, so `SessionInterceptor` refreshes and
   sends it again whole (`WriteGuard` lets that one second send of a write through, as it always did after a 401). Before

@@ -654,13 +654,38 @@ await uploads.start(
   | 401 or 403                                | One renewed grant, then sent again       | `Failed(unauthorized)`, no renewal                              |
   | The app was killed, or no answer came     | `Failed(killed)`; `retry` sends it again | `Failed(killed)`; `retry` and `start` refuse                    |
   | The response was lost (`Failed(network)`) | `retry` sends it again                   | The same: the server may have it (`outcomeUnknown(id)` is true) |
+  | A `5xx`, `408` or `499` (since 0.16.0)    | `Failed(other)`; `retry` sends it again  | `Failed(other)`: the same, the server may have run it           |
+  | Another `4xx` (`400`, `404`, `413`, ...)  | `Failed(rejected)`; `retry` sends again  | `Failed(rejected)`: the server refused it, `retry` sends again  |
 
   For a non-replay-safe upload, `Failed(network)`, `Failed(killed)` and `Failed(other)` mean **the outcome is unknown**:
   `Uploads.outcomeUnknown(id)` says so, `retry` returns false and `start` of the same id does nothing. Ask your server
   whether it has the upload, then `remove(id)` and `start` it again if you decide to: that decision is yours, never the
-  engine's. A failure that is the server's answer (`rejected`, `unauthorized`) or that happened before anything was sent
-  (`storage`, `invalidRequest`) may be retried. An upload to a pre-signed `PUT` address is a write too by this rule; add an
-  `Idempotency-Key` header (any value, the same on every attempt) when sending it again is harmless.
+  engine's. A failure that is the server's refusal (a `4xx` other than `408` and `499`, which end `rejected`; `unauthorized`)
+  or that happened before anything was sent (`storage`, `invalidRequest`) may be retried. An upload to a pre-signed `PUT`
+  address is a write too by this rule; add an `Idempotency-Key` header (any value, the same on every attempt) when sending
+  it again is harmless.
+
+  **A `5xx` is not a refusal** (since 0.16.0). A gateway's `502` or `504`, a `503` from a proxy, or the server's own `500`
+  after it committed, says nothing about whether the write ran. `Uploads` ends such an upload `Failed(other)` (an unknown
+  outcome), and so a `408` (the server gave up on a request it was already handling) and a `499` (the connection closed
+  while the server went on). Only a client error proves the server did not apply the write, and it ends `Failed(rejected)`.
+  Before 0.16.0 every status of 400 and above except 401 and 403 ended `Failed(rejected)`, and `retry` sent a
+  non-replay-safe write again after a `500` or `504`, which could run it twice. `failureOf`, which also maps a download's
+  failure, still says `rejected` for a `5xx`: a download is a read, and asking again is harmless.
+
+- **The registry is what remembers a write may have been sent** (since 0.16.0). An upload is handed to the platform only
+  after its entry is saved: when `UploadStore.put` throws (a full disk), the upload ends `Failed(storage)` and nothing is
+  sent; `retry` tries again, and it is not an unknown outcome because nothing left the device. `FileUploadStore` no longer
+  reads a file it cannot read as an empty registry: a file that exists and is not a registry this version knows (an I/O
+  error, text that is not JSON, a version it does not know) makes `load` and `put` throw `UploadStoreException`, and the file is
+  left as it is, to be read again on the next call. `Uploads.open()` still succeeds, but an upload **without** an
+  `Idempotency-Key` is then not started (`Failed(storage)`) until the next `open()` reads the registry or `clearAccount()`
+  deletes it, since nothing says which writes the unreadable registry held; an upload with a key is not affected. A missing
+  file is an empty registry, and an entry that is not valid is still skipped. `remove` and `clear` are best effort: a
+  `cancel` or a sign-out never fails because the registry could not be written. In debug builds `Uploads` prints one line
+  for each case (`fespalier-troubleshooting` quotes them). Before 0.16.0 `FileUploadStore` swallowed a write that failed
+  and read an unreadable file as empty, so the upload was sent with no record that it had been, and `start` sent it again
+  after a restart. `FileDownloadStore` is unchanged: a download is a read.
 
 - **Auth is a grant, as for a download** ([Credentials](#credentials)). `Uploads(grantor:)` takes a function from an
   `UploadRequest` to a `DownloadGrant`: a short-lived `url` (a pre-signed upload address) and/or headers for one attempt.

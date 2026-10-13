@@ -8,10 +8,11 @@ abstract final class DioFailures {
   /// The failure [error] means, or null when it is not a `DioException` this reader knows.
   ///
   /// Connection errors and timeouts are [CrateStackOffline], and so is a gateway's or a captive
-  /// portal's page (`text/html`, `502`, `503`, `504`, `511` without a CrateStack envelope); a
-  /// `cancel` is [CrateStackCancelled]. A response with a CrateStack envelope is classified by its
-  /// status and code (`CrateStackFailure.fromEnvelope`), after the app's own reader had its turn.
-  /// A bare `500` is [CrateStackUnavailable], not offline.
+  /// portal's page (`text/html`) and **every `5xx` without a CrateStack envelope** (`500` and
+  /// `502` alike, since 0.16.0): the write may have landed, so an intent keeps its key. A `cancel`
+  /// is [CrateStackCancelled]. A response with a CrateStack envelope is classified by its status
+  /// and code (`CrateStackFailure.fromEnvelope`), after the app's own reader had its turn; a `5xx`
+  /// with an envelope is [CrateStackUnavailable].
   static CrateStackFailure? read(Object error) {
     if (error is! DioException) return null;
     final type = error.type;

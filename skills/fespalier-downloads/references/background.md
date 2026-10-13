@@ -30,7 +30,8 @@ Override `downloadsEngine` with it in `startup.dart`, and `open()` the engine **
   `BackgroundOptions(retries: 3)`; headers = request then attempt; size and sha256 in `metaData`.
 - **A plugin update becomes a status** (`downloadStatusOf`, `failureOf`, `progressOf`, pure): `enqueued` Queued, `running`
   Running, `waitingToRetry` Waiting(retry), `paused` Paused, `canceled` Cancelled, `notFound` Failed(rejected) with 404,
-  `failed` by exception type (401/403 `unauthorized`, other HTTP `rejected`, connection `network`, file system `storage`,
+  `failed` by exception type (401/403 `unauthorized`, other HTTP `rejected` (an upload corrects a `5xx`, `408` or `499` to
+  `other` since 0.16.0), connection `network`, file system `storage`,
   URL `invalidRequest`, resume `killed`, else `other`). The exception's text is never read. The plugin reports a fraction,
   so `received` is 0 and `total` null when the server gave no size.
 - **A finished file is checked** by the backend (size, then SHA-256, `Verifying` first): the engine does not check files.

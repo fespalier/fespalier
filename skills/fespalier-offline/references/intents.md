@@ -28,14 +28,18 @@ conflict, never the server's message) and `failures` (stored `5xx` answers).
 | The server answers                                                                  | Classified as               | The intent                                |
 | ----------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------- |
 | success                                                                             |                             | deleted, `touches` bumped, `Accepted`     |
-| no answer (network, timeout, gateway or captive-portal page)                        | `CrateStackOffline`         | `pending`, same key                       |
+| no answer (network, timeout, a portal page, a `5xx` without CrateStack's envelope)  | `CrateStackOffline`         | `pending`, same key                       |
 | `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                       |
 | `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                       |
-| `5xx`, an envelope that cannot be read                                              | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1`   |
+| a `5xx` **in CrateStack's envelope** (`code` and `message`)                         | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1`   |
 | `422` `idempotency_key_conflict`                                                    | refused                     | `failed` (a bug: the stored body changed) |
 | `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)       |
 | any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only              |
 | an error no reader knows                                                            | none                        | kept `pending` under its key, debug line  |
+
+**Only the server's own envelope moves the key** (since 0.16.0). A bare `500` (no envelope: a proxy's page, a panic
+handler's text) may have been answered after the commit, so it is `CrateStackOffline` and the intent keeps its key; a new
+key would run the write twice. Before 0.16.0 it was `CrateStackUnavailable`, the next key.
 
 `submit` returns `Queued` for the not-decided rows, and **throws** the refusal on the spot (`CrateStackRefused`,
 `CrateStackConflict`, or `FieldErrors` through `withCrateStackFieldErrors`) **without keeping anything**: the person is
@@ -51,7 +55,9 @@ key matters) is in [`fespalier-cratestack`](../../fespalier-cratestack/reference
   `pendingIntents(subject)` only the undecided ones, for a banner and a row's "cancelling...";
   `discard(id)` deletes one (the person gave up on a `failed` or `conflict` one); `clear()` deletes the account's.
 - `drain()` sends every pending intent, oldest first, one at a time, **skipping a subject with an undecided earlier
-  one**, and stops at the first `CrateStackOffline` and when the account changes. It returns a `DrainReport`
+  one**, and stops at the first `CrateStackOffline` and when the account changes. Since 0.16.0 it reads each intent
+  from the store again right before it sends it, so one that a concurrent `submit` got accepted, that was discarded or
+  that a sign-out wiped meanwhile is not sent. It returns a `DrainReport`
   (`accepted`, `failed`, `conflicts`, `retained`, `offline`, `reachedServer`).
 - **`Intent` is also Flutter's `Intent`** (`widgets/actions.dart`): a file that imports both
   `package:flutter/material.dart` and `fespalier_cratestack.dart` and names `Intent` gets `ambiguous_import`. Hide

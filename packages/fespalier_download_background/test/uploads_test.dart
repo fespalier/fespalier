@@ -7,6 +7,7 @@ import 'package:fespalier/testing.dart';
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download_background/fespalier_download_background.dart';
 import 'package:fespalier_download_background/testing.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_test/flutter_test.dart';
 
 const _safe = {'Idempotency-Key': 'k-1'};
@@ -23,6 +24,36 @@ UploadRequest req(
   priority: priority,
   displayName: 'Private name $id',
 );
+
+/// A registry whose calls fail when told to: a full disk, an unreadable file.
+class FlakyStore extends MemoryUploadStore {
+  FlakyStore([super.initial]);
+
+  Object? failLoad;
+  Object? failPut;
+  Object? failRemove;
+
+  @override
+  Future<Map<String, StoredUpload>> load() async {
+    final failure = failLoad;
+    if (failure != null) throw failure;
+    return super.load();
+  }
+
+  @override
+  Future<void> put(StoredUpload upload) async {
+    final failure = failPut;
+    if (failure != null) throw failure;
+    await super.put(upload);
+  }
+
+  @override
+  Future<void> remove(String id) async {
+    final failure = failRemove;
+    if (failure != null) throw failure;
+    await super.remove(id);
+  }
+}
 
 class Rig {
   Rig({
@@ -191,10 +222,9 @@ void main() {
     });
 
     test(
-      'a server answer is not an unknown outcome: it may be sent again',
+      'a clear refusal is not an unknown outcome: it may be sent again',
       () async {
         for (final failure in [
-          DownloadFailure.rejected,
           DownloadFailure.unauthorized,
           DownloadFailure.storage,
         ]) {
@@ -205,8 +235,63 @@ void main() {
           expect(await r.engine.retry('a'), isTrue, reason: '$failure');
           expect(r.backend.enqueued, hasLength(2), reason: '$failure');
         }
+        // A client error that proves nothing was applied stays `rejected`.
+        for (final status in [400, 404, 405, 410, 413, 415, 422, 429]) {
+          final r = await opened();
+          await r.engine.start(req('a'));
+          r.backend.emit(
+            'a',
+            const Failed(DownloadFailure.rejected),
+            httpStatus: status,
+          );
+          expect(
+            r.engine.statusOf('a'),
+            const Failed(DownloadFailure.rejected),
+            reason: '$status',
+          );
+          expect(r.engine.outcomeUnknown('a'), isFalse, reason: '$status');
+          expect(await r.engine.retry('a'), isTrue, reason: '$status');
+          expect(r.backend.enqueued, hasLength(2), reason: '$status');
+        }
       },
     );
+
+    test('a status the server may have processed is an unknown outcome and is not sent again', () async {
+      // The write may have committed before a gateway or the server's own error handler
+      // answered: 5xx, and 408 and 499, where the connection ended on a request in progress.
+      for (final status in [408, 499, 500, 501, 502, 503, 504, 507, 520, 599]) {
+        final r = await opened();
+        await r.engine.start(req('a'));
+        r.backend.emit(
+          'a',
+          const Failed(DownloadFailure.rejected),
+          httpStatus: status,
+        );
+        expect(
+          r.engine.statusOf('a'),
+          const Failed(DownloadFailure.other),
+          reason: '$status is not a refusal',
+        );
+        expect(r.engine.outcomeUnknown('a'), isTrue, reason: '$status');
+        expect(await r.engine.retry('a'), isFalse, reason: '$status');
+        await r.engine.start(req('a'));
+        expect(r.backend.enqueued, hasLength(1), reason: '$status');
+        expect(r.seen.last, 'a ${const Failed(DownloadFailure.other)}');
+      }
+    });
+
+    test('a replay-safe upload may be sent again after a 5xx', () async {
+      final r = await opened();
+      await r.engine.start(req('a', safe: true));
+      r.backend.emit(
+        'a',
+        const Failed(DownloadFailure.rejected),
+        httpStatus: 504,
+      );
+      expect(r.engine.outcomeUnknown('a'), isFalse);
+      expect(await r.engine.retry('a'), isTrue);
+      expect(r.backend.enqueued, hasLength(2));
+    });
 
     test('a replay-safe upload is retried after any failure', () async {
       final r = await opened();
@@ -226,6 +311,131 @@ void main() {
       expect(await r.engine.retry('a'), isFalse);
       expect(await r.engine.retry('zzz'), isFalse);
     });
+  });
+
+  group('the registry that remembers a write', () {
+    // The registry is what says, after a restart, that an upload may have been sent. An upload
+    // that was sent with no record of it would be sent again by `start`, unprotected.
+    test(
+      'an entry that cannot be saved: nothing is sent, Failed(storage)',
+      () async {
+        final store = FlakyStore()
+          ..failPut = const UploadStoreException('full');
+        final r = await opened(Rig(store: store));
+        await r.engine.start(req('a'));
+        expect(r.engine.statusOf('a'), const Failed(DownloadFailure.storage));
+        expect(
+          r.backend.enqueued,
+          isEmpty,
+          reason: 'it was never handed to the platform',
+        );
+        expect(store.entries, isEmpty);
+        expect(
+          r.engine.outcomeUnknown('a'),
+          isFalse,
+          reason: 'nothing was sent',
+        );
+        expect(r.seen.last, 'a ${const Failed(DownloadFailure.storage)}');
+      },
+    );
+
+    test(
+      'any error of the store is the same, and none of its text is kept',
+      () async {
+        final store = FlakyStore()..failPut = StateError('SECRET /data/x');
+        final r = await opened(Rig(store: store));
+        await r.engine.start(req('a'));
+        expect(r.engine.statusOf('a'), const Failed(DownloadFailure.storage));
+        expect(r.seen.join(), isNot(contains('SECRET')));
+      },
+    );
+
+    test('it can be retried once the registry works', () async {
+      final store = FlakyStore()..failPut = StateError('full');
+      final r = await opened(Rig(store: store));
+      await r.engine.start(req('a'));
+      expect(await r.engine.retry('a'), isTrue, reason: 'it was never sent');
+      expect(r.engine.statusOf('a'), const Failed(DownloadFailure.storage));
+      store.failPut = null;
+      expect(await r.engine.retry('a'), isTrue);
+      expect(r.engine.statusOf('a'), const Queued());
+      expect(r.backend.enqueued.single.id, 'a');
+      expect(store.entries.keys, ['a']);
+    });
+
+    test('a registry that cannot be read: an upload without a key is not started, one with a key is', () async {
+      final store = FlakyStore({'old': StoredUpload(req('old'))})
+        ..failLoad = const UploadStoreException('unreadable');
+      final r = Rig(store: store);
+      await r.engine.open();
+      expect(r.engine.isOpen, isTrue, reason: 'opening never throws');
+      await r.engine.start(req('a'));
+      expect(r.engine.statusOf('a'), const Failed(DownloadFailure.storage));
+      expect(r.backend.enqueued, isEmpty);
+      await r.engine.start(req('b', safe: true));
+      expect(r.engine.statusOf('b'), const Queued());
+      expect(r.backend.enqueued.single.id, 'b');
+    });
+
+    test('the two debug lines, as fespalier-troubleshooting quotes them', () async {
+      final printed = <String>[];
+      final original = debugPrint;
+      debugPrint = (message, {wrapWidth}) => printed.add(message ?? '');
+      addTearDown(() => debugPrint = original);
+
+      final unsaved = await opened(
+        Rig(store: FlakyStore()..failPut = StateError('SECRET /data/x')),
+      );
+      await unsaved.engine.start(req('a'));
+      final unreadable = Rig(
+        store: FlakyStore()
+          ..failLoad = const UploadStoreException(
+            'the registry file could not be read, or is not a registry this version knows',
+          ),
+      );
+      await unreadable.engine.open();
+
+      expect(printed, [
+        'fespalier_download_background: an upload was not started, because its '
+            'entry could not be saved in the registry (StateError): after a '
+            'restart nothing would say it was sent',
+        'fespalier_download_background: the uploads registry could not be loaded '
+            '(the registry file could not be read, or is not a registry this '
+            'version knows), so an upload without an Idempotency-Key is not '
+            'started: it may have been sent before and nothing remembers it. '
+            'Restart the app, or call clearAccount after asking your server what '
+            'it received',
+      ]);
+      expect(printed.join(), isNot(contains('SECRET')));
+    });
+
+    test('clearAccount makes the registry count again', () async {
+      final store = FlakyStore()..failLoad = StateError('unreadable');
+      final r = Rig(store: store);
+      await r.engine.open();
+      store.failLoad = null;
+      await r.engine.clearAccount();
+      await r.engine.start(req('a'));
+      expect(r.engine.statusOf('a'), const Queued());
+    });
+
+    test(
+      'cancel, remove and clearAccount do not throw when the store does',
+      () async {
+        final store = FlakyStore();
+        final r = await opened(Rig(store: store));
+        await r.engine.start(req('a'));
+        await r.engine.start(req('b'));
+        store
+          ..failRemove = StateError('x')
+          ..failLoad = StateError('x');
+        await r.engine.cancel('a');
+        await r.engine.remove('b');
+        await r.engine.clearAccount();
+        expect(r.engine.statusOf('a'), const Absent());
+        expect(r.engine.statusOf('b'), const Absent());
+      },
+    );
   });
 
   group('grants', () {

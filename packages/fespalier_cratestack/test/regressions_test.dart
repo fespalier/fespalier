@@ -1,5 +1,6 @@
 // Regressions from review: each test is a case that was wrong once.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
@@ -22,6 +23,69 @@ final class GateTransport implements CrateStackTransport {
     if (g != null) await g.future;
     return inner.send(call, idempotencyKey: idempotencyKey);
   }
+}
+
+/// A transport that holds the sends of one operation until its gate is opened, and tells the test
+/// when a send of it has started.
+final class OpGates implements CrateStackTransport {
+  OpGates(this.inner);
+  final FakeCrateStackTransport inner;
+  final Map<String, Completer<void>> _gates = {};
+  final Map<String, Completer<void>> _started = {};
+  final List<String> sent = [];
+
+  /// Holds every send of [op] from now on, until [open]. [started] then waits for the first send
+  /// that follows, not for one that came before.
+  void hold(String op) {
+    _gates[op] = Completer<void>();
+    _started[op] = Completer<void>();
+  }
+
+  /// Completes when a send of [op] reached the transport.
+  Future<void> started(String op) =>
+      (_started[op] ??= Completer<void>()).future;
+
+  void open(String op) => _gates[op]!.complete();
+
+  @override
+  Future<Object?> send(CrateStackCall call, {String? idempotencyKey}) async {
+    final op = FakeCrateStackTransport.nameOf(call);
+    sent.add('$op@$idempotencyKey');
+    final started = _started[op] ??= Completer<void>();
+    if (!started.isCompleted) started.complete();
+    final gate = _gates[op];
+    if (gate != null) await gate.future;
+    return inner.send(call, idempotencyKey: idempotencyKey);
+  }
+}
+
+/// A store that calls [onRead] with the key of every read, before it answers.
+final class HookedStore implements LocalStore {
+  HookedStore(this.inner);
+  final InMemoryLocalStore inner;
+  void Function(String key)? onRead;
+
+  @override
+  Future<String?> read(String key) async {
+    onRead?.call(key);
+    return inner.read(key);
+  }
+
+  @override
+  Future<void> write(String key, String value) async => inner.write(key, value);
+
+  @override
+  Future<void> writeAll(Map<String, String> entries) async =>
+      inner.writeAll(entries);
+
+  @override
+  Future<void> delete(String key) async => inner.delete(key);
+
+  @override
+  Future<Iterable<String>> keys(String prefix) async => inner.keys(prefix);
+
+  @override
+  Future<void> clear(String prefix) async => inner.clear(prefix);
 }
 
 /// A row server whose pull waits for [gate] and then answers [page].
@@ -464,6 +528,127 @@ void main() {
       expect(t.calls[1].idempotencyKey, t.calls[0].idempotencyKey);
       expect(await queue.list(), isEmpty);
     });
+  });
+
+  group('M3: a drain sends only what is still there', () {
+    test(
+      'an intent without a subject that a submit already got accepted is not sent again',
+      () async {
+        final fake = FakeCrateStackTransport()
+          ..on('a', (_) => 'a')
+          ..on('x', (_) => 'x');
+        final gates = OpGates(fake);
+        final queue = containerFor(transport: gates).read(intentQueue);
+        // A waits in the queue (no network), with no subject.
+        fake.offline = true;
+        await queue.submit<Object?>(const RpcCall('a', 1), decode: (o) => o);
+        fake.offline = false;
+        gates.sent.clear();
+        // X is submitted and its send is in the air.
+        gates.hold('x');
+        final submitted = queue.submit<Object?>(
+          const RpcCall('x', 2),
+          decode: (o) => o,
+        );
+        await gates.started('x');
+        // A reconnect: the drain reads A and X, and holds on A.
+        gates.hold('a');
+        final drained = queue.drain();
+        await gates.started('a');
+        // X is accepted and deleted while the drain is busy with A.
+        gates.open('x');
+        expect(await submitted, isA<Accepted<Object?>>());
+        gates.open('a');
+        final report = await drained;
+
+        expect(report.accepted, 1, reason: 'A; X was accepted by the submit');
+        expect(
+          [for (final s in gates.sent) s.split('@').first],
+          ['x', 'a'],
+          reason: 'X was sent once',
+        );
+        expect(fake.runs('x'), 1);
+        expect(await queue.list(), isEmpty);
+      },
+    );
+
+    test(
+      'an intent that was discarded while an earlier one was sent is not sent',
+      () async {
+        final fake = FakeCrateStackTransport()
+          ..on('a', (_) => 'a')
+          ..on('b', (_) => 'b');
+        final gates = OpGates(fake);
+        final queue = containerFor(transport: gates).read(intentQueue);
+        fake.offline = true;
+        await queue.submit<Object?>(const RpcCall('a', 1), decode: (o) => o);
+        await queue.submit<Object?>(const RpcCall('b', 2), decode: (o) => o);
+        fake.offline = false;
+        gates.sent.clear();
+        gates.hold('a');
+        final drained = queue.drain();
+        await gates.started('a');
+        final b = (await queue.list()).firstWhere(
+          (i) => (i.call as RpcCall).opId == 'b',
+        );
+        await queue.discard(b.id);
+        gates.open('a');
+        await drained;
+        expect([for (final s in gates.sent) s.split('@').first], ['a']);
+        expect(fake.runs('b'), 0);
+      },
+    );
+
+    test(
+      'an intent whose account was wiped between the check and the write is not sent',
+      () async {
+        final fake = FakeCrateStackTransport()
+          ..on('a', (_) => 'a')
+          ..on('b', (_) => 'b');
+        final gates = OpGates(fake);
+        final inner = InMemoryLocalStore();
+        final store = HookedStore(inner);
+        final wipes = WipeGenerations();
+        final queue = IntentQueue(
+          store: store,
+          scope: () => 'u1',
+          transport: () => gates,
+          errors: () => const CrateStackErrors([]),
+          bump: (_) {},
+          wipes: wipes,
+        );
+        fake.offline = true;
+        await queue.submit<Object?>(const RpcCall('a', 1), decode: (o) => o);
+        await queue.submit<Object?>(const RpcCall('b', 2), decode: (o) => o);
+        fake.offline = false;
+        gates.sent.clear();
+        gates.hold('a');
+        final drained = queue.drain();
+        await gates.started('a');
+        // The sign-out lands the moment the drain looks at B again.
+        final bKey = inner
+            .keys('cs/u1/intent/')
+            .firstWhere(
+              (k) => (jsonDecode(inner.read(k)!) as Map)['call']
+                  .toString()
+                  .contains('b'),
+            );
+        store.onRead = (key) {
+          if (key == bKey) {
+            store.onRead = null;
+            wipes.wiped('u1');
+          }
+        };
+        gates.open('a');
+        await drained;
+        expect([for (final s in gates.sent) s.split('@').first], ['a']);
+        expect(
+          fake.runs('b'),
+          0,
+          reason: 'B belonged to the account that left',
+        );
+      },
+    );
   });
 
   group('M4: concurrent submits are numbered apart', () {

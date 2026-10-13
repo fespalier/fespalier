@@ -42,18 +42,21 @@ the refreshed token and the same key.
 | The server answers                                                                  | Classified as               | The intent                              |
 | ----------------------------------------------------------------------------------- | --------------------------- | --------------------------------------- |
 | success                                                                             |                             | deleted, `touches` bumped               |
-| no answer (network, timeout, gateway or captive-portal page)                        | `CrateStackOffline`         | `pending`, same key                     |
+| no answer (network, timeout, a portal page, a `5xx` without CrateStack's envelope)  | `CrateStackOffline`         | `pending`, same key                     |
 | `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                     |
 | `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                     |
-| `5xx`, an envelope that cannot be read                                              | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1` |
+| a `5xx` **in CrateStack's envelope** (`code` and `message`)                         | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1` |
 | `422` `idempotency_key_conflict`                                                    | refused                     | `failed`                                |
 | `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)     |
 | any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only            |
 
-A `5xx` takes the **next** key because the server may have stored the failure and would replay it under the old one.
-Without an envelope (`fromResponse`): `text/html` of any status, or `502`, `503`, `504`, `511`, is offline; a bare `401`
-is unauthenticated; a bare `409` is a conflict unless `Retry-After` is there; a bare `4xx` is refused with the code
-`HTTP_<status>`; a bare `5xx` (a `500` included) is unavailable, **not offline**. The refusal keeps the wire `code` and
+A `5xx` **in CrateStack's envelope** takes the **next** key because the server may have stored the failure and would
+replay it under the old one. Without an envelope (`fromResponse`): `text/html` of any status, or **any `5xx`**
+(since 0.16.0: a bare `500` included, as `502`, `503`, `504` and `511` always were), is offline, the same key; a bare
+`401` is unauthenticated; a bare `409` is a conflict unless `Retry-After` is there; a bare `4xx` is refused with the
+code `HTTP_<status>`. Whoever answered a `5xx` without the envelope is not the server's idempotency layer, and may
+have answered after the commit: a new key would run the write twice. Before 0.16.0 a bare `5xx` was unavailable,
+**not offline**. The refusal keeps the wire `code` and
 `status`; its message and `details` are the server's and are never stored, logged or sent to telemetry.
 
 ## What `RowSync`'s two procedures must do

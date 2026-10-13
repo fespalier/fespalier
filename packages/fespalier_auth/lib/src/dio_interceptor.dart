@@ -15,10 +15,12 @@ const String _attemptKey = 'fespalier_auth.attempt';
 /// dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio));
 /// ```
 ///
-/// A request to another origin is untouched. `FormData` bodies are not sent again: the caller
-/// gets the 401, after the refresh, so its next attempt works. Every response goes through
-/// the authorizer, so a DPoP nonce on a success is remembered too, and a request is sent at most
-/// three times.
+/// A request to another origin is untouched. A body that can be read once is not sent again:
+/// `FormData`, and a `Stream` (what `DioHttpClient` makes of a streamed or multipart
+/// `package:http` request; since 0.16.0). The caller gets the 401, after the refresh, so its next
+/// attempt works. A body of bytes (`Uint8List`, a `String`, a map, and what `DioHttpClient` makes
+/// of an `http.Request`) is sent again whole. Every response goes through the authorizer, so a
+/// DPoP nonce on a success is remembered too, and a request is sent at most three times.
 final class SessionInterceptor extends Interceptor {
   /// An interceptor over [authorizer], sending a request again through [dio].
   SessionInterceptor(this.authorizer, this.dio);
@@ -118,7 +120,11 @@ final class SessionInterceptor extends Interceptor {
       statusCode: response.statusCode ?? 0,
       headers: _headers(response),
     );
-    if (!again || options.data is FormData) return null;
+    // A form or a stream body was read by the first send: it is not there to send again, and the
+    // refresh above is what makes the caller's next attempt work.
+    if (!again || options.data is FormData || options.data is Stream) {
+      return null;
+    }
     // Marked, so a write guard that refuses re-sends can let this one through. onRequest
     // authorizes again, with the attempt that was just answered.
     options.extra[authReplayKey] = true;

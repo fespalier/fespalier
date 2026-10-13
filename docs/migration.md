@@ -27,6 +27,19 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.16.0
+
+0.16.0 breaks no import and leaves `app.g.dart` unchanged. It fixes outcomes an app may have worked around, so read
+these before deleting a workaround.
+
+- **A request with a body is sent again after a 401 through `DioHttpClient`** ([HTTP clients](http.md)). An
+  `http.Request` (`get`, `post`, `put`, `patch`, `delete`) goes to Dio as bytes, so `SessionInterceptor` refreshes and
+  sends it again whole (`WriteGuard` lets that one second send of a write through, as it always did after a 401). Before
+  0.16.0 it failed with `ClientException: fespalier_dio: unknown` and the refresh never helped: remove a retry you wrote
+  around that. A streamed or multipart request is not sent again: the caller gets the 401 as the response, after the
+  refresh. A `ClientException` from `DioHttpClient` that has no Dio message now carries its cause
+  (`fespalier_dio: unknown: <cause>`): code that compared the whole message changes.
+
 ### 0.15.0
 
 - **The `package:http` half of `fespalier_dio` is `fespalier_http`** ([HTTP clients](http.md)).

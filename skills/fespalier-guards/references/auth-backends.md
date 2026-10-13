@@ -364,8 +364,10 @@ Future<List<Override>> startupWithSupabase() async {
 ## `dio`
 
 `package:fespalier_auth/dio.dart` has `SessionInterceptor(authorizer, dio)`, the same policy as `SessionClient` on dio's types:
-`dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`. A request to another origin is untouched; a `FormData` body is
-not sent again (the caller gets the 401, after the refresh); at most three sends; every response goes through the authorizer, so a
+`dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`. A request to another origin is untouched; a body that can be
+read once (`FormData`, or a `Stream`: since 0.16.0, what `DioHttpClient` makes of a streamed or multipart request) is not sent again (the
+caller gets the 401, after the refresh), while a body of bytes (a `Uint8List`, a `String`, a map, an `http.Request` through
+`DioHttpClient`) is sent again whole; at most three sends; every response goes through the authorizer, so a
 nonce on a success is remembered. A refresh that could not run is a `DioException` whose `error` is the `AuthUnavailable`. `dio` is a
 dependency of `fespalier_auth`, tree-shaken when this library is not imported.
 

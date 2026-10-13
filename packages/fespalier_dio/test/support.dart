@@ -35,6 +35,9 @@ final class FakeAdapter implements HttpClientAdapter {
   /// Every request the adapter was asked for, in order.
   final List<RequestOptions> requests = [];
 
+  /// The body of each request, as the adapter read it, in order (empty for a request with none).
+  final List<List<int>> bodies = [];
+
   /// How many requests were sent.
   int get sent => requests.length;
 
@@ -43,8 +46,16 @@ final class FakeAdapter implements HttpClientAdapter {
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
-  ) {
+  ) async {
     requests.add(options);
+    // Read like a real adapter does: a body that was read already cannot be read again.
+    final body = <int>[];
+    if (requestStream != null) {
+      await for (final chunk in requestStream) {
+        body.addAll(chunk);
+      }
+    }
+    bodies.add(body);
     return handler(options, cancelFuture);
   }
 

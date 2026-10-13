@@ -8,7 +8,7 @@ value moves only on a matching event, and a `data.dart` that **watches** the top
 generated code and adds no file kind, key or command; an app that does not depend on it pays nothing.
 
 It has **no `flutter_rust_bridge` dependency, on purpose.** The generated bindings pin the FRB runtime exactly per app (FRB 2.13
-needs Dart 3.9.2, above fespalier's Flutter 3.32 floor), and the generic part is a `Stream<E>`. Do not add one.
+needs Dart 3.9.2, which is Flutter 3.35.3, above fespalier's 3.35.0 floor), and the generic part is a `Stream<E>`. Do not add one.
 
 ```yaml
 # pubspec.yaml: the same url and the same ref as fespalier, or pub refuses to resolve

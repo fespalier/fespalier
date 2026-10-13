@@ -282,7 +282,7 @@ The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, s
   - an imperative `Navigator.push` or replace outside go_router;
   - process kill, hot restart, `router.dispose()`;
   - the page's own `PopScope(canPop: false)`, which wins for system back.
-- **Known gap:** on go_router 17.0 to 17.3 (Flutter below 3.38), popping a whole `ShellRoute` page off the root navigator skips the leaf's `leave()` (go_router fixed it in 17.4.0).
+- **Known gap:** on go_router before 17.4 (Flutter below 3.38 resolves 17.2.3 at most), popping a whole `ShellRoute` page off the root navigator skips the leaf's `leave()` (go_router fixed it in 17.4.0).
 
 `/c/1` to `/c/2` is asked, whatever [`remount`](#remounting-a-page-remount) says: it is another page instance. A query-only change is the same one.
 
@@ -456,7 +456,7 @@ with adapters that has none with an `onEnter` to offer pays that for nothing: le
 ### Platform links end to end
 
 _Since 0.12.0._ No fespalier package carries platform links: Flutter does (deep linking is on by default since Flutter 3.27,
-and fespalier supports 3.32 and later), and the generated router already marks each link `NavigationSource.link`. What
+and fespalier supports 3.35 and later), and the generated router already marks each link `NavigationSource.link`. What
 you do is four steps, each with one check:
 
 1. **Say where the app lives.** `links:` in the pubspec lists the `domains` (and a `scheme`, if you have one); see

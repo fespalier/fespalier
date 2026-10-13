@@ -319,7 +319,7 @@ There is no automatic detection of a flight: an image in a tooltip or an `Overla
 
 ## Images on the web
 
-Flutter 3.32 and later have no HTML renderer: CanvasKit and skwasm fetch an image's bytes with XHR, so the image server must send CORS headers on the image **and on the redirect target**. A blank image on the web and nothing on the other platforms is this.
+Flutter 3.35 and later (every Flutter fespalier supports) have no HTML renderer: CanvasKit and skwasm fetch an image's bytes with XHR, so the image server must send CORS headers on the image **and on the redirect target**. A blank image on the web and nothing on the other platforms is this.
 
 - EmgR sends `Access-Control-Allow-Origin: *` on every route; its `CDN_BASE_URL` host must as well, since it answers the redirect to the stored file.
 - imgproxy: `IMGPROXY_ALLOW_ORIGIN`.

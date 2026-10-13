@@ -27,6 +27,57 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.16.0
+
+0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, fixes the places where a write could be sent twice, so an app sees
+different outcomes there, and adds opt-in tooling:
+
+- **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
+  Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
+  `flutter: ">=3.35.0"` (`fespalier_sign_keypair`, Flutter 3.44, and `fespalier_download_background`, Flutter 3.47, keep
+  their own). On an older Flutter `flutter pub get` fails naming the SDK, and `fsp create` says
+  `Flutter {v} is too old: fespalier needs Flutter 3.35 or newer`. Upgrade Flutter (3.35.7 is the last 3.35 patch, Dart
+  3.9.2), set the same `flutter-version` in CI, and raise your own `environment:`; an app that has to stay on 3.32 to 3.34
+  stays on 0.15.x. `lib/app.g.dart` is unchanged.
+
+  ```yaml
+  environment:
+    sdk: ^3.9.0
+    flutter: ">=3.35.0"
+  ```
+
+- **go_router's lower bound is 17.2.3** (it was 17.0.0). An app that lets pub choose changes nothing: 17.2.3 is the newest
+  go_router that Flutter 3.35 to 3.37 resolve. An app that holds go_router 17.0.0 to 17.2.2 in `dependency_overrides:` or
+  `pubspec.lock` runs `flutter pub upgrade go_router`. Why: Flutter 3.32 resolved go_router 17.0.0 and no newer one (17.0.1
+  asks for Flutter 3.35); that release ran a `Block.then` of an `onEnter` inside the parse, before the commit, and
+  asserted on a platform payload with no leading slash. On 17.2.3 neither needs a workaround.
+- `fsp create --features all` now includes `otel` on every supported Flutter, and an app it makes declares
+  `sdk: ^3.9.0` and `flutter: ">=3.35.0"`.
+
+- **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
+  On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an
+  `Idempotency-Key` again after a `500` or `504`, which could run the write twice. Now only a client error that proves
+  nothing was applied is `rejected`; the others are `other`, `outcomeUnknown(id)` is true for an upload without a
+  key, and `retry` and `start` refuse it until you `remove` it on purpose. A download is unchanged.
+- **An upload whose registry entry cannot be saved is `Failed(storage)` and is not sent.** `UploadStore.put` may throw
+  (`UploadStoreException` from `FileUploadStore`), and `FileUploadStore` no longer reads an unreadable file as empty:
+  `load` and `put` throw and leave the file alone, and an upload without a key is not started until the registry can be
+  read (the next `open()`) or `clearAccount()` empties it. Handle `Failed(storage)` with `retry`.
+- **A `5xx` without a CrateStack envelope keeps an intent's key** ([CrateStack with fespalier](cratestack.md)). A bare
+  `500` is `CrateStackOffline`, not `CrateStackUnavailable`; only a `5xx` in the envelope moves to the next key. A read
+  behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
+- **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
+  while the drain was busy is not sent from a stale list.
+- **An app with a `links:` section gets [`AppRoutes.urlOf`](cli.md#urls-to-share-approutesurlof)** when it regenerates,
+  the absolute URL of a route on the first domain: a doc comment and one method after `matchUrl`. An app without
+  `links:` regenerates byte for byte, and a first domain that is not usable is a warning of `fsp gen`, as before.
+- **`fespalier: test: a11y:` is opt-in** ([Route smoke tests](route-tests.md#route-smoke-tests-fsp-test)). With `true`
+  (or a list of `tap_targets`, `labels`, `contrast`) every test `fsp test` writes also checks Flutter's accessibility
+  guidelines once its page is on screen; without it the file is the one it always was.
+- **The DevTools extension has an _Adapters_ tab** ([DevTools extension](devtools.md#what-it-shows)), and the protocol is
+  still 1: `hello` lists `adapters` in its features. A tool of your own that compares `features` exactly should ask
+  `contains`.
+
 ### 0.15.0
 
 - **The `package:http` half of `fespalier_dio` is `fespalier_http`** ([HTTP clients](http.md)).

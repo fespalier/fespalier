@@ -38,7 +38,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `clock`, `dio` (`^5.7.0`, only `dio.dart` imports it) and
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `dio` (`^5.7.0`, only `dio.dart` imports it) and
 `hive_ce` (`^2.16.0`, only `hive.dart` imports it), all pure Dart.
 
 ## Four libraries
@@ -127,7 +127,7 @@ Future<IntentOutcome<Order>> cancel(Ref ref, {required CancelInput input}) => re
 The call (JSON-native: a `DateTime` throws, bytes would become a list) is saved, then sent once with the key `<id>#<attempt>`; `Accepted` only when the server said yes, `Queued`
 when there was no answer (the next sync sends the same bytes under the same key). A refusal on the spot is thrown
 and nothing is kept; behind an undecided intent of the same `subject` it is saved and `Queued` without being sent. The server must key its idempotency store by a verified principal, or a token refresh between attempts makes a replay a second run. In a drain a refusal is kept `failed` with its wire code only, a conflict is kept `conflict`,
-a stored failure (`5xx`) moves to the next key. An intent never expires on the device, and a sign-out removes it.
+a stored failure (a `5xx` in CrateStack's envelope) moves to the next key, and a `5xx` without one keeps it (since 0.16.0). An intent never expires on the device, and a sign-out removes it.
 The full table is in [the docs](../../docs/cratestack.md#5-actions).
 
 ## Owned rows

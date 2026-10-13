@@ -13,7 +13,7 @@ description: "Files downloaded in a fespalier app with fespalier_download (since
 
 **Since 0.15.0.** `package:fespalier_download` is the vocabulary of a download that outlives a screen: a request, a status
 and the ports of a transfer engine. It adds no file kind, no `fespalier:` key and no `fsp` command, and `app.g.dart` is the
-same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
+same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.35. A release that
 predates 0.15.0 has no such package.
 
 **Not built yet in this release: a foreground upload.** The engine, `Downloads`, the foreground
@@ -45,7 +45,7 @@ background backend. What no device has answered about it (issue #158) is listed 
 
 `BackgroundDownloaderBackend` (package `fespalier_download_background`, since 0.15.0, written against `background_downloader`
 9.6.4) hands the transfer to the operating system: WorkManager and user-initiated jobs on Android, a background
-`URLSession` on iOS. It needs Flutter 3.47, so it is not in the 3.32 floor job; an older app keeps `HttpDownloadBackend`.
+`URLSession` on iOS. It needs Flutter 3.47, so it is not in the 3.35 floor job; an older app keeps `HttpDownloadBackend`.
 
 - **Configure notifications or `userInitiated` is refused**: `BackgroundDownloaderBackend(notifications: DownloadNotifications(running: …))`.
   A `userInitiated` request without a `running` text is `Failed(notificationsRequired)`, because Android requires a visible
@@ -70,8 +70,13 @@ background backend. What no device has answered about it (issue #158) is listed 
 
 - **Replay safety is the rule.** Only an upload with an `Idempotency-Key` header (`HttpWrites.isWrite`, `replaySafe`) is
   retried by the platform, renewed after a 401 or 403, or sent again by `retry`. Any other is sent **once** (`retries: 0`, no
-  pause in the plugin): a kill or a lost response ends it `Failed` with `outcomeUnknown(id)` true, and `retry` and `start`
-  refuse it until the app `remove`s it on purpose. Never re-send a non-idempotent upload to unstick it.
+  pause in the plugin): a kill, a lost response or, since 0.16.0, a `5xx`, `408` or `499` (the server may have run it)
+  ends it `Failed` with `outcomeUnknown(id)` true, and `retry` and `start` refuse it until the app `remove`s it on
+  purpose. Only a `4xx` that proves nothing was applied is `Failed(rejected)`. Never re-send a non-idempotent upload to
+  unstick it.
+- **The registry is what remembers a write may have been sent** (since 0.16.0): an upload whose entry could not be saved
+  ends `Failed(storage)` before anything is sent, and a registry that exists and cannot be read starts no upload
+  without an `Idempotency-Key` (`UploadStoreException`, `FileUploadStore`; `references/uploads.md`).
 - **Auth is a grant** (`Uploads(grantor:)`), headers in plaintext in the OS queue; its own plugin group `fespalier.upload`;
   telemetry in its own namespace, `fespalier.upload.*`, constants only.
 - **UNCHECKED on a device**: the system sending an upload with the app closed, a server reading the plugin's multipart body,

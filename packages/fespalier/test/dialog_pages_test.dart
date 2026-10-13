@@ -154,8 +154,7 @@ void main() {
     expect((page as MaterialPage<void>).fullscreenDialog, isTrue);
     await pump(tester, page);
     final route = ModalRoute.of(tester.element(find.text('full')))!;
-    // The getter is on PageRoute on Flutter 3.32 (the floor), on ModalRoute on newer ones.
-    expect((route as PageRoute<Object?>).fullscreenDialog, isTrue);
+    expect(route.fullscreenDialog, isTrue);
   });
 
   test('TabOptions defaults', () {

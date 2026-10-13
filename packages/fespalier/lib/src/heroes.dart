@@ -148,8 +148,8 @@ class RouteHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final heroes = RouteHeroScope.of(context);
-    // `TickerMode.valuesOf` is Flutter 3.35+ and the package supports 3.32; `of` still
-    // answers the same until the floor moves.
+    // `TickerMode.valuesOf` is Flutter 3.41+ and the package supports 3.35; `of` answers the
+    // same until the floor moves there.
     // ignore: deprecated_member_use
     final shown = TickerMode.of(context);
     return HeroMode(

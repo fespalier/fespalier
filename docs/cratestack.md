@@ -283,13 +283,23 @@ recognises, row by row:
 | The server answers                                                                  | Classified as               | The intent                              |
 | ----------------------------------------------------------------------------------- | --------------------------- | --------------------------------------- |
 | success                                                                             |                             | deleted, `touches` bumped               |
-| no answer (network, timeout, gateway or captive-portal page)                        | `CrateStackOffline`         | `pending`, same key                     |
+| no answer (network, timeout, a portal page, a `5xx` without CrateStack's envelope)  | `CrateStackOffline`         | `pending`, same key                     |
 | `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                     |
 | `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                     |
-| `5xx`, an envelope that cannot be read                                              | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1` |
+| a `5xx` **in CrateStack's envelope** (`code` and `message`)                         | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1` |
 | `422` `idempotency_key_conflict`                                                    | refused                     | `failed`                                |
 | `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)     |
 | any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only            |
+
+**Only the server's own envelope moves the key** (since 0.16.0). A `5xx` that has CrateStack's envelope is a failure
+the server said, and it may have stored it under the key, so the intent takes the next key. A `5xx` with no envelope
+(a bare `500`, a proxy's `520`, a panic handler's plain text) is not the server's word: the write may have committed
+before something in front of it answered, so it is `CrateStackOffline` and the intent keeps its key, which lets the
+server answer the replay from what it stored. Before 0.16.0 a bare `500` moved the intent to the next key, and a
+write that had committed ran a second time. A read behind `serve` now falls back to the saved copy on such an
+answer, as it does on a `502`. A drain also reads each intent from the store again right before it sends it (since
+0.16.0): an intent that a concurrent `submit` got accepted, that the person discarded or that a sign-out wiped while
+the drain was busy with an earlier one is not sent.
 
 **Validation errors become form errors.** `withCrateStackFieldErrors(ref)` turns a `422` `VALIDATION_ERROR` into
 fespalier's `FieldErrors`, like `withFieldErrors` in `fespalier_http` and `fespalier_dio` do. CrateStack documents the message

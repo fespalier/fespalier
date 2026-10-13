@@ -8,8 +8,8 @@ repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_
 issue_tracker: https://github.com/fespalier/fespalier/issues
 
 environment:
-  sdk: ^3.8.0
-  flutter: ">=3.32.0"
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
 
 dependencies:
   clock: ^1.1.1
@@ -37,9 +37,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  # Flutter's own flutter_test pins the version (3.0.9 on Flutter 3.32, the floor), so the constraint
+  # Flutter's own flutter_test pins the version (3.0.10 on Flutter 3.35, the floor), so the constraint
   # must admit that one.
-  leak_tracker_flutter_testing: ^3.0.9
+  leak_tracker_flutter_testing: ^3.0.10
 
 # In this repository the package is built against the fespalier beside it. A dependency's
 # overrides are ignored, so apps never see this.

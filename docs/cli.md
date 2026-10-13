@@ -70,7 +70,7 @@ fsp create my_app --dry-run            # print every file and command; write and
 fsp create --list-features             # the optional features (--json: one object per line)
 ```
 
-It needs Flutter 3.32 or newer on `PATH` and a folder that does not exist or is empty (to add fespalier to an app you already have, use [`fsp init`](getting-started.md#fsp-init)). It does not read a project, so `--project` is refused: the folder is the argument.
+It needs Flutter 3.35 or newer on `PATH` and a folder that does not exist or is empty (to add fespalier to an app you already have, use [`fsp init`](getting-started.md#fsp-init)). It does not read a project, so `--project` is refused: the folder is the argument.
 
 What it does, in order:
 

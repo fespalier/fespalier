@@ -4,11 +4,11 @@ import 'dart:io' show Platform;
 import 'package:fespalier_flags/fespalier_flags.dart';
 import 'package:flutter/foundation.dart';
 
-/// Whether the tests run on Flutter 3.32 (Dart 3.8), the oldest Flutter the package supports
-/// (CI's `floor` job). Flutter 3.32 resolves go_router 17.0.0 and no newer one (17.0.1 needs
-/// Flutter 3.35), and on it the page a `go` lands on is built one frame after the location
-/// changes.
-final bool onFlutterFloor = Platform.version.startsWith('3.8.');
+/// Whether the Flutter is older than 3.44 (Dart below 3.12), the floor, 3.35, included, and so
+/// resolves go_router 17 at most. go_router 17 builds the page that a location change lands on
+/// one frame after the change; go_router 18 builds it in the same frame.
+final bool onGoRouter17 =
+    int.parse(RegExp(r'^3\.(\d+)').firstMatch(Platform.version)![1]!) < 12;
 
 /// Runs [body] with `debugPrint` captured, and returns the lines it printed.
 Future<List<String>> printed(FutureOr<void> Function() body) async {

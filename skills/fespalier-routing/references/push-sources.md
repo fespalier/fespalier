@@ -35,7 +35,7 @@ Vendor SDKs release weekly: when a major lands, rebuild this page. **The floors 
 - **Initialise the vendor inside the source, lazily.** `launch()` runs after the binding exists and inside the adapters'
   zones, so `Firebase.initializeApp()` belongs in the first call that needs it, not in `main()` before `AppMain.run()`
   (a binding created outside the zone `AppMain.run()` uses draws Flutter's zone-mismatch warning).
-- **`taps` and `received` are listened to once per `ProviderScope`**: make them broadcast streams (a rebuilt scope listens again). The Firebase source below ends them with `asBroadcastStream()`.
+- **`taps` and `received` are listened to once per `ProviderScope`**: make them broadcast streams (a rebuilt scope listens again). The Firebase source below ends them with `asBroadcastStream()`. **Since 0.16.0 `taps` is listened to once more**, from `launch()` until the scope's own subscription exists, to keep the latest tap of the startup (`push.md`): a source built on a platform channel returns **one** stream every time (a `late final` field), because two `receiveBroadcastStream()` of one channel replace each other's handler and a cancel silences both.
 - **A token that is not there yet is not an error.** On iOS `getToken()` throws `apns-token-not-set` until the APNs token
   arrives; the source yields nothing then and the refresh stream delivers the token.
 - **Never put the payload in `raw` for the package to read**: `raw` is for your `PushRoute` only.
@@ -557,7 +557,7 @@ final class UnifiedPushTokens implements TokenFeed {
 `properties`: `subscription_id`, **the id OneSignal's own API sends to**: a backend that sends through OneSignal needs it, not the
 token. OneSignal has an observer on the push subscription: when the token is gone or the user is opted out the recipe emits a
 `PushTokenRevoked` with the previous `subscription_id`. The click listener buffers a click that arrived before it existed, so
-a cold-start tap comes through `taps` (after the first frame) and `initialTap()` answers null. Call
+a cold-start tap comes through `taps` (kept from `launch()`, opened after the first frame; since 0.16.0) and `initialTap()` answers null. Call
 `OneSignal.initialize(appId)` in `main()` before `FespalierPush.configure`; the plugin is a static singleton, so there is no lazy start to
 keep. `onesignal_flutter` 5.7.0.
 

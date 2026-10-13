@@ -39,6 +39,8 @@ final class PushAdapter extends FespalierAdapter {
   FutureOr<InboundLaunch?> launch() {
     final config = FespalierPush.configured();
     if (config == null) return null;
+    // Before the cold-start read: a tap that the stream says while it is awaited is kept too.
+    _holdTaps(config);
     try {
       final tap = config.source.initialTap();
       if (tap is Future<PushMessage?>) {
@@ -64,6 +66,7 @@ final class PushAdapter extends FespalierAdapter {
   InboundLaunch? _cold(PushConfig config, PushMessage? message) {
     if (message == null) return null;
     pushColdStartId = message.id;
+    pushColdStartMessage = message;
     final token = _begin(FespalierPushConventions.cold);
     final target = _map(config, message);
     _finish(token, routed: target != null);
@@ -84,7 +87,25 @@ final class PushAdapter extends FespalierAdapter {
     if (_attached[container] != null) return;
     _attached[container] = true;
     var cold = pushColdStartId;
+    var coldMessage = pushColdStartMessage;
     pushColdStartId = null;
+    pushColdStartMessage = null;
+    void open(PushMessage message, {required bool held}) {
+      final id = message.id;
+      if (id != null && id == cold) {
+        // The cold-start notification seen again on `taps`: once.
+        cold = null;
+        coldMessage = null;
+        return;
+      }
+      if (held && id == null && _samePayload(message, coldMessage)) {
+        // No id to tell it by: a tap kept during startup with the cold-start payload is it.
+        coldMessage = null;
+        return;
+      }
+      _warm(router, config, message);
+    }
+
     container.listen<AsyncValue<_Tap>>(_taps, (previous, next) {
       switch (next) {
         case AsyncError(:final error, :final stackTrace):
@@ -92,17 +113,14 @@ final class PushAdapter extends FespalierAdapter {
           _report(error, stackTrace, 'in the stream of notification taps');
         case AsyncData(:final value):
           if (identical(previous?.value, value)) return;
-          final id = value.message.id;
-          if (id != null && id == cold) {
-            // The cold-start notification seen again on `taps`: once.
-            cold = null;
-            return;
-          }
-          _warm(router, config, value.message);
+          open(value.message, held: false);
         case AsyncLoading():
           break;
       }
     });
+    // The app's subscription is made: the hold (a second one, since launch()) can end without
+    // a gap, and what it kept is opened below, once the rest of the adapter is attached.
+    final kept = pushTapHold.end();
     // The callbacks hear events, not state: the public providers hold the last value and Riverpod
     // drops a state equal to the previous one, so they are fed from private providers that wrap
     // each event in a fresh object. A token is told once per kind until that kind is revoked.
@@ -156,6 +174,7 @@ final class PushAdapter extends FespalierAdapter {
         }
       });
     }
+    if (kept != null) open(kept, held: true);
   }
 
   void _warm(GoRouter router, PushConfig config, PushMessage message) {
@@ -244,6 +263,61 @@ final _revocationEvents = StreamProvider<_RevocationEvent>(
   (ref) => ref.watch(pushSource).revocations.map(_RevocationEvent.new),
   retry: (_, _) => null,
 );
+
+/// Listens to `taps` from `launch()` on, in a container of its own, and keeps the latest tap
+/// (since 0.16.0): `attach` ends it. The subscription is a provider's, so it goes when the
+/// container is disposed, which `attach`, a new `configure` and `debugReset` all do.
+void _holdTaps(PushConfig config) {
+  pushTapHold.end();
+  try {
+    final container = ProviderContainer(
+      overrides: [pushSource.overrideWithValue(config.source)],
+    );
+    pushTapHold.container = container;
+    container.listen<AsyncValue<_Tap>>(_taps, (previous, next) {
+      switch (next) {
+        case AsyncError(:final error, :final stackTrace):
+          _report(error, stackTrace, 'in the stream of notification taps');
+        case AsyncData(:final value):
+          if (!identical(previous?.value, value)) {
+            pushTapHold.held = value.message;
+          }
+        case AsyncLoading():
+          break;
+      }
+    }, fireImmediately: true);
+  } catch (error, stack) {
+    _report(
+      error,
+      stack,
+      'in the stream of notification taps',
+    );
+    pushTapHold.end();
+  }
+}
+
+/// Whether [message] carries the payload of [cold] (a message without an id has nothing else to
+/// be told by).
+bool _samePayload(PushMessage message, PushMessage? cold) =>
+    cold != null &&
+    message.category == cold.category &&
+    _equal(message.data, cold.data);
+
+bool _equal(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    return a.length == b.length &&
+        a.keys.every((k) => b.containsKey(k) && _equal(a[k], b[k]));
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_equal(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
+}
 
 void _report(Object error, StackTrace stack, String doing) {
   FlutterError.reportError(

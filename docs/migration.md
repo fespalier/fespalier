@@ -29,6 +29,24 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
+Nothing is renamed and no import changes. The generated `app.g.dart` is unchanged. Most fixes below make a write that
+could be sent twice be sent once, so an app sees different outcomes in these places; the last three are about code
+generators, and change nothing for an app that does not use freezed or `build_runner`:
+
+- **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
+  On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an
+  `Idempotency-Key` again after a `500` or `504`, which could run the write twice. Now only a client error that proves
+  nothing was applied is `rejected`; the others are `other`, `outcomeUnknown(id)` is true for an upload without a
+  key, and `retry` and `start` refuse it until you `remove` it on purpose. A download is unchanged.
+- **An upload whose registry entry cannot be saved is `Failed(storage)` and is not sent.** `UploadStore.put` may throw
+  (`UploadStoreException` from `FileUploadStore`), and `FileUploadStore` no longer reads an unreadable file as empty:
+  `load` and `put` throw and leave the file alone, and an upload without a key is not started until the registry can be
+  read (the next `open()`) or `clearAccount()` empties it. Handle `Failed(storage)` with `retry`.
+- **A `5xx` without a CrateStack envelope keeps an intent's key** ([CrateStack with fespalier](cratestack.md)). A bare
+  `500` is `CrateStackOffline`, not `CrateStackUnavailable`; only a `5xx` in the envelope moves to the next key. A read
+  behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
+- **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
+  while the drain was busy is not sent from a stale list.
 - **`ExtraCodec.of` finds an `extra` with `is`, so a freezed class restores** ([Restoring `extra` on the web](navigation.md#restoring-extra-on-the-web)). Nothing is removed or renamed; this is for an app whose `extra` is a freezed class written as `const factory Note(...) = _Note`. The object is a private `_Note`, so `ExtraCodec({Note: ...})`, which looks a type up by its exact runtime type, never matched it: the extra was saved as `null` and a web reload gave the page `null`, without a word. Change `lib/app/extra_codec.dart`, and keep the old constructor for anything else:
 
   ```dart

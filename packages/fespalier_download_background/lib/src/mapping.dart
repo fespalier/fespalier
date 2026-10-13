@@ -238,6 +238,11 @@ Progress? progressOfUpdate(bd.TaskProgressUpdate update) =>
 /// `notFound`); a connection error is `network`; a file system error `storage`; a bad URL
 /// `invalidRequest`; a resume that could not be done `killed`; anything else `other`. Only the
 /// exception's type and its code are read: **never its text**.
+///
+/// This is a download's reading, where asking again is harmless. The upload engine (`Uploads`) does
+/// not trust `rejected` for a `5xx`, `408` or `499`: since 0.16.0 it ends such an upload
+/// `Failed(other)`, an unknown outcome, because only a client error proves the server did not apply
+/// the write.
 (DownloadFailure, int?) failureOf(
   bd.TaskException? exception, {
   int? responseStatusCode,

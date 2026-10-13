@@ -91,9 +91,32 @@ void main() {
         isA<CrateStackOffline>(),
       );
     });
-    test('a bare 500 is not offline', () {
-      expect(read(500), isA<CrateStackUnavailable>());
-    });
+    test(
+      'every 5xx without an envelope is offline: nobody that knows CrateStack answered, so the call may have landed',
+      () {
+        for (final status in [500, 501, 505, 508, 520, 522, 524, 599]) {
+          expect(read(status), isA<CrateStackOffline>(), reason: '$status');
+          expect(
+            read(status, body: 'Internal Server Error', type: 'text/plain'),
+            isA<CrateStackOffline>(),
+            reason: '$status with a plain-text body',
+          );
+          expect(
+            read(status, body: {'error': 'boom'}),
+            isA<CrateStackOffline>(),
+            reason: '$status with JSON that is no envelope',
+          );
+        }
+      },
+    );
+    test(
+      'a status that is no error and no success is not an envelope either',
+      () {
+        for (final status in [100, 301, 304, 600]) {
+          expect(read(status), isA<CrateStackOffline>(), reason: '$status');
+        }
+      },
+    );
     test('a success with no page is no failure', () {
       expect(read(200, body: {'a': 1}, type: 'application/json'), isNull);
     });
@@ -156,23 +179,36 @@ void main() {
       );
       expect(DioFailures.read(error), isA<CrateStackCancelled>());
     });
-    test('gateway pages are offline, a bare 500 is not', () {
-      expect(DioFailures.read(dioError(502)), isA<CrateStackOffline>());
-      expect(DioFailures.read(dioError(504)), isA<CrateStackOffline>());
-      expect(
-        DioFailures.read(
-          dioError(
-            200,
-            data: '<html>',
-            headers: {
-              'content-type': ['text/html'],
-            },
+    test(
+      'gateway pages and a bare 500 are offline; a 500 with an envelope is not',
+      () {
+        expect(DioFailures.read(dioError(502)), isA<CrateStackOffline>());
+        expect(DioFailures.read(dioError(504)), isA<CrateStackOffline>());
+        expect(
+          DioFailures.read(
+            dioError(
+              200,
+              data: '<html>',
+              headers: {
+                'content-type': ['text/html'],
+              },
+            ),
           ),
-        ),
-        isA<CrateStackOffline>(),
-      );
-      expect(DioFailures.read(dioError(500)), isA<CrateStackUnavailable>());
-    });
+          isA<CrateStackOffline>(),
+        );
+        expect(DioFailures.read(dioError(500)), isA<CrateStackOffline>());
+        expect(
+          DioFailures.read(dioError(500, data: 'Internal Server Error')),
+          isA<CrateStackOffline>(),
+        );
+        expect(
+          DioFailures.read(
+            dioError(500, data: {'code': 'INTERNAL', 'message': 'oops'}),
+          ),
+          isA<CrateStackUnavailable>(),
+        );
+      },
+    );
     test(
       'an envelope is classified by status, and Retry-After makes 409 in flight',
       () {

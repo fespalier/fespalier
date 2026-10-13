@@ -288,6 +288,84 @@ void main() {
       expect(events.seen.single.$3, 403);
     });
 
+    test('a 5xx or 408 is not a refusal: with the engine, the write is not sent again', () async {
+      for (final code in [408, 500, 502, 504]) {
+        final t = FakeUploadTransport();
+        final engine = Uploads(backend: backend(t), store: MemoryUploadStore());
+        await engine.open();
+        await engine.start(request());
+        t.emitStatus(
+          update(
+            t.enqueued.single,
+            bd.TaskStatus.failed,
+            bd.TaskHttpException('x', code),
+          ),
+        );
+        expect(
+          engine.statusOf('a'),
+          const Failed(DownloadFailure.other),
+          reason: '$code',
+        );
+        expect(engine.outcomeUnknown('a'), isTrue, reason: '$code');
+        expect(await engine.retry('a'), isFalse, reason: '$code');
+        await engine.start(request());
+        expect(
+          t.enqueued,
+          hasLength(1),
+          reason: '$code: nothing was sent again',
+        );
+      }
+    });
+
+    test('a 4xx that proves nothing was applied is a refusal and may be sent again', () async {
+      for (final code in [400, 404, 413, 422]) {
+        final t = FakeUploadTransport();
+        final engine = Uploads(backend: backend(t), store: MemoryUploadStore());
+        await engine.open();
+        await engine.start(request());
+        t.emitStatus(
+          update(
+            t.enqueued.single,
+            bd.TaskStatus.failed,
+            bd.TaskHttpException('x', code),
+          ),
+        );
+        expect(
+          engine.statusOf('a'),
+          const Failed(DownloadFailure.rejected),
+          reason: '$code',
+        );
+        expect(engine.outcomeUnknown('a'), isFalse, reason: '$code');
+        expect(await engine.retry('a'), isTrue, reason: '$code');
+        expect(t.enqueued, hasLength(2), reason: '$code');
+      }
+    });
+
+    test(
+      'after a restart a 5xx the platform kept is still an unknown outcome',
+      () async {
+        final store = MemoryUploadStore({'a': StoredUpload(request())});
+        final t = FakeUploadTransport(
+          records: [
+            bd.TaskRecord(
+              uploadTaskOf(request()),
+              bd.TaskStatus.failed,
+              -1,
+              -1,
+              bd.TaskHttpException('x', 504),
+            ),
+          ],
+        );
+        final engine = Uploads(backend: backend(t), store: store);
+        await engine.open();
+        expect(engine.statusOf('a'), const Failed(DownloadFailure.other));
+        expect(engine.outcomeUnknown('a'), isTrue);
+        await engine.start(request());
+        expect(await engine.retry('a'), isFalse);
+        expect(t.enqueued, isEmpty, reason: 'nothing is sent again');
+      },
+    );
+
     test('the update of a cancelled attempt does not end its successor, however fast it follows', () async {
       final t = FakeUploadTransport();
       final b = backend(t);

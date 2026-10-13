@@ -51,8 +51,9 @@ The rules that keep it honest:
 - **Every answer says where it came from and as of when**, per account. One account's copy never reaches
   another: the scope is part of every key.
 - **A gateway or a captive portal counts as offline.** An HTML page where a JSON answer was expected, or a
-  `502`, `503`, `504`, `511` with no CrateStack envelope, means nobody that knows your API answered. A bare
-  `500` does not: the server did answer. With Dio, add `CrateStackPortalInterceptor`: Dio does not throw on an HTML
+  `5xx` with no CrateStack envelope, means nobody that knows your API answered, and the write may have landed. Since
+  0.16.0 that is every `5xx` without the envelope, a bare `500` included; before it was `502`, `503`, `504` and
+  `511`. A `5xx` in the envelope is not: the server did answer. With Dio, add `CrateStackPortalInterceptor`: Dio does not throw on an HTML
   `200`, so without it the page reaches the client as a decoding error that no reader knows.
 
 The `Freshness` rules of `data.dart` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`) still say _when_ a
@@ -79,7 +80,7 @@ What an intent is:
 - **A stored call.** The call is encoded once and saved before it is sent, then sent from the saved text every time.
   Every attempt is byte-identical, which is what a server's idempotency check compares.
 - **A key, `<id>#<attempt>`.** The `id` is 128 random bits. The same key is used until the server answers with a
-  stored failure (`5xx`); then the next attempt gets the next number, because a stored failure may be replayed
+  stored failure (a `5xx` in CrateStack's envelope; a `5xx` without one keeps the key, since 0.16.0); then the next attempt gets the next number, because a stored failure may be replayed
   under the old one. A replay is only safe if the server keys its idempotency store by a verified principal:
   keyed by a hash of the `Authorization` header, a token refresh between attempts makes the replay a new request
   (see [CrateStack with fespalier](cratestack.md#5-actions)).

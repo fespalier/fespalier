@@ -8,9 +8,19 @@ import 'upload_request.dart';
 /// The durable registry of uploads as one JSON file (since 0.15.0), the sibling of
 /// `FileDownloadStore` with the same guarantees: **not a cache** (nothing is evicted, and only
 /// [remove] and [clear], which `Uploads.clearAccount` calls, drop an entry), every change rewrites
-/// the whole file by atomic rename (`<name>.tmp`, then a move), writes are queued in order, a
-/// missing or corrupt file is an empty registry, an entry that is not valid is skipped, and a
-/// write that fails leaves the list in memory right for this run.
+/// the whole file by atomic rename (`<name>.tmp`, then a move), writes are queued in order, and an
+/// entry that is not valid is skipped.
+///
+/// **It does not hide a failure** (since 0.16.0), because the registry is the only thing that
+/// remembers an upload may have been sent. A missing file is an empty registry; a file that exists
+/// and cannot be read (an I/O error, text that is not JSON, a version this one does not know) is
+/// **not**: [load] and [put] throw an [UploadStoreException], the file is left exactly as it is, and
+/// the next call reads it again, so a transient error costs nothing. [clear] (`clearAccount`) deletes
+/// it and the registry starts empty. A [put] whose file cannot be written (a full disk) throws too,
+/// and the entry is not in the list; `Uploads` then does not send the upload. A [remove] that cannot
+/// be written still drops the entry in memory and does not throw: a stale entry on disk is the
+/// safe direction. Before 0.16.0 an unreadable file was read as empty and a failed write was
+/// dropped, so the upload was sent with nothing to say it was.
 ///
 /// The file lives under a [DownloadBase] folder the app's [DownloadBases] resolves, by default
 /// `support/fespalier_uploads.json`: a different file from the downloads', so the two registries
@@ -47,13 +57,24 @@ class FileUploadStore implements UploadStore {
 
   @override
   Future<void> put(StoredUpload upload) => _enqueue(() async {
-    (await _ensureLoaded())[upload.request.id] = upload;
-    await _save();
+    final entries = await _ensureLoaded();
+    final id = upload.request.id;
+    final previous = entries[id];
+    entries[id] = upload;
+    if (await _save()) return;
+    // The list in memory says what the disk says: this entry was not kept.
+    if (previous == null) {
+      entries.remove(id);
+    } else {
+      entries[id] = previous;
+    }
+    throw const UploadStoreException(_unwritable);
   });
 
   @override
   Future<void> remove(String id) => _enqueue(() async {
     final entries = await _ensureLoaded();
+    // Not written: the entry stays on disk and is read as an upload the platform no longer has.
     if (entries.remove(id) != null) await _save();
   });
 
@@ -77,6 +98,8 @@ class FileUploadStore implements UploadStore {
     return result;
   }
 
+  // A missing file is empty. A file that is there and cannot be read is not: it is not cached,
+  // nothing is written over it, and the next call reads it again.
   Future<Map<String, StoredUpload>> _ensureLoaded() async {
     final loaded = _entries;
     if (loaded != null) return loaded;
@@ -86,24 +109,31 @@ class FileUploadStore implements UploadStore {
         final text = await _files.readText(await _path());
         if (text != null) entries.addAll(_decode(text));
       } catch (_) {
-        // Unreadable is empty.
+        // Nothing of the error is kept: it can name a path.
+        throw const UploadStoreException(_unreadable);
       }
     }
     return _entries = entries;
   }
 
-  Future<void> _save() async {
-    if (!_files.isSupported) return;
+  // Whether the list is on disk. The web has no disk and keeps the list in memory.
+  Future<bool> _save() async {
+    if (!_files.isSupported) return true;
     try {
       final path = await _path();
       final text = _encode(_entries ?? const {});
       await _files.writeText('$path.tmp', text);
       await _files.rename('$path.tmp', path);
+      return true;
     } catch (_) {
-      // The list in memory is right for this run; the next change writes it all again.
+      return false;
     }
   }
 }
+
+const String _unreadable =
+    'the registry file could not be read, or is not a registry this version knows';
+const String _unwritable = 'the registry file could not be written';
 
 const int _version = 1;
 
@@ -130,11 +160,14 @@ Map<String, Object?> _entryToJson(StoredUpload u) {
   };
 }
 
+// Throws on text that is not a registry this version knows: that is not an empty registry.
 Map<String, StoredUpload> _decode(String text) {
   final root = jsonDecode(text);
-  if (root is! Map || root['v'] != _version) return {};
+  if (root is! Map || root['v'] != _version) {
+    throw const FormatException('not an uploads registry');
+  }
   final uploads = root['uploads'];
-  if (uploads is! Map) return {};
+  if (uploads is! Map) throw const FormatException('no uploads');
   final out = <String, StoredUpload>{};
   for (final e in uploads.entries) {
     final id = e.key;

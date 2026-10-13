@@ -212,6 +212,11 @@ class Downloads {
   }
 
   /// Resumes the paused download [id]. True when the backend took the request.
+  ///
+  /// With a `grantor` the engine asks it first (`renewal: false`) and hands the backend the
+  /// grant's headers and address (since 0.16.0), and the resume has its own one renewal. A
+  /// grantor that cannot reach its server (an `http.ClientException`) leaves the download paused
+  /// and this returns false.
   Future<bool> resume(String id) async {
     if (statusOf(id) is! Paused) return false;
     final generation = _generationOf(id);

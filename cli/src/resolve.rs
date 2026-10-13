@@ -3376,12 +3376,33 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&v.span), msg);
             return None;
         }
+        let stem = section_name(&at.node.dir);
+        let stem = stem.strip_suffix("Section").unwrap_or(&stem);
+        let enum_name = match action.as_str() {
+            "action" => format!("{stem}Step"),
+            other => format!("{stem}{}Step", other.to_upper_camel_case()),
+        };
         let mut ok = true;
-        let mut steps = vec![];
+        let mut steps: Vec<FlowStep> = vec![];
         let mut owner: Vec<(&str, &str)> = vec![];
         let fields: Vec<&str> = form.fields.iter().map(|f| f.name.as_str()).collect();
         for e in entries {
             let name = e.key.as_str();
+            let constant = name.to_lower_camel_case();
+            if let Some((why, hint)) = step_constant_fault(&constant, &enum_name) {
+                let msg = format!(
+                    "`'{name}'` can't be a step: {why}; rename the folder and its key in `steps`, e.g. `'{hint}'`"
+                );
+                self.diags.error(file, Some(&e.key_span), msg);
+                ok = false;
+            } else if let Some(first) = steps.iter().find(|s| s.constant == constant) {
+                let msg = format!(
+                    "`'{}'` and `'{name}'` both become the constant `{constant}` of `{enum_name}`: rename one of the folders and its key in `steps`",
+                    first.folder
+                );
+                self.diags.error(file, Some(&e.key_span), msg);
+                ok = false;
+            }
             let dir = format!("{}{name}", folder_prefix(&at.node.dir));
             let has_page = !name.contains('/')
                 && at.node.children.iter().any(|c| {
@@ -3413,7 +3434,7 @@ impl Resolver<'_> {
             }
             steps.push(FlowStep {
                 folder: name.to_string(),
-                constant: name.to_lower_camel_case(),
+                constant,
                 fields: e.values.iter().map(|(f, _)| f.clone()).collect(),
             });
         }
@@ -3425,12 +3446,6 @@ impl Resolver<'_> {
                 ok = false;
             }
         }
-        let stem = section_name(&at.node.dir);
-        let stem = stem.strip_suffix("Section").unwrap_or(&stem);
-        let enum_name = match action.as_str() {
-            "action" => format!("{stem}Step"),
-            other => format!("{stem}{}Step", other.to_upper_camel_case()),
-        };
         let skip_name = forms::companion(action, Companion::Skip);
         let skip = at.m.functions.iter().find(|g| g.name == skip_name);
         let skip = skip.and_then(|g| {
@@ -5001,6 +5016,55 @@ fn view_fn_names(kind: Kind) -> &'static [&'static str] {
         Kind::Splash => &["splash"],
         _ => &[],
     }
+}
+
+/// The words Dart reserves: none of them is an identifier, so none can be an enum constant.
+/// (The built-in identifiers, `get`, `static`, `await`..., can; the Dart analyzer decides, and
+/// `step_constants_follow_the_dart_analyzer` asks it when `dart` is on the `PATH`.)
+const DART_RESERVED_WORDS: [&str; 33] = [
+    "assert", "break", "case", "catch", "class", "const", "continue", "default", "do", "else",
+    "enum", "extends", "false", "final", "finally", "for", "if", "in", "is", "new", "null",
+    "rethrow", "return", "super", "switch", "this", "throw", "true", "try", "var", "void", "while",
+    "with",
+];
+
+/// The members every enum has: a constant can't take their name (`values` is declared by the
+/// enum itself, the others are instance members of `Enum` and `Object`).
+const DART_ENUM_MEMBERS: [&str; 6] = [
+    "values",
+    "index",
+    "hashCode",
+    "toString",
+    "runtimeType",
+    "noSuchMethod",
+];
+
+/// Why `constant`, a step's name in lowerCamelCase, can't be a constant of the step enum
+/// `enum_name`, and a name that would do: `None` when it can (since 0.16.0).
+pub(crate) fn step_constant_fault(constant: &str, enum_name: &str) -> Option<(String, String)> {
+    let because = |why: &str, hint: String| {
+        Some((
+            format!("it becomes the constant `{constant}` of `{enum_name}`, and {why}"),
+            hint,
+        ))
+    };
+    if constant.is_empty() {
+        let why = format!("it has no letter or digit to name the constant of `{enum_name}` after");
+        return Some((why, "step".to_string()));
+    }
+    if constant.starts_with(|c: char| c.is_ascii_digit()) {
+        let why = format!("`{constant}` starts with a digit, so it is not a Dart identifier");
+        return because(&why, format!("step_{constant}"));
+    }
+    if DART_RESERVED_WORDS.contains(&constant) {
+        let why = format!("`{constant}` is a Dart reserved word");
+        return because(&why, format!("{constant}_step"));
+    }
+    if DART_ENUM_MEMBERS.contains(&constant) {
+        let why = format!("an enum already has a member called `{constant}`");
+        return because(&why, format!("{constant}_step"));
+    }
+    None
 }
 
 /// Whether `name` can start a typed route's name: `KycShopName` (the route is `KycShopNameRoute`).

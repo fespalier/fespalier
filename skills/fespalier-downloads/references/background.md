@@ -1,7 +1,7 @@
 # The background backend
 
 Since 0.15.0, `package:fespalier_download_background`, over `background_downloader` (written against 9.6.4). It needs
-**Flutter 3.47 and Dart 3.13**, so it is a package of its own and not in the Flutter 3.32 floor job: an app on an older
+**Flutter 3.47 and Dart 3.13**, so it is a package of its own and not in the Flutter 3.35 floor job: an app on an older
 Flutter keeps `HttpDownloadBackend`. A release that predates 0.15.0 has no such package.
 
 ```dart

@@ -11,8 +11,6 @@ import 'package:fespalier/startup.dart'
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/floor.dart';
-
 /// Overrides nothing: every member is the default.
 class _Default extends FespalierAdapter {
   const _Default();
@@ -112,8 +110,6 @@ void main() {
       final router = await _pump(tester, _router([_Handler(seen)]));
       router.go('/custom');
       await tester.pumpAndSettle();
-      // go_router before 17.2 runs a then inside the parse (the floor resolves 17.0.0).
-      if (onFlutterFloor) return;
       expect(_stack(router), ['/b']);
       expect(seen, containsAllInOrder(['/custom', '/b']));
     });

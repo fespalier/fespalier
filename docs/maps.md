@@ -37,10 +37,10 @@ release-please keeps current, is in [the package's README](../packages/fespalier
 The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`), `geolocator` (`>=14.0.0 <15.0.0`) and, for the file packs,
 `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side, and on [`fespalier_download`](downloads.md), which does the file packs' transfer (list it next to `fespalier_maps` with the same `ref`). An app
 that lists the package links the two plugins: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
-whether or not it is imported. Both ranges resolve on Flutter 3.32, fespalier's floor, with the lowest versions they
+whether or not it is imported. Both ranges resolve on Flutter 3.35, fespalier's floor, with the lowest versions they
 allow (CI's `floor` job runs `flutter pub downgrade`, `flutter analyze` and `flutter test` on the package). Two things
 are **not** checked by any CI job here and need a device or a build of your app: that the map draws, and that your
-Android toolchain builds `maplibre_gl` (its 0.26.0 changelog lists a Gradle, Kotlin and Android Gradle Plugin update, and 0.27.1 needs Flutter 3.29, which the 3.32 floor satisfies).
+Android toolchain builds `maplibre_gl` (its 0.26.0 changelog lists a Gradle, Kotlin and Android Gradle Plugin update, and 0.27.1 needs Flutter 3.29, which the 3.35 floor satisfies).
 
 The platform setup is the plugins' own: `geolocator` needs the location permission strings in `Info.plist`
 (`NSLocationWhenInUseUsageDescription`) and the manifest (`ACCESS_FINE_LOCATION`, `ACCESS_COARSE_LOCATION`), and

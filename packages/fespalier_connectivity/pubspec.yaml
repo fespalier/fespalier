@@ -8,8 +8,8 @@ repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_
 issue_tracker: https://github.com/fespalier/fespalier/issues
 
 environment:
-  sdk: ^3.8.0
-  flutter: ">=3.32.0"
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
 
 dependencies:
   # Event-driven (no polling): Android's NetworkCallback, iOS's NWPathMonitor, the web's online/offline events.

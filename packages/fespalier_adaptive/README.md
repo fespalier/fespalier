@@ -34,7 +34,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer.
+Needs Dart 3.9 and Flutter 3.35 or newer.
 
 ## Wire it
 
@@ -69,7 +69,7 @@ class TabsLayout extends StatelessWidget {
   (`AdaptiveNav`) to widgets of your own.
 
 `package:fespalier_adaptive/fespalier_adaptive.dart` is the model and imports no Material;
-`package:fespalier_adaptive/material.dart` is the scaffold, built on Flutter's Material widgets (Flutter 3.32
+`package:fespalier_adaptive/material.dart` is the scaffold, built on Flutter's Material widgets (Flutter 3.35
 has every one it uses), and re-exports the model. An app on `package:material_ui` renders the model itself.
 
 ## Test it

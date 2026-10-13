@@ -6,9 +6,9 @@
 /// and re-exported here, so one import is enough for a layout that uses the scaffold. An app on
 /// `package:material_ui` renders the model itself with `AdaptiveNavBuilder`.
 ///
-/// The Material widgets it uses exist in Flutter 3.32, fespalier's floor: `NavigationBar`,
-/// `NavigationRail`, `NavigationDrawer` (without `header` and `footer`, which are 3.35), and the
-/// `enabled` and `disabled` flags of their destinations.
+/// The Material widgets it uses exist in Flutter 3.35, fespalier's floor: `NavigationBar`,
+/// `NavigationRail`, `NavigationDrawer` (`header` and `footer`, which exist since 3.35, are not
+/// slots of the scaffold yet), and the `enabled` and `disabled` flags of their destinations.
 library;
 
 export 'fespalier_adaptive.dart';

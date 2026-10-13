@@ -13,7 +13,7 @@ Built on 2026-10-08 against `firebase_core` 4.15.0, `firebase_messaging` 16.7.0,
 (the APNs recipe uses no package). Only `analyze` runs: no vendor starts, and the native side (keys, manifests, entitlements)
 is never built.
 Vendor SDKs release weekly: when a major lands, rebuild this page. **The floors are the app's, not fespalier's**:
-`firebase_messaging` 16.x needs Flutter 3.27 (16.0.0 resolves on 3.32 with `firebase_core ^4.0.0`), and
+`firebase_messaging` 16.x needs Flutter 3.27 (16.0.0 resolves on 3.35 with `firebase_core ^4.0.0`), and
 `flutter_local_notifications` 22.x needs Flutter 3.38.
 
 ```yaml
@@ -756,7 +756,7 @@ final class JPushTokens implements TokenFeed {
 One plugin for the Chinese Android vendor channels (and APNs on iOS), derived from MixPush: `kind` follows the vendor that
 issued the id (`mi` is `PushTokenKind.mipush`, `huawei` is `hms`, `honor`, `oppo`, `vivo` and `apns` are the same-named constants,
 and `meizu`, which has no constant, stays the string `meizu`), `value`: the vendor's `regId`. **`flutter_mix_push` 1.0.0 needs
-Flutter 3.44 and Dart 3.12.1**, above fespalier's own floor (3.32): it is the app's floor if it uses it. This repository's
+Flutter 3.44 and Dart 3.12.1**, above fespalier's own floor (3.35): it is the app's floor if it uses it. This repository's
 pinned Flutter (3.47.5) builds it, and this recipe is compiled by `just skill-samples` with it; on an older Flutter, `pub get`
 fails and the recipe is prose only. The vendor keys are Gradle manifest placeholders (`MI_APP_ID`, `OPPO_APP_KEY`, ...: the
 plugin's README), and a vendor without one is skipped. The plugin reports **no revocation** (no unregister event), so

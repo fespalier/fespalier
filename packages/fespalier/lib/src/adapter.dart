@@ -91,8 +91,8 @@ abstract class FespalierAdapter {
   /// An adapter that overrides the method of 0.15 and earlier no longer compiles, instead of being
   /// skipped without a word. With such an adapter, `go()` then `push()` in one handler ends with the
   /// `go()` lost, so an app with one pushes after the `go()` committed. A `then` runs after the
-  /// navigation commits on go_router 17.2 and later; on 17.0 and 17.1 (what Flutter 3.32
-  /// resolves) it runs inside the parse, before the commit, and may be lost.
+  /// navigation commits (go_router 17.2.3, the lowest fespalier takes, and later; before 17.2 it
+  /// ran inside the parse, before the commit, and could be lost).
   ///
   /// Read once, when the router is built (`FespalierAdapters`), so answer the same thing every
   /// time; return a tear-off or a closure over the adapter's own fields. No timer.

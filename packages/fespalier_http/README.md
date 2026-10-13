@@ -32,7 +32,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `http` (`^1.5.0`, for `Abortable`), which is pure Dart,
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `http` (`^1.5.0`, for `Abortable`), which is pure Dart,
 and on nothing else: an app that uses `package:http` links no Dio.
 
 ## Libraries

@@ -221,7 +221,7 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
   `adapters:` was an error up to 0.10.0 and is fine since 0.11.0 (below).
 - **`launch` and `onEnter` (since 0.11.0).** `launch()` returns an `InboundLaunch` (or `null`) once, after `beforeRun()`,
   never on the web; the first adapter's answer wins. `onEnter(InboundNavigation)` returns `null`, `Allow(then:)` or `Block.then(...)`;
-  the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed, reported in every mode, and its `then` still runs). A `then` runs after the commit on go_router 17.2 and later; on 17.0 and 17.1, which Flutter 3.32 resolves, before it. `launchRouter` and the platform-link marks are in `fespalier-routing`. The generated main asks
+  the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed, reported in every mode, and its `then` still runs). A `then` runs after the commit (go_router 17.2.3, the lowest since 0.16.0, and later; before 17.2 it ran inside the parse, before it). `launchRouter` and the platform-link marks are in `fespalier-routing`. The generated main asks
   `AppAdapters.launch()` once and gives `AppRoutes.router(launch: AppMain.launch)` the answer; with `main: manual`, `final launch = await AppAdapters.launch();`
   and `AppRoutes.router(launch: launch, ...)`. `AppRoutes.onEnter` exists only with adapters (go_router parses every navigation asynchronously, with its redirect limit, as soon as any `onEnter` is set).
 - **`onEnter` is a getter (since 0.16.0).** An adapter that wants go_router's `onEnter` overrides

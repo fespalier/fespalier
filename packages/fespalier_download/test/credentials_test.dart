@@ -128,6 +128,85 @@ void main() {
     expect(client.requests, hasLength(1));
   });
 
+  // The session could not be reached (no network while the token refreshes): nothing was refused,
+  // so the person is not told their session is gone. `fespalier_auth` throws `AuthUnavailable`,
+  // a `ClientException`, for it.
+  test('authorize that cannot reach the session ends network', () async {
+    final client = FakeHttpClient(
+      (request, _) => http.Response.bytes(body, 200),
+    );
+    final c = Rig(
+      client,
+      files,
+      credentials: _Throws(
+        onAuthorize: true,
+        error: http.ClientException("couldn't refresh the session"),
+      ),
+    );
+    await c.start(request());
+    expect(c.now, const Failed(DownloadFailure.network));
+    expect(c.httpStatuses['douala'], isNull);
+    expect(client.requests, isEmpty, reason: 'nothing is sent without it');
+  });
+
+  test('retry that cannot reach the session ends network', () async {
+    final client = FakeHttpClient((request, _) => http.Response('', 401));
+    final c = Rig(
+      client,
+      files,
+      credentials: _Throws(
+        onAuthorize: false,
+        error: http.ClientException("couldn't refresh the session"),
+      ),
+    );
+    await c.start(request());
+    expect(c.now, const Failed(DownloadFailure.network));
+    expect(client.requests, hasLength(1));
+  });
+
+  test(
+    'offline while the token refreshes is Failed(network), and retry goes on when it is back',
+    () async {
+      files.putBytes(part, body.sublist(0, 100));
+      files.putText(tag, '"v1"');
+      final session = _Flaky();
+      final client = FakeHttpClient((request, _) {
+        return http.Response.bytes(
+          body.sublist(100),
+          206,
+          headers: {'content-range': 'bytes 100-299/300', 'etag': '"v1"'},
+        );
+      });
+      final d = Downloads(
+        backend: HttpDownloadBackend(
+          client: client,
+          bases: defaultBases,
+          files: files,
+          credentials: session,
+        ),
+        store: MemoryDownloadStore(),
+        files: TransferDownloadFiles(bases: defaultBases, files: files),
+      );
+      var ended = Completer<DownloadStatus>();
+      d.observe((id, s) {
+        if ((s is Complete || s is Failed) && !ended.isCompleted) {
+          ended.complete(s);
+        }
+      });
+      await d.open();
+      await d.start(request(bytes: 300, sha256: sha256Of(body)));
+      expect(await ended.future, const Failed(DownloadFailure.network));
+      expect(client.requests, isEmpty);
+      // Back online: the same download goes on from the bytes it kept.
+      session.offline = false;
+      ended = Completer<DownloadStatus>();
+      await d.retry('douala');
+      expect(await ended.future, const Complete(loc, 300));
+      expect(files.bytesOf(dest), body);
+      await d.close();
+    },
+  );
+
   test('a re-send continues from the partial file with Range', () async {
     files.putBytes(part, body.sublist(0, 100));
     files.putText(tag, '"v1"');
@@ -227,9 +306,11 @@ class _Eager implements HttpCredentials {
 }
 
 class _Throws implements HttpCredentials {
-  _Throws({required this.onAuthorize});
+  _Throws({required this.onAuthorize, Object? error})
+    : error = error ?? StateError('no session');
 
   final bool onAuthorize;
+  final Object error;
 
   @override
   bool covers(Uri uri) => true;
@@ -240,7 +321,7 @@ class _Throws implements HttpCredentials {
     Uri uri, {
     HttpAuthorization? previous,
   }) async {
-    if (onAuthorize) throw StateError('no session');
+    if (onAuthorize) throw error;
     return _Attempt(method, uri);
   }
 
@@ -249,7 +330,32 @@ class _Throws implements HttpCredentials {
     HttpAuthorization attempt, {
     required int statusCode,
     required Map<String, String> headers,
-  }) async => throw StateError('refresh failed');
+  }) async => throw error;
+}
+
+// A session that cannot be reached while [offline] (the refresh has no network), then can.
+class _Flaky implements HttpCredentials {
+  bool offline = true;
+
+  @override
+  bool covers(Uri uri) => true;
+
+  @override
+  Future<HttpAuthorization> authorize(
+    String method,
+    Uri uri, {
+    HttpAuthorization? previous,
+  }) async {
+    if (offline) throw http.ClientException("couldn't refresh the session");
+    return _Attempt(method, uri);
+  }
+
+  @override
+  Future<bool> retry(
+    HttpAuthorization attempt, {
+    required int statusCode,
+    required Map<String, String> headers,
+  }) async => false;
 }
 
 class _Attempt implements HttpAuthorization {

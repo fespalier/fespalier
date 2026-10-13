@@ -83,7 +83,10 @@ A download is in one `DownloadStatus` at a time, a sealed family you can `switch
 
 `DownloadFailure` is a value, never an error's text: `unsupported` (the web), `invalidRequest`, `network`, `rejected` (an
 HTTP error that asking again will not fix), `unauthorized` (401 or 403), `sizeMismatch`, `hashMismatch`, `storage`,
-`notificationsRequired`, `killed` and `other`. Every status prints its state and numbers, never a path.
+`notificationsRequired`, `killed` and `other`. Every status prints its state and numbers, never a path. `network` is also
+what a download ends with when the app could not reach its server for the credentials (since 0.16.0): a grantor or an
+`HttpCredentials` that throws an `http.ClientException`, which is what `fespalier_auth`'s `AuthUnavailable` is when a token
+cannot refresh offline. Nothing was refused, so it is not `unauthorized`, and `retry` asks again.
 
 The ports are the seams the engine is built on, and an app does not call them: `DownloadBackend` (the transfer
 machinery, with `DownloadCapabilities` saying what it can do and `DownloadEvents` as the way back), `DownloadStore` (the
@@ -416,6 +419,11 @@ final downloads = Downloads(backend: backend, store: store, files: files, granto
   from (the foreground backend keeps its `.part`, and the new attempt sends `Range`), and enqueues again with the new
   grant. A second 401 or 403 ends `Failed(unauthorized)`; so does a grantor that throws or a grant whose URL is not a valid
   http or https URL. Nothing of the error is kept. There is no retry loop and no timer.
+- **A grantor that cannot reach its server is not a refusal** (since 0.16.0). A grantor that throws an
+  `http.ClientException` (no network; `fespalier_auth`'s `AuthUnavailable`, a token that could not refresh offline, is one)
+  ends the download `Failed(network)`, not `Failed(unauthorized)`, so an app that reads `unauthorized` as "sign in again"
+  does not sign the person out for being offline, and `retry` asks again. On a `resume` the download stays `Paused` and
+  `resume` returns false. Any other throw is still `Failed(unauthorized)`.
 - **A newer state wins.** A `cancel`, `remove`, restart or `clearAccount` while the grant request is in flight drops its
   answer: nothing reaches the backend after it.
 - **A resumed transfer keeps its address.** On `resume` only the grant's headers are used; an expired URL earns its 401 and
@@ -439,7 +447,9 @@ reach. Authenticating every send is therefore possible only where your Dart code
 `credentials.authorize('GET', url)` and adds the headers it returns (nothing for an origin the credentials do not cover),
 and after a 4xx answer it asks `credentials.retry(attempt, statusCode:, headers:)` and, if told to, sends again with
 `authorize(..., previous: attempt)`, at most three sends, the way `SessionClient` does. The credentials live in memory for
-the send. A credentials object that throws ends the download `Failed(unauthorized)`. When the refusal stands, the engine's
+the send. A credentials object that throws ends the download `Failed(unauthorized)`, except an `http.ClientException`
+(`AuthUnavailable`: the token could not refresh offline), which ends it `Failed(network)` since 0.16.0, so `retry` goes
+on from the partial file once the network is back. When the refusal stands, the engine's
 grant renewal above still applies, so the two compose. Choose by where the transfer runs: `credentials` for a foreground
 download to your own API, a grant for anything a background backend sends or a CDN that does not know your session.
 

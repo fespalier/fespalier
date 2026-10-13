@@ -146,6 +146,9 @@ class HttpDownloadBackend implements DownloadBackend {
   /// `fespalier_auth`'s `SessionClient` does. They live in memory for the send: nothing is
   /// written to disk. It is a foreground-only path: the operating system's download service has
   /// no session, so a background backend takes a short-lived grant instead (see [DownloadGrant]).
+  /// A throw ends the download `Failed(unauthorized)`, except an `http.ClientException` (the
+  /// session could not be reached: `AuthUnavailable`, offline), which ends it `Failed(network)`
+  /// since 0.16.0.
   final HttpCredentials? credentials;
 
   DownloadEvents? _events;

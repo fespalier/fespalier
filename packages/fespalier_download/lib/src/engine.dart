@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:clock/clock.dart' as time;
+import 'package:http/http.dart' as http show ClientException;
 
 import 'grant.dart';
 import 'ports.dart';
@@ -29,8 +30,11 @@ typedef DownloadObserver = void Function(String id, DownloadStatus status);
 /// [DownloadGrant] before each start, retry and resume, and **once more** when the transfer
 /// answers 401 or 403: it cancels the failed attempt (the bytes a backend kept stay where it
 /// allows) and enqueues again with the new grant. A second 401 or 403, or a grantor that throws,
-/// ends the download `Failed(unauthorized)`. A cancel, a remove, a restart or a sign-out during
-/// the request wins: its answer is dropped.
+/// ends the download `Failed(unauthorized)`, except a grantor that throws an `http.ClientException`
+/// (the app could not reach its server, or its session could not refresh offline): nothing was
+/// refused, so the download ends `Failed(network)` and `retry` asks again (a resume leaves the
+/// download paused and returns false). A cancel, a remove, a restart or a sign-out during the
+/// request wins: its answer is dropped.
 class Downloads {
   /// An engine over [backend] and [store]. [files] lets it delete a file on [remove] and
   /// [cancel] and check what a restart left; [clock] is for a test; [grantor] makes the
@@ -210,7 +214,13 @@ class Downloads {
     if (request != null && _grantor != null) {
       // A resumed transfer keeps its address: a grant's URL that expired meanwhile is renewed
       // by the 401 it earns, so only the headers matter here.
-      final granted = await _ask(id, request, generation, renewal: false);
+      final granted = await _ask(
+        id,
+        request,
+        generation,
+        renewal: false,
+        failIfOffline: false,
+      );
       if (granted == null) return false;
       headers = granted.headers;
     }
@@ -371,18 +381,28 @@ class Downloads {
 
   // Asks the grantor (if there is one) for the attempt of [generation]. Null means the attempt
   // is over: a newer one owns the id, or the grant failed and the download ended
-  // Failed(unauthorized). The grant is used for this attempt and kept nowhere.
+  // Failed(unauthorized), or Failed(network) when the grantor could not reach its server (an
+  // http.ClientException: nothing was refused). With [failIfOffline] false that last case ends
+  // nothing: a paused download stays paused. The grant is used for this attempt and kept nowhere.
   Future<_Granted?> _ask(
     String id,
     DownloadRequest request,
     int generation, {
     required bool renewal,
+    bool failIfOffline = true,
   }) async {
     final grantor = _grantor;
     if (grantor == null) return _Granted(request, const {});
     DownloadGrant? grant;
     try {
       grant = await grantor(request, renewal: renewal);
+    } on http.ClientException {
+      // Offline, a timeout, an AuthUnavailable: the app's server was not reached, so no one
+      // refused the person. Not a lost session; the error may name the host, and is not kept.
+      if (failIfOffline && generation == _generationOf(id)) {
+        _apply(id, const Failed(DownloadFailure.network));
+      }
+      return null;
     } catch (_) {
       // Nothing of the error is kept: it may name the account or the file.
       if (generation == _generationOf(id)) {

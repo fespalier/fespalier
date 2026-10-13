@@ -57,9 +57,12 @@ final class DownloadGrant {
 /// `Failed(unauthorized)`.
 ///
 /// Return null to send the request as it is. A throw ends the download
-/// `Failed(unauthorized)` (the engine never crashes on it and keeps nothing of the error). Make
-/// the signed request with the app's session here, and return only what the server meant for this
-/// file.
+/// `Failed(unauthorized)` (the engine never crashes on it and keeps nothing of the error), except
+/// an `http.ClientException` (no network, or a session that could not refresh offline, which is
+/// `fespalier_auth`'s `AuthUnavailable`; since 0.16.0): that ends it `Failed(network)`, because
+/// nothing was refused, and `retry` asks again. A paused download whose resume cannot reach the
+/// grantor stays paused, and `resume` returns false. Make the signed request with the app's
+/// session here, and return only what the server meant for this file.
 ///
 /// ```dart
 /// Future<DownloadGrant?> grant(

@@ -85,13 +85,16 @@ normal signed request in the foreground and the server answers with a single-fil
 `Downloads(grantor: (request, {required renewal}) async => DownloadGrant(url: ..., headers: ...))` asks it before each start,
 retry and resume (`renewal: false`; null sends the request as it is) and **once more after a 401 or 403** (`renewal: true`):
 the engine cancels the failed attempt, keeps the bytes the backend can continue from, and enqueues again with the new grant.
-A second 401 or 403, a grantor that throws, or a grant URL that is not a valid http(s) URL ends `Failed(unauthorized)`. A
+A second 401 or 403, a grantor that throws, or a grant URL that is not a valid http(s) URL ends `Failed(unauthorized)`, except
+a grantor that throws an `http.ClientException` (no network; `AuthUnavailable`, a token that could not refresh offline, is one):
+since 0.16.0 that ends `Failed(network)` (a `resume` stays `Paused` and returns false), because nothing was refused. A
 cancel, remove, restart or `clearAccount()` while the grant request is in flight wins. The registry stores the request, never
 the grant; `DownloadGrant.toString()` prints no field; the span end carries `fespalier.download.regranted: true` after a renewal.
 
 - **`HttpDownloadBackend(credentials: HttpCredentials)`** (from `fespalier_http`; `fespalier_auth`'s `Authorizer` is one)
   authorizes each send of the foreground transfer with `authorize('GET', url)` and asks `retry` after a 4xx for one re-send, at
-  most three sends, as `SessionClient` does; a credentials object that throws ends `Failed(unauthorized)`. It is foreground
+  most three sends, as `SessionClient` does; a credentials object that throws ends `Failed(unauthorized)`, or `Failed(network)`
+  when it throws an `http.ClientException` such as `AuthUnavailable` (since 0.16.0). It is foreground
   only. For anything an operating-system backend sends, use a grant.
 - **Plain `DownloadRequest.headers` are persisted in plaintext** (the registry, and a background backend's queue). Never a
   refresh token or a long-lived bearer. DPoP per send cannot work in the background: the native callbacks cannot sign.
@@ -175,7 +178,8 @@ test that plays a platform are [`references/fakes.md`](references/fakes.md).
 ## Traps
 
 - **`Failed(DownloadFailure)` carries a value, not a message.** There is no error text to show; map each failure to your
-  own copy. `unauthorized` (401 or 403) is what remains after the engine's one renewed grant (or with no grantor).
+  own copy. `unauthorized` (401 or 403) is what remains after the engine's one renewed grant (or with no grantor). Being offline
+  while a token refreshes is `network`, not `unauthorized` (since 0.16.0): do not map `network` to "sign in again".
 - **A restart settles the registry once, at `open()`.** Give the engine a `DownloadFiles` unless the backend replays
   finished downloads: an entry nobody mentions is `Failed(killed)` without one.
 - **`Running.total` is null when the server did not say**: do not divide by it without a check.

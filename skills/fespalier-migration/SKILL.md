@@ -43,6 +43,12 @@ before deleting a workaround. Bump the `ref:` of `fespalier` and every companion
    or multipart request (`StreamedRequest`, `MultipartRequest`) is not sent again: the caller gets the 401 as the response,
    after the refresh. A `ClientException` from `DioHttpClient` that has no Dio message now carries its cause
    (`fespalier_dio: unknown: <cause>`): code that compared the whole message changes.
+2. **Offline while a token refreshes is `Failed(network)`, no longer `Failed(unauthorized)`.** A download whose credentials
+   could not be reached ends `network` when its grantor, or the `HttpCredentials` of `HttpDownloadBackend`, throws an
+   `http.ClientException` (`fespalier_auth`'s `AuthUnavailable` is one). `unauthorized` stays for a refusal and for any other
+   throw. If your app treats `unauthorized` as "sign the person in again", it no longer does that for being offline: show
+   "offline, try again" for `network` and call `Downloads.retry`. A `resume` whose grantor cannot be reached leaves the
+   download `Paused` and returns false.
 
 ## 0.14 to 0.15: what to check
 

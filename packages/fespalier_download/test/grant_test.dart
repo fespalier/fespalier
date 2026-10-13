@@ -6,6 +6,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 
 const _loc = DownloadLocation(DownloadBase.support, 'f/a.bin');
 
@@ -35,7 +36,8 @@ class _Grantor {
 
   void answer(int call, DownloadGrant? grant) => _pending[call].complete(grant);
 
-  void fail(int call) => _pending[call].completeError(StateError('boom'));
+  void fail(int call, [Object? error]) =>
+      _pending[call].completeError(error ?? StateError('boom'));
 }
 
 class _Rig {
@@ -135,6 +137,38 @@ void main() {
       expect(r.backend.enqueued, isEmpty);
     });
 
+    test(
+      'a grantor that cannot reach the network (a ClientException) ends Failed(network)',
+      () async {
+        final g = _Grantor();
+        final r = await _opened(grantor: g.call);
+        final started = r.engine.start(_req());
+        await pumpEventQueue();
+        g.fail(0, http.ClientException("couldn't refresh the session"));
+        await started;
+        expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
+        expect(r.backend.enqueued, isEmpty);
+        // Nothing was refused: retry asks again and goes on.
+        final retried = r.engine.retry('a');
+        await pumpEventQueue();
+        expect(g.calls, [('a', false), ('a', false)]);
+        g.answer(1, null);
+        await retried;
+        expect(r.backend.enqueued, hasLength(1));
+        expect(r.engine.statusOf('a'), isA<Queued>());
+      },
+    );
+
+    test('a ClientException thrown at once is the same', () async {
+      final r = await _opened(
+        grantor: (request, {required renewal}) =>
+            throw http.ClientException('offline'),
+      );
+      await r.engine.start(_req());
+      expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
+      expect(r.backend.enqueued, isEmpty);
+    });
+
     test('a grant whose URL is not usable ends Failed(unauthorized)', () async {
       final r = await _opened(
         grantor: (request, {required renewal}) =>
@@ -198,6 +232,55 @@ void main() {
       expect(r.backend.resumed, ['a']);
       expect(r.backend.authorizations.last, {'x-grant': 'two'});
     });
+  });
+
+  group('resume', () {
+    test(
+      'a grantor that cannot reach the network leaves the download paused',
+      () async {
+        var offline = false;
+        final r = await _opened(
+          grantor: (request, {required renewal}) {
+            if (offline) throw http.ClientException('offline');
+            return null;
+          },
+        );
+        await r.engine.start(_req());
+        offline = true;
+        r.backend.emit('a', const Paused(1, 10));
+        expect(await r.engine.resume('a'), isFalse);
+        expect(
+          r.engine.statusOf('a'),
+          const Paused(1, 10),
+          reason: 'nothing was refused: the bytes and the state stay',
+        );
+        expect(r.backend.resumed, isEmpty);
+        offline = false;
+        expect(await r.engine.resume('a'), isTrue);
+        expect(r.backend.resumed, ['a']);
+      },
+    );
+
+    test(
+      'a grantor that throws anything else ends Failed(unauthorized)',
+      () async {
+        var refusing = false;
+        final r = await _opened(
+          grantor: (request, {required renewal}) {
+            if (refusing) throw StateError('refused');
+            return null;
+          },
+        );
+        await r.engine.start(_req());
+        refusing = true;
+        r.backend.emit('a', const Paused(1, 10));
+        expect(await r.engine.resume('a'), isFalse);
+        expect(
+          r.engine.statusOf('a'),
+          const Failed(DownloadFailure.unauthorized),
+        );
+      },
+    );
   });
 
   group('after a 401 or 403', () {
@@ -289,6 +372,28 @@ void main() {
           r.engine.statusOf('a'),
           const Failed(DownloadFailure.unauthorized),
         );
+        expect(r.backend.enqueued, hasLength(1));
+      },
+    );
+
+    test(
+      'a grantor that cannot reach the network during the renewal ends Failed(network)',
+      () async {
+        final g = _Grantor();
+        final r = await _opened(grantor: g.call);
+        final started = r.engine.start(_req());
+        await pumpEventQueue();
+        g.answer(0, _grant('one'));
+        await started;
+        r.backend.emit(
+          'a',
+          const Failed(DownloadFailure.unauthorized),
+          httpStatus: 403,
+        );
+        await pumpEventQueue();
+        g.fail(1, http.ClientException('offline'));
+        await pumpEventQueue();
+        expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
         expect(r.backend.enqueued, hasLength(1));
       },
     );

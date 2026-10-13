@@ -27,7 +27,7 @@ dependencies:
 
 (A fragment, not a sample: pub resolves the pair only at a release tag. A mismatch fails the way
 `fespalier_auth`'s does, see [`auth-package.md`](../../fespalier-guards/references/auth-package.md).)
-It needs Dart 3.8 and Flutter 3.32 or newer.
+It needs Dart 3.9 and Flutter 3.35 or newer.
 
 ## Two libraries
 
@@ -482,8 +482,9 @@ That package is discontinued. The nearest equivalents:
 
 - **The body is a keyed `Expanded` in a `Row`** in every mode, so a tab keeps its state and stack
   across a resize. A custom `AdaptiveNavBuilder` layout has to do the same.
-- **The scaffold's Material widgets exist in Flutter 3.32** (fespalier's floor), and it uses none of
-  `NavigationDrawer.header` and `footer` (3.35): `leading` and `trailing` are children of the drawer.
+- **The scaffold's Material widgets exist in Flutter 3.35** (fespalier's floor), and it uses none of
+  `NavigationDrawer.header` and `footer` (3.35, so they could become slots): `leading` and `trailing`
+  are children of the drawer.
 - A page outside every entry's folder is not under this layout at all if it is outside the layout's
   folder (it has no bar); a root-navigator page (`navigator.dart`) covers the rail and the drawer as it
   covers a bar.

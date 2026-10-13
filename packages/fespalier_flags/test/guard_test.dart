@@ -107,8 +107,8 @@ void main() {
       fake.set('labs', false);
       await tester.pump();
       expect(currentLocation(tester), '/');
-      // go_router 17.0.0, the only one Flutter 3.32 resolves, builds the page a frame later.
-      if (onFlutterFloor) await tester.pump();
+      // go_router 17, the newest Flutter below 3.44 resolves, builds the page a frame later.
+      if (onGoRouter17) await tester.pump();
       expect(find.text('Home'), findsOneWidget);
     },
   );

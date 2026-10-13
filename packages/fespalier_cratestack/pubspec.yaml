@@ -8,8 +8,8 @@ repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_
 issue_tracker: https://github.com/fespalier/fespalier/issues
 
 environment:
-  sdk: ^3.8.0
-  flutter: ">=3.32.0"
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
 
 dependencies:
   # The test clock: fetchedAt, the HLC and the sync interval follow testWidgets' fake clock (fespalier pins the same).
@@ -30,7 +30,7 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
       ref: v0.15.0 # x-release-please-version
-  # Only hive.dart imports it. Pure Dart: the floor fespalier_storage already proves on Flutter 3.32.
+  # Only hive.dart imports it. Pure Dart: the floor fespalier_storage already proves on Flutter 3.35.
   hive_ce: ^2.16.0
 
 dev_dependencies:

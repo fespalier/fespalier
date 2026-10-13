@@ -46,7 +46,7 @@ const SYNTHETIC: &[Recipe] = &[
             source: Source::Range(">=1.0.0 <2.0.0"),
         }],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &["format: true"],
         files: &[("create/about.dart", "lib/app/alpha/page.dart")],
         startup: Startup {
@@ -126,7 +126,7 @@ const SYNTHETIC: &[Recipe] = &[
         companions: &[],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[],
         startup: Startup::NONE,
@@ -388,20 +388,20 @@ fn it_refuses_unknown_and_conflicting_features() {
 #[test]
 fn it_refuses_a_flutter_below_the_floor() {
     let mut req = request("app");
-    req.flutter = FlutterVersion::parse("3.31.5");
+    req.flutter = FlutterVersion::parse("3.34.5");
     let message = err(&req, RECIPES);
     assert!(
         message.contains(&format!(
-            "Flutter 3.31.5 is too old: fespalier needs Flutter {BASE_FLOOR}"
+            "Flutter 3.34.5 is too old: fespalier needs Flutter {BASE_FLOOR}"
         )),
         "{message}"
     );
-    req.flutter = FlutterVersion::parse("3.32.0");
+    req.flutter = FlutterVersion::parse("3.35.0");
     ok(&req, RECIPES);
     req.features = vec!["beta".into()];
     assert_eq!(
         err(&req, SYNTHETIC),
-        "`beta` needs Flutter 3.44 or newer, and this is Flutter 3.32.0; leave it out, or upgrade"
+        "`beta` needs Flutter 3.44 or newer, and this is Flutter 3.35.0; leave it out, or upgrade"
     );
     req.flutter = FlutterVersion::parse("3.44.0");
     assert!(
@@ -430,9 +430,9 @@ fn flutter_versions_read_as_flutter_prints_them() {
     assert_eq!(v("three"), None);
     assert_eq!(v("3.x.1"), None);
     assert_eq!(v("3.1.2.3"), None);
-    assert!(v("3.32.0").unwrap().at_least("3.32"));
+    assert!(v("3.35.0").unwrap().at_least("3.35"));
     assert!(v("4.0.0").unwrap().at_least("3.99"));
-    assert!(!v("3.31.9").unwrap().at_least("3.32"));
+    assert!(!v("3.34.9").unwrap().at_least("3.35"));
 }
 
 #[test]
@@ -1015,7 +1015,7 @@ fn the_features_list_says_what_the_table_says() {
     let json = serde_json::to_string(&listed[0]).unwrap();
     assert_eq!(
         json,
-        r#"{"id":"alpha","description":"First.","flutter":"3.32","requires":[],"conflicts":["gamma"],"companions":["fespalier_storage"]}"#
+        r#"{"id":"alpha","description":"First.","flutter":"3.35","requires":[],"conflicts":["gamma"],"companions":["fespalier_storage"]}"#
     );
 }
 
@@ -1598,38 +1598,71 @@ fn otel_and_sentry_third_parties_are_never_tags() {
     assert!(example.contains("sentry_flutter: \">=9.26.0 <10.0.0\""));
 }
 
-/// `otel_zone` needs Dart 3.9, so `otel` needs Flutter 3.35: asking for it on 3.32 is refused, and
-/// `all` (what the 3.32 floor job makes) is every feature that Flutter can run, with a note.
+/// A feature that needs a newer Flutter than the base is refused on an older one, and `all` (what
+/// the floor job makes) is every feature that Flutter can run, with a note. No feature of the table
+/// is above the base floor since 0.16.0 (`otel` was, with 3.35), so `otel` is made to need 3.44
+/// here, the way a next one would.
 #[test]
-fn otel_needs_flutter_3_35_and_all_leaves_it_out_below() {
+fn a_feature_above_the_base_floor_is_refused_and_all_leaves_it_out_below() {
+    let table: Vec<Recipe> = RECIPES
+        .iter()
+        .map(|r| {
+            if r.id == "otel" {
+                Recipe {
+                    flutter_floor: "3.44",
+                    ..*r
+                }
+            } else {
+                *r
+            }
+        })
+        .collect();
     let mut req = request("my_app");
-    req.flutter = FlutterVersion::parse("3.32.8");
+    req.flutter = FlutterVersion::parse("3.35.7");
     req.features = vec!["otel".into()];
     assert_eq!(
-        err(&req, RECIPES),
-        "`otel` needs Flutter 3.35 or newer, and this is Flutter 3.32.8; leave it out, or upgrade"
+        err(&req, &table),
+        "`otel` needs Flutter 3.44 or newer, and this is Flutter 3.35.7; leave it out, or upgrade"
     );
     req.features = vec!["all".into()];
-    let old = ok(&req, RECIPES);
+    let old = ok(&req, &table);
     assert!(!old.features.contains(&"otel"), "{:?}", old.features);
     assert!(old.features.contains(&"sentry"));
     assert_eq!(
         old.notes,
-        ["`otel` needs Flutter 3.35 or newer, and this is Flutter 3.32.8: left out of `all`"]
+        ["`otel` needs Flutter 3.44 or newer, and this is Flutter 3.35.7: left out of `all`"]
     );
-    assert!(file(&old, "pubspec.yaml").contains("flutter: \">=3.32.0\""));
+    assert!(file(&old, "pubspec.yaml").contains("flutter: \">=3.35.0\""));
     // Naming it is still an error, alone or with its pair.
     req.features = vec!["otel".into(), "sentry".into()];
-    assert!(err(&req, RECIPES).contains("`otel` needs Flutter 3.35"));
-    // On 3.35 the whole table is there, and the app declares the floor the table needs.
+    assert!(err(&req, &table).contains("`otel` needs Flutter 3.44"));
+    // On 3.44 the whole table is there, and the app declares the floor the table needs.
     req.features = vec!["all".into()];
-    req.flutter = FlutterVersion::parse("3.35.0");
-    let new = ok(&req, RECIPES);
+    req.flutter = FlutterVersion::parse("3.44.0");
+    let new = ok(&req, &table);
     assert!(new.features.contains(&"otel") && new.notes.is_empty());
-    assert!(file(&new, "pubspec.yaml").contains("flutter: \">=3.35.0\""));
+    assert!(file(&new, "pubspec.yaml").contains("flutter: \">=3.44.0\""));
     // `--template minimal` still takes the tabs out of `all`, on any Flutter.
     req.template = Some(plan::Template::Minimal);
-    assert!(!ok(&req, RECIPES).features.contains(&"adaptive"));
+    assert!(!ok(&req, &table).features.contains(&"adaptive"));
+}
+
+/// The real table is all there on the base floor: `otel_zone` needs Dart 3.9, which is Flutter
+/// 3.35, and the app declares that Flutter and that Dart (since 0.16.0).
+#[test]
+fn every_feature_runs_on_the_base_floor() {
+    let mut req = request("my_app");
+    req.flutter = FlutterVersion::parse(&format!("{BASE_FLOOR}.0"));
+    req.features = vec!["all".into()];
+    let plan = ok(&req, RECIPES);
+    assert!(plan.features.contains(&"otel"), "{:?}", plan.features);
+    assert!(plan.notes.is_empty(), "{:?}", plan.notes);
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(
+        pubspec.contains(&format!("flutter: \">={BASE_FLOOR}.0\"")),
+        "{pubspec}"
+    );
+    assert!(pubspec.contains("sdk: ^3.9.0"), "{pubspec}");
 }
 
 // --- auth, i18n and image -----------------------------------------------------------------------

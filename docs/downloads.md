@@ -2,7 +2,7 @@
 
 `fespalier_download` (since 0.15.0) is the vocabulary of a file download that outlives a screen: a **request** (an id, a
 URL, a file and what the file must be), a **status** that says where the download stands, and the **ports** a transfer
-engine is built from. It is pure Dart over `package:http` with no platform plugin, so it resolves on Flutter 3.32,
+engine is built from. It is pure Dart over `package:http` with no platform plugin, so it resolves on Flutter 3.35,
 fespalier's floor, and an app that lists it links nothing native.
 
 fespalier itself has no download feature: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the
@@ -30,7 +30,7 @@ then. The tag must be a release that contains the package (0.15.0 or later). The
 release-please keeps current, is in [the package's README](../packages/fespalier_download/README.md#install).
 
 The package depends on `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests), a pure Dart package, and on
-fespalier and `fespalier_http` (for `HttpCredentials`; list it yourself, with the same `url` and `ref`, only if your code imports it). It resolves on Flutter 3.32 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
+fespalier and `fespalier_http` (for `HttpCredentials`; list it yourself, with the same `url` and `ref`, only if your code imports it). It resolves on Flutter 3.35 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
 `flutter analyze` and `flutter test` on the package).
 
 ## Requests and files

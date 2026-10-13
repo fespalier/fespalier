@@ -27,6 +27,30 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.16.0
+
+- **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
+  Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
+  `flutter: ">=3.35.0"` (`fespalier_sign_keypair`, Flutter 3.44, and `fespalier_download_background`, Flutter 3.47, keep
+  their own). On an older Flutter `flutter pub get` fails naming the SDK, and `fsp create` says
+  `Flutter {v} is too old: fespalier needs Flutter 3.35 or newer`. Upgrade Flutter (3.35.7 is the last 3.35 patch, Dart
+  3.9.2), set the same `flutter-version` in CI, and raise your own `environment:`; an app that has to stay on 3.32 to 3.34
+  stays on 0.15.x. `lib/app.g.dart` is unchanged.
+
+  ```yaml
+  environment:
+    sdk: ^3.9.0
+    flutter: ">=3.35.0"
+  ```
+
+- **go_router's lower bound is 17.2.3** (it was 17.0.0). An app that lets pub choose changes nothing: 17.2.3 is the newest
+  go_router that Flutter 3.35 to 3.37 resolve. An app that holds go_router 17.0.0 to 17.2.2 in `dependency_overrides:` or
+  `pubspec.lock` runs `flutter pub upgrade go_router`. Why: Flutter 3.32 resolved go_router 17.0.0 and no newer one (17.0.1
+  asks for Flutter 3.35); that release ran a `Block.then` of an `onEnter` inside the parse, before the commit, and
+  asserted on a platform payload with no leading slash. On 17.2.3 neither needs a workaround.
+- `fsp create --features all` now includes `otel` on every supported Flutter, and an app it makes declares
+  `sdk: ^3.9.0` and `flutter: ">=3.35.0"`.
+
 ### 0.15.0
 
 - **The `package:http` half of `fespalier_dio` is `fespalier_http`** ([HTTP clients](http.md)).

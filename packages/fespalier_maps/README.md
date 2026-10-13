@@ -43,7 +43,7 @@ dependencies:
 <!-- x-release-please-end -->
 
 Its file packs download through [`fespalier_download`](../fespalier_download/README.md) (since 0.15.0), which is why the block
-above lists it with the same `ref`. It depends on `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), which resolve on Flutter 3.32 and
+above lists it with the same `ref`. It depends on `maplibre_gl` (`>=0.27.1 <0.28.0`) and `geolocator` (`>=14.0.0 <15.0.0`), which resolve on Flutter 3.35 and
 on the pinned Flutter. Their platform setup is theirs: the location permission strings in `Info.plist` and the manifest,
 and a map style you may use. **Not checked by any CI job here:** that the map draws (a platform view needs a device), and
 that your app's Android toolchain builds `maplibre_gl` (its 0.26.0 changelog lists a Gradle, Kotlin and Android Gradle

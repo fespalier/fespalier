@@ -24,7 +24,7 @@ pub const REF: &str = concat!("v", env!("CARGO_PKG_VERSION"));
 pub const REPO_URL: &str = "https://github.com/fespalier/fespalier";
 
 /// The lowest Flutter fespalier supports (`major.minor`), and so the lowest a new app declares.
-pub const BASE_FLOOR: &str = "3.32";
+pub const BASE_FLOOR: &str = "3.35";
 
 /// The platforms `flutter create --platforms` knows.
 pub const PLATFORMS: [&str; 6] = ["android", "ios", "linux", "macos", "web", "windows"];
@@ -91,7 +91,7 @@ impl std::fmt::Display for FlutterVersion {
     }
 }
 
-/// `3.32` as `(3, 32)`.
+/// `3.35` as `(3, 35)`.
 #[must_use]
 pub fn floor_of(floor: &str) -> Option<(u32, u32)> {
     let (major, minor) = floor.split_once('.')?;

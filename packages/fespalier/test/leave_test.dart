@@ -1490,7 +1490,7 @@ void main() {
       r.pop();
       await settle(tester);
       expect(find.text('y'), findsOneWidget);
-    }, skip: onFlutterFloor);
+    }, skip: beforeFlutter338);
 
     testWidgets('go away from it asks on every go_router', (tester) async {
       final r = await boot(tester, initial: '/s');

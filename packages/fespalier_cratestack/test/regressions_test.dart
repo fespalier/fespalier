@@ -34,8 +34,12 @@ final class OpGates implements CrateStackTransport {
   final Map<String, Completer<void>> _started = {};
   final List<String> sent = [];
 
-  /// Holds every send of [op] from now on, until [open].
-  void hold(String op) => _gates[op] = Completer<void>();
+  /// Holds every send of [op] from now on, until [open]. [started] then waits for the first send
+  /// that follows, not for one that came before.
+  void hold(String op) {
+    _gates[op] = Completer<void>();
+    _started[op] = Completer<void>();
+  }
 
   /// Completes when a send of [op] reached the transport.
   Future<void> started(String op) =>

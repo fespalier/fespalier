@@ -3845,11 +3845,11 @@ fn create_needs_a_flutter_that_is_there_and_new_enough() {
     let (code, _, err) = fsp_task(
         root,
         &["create", "app"],
-        &[("FAKE_FLUTTER_VERSION", "3.31.2")],
+        &[("FAKE_FLUTTER_VERSION", "3.34.2")],
     );
     assert_eq!(code, Some(1));
     assert!(
-        err.contains("Flutter 3.31.2 is too old: fespalier needs Flutter 3.32 or newer"),
+        err.contains("Flutter 3.34.2 is too old: fespalier needs Flutter 3.35 or newer"),
         "{err}"
     );
     assert!(!flutter_log(root).iter().any(|l| l.starts_with("create")));

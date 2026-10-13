@@ -24,7 +24,7 @@ Pick by the Dart your app builds with, since the newest releases moved up:
 | Dart (Flutter)             | Take                                                                                     | Notes                                                                                                                                                   |
 | -------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 3.13 (Flutter 3.47)        | **freezed 4.0.2**, or records and primary constructors with no codegen, or dart_mappable | freezed 4 needs Dart 3.13. Its new syntax is a primary constructor (`@freezed class Person({...}) with _$Person;`); the factory syntax still works      |
-| 3.8 to 3.12 (3.32 to 3.44) | **freezed 3.2.5** (Dart 3.8), or dart_mappable 4.10.0 (Dart 3.7)                         | freezed 4 does not resolve below Dart 3.13. json_serializable 6.14.1 needs Dart 3.9 (6.11.2 is the last for Dart 3.8)                                   |
+| 3.9 to 3.12 (3.35 to 3.44) | **freezed 3.2.5** (Dart 3.8), or dart_mappable 4.10.0 (Dart 3.7)                         | freezed 4 does not resolve below Dart 3.13. json_serializable 6.14.1 needs Dart 3.9, fespalier's own floor                                              |
 | any                        | **dart_mappable 4.10.0**: one builder for `==`, `copyWith` and a `Map`/JSON conversion   | `class Order with OrderMappable`; `toMap()` and `OrderMapper.fromMap(map)` are the data, `toJson()` is a String. Its classes are their own runtime type |
 
 - **freezed's two syntaxes are not the same to `ExtraCodec`.** `const factory Note(...) = _Note;` builds a `_Note`
@@ -187,7 +187,7 @@ one schema that also exports JSON Schema or OpenAPI. It is an **adapter inside `
 
 - **acanthis 2.0.0** (Zod-like; **Dart 3.13**) returns a sealed outcome from `tryParse`; turn its issues into the
   record's field names. (acanthis 2 also has `validate`, which gives the first message or null for **one** field.)
-  Below Dart 3.13 the newest is 1.6.0 (Dart 3.10) or 1.5.0 (Dart 3.8), with a different result type: not covered here.
+  Below Dart 3.13 the newest is 1.6.0 (Dart 3.10) or 1.5.0 (Dart 3.8 and up), with a different result type: not covered here.
 - **luthor 0.18.0** (Dart 3.8) has the same shape (a schema over a `Map`) and a generator, `@luthor` on a freezed or
   dart_mappable class, that writes the `$XValidate` helper. Neither the generator nor luthor itself is built in
   this page: adapt it as below.

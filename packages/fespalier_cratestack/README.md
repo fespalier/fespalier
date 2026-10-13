@@ -38,7 +38,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `clock`, `dio` (`^5.7.0`, only `dio.dart` imports it) and
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `dio` (`^5.7.0`, only `dio.dart` imports it) and
 `hive_ce` (`^2.16.0`, only `hive.dart` imports it), all pure Dart.
 
 ## Four libraries

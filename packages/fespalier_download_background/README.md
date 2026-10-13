@@ -40,7 +40,7 @@ dependencies:
 <!-- x-release-please-end -->
 
 Needs Dart 3.13 and **Flutter 3.47 or newer**: `background_downloader` 9.6 needs them, and this package was written against
-9.6.4. That is why it is a package of its own and is not in CI's Flutter 3.32 floor job; an app on an older Flutter keeps
+9.6.4. That is why it is a package of its own and is not in CI's Flutter 3.35 floor job; an app on an older Flutter keeps
 `HttpDownloadBackend`. The platform setup (Kotlin 2.1, `POST_NOTIFICATIONS`, the user-initiated job service, iOS 14, the
 notification delegate) is in
 [Android and iOS setup](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#android-and-ios-setup).

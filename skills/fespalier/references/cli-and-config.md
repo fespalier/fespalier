@@ -391,7 +391,7 @@ fsp create --list-features [--json]                # the optional features
 ```
 
 For a **new** app; use `fsp init` for one that exists. `<dir>` must not exist or be empty, `--project` is
-refused (`fsp create takes the new app's folder as its argument`), and Flutter 3.32 or newer must be on
+refused (`fsp create takes the new app's folder as its argument`), and Flutter 3.35 or newer must be on
 `PATH`. It runs `flutter create --no-pub --empty` into a sibling folder `.<dir>.fsp-create-<pid>`, writes
 `pubspec.yaml` whole (fespalier by git at the tag of the `fsp` you run, never a version you type),
 `lib/main.dart` (`AppMain.run()`) and `lib/app/` (`fsp init`'s five files, a home page with a typed link to
@@ -426,8 +426,9 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   commit, `telemetry: true`; `startup()` installs `FespalierOtel(isReady:)` (sync), the `zone()` starts the SDK first
   (`startObservability(body)`, inside `runGuarded` except on the web), so a test that builds the app does not
   start it, plus `providerObservers` and `routerObservers`;
-  the test reads spans from `dartastic_opentelemetry`'s in-memory exporter; **Flutter 3.35 or newer**, because
-  `otel_zone` needs Dart 3.9, so `all` on 3.32 leaves it out and naming it is refused) and `sentry`
+  the test reads spans from `dartastic_opentelemetry`'s in-memory exporter; Flutter 3.35 or newer,
+  because `otel_zone` needs Dart 3.9: the floor since 0.16.0, so `all` on 3.32 left it out and naming it was refused
+  before) and `sentry`
   (`fespalier_sentry` and `sentry_flutter` `>=9.26.0 <10.0.0`, `telemetry: true`; `zone()` is `SentryFlutter.init`
   with `FespalierSentry.configure` and `SENTRY_DSN`, empty meaning off; the test uses `RecordingSentry`). With both,
   the composer makes one `FespalierTelemetry.install(FespalierTelemetry.combine([...]))` and keeps Sentry's

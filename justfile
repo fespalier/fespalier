@@ -85,11 +85,11 @@ flutter:
         case "$d" in examples/*) scripts/check-const-lints.sh "$d" ;; esac
     done
 
-# What CI's `floor` job runs: the package, its companions that claim Flutter 3.32 and examples/minimal.
+# What CI's `floor` job runs: the package, its companions that claim Flutter 3.35 and examples/minimal.
 floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/minimal"
 
-# Needs a Flutter 3.32 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
-# `git clone --depth 1 -b 3.32.8 https://github.com/flutter/flutter ~/flutter-3.32`. Each pubspec.lock
+# Needs a Flutter 3.35 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
+# `git clone --depth 1 -b 3.35.7 https://github.com/flutter/flutter ~/flutter-3.35`. Each pubspec.lock
 # is put back as it was afterwards (and the test assets removed), so a later `just flutter` is not left
 # on the lowest versions or on assets that another Flutter compiled.
 #
@@ -99,7 +99,7 @@ floor sdk=env("FLUTTER_FLOOR", ""):
     set -euo pipefail
     sdk="{{ sdk }}"
     if [ -z "$sdk" ] || [ ! -x "$sdk/bin/flutter" ]; then
-        echo "just floor needs a Flutter 3.32 SDK: just floor <dir>, or FLUTTER_FLOOR=<dir> (see 'just --list')" >&2
+        echo "just floor needs a Flutter 3.35 SDK: just floor <dir>, or FLUTTER_FLOOR=<dir> (see 'just --list')" >&2
         exit 2
     fi
     want="$(sed -n 's/^  FLUTTER_FLOOR_VERSION: *\([0-9]*\.[0-9]*\)\..*/\1/p' .github/workflows/ci.yml)"
@@ -113,7 +113,7 @@ floor sdk=env("FLUTTER_FLOOR", ""):
     restore() {
         for d in {{ floor_dirs }}; do
             rm -f "$d/pubspec.lock"
-            # The 3.32 test assets (compiled shaders) do not load under another Flutter.
+            # The floor's test assets (compiled shaders) do not load under another Flutter.
             rm -rf "$d/build/unit_test_assets"
             if [ -f "$saved/${d//\//_}" ]; then mv "$saved/${d//\//_}" "$d/pubspec.lock"; fi
         done
@@ -252,7 +252,7 @@ codegen-interop:
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps that
 # have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
-# `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.32
+# `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.35
 # floor is `just floor`, the cose example with its Rust server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs

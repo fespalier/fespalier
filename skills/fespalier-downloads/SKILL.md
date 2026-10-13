@@ -13,7 +13,7 @@ description: "Files downloaded in a fespalier app with fespalier_download (since
 
 **Since 0.15.0.** `package:fespalier_download` is the vocabulary of a download that outlives a screen: a request, a status
 and the ports of a transfer engine. It adds no file kind, no `fespalier:` key and no `fsp` command, and `app.g.dart` is the
-same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.32. A release that
+same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.35. A release that
 predates 0.15.0 has no such package.
 
 **Not built yet in this release: a foreground upload.** The engine, `Downloads`, the foreground
@@ -45,7 +45,7 @@ background backend. What no device has answered about it (issue #158) is listed 
 
 `BackgroundDownloaderBackend` (package `fespalier_download_background`, since 0.15.0, written against `background_downloader`
 9.6.4) hands the transfer to the operating system: WorkManager and user-initiated jobs on Android, a background
-`URLSession` on iOS. It needs Flutter 3.47, so it is not in the 3.32 floor job; an older app keeps `HttpDownloadBackend`.
+`URLSession` on iOS. It needs Flutter 3.47, so it is not in the 3.35 floor job; an older app keeps `HttpDownloadBackend`.
 
 - **Configure notifications or `userInitiated` is refused**: `BackgroundDownloaderBackend(notifications: DownloadNotifications(running: …))`.
   A `userInitiated` request without a `running` text is `Failed(notificationsRequired)`, because Android requires a visible

@@ -50,7 +50,7 @@ dependencies:
 (A fragment: pub resolves them only at a release tag that contains the packages, 0.10.0 or later; never write `ref: v…`
 in these pages, where `cli/tests/versions.rs` reads it as fespalier's own version. The package's
 [install block](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_cratestack/README.md#install) is the
-one release-please keeps current.) Dart 3.8, Flutter 3.32.
+one release-please keeps current.) Dart 3.9, Flutter 3.35.
 
 | Library                                                  | For                                | What is in it                                                                                                                  |
 | -------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |

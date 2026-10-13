@@ -114,8 +114,8 @@ dependencies:
 
 The package is not published to pub.dev (`publish_to: 'none'` since 0.4.0): this git
 dependency, pinned to a release tag, is the install. It needs
-Flutter 3.32+ (Dart 3.8); go_router 18 needs Flutter 3.44+. It depends
-on go_router 17 or 18, hooks_riverpod 3 and flutter_hooks, and
+Flutter 3.35+ (Dart 3.9; since 0.16.0, 0.15 and earlier took 3.32 and Dart 3.8); go_router 18 needs
+Flutter 3.44+. It depends on go_router 17.2.3 or newer 17, or 18, hooks_riverpod 3 and flutter_hooks, and
 `package:fespalier/fespalier.dart` re-exports all three, so you do not add them.
 
 What the generated file contains (`AppRoutes`, `AppManifest`, the typed route classes) is in

@@ -55,13 +55,36 @@ again, anything else is a write the server may already have.
 | 401 or 403                                | One renewed grant, then sent again       | `Failed(unauthorized)`, no renewal                              |
 | The app was killed, or no answer came     | `Failed(killed)`; `retry` sends it again | `Failed(killed)`; `retry` and `start` refuse                    |
 | The response was lost (`Failed(network)`) | `retry` sends it again                   | The same: the server may have it (`outcomeUnknown(id)` is true) |
+| A `5xx`, `408` or `499` (since 0.16.0)    | `Failed(other)`; `retry` sends it again  | `Failed(other)`: the same, the server may have run it           |
+| Another `4xx` (`400`, `404`, `413`, ...)  | `Failed(rejected)`; `retry` sends again  | `Failed(rejected)`: the server refused it, `retry` sends again  |
 
 For a non-replay-safe upload, `Failed(network)`, `Failed(killed)` and `Failed(other)` mean the outcome is unknown:
 `Uploads.outcomeUnknown(id)` is true, `retry(id)` returns false and `start` of the id does nothing. Ask the server, then
-`remove(id)` and `start` again if the app decides to. A server answer (`rejected`, `unauthorized`) or a failure before
-anything was sent (`storage`, `invalidRequest`) may be retried. A pre-signed `PUT` is a write by this rule too: add an
+`remove(id)` and `start` again if the app decides to. A server's refusal (`rejected`, a `4xx` other than `408` and `499`;
+`unauthorized`) or a failure before anything was sent (`storage`, `invalidRequest`) may be retried. A pre-signed `PUT` is a write by this rule too: add an
 `Idempotency-Key` header when sending it again is harmless. **Never "fix" a stuck non-replay-safe upload by re-sending it
 from the engine or the backend.**
+
+**A `5xx` is not a refusal** (since 0.16.0). A gateway's `502` or `504`, a proxy's `503`, or the server's own `500` after
+it committed, says nothing about whether the write ran, so `Uploads` ends such an upload `Failed(other)` (an unknown
+outcome), and a `408` and a `499` too. Only a client error is `Failed(rejected)`. On 0.15.0 every status of 400 and
+above except 401 and 403 ended `Failed(rejected)` and `retry` sent the write again. `failureOf` (a download's reading)
+still says `rejected` for a `5xx`: the engine corrects it for an upload, in `Uploads`, for every backend.
+
+## The registry remembers a write (since 0.16.0)
+
+The `UploadStore` is the only thing that says, after a restart, that an upload may have been sent. So an upload is handed
+to the platform only after its entry is saved: when `UploadStore.put` throws (a full disk), the upload ends
+`Failed(storage)` and nothing is sent; `retry(id)` tries again, and it is not an unknown outcome. `FileUploadStore`
+throws `UploadStoreException` from `put` when it cannot write, and from `load` and `put` when the file exists and is not a
+registry this version can read (an I/O error, text that is not JSON, a version it does not know); it leaves the file
+as it is and reads it again on the next call. A missing file is an empty registry. With a registry it could not read,
+`Uploads.open()` still succeeds, but an upload **without** an `Idempotency-Key` ends `Failed(storage)` until the next
+`open()` reads it or `clearAccount()` deletes it; an upload with a key is unaffected. `remove` and `clear` are best
+effort: `cancel`, `remove` and `clearAccount` never throw because of the store. On 0.15.0 the store swallowed a failed
+write and read an unreadable file as empty, so the upload was sent with no record, and `start` sent it again after a
+restart. Both cases print a debug line, quoted in `fespalier-troubleshooting`
+([`diagnostics-downloads.md`](../../fespalier-troubleshooting/references/diagnostics-downloads.md)).
 
 ## Rules
 

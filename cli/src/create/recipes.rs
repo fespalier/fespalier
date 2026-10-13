@@ -173,7 +173,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &[],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/devtools_options.yaml", "devtools_options.yaml"),
@@ -190,7 +190,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_adaptive"],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/tabs_layout.dart", "lib/app/(tabs)/layout.dart"),
@@ -227,7 +227,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_forms"],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/contact_action.dart", "lib/app/contact/action.dart"),
@@ -245,7 +245,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_storage"],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[("create/storage_test.dart", "test/storage_test.dart")],
         replaces: &[],
@@ -272,7 +272,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_connectivity"],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[(
             "create/connectivity_test.dart",
@@ -302,7 +302,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_flags"],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/flags.dart", "lib/flags.dart"),
@@ -340,7 +340,8 @@ pub const RECIPES: &[Recipe] = &[
             name: "dartastic_opentelemetry",
             source: Source::Range("^1.1.0-beta.15"),
         }],
-        // otel_zone needs Dart 3.9 (it depends on talker_riverpod_logger), which is Flutter 3.35.
+        // otel_zone needs Dart 3.9 (it depends on talker_riverpod_logger), which is Flutter 3.35,
+        // the base floor since 0.16.0.
         flutter_floor: "3.35",
         config: &["telemetry: true"],
         files: &[("create/otel_test.dart", "test/otel_test.dart")],
@@ -381,7 +382,7 @@ pub const RECIPES: &[Recipe] = &[
             source: Source::Range(">=9.26.0 <10.0.0"),
         }],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &["telemetry: true"],
         files: &[("create/sentry_test.dart", "test/sentry_test.dart")],
         replaces: &[],
@@ -413,7 +414,7 @@ pub const RECIPES: &[Recipe] = &[
             name: "flutter_secure_storage",
             source: Source::Range(">=10.0.0 <12.0.0"),
         }],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/auth_setup.dart", "lib/auth_setup.dart"),
@@ -457,7 +458,7 @@ pub const RECIPES: &[Recipe] = &[
             source: Source::Sdk("flutter"),
         }],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/i18n_en.arb", "assets/i18n/en.arb"),
@@ -496,7 +497,7 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_image"],
         third_party: &[],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/images.dart", "lib/images.dart"),
@@ -532,7 +533,7 @@ pub const RECIPES: &[Recipe] = &[
             source: Source::Range("^1.5.0"),
         }],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/api.dart", "lib/api.dart"),
@@ -569,7 +570,7 @@ pub const RECIPES: &[Recipe] = &[
             },
         ],
         dev_third_party: &[],
-        flutter_floor: "3.32",
+        flutter_floor: "3.35",
         config: &[],
         files: &[
             ("create/downloads.dart", "lib/downloads.dart"),

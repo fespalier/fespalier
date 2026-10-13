@@ -37,7 +37,7 @@ dependencies:
 
 (A fragment, not a sample: pub resolves the pair only at a release tag. Write `ref: v…` with a real tag in an
 app, but never in these pages, where `cli/tests/versions.rs` would read it as fespalier's own version.)
-Dart 3.8 and Flutter 3.32 or newer; no plugin; nothing in `pubspec.yaml`'s `fespalier:` section.
+Dart 3.9 and Flutter 3.35 or newer; no plugin; nothing in `pubspec.yaml`'s `fespalier:` section.
 
 ## The shape of it
 

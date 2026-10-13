@@ -75,8 +75,8 @@ abstract class FespalierAdapter {
   /// (go_router has no route yet and shows an error page): fespalier allows it, reports it with
   /// `FlutterError.reportError`, and still runs the block's `then`; answer [launch] instead.
   ///
-  /// A `then` runs after the navigation commits on go_router 17.2 and later; on 17.0 and 17.1
-  /// (what Flutter 3.32 resolves) it runs inside the parse, before the commit, and may be lost.
+  /// A `then` runs after the navigation commits (go_router 17.2.3, the lowest fespalier takes,
+  /// and later; before 17.2 it ran inside the parse, before the commit, and could be lost).
   /// Any `onEnter` makes go_router parse every navigation asynchronously.
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
 }

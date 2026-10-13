@@ -230,7 +230,7 @@ await pumpRouter(
 - No telemetry in v1. A future `TelemetryOp` would go through `FespalierTelemetry.begin` and `finish` and never carry keys,
   texts or the CDN URL.
 - It adds `http`, `intl` and `clock` (the cache's age is read from it, so a test's fake clock ages it) and nothing else
-  beyond fespalier. It is in the Flutter 3.32 `floor` job.
+  beyond fespalier. It is in the Flutter 3.35 `floor` job.
 
 ## Not built
 

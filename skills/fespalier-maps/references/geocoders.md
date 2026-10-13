@@ -12,8 +12,8 @@ abstract interface class Geocoder {
 }
 ```
 
-The Dart in these recipes uses null-aware elements (`?expr` inside a list), so they need Dart 3.8, which is the floor of
-`fespalier_maps` itself.
+The Dart in these recipes uses null-aware elements (`?expr` inside a list), so they need Dart 3.8, which the floor of
+`fespalier_maps` itself (Dart 3.9, since 0.16.0) satisfies.
 
 ## The contract
 

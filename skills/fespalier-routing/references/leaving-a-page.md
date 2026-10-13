@@ -72,7 +72,7 @@ drafts); a query-only change (also `replace` of a pushed page with itself at ano
 whatever `remount` says. `leave.dart` is imported eagerly (never `deferred`), so what it imports leaves the deferred
 chunk. While an async-guarded `go` is parsing, a pop is judged against that destination.
 
-**Known gap:** on go_router 17.0 to 17.3 (Flutter below 3.38) popping a whole `ShellRoute` page off the root navigator
+**Known gap:** on go_router before 17.4 (Flutter below 3.38 resolves 17.2.3 at most) popping a whole `ShellRoute` page off the root navigator
 skips the leaf's `leave()` (fixed in 17.4.0).
 
 ## How it answers

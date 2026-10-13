@@ -80,7 +80,7 @@ route, so "no `ModalRoute`" would freeze it. Hence the explicit shuttle.
 
 ## The web
 
-Flutter 3.32 and later have no HTML renderer: CanvasKit and skwasm fetch image **bytes** with XHR, so the image
+Flutter 3.35 and later (every Flutter fespalier supports) have no HTML renderer: CanvasKit and skwasm fetch image **bytes** with XHR, so the image
 server must send CORS headers on the image **and on the redirect target**. EmgR sends
 `Access-Control-Allow-Origin: *` on every route (its `CDN_BASE_URL` host must too). imgproxy:
 `IMGPROXY_ALLOW_ORIGIN`. A blank image on the web and fine elsewhere is missing CORS.

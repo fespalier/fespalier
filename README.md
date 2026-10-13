@@ -57,8 +57,8 @@ side is in [Navigation](docs/navigation.md#typed-navigation-at-a-glance).
 
 ## Getting started
 
-You need Flutter 3.32 or newer (Dart 3.8) for the package. go_router 18 needs Flutter
-3.44 or newer.
+You need Flutter 3.35 or newer (Dart 3.9) for the package (since 0.16.0; 0.15 and earlier took
+Flutter 3.32). go_router 18 needs Flutter 3.44 or newer.
 
 **1. Install `fsp`.** On Linux and macOS:
 

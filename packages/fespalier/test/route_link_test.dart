@@ -296,11 +296,11 @@ void main() {
       await boot(tester, linkTile(const ItemRoute(2), 'Two'));
       final node = tester.getSemantics(find.text('Two'));
       final data = node.getSemanticsData();
-      // Deprecated in newer Flutter (for isSemantics), which 3.32, the floor, does not have yet.
+      // Deprecated after Flutter 3.40, for `isSemantics`, which 3.35, the floor, does not have.
       // ignore: deprecated_member_use
       expect(node, containsSemantics(isLink: true));
-      // Flutter 3.32 (the floor) drops the linkUrl when it merges the link's semantics.
-      if (!onFlutterFloor) expect(data.linkUrl, Uri.parse('/items/2'));
+      // Flutter before 3.38 (the floor is 3.35) drops the linkUrl when it merges the semantics.
+      if (!beforeFlutter338) expect(data.linkUrl, Uri.parse('/items/2'));
       expect(data.label, 'Two');
       expect(data.hasAction(SemanticsAction.tap), isTrue);
       semantics.dispose();

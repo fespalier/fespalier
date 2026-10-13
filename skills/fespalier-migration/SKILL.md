@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (an upload ends Failed(other), an unknown outcome, after a 5xx, 408 or 499 and Failed(storage) when its registry entry cannot be saved; a CrateStack 5xx without an envelope keeps the intent's key and reads as offline; a request with a body is sent again after a 401 through DioHttpClient; a download that cannot reach its credentials offline is Failed(network), not Failed(unauthorized); a paused download resumes from the freshly granted URL and gets one renewal per resume), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (Flutter 3.35 and Dart 3.9 are the floor: upgrade Flutter, go_router's lower bound is 17.2.3; an upload ends Failed(other), an unknown outcome, after a 5xx, 408 or 499 and Failed(storage) when its registry entry cannot be saved; a CrateStack 5xx without an envelope keeps the intent's key and reads as offline; a request with a body is sent again after a 401 through DioHttpClient; a download that cannot reach its credentials offline is Failed(network), not Failed(unauthorized); a paused download resumes from the freshly granted URL and gets one renewal per resume), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -33,25 +33,46 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.15 to 0.16: what to check
 
-0.16.0 keeps `app.g.dart` as it is (regenerate anyway, per the rule above). It fixes the places where a write could be
-sent twice, and three outcomes of the network packages. Nothing is renamed, and no import changes (one port,
-`DownloadBackend.resume`, gains a named parameter: item 7); some outcomes an app sees are different. Bump the `ref:` of
-`fespalier` and every companion to the 0.16.0 tag, then:
+0.16.0 is a **breaking** release for an app on Flutter 3.32 to 3.34: the floor is now Flutter 3.35 and Dart 3.9. It
+also fixes the places where a write could be sent twice and three outcomes of the network packages (one port,
+`DownloadBackend.resume`, gains a named parameter: item 11), so some outcomes an app sees are different. The generated
+`app.g.dart` is unchanged (regenerate and read the diff anyway: the rule above stands), and no file kind, key or command
+changed. Bump the `ref:` of `fespalier` and every companion to the 0.16.0 tag, then:
 
-1. **`fespalier_download_background`: a `5xx`, `408` or `499` on an upload is `Failed(other)`, not `Failed(rejected)`.**
+1. **Flutter 3.35 or newer (Dart 3.9 or newer) is needed** (since 0.16.0). `fespalier` and every companion that was in the
+   3.32 floor job now say `sdk: ^3.9.0` and `flutter: ">=3.35.0"`; `fespalier_sign_keypair` (Flutter 3.44) and
+   `fespalier_download_background` (Flutter 3.47) keep their own, higher ones. On an older Flutter `flutter pub get` fails
+   with a version solving message that names the SDK, and `fsp create` says
+   `Flutter {v} is too old: fespalier needs Flutter 3.35 or newer (https://docs.flutter.dev/release/upgrade)`.
+   Upgrade Flutter (3.35.7 is the last 3.35 patch, with Dart 3.9.2), set the same `flutter-version` in CI, and raise
+   your own `environment:` to `sdk: ^3.9.0` and `flutter: ">=3.35.0"` (what `fsp create` writes now). An app that has to
+   stay on Flutter 3.32 to 3.34 stays on fespalier 0.15.x.
+2. **go_router's lower bound is 17.2.3** (it was 17.0.0): `go_router: ">=17.2.3 <19.0.0"` in `fespalier`. An app that
+   lets pub choose changes nothing, because 17.2.3 is the newest go_router that Flutter 3.35 to 3.37 resolve (3.38 and
+   later take 17.5.0, and go_router 18 needs Flutter 3.44); an app whose `dependency_overrides:` or `pubspec.lock` holds
+   go_router 17.0.0 to 17.2.2 runs `flutter pub upgrade go_router`.
+3. **Why.** On Flutter 3.32 pub resolved go_router 17.0.0 and no newer one (17.0.1 asks for Flutter 3.35), and that release
+   ran a `Block.then` of an `onEnter` inside the parse, before the commit, and asserted on a platform payload with no
+   leading slash. On 17.2.3 neither needs a workaround, so the tests that tolerated them on the floor are strict now.
+   What the floor still tolerates is go_router's and Flutter's own, and is true on every Flutter that has it: go_router 17
+   builds the page a `go` lands on one frame after the location changes (go_router 18 builds it in the same frame), a
+   `ShellRoute` pop skips the leaf's `onExit` before go_router 17.4, and Flutter before 3.38 drops a link's `linkUrl`.
+4. **`fsp create`**: `--features all` now includes `otel` on every supported Flutter (it needed 3.35
+   before), and an `fsp create` app declares `sdk: ^3.9.0` and `flutter: ">=3.35.0"`.
+5. **`fespalier_download_background`: a `5xx`, `408` or `499` on an upload is `Failed(other)`, not `Failed(rejected)`.**
    Only a client error that proves nothing was applied (`400`, `404`, `413`, `422`, ...) stays `rejected`. For an
    upload without an `Idempotency-Key` the new `other` is an unknown outcome: `outcomeUnknown(id)` is true, and `retry`
    and `start` refuse it (on 0.15.0 `retry` sent the write again after a `500` or `504`, which could run it twice).
    Search for `DownloadFailure.rejected` in the code that handles an upload and decide what an unknown outcome shows:
    ask your server, then `remove(id)` and `start` again, or give the upload an `Idempotency-Key`. Downloads are
    unchanged.
-2. **`fespalier_download_background`: an upload whose registry entry cannot be saved ends `Failed(storage)` and is not
+6. **`fespalier_download_background`: an upload whose registry entry cannot be saved ends `Failed(storage)` and is not
    sent.** `UploadStore.put` may now throw `UploadStoreException` (`FileUploadStore` does, on a failed write), and
    `FileUploadStore` no longer reads an unreadable file as an empty registry: `load` and `put` throw, the file is left
    alone, and until the next `open()` reads it (or `clearAccount()` deletes it) an upload **without** a key ends
    `Failed(storage)`. A custom `UploadStore` that swallows its failures keeps the old behaviour: let `put` throw.
    Handle `Failed(storage)` on an upload (`retry`); the two debug lines are in `fespalier-troubleshooting`.
-3. **`fespalier_cratestack`: a `5xx` without a CrateStack envelope keeps the intent's key.** A bare `500`, a proxy's
+7. **`fespalier_cratestack`: a `5xx` without a CrateStack envelope keeps the intent's key.** A bare `500`, a proxy's
    `520`, a panic handler's text is now `CrateStackOffline` (as `502`, `503`, `504` and `511` were), not
    `CrateStackUnavailable`: the write may have committed, and a new key would run it twice. Only a `5xx` in the
    envelope (`code` and `message`) is `CrateStackUnavailable` and moves to the next key. Visible effects: a read behind
@@ -59,29 +80,29 @@ sent twice, and three outcomes of the network packages. Nothing is renamed, and 
    `CrateStackFailure.fromResponse` return `CrateStackOffline` for it, and `drain` stops at it as it stops at any
    `CrateStackOffline`. Search for `CrateStackUnavailable` in your own reader and tests; one that expected a bare `500`
    to be unavailable now sees offline.
-4. **`fespalier_cratestack`: `drain` reads each intent again before it sends it.** An intent without a `subject` that a
+8. **`fespalier_cratestack`: `drain` reads each intent again before it sends it.** An intent without a `subject` that a
    concurrent `submit` got accepted (or that was discarded, or wiped by a sign-out) while the drain was busy with an
    earlier one is no longer sent a second time. Nothing to change.
-5. **A request with a body is sent again after a 401 through `DioHttpClient`.** An `http.Request` (`get`, `post`, `put`,
+9. **A request with a body is sent again after a 401 through `DioHttpClient`.** An `http.Request` (`get`, `post`, `put`,
    `patch`, `delete`) goes to Dio as bytes, so `SessionInterceptor` refreshes and sends it again whole (`WriteGuard` lets
    that one second send of a write through, as it always did after a 401). Before 0.16.0 it failed with
    `ClientException: fespalier_dio: unknown` and the refresh never helped: remove a retry you wrote around that. A streamed
    or multipart request (`StreamedRequest`, `MultipartRequest`) is not sent again: the caller gets the 401 as the response,
    after the refresh. A `ClientException` from `DioHttpClient` that has no Dio message now carries its cause
    (`fespalier_dio: unknown: <cause>`): code that compared the whole message changes.
-6. **Offline while a token refreshes is `Failed(network)`, no longer `Failed(unauthorized)`.** A download whose credentials
-   could not be reached ends `network` when its grantor, or the `HttpCredentials` of `HttpDownloadBackend`, throws an
-   `http.ClientException` (`fespalier_auth`'s `AuthUnavailable` is one). `unauthorized` stays for a refusal and for any other
-   throw. If your app treats `unauthorized` as "sign the person in again", it no longer does that for being offline: show
-   "offline, try again" for `network` and call `Downloads.retry`. A `resume` whose grantor cannot be reached leaves the
-   download `Paused` and returns false.
-7. **A paused download resumes from its freshly granted address, and each resume gets its own renewal.** Before 0.16.0
-   `resume` asked the grantor and threw the new `url` away, so an expired signed address earned a 403 first, and only one
-   renewal existed for the whole life of the download: a second long pause ended `Failed(unauthorized)`. Now `resume` goes
-   to the grant's `url` (the bytes kept stay), and a start, a retry and a resume each have one renewal. The grant a `resume`
-   asks for is used now, not discarded. **A `DownloadBackend` of your own** (a
-   fake in a test, a custom transfer) must accept the new `url:` named parameter of `resume(id, {authorization, url})`:
-   `flutter analyze` names the override that is missing it. `FakeDownloadBackend.resumeUrls` records it.
+10. **Offline while a token refreshes is `Failed(network)`, no longer `Failed(unauthorized)`.** A download whose credentials
+    could not be reached ends `network` when its grantor, or the `HttpCredentials` of `HttpDownloadBackend`, throws an
+    `http.ClientException` (`fespalier_auth`'s `AuthUnavailable` is one). `unauthorized` stays for a refusal and for any other
+    throw. If your app treats `unauthorized` as "sign the person in again", it no longer does that for being offline: show
+    "offline, try again" for `network` and call `Downloads.retry`. A `resume` whose grantor cannot be reached leaves the
+    download `Paused` and returns false.
+11. **A paused download resumes from its freshly granted address, and each resume gets its own renewal.** Before 0.16.0
+    `resume` asked the grantor and threw the new `url` away, so an expired signed address earned a 403 first, and only one
+    renewal existed for the whole life of the download: a second long pause ended `Failed(unauthorized)`. Now `resume` goes
+    to the grant's `url` (the bytes kept stay), and a start, a retry and a resume each have one renewal. The grant a `resume`
+    asks for is used now, not discarded. **A `DownloadBackend` of your own** (a
+    fake in a test, a custom transfer) must accept the new `url:` named parameter of `resume(id, {authorization, url})`:
+    `flutter analyze` names the override that is missing it. `FakeDownloadBackend.resumeUrls` records it.
 
 Details: `docs/migration.md`, "0.16.0".
 

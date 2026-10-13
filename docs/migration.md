@@ -29,6 +29,10 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
+No import changes, and one member of `FespalierAdapter` changes shape. The generated `app.g.dart` changes in an app with
+`adapters:` (regenerate: `AppAdapters.handlesEnter`, and the router passes `onEnter` only when an adapter has one) and is
+unchanged in an app without. Adapters:
+
 - **An adapter's `onEnter` is a getter** ([Adapters](adapters.md)). `FespalierAdapter.onEnter` was a method in
   0.11.0 to 0.15.0 and is now a nullable getter, `FespalierEnter? get onEnter => null;`, where `FespalierEnter` is the
   function type of the old method. `AppRoutes.router` passes go_router an `onEnter` only when some adapter's getter is
@@ -60,6 +64,23 @@ What changed between releases, newest first, each with a link to the reference s
   with an adapter that has an `onEnter` still has the async parse.
 - **A router of your own** passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null` instead of
   `onEnter: AppRoutes.onEnter`.
+
+The other fixes make a write that could be sent twice be sent once, so an app sees different outcomes in these places:
+
+- **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
+  On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an
+  `Idempotency-Key` again after a `500` or `504`, which could run the write twice. Now only a client error that proves
+  nothing was applied is `rejected`; the others are `other`, `outcomeUnknown(id)` is true for an upload without a
+  key, and `retry` and `start` refuse it until you `remove` it on purpose. A download is unchanged.
+- **An upload whose registry entry cannot be saved is `Failed(storage)` and is not sent.** `UploadStore.put` may throw
+  (`UploadStoreException` from `FileUploadStore`), and `FileUploadStore` no longer reads an unreadable file as empty:
+  `load` and `put` throw and leave the file alone, and an upload without a key is not started until the registry can be
+  read (the next `open()`) or `clearAccount()` empties it. Handle `Failed(storage)` with `retry`.
+- **A `5xx` without a CrateStack envelope keeps an intent's key** ([CrateStack with fespalier](cratestack.md)). A bare
+  `500` is `CrateStackOffline`, not `CrateStackUnavailable`; only a `5xx` in the envelope moves to the next key. A read
+  behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
+- **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
+  while the drain was busy is not sent from a stale list.
 
 ### 0.15.0
 

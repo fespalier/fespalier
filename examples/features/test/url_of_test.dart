@@ -66,7 +66,9 @@ void main() {
       const route = HelpExamplesRoute(topic: 'routing');
       final url = AppRoutes.urlOf(route, locale: 'de');
       expect(url.path, route.locationFor('de'));
-      expect(AppRoutes.matchUrl(Uri.parse(url.path))?.route, route);
+      final match = AppRoutes.matchUrl(Uri.parse(url.path))?.route;
+      expect(match, isA<HelpExamplesRoute>());
+      expect(match?.location, route.location);
     });
   });
 }

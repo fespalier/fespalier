@@ -2,7 +2,6 @@
 // `hide`, the `adapter` event, the snapshot's `adapters`, and the `adapterEdit` method.
 import 'dart:convert';
 
-import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/src/devtools/devtools.dart';
 import 'package:fespalier/src/devtools/protocol.dart';
 import 'package:flutter_test/flutter_test.dart';

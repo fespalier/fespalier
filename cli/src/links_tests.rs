@@ -456,7 +456,8 @@ fn an_unknown_key_is_an_error_everywhere_and_a_bad_value_only_for_links() {
     let e = Pubspec::parse("name: demo\nfespalier:\n  links:\n    domain: [a.example.com]\n")
         .unwrap_err();
     assert!(format!("{e:#}").contains("unknown field `domain`"), "{e:#}");
-    // `fsp gen` reads the section but never checks its values.
+    // Parsing reads the section but never checks its values (`fsp gen` only warns about the first
+    // domain: url_of_tests.rs).
     let p =
         Pubspec::parse("name: demo\nfespalier:\n  links:\n    domains: ['not a host']\n").unwrap();
     assert!(p.config.links.is_some());

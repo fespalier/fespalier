@@ -109,12 +109,14 @@ not a provider, such as its image at the size it shows it (`ResponsiveImage.prec
 An adapter's `launch()` answers an `InboundLaunch(location, source: NavigationSource.notification)` (or
 `InboundLaunch.to(route, source: ...)`); `launchRouter(launch, (launch) => GoRouter(...), links: true)` builds the router at
 that location over the platform's initial route and marks the first navigation with the source. With `links: true`
-(telemetry or adapters) a platform deep link, at cold start or while running, is marked `NavigationSource.link`; an
+(telemetry, or an adapter that handles `onEnter` since 0.16.0) a platform deep link, at cold start or while running, is marked `NavigationSource.link`; an
 in-app `go` is not. A launch does not stop later links being marked. Android hands a cold-start link over as the initial route; iOS delivers it after the first frame, as a warm link. `make` receives the launch (null on the web). Never on the web. An adapter's `onEnter` sees it as
-`InboundNavigation.source`, and must not block `InboundNavigation.initial`. The generated `AppRoutes.router(launch:)` calls `launchRouter` (`links: true` with telemetry or adapters); the generated
+`InboundNavigation.source`, and must not block `InboundNavigation.initial`. The generated `AppRoutes.router(launch:)` calls `launchRouter` (`links: true` with telemetry, `links: AppAdapters.handlesEnter` with adapters alone); the generated
 main passes it `AppMain.launch`, the adapters' answer, and a `main: manual` app asks `AppAdapters.launch()` itself. With adapters
-`AppRoutes.router` also passes `onEnter: AppRoutes.onEnter`; without them there is none and go_router keeps its simplest code path,
-and **any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit to all of them**.
+`AppRoutes.router` passes `onEnter: AppAdapters.handlesEnter ? onEnter : null` (since 0.16.0): go_router gets `AppRoutes.onEnter` only if
+an adapter overrides `handlesEnter` (none of the first-party ones does; before 0.16.0 any adapter made it pass one). Without one go_router keeps
+its simplest code path, and **any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit to all of
+them**, so with an adapter that handles it `go('/a')` then `push('/b')` in one handler loses the `go`.
 An app.dart `router()` must pass `launch: AppMain.launch` on (an `fsp` warning otherwise). Details: `docs/navigation.md`, "Opening the app: launches and platform links".
 
 **Platform links end to end, and a deep-link plugin (since 0.12.0).** There is no deep-link package: Flutter (deep linking is

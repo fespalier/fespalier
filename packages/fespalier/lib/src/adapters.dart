@@ -133,13 +133,26 @@ final class FespalierAdapters {
     return found;
   }
 
-  /// go_router's `onEnter` (`AppRoutes.onEnter`): each adapter's `onEnter`, in order. The first
+  /// Whether any adapter [FespalierAdapter.handlesEnter] (since 0.16.0): the generated
+  /// `AppRoutes.router` passes go_router `onEnter` only then (`AppAdapters.handlesEnter`), so an
+  /// app whose adapters leave `onEnter` alone keeps go_router's synchronous parsing. Read when
+  /// the router is built; no `Future`, no microtask.
+  bool get handlesEnter {
+    for (final adapter in _adapters) {
+      if (adapter.handlesEnter) return true;
+    }
+    return false;
+  }
+
+  /// go_router's `onEnter` (`AppRoutes.onEnter`): the `onEnter` of each adapter that
+  /// [FespalierAdapter.handlesEnter] (since 0.16.0; the others are not asked), in order. The first
   /// `Block` wins and is returned as it is (the `then`s of the `Allow`s before it are dropped: the
   /// navigation did not happen); otherwise the `Allow.then` callbacks are run in order as one
   /// `Allow(then:)`, and when no adapter has a say the answer is `Allow()`. Sync stays sync: a
   /// `Future` appears only if an adapter's answer is one. Blocking the initial navigation is
   /// refused (allowed, and reported in debug). An adapter that throws is reported and counts as
-  /// no say.
+  /// no say. Pass it to go_router as `handlesEnter ? onEnter : null`: with no adapter handling it,
+  /// any `onEnter` only costs the router its synchronous parsing.
   FutureOr<OnEnterResult> onEnter(
     BuildContext context,
     GoRouterState current,
@@ -166,6 +179,7 @@ final class FespalierAdapters {
   ) {
     for (var i = from; i < _adapters.length; i++) {
       final adapter = _adapters[i];
+      if (!adapter.handlesEnter) continue;
       final FutureOr<OnEnterResult>? answer;
       try {
         answer = adapter.onEnter(navigation);

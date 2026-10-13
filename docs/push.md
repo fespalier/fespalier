@@ -15,7 +15,7 @@ fespalier:
   adapters: [fespalier_push]
 ```
 
-Any `onEnter` makes go_router parse every navigation asynchronously, and an app with adapters has one (see [Adapters in the generated `main()`](adapters.md#adapters-in-the-generated-main)); an app without adapters keeps go_router's simplest path.
+Any `onEnter` makes go_router parse every navigation asynchronously, but `fespalier_push` does not handle `onEnter` (it opens a tap through `launch()` and `attach()`), so an app that lists it keeps go_router's synchronous parsing; only an adapter that opts in with `handlesEnter` makes the router pass one (since 0.16.0; before, any adapter did: see [Adapters in the generated `main()`](adapters.md#adapters-in-the-generated-main)).
 
 ## Configure
 

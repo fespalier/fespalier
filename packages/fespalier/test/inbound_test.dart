@@ -294,6 +294,9 @@ class _Spy extends FespalierAdapter {
   final List<(String, bool, String?)> seen;
 
   @override
+  bool get handlesEnter => true;
+
+  @override
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
     seen.add((navigation.next.uri.path, navigation.initial, navigation.source));
     return null;
@@ -301,6 +304,9 @@ class _Spy extends FespalierAdapter {
 }
 
 class _Rewrite extends FespalierAdapter {
+  @override
+  bool get handlesEnter => true;
+
   @override
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
     if (navigation.next.uri.path != '/custom') return null;

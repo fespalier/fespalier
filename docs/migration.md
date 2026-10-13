@@ -27,6 +27,21 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.16.0
+
+- **An adapter's `onEnter` is opt-in** ([Adapters](adapters.md)).
+  `FespalierAdapter.handlesEnter` is new and `false` by default, and `AppRoutes.router` passes go_router an `onEnter` only
+  when some adapter returns `true` (`onEnter: AppAdapters.handlesEnter ? onEnter : null`; before, any `adapters:` entry
+  passed one). **An adapter that overrides `onEnter` adds `@override bool get handlesEnter => true;`**, or its `onEnter` is
+  never called and nothing says so (`fsp` reads the pubspec, not the adapters' code). No first-party adapter overrides
+  `onEnter`. Regenerate (`fsp gen`): `lib/app.g.dart` changes in an app with `adapters:`, and not in one without.
+- **`go()` then `push()` keeps both again, in an app whose adapters leave `onEnter` alone.** Any `onEnter` makes go_router
+  parse every navigation asynchronously, so before 0.16.0 `router.go('/a'); router.push('/b');` ended as `/home > /b` and
+  `currentConfiguration` lagged a frame in every app with `adapters:`; now it is `/a > /b`, committed in the call. An app
+  with an adapter that handles `onEnter` still has the async parse.
+- **A router of your own** passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null` instead of
+  `onEnter: AppRoutes.onEnter`.
+
 ### 0.15.0
 
 - **The `package:http` half of `fespalier_dio` is `fespalier_http`** ([HTTP clients](http.md)).

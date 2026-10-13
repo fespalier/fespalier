@@ -35,10 +35,12 @@ export 'src/route_scope.dart' show TestRouteScope;
 /// Delivers [link] to the app the way the platform does when a user opens an App Link, a
 /// Universal Link or a custom scheme while it runs (since 0.12.0): a `pushRouteInformation`
 /// message on the `flutter/navigation` channel, which Flutter hands to the router, so go_router
-/// parses it and, in an app generated with `telemetry: true` or `adapters:` (the router is built
-/// with `links: true`), `onEnter` of each adapter sees it with `source` `link` and telemetry
-/// reports `fespalier.navigation.source=link`. Then, unless [settle] is false, it pumps until nothing
-/// is scheduled (turn it off to look at a loading view, as with `pumpRouter`).
+/// parses it and, in an app generated with `telemetry: true` or with an adapter that handles
+/// `onEnter` (the router is built with `links: true`, or with `links:` following
+/// `AppAdapters.handlesEnter`), `onEnter` of each adapter that handles it sees it with `source`
+/// `link` and telemetry reports `fespalier.navigation.source=link`. Then, unless [settle] is
+/// false, it pumps until nothing is scheduled (turn it off to look at a loading view, as with
+/// `pumpRouter`).
 ///
 /// ```dart
 /// await pumpRouter(tester, AppRoutes.router());

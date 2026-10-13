@@ -68,6 +68,14 @@ abstract class FespalierAdapter {
   /// `Future` delays the first frame like [beforeRun], so keep it to a local read.
   FutureOr<InboundLaunch?> launch() => null;
 
+  /// Whether this adapter overrides [onEnter] (since 0.16.0). The default, false, keeps
+  /// go_router's `onEnter` out of the generated `AppRoutes.router`: any `onEnter` makes go_router
+  /// parse every navigation asynchronously, so `go()` followed by `push()` in one handler loses
+  /// the `go()`. An adapter that overrides [onEnter] returns true here; `onEnter` is passed to
+  /// go_router when at least one adapter does, and only the adapters that do are asked. Without
+  /// it, [onEnter] is never called.
+  bool get handlesEnter => false;
+
   /// A navigation is about to be parsed (go_router's `onEnter`, since 0.11.0): null to have no
   /// say, `Allow(then: ...)` to run something after it, `Block.then(...)` to stop it (rewriting a
   /// custom-scheme link: `Block.then(() => router.go('/orders/42'))`, which keeps the link's
@@ -75,8 +83,12 @@ abstract class FespalierAdapter {
   /// (go_router has no route yet and shows an error page): fespalier allows it, reports it with
   /// `FlutterError.reportError`, and still runs the block's `then`; answer [launch] instead.
   ///
-  /// A `then` runs after the navigation commits on go_router 17.2 and later; on 17.0 and 17.1
-  /// (what Flutter 3.32 resolves) it runs inside the parse, before the commit, and may be lost.
-  /// Any `onEnter` makes go_router parse every navigation asynchronously.
+  /// Called only when [handlesEnter] is true (since 0.16.0; before, every adapter was asked, and
+  /// the router paid for it whether or not any adapter answered). A `then` runs after the
+  /// navigation commits on go_router 17.2 and later; on 17.0 and 17.1 (what Flutter 3.32
+  /// resolves) it runs inside the parse, before the commit, and may be lost. Any `onEnter` makes
+  /// go_router parse every navigation asynchronously, which is why an app pays for it only when an
+  /// adapter handles it: `go()` then `push()` in one handler ends with the `go()` lost, so an app
+  /// with such an adapter pushes after the `go()` committed.
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
 }

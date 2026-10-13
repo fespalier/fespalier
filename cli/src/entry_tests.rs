@@ -1347,14 +1347,19 @@ fn on_enter_only_with_adapters() {
     has(
         &with.app_g,
         &[
-            "        onEnter: onEnter,\n",
+            "        onEnter: AppAdapters.handlesEnter ? onEnter : null,\n",
+            "  static bool get handlesEnter => _all.handlesEnter;\n",
             "static FutureOr<OnEnterResult> onEnter(",
             ") => AppAdapters._all.onEnter(context, current, next, router);",
             "import 'dart:async';",
             "  static FutureOr<InboundLaunch?> launch() => _all.launch();",
-            "    }, links: true);",
+            "    }, links: AppAdapters.handlesEnter);",
         ],
     );
+    // Passed to go_router only when an adapter handles it (since 0.16.0): never the bare tear-off,
+    // which made go_router parse every navigation asynchronously for an app whose adapters have
+    // nothing to say.
+    has_not(&with.app_g, &["onEnter: onEnter,"]);
     let plain = run_gen(&[("page.dart", HOME)]);
     has_not(
         &plain.app_g,
@@ -1376,11 +1381,22 @@ fn on_enter_only_with_adapters() {
 fn links_flag_with_telemetry() {
     let tel = run_yaml("fespalier:\n  telemetry: true\n", &[("page.dart", HOME)]);
     has(&tel.app_g, &["    }, links: true);"]);
+    // Telemetry reads the mark whether or not an adapter handles onEnter.
+    let both = run_yaml(
+        &with_adapters("[fespalier_sentry]", "  telemetry: true\n"),
+        &[("page.dart", HOME)],
+    );
+    has(&both.app_g, &["    }, links: true);"]);
+    // Adapters alone: only an onEnter reads the mark, so no adapter handling it, no observer.
     let adapters = run_yaml(
         &with_adapters("[fespalier_sentry]", ""),
         &[("page.dart", HOME)],
     );
-    has(&adapters.app_g, &["    }, links: true);"]);
+    has(
+        &adapters.app_g,
+        &["    }, links: AppAdapters.handlesEnter);"],
+    );
+    has_not(&adapters.app_g, &["links: true"]);
     let neither = run_gen(&[("page.dart", HOME)]);
     has_not(&neither.app_g, &["links: true"]);
 }

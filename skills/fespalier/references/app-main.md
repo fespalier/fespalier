@@ -224,8 +224,16 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
   the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed, reported in every mode, and its `then` still runs). A `then` runs after the commit on go_router 17.2 and later; on 17.0 and 17.1, which Flutter 3.32 resolves, before it. `launchRouter` and the platform-link marks are in `fespalier-routing`. The generated main asks
   `AppAdapters.launch()` once and gives `AppRoutes.router(launch: AppMain.launch)` the answer; with `main: manual`, `final launch = await AppAdapters.launch();`
   and `AppRoutes.router(launch: launch, ...)`. `AppRoutes.onEnter` exists only with adapters (go_router parses every navigation asynchronously, with its redirect limit, as soon as any `onEnter` is set).
-- **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0) has a default
-  for a subclass only.
+- **`onEnter` is opt-in: `handlesEnter` (since 0.16.0).** `AppRoutes.router` passes go_router
+  `onEnter: AppAdapters.handlesEnter ? onEnter : null`, so `onEnter` reaches go_router **only when an adapter overrides
+  `bool get handlesEnter => true`**, and only those adapters are asked; an adapter that overrides `onEnter` without it is
+  never called, silently (`fsp` cannot see which adapters override it). No first-party adapter handles it, so an app
+  with `fespalier_push`, `fespalier_analytics` or `fespalier_download` keeps go_router's synchronous parsing. With an
+  adapter that does, `router.go('/a'); router.push('/b');` in one handler loses the `go()` (`/home > /b`) and
+  `currentConfiguration` lags a frame: before 0.16.0 every app with `adapters:` had that. An app with a router of its
+  own passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null`.
+- **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0; `handlesEnter`, since
+  0.16.0) has a default for a subclass only.
 - **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it
   after the first frame that shows the router, with the app's `ProviderContainer` (so an adapter may change a provider there). `AppRoutes.attach(router)` with no container (what
   `AppRoutes.router()` calls) skips the adapters. `pumpRouter` never attaches them.

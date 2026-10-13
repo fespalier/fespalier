@@ -21,6 +21,7 @@ class _Recording extends FespalierAdapter {
     this.provider,
     this.launchAnswer,
     this.enter,
+    this.handles = true,
   });
 
   final String name;
@@ -31,12 +32,16 @@ class _Recording extends FespalierAdapter {
   final Provider<String>? provider;
   final FutureOr<InboundLaunch?> Function()? launchAnswer;
   final FutureOr<OnEnterResult>? Function(InboundNavigation)? enter;
+  final bool handles;
 
   @override
   FutureOr<InboundLaunch?> launch() {
     log.add('$name launch');
     return launchAnswer?.call();
   }
+
+  @override
+  bool get handlesEnter => handles;
 
   @override
   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
@@ -360,6 +365,41 @@ void main() {
     });
   });
 
+  group('handlesEnter (since 0.16.0)', () {
+    test('an adapter does not handle onEnter unless it says so', () {
+      expect(const _Plain().handlesEnter, isFalse);
+    });
+
+    test('none of the adapters: false, so go_router gets no onEnter', () {
+      expect(FespalierAdapters(const []).handlesEnter, isFalse);
+      expect(
+        FespalierAdapters(const [_Plain(), _Plain()]).handlesEnter,
+        isFalse,
+      );
+      expect(
+        FespalierAdapters([_Recording('a', handles: false)]).handlesEnter,
+        isFalse,
+      );
+    });
+
+    test('one is enough, wherever it is', () {
+      expect(
+        FespalierAdapters([const _Plain(), _Recording('b')]).handlesEnter,
+        isTrue,
+      );
+      expect(
+        FespalierAdapters([_Recording('a'), const _Plain()]).handlesEnter,
+        isTrue,
+      );
+    });
+
+    test('asking it calls no onEnter', () {
+      final all = FespalierAdapters([_Recording('a', handles: false)]);
+      expect(all.handlesEnter, isFalse);
+      expect(log, isEmpty);
+    });
+  });
+
   group('onEnter', () {
     /// A router, and `onEnter` of [adapters] applied to the state it shows.
     Future<Enter> enterWith(
@@ -388,6 +428,31 @@ void main() {
       expect(result, isA<Allow>());
       expect((result as Allow).then, isNull);
       expect(log, ['a onEnter', 'b onEnter']);
+    });
+
+    testWidgets('only the adapters that handle onEnter are asked', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [
+        _Recording('a', handles: false, enter: (_) => const Block.stop()),
+        _Recording('b', enter: (_) => Allow(then: () => log.add('then b'))),
+        _Recording('c', handles: false, enter: (_) => const Block.stop()),
+      ]);
+      final result = enter();
+      expect(result, isA<Allow>());
+      expect(log, ['b onEnter']);
+    });
+
+    testWidgets('no adapter handles it: nobody is asked, a plain Allow', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [
+        _Recording('a', handles: false, enter: (_) => const Block.stop()),
+      ]);
+      final result = enter();
+      expect(result, isA<Allow>());
+      expect((result as Allow).then, isNull);
+      expect(log, isEmpty);
     });
 
     testWidgets('the first Block wins, and the later adapters are not asked', (

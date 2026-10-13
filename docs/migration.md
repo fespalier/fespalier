@@ -29,16 +29,35 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
-- **An adapter's `onEnter` is opt-in** ([Adapters](adapters.md)).
-  `FespalierAdapter.handlesEnter` is new and `false` by default, and `AppRoutes.router` passes go_router an `onEnter` only
-  when some adapter returns `true` (`onEnter: AppAdapters.handlesEnter ? onEnter : null`; before, any `adapters:` entry
-  passed one). **An adapter that overrides `onEnter` adds `@override bool get handlesEnter => true;`**, or its `onEnter` is
-  never called and nothing says so (`fsp` reads the pubspec, not the adapters' code). No first-party adapter overrides
-  `onEnter`. Regenerate (`fsp gen`): `lib/app.g.dart` changes in an app with `adapters:`, and not in one without.
-- **`go()` then `push()` keeps both again, in an app whose adapters leave `onEnter` alone.** Any `onEnter` makes go_router
+- **An adapter's `onEnter` is a getter** ([Adapters](adapters.md)). `FespalierAdapter.onEnter` was a method in
+  0.11.0 to 0.15.0 and is now a nullable getter, `FespalierEnter? get onEnter => null;`, where `FespalierEnter` is the
+  function type of the old method. `AppRoutes.router` passes go_router an `onEnter` only when some adapter's getter is
+  not null (`onEnter: AppAdapters.handlesEnter ? onEnter : null`; before, any `adapters:` entry passed one), and only
+  those adapters are asked. **An adapter that overrides the method no longer compiles**, which is the point: the
+  analyzer says `Class 'MyAdapter' can't define method 'onEnter' and have field 'FespalierAdapter.onEnter' with the same name.`
+  instead of the adapter being skipped without a word. No first-party adapter had an `onEnter`. Regenerate (`fsp gen`):
+  `lib/app.g.dart` changes in an app with `adapters:`, and not in one without.
+
+  ```dart
+  // Before (0.15.0)
+  @override
+  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+    if (navigation.next.uri.scheme != 'vaam') return null;
+    return Block.then(() => navigation.router.go('/orders/42'));
+  }
+
+  // After (0.16.0)
+  @override
+  FespalierEnter? get onEnter => (navigation) {
+    if (navigation.next.uri.scheme != 'vaam') return null;
+    return Block.then(() => navigation.router.go('/orders/42'));
+  };
+  ```
+
+- **`go()` then `push()` keeps both again, in an app whose adapters have no `onEnter`.** Any `onEnter` makes go_router
   parse every navigation asynchronously, so before 0.16.0 `router.go('/a'); router.push('/b');` ended as `/home > /b` and
   `currentConfiguration` lagged a frame in every app with `adapters:`; now it is `/a > /b`, committed in the call. An app
-  with an adapter that handles `onEnter` still has the async parse.
+  with an adapter that has an `onEnter` still has the async parse.
 - **A router of your own** passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null` instead of
   `onEnter: AppRoutes.onEnter`.
 

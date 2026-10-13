@@ -41,13 +41,12 @@ class _Recording extends FespalierAdapter {
   }
 
   @override
-  bool get handlesEnter => handles;
-
-  @override
-  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
-    log.add('$name onEnter');
-    return enter?.call(navigation);
-  }
+  FespalierEnter? get onEnter => handles
+      ? (navigation) {
+          log.add('$name onEnter');
+          return enter?.call(navigation);
+        }
+      : null;
 
   @override
   Future<void> zone(Future<void> Function() body) async {
@@ -366,8 +365,8 @@ void main() {
   });
 
   group('handlesEnter (since 0.16.0)', () {
-    test('an adapter does not handle onEnter unless it says so', () {
-      expect(const _Plain().handlesEnter, isFalse);
+    test('an adapter has no onEnter unless it gives one', () {
+      expect(const _Plain().onEnter, isNull);
     });
 
     test('none of the adapters: false, so go_router gets no onEnter', () {
@@ -394,9 +393,23 @@ void main() {
     });
 
     test('asking it calls no onEnter', () {
-      final all = FespalierAdapters([_Recording('a', handles: false)]);
-      expect(all.handlesEnter, isFalse);
+      final all = FespalierAdapters([_Recording('a')]);
+      expect(all.handlesEnter, isTrue);
       expect(log, isEmpty);
+    });
+
+    test('a getter that throws is reported and counts as none', () {
+      final errors = <FlutterErrorDetails>[];
+      final old = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = old);
+      final all = FespalierAdapters([_Throwing(), _Recording('b')]);
+      expect(all.handlesEnter, isTrue);
+      expect(errors, hasLength(1));
+      expect(errors.single.exception.toString(), contains('no getter for you'));
+      // Read once: asking again reports nothing more.
+      expect(all.handlesEnter, isTrue);
+      expect(errors, hasLength(1));
     });
   });
 
@@ -554,6 +567,11 @@ void main() {
 
 class _Plain extends FespalierAdapter {
   const _Plain();
+}
+
+class _Throwing extends FespalierAdapter {
+  @override
+  FespalierEnter? get onEnter => throw StateError('no getter for you');
 }
 
 void _noop() {}

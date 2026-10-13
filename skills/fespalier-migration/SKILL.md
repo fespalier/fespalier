@@ -1,6 +1,6 @@
 ---
 name: fespalier-migration
-description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (an adapter that overrides onEnter must now return true from handlesEnter, or its onEnter is never called: AppRoutes.router passes go_router an onEnter only when an adapter handles it, so go() then push() keeps both for every other app; an app with a router of its own passes onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
+description: "Moving to fespalier and between its versions — upgrading an app from 0.15 to 0.16 (FespalierAdapter.onEnter is a getter, FespalierEnter? get onEnter, so an adapter with an onEnter method no longer compiles and changes it to the getter; AppRoutes.router passes go_router an onEnter only when an adapter has one, so go() then push() keeps both for every other app; an app with a router of its own passes onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null), 0.14 to 0.15 (fespalier_dio/http.dart and problem.dart are removed: import package:fespalier_http and add it at the same url and ref), 0.13 to 0.14 (fespalier_push tokens are PushToken, a revocation its own event), 0.12 to 0.13 (nothing to change: app.g.dart is unchanged, and the new packages are opt-in), 0.11 to 0.12 (opt-in ready(container) and attach(router, container) in startup.dart: the gate makes the app's ProviderContainer, runs ready before the router and attach after the adapters'; no change for an app that exports neither), 0.10 to 0.11 (an app with an observe.dart regenerates: RouteHooks.onEnter takes a RouteScope, the generated main passes the container to AppRoutes.attach, and a replace of a tree page keeps its page instance; a third-party telemetry sink with an exhaustive switch on TelemetryOp needs a TelemetryOp.custom case; AppAdapters, main: manual with adapters, FespalierAdapter.attach, extends not implements; forms moved out of fespalier into the fespalier_forms package: an app with a form() adds the dependency at the same url and ref and regenerates, fsp errors until then, and code that names ActionForm, FieldCodec, ActionFormMessages and the rest imports package:fespalier_forms; FieldErrors, validate() and optimistic() stay; form drafts, opt-in, regenerate every app with a form and reserve the key name draft; multi-page forms, opt-in: a const steps map in a section's action.dart, and only a map literal called steps beside a form() is read as one), 0.9 to 0.10 (no generator or runtime change: app.g.dart is unchanged; the docs moved from the README to docs/ pages and some fsp messages now cite them; the opt-in fespalier_tolgee and fespalier_cratestack packages), 0.8 to 0.9 (a third-party telemetry sink needs a TelemetryOp.auth case; every app regenerates app.g.dart with page names, each pageBuilder wrapped in namedPage so a NavigatorObserver sees the route pattern; an app with telemetry: true also has data providers that call data() through traceDataCall, and the data span starts first and is current; the opt-in fespalier_auth and fespalier_dio packages and fespalier: adapters:), 0.7 to 0.8 (the generated main(): app.dart, startup.dart and splash.dart at the app root, main: manual; hooks_riverpod ^3.2.1, the reserved freshness and dataCache names), 0.6 to 0.7 (the unknown_path warnings), 0.5 to 0.6 (remount, replace in the address bar), 0.4 to 0.5 (pumpRouter disposes the router, new reserved names), 0.3 to 0.4 (publish_to none, currentLocation follows push) or 0.2 to 0.3 (regenerate app.g.dart with the matching fsp, PrefetchHandle replacing the timed prefetch, shell transitions, Riverpod retry now inherited, NotFoundScope, the hidden RouteMatch) and adopting fespalier in an existing go_router app by mounting its tree inside your GoRouter with AppRoutes.mount(at:), one folder at a time, siblings with a compound path (nest = false) included. Load before bumping the fespalier package or fsp, when an upgrade changes behaviour or fails to compile, or when planning a go_router-to-fespalier migration."
 ---
 
 # fespalier-migration
@@ -33,28 +33,48 @@ version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 
 ## 0.15 to 0.16: what to check
 
-0.16.0 changes what `AppRoutes.router` hands go_router in an app with `adapters:`. Bump the `ref:` of `fespalier` and every
-companion to the 0.16.0 tag and run the matching `fsp gen`: the `lib/app.g.dart` of an app with `adapters:` changes (an
-`AppAdapters.handlesEnter` getter, and `onEnter: AppAdapters.handlesEnter ? onEnter : null` where it was `onEnter: onEnter`);
-an app without `adapters:` comes out unchanged.
+0.16.0 changes what `AppRoutes.router` hands go_router in an app with `adapters:`, and one member of `FespalierAdapter`.
+Bump the `ref:` of `fespalier` and every companion to the 0.16.0 tag and run the matching `fsp gen`: the `lib/app.g.dart` of
+an app with `adapters:` changes (an `AppAdapters.handlesEnter` getter, and `onEnter: AppAdapters.handlesEnter ? onEnter : null`
+where it was `onEnter: onEnter`); an app without `adapters:` comes out unchanged.
 
-1. **An adapter that overrides `onEnter` must opt in.** `FespalierAdapter` has a new `bool get handlesEnter => false;`, and
-   `AppRoutes.router` passes go_router an `onEnter` only when some adapter returns `true`, which then asks only the adapters
-   that do. Add `@override bool get handlesEnter => true;` next to the `onEnter` override: without it the adapter's `onEnter`
-   is **never called, and nothing says so** (`fsp` cannot detect it: the generated code depends on the pubspec alone, and
-   Dart has no way to ask whether a method is overridden without running it). No first-party adapter overrides `onEnter`,
-   so an app that lists only `fespalier_push`, `_analytics`, `_download`, `_sentry` or `_otel` changes nothing.
-2. **Every other app with `adapters:` navigates synchronously again.** Before 0.16.0 any `adapters:` entry made go_router
-   parse every navigation through an async `onEnter`, so `router.go('/a'); router.push('/b');` in one handler ended as
-   `/home > /b` (the `go` lost) and `currentConfiguration` lagged a frame. Now it ends as `/a > /b`, committed in the call,
-   as in an app without adapters. Code that worked around the lag (a `Future.delayed` or a frame between a `go` and a `push`)
-   can go; an app that has an adapter handling `onEnter` keeps the old behaviour and its caveat.
+1. **An adapter's `onEnter` is a getter now.** `FespalierAdapter.onEnter` was a method (`FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation)`)
+   and is `FespalierEnter? get onEnter => null;`, where `FespalierEnter` is the function type of the old method. An
+   adapter that overrides the method **no longer compiles**, on purpose: `Class 'MyAdapter' can't define method 'onEnter' and have field 'FespalierAdapter.onEnter' with the same name.`
+   (`conflicting_method_and_field`), instead of its `onEnter` being skipped without a word. Return the same body as a
+   function:
+
+   ```dart
+   // Before (0.15.0)
+   @override
+   FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+     if (navigation.next.uri.scheme != 'vaam') return null;
+     return Block.then(() => navigation.router.go('/orders/42'));
+   }
+
+   // After (0.16.0)
+   @override
+   FespalierEnter? get onEnter => (navigation) {
+     if (navigation.next.uri.scheme != 'vaam') return null;
+     return Block.then(() => navigation.router.go('/orders/42'));
+   };
+   ```
+
+   The getter is read once, when the router is built. No first-party adapter had an `onEnter`, so an app that lists only
+   `fespalier_push`, `_analytics`, `_download`, `_sentry` or `_otel` changes nothing here.
+
+2. **Every other app with `adapters:` navigates synchronously again.** `AppRoutes.router` now passes go_router an `onEnter`
+   only when some adapter's getter is not null, and asks only those adapters. Before 0.16.0 any `adapters:` entry made
+   go_router parse every navigation through an async `onEnter`, so `router.go('/a'); router.push('/b');` in one handler ended
+   as `/home > /b` (the `go` lost) and `currentConfiguration` lagged a frame. Now it ends as `/a > /b`, committed in the
+   call, as in an app without adapters. Code that worked around the lag (a `Future.delayed` or a frame between a `go` and
+   a `push`) can go; an app with an adapter that has an `onEnter` keeps the async parse and its caveat.
 3. **A router of your own** (`app.dart`'s `router()` building a `GoRouter` with `AppRoutes.mount`) that passed
    `onEnter: AppRoutes.onEnter` passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null`. The old line still
-   compiles and still calls the adapters that handle it, but keeps go_router's async parse for an app whose adapters have
+   compiles and still calls the adapters that have one, but keeps go_router's async parse for an app whose adapters have
    nothing to say. Also new: with adapters and no `telemetry:`, `launchRouter` gets `links: AppAdapters.handlesEnter`, so
-   no platform-link observer is added when no adapter handles `onEnter` (with `telemetry: true`, still `links: true`).
-   Details: `docs/adapters.md`, "`onEnter` is opt-in (since 0.16.0)", and `docs/migration.md`, "0.16.0".
+   no platform-link observer is added when no adapter has an `onEnter` (with `telemetry: true`, still `links: true`).
+   Details: `docs/adapters.md` ("`onEnter` is a getter that answers a function") and `docs/migration.md`, "0.16.0".
 
 ## 0.14 to 0.15: what to check
 
@@ -194,7 +214,7 @@ gets nothing from this part. An app with `adapters:` regenerates two files:**
 5. `FespalierAdapter` also has `launch()` and `onEnter(InboundNavigation)` (empty defaults), and the runtime has `InboundLaunch`
    and `launchRouter`: a platform link is marked `NavigationSource.link` in telemetry when `launchRouter(links: true)` builds the
    router. The generated wiring is there too: `AppRoutes.router` takes `launch:` and passes `links: true` with telemetry or
-   adapters, and with adapters there is an `AppRoutes.onEnter` (passed to `GoRouter(onEnter:)`, since 0.16.0 only when an adapter handles it) and `AppAdapters.launch()`, which
+   adapters, and with adapters there is an `AppRoutes.onEnter` (passed to `GoRouter(onEnter:)`, since 0.16.0 only when an adapter has an `onEnter`) and `AppAdapters.launch()`, which
    the generated main asks once and hands to the router as `AppMain.launch`. Every app's `app.g.dart` changes (the router is built
    inside `launchRouter`: run `fsp gen`). An app.dart `router()` passes `launch: AppMain.launch` on (`fsp` warns otherwise); a
    `main: manual` app calls `AppAdapters.launch()` itself. Any `onEnter` makes go_router parse every navigation asynchronously and

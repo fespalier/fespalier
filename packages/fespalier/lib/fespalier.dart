@@ -51,7 +51,8 @@ export 'src/field_errors.dart';
 export 'src/freshness.dart';
 export 'src/guards.dart';
 export 'src/heroes.dart';
-export 'src/inbound.dart' show InboundLaunch, InboundNavigation, launchRouter;
+export 'src/inbound.dart'
+    show FespalierEnter, InboundLaunch, InboundNavigation, launchRouter;
 export 'src/layout_page.dart';
 // leave.dart (since 0.11.0): what a generated app.g.dart builds from it, and what a page and a form
 // use to be asked about before they go.

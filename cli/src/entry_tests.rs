@@ -1356,7 +1356,7 @@ fn on_enter_only_with_adapters() {
             "    }, links: AppAdapters.handlesEnter);",
         ],
     );
-    // Passed to go_router only when an adapter handles it (since 0.16.0): never the bare tear-off,
+    // Passed to go_router only when an adapter has an onEnter (since 0.16.0): never the bare tear-off,
     // which made go_router parse every navigation asynchronously for an app whose adapters have
     // nothing to say.
     has_not(&with.app_g, &["onEnter: onEnter,"]);

@@ -1,4 +1,4 @@
-// go_router's `onEnter` is passed only when an adapter handles it (since 0.16.0). The routers here
+// go_router's `onEnter` is passed only when an adapter has an `onEnter` getter (since 0.16.0). The routers here
 // are built the way the generated `AppRoutes.router` builds its own:
 // `onEnter: all.handlesEnter ? all.onEnter : null`. Any `onEnter` makes go_router parse every
 // navigation asynchronously, so an app whose adapters leave it alone must keep the synchronous
@@ -25,16 +25,13 @@ class _Handler extends FespalierAdapter {
   final List<String> seen;
 
   @override
-  bool get handlesEnter => true;
-
-  @override
-  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+  FespalierEnter? get onEnter => (navigation) {
     seen.add(
       '${navigation.next.uri.path}${navigation.initial ? ' (initial)' : ''}',
     );
     if (navigation.next.uri.path != '/custom') return null;
     return Block.then(() => navigation.router.go('/b'));
-  }
+  };
 }
 
 Widget _page(String label) => Scaffold(body: Text(label));

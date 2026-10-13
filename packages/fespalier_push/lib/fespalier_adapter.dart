@@ -287,11 +287,7 @@ void _holdTaps(PushConfig config) {
       }
     }, fireImmediately: true);
   } catch (error, stack) {
-    _report(
-      error,
-      stack,
-      'in the stream of notification taps',
-    );
+    _report(error, stack, 'in the stream of notification taps');
     pushTapHold.end();
   }
 }

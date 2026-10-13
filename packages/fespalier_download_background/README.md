@@ -83,7 +83,7 @@ transfer. The `Downloads` engine, the providers and the registry are `fespalier_
 - **Auth is what the request carries**: a short-lived grant (a URL or a download-scoped header). **Headers are written to
   the operating system's task queue in plaintext** until the task ends, and a retry sends the same ones. Never a refresh
   token. A proof per request (DPoP) is impossible there: the plugin's native callbacks cannot reach the app's state. With a
-  `grantor` on the engine, `enqueue` and `resume` get the granted request and headers; a renewal after a 401 is a cancel and
+  `grantor` on the engine, `enqueue` and `resume` get the granted request (its address) and headers; a renewal after a 401 is a cancel and
   a new task, and the late `canceled` update of the old one is dropped.
 
 ## Uploads
@@ -152,7 +152,7 @@ following depend on behaviour of the operating system and the plugin that nobody
 [issue #158](https://github.com/fespalier/fespalier/issues/158) and are **UNCHECKED**:
 
 - when a notification tap arrives after a cold start, relative to `resumeFromBackground` (the `fespalier_download` adapter answers a cold tap in `launch()` and a later one as a warm tap, so the app works either way);
-- whether a resume with new headers is sent with them;
+- whether a resume with new headers or a new address sends them;
 - whether a failed update carries the server's response headers (the plugin documents the status code in its exception);
 - whether the plugin's database delete is scoped to the group (its source says so; it was read, not run);
 - whether an Android task that cycles every nine minutes reuses the headers it was enqueued with;

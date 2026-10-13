@@ -216,7 +216,7 @@ void main() {
       expect(r.engine.statusOf('a'), isA<Queued>());
     });
 
-    test('resume sends the grant headers and keeps the address', () async {
+    test('resume sends the grant headers and the address it names', () async {
       final g = _Grantor();
       final r = await _opened(grantor: g.call);
       final started = r.engine.start(_req());
@@ -231,6 +231,40 @@ void main() {
       expect(await resumed, isTrue);
       expect(r.backend.resumed, ['a']);
       expect(r.backend.authorizations.last, {'x-grant': 'two'});
+      expect(
+        r.backend.resumeUrls.single?.path,
+        '/two',
+        reason: 'the address of the first grant has probably expired',
+      );
+      expect(
+        r.store.entries['a']!.request.url.path,
+        '/stable-a',
+        reason: 'the registry still keeps the request, never the capability',
+      );
+    });
+
+    test(
+      'a grant with headers only resumes at the request\'s address',
+      () async {
+        var n = 0;
+        final r = await _opened(
+          grantor: (request, {required renewal}) => n++ == 0
+              ? _grant('one')
+              : const DownloadGrant(headers: {'x': '1'}),
+        );
+        await r.engine.start(_req());
+        r.backend.emit('a', const Paused(1, 10));
+        expect(await r.engine.resume('a'), isTrue);
+        expect(r.backend.resumeUrls.single?.path, '/stable-a');
+      },
+    );
+
+    test('no grantor: the backend keeps the address it has', () async {
+      final r = await _opened();
+      await r.engine.start(_req());
+      r.backend.emit('a', const Paused(1, 10));
+      expect(await r.engine.resume('a'), isTrue);
+      expect(r.backend.resumeUrls, [null]);
     });
   });
 
@@ -281,6 +315,59 @@ void main() {
         );
       },
     );
+
+    test('each resume has its own renewal', () async {
+      var n = 0;
+      final r = await _opened(
+        grantor: (request, {required renewal}) {
+          n++;
+          return _grant('g$n');
+        },
+      );
+      await r.engine.start(_req());
+      for (var pause = 1; pause <= 3; pause++) {
+        r.backend.emit('a', Paused(pause, 10));
+        final before = n;
+        expect(await r.engine.resume('a'), isTrue);
+        expect(n, before + 1, reason: 'one grant for the resume');
+        // The address given for the resume was refused anyway: its one renewal.
+        r.backend.emit(
+          'a',
+          const Failed(DownloadFailure.unauthorized),
+          httpStatus: 403,
+        );
+        await pumpEventQueue();
+        expect(n, before + 2, reason: 'and one renewal');
+        expect(r.engine.statusOf('a'), isA<Queued>(), reason: 'pause $pause');
+      }
+      expect(r.backend.enqueued, hasLength(4));
+    });
+
+    test('a second refusal of one resume ends Failed(unauthorized)', () async {
+      var n = 0;
+      final r = await _opened(
+        grantor: (request, {required renewal}) {
+          n++;
+          return _grant('g$n');
+        },
+      );
+      await r.engine.start(_req());
+      r.backend.emit('a', const Paused(1, 10));
+      expect(await r.engine.resume('a'), isTrue);
+      for (var refusal = 0; refusal < 2; refusal++) {
+        r.backend.emit(
+          'a',
+          const Failed(DownloadFailure.unauthorized),
+          httpStatus: 401,
+        );
+        await pumpEventQueue();
+      }
+      expect(
+        r.engine.statusOf('a'),
+        const Failed(DownloadFailure.unauthorized),
+      );
+      expect(n, 3, reason: 'the start, the resume and one renewal: no loop');
+    });
   });
 
   group('after a 401 or 403', () {

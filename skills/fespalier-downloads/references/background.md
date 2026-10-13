@@ -76,7 +76,7 @@ entitlement. The full list is "Android and iOS setup" in `docs/downloads.md`.
 ## UNCHECKED (issue #158)
 
 Never write these as fact; no device has answered them: when a notification tap arrives after a cold start relative to
-`resumeFromBackground`; whether a resume with new headers sends them; whether a failed update carries the server's
+`resumeFromBackground`; whether a resume with new headers or a new address sends them; whether a failed update carries the server's
 response headers; whether the plugin's database delete is scoped to a group; whether its cancel keeps the partial file; whether an Android task cycling every nine
 minutes reuses its stored headers; what happens to a group's updates when the app opened the plugin first; whether the
 package builds for the web.

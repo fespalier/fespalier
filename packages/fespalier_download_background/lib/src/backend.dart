@@ -264,15 +264,23 @@ class BackgroundDownloaderBackend implements DownloadBackend {
   Future<bool> resume(
     String id, {
     Map<String, String> authorization = const {},
+    Uri? url,
   }) async {
     if (!capabilities.pause) return false;
     final found = await _taskOf(id);
     if (found == null) return false;
-    // A grant that expired while the download was paused is replaced here. Whether the plugin
-    // sends the new headers on a resume from its stored data is UNCHECKED on a device (#158).
-    final task = authorization.isEmpty
+    // A grant that expired while the download was paused is replaced here: its headers, and the
+    // address the new grant names. The plugin resumes the task it is handed from the bytes and
+    // the validator it stored (the `enqueue` call carries the task, so its URL and headers are
+    // the new ones); that a device sends them is UNCHECKED (#158).
+    final task = authorization.isEmpty && url == null
         ? found
-        : found.copyWith(headers: {...found.headers, ...authorization});
+        : found.copyWith(
+            url: url?.toString(),
+            headers: authorization.isEmpty
+                ? null
+                : {...found.headers, ...authorization},
+          );
     _bump(id);
     _ended.remove(id);
     _tasks[id] = task;

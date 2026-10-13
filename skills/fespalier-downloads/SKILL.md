@@ -85,6 +85,8 @@ normal signed request in the foreground and the server answers with a single-fil
 `Downloads(grantor: (request, {required renewal}) async => DownloadGrant(url: ..., headers: ...))` asks it before each start,
 retry and resume (`renewal: false`; null sends the request as it is) and **once more after a 401 or 403** (`renewal: true`):
 the engine cancels the failed attempt, keeps the bytes the backend can continue from, and enqueues again with the new grant.
+Each start, retry and resume has its own one renewal, and a resume goes to the address its grant names, not the one it had
+(since 0.16.0).
 A second 401 or 403, a grantor that throws, or a grant URL that is not a valid http(s) URL ends `Failed(unauthorized)`, except
 a grantor that throws an `http.ClientException` (no network; `AuthUnavailable`, a token that could not refresh offline, is one):
 since 0.16.0 that ends `Failed(network)` (a `resume` stays `Paused` and returns false), because nothing was refused. A

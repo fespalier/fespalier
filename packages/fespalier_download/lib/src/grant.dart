@@ -53,8 +53,10 @@ final class DownloadGrant {
 ///
 /// [request] is the download as the app registered it. [renewal] is false for the grant that
 /// goes with a start, a retry or a resume, and true for the one that follows a 401 or 403: the
-/// engine asks for it **once** per attempt chain, and a second refusal ends the download
-/// `Failed(unauthorized)`.
+/// engine asks for it **once** for each of those grants (a start, a retry and a resume each begin
+/// with the renewal unspent, since 0.16.0), and a second refusal ends the download
+/// `Failed(unauthorized)`. A resume goes to the [DownloadGrant.url] its grant names, since
+/// 0.16.0 (the address of the grant before it has probably expired during the pause).
 ///
 /// Return null to send the request as it is. A throw ends the download
 /// `Failed(unauthorized)` (the engine never crashes on it and keeps nothing of the error), except

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fespalier_http/fespalier_http.dart' show HttpCredentials;
 import 'package:http/http.dart' as http;
 
+import 'grant.dart';
 import 'location.dart';
 import 'ports.dart';
 import 'request.dart';
@@ -355,10 +356,15 @@ class HttpDownloadBackend implements DownloadBackend {
   Future<bool> resume(
     String id, {
     Map<String, String> authorization = const {},
+    Uri? url,
   }) async {
     final entry = _entries[id];
     if (entry == null || _events == null || entry.phase != _Phase.paused) {
       return false;
+    }
+    // The partial file stays: the new attempt asks the new address for the rest of it.
+    if (url != null) {
+      entry.request = DownloadGrant(url: url).applyTo(entry.request);
     }
     _begin(entry, authorization);
     return true;

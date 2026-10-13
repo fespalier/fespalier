@@ -45,6 +45,14 @@ these before deleting a workaround.
   stays for a refusal and for any other throw. If your app treats `unauthorized` as "sign the person in again", it no
   longer does that for being offline: show "offline, try again" for `network` and call `Downloads.retry`. A `resume` whose
   grantor cannot be reached leaves the download `Paused` and returns false.
+- **A paused download resumes from its freshly granted address, and each resume gets its own renewal**
+  ([Credentials](downloads.md#credentials)). Before 0.16.0 `resume` asked the grantor and threw the new `url` away, so an
+  expired signed address earned a 403 first, and only one renewal existed for the whole life of the download: a second
+  long pause ended `Failed(unauthorized)`. Now `resume` goes to the grant's `url` (the bytes kept stay), and a start, a
+  retry and a resume each have one renewal. The grant a `resume` asks for is used now, not
+  discarded. **A `DownloadBackend` of your own** (a fake in a test, a custom transfer) must accept the new `url:` named
+  parameter of `resume(id, {authorization, url})`: `flutter analyze` names the override that is missing it.
+  `FakeDownloadBackend.resumeUrls` records it.
 
 ### 0.15.0
 

@@ -29,7 +29,9 @@ typedef DownloadObserver = void Function(String id, DownloadStatus status);
 /// **Credentials.** With a `grantor` the engine asks the app, in the foreground, for a
 /// [DownloadGrant] before each start, retry and resume, and **once more** when the transfer
 /// answers 401 or 403: it cancels the failed attempt (the bytes a backend kept stay where it
-/// allows) and enqueues again with the new grant. A second 401 or 403, or a grantor that throws,
+/// allows) and enqueues again with the new grant. The renewal is once for each of those grants: a
+/// download that is paused and resumed again, as long as it takes, can be renewed again (since
+/// 0.16.0), and a resume goes to the address its grant names, not the one it had. A second 401 or 403, or a grantor that throws,
 /// ends the download `Failed(unauthorized)`, except a grantor that throws an `http.ClientException`
 /// (the app could not reach its server, or its session could not refresh offline): nothing was
 /// refused, so the download ends `Failed(network)` and `retry` asks again (a resume leaves the
@@ -58,8 +60,12 @@ class Downloads {
   final DownloadFiles? _files;
   final time.Clock? _clock;
   final DownloadGrantor? _grantor;
-  // The ids whose attempt chain has asked for a renewed grant after a 401 or 403: one each.
+  // The ids whose attempt chain has asked for a renewed grant after a 401 or 403 (telemetry says
+  // so when it ends).
   final Set<String> _regranted = {};
+  // The ids that have spent the one renewal their current grant is allowed. A start, a retry and a
+  // resume each ask for a grant of their own, so each begins with the renewal unspent.
+  final Set<String> _renewed = {};
   late final _Events _events;
 
   final Map<String, DownloadStatus> _statuses = {};
@@ -211,9 +217,10 @@ class Downloads {
     final generation = _generationOf(id);
     final request = _requests[id];
     var headers = const <String, String>{};
+    Uri? url;
     if (request != null && _grantor != null) {
-      // A resumed transfer keeps its address: a grant's URL that expired meanwhile is renewed
-      // by the 401 it earns, so only the headers matter here.
+      // The address a grant named for the attempt before has probably expired by now: this
+      // attempt goes where its own grant says (the request's own address when it names none).
       final granted = await _ask(
         id,
         request,
@@ -223,8 +230,11 @@ class Downloads {
       );
       if (granted == null) return false;
       headers = granted.headers;
+      url = granted.request.url;
+      // A grant of its own, so a renewal of its own: a long pause must not use up the only one.
+      _renewed.remove(id);
     }
-    final ok = await _backend.resume(id, authorization: headers);
+    final ok = await _backend.resume(id, authorization: headers, url: url);
     if (!ok) return false;
     if (generation == _generationOf(id) && statusOf(id) is Paused) {
       _apply(id, const Queued());
@@ -264,6 +274,7 @@ class Downloads {
     final generation = _bump(id);
     _requests.remove(id);
     _regranted.remove(id);
+    _renewed.remove(id);
     _apply(id, const Cancelled());
     await _backend.cancel(id);
     // A start of the same id while the backend stopped the old one owns the registry entry and
@@ -282,6 +293,7 @@ class Downloads {
     final generation = _bump(id);
     _requests.remove(id);
     _regranted.remove(id);
+    _renewed.remove(id);
     final span = _spans.remove(id);
     transferFinish(span, const Cancelled());
     if (_statuses.remove(id) != null) _notify(id, const Absent());
@@ -320,6 +332,7 @@ class Downloads {
     _spans.clear();
     _requests.clear();
     _regranted.clear();
+    _renewed.clear();
     _statuses.clear();
     _reported.clear();
     for (final id in known) {
@@ -367,6 +380,7 @@ class Downloads {
     );
     _apply(id, const Queued());
     _regranted.remove(id);
+    _renewed.remove(id);
     await _store.put(StoredDownload(request, generation: generation));
     if (generation != _generationOf(id)) return;
     final granted = await _ask(id, request, generation, renewal: false);
@@ -426,6 +440,7 @@ class Downloads {
   // restart or a sign-out during the foreground request).
   Future<void> _regrant(String id, DownloadRequest request) async {
     _regranted.add(id);
+    _renewed.add(id);
     final generation = _bump(id);
     _apply(id, const Queued());
     try {
@@ -459,7 +474,7 @@ class Downloads {
       if (_grantor != null &&
           request != null &&
           !_reconciling &&
-          !_regranted.contains(id)) {
+          !_renewed.contains(id)) {
         unawaited(_regrant(id, request));
         return;
       }
@@ -487,6 +502,7 @@ class Downloads {
     if (terminal) {
       final span = _spans.remove(id);
       final regranted = _regranted.remove(id);
+      _renewed.remove(id);
       if (span != null) {
         transferFinish(span, status, regranted: regranted);
       } else if (reconciled && status is! Cancelled) {

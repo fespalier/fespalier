@@ -50,6 +50,16 @@ void main() {
       expect(backend.notifications?.running, 'r');
     });
 
+    test('records the address a resume was given', () async {
+      final backend = FakeDownloadBackend();
+      await backend.resume('a');
+      await backend.resume('a', url: Uri.parse('https://cdn.example.com/two'));
+      expect(backend.resumeUrls, [
+        null,
+        Uri.parse('https://cdn.example.com/two'),
+      ]);
+    });
+
     test('plays the platform through emit and tap once open', () async {
       final backend = FakeDownloadBackend();
       final events = Recorder();

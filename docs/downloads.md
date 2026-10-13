@@ -318,8 +318,8 @@ await engine.start(
   behaviour of the operating system and the plugin that nobody has run on a device, and are tracked in
   [issue #158](https://github.com/fespalier/fespalier/issues/158): when a notification tap arrives after a **cold start**
   relative to `resumeFromBackground` (the backend reports the tap; the engine hands it to the adapter, [Notification taps](#notification-taps));
-  whether a **resume with new headers** is sent with them (the backend passes them; whether the plugin uses them is not
-  known); whether a **failed update carries the server's headers**, or only the status code the plugin documents in its
+  whether a **resume with new headers or a new address** sends them (the backend passes both, on the task it hands the
+  plugin; whether the plugin uses them is not known); whether a **failed update carries the server's headers**, or only the status code the plugin documents in its
   exception; whether the plugin's **database delete is scoped to the group** (its source deletes record by record for the
   group, which was read, not run); whether an Android task that **cycles every nine minutes reuses the headers** it was
   enqueued with (which would replay an expired grant); whether the plugin's cancel keeps the partial file (a renewed
@@ -414,7 +414,8 @@ final downloads = Downloads(backend: backend, store: store, files: files, granto
   it, so a grant URL is not in `fespalier_downloads.json`. (A background backend may still keep the request it was handed
   in plaintext while it is queued, which is why a grant must expire.)
 - **When it is asked.** The `grantor` is called before each `start`, `retry` and `resume` (`renewal: false`), and **once
-  more after a 401 or 403** (`renewal: true`). Return null to send the request as it is.
+  more after a 401 or 403** (`renewal: true`). Return null to send the request as it is. `DownloadBackend.resume` takes the
+  grant's address as `url:` (since 0.16.0); a backend of your own accepts it, and uses it when it is not null.
 - **After a 401 or 403 the engine asks once.** It cancels the failed attempt, keeping the bytes the backend can continue
   from (the foreground backend keeps its `.part`, and the new attempt sends `Range`), and enqueues again with the new
   grant. A second 401 or 403 ends `Failed(unauthorized)`; so does a grantor that throws or a grant whose URL is not a valid
@@ -426,8 +427,14 @@ final downloads = Downloads(backend: backend, store: store, files: files, granto
   `resume` returns false. Any other throw is still `Failed(unauthorized)`.
 - **A newer state wins.** A `cancel`, `remove`, restart or `clearAccount` while the grant request is in flight drops its
   answer: nothing reaches the backend after it.
-- **A resumed transfer keeps its address.** On `resume` only the grant's headers are used; an expired URL earns its 401 and
-  is renewed then.
+- **A resume goes to the address its own grant names** (since 0.16.0). On `resume` the engine hands the backend the
+  grant's `url` as well as its headers, and the bytes already kept stay: the attempt asks the new address for the rest. A
+  grant with no `url` resumes at the request's own address. Before 0.16.0 the resume kept the address it had, so the
+  grant's `url` was thrown away and an expired one earned a 403 first.
+- **The renewal is once for each grant** (since 0.16.0). A start, a retry and a resume each ask for a grant of their own and
+  each begin with the one renewal unspent, so a download paused twice for longer than a signed address lives is renewed
+  after each resume, not only after the first. Within one grant it is still one: a second 401 or 403 ends
+  `Failed(unauthorized)`, and nothing asks again by itself, so there is no loop.
 - **Telemetry.** The transfer span's end carries `fespalier.download.regranted: true` when a renewal was asked (absent
   otherwise). Never the grant, a URL or a header.
 
@@ -692,7 +699,7 @@ await uploads.start(
 
 `package:fespalier_download/testing.dart` has the fakes, which need no network, platform or disk:
 
-- `FakeDownloadBackend`: records what is asked (`enqueued`, `paused`, `resumed`, `cancelled`, `authorizations`), answers
+- `FakeDownloadBackend`: records what is asked (`enqueued`, `paused`, `resumed`, `resumeUrls`, `cancelled`, `authorizations`), answers
   as `accepts` and `capabilities` say, and plays the platform through `emit(id, status, httpStatus:)` and
   `tap(id)` once a listener has called `open`. `replay: {id: status}` is what the platform reports at `open`, to test a restart, and `replayTaps: [(id, kind)]` the notification taps it delivers then, to test a cold start.
 - `MemoryDownloadStore`: a registry in memory (`entries`, `clearCalls`).

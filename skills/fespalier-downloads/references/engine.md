@@ -53,8 +53,9 @@ records the sink and checks every string against `FespalierDownloadConventions` 
 ## Grants (since 0.15.0)
 
 `Downloads(grantor:)` takes a `DownloadGrantor`, `FutureOr<DownloadGrant?> Function(DownloadRequest, {required bool renewal})`.
-The engine calls it with `renewal: false` before the backend sees a start, a retry or a resume (a resume uses only the grant's
-headers), and with `renewal: true` once per attempt chain when a backend reports a failure with HTTP status 401 or 403 (never
+The engine calls it with `renewal: false` before the backend sees a start, a retry or a resume (a resume hands the backend the
+grant's headers and, since 0.16.0, its address: `DownloadBackend.resume(id, authorization:, url:)`, with the bytes already kept
+staying), and with `renewal: true` once per grant (a start, a retry and a resume each begin with it unspent, since 0.16.0) when a backend reports a failure with HTTP status 401 or 403 (never
 while reconciling at `open()`). The renewal moves the id's generation on, shows `Queued`, waits for the grant, then
 `backend.cancel(id)` and `backend.enqueue(grantedRequest, authorization: grant.headers)`. A second 401 or 403 is
 `Failed(unauthorized)`, as is a throwing grantor or a grant whose URL makes an invalid request; a grantor that throws an

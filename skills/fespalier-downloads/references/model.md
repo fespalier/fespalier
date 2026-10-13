@@ -60,7 +60,7 @@ prints the state and the numbers (`Running(5/10)`, `Running(5/?)`, `Failed(hashM
 ## Ports
 
 - `DownloadBackend`: `capabilities`, `open(events)`, `close()`, `enqueue(request, authorization:)`, `pause(id)`,
-  `resume(id, authorization:)`, `cancel(id)`, `cancelAll()`, `resolve(location)` and
+  `resume(id, authorization:, url:)` (`url:` since 0.16.0), `cancel(id)`, `cancelAll()`, `resolve(location)` and
   `configureNotifications(notifications)`. A refusal is a `false` or a status event, never an exception the caller must
   read. `authorization` is extra headers for one attempt and is never stored.
 - `DownloadCapabilities`: `pause`, `resumeAcrossRestart`, `background`, `userInitiated`, `unmetered`, `notifications`,

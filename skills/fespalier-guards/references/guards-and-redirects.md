@@ -148,9 +148,10 @@ class LoginPage extends ConsumerWidget {
   constant naming that guard on that route. (Since 0.7.0 every guard and redirect call is wrapped in
   `traceGuard(state, 'g8@3', ...)`, which returns the call's own result: DevTools shows the decision.)
   Nested pages go through their parent's `redirect`, so **no guard runs
-  twice**. There is **no `redirect` on a `ShellRoute` or `StatefulShellRoute`**:
-  go_router runs a matched route's redirect for deep links and for navigation
-  inside a shell, tabs included, so the page routes are enough.
+  twice**. A plain `ShellRoute` gets no `redirect` (go_router runs a matched route's redirect for deep links and for
+  navigation inside a shell, so the page routes are enough). Since 0.11.0 a guard **above a tab layout** runs once, as the
+  `StatefulShellRoute`'s own `redirect:`, instead of being copied into each tab's route; it still runs for every location
+  under the tabs, before the tab's own guards (`docs/migration.md`, 0.11.0).
 - **An unparsable segment skips only the guards that read segments or query
   parameters.** When a path has a segment that does not parse (`/vault/abc` where
   `id` is an `int`), a guard that asks for `{required int id}` (or any segment or

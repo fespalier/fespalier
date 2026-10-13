@@ -96,8 +96,10 @@ jobs:
     with:
       # Generated or byte-compared files the fixers would rewrite: the DevTools extension's build
       # (scripts/build-devtools-extension.sh checks it byte for byte), the generator's goldens
-      # (cli/tests/golden, compared byte for byte) and lockfiles.
-      filter-regex-exclude: '(^|/)(AGENTS|CLAUDE)\.md$|(^|/)packages/fespalier/extension/devtools/build/|(^|/)cli/tests/golden/|(^|/)pubspec\.lock$'
+      # (cli/tests/golden, compared byte for byte), the broken trees of the diagnostics test
+      # (cli/tests/fixtures/diagnostics/<case>/: wrong on purpose, with goldens beside them; the
+      # folder's README.md is linted) and lockfiles.
+      filter-regex-exclude: '(^|/)(AGENTS|CLAUDE)\.md$|(^|/)packages/fespalier/extension/devtools/build/|(^|/)cli/tests/golden/|(^|/)cli/tests/fixtures/diagnostics/[^/]+/|(^|/)pubspec\.lock$'
     secrets:
       app-client-id: ${{ secrets.RELEASE_PLEASE_APP_CLIENT_ID }}
       app-private-key: ${{ secrets.RELEASE_PLEASE_APP_PRIVATE_KEY }}

@@ -1,7 +1,8 @@
 //! Every place that spells out the release version must agree with
 //! `cli/Cargo.toml`: the Dart package, the release-please manifest, the `ref:` that `fsp init`
-//! prints, the install instructions in the READMEs, and the `dart run fespalier` launcher
-//! (which must read the version from the package, not spell it out).
+//! prints, the install instructions in the READMEs and the docs pages (`docs/*.md`), and the
+//! `dart run fespalier` launcher (which must read the version from the package, not spell it
+//! out).
 //!
 //! release-please owns the version. The lines that carry it are annotated (`# ...` in TOML and
 //! YAML, `// ...` in Rust, an HTML comment in markdown, or a start/end block around a fenced
@@ -9,7 +10,9 @@
 //! `{ "type": "generic", "path": ... }`. The release PR bumps every annotated line together. This
 //! file checks that nothing was forgotten in either direction, that the readers the release
 //! workflows use (`scripts/read-version.sh`) still find each version behind the trailing
-//! annotation, and what `release_checksums.dart` may pin in each state of a release.
+//! annotation, that nothing release-please rewrites is anyone else's version (a third-party
+//! range inside an annotated region would be replaced by ours), and what `release_checksums.dart`
+//! may pin in each state of a release.
 //!
 //! When this fails after a version bump, update the places it names.
 
@@ -33,6 +36,24 @@ fn root() -> PathBuf {
 fn read(rel: &str) -> String {
     let path = root().join(rel);
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("reading {}: {e}", path.display()))
+}
+
+/// The documentation pages under `docs/` (`docs/*.md`, as repo-relative paths, sorted), so a
+/// page added later is read by the README checks below without anyone listing it.
+fn doc_pages() -> Vec<String> {
+    let mut pages: Vec<String> = fs::read_dir(root().join("docs"))
+        .expect("docs/ exists")
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .filter(|name| {
+            Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+        })
+        .map(|name| format!("docs/{name}"))
+        .collect();
+    pages.sort();
+    assert!(!pages.is_empty(), "docs/ holds no pages");
+    pages
 }
 
 /// The value of a top-level `version:` line, without quotes or a trailing `# comment` (the
@@ -88,9 +109,30 @@ fn looks_like_a_version(word: &str) -> bool {
             .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
 }
 
+/// The first `major.minor.patch` on `line` and where it starts: the one release-please's
+/// `Generic` updater replaces.
+fn first_version(line: &str) -> Option<(usize, &str)> {
+    let bytes = line.as_bytes();
+    let is_part = |b: u8| b.is_ascii_digit() || b == b'.';
+    let mut at = 0;
+    while at < bytes.len() {
+        if !is_part(bytes[at]) {
+            at += 1;
+            continue;
+        }
+        let end = (at..bytes.len())
+            .find(|&i| !is_part(bytes[i]))
+            .unwrap_or(bytes.len());
+        if looks_like_a_version(&line[at..end]) {
+            return Some((at, &line[at..end]));
+        }
+        at = end;
+    }
+    None
+}
+
 fn has_a_version(line: &str) -> bool {
-    line.split(|c: char| !(c.is_ascii_digit() || c == '.'))
-        .any(looks_like_a_version)
+    first_version(line).is_some()
 }
 
 /// The 1-based lines that release-please's `Generic` updater rewrites: a line carrying the
@@ -119,6 +161,49 @@ fn annotated_lines(text: &str) -> Vec<usize> {
 fn annotated_lines_follow_the_generic_updaters_rules() {
     let text = "a 1.0.0\nb 1.0.0 # x-release-please-version\n<!-- x-release-please-start-version -->\n```\nref: v1.0.0\n```\n<!-- x-release-please-end -->\nc 1.0.0\n";
     assert_eq!(annotated_lines(text), vec![2, 4, 5, 6, 7]);
+}
+
+/// What may stand right before the version release-please replaces on an annotated line: fespalier's
+/// own `ref:` or tag, or the assignment of a `version`.
+const OWN_VERSION_PREFIXES: [&str; 6] = [
+    "ref: v",
+    "--tag v",
+    "FSP_VERSION=v",
+    "version: ",
+    "version = \"",
+    "fespalierVersion = '",
+];
+
+/// The annotated lines whose first version is not fespalier's own, as `(line, text)`. The updater
+/// replaces the first `major.minor.patch` on every line it reaches, whatever that number belongs
+/// to, so a dependency's range on such a line is overwritten by the release's version. The shape
+/// is what tells them apart, never the value: once overwritten, the range holds the release's own
+/// number.
+fn foreign_versions(text: &str) -> Vec<(usize, String)> {
+    let annotated = annotated_lines(text);
+    text.lines()
+        .enumerate()
+        .filter(|(i, _)| annotated.contains(&(i + 1)))
+        .filter_map(|(i, line)| {
+            let (at, _) = first_version(line)?;
+            let before = &line[..at];
+            let own = OWN_VERSION_PREFIXES.iter().any(|p| before.ends_with(p));
+            (!own).then(|| (i + 1, line.trim().to_string()))
+        })
+        .collect()
+}
+
+#[test]
+fn a_third_party_range_in_an_annotated_region_is_found() {
+    // Line 6 is `sentry_flutter` as written, 7 is what release-please made of it in 0.9.0 (the
+    // release's own number, so no comparison of values sees it) and 12 is a range on a line with
+    // the inline annotation. The same range outside any annotated region (1 and 10) is left alone.
+    let text = "needs 9.26.0\n<!-- x-release-please-start-version -->\n```yaml\n  fespalier:\n      ref: v1.0.0\n  sentry_flutter: \">=9.26.0 <10.0.0\"\n  sentry_flutter: \">=1.0.0 <10.0.0\"\n```\n<!-- x-release-please-end -->\nsentry_flutter: \">=9.26.0 <10.0.0\"\nversion: 1.0.0 # x-release-please-version\nother: \">=2.0.0 <3.0.0\" # x-release-please-version\n";
+    let lines: Vec<usize> = foreign_versions(text)
+        .iter()
+        .map(|(line, _)| *line)
+        .collect();
+    assert_eq!(lines, vec![6, 7, 12]);
 }
 
 /// Every version that follows `marker` (`ref: v`, `--tag v`, ...) in `text`, as `(line, version)`.
@@ -177,7 +262,7 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 10] = [
+const COMPANIONS: [&str; 22] = [
     "packages/fespalier_otel/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
@@ -186,8 +271,20 @@ const COMPANIONS: [&str; 10] = [
     "packages/fespalier_storage/pubspec.yaml",
     "packages/fespalier_connectivity/pubspec.yaml",
     "packages/fespalier_image/pubspec.yaml",
+    "packages/fespalier_http/pubspec.yaml",
     "packages/fespalier_dio/pubspec.yaml",
+    "packages/fespalier_cratestack/pubspec.yaml",
     "packages/fespalier_sentry/pubspec.yaml",
+    "packages/fespalier_tolgee/pubspec.yaml",
+    "packages/fespalier_forms/pubspec.yaml",
+    "packages/fespalier_maps/pubspec.yaml",
+    "packages/fespalier_download/pubspec.yaml",
+    "packages/fespalier_download_background/pubspec.yaml",
+    "packages/fespalier_push/pubspec.yaml",
+    "packages/fespalier_biometrics/pubspec.yaml",
+    "packages/fespalier_analytics/pubspec.yaml",
+    "packages/fespalier_frb/pubspec.yaml",
+    "packages/fespalier_riverpod/pubspec.yaml",
 ];
 
 #[test]
@@ -312,7 +409,7 @@ fn fsp_init_prints_a_ref_for_this_version() {
 #[test]
 fn the_readmes_pin_this_version() {
     let cargo = env!("CARGO_PKG_VERSION");
-    for file in [
+    let mut files: Vec<String> = [
         "README.md",
         "packages/fespalier/README.md",
         "packages/fespalier_otel/README.md",
@@ -323,9 +420,25 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_storage/README.md",
         "packages/fespalier_connectivity/README.md",
         "packages/fespalier_image/README.md",
+        "packages/fespalier_http/README.md",
         "packages/fespalier_dio/README.md",
+        "packages/fespalier_cratestack/README.md",
         "packages/fespalier_sentry/README.md",
-    ] {
+        "packages/fespalier_tolgee/README.md",
+        "packages/fespalier_forms/README.md",
+        "packages/fespalier_maps/README.md",
+        "packages/fespalier_download/README.md",
+        "packages/fespalier_download_background/README.md",
+        "packages/fespalier_push/README.md",
+        "packages/fespalier_biometrics/README.md",
+        "packages/fespalier_analytics/README.md",
+        "packages/fespalier_frb/README.md",
+        "packages/fespalier_riverpod/README.md",
+    ]
+    .map(String::from)
+    .to_vec();
+    files.extend(doc_pages());
+    for file in &files {
         let text = read(file);
         for marker in MARKERS {
             for (line, v) in versions_after(&text, marker) {
@@ -348,7 +461,7 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
     // A version on a line release-please does not rewrite simply never moves, and nothing
     // reports it (org releasing.md, trap 3). The tests above would catch it, but only on the
     // release PR, after the fact; this names the cause.
-    for file in [
+    let mut files: Vec<String> = [
         "cli/src/init.rs",
         "README.md",
         "packages/fespalier/README.md",
@@ -368,14 +481,42 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier_connectivity/README.md",
         "packages/fespalier_image/pubspec.yaml",
         "packages/fespalier_image/README.md",
+        "packages/fespalier_http/pubspec.yaml",
+        "packages/fespalier_http/README.md",
         "packages/fespalier_dio/pubspec.yaml",
         "packages/fespalier_dio/README.md",
+        "packages/fespalier_cratestack/pubspec.yaml",
+        "packages/fespalier_cratestack/README.md",
         "packages/fespalier_sentry/pubspec.yaml",
         "packages/fespalier_sentry/README.md",
+        "packages/fespalier_tolgee/pubspec.yaml",
+        "packages/fespalier_tolgee/README.md",
+        "packages/fespalier_forms/pubspec.yaml",
+        "packages/fespalier_forms/README.md",
+        "packages/fespalier_maps/pubspec.yaml",
+        "packages/fespalier_maps/README.md",
+        "packages/fespalier_download/pubspec.yaml",
+        "packages/fespalier_download/README.md",
+        "packages/fespalier_download_background/pubspec.yaml",
+        "packages/fespalier_download_background/README.md",
+        "packages/fespalier_push/pubspec.yaml",
+        "packages/fespalier_analytics/pubspec.yaml",
+        "packages/fespalier_push/README.md",
+        "packages/fespalier_biometrics/pubspec.yaml",
+        "packages/fespalier_biometrics/README.md",
+        "packages/fespalier_analytics/README.md",
+        "packages/fespalier_frb/pubspec.yaml",
+        "packages/fespalier_frb/README.md",
+        "packages/fespalier_riverpod/pubspec.yaml",
+        "packages/fespalier_riverpod/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",
-    ] {
+    ]
+    .map(String::from)
+    .to_vec();
+    files.extend(doc_pages());
+    for file in &files {
         let text = read(file);
         let annotated = annotated_lines(&text);
         for marker in MARKERS {
@@ -502,6 +643,37 @@ fn release_please_config_lists_exactly_the_annotated_files() {
 }
 
 #[test]
+fn release_please_rewrites_only_fespaliers_versions() {
+    // The `Generic` updater replaces the first `major.minor.patch` on each line from a start
+    // marker to the end marker and on each line with the inline annotation, with no way to tell
+    // whose it is. A third-party range there is overwritten at the next release: 0.9.0 turned
+    // the READMEs' `sentry_flutter: ">=9.26.0 <10.0.0"` into `">=0.9.0 <10.0.0"`, and 0.9.1 into
+    // `">=0.9.1 <10.0.0"`. The tests above never saw it: they read only the versions behind
+    // `ref: v`, `--tag v` and `FSP_VERSION=v`, and a range already holding the release's number
+    // equals it. So every line the updater reaches must carry fespalier's own version.
+    let config: serde_json::Value =
+        serde_json::from_str(&read("release-please-config.json")).expect("config is JSON");
+    let mut rewritten = vec![];
+    for entry in config["packages"]["."]["extra-files"]
+        .as_array()
+        .expect("extra-files")
+    {
+        let path = entry["path"].as_str().expect("path");
+        for (line, text) in foreign_versions(&read(path)) {
+            rewritten.push(format!("{path}:{line}: {text}"));
+        }
+    }
+    assert!(
+        rewritten.is_empty(),
+        "release-please would overwrite a version that is not fespalier's:\n{}\nKeep a \
+         dependency's range outside a start/end block and off a line with the annotation (in \
+         prose, or after the block's end marker); a new shape of fespalier's own goes in \
+         OWN_VERSION_PREFIXES",
+        rewritten.join("\n")
+    );
+}
+
+#[test]
 fn the_launcher_reads_its_version_from_the_package() {
     // No release number may be spelled out in code (comments may give examples),
     // so `dart run fespalier` can only ever run the fsp that matches its own pubspec.yaml.
@@ -551,6 +723,16 @@ fn the_weekly_maestro_workflow_builds_with_the_flutter_of_ci() {
         flutter_version(".github/workflows/maestro-web.yml"),
         flutter_version(".github/workflows/ci.yml"),
         "FLUTTER_VERSION differs between maestro-web.yml (left) and ci.yml (right)"
+    );
+}
+
+#[test]
+fn the_post_publish_smoke_runs_the_flutter_of_ci() {
+    // `post-publish-smoke.yml` checks the app `fsp create` makes on the Flutter that CI tests it on.
+    assert_eq!(
+        flutter_version(".github/workflows/post-publish-smoke.yml"),
+        flutter_version(".github/workflows/ci.yml"),
+        "FLUTTER_VERSION differs between post-publish-smoke.yml (left) and ci.yml (right)"
     );
 }
 
@@ -700,4 +882,124 @@ fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
             "{file}: checksums are lower-case hex: {h}"
         );
     }
+}
+
+/// The `channel = "..."` of a `rust-toolchain.toml`.
+fn toolchain_channel(rel: &str) -> String {
+    read(rel)
+        .lines()
+        .find_map(|l| {
+            let value = l.trim().strip_prefix("channel")?.trim().strip_prefix('=')?;
+            Some(value.trim().trim_matches('"').to_string())
+        })
+        .unwrap_or_else(|| panic!("{rel} has no `channel = ` line"))
+}
+
+#[test]
+fn the_cose_example_server_builds_with_the_generators_rust() {
+    // examples/cose/server is a crate of its own (its own Cargo.lock), so it has its own
+    // rust-toolchain.toml, which the `cose` job reads: it must not drift from the one every other
+    // job builds with, or the example is proven on a compiler nobody else uses.
+    assert_eq!(
+        toolchain_channel("examples/cose/server/rust-toolchain.toml"),
+        toolchain_channel("cli/rust-toolchain.toml"),
+        "examples/cose/server/rust-toolchain.toml (left) and cli/rust-toolchain.toml (right) differ"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("\n  cose:\n"),
+        "ci.yml has no `cose` job (examples/cose)"
+    );
+    for needle in [
+        "examples/cose/server/rust-toolchain.toml",
+        "COSE_SERVER_BIN",
+        "FSP_REQUIRE_COSE_SERVER",
+    ] {
+        assert!(
+            ci.contains(needle),
+            "the cose job must mention `{needle}`: it builds the server with the pinned toolchain \
+             and requires the end-to-end test to run against it"
+        );
+    }
+}
+
+/// `fsp create` writes the version it is, and spells it out nowhere: the pubspec it plans (for
+/// every feature at once) pins fespalier and every companion to `ref: v<this version>` at one
+/// url, and nothing in its sources or templates carries a version for release-please to miss.
+#[test]
+fn fsp_create_pins_every_package_to_this_version() {
+    let cargo = env!("CARGO_PKG_VERSION");
+    let fsp = |args: &[&str]| {
+        let out = Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(args)
+            .current_dir(root())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "fsp {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8(out.stdout).unwrap()
+    };
+    let listed = fsp(&["create", "--list-features", "--json"]);
+    let ids: Vec<String> = listed
+        .lines()
+        .map(|l| {
+            let feature: serde_json::Value = serde_json::from_str(l).unwrap();
+            feature["id"].as_str().unwrap().to_string()
+        })
+        .collect();
+    let mut args = vec!["create", "app_under_test", "--dry-run", "--json"];
+    let features = ids.join(",");
+    if !ids.is_empty() {
+        args.extend(["--features", &features]);
+    }
+    let events = fsp(&args);
+    let pubspec = events
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|e| e["event"] == "file" && e["path"] == "pubspec.yaml")
+        .expect("a pubspec.yaml file event")["content"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let refs = versions_after(&pubspec, "ref: v");
+    assert!(!refs.is_empty(), "{pubspec}");
+    for (line, v) in &refs {
+        assert_eq!(v, cargo, "pubspec.yaml:{line}: `ref: v{v}`\n{pubspec}");
+    }
+    // Every package at the tag is at the one repository.
+    let urls = pubspec
+        .lines()
+        .filter(|l| {
+            l.trim()
+                .starts_with("url: https://github.com/fespalier/fespalier")
+        })
+        .count();
+    assert_eq!(urls, refs.len(), "{pubspec}");
+    // The sources spell out no version of their own.
+    for dir in ["cli/src/create", "cli/templates/create"] {
+        for entry in fs::read_dir(root().join(dir)).unwrap() {
+            let path = entry.unwrap().path();
+            let text = fs::read_to_string(&path).unwrap();
+            for marker in MARKERS {
+                for (line, v) in versions_after(&text, marker) {
+                    assert!(
+                        !looks_like_a_version(&v),
+                        "{}:{line}: spells out `{marker}{v}`",
+                        path.display()
+                    );
+                }
+            }
+            assert!(!text.contains("x-release-please"), "{}", path.display());
+        }
+    }
+    let create = read("cli/src/create.rs");
+    assert!(
+        versions_after(&create, "ref: v")
+            .iter()
+            .all(|(_, v)| !looks_like_a_version(v)),
+        "cli/src/create.rs spells out a ref"
+    );
 }

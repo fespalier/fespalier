@@ -1,12 +1,13 @@
 # fespalier_dio
 
-Dio and `package:http` for [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): a load whose page is
-gone stops, a server's validation error lands under its form field, and a write is never sent twice. fespalier
+Dio for [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): a load whose page is
+gone stops, a server's validation error lands under its form field, and a write is never sent twice.
+The `package:http` half moved to [`fespalier_http`](../fespalier_http/README.md) in 0.15.0. fespalier
 itself is unchanged: no `fsp` change, no `fespalier:` key, and the same `app.g.dart`. It starts no timer and no
 listener, and it has no retry policy of its own (a backoff needs a timer).
 
-The main README documents it in context:
-[HTTP clients](https://github.com/fespalier/fespalier#http-clients-fespalier_dio). This page is the short version.
+The docs cover it in context:
+[HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md). This page is the short version.
 
 ## Install
 
@@ -21,27 +22,45 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0
+      ref: v0.15.0
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.15.0
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.9.0
+      ref: v0.15.0
 ```
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and `http` (`^1.5.0`), both pure Dart.
+Needs Dart 3.8 and Flutter 3.32 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_http` (the write rule and the problem decoders both clients share), which brings `http` (`^1.5.0`). All of them are pure Dart.
 
-## Three libraries
+## Libraries
 
-| Library                                    | For            | What is in it                                                                          |
-| ------------------------------------------ | -------------- | -------------------------------------------------------------------------------------- |
-| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`              |
-| `package:fespalier_dio/http.dart`          | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient` |
-| `package:fespalier_dio/problem.dart`       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (both libraries above export it)  |
+| Library                                    | For            | What is in it                                                                                 |
+| ------------------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
+| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and `problem.dart` |
+| `package:fespalier_dio/client.dart`        | `package:http` | `DioHttpClient`: your Dio as an `http.Client` (since 0.15.0)                                  |
 
-An app that uses one client imports one library, and links nothing of the other client.
+`package:fespalier_dio/http.dart` and `problem.dart` moved to [`fespalier_http`](../fespalier_http/README.md) and were removed in 0.15.0: change the import. An app that uses one client imports one library, and links nothing of the other client.
+
+`DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
+translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
+The body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
+`Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
+`ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
+passes through. `cupertino_http` is not claimed to honour an abort.
+
+`DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
+translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
+The body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
+`Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
+`ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
+passes through. `cupertino_http` is not claimed to honour an abort.
 
 ## Cancel a load whose page is gone
 
@@ -55,7 +74,7 @@ Future<Product> data(Ref ref, {required int id}) async {
 ```
 
 The token is cancelled in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds. For
-`package:http`, `ref.abortable(client)` wraps a client so that every request through it is aborted the same way
+`package:http` (`fespalier_http`), `ref.abortable(client)` wraps a client so that every request through it is aborted the same way
 (`ref.abortTrigger()` is the trigger of one `AbortableRequest`).
 
 ## Server validation errors on a form
@@ -72,7 +91,8 @@ Future<Profile> action(Ref ref, {required NicknameFields input}) async {
 ```
 
 A 400 or 422 whose body is RFC 9457 or RFC 7807 problem details, ASP.NET Core, Laravel, Rails, Spring, JSON:API,
-FastAPI or Django REST framework is thrown as the `FieldErrors` a form shows under its fields. Anything else is
+FastAPI or Django REST framework is thrown as the `FieldErrors` a
+[`fespalier_forms`](https://github.com/fespalier/fespalier/blob/main/docs/forms.md) form shows under its fields. Anything else is
 rethrown as it was. It is an extension on the `Future`, not an interceptor: a form reads a `FieldErrors`, and
 an interceptor can only reject with a `DioException`.
 
@@ -95,5 +115,5 @@ final dio = Provider<Dio>((ref) {
 
 `WriteGuard` refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries
 an `Idempotency-Key` header) and hands the caller the error of the first, except after a 401, which is what an
-authentication refresh sends again. For `package:http`:
+authentication refresh sends again. For `package:http` (`fespalier_http`):
 `RetryClient(WriteGuardClient(inner), when: WriteGuardClient.readsOnly(), whenError: WriteGuardClient.readErrorsOnly(...))`.

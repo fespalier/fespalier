@@ -5,8 +5,8 @@ provider, guards for `guard.dart`, token storage, lazy single-flight refresh and
 HTTP client, behind one `AuthBackend` interface. fespalier's core has no auth; this package is the
 pattern the guards documentation describes, packaged.
 
-The main README documents all of it:
-[Authentication](https://github.com/fespalier/fespalier#authentication) (the session, restoring at
+The docs cover all of it:
+[Authentication](https://github.com/fespalier/fespalier/blob/main/docs/auth.md) (the session, restoring at
 start-up, guarding routes, signing in and out, calling your API, testing, telemetry). This page is
 the short version.
 
@@ -22,18 +22,21 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0
+      ref: v0.15.0
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.9.0
+      ref: v0.15.0
 ```
 <!-- x-release-please-end -->
 
 Needs Dart 3.8 and Flutter 3.32 or newer. `flutter_secure_storage` (the token store) is the only
 plugin it brings; on Android its minSdk is 24. The rest is pure Dart: `http`, `crypto` (PKCE), `clock`
-and `dio` (tree-shaken unless you import `package:fespalier_auth/dio.dart`).
+and `dio` (tree-shaken unless you import `package:fespalier_auth/dio.dart`). It depends on
+`fespalier_http` (at the same tag, which pub resolves for you) for one interface: since 0.15.0 the
+`Authorizer` is an `HttpCredentials`, and an `AuthAttempt` an `HttpAuthorization`, so a transfer
+that is not an `http.Client` can take it as it is.
 
 ## Wire it
 

@@ -3,7 +3,9 @@
 //! and read by `lib/main.dart` as `Future<void> main() => AppMain.run();`.
 //!
 //! Which files exist decides everything (`fespalier: main:` says whether they are read), and the
-//! file is separate from `app.g.dart`, which is byte-for-byte what it was without them.
+//! file is separate from `app.g.dart`, which is byte-for-byte what it was without them, unless the
+//! app lists `fespalier: adapters:`: then `app.g.dart` also holds `AppAdapters` (since 0.11.0), and
+//! this main calls it.
 
 use serde::Serialize;
 
@@ -18,8 +20,6 @@ use crate::templates;
 /// 0.9.0, see `adapters.rs`); with every field empty the output is what the root files alone say.
 #[derive(Debug, Default)]
 pub struct MainHooks {
-    /// Extra imports of the main file, as written (`import 'package:x/x.dart' as _o;`).
-    pub imports: Vec<String>,
     /// Calls that wrap `main()`, outermost first, each a `Future<void> Function(Future<void> Function())`
     /// expression; they go outside startup.dart's own `zone()`.
     pub wrappers: Vec<String>,
@@ -37,6 +37,12 @@ pub struct MainHooks {
     /// Expressions of `Widget Function(Widget)`, outermost first, around the `StartupGate` that
     /// `AppMain.root()` returns (since 0.9.0).
     pub root_wrappers: Vec<String>,
+    /// `StartupGate(attach: AppRoutes.attach)`: the router and the app's container go to the
+    /// adapters' `attach` (since 0.11.0).
+    pub attach: bool,
+    /// `AppMain` asks `AppAdapters.launch()` once, before the router, and gives it to
+    /// `AppRoutes.router(launch:)` (since 0.11.0).
+    pub launch: bool,
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
@@ -105,17 +111,21 @@ pub fn emit(
     let own_router = app_file
         .as_ref()
         .is_some_and(|m| app_router_fn(root, m, diags));
-    // The adapters' router observers reach an app.dart router() only when it passes them on.
+    // The adapters' router observers and launch reach an app.dart router() only when it passes
+    // them on.
     if own_router
-        && !hooks.router_observers.is_empty()
         && let (Some(m), Some(src)) = (&app_file, root.files.get(&Kind::App))
         && let Some(f) = function(m, "router")
-        && src
-            .get(f.extent.clone())
-            .is_some_and(|text| !text.contains("routerObservers"))
+        && let Some(text) = src.get(f.extent.clone())
     {
-        let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
-        diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+        if !hooks.router_observers.is_empty() && !text.contains("routerObservers") {
+            let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
+            diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+        }
+        if hooks.launch && !text.contains("launch") {
+            let msg = "app.dart's router() builds the router itself, so the adapters' launch is not used: pass `launch: AppMain.launch` to `AppRoutes.router(...)` there";
+            diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
+        }
     }
 
     // startup.dart: startup(), zone(), observers and retry.
@@ -137,8 +147,16 @@ pub fn emit(
     let has_startup_fn = startup_file
         .as_ref()
         .is_some_and(|m| function(m, "startup").is_some());
-    if splash_file.is_some() && startup.startup.is_none() && !has_startup_fn {
-        let msg = "splash.dart is shown while startup() runs and when it fails, and startup.dart has no startup(), so it is never shown";
+    let has_ready_fn = startup_file
+        .as_ref()
+        .is_some_and(|m| function(m, "ready").is_some());
+    if splash_file.is_some()
+        && startup.startup.is_none()
+        && !has_startup_fn
+        && !startup.ready
+        && !has_ready_fn
+    {
+        let msg = "splash.dart is shown while startup() or ready() runs and when either fails, and startup.dart has neither, so it is never shown";
         diags.warn(&root.rel(Kind::Splash), None, msg);
     }
 
@@ -174,14 +192,22 @@ pub fn emit(
 
     let has_app = app_widget.is_some();
     let hook_observers = !hooks.router_observers.is_empty();
-    let router_fn = match (own_router, startup.router_observers, hook_observers) {
-        (true, ..) => Some(format!(
+    let router_fn = if own_router {
+        Some(format!(
             "{}.router()",
             app_alias.as_deref().unwrap_or_default()
-        )),
-        (false, _, true) => Some("AppRoutes.router(observers: AppMain.routerObservers())".into()),
-        (false, true, false) => Some(format!("AppRoutes.router(observers: {sx}.routerObservers)")),
-        (false, false, false) => None,
+        ))
+    } else {
+        let mut args: Vec<String> = vec![];
+        if hooks.launch {
+            args.push("launch: AppMain.launch".into());
+        }
+        if hook_observers {
+            args.push("observers: AppMain.routerObservers()".into());
+        } else if startup.router_observers {
+            args.push(format!("observers: {sx}.routerObservers"));
+        }
+        (!args.is_empty()).then(|| format!("AppRoutes.router({})", args.join(", ")))
     };
     // The adapters' observers, then startup.dart's (which an app.dart router() has none of).
     let router_observers = hook_observers.then(|| {
@@ -210,7 +236,15 @@ pub fn emit(
         output_file: cfg.output.rsplit('/').next().unwrap_or(&cfg.output),
         deferred: app.routes.iter().any(crate::resolve::Route::defers_page),
         material: !has_app,
-        extra_imports: &hooks.imports,
+        // Wherever `AppRoutes.attach` exists (observe.dart, telemetry or adapters), the gate gives
+        // it the app's container.
+        attach: hooks.attach
+            || cfg.telemetry
+            || app
+                .routes
+                .iter()
+                .any(|r| r.page.is_some() && !r.observers.is_empty()),
+        launch: hooks.launch,
         imports: &imports,
         zone_note,
         run,
@@ -229,6 +263,8 @@ pub fn emit(
         splash: splash.as_deref(),
         provider_observers,
         retry: startup.retry.then(|| format!("{sx}.retry")),
+        ready: startup.ready.then(|| format!("{sx}.ready")),
+        app_attach: startup.attach.then(|| format!("{sx}.attach")),
         router_fn,
         app_body: app_widget
             .unwrap_or_else(|| "MaterialApp.router(routerConfig: router)".to_string()),
@@ -251,7 +287,10 @@ struct FileCx<'a> {
     deferred: bool,
     /// No `app.dart`: the file names `MaterialApp`, which `material.dart` has.
     material: bool,
-    extra_imports: &'a [String],
+    /// `StartupGate(attach: AppRoutes.attach)`.
+    attach: bool,
+    /// `AppMain.launch`: the adapters' answer, asked before the router is built.
+    launch: bool,
     imports: &'a [ImportCx],
     /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and
     /// the adapters', or nothing.
@@ -274,6 +313,10 @@ struct FileCx<'a> {
     /// The expression of `ProviderScope(observers:)`, when there are any.
     provider_observers: Option<String>,
     retry: Option<String>,
+    /// startup.dart's `ready(container)`: `StartupGate(ready:)` (since 0.12.0).
+    ready: Option<String>,
+    /// startup.dart's `attach(router, container)`: `StartupGate(appAttach:)` (since 0.12.0).
+    app_attach: Option<String>,
     /// How the app's router is made, when it is not `AppRoutes.router()`.
     router_fn: Option<String>,
     /// `AppMain.app`'s body.
@@ -288,6 +331,10 @@ struct StartupExports {
     provider_observers: bool,
     router_observers: bool,
     retry: bool,
+    /// `FutureOr<void> ready(ProviderContainer container)`.
+    ready: bool,
+    /// `void attach(GoRouter router, ProviderContainer container)`.
+    attach: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -327,6 +374,11 @@ fn plain(ty: &str) -> String {
 
 fn bare(ty: &Option<crate::dart::Ty>) -> Option<String> {
     ty.as_ref().map(|t| plain(&t.text))
+}
+
+/// A parameter typed exactly `GoRouter` (or untyped).
+fn router_typed_strict(p: &Param) -> bool {
+    p.ty.as_ref().is_none_or(|t| plain(&t.text) == "GoRouter")
 }
 
 fn function<'m>(m: &'m Module, name: &str) -> Option<&'m Function> {
@@ -499,8 +551,57 @@ fn read_startup(root: &Node, m: &Module, own_router: bool, diags: &mut Diags) ->
         }
     }
 
+    if let Some(f) = function(m, "ready") {
+        found = true;
+        let shape_ok = f.params.len() == 1
+            && !f.params[0].named
+            && matches!(
+                bare(&f.params[0].ty).as_deref(),
+                None | Some("ProviderContainer" | "ProviderContainer?")
+            )
+            && matches!(
+                bare(&f.ret).as_deref(),
+                None | Some("void" | "Future<void>" | "FutureOr<void>")
+            );
+        if shape_ok {
+            out.ready = true;
+        } else {
+            let msg = "ready() runs on the app's ProviderContainer before the first route: declare it `FutureOr<void> ready(ProviderContainer container)` (or `Future<void>` / `void`)";
+            diags.error(&file, Some(&f.span), msg);
+        }
+    }
+
+    if let Some(f) = function(m, "attach") {
+        found = true;
+        let shape_ok = f.params.len() == 2
+            && f.params.iter().all(|p| !p.named)
+            && router_typed_strict(&f.params[0])
+            && matches!(
+                bare(&f.params[1].ty).as_deref(),
+                None | Some("ProviderContainer")
+            )
+            && matches!(bare(&f.ret).as_deref(), None | Some("void"));
+        let is_async = root
+            .files
+            .get(&Kind::Startup)
+            .and_then(|src| src.get(f.extent.clone()))
+            .is_some_and(|text| {
+                let head = text.find(['{', '=']).map_or(text, |i| &text[..i]);
+                head.trim_end().ends_with("async")
+            });
+        if shape_ok && is_async {
+            let msg = "attach() cannot be `async`: nothing awaits it, so an error would escape the gate's reporting; make it a plain `void attach(...)` and start async work with `.then(..., onError: ...)`";
+            diags.error(&file, Some(&f.span), msg);
+        } else if shape_ok {
+            out.attach = true;
+        } else {
+            let msg = "attach() is called once with the router and the app's container, after the first frame: declare it `void attach(GoRouter router, ProviderContainer container)`";
+            diags.error(&file, Some(&f.span), msg);
+        }
+    }
+
     if !found {
-        let msg = "startup.dart exports none of `startup()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file";
+        let msg = "startup.dart exports none of `startup()`, `ready()`, `attach()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file";
         diags.error(&file, None, msg);
     }
     out

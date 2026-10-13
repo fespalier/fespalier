@@ -23,6 +23,8 @@
 //     this checkout, and a `dependency_overrides:` block pointing `fespalier` and the
 //     companions at it: the companions pin fespalier by repository tag, which a path
 //     dependency of the app cannot be resolved against.
+//     A block that writes a `form()` gets `fespalier_forms` the same way (since 0.11.0): the
+//     generated file imports it.
 //   - The scratch app is a copy of the fespalier checkout's `examples/minimal`
 //     (the checkout is never modified): renamed `my_app` (the package name the
 //     skills' imports use), depending on the checkout's packages/fespalier by
@@ -78,6 +80,27 @@ if (!existsSync(minimal) || !existsSync(join(pkg, "pubspec.yaml"))) {
 const FSP = process.env.FSP ?? "fsp";
 const FLUTTER = process.env.FLUTTER ?? "flutter";
 const env = { ...process.env, CI: "true" };
+
+// The fespalier_* packages a set of companions needs: themselves and, transitively, every
+// fespalier_* named under `dependencies:` in their pubspecs (fespalier itself is overridden
+// separately). A companion reaches its siblings by git at a release tag, which may not hold a
+// package this checkout just added, so each one is overridden with the checkout's copy.
+function companionClosure(names) {
+  const seen = new Set();
+  const todo = [...names];
+  while (todo.length) {
+    const name = todo.pop();
+    if (seen.has(name)) continue;
+    const file = join(checkout, "packages", name, "pubspec.yaml");
+    if (!existsSync(file)) continue;
+    seen.add(name);
+    const section = readFileSync(file, "utf8").match(/^dependencies:\n((?:[ #].*\n?|\n)*)/m);
+    for (const m of (section?.[1] ?? "").matchAll(/^ {2}(fespalier_[a-z0-9_]+):/gm)) {
+      todo.push(m[1]);
+    }
+  }
+  return [...seen];
+}
 
 const run = (cmd, args, cwd) =>
   spawnSync(cmd, args, { cwd, env, encoding: "utf8", maxBuffer: 1 << 28 });
@@ -237,13 +260,24 @@ for (const file of files) {
   // A page that imports the companion packages gets them as path dependencies of this checkout,
   // and `fespalier` overridden to the checkout's too: the companions pin it by repository tag,
   // which a path dependency of the app cannot be resolved against.
+  // A block that writes a `form()` (a top-level `NicknameFields form(...)` or `approveForm(...)`)
+  // makes the generated file import fespalier_forms (since 0.11.0), so that package is a
+  // dependency whether or not the block imports it.
+  const writesForm = [...written.values()].some((body) =>
+    /^\w[^\n(]*\s(?:form|\w+Form)\(/m.test(body),
+  );
   const companions = [
-    ...new Set(
-      [...written.values()].flatMap((body) =>
+    ...new Set([
+      ...(writesForm ? ["fespalier_forms"] : []),
+      ...[...written.values()].flatMap((body) =>
         [...body.matchAll(/package:(fespalier_[a-z0-9_]+)\//g)].map((m) => m[1]),
       ),
-    ),
+    ]),
   ].filter((name) => existsSync(join(checkout, "packages", name, "pubspec.yaml")));
+  // A companion that depends on another one by git (fespalier_dio on fespalier_http, say) would
+  // resolve it from a tag that may lack it, so the overrides cover the whole closure of
+  // fespalier_* dependencies, not just the packages the page imports.
+  const closure = companionClosure(companions);
   const depLines = [
     ...companions.map((name) => `  ${name}:\n    path: ${join(checkout, "packages", name)}`),
     // `# pubspec.yaml dependencies` blocks: indented under `dependencies:` as written.
@@ -259,7 +293,7 @@ for (const file of files) {
   if (pubs.length) appendFileSync(join(app, "pubspec.yaml"), "\n" + pubs.join("\n"));
   if (companions.length) {
     const overrides = ["dependency_overrides:", "  fespalier:", `    path: ${pkg}`];
-    for (const name of companions) {
+    for (const name of closure) {
       overrides.push(`  ${name}:`, `    path: ${join(checkout, "packages", name)}`);
     }
     appendFileSync(join(app, "pubspec.yaml"), "\n" + overrides.join("\n") + "\n");

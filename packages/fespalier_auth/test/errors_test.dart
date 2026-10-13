@@ -1,5 +1,6 @@
 // The text of every error fespalier_auth throws: the troubleshooting skill quotes them, so a
 // search for the message finds the page.
+import 'package:fespalier/fespalier.dart' show DataRefusal;
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -57,4 +58,8 @@ void main() {
       );
     },
   );
+
+  test('AuthRejected is a DataRefusal: a page never keeps data over it', () {
+    expect(const AuthRejected(), isA<DataRefusal>());
+  });
 }

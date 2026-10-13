@@ -69,6 +69,11 @@ List<Override> overrides(String pattern) => [
   inherited widget. The default is `MaterialApp.router(routerConfig: router)`.
 - Each must take exactly one required positional parameter; a file with neither, or a function of another
   shape, is an error (`references/diagnostics-config-and-meta.md` in `fespalier-troubleshooting`).
+- **A translated app needs both** (since 0.10.0, `fespalier_tolgee`): `overrides(pattern)` returns
+  `fakeTranslations(bundled: ..., remote: FakeTranslations.strict())` and `app` returns the app that uses
+  `TranslationScope.routerConfig`. Through the default app there is no scope, and the smoke test fails with
+  `No TranslationScope found above this widget.` A `$lang` route also needs a sample, like any dynamic route
+  ([`fespalier-i18n`](../../fespalier-i18n/references/testing.md)).
 - A hand-written test boots the same way: `pumpRouter(tester, router, overrides: ..., app: setup.app)`.
 
 ## Skips and samples

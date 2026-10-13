@@ -219,5 +219,5 @@ is being reached is a child of that navigation. **Never the URL, the source, the
 (the exception's message holds the URL). It needs no `telemetry: true`: image spans follow the installed sink.
 `RecordingTelemetry` writes `#4 start image emgr w=640 preload`, `#4 end image ok async` and
 `#5 end image error async status=404`. A sink of your own that switches exhaustively over `TelemetryOp` needs
-an `image` case (0.9.0): [`fespalier-migration`](../../fespalier-migration/SKILL.md). The conventions are in
+an `image` case (0.9.0), and a `custom` one since 0.11.0: [`fespalier-migration`](../../fespalier-migration/SKILL.md). The conventions are in
 [`fespalier-observability`](../../fespalier-observability/references/conventions.md).

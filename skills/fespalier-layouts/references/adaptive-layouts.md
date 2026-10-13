@@ -270,7 +270,7 @@ drawer: null)` (always a bar). `NavBreakpoints(rail: null)` is a bar, then the d
   no entry has a tab and the entries go by the page. A plain layout: the first selected entry.
 - **What a tap does.** An entry with a `tab` (and a shell) is
   `shell.goBranch(tab, initialLocation: tab == shell.currentIndex)`: tapping the current tab goes back
-  to its first page, as in the README's own bar. Any other entry is `item.go(context)`.
+  to its first page, as in the bar of [`docs/layouts.md`](https://github.com/fespalier/fespalier/blob/main/docs/layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive). Any other entry is `item.go(context)`.
 - **Guards** are whatever `AppMenu.watch` answers: `NavRefused.hide` entries are absent, `disable`
   ones are listed and off (`NavigationDestination(enabled: false)`, `NavigationRailDestination(disabled:
 true)`, `NavigationDrawerDestination(enabled: false)`), `pending` ones are on. The destinations are

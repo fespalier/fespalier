@@ -15,7 +15,7 @@ the test that proves it, and the traps. The commands and keys are in
 
 With `semantics_ids: true` in the `fespalier:` section of `pubspec.yaml` (then `fsp gen`), the
 generated router wraps **each page's own widget call** in
-`Semantics(identifier: 'route:<pattern>', container: true, child: ...)`.
+`Semantics(identifier: 'route:<pattern>', container: true, explicitChildNodes: true, child: ...)`.
 
 - **`<pattern>` is what `fsp routes` prints**: `route:/`, `route:/products/:id`, `route:/docs/*rest`,
   `route:/files/*path?`. It depends only on the folder path: the same for every localized spelling and every
@@ -29,6 +29,11 @@ generated router wraps **each page's own widget call** in
 - **Only `page.dart`.** A layout, a shell, a `redirect.dart` and a not-found view carry none.
 - **Never `const`.** `Semantics` has no `const` constructor; a `const` page keeps its own `const` inside
   the wrapper. `container: true` adds a node with no label and no action.
+- **The node stays empty (since 0.9.1).** `explicitChildNodes: true` keeps the page's descendants out of the
+  identifier's node, so it has no label and each plain `Text` keeps a node of its own. Before 0.9.1 the node
+  merged every descendant with no node of its own into one label, and a screen reader read the text outside
+  a scroll view as a single block. A test reads it with `tester.getSemantics(find.bySemanticsIdentifier(...)).label`
+  (empty) and `tester.getSemantics(find.text('...'))` (a different node, labelled with that text).
 - **With the key off (the default) the generated file has none of this**, byte for byte.
 - **On the web** the generated `mount()` also calls `ensureWebSemantics()`, because Flutter web builds no
   semantics tree until a screen reader asks and Maestro finds nothing without one. It turns it on once,

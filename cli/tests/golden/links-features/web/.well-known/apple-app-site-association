@@ -253,6 +253,22 @@
             "caseSensitive": false
           },
           {
+            "/": "/signup/company",
+            "caseSensitive": false
+          },
+          {
+            "/": "/signup/contact",
+            "caseSensitive": false
+          },
+          {
+            "/": "/signup/name",
+            "caseSensitive": false
+          },
+          {
+            "/": "/signup/review",
+            "caseSensitive": false
+          },
+          {
             "/": "/teams/?*/members",
             "caseSensitive": false
           },

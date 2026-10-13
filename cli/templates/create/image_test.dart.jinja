@@ -1,0 +1,48 @@
+import 'dart:ui' as ui;
+
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_image/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/images.dart';
+
+void main() {
+  late ui.Image image;
+  setUpAll(() async => image = await createTestImage(width: 8, height: 8));
+
+  testWidgets('the photo asks the CDN for the width its box needs', (
+    tester,
+  ) async {
+    // Loads go through FakeImages: no network, and the test sees every URL.
+    final images = FakeImages(image: image);
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/photo'),
+      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+    );
+    // A 160-point box at the test view's 3x pixel ratio is 480 pixels: the 640 bucket.
+    expect(images.requested, ['$imagesUrl/sample.jpg?w=640&q=80']);
+    expect(find.byType(RawImage), findsOneWidget);
+  });
+
+  testWidgets('a failed load shows the retry, and retrying asks again', (
+    tester,
+  ) async {
+    final images = FakeImages();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/photo'),
+      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+    );
+    final url = images.requested.single;
+    images.fail(url);
+    await tester.pumpAndSettle(); // the error reaches the widget a frame later
+    expect(find.text('Retry'), findsOneWidget);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pump();
+    expect(images.requested, [url, url]);
+  });
+}

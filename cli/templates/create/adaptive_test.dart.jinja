@@ -1,0 +1,44 @@
+import 'package:fespalier/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+
+/// Sizes the window in logical pixels (a test's own is 800 x 600).
+void resize(WidgetTester tester, double width) {
+  tester.view.physicalSize = Size(width, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+}
+
+void main() {
+  testWidgets('the menu is a bar, a rail or a drawer by window width', (
+    tester,
+  ) async {
+    resize(tester, 400);
+    await pumpRouter(tester, AppRoutes.router());
+    expect(find.byType(NavigationBar), findsOneWidget);
+    expect(find.byType(NavigationRail), findsNothing);
+    expect(find.byType(NavigationDrawer), findsNothing);
+
+    // The destinations come from the nav.dart of each tab.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('About'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/about');
+
+    resize(tester, 800);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationRail), findsOneWidget);
+    expect(find.byType(NavigationBar), findsNothing);
+
+    resize(tester, 1300);
+    await tester.pumpAndSettle();
+    expect(find.byType(NavigationDrawer), findsOneWidget);
+    // Resizing keeps the tab.
+    expect(currentLocation(tester), '/about');
+  });
+}

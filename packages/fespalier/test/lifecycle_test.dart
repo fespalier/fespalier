@@ -31,7 +31,7 @@ final NotifierProvider<Views, List<String>> views =
 List<RouteHooks> everywhere(Uri uri) => [
   RouteHooks(
     'observe.dart',
-    onEnter: (ref) => log.add('enter ${uri.path}'),
+    onEnter: (ref, _) => log.add('enter ${uri.path}'),
     onLeave: (ref) => log.add('leave ${uri.path}'),
     onFocus: (ref) => log.add('focus ${uri.path}'),
   ),
@@ -418,13 +418,13 @@ void main() {
       List<RouteHooks> two(Uri uri) => [
         RouteHooks(
           'observe.dart',
-          onEnter: (_) => log.add('enter outer'),
+          onEnter: (_, _) => log.add('enter outer'),
           onFocus: (_) => log.add('focus outer'),
           onLeave: (_) => log.add('leave outer'),
         ),
         RouteHooks(
           'products/\$id/observe.dart',
-          onEnter: (_) => log.add('enter inner'),
+          onEnter: (_, _) => log.add('enter inner'),
           onFocus: (_) => log.add('focus inner'),
           onLeave: (_) => log.add('leave inner'),
         ),
@@ -444,7 +444,10 @@ void main() {
       await boot(
         tester,
         hooks: (_) => [
-          RouteHooks('observe.dart', onEnter: (ref) => read = ref.read(three)),
+          RouteHooks(
+            'observe.dart',
+            onEnter: (ref, _) => read = ref.read(three),
+          ),
         ],
       );
       expect(read, 3);
@@ -456,7 +459,8 @@ void main() {
         hooks: (uri) => [
           RouteHooks(
             'observe.dart',
-            onEnter: (ref) => ref.read(views.notifier).add('enter ${uri.path}'),
+            onEnter: (ref, _) =>
+                ref.read(views.notifier).add('enter ${uri.path}'),
             onLeave: (ref) => ref.read(views.notifier).add('leave ${uri.path}'),
           ),
         ],
@@ -474,9 +478,9 @@ void main() {
         hooks: (_) => [
           RouteHooks(
             'products/\$id/observe.dart',
-            onEnter: (_) => throw StateError('nope'),
+            onEnter: (_, _) => throw StateError('nope'),
           ),
-          RouteHooks('observe.dart', onEnter: (_) => log.add('second')),
+          RouteHooks('observe.dart', onEnter: (_, _) => log.add('second')),
         ],
       );
       log.clear();
@@ -503,7 +507,7 @@ void main() {
           hooks: (uri) => [
             RouteHooks(
               'observe.dart',
-              onEnter: (ref) {
+              onEnter: (ref, _) {
                 log.add('enter ${uri.path}');
                 if (uri.path == '/y') ref.read(goTo)('/x');
               },

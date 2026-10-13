@@ -1,11 +1,11 @@
 ---
 name: fespalier-observability
-description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace. Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
+description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, and, since 0.11.0, the page instance's RouteScope that onEnter takes with hold and onLeave, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace; and, since 0.13.0, fespalier_analytics (screen views by route pattern to an analytics backend of yours, only with consent: nothing sent or kept while undecided or denied, no replay on grant, screenName from meta.dart, time on screen, the AnalyticsBackend interface with Firebase Analytics, PostHog, Mixpanel and Amplitude as compiled recipes, configure before AppMain.run, telemetry: true required, RecordingAnalytics for tests). Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
 ---
 
 # fespalier-observability
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -31,12 +31,14 @@ void onLeave(Ref ref, {required int id}) => ref.read(analytics).left('product', 
 Any of `onEnter`, `onFocus`, `onLeave` (at least one), each a public top-level function that **returns
 `void`**. Parameters: an optional positional `Ref ref`, then named ones: the segments of its folder and
 above, optional nullable query parameters, `Uri uri`, and `TypedLocation route` (bound **by its type**: it
-must be called `route`). It applies to every **page** (`page.dart`) at and below its folder, in
+must be called `route`); `onEnter` alone may also take `{required RouteScope scope}` (since 0.11.0, bound by its type, called
+`scope`: `scope.hold(provider)` keeps a provider loaded while the page is on a navigator, `scope.onLeave(callback)` runs
+when the page is gone). It applies to every **page** (`page.dart`) at and below its folder, in
 page-less `(group)` folders too, `nest = false` pages included; a `redirect.dart` route never enters.
 Order for one page: `onEnter` and `onFocus` run outermost folder first, `onLeave` innermost first.
 
 Read [`references/lifecycle.md`](references/lifecycle.md) for when each fires (the rule that decides it,
-tabs, pushes, redirects), the `Ref` a hook gets, errors, and the traps.
+tabs, pushes, redirects), the `Ref` a hook gets, the page's `RouteScope`, errors, and the traps.
 
 ## Telemetry
 
@@ -65,7 +67,20 @@ Since 0.9.0, three more things, all in that page:
   An app made with `telemetry: true` calls `data()` through `traceDataCall(..., () => data(...))` for it.
 - **`navigateFrom(NavigationSource.notification, () => router.go(...))`** marks the navigation it starts, and
   telemetry reports `fespalier.navigation.source` (`notification`, `shortcut`, `widget`, `link`). fespalier
-  never sets it by itself.
+  sets only `link` by itself, for a platform link (since 0.11.0).
+
+Since 0.10.0 (`fespalier_tolgee`, `fespalier_cratestack`): **no new `TelemetryOp` and no new convention** (0.11.0 adds
+`TelemetryOp.custom`, below), so an exhaustive sink still compiled on 0.10. A read through `ref.serve` and an action that calls `intentQueue.submit` run inside the existing
+data and action spans. `fespalier_tolgee` has no telemetry in v1, and no sync span exists yet (it would be a custom op, `fespalier.cratestack.sync`: a new
+`TelemetryOp` value breaks an exhaustive sink, as `custom` did; nothing from an intent, a row, a subject, a translation key or a server message would ever be sent).
+
+Since 0.11.0: **`TelemetryOp.custom`** is a package's own operation, `FespalierTelemetry.begin` and `finish` with
+`TelemetryStart(TelemetryOp.custom, name: 'fespalier.<pkg>.<op>', attributes: {...})` (see
+[`references/telemetry.md`](references/telemetry.md)). A sink of your own with an exhaustive `switch` on `TelemetryOp` needs a
+`custom` case. **`FespalierOtel` exports the name and the attributes verbatim**, so they must hold no user value (segment,
+query, input, result, token) and the name must be a constant (`fespalier.push.open`, never `fespalier.push.order_42`).
+`FespalierSentry` sends neither the attributes nor, by default, a failure as an event (a breadcrumb with the class only;
+`capture:` opts in).
 
 [`references/conventions.md`](references/conventions.md) is **contract version 1**: every span, event and
 attribute name, for anyone building a dashboard or an alert. Adding is allowed within version 1; renaming
@@ -84,12 +99,25 @@ trace. **No transaction is sent by default**: screen-load transactions, spans an
 Sentry.
 
 ```dart
-FespalierTelemetry.install(FespalierSentry()); // in startup(), before the router; Sentry starts in zone()
+FespalierTelemetry.add(FespalierSentry()); // in startup(), before the router; add keeps an adapter's sink (analytics); Sentry starts in zone()
 ```
 
 Read [`references/sentry.md`](references/sentry.md) for the wiring (Sentry is the outermost zone: no
 `OtelZone.runGuarded` next to it), the order rules, what is and is never sent, `tracing: true` (one transaction
 per screen, the first screen on Android and iOS, no timer), the options, and testing with `RecordingSentry`.
+
+## Analytics with consent (since 0.13.0)
+
+`package:fespalier_analytics` reports each page the person opens to an analytics service by its **route pattern**
+(`/products/:id`, never the URL), and **only while they have agreed**. It is a telemetry sink that an adapter installs
+(`adapters: [fespalier_analytics]`), so the app needs **`telemetry: true`** (the adapter reports once when it is missing), and it sits
+next to `fespalier_otel` or `fespalier_sentry` in the one `combine`. **No analytics SDK is a dependency**: you write an
+`AnalyticsBackend` (`screenView`, `screenTime`, `consentChanged`), and Firebase Analytics, PostHog, Mixpanel and Amplitude are
+compiled recipes. One call in `main()` before `AppMain.run()`: `FespalierAnalytics.configure(backend, screenName:)`; unconfigured, it
+reports once and does nothing. **Undecided and denied drop every event on the spot: nothing is buffered, granting does not replay**,
+and the stored answer is loaded in `startup()` (`FespalierAnalytics.sink?.consent = stored`) so the first screen is not lost.
+Read [`references/analytics.md`](references/analytics.md) for the wiring, consent, `screenName` from `meta.dart` and testing, and
+[`references/analytics-backends.md`](references/analytics-backends.md) for the four vendor recipes.
 
 ## The traps
 
@@ -106,6 +134,8 @@ per screen, the first screen on Android and iOS, no timer), the options, and tes
   fails.
 - **Telemetry on, no sink installed: nothing happens.** It is not an error. Install the sink before
   `AppRoutes.router()` runs, or the first navigation is not a span.
+- **Analytics records nothing without `telemetry: true`** (since 0.13.0): page events reach a sink only from an app generated with
+  it. **Nothing is sent until the person has agreed**, and what was dropped before is never sent later (no buffer, no replay).
 - **A second `install` replaces the first** (since 0.9.0: use `FespalierTelemetry.add`, or `combine` both).
   An app that installs Sentry in one place and OpenTelemetry in another has only the last.
 - **Sentry and `OtelZone.runGuarded` do not mix** (since 0.9.0). Sentry's `appRunner` is the outermost zone;
@@ -128,6 +158,7 @@ zoneValues: {...})`.
 ## Where the code is
 
 - Hooks: `packages/fespalier/lib/src/lifecycle.dart` (the router watch, `RouteHooks`, `observeAttach`);
+  `route_scope.dart` (`RouteScope`, `pageInstanceId`);
   the generator reads `observe.dart` in `cli/src/resolve.rs` and writes `RouteMatcher.observe`,
   `_observeAt` and `AppRoutes.attach` into `app.g.dart`.
 - Telemetry: `packages/fespalier/lib/src/telemetry.dart` (the sink API, `combine`, `within`,
@@ -135,5 +166,6 @@ zoneValues: {...})`.
   `devtools/devtools.dart`), `navigation_kind.dart` (the `initial`/`go`/`push`/`pop`/`replace`/`refresh` classifier DevTools
   shares) and `version.dart`; the adapters are `packages/fespalier_otel/` and, since 0.9.0, `packages/fespalier_sentry/`
   (`traceOf` and `linkTrace` in `telemetry.dart` are how the two share a trace).
+- Analytics (since 0.13.0): `packages/fespalier_analytics/` (`lib/src/sink.dart` the sink and `FespalierAnalytics`, `lib/fespalier_adapter.dart`, `lib/testing.dart`).
 - Scaffold: `fsp new 'orders/[id]' --observe` writes `observe.dart`.
 - The example is `examples/telemetry`: lifecycle tests and span tests, on go_router 17.

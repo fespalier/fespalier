@@ -1,6 +1,7 @@
 mod adapters;
 mod build_runner;
 mod config;
+mod create;
 mod daemon;
 mod dart;
 mod dev;
@@ -24,6 +25,7 @@ mod manifest;
 mod menu;
 mod osc8;
 mod parse_cache;
+mod platform_files;
 mod procs;
 mod resolve;
 mod routes;
@@ -37,6 +39,8 @@ mod smoke;
 mod tasks;
 mod telemetry_stack;
 mod templates;
+mod upgrade;
+mod upgrade_replace;
 mod watch;
 
 use std::path::{Path, PathBuf};
@@ -122,15 +126,25 @@ enum Cmd {
     Build(tasks::BuildCmd),
     /// Run a task from `tasks:` in pubspec.yaml; with no name, list them
     Run(tasks::RunCmd),
+    /// Make a new Flutter app with fespalier in it: `fsp create my_app` (optional features with --features)
+    Create(create::CreateCmd),
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
     New(scaffold::NewCmd),
     /// Start a local OpenTelemetry stack with fespalier's dashboards: a collector, OpenObserve, and Grafana with --grafana (needs Docker)
     Telemetry(telemetry_stack::TelemetryCmd),
+    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
+    Upgrade(upgrade::UpgradeCmd),
 }
 
 fn main() {
+    // A Windows upgrade leaves the running binary behind as `fsp.exe.old`; this run is a later
+    // one, so that process is gone. Best effort, and silent (nothing may print here).
+    #[cfg(windows)]
+    if let Ok(exe) = std::env::current_exe() {
+        upgrade_replace::remove_stale_old(&exe);
+    }
     let cli = Cli::parse();
     let result = (|| {
         // The stack is per user, not per app: it needs no project.
@@ -138,9 +152,21 @@ fn main() {
             let project = find_project(cli.project.clone()).ok();
             return telemetry_stack::run(cmd, project.as_deref());
         }
+        // A new app has no project yet: its folder is the argument, and `--project` is refused.
+        if let Cmd::Create(cmd) = &cli.cmd {
+            return create::run(cmd, cli.project.as_deref());
+        }
+        // So is the installed `fsp` itself.
+        if let Cmd::Upgrade(cmd) = &cli.cmd {
+            // Only the closing note reads the project, and it may be none.
+            let project = find_project(cli.project.clone()).ok();
+            return upgrade::run(cmd, project.as_deref());
+        }
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Telemetry(_) => unreachable!("handled before the project is looked up"),
+            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) => {
+                unreachable!("handled before the project is looked up")
+            }
             Cmd::Gen { format, json } => {
                 let mut cfg = Config::load(&project)?;
                 cfg.format |= format;
@@ -444,6 +470,7 @@ fn analyze_tree(
         diags,
     );
     manifest::check(&app, cfg, diags);
+    forms::check_dependency(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
     let main = entry::emit(tree, &app, cfg, &adapters::hooks(&cfg.adapters), diags);
     (code, main, app)
@@ -475,6 +502,8 @@ mod case_tests;
 #[cfg(test)]
 mod cli_tests;
 #[cfg(test)]
+mod create_tests;
+#[cfg(test)]
 mod daemon_tests;
 #[cfg(test)]
 mod deferred_tests;
@@ -491,6 +520,8 @@ mod enum_tests;
 #[cfg(test)]
 mod extra_tests;
 #[cfg(test)]
+mod flow_tests;
+#[cfg(test)]
 mod form_tests;
 #[cfg(test)]
 mod freshness_tests;
@@ -498,6 +529,8 @@ mod freshness_tests;
 mod graph_tests;
 #[cfg(test)]
 mod incremental_tests;
+#[cfg(test)]
+mod leave_tests;
 #[cfg(test)]
 mod links_tests;
 #[cfg(test)]
@@ -524,6 +557,8 @@ mod observe_tests;
 mod page_name_tests;
 #[cfg(test)]
 mod paths_tests;
+#[cfg(test)]
+mod platform_files_tests;
 #[cfg(test)]
 mod procs_tests;
 #[cfg(test)]
@@ -554,6 +589,8 @@ mod tasks_tests;
 mod telemetry_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod upgrade_tests;
 #[cfg(test)]
 mod url_state_tests;
 #[cfg(test)]

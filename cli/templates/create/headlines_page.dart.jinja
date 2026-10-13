@@ -1,0 +1,17 @@
+import 'package:flutter/material.dart';
+
+/// Served at `/headlines`. data.dart loaded `titles` (matched by type) before this is built;
+/// loading.dart shows meanwhile and error.dart if the request failed.
+class HeadlinesPage extends StatelessWidget {
+  const HeadlinesPage({super.key, required this.titles});
+
+  final List<String> titles;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Headlines')),
+    body: ListView(
+      children: [for (final title in titles) ListTile(title: Text(title))],
+    ),
+  );
+}

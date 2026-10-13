@@ -124,9 +124,13 @@ final class FespalierSentry extends FespalierTelemetry {
 
   /// The default [capture]: every failure except a [FieldErrors] (a validation answer, shown on
   /// the form) and an `auth` step's (`fespalier_auth` reports a network failure there, which the
-  /// next request retries).
+  /// next request retries) and a package's own `custom` operation (its exception text is the
+  /// package's, and could hold a token or a URL: it is a breadcrumb with the class only; pass a
+  /// `capture:` that returns true for it to send events).
   static bool unexpected(Object error, TelemetryStart start) =>
-      error is! FieldErrors && start.op != TelemetryOp.auth;
+      error is! FieldErrors &&
+      start.op != TelemetryOp.auth &&
+      start.op != TelemetryOp.custom;
 
   /// fespalier's defaults on Sentry's options. Call it first in `SentryFlutter.init`'s
   /// configuration; callbacks set before it are kept and run before its own.
@@ -320,7 +324,8 @@ final class FespalierSentry extends FespalierTelemetry {
         TelemetryOp.guard ||
         TelemetryOp.redirect ||
         TelemetryOp.deferred ||
-        TelemetryOp.image => _startChild(start, spans),
+        TelemetryOp.image ||
+        TelemetryOp.custom => _startChild(start, spans),
       };
     } catch (_) {
       return null;
@@ -454,6 +459,7 @@ final class FespalierSentry extends FespalierTelemetry {
       TelemetryOp.deferred => 'deferred ${s.file}',
       TelemetryOp.auth => 'auth ${s.authStep}',
       TelemetryOp.image => 'image ${s.imageCdn}',
+      TelemetryOp.custom => s.name ?? 'custom',
     };
   }
 
@@ -485,10 +491,13 @@ final class FespalierSentry extends FespalierTelemetry {
         if (cdn != null) span.setData(SentryKeys.imageCdn, cdn);
         if (width != null) span.setData(SentryKeys.imageWidth, width);
         span.setData(SentryKeys.imagePreload, s.imagePreload);
+      // A custom operation's own attributes are never sent: only its name (the span's
+      // description) and the operation.
       case TelemetryOp.navigate ||
           TelemetryOp.guard ||
           TelemetryOp.redirect ||
-          TelemetryOp.deferred:
+          TelemetryOp.deferred ||
+          TelemetryOp.custom:
         break;
     }
   }
@@ -729,6 +738,7 @@ final class FespalierSentry extends FespalierTelemetry {
       TelemetryOp.deferred => SentryKeys.deferredResult,
       TelemetryOp.auth => SentryKeys.authResult,
       TelemetryOp.image => SentryKeys.imageResult,
+      TelemetryOp.custom => SentryKeys.customResult,
       TelemetryOp.navigate => null,
     };
     if (outcomeKey != null) span.setData(outcomeKey, e.outcome);
@@ -771,9 +781,10 @@ final class FespalierSentry extends FespalierTelemetry {
   // ---------------------------------------------------------------------------------------------
   // Errors
 
-  /// What names an operation in a breadcrumb or a key: its file, its auth step or its image CDN.
+  /// What names an operation in a breadcrumb or a key: its file, its auth step, its image CDN or
+  /// its custom name.
   static String _label(TelemetryStart s) =>
-      s.site?.file ?? s.file ?? s.authStep ?? s.imageCdn ?? '';
+      s.site?.file ?? s.file ?? s.authStep ?? s.imageCdn ?? s.name ?? '';
 
   void _error(OpToken t, TelemetryEnd e) {
     final error = e.error;
@@ -815,6 +826,7 @@ final class FespalierSentry extends FespalierTelemetry {
     final route = site?.route ?? s.route;
     final file = site?.file ?? s.file;
     final action = site?.name;
+    final customName = s.op == TelemetryOp.custom ? s.name : null;
     final trace = t.trace;
     // `withScope` runs on a clone, so the global scope keeps no per-error tags. The callback runs
     // before `captureException` first suspends, so what it sets is what is sent.
@@ -828,15 +840,19 @@ final class FespalierSentry extends FespalierTelemetry {
         withScope: (scope) {
           scope
             ..setTag(SentryKeys.operation, s.op.name)
-            ..fingerprint = ['{{ default }}', ?file];
+            ..fingerprint = ['{{ default }}', ?file, ?customName];
           if (route != null) scope.setTag(SentryKeys.route, route);
           if (file != null) scope.setTag(SentryKeys.file, file);
           if (action != null) scope.setTag(SentryKeys.action, action);
+          if (customName != null) {
+            scope.setTag(SentryKeys.customName, customName);
+          }
           scope.setContexts(SentryKeys.fespalierContext, {
             SentryKeys.operation: s.op.name,
             SentryKeys.route: ?route,
             SentryKeys.file: ?file,
             SentryKeys.action: ?action,
+            SentryKeys.customName: ?customName,
             SentryKeys.isAsync: e.isAsync,
             if (s.op == TelemetryOp.data) SentryKeys.keyed: s.keyed,
           });
@@ -901,7 +917,10 @@ final class FespalierSentry extends FespalierTelemetry {
             level: SentryLevel.warning,
           ),
         );
-      case TelemetryOp.navigate || TelemetryOp.data || TelemetryOp.deferred:
+      case TelemetryOp.navigate ||
+          TelemetryOp.data ||
+          TelemetryOp.deferred ||
+          TelemetryOp.custom:
         break;
     }
   }

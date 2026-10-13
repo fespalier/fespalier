@@ -1,0 +1,347 @@
+create my_app (package my_app, features: i18n)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_tolgee:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_tolgee
+      ref: v<version>
+  flutter_localizations:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/i18n/
+
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+  test:
+    # /translations needs the translation scope: test/i18n_test.dart opens it through the app's own App.
+    skip: [/translations]
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+///
+/// `routerConfig` is the translation scope's, never the router itself: it puts a TranslationScope
+/// around go_router's navigator, so the first frame is already in the route's language. The
+/// language is the `lang` query of the location (`/translations?lang=fr`) and, when a location has
+/// none, the one before it. For a language in the path (`/fr/products`) see docs/i18n-tolgee.md,
+/// "Locales and the URL". The Material delegates are required: without them an AppBar in a
+/// language Material has no strings for throws.
+class App extends ConsumerWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
+    title: 'my_app',
+    routerConfig: TranslationScope.routerConfig(
+      router,
+      localeOf: (uri) => uri.queryParameters['lang'],
+    ),
+    supportedLocales: ref
+        .watch(translationsConfig)
+        .supportedLocales
+        .map(localeFromTag),
+    localizationsDelegates: GlobalMaterialLocalizations.delegates,
+  );
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+Future<List<Override>> startup() async => [
+  // fespalier_tolgee: the catalogs bundled in assets/i18n/ (a local read, never the network).
+  translationsConfig.overrideWithValue(
+    Translations(
+      bundled: await BundledTranslations.load(locales: const ['en', 'fr']),
+      baseLocale: 'en',
+    ),
+  ),
+];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== assets/i18n/en.arb (new)
+{
+  "@@locale": "en",
+  "app.title": "Translations",
+  "hello": "Hello",
+  "intro": "This text comes from assets/i18n/en.arb.",
+  "stock": "{count, plural, =0 {Sold out} one {# item in stock} other {# items in stock}}",
+  "more": "Add one",
+  "less": "Remove one"
+}
+
+=== assets/i18n/fr.arb (new)
+{
+  "@@locale": "fr",
+  "app.title": "Traductions",
+  "hello": "Bonjour",
+  "intro": "Ce texte vient de assets/i18n/fr.arb.",
+  "stock": "{count, plural, =0 {Épuisé} one {# article en stock} other {# articles en stock}}",
+  "more": "En ajouter un",
+  "less": "En retirer un"
+}
+
+=== lib/app/translations/page.dart (new)
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/translations`. The texts are keys: `TrText` and `context.tr` look them up in the
+/// language of the route. `lang` is the query parameter that sets the language (app.dart reads it
+/// from the location), and typing it here is what gives `TranslationsRoute` a `lang:` argument.
+class TranslationsPage extends StatefulWidget {
+  const TranslationsPage({super.key, this.lang});
+
+  final String? lang;
+
+  @override
+  State<TranslationsPage> createState() => _TranslationsPageState();
+}
+
+class _TranslationsPageState extends State<TranslationsPage> {
+  int _count = 1;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(context.tr('app.title')),
+      actions: [
+        // Plain buttons, not a menu: each goes to this page in the other language.
+        for (final other in const ['en', 'fr'])
+          TextButton(
+            key: ValueKey('lang-$other'),
+            onPressed: context.routeLocale == other
+                ? null
+                : () => TranslationsRoute(lang: other).go(context),
+            child: Text(other.toUpperCase()),
+          ),
+      ],
+    ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const TrText('hello', style: TextStyle(fontSize: 32)),
+        const TrText('intro'),
+        // An ICU plural: the form comes from the count and the language.
+        Text(context.tr('stock', {'count': _count})),
+        TextButton(
+          onPressed: () => setState(() => _count++),
+          child: Text(context.tr('more')),
+        ),
+        TextButton(
+          onPressed: _count == 0 ? null : () => setState(() => _count--),
+          child: Text(context.tr('less')),
+        ),
+      ],
+    ),
+  );
+}
+
+=== test/i18n_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/app/app.dart';
+
+/// Opens the app at [location] with the catalogs in assets/i18n/, as startup() reads them. The
+/// app's own App is passed: pumpRouter's default has no translation scope.
+Future<void> open(WidgetTester tester, String location) async {
+  final bundled = (await tester.runAsync(
+    () => BundledTranslations.load(locales: const ['en', 'fr']),
+  ))!;
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: location),
+    app: (router) => App(router: router),
+    overrides: [
+      translationsConfig.overrideWithValue(
+        Translations(bundled: bundled, baseLocale: 'en'),
+      ),
+    ],
+  );
+}
+
+void main() {
+  testWidgets('the first frame is translated, and ?lang= opens it in French', (
+    tester,
+  ) async {
+    await open(tester, '/translations');
+    expect(find.text('Hello'), findsOneWidget);
+
+    await open(tester, '/translations?lang=fr');
+    expect(find.text('Bonjour'), findsOneWidget);
+    expect(find.text('Hello'), findsNothing);
+  });
+
+  testWidgets('switching the language changes the location and the text', (
+    tester,
+  ) async {
+    await open(tester, '/translations?lang=en');
+    expect(find.text('Hello'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('lang-fr')));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/translations?lang=fr');
+    expect(find.text('Bonjour'), findsOneWidget);
+    // The Material strings follow the route too.
+    expect(
+      Localizations.localeOf(tester.element(find.byType(Scaffold).first)),
+      const Locale('fr'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('lang-en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hello'), findsOneWidget);
+  });
+
+  testWidgets('an ICU plural picks the form of the count', (tester) async {
+    await open(tester, '/translations?lang=fr');
+    expect(find.text('1 article en stock'), findsOneWidget);
+    await tester.tap(find.text('En ajouter un'));
+    await tester.pump();
+    expect(find.text('2 articles en stock'), findsOneWidget);
+    await tester.tap(find.text('En retirer un'));
+    await tester.tap(find.text('En retirer un'));
+    await tester.pump();
+    expect(find.text('Épuisé'), findsOneWidget);
+  });
+}

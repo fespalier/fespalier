@@ -343,8 +343,114 @@ fn no_observers_or_retry_means_none_of_their_lines() {
     ]);
     has_not(
         &main,
-        &["observers:", "_providerObservers", "retry:", "_router"],
+        &[
+            "observers:",
+            "_providerObservers",
+            "retry:",
+            "_router",
+            "ready:",
+            "appAttach:",
+        ],
     );
+}
+
+#[test]
+fn ready_and_attach_reach_the_gate_independently() {
+    let both = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "Future<void> startup() async {}\nFutureOr<void> ready(ProviderContainer container) {}\nvoid attach(GoRouter router, ProviderContainer container) {}",
+        ),
+    ]);
+    has(
+        &both,
+        &[
+            "startup: _i0.startup,",
+            "ready: _i0.ready,",
+            "appAttach: _i0.attach,",
+        ],
+    );
+    let only_ready = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "Future<void> ready(ProviderContainer container) async {}",
+        ),
+    ]);
+    has(&only_ready, &["ready: _i0.ready,"]);
+    has_not(&only_ready, &["appAttach:", "startup:"]);
+    let only_attach = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "void attach(GoRouter router, ProviderContainer container) {}",
+        ),
+    ]);
+    has(&only_attach, &["appAttach: _i0.attach,"]);
+    has_not(&only_attach, &["ready:"]);
+}
+
+#[test]
+fn a_splash_is_shown_for_ready_alone() {
+    let g = run_gen(&[
+        ("page.dart", HOME),
+        ("splash.dart", SPLASH),
+        (
+            "startup.dart",
+            "Future<void> ready(ProviderContainer container) async {}",
+        ),
+    ]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+}
+
+#[test]
+fn ready_has_a_fixed_shape() {
+    for bad in [
+        "Future<void> ready() async {}",
+        "Future<void> ready(ProviderContainer c, int x) async {}",
+        "Future<void> ready(WidgetRef ref) async {}",
+        "Future<void> ready({required ProviderContainer container}) async {}",
+        "Future<int> ready(ProviderContainer container) async => 1;",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(
+            d[0].ends_with("ready() runs on the app's ProviderContainer before the first route: declare it `FutureOr<void> ready(ProviderContainer container)` (or `Future<void>` / `void`)"),
+            "{bad}: {d:?}"
+        );
+    }
+}
+
+#[test]
+fn attach_has_a_fixed_shape() {
+    for bad in [
+        "void attach(GoRouter router) {}",
+        "void attach(ProviderContainer container, GoRouter router) {}",
+        "Future<void> attach(GoRouter router, ProviderContainer container) async {}",
+        "void attach({required GoRouter router, required ProviderContainer container}) {}",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(
+            d[0].ends_with("attach() is called once with the router and the app's container, after the first frame: declare it `void attach(GoRouter router, ProviderContainer container)`"),
+            "{bad}: {d:?}"
+        );
+    }
+}
+
+#[test]
+fn ready_and_attach_work_with_an_app_dart_router() {
+    let app = format!("{APP}\nGoRouter router() => AppRoutes.router();");
+    let main = main_of(&[
+        ("page.dart", HOME),
+        ("app.dart", &app),
+        (
+            "startup.dart",
+            "void ready(ProviderContainer container) {}\nvoid attach(GoRouter router, ProviderContainer container) {}",
+        ),
+    ]);
+    has(&main, &["ready: _i1.ready,", "appAttach: _i1.attach,"]);
 }
 
 #[test]
@@ -438,7 +544,6 @@ fn main_hooks_wrap_main_outside_the_zone() {
         main
     };
     let main = emit(MainHooks {
-        imports: vec!["import 'package:o/o.dart' as _o;".into()],
         wrappers: vec!["_o.zone".into()],
         before_run: vec!["await _o.open();".into()],
         provider_observers: vec!["_o.observers()".into()],
@@ -447,7 +552,6 @@ fn main_hooks_wrap_main_outside_the_zone() {
     has(
         &main,
         &[
-            "import 'package:o/o.dart' as _o;",
             "static Future<void> run() => _o.zone(() => _i1.zone(_main));",
             "    WidgetsFlutterBinding.ensureInitialized();\n    await _o.open();\n    runApp(root());",
             "List<ProviderObserver> _providerObservers() => [..._o.observers(), ..._i1.providerObservers];",
@@ -627,7 +731,7 @@ fn startup_dart_must_export_something() {
     assert_eq!(
         errors(&[("page.dart", HOME), ("startup.dart", "const x = 1;")]),
         [
-            "✗ startup.dart  startup.dart exports none of `startup()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file"
+            "✗ startup.dart  startup.dart exports none of `startup()`, `ready()`, `attach()`, `zone()`, `providerObservers`, `routerObservers` or `retry()`; add one, or delete the file"
         ]
     );
 }
@@ -765,7 +869,7 @@ fn a_splash_with_nothing_to_show_it_for_is_a_warning() {
     assert_eq!(
         g.diags,
         [
-            "! splash.dart  splash.dart is shown while startup() runs and when it fails, and startup.dart has no startup(), so it is never shown"
+            "! splash.dart  splash.dart is shown while startup() or ready() runs and when either fails, and startup.dart has neither, so it is never shown"
         ]
     );
     assert!(g.main.is_some());
@@ -1026,11 +1130,8 @@ fn a_bad_adapters_list_says_what_it_wants() {
         ),
         not_there
     );
-    assert_eq!(
-        refused(&with_adapters("[fespalier_sentry]", "  main: manual\n")),
-        "`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"
-    );
-    // `main: manual` with no adapters is as before, and `generated` is fine with them.
+    // `main: manual` and `generated` are both fine with adapters (since 0.11.0).
+    assert!(cfg(&with_adapters("[fespalier_sentry]", "  main: manual\n")).is_ok());
     assert!(cfg("fespalier:\n  main: manual\n  adapters: []\n").is_ok());
     assert!(cfg(&with_adapters("[fespalier_sentry]", "  main: generated\n")).is_ok());
 }
@@ -1053,20 +1154,77 @@ fn adapters_write_a_main_with_no_root_file() {
     has(
         &main,
         &[
-            "import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;",
-            "static Future<void> run() => _a0.adapter.zone(_main);",
-            "    WidgetsFlutterBinding.ensureInitialized();\n    if (_a0.adapter.beforeRun() case final ready?) await ready;\n    runApp(root());",
-            "static Widget root({GoRouter Function() router = _router}) => _a0.adapter.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    observers: _providerObservers,\n    router: router,\n    app: app,\n  ));",
+            "static Future<void> run() => AppAdapters.zone(_main);",
+            "    WidgetsFlutterBinding.ensureInitialized();\n    if (AppAdapters.beforeRun() case final ready?) await ready;\n    final launch = AppAdapters.launch();\n    _launch = launch is Future<InboundLaunch?> ? await launch : launch;\n    runApp(root());",
+            "static InboundLaunch? get launch => _launch;",
+            "static Widget root({GoRouter Function() router = _router}) => AppAdapters.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    observers: _providerObservers,\n    attach: AppRoutes.attach,\n    router: router,\n    app: app,\n  ));",
             "everything runs inside the adapters' zones: the binding,",
-            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
-            "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
-            "List<Override> _extraOverrides() => [..._a0.adapter.overrides()];",
-            "List<ProviderObserver> _providerObservers() => [..._a0.adapter.providerObservers()];",
+            "static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers()];",
+            "GoRouter _router() => AppRoutes.router(launch: AppMain.launch, observers: AppMain.routerObservers());",
+            "List<Override> _extraOverrides() => [...AppAdapters.overrides()];",
+            "List<ProviderObserver> _providerObservers() => [...AppAdapters.providerObservers()];",
         ],
     );
+    has_not(&main, &["fespalier_adapter.dart", "_a0"]);
     // Without the key the same app writes no main at all.
     let plain = run_gen(&[("page.dart", HOME)]);
     assert!(plain.main.is_none());
+}
+
+#[test]
+fn manual_main_with_adapters_writes_app_adapters_and_no_main() {
+    let yaml = with_adapters(
+        "[fespalier_sentry, fespalier_connectivity]",
+        "  main: manual\n",
+    );
+    let g = run_yaml(&yaml, &[("page.dart", HOME)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    assert!(g.main.is_none());
+    has(
+        &g.app_g,
+        &[
+            "import 'package:fespalier/startup.dart' show FespalierAdapters, Override;\nimport 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;\nimport 'package:fespalier_connectivity/fespalier_adapter.dart' as _a1;\n",
+            "abstract final class AppAdapters {",
+            "static final _all = FespalierAdapters([_a0.adapter, _a1.adapter]);",
+            "static Future<void> zone(Future<void> Function() body) => _all.zone(body);",
+            "static Future<void>? beforeRun() => _all.beforeRun();",
+            "static List<Override> overrides() => _all.overrides();",
+            "static List<ProviderObserver> providerObservers() => _all.providerObservers();",
+            "static List<NavigatorObserver> routerObservers() => _all.routerObservers();",
+            "static Widget wrap(Widget root) => _all.wrap(root);",
+        ],
+    );
+}
+
+#[test]
+fn no_adapters_no_app_adapters() {
+    let g = run_gen(&[("page.dart", HOME)]);
+    has_not(
+        &g.app_g,
+        &["AppAdapters", "FespalierAdapters", "fespalier_adapter.dart"],
+    );
+    let g = run_yaml("fespalier:\n  main: manual\n", &[("page.dart", HOME)]);
+    has_not(&g.app_g, &["AppAdapters"]);
+}
+
+#[test]
+fn attach_is_emitted_for_adapters_alone() {
+    let g = run_yaml(
+        &with_adapters("[fespalier_sentry]", ""),
+        &[("page.dart", HOME)],
+    );
+    has(
+        &g.app_g,
+        &[
+            "  /// Lets DevTools and the adapters follow [router]: [router] calls it,",
+            "static void attach(GoRouter router, [ProviderContainer? container]) {",
+            "    if (container != null) AppAdapters._all.attach(router, container);",
+            "      attach(router);\n      return router;",
+        ],
+    );
+    // Without adapters (and no observe or telemetry) there is no `attach` to call.
+    let plain = run_gen(&[("page.dart", HOME)]);
+    has_not(&plain.app_g, &["static void attach", "ProviderContainer"]);
 }
 
 #[test]
@@ -1085,18 +1243,19 @@ fn two_adapters_around_startup_dart_are_the_documented_main() {
     has(
         &main,
         &[
-            "import 'package:flutter/widgets.dart';\nimport 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;\nimport 'package:fespalier_connectivity/fespalier_adapter.dart' as _a1;\n\nimport 'app.g.dart';",
+            "import 'package:flutter/widgets.dart';\n\nimport 'app.g.dart';",
             "everything runs inside the adapters' zones and startup.dart's `zone()`: the binding,",
             // The first adapter is the outermost: zone, wrapper.
-            "static Future<void> run() => _a0.adapter.zone(() => _a1.adapter.zone(() => _i1.zone(_main)));",
-            "    WidgetsFlutterBinding.ensureInitialized();\n    if (_a0.adapter.beforeRun() case final ready?) await ready;\n    if (_a1.adapter.beforeRun() case final ready?) await ready;\n    runApp(root());",
-            "=> _a0.adapter.wrap(_a1.adapter.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    overrides: _i1.startup,\n    observers: _providerObservers,\n    retry: _i1.retry,\n    router: router,\n    app: app,\n  )));",
+            "static Future<void> run() => AppAdapters.zone(() => _i1.zone(_main));",
+            "    WidgetsFlutterBinding.ensureInitialized();\n    if (AppAdapters.beforeRun() case final ready?) await ready;\n    final launch = AppAdapters.launch();\n    _launch = launch is Future<InboundLaunch?> ? await launch : launch;\n    runApp(root());",
+            "static InboundLaunch? get launch => _launch;",
+            "=> AppAdapters.wrap(StartupGate(\n    extraOverrides: _extraOverrides,\n    overrides: _i1.startup,\n    observers: _providerObservers,\n    retry: _i1.retry,\n    attach: AppRoutes.attach,\n    router: router,\n    app: app,\n  ));",
             "static Widget app(GoRouter router) => _i0.App(router: router);",
             // The adapters' observers come first, then startup.dart's.
-            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers(), ..._a1.adapter.routerObservers(), ..._i1.routerObservers];",
-            "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
-            "List<Override> _extraOverrides() => [..._a0.adapter.overrides(), ..._a1.adapter.overrides()];",
-            "List<ProviderObserver> _providerObservers() => [..._a0.adapter.providerObservers(), ..._a1.adapter.providerObservers(), ..._i1.providerObservers];",
+            "static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers(), ..._i1.routerObservers];",
+            "GoRouter _router() => AppRoutes.router(launch: AppMain.launch, observers: AppMain.routerObservers());",
+            "List<Override> _extraOverrides() => [...AppAdapters.overrides()];",
+            "List<ProviderObserver> _providerObservers() => [...AppAdapters.providerObservers(), ..._i1.providerObservers];",
         ],
     );
 }
@@ -1106,7 +1265,7 @@ fn an_app_dart_router_that_ignores_the_adapters_observers_is_warned_about() {
     let yaml = with_adapters("[fespalier_sentry]", "");
     let own = format!("{APP}\nGoRouter router() => AppRoutes.router(restorationScopeId: 'r');");
     let g = run_yaml(&yaml, &[("page.dart", HOME), ("app.dart", &own)]);
-    assert_eq!(g.diags.len(), 1, "{:?}", g.diags);
+    assert_eq!(g.diags.len(), 2, "{:?}", g.diags);
     assert!(
         g.diags[0].starts_with("! app.dart:")
             && g.diags[0].ends_with("app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"),
@@ -1119,18 +1278,111 @@ fn an_app_dart_router_that_ignores_the_adapters_observers_is_warned_about() {
         &main,
         &[
             "GoRouter _router() => _i0.router();",
-            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+            "static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers()];",
         ],
     );
     // A router() that passes them on has nothing to be told.
     let passes = format!(
-        "import '../app.main.g.dart';\n{APP}\nGoRouter router() => AppRoutes.router(observers: AppMain.routerObservers());"
+        "import '../app.main.g.dart';\n{APP}\nGoRouter router() => AppRoutes.router(launch: AppMain.launch, observers: AppMain.routerObservers());"
     );
     let g = run_yaml(&yaml, &[("page.dart", HOME), ("app.dart", &passes)]);
     assert!(g.diags.is_empty(), "{:?}", g.diags);
     // And with no adapters there is no warning, whatever router() does.
     let g = run_gen(&[("page.dart", HOME), ("app.dart", &own)]);
     assert!(g.diags.is_empty(), "{:?}", g.diags);
+}
+
+#[test]
+fn an_app_dart_router_that_ignores_the_launch_is_warned_about() {
+    let yaml = with_adapters("[fespalier_sentry]", "");
+    let own = format!(
+        "import '../app.main.g.dart';\n{APP}\nGoRouter router() => AppRoutes.router(observers: AppMain.routerObservers());"
+    );
+    let g = run_yaml(&yaml, &[("page.dart", HOME), ("app.dart", &own)]);
+    assert_eq!(g.diags.len(), 1, "{:?}", g.diags);
+    assert!(
+        g.diags[0].starts_with("! app.dart:")
+            && g.diags[0].ends_with("app.dart's router() builds the router itself, so the adapters' launch is not used: pass `launch: AppMain.launch` to `AppRoutes.router(...)` there"),
+        "{:?}",
+        g.diags
+    );
+    // The launch is still asked: app.dart may read AppMain.launch some other way.
+    has(
+        &g.main.unwrap(),
+        &["static InboundLaunch? get launch => _launch;"],
+    );
+}
+
+#[test]
+fn the_gate_gets_attach_wherever_app_routes_has_one() {
+    let observe = "void onEnter(Ref ref, {required TypedLocation route}) {}\n";
+    let g = run_gen(&[
+        ("page.dart", HOME),
+        ("app.dart", APP),
+        ("observe.dart", observe),
+    ]);
+    has(&g.main.unwrap(), &["    attach: AppRoutes.attach,\n"]);
+    let g = run_yaml(
+        "fespalier:\n  telemetry: true\n",
+        &[("page.dart", HOME), ("app.dart", APP)],
+    );
+    has(&g.main.unwrap(), &["    attach: AppRoutes.attach,\n"]);
+    let g = run_gen(&[("page.dart", HOME), ("app.dart", APP)]);
+    has_not(&g.main.unwrap(), &["attach:"]);
+}
+
+#[test]
+fn launch_is_asked_only_with_adapters() {
+    let g = run_gen(&[("page.dart", HOME), ("app.dart", APP)]);
+    let main = g.main.unwrap();
+    has_not(&main, &["launch", "InboundLaunch"]);
+}
+
+#[test]
+fn on_enter_only_with_adapters() {
+    let with = run_yaml(
+        &with_adapters("[fespalier_sentry]", ""),
+        &[("page.dart", HOME)],
+    );
+    has(
+        &with.app_g,
+        &[
+            "        onEnter: onEnter,\n",
+            "static FutureOr<OnEnterResult> onEnter(",
+            ") => AppAdapters._all.onEnter(context, current, next, router);",
+            "import 'dart:async';",
+            "  static FutureOr<InboundLaunch?> launch() => _all.launch();",
+            "    }, links: true);",
+        ],
+    );
+    let plain = run_gen(&[("page.dart", HOME)]);
+    has_not(
+        &plain.app_g,
+        &["onEnter", "OnEnterResult", "dart:async", "links:"],
+    );
+    // Without adapters the router still takes a launch.
+    has(
+        &plain.app_g,
+        &[
+            "InboundLaunch? launch,",
+            "return launchRouter(launch, (launch) {",
+            "overridePlatformDefaultLocation: launch != null,",
+            "    });\n  }",
+        ],
+    );
+}
+
+#[test]
+fn links_flag_with_telemetry() {
+    let tel = run_yaml("fespalier:\n  telemetry: true\n", &[("page.dart", HOME)]);
+    has(&tel.app_g, &["    }, links: true);"]);
+    let adapters = run_yaml(
+        &with_adapters("[fespalier_sentry]", ""),
+        &[("page.dart", HOME)],
+    );
+    has(&adapters.app_g, &["    }, links: true);"]);
+    let neither = run_gen(&[("page.dart", HOME)]);
+    has_not(&neither.app_g, &["links: true"]);
 }
 
 #[test]
@@ -1194,9 +1446,9 @@ fn adapters_with_each_root_file_combination() {
     has(
         &g.main.unwrap(),
         &[
-            "static Future<void> run() => _a0.adapter.zone(_main);",
+            "static Future<void> run() => AppAdapters.zone(_main);",
             "static Widget app(GoRouter router) => _i0.App(router: router);",
-            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+            "static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers()];",
         ],
     );
     // startup.dart with a zone, and none of its observers: startup's zone is inside the adapter's.
@@ -1206,9 +1458,9 @@ fn adapters_with_each_root_file_combination() {
     has(
         &g.main.unwrap(),
         &[
-            "static Future<void> run() => _a0.adapter.zone(() => _i0.zone(_main));",
+            "static Future<void> run() => AppAdapters.zone(() => _i0.zone(_main));",
             "everything runs inside the adapters' zones and startup.dart's `zone()`: the binding,",
-            "static List<NavigatorObserver> routerObservers() => [..._a0.adapter.routerObservers()];",
+            "static List<NavigatorObserver> routerObservers() => [...AppAdapters.routerObservers()];",
         ],
     );
     // startup.dart's own provider observers come after the adapters'.
@@ -1217,7 +1469,27 @@ fn adapters_with_each_root_file_combination() {
     has(
         &g.main.unwrap(),
         &[
-            "List<ProviderObserver> _providerObservers() => [..._a0.adapter.providerObservers(), ..._i0.providerObservers];",
+            "List<ProviderObserver> _providerObservers() => [...AppAdapters.providerObservers(), ..._i0.providerObservers];",
         ],
     );
+}
+
+#[test]
+fn an_async_attach_is_an_error_and_a_nullable_container_is_fine() {
+    for bad in [
+        "void attach(GoRouter router, ProviderContainer container) async {}",
+        "void attach(GoRouter router, ProviderContainer container) async => null;",
+    ] {
+        let d = errors(&[("page.dart", HOME), ("startup.dart", bad)]);
+        assert_eq!(d.len(), 1, "{bad}: {d:?}");
+        assert!(d[0].contains("attach() cannot be `async`"), "{bad}: {d:?}");
+    }
+    let main = main_of(&[
+        ("page.dart", HOME),
+        (
+            "startup.dart",
+            "void ready([ProviderContainer? container]) {}",
+        ),
+    ]);
+    has(&main, &["ready: _i0.ready,"]);
 }

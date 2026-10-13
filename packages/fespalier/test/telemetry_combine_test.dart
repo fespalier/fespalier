@@ -408,6 +408,8 @@ void main() {
           imageCdn: 'emgr',
           imageWidth: 640,
           imagePreload: true,
+          name: 'fespalier.push.open',
+          attributes: const {'fespalier.push.n': 3},
         );
         FespalierTelemetry.begin(start);
         for (final (spy, parent) in [(a, 'a:1'), (b, 'b:1')]) {
@@ -428,6 +430,8 @@ void main() {
           expect(copy.imageCdn, 'emgr');
           expect(copy.imageWidth, 640);
           expect(copy.imagePreload, isTrue);
+          expect(copy.name, 'fespalier.push.open');
+          expect(copy.attributes, {'fespalier.push.n': 3});
         }
       },
     );

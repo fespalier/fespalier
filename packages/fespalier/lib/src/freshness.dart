@@ -66,6 +66,28 @@ final appResumeSignal = NotifierProvider.autoDispose<RefetchSignal, int>(
   AppResumeSignal.new,
 );
 
+/// A [RefetchSignal] that fires on `AppLifecycleListener.onShow` (since 0.13.0): the app is
+/// visible again after it was hidden (in the background or minimised).
+///
+/// Unlike [appResumeSignal], it does not fire when the app only went inactive and came back (an iOS
+/// notification shade or Control Center, a call banner, the system's biometric sheet). It is created
+/// only while something listens or watches it, and its listener is disposed with it. It needs a
+/// `WidgetsBinding`: a test without one overrides it with `appShowSignal.overrideWith(RefetchSignal.new)`.
+class AppShowSignal extends RefetchSignal {
+  @override
+  int build() {
+    final listener = AppLifecycleListener(onShow: fire);
+    ref.onDispose(listener.dispose);
+    return 0;
+  }
+}
+
+/// Fires when the app is shown again after it was hidden (since 0.13.0). `fespalier_biometrics`
+/// relocks on it.
+final appShowSignal = NotifierProvider.autoDispose<RefetchSignal, int>(
+  AppShowSignal.new,
+);
+
 /// What `Freshness(refetchOnReconnect: true)` listens to (since 0.8.1).
 ///
 /// Flutter has no API for "the network is back", so this never fires by itself: override

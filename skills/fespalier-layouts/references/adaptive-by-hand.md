@@ -1,6 +1,6 @@
 # Adaptive layouts by hand
 
-As of v0.4.0, and still true: fespalier's core has **no adaptive-layout feature**. A
+As of v0.13.0, and still true: fespalier's core has **no adaptive-layout feature**. A
 `layout.dart` is an ordinary widget that receives `child` or a
 `StatefulNavigationShell`, so going from a phone to a tablet or desktop layout is plain
 Flutter (`MediaQuery`, `LayoutBuilder`) inside that widget. Since 0.9.0 the package
@@ -8,7 +8,7 @@ Flutter (`MediaQuery`, `LayoutBuilder`) inside that widget. Since 0.9.0 the pack
 no second list of destinations to keep in step: [`adaptive-layouts.md`](adaptive-layouts.md).
 Read this page for an app that does not use it (or is on 0.8.x or earlier), and for
 layouts the package does not draw (a side list of links, a drawer that opens). These
-two patterns were compiled and tested against v0.3.0; they are patterns, not API.
+two patterns are built by `just skill-samples`; they are patterns, not API.
 
 ## A tab layout: bottom bar on phones, rail on wide screens
 

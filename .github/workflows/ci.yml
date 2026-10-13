@@ -20,6 +20,10 @@ env:
   # from here. Exact, like FLUTTER_VERSION: the last 3.32 patch release. cli/tests/versions.rs checks
   # that the minor still matches what the pubspecs and READMEs claim.
   FLUTTER_FLOOR_VERSION: 3.32.8
+  # The oldest Flutter the `otel` feature of `fsp create` runs on (its recipe says 3.35): otel_zone
+  # depends on talker_riverpod_logger, which needs Dart 3.9. The `create-floor` job makes the apps
+  # with `otel` on it. Exact, like the others.
+  FLUTTER_OTEL_FLOOR_VERSION: 3.35.0
 
 jobs:
   cli:
@@ -49,8 +53,11 @@ jobs:
           workspaces: cli
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
+      # The upgrade tests use the system curl; FSP_REQUIRE_CURL=1 fails them instead of skipping.
       - run: cargo test
-      - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs, launcher)
+        env:
+          FSP_REQUIRE_CURL: "1"
+      - name: Versions agree (Cargo.toml, pubspec.yaml, fsp init, READMEs and docs, launcher)
         run: cargo test --test versions
       - name: Examples check cleanly
         run: |
@@ -60,12 +67,55 @@ jobs:
           cargo run --quiet -- check --project ../examples/minimal
           cargo run --quiet -- check --project ../examples/telemetry
           cargo run --quiet -- check --project ../examples/auth
+          cargo run --quiet -- check --project ../examples/plugins
+          cargo run --quiet -- check --project ../examples/downloads
+          cargo run --quiet -- check --project ../examples/cose
+          cargo run --quiet -- check --project ../examples/i18n
+          cargo run --quiet -- check --project ../examples/maps
+          cargo run --quiet -- check --project ../examples/adopt
+          cargo run --quiet -- check --project ../examples/offline
           cargo run --quiet -- maestro --check --project ../examples/shop
       # Licences, advisories, duplicate versions, sources: cli/deny.toml.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           manifest-path: cli/Cargo.toml
           command: check
+
+  # `fsp upgrade` replaces a running fsp.exe on Windows (rename aside, move in, roll back), the
+  # release asset is a .zip, and tar is the bsdtar in System32: only a Windows runner shows it.
+  # Like the `cli` job above, it is not gated by a paths filter (ci.yml has none).
+  cli-windows:
+    name: fsp upgrade (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      # curl and tar ship with Windows 10+; FSP_REQUIRE_CURL=1 fails the tests instead of skipping.
+      - name: Upgrade unit tests
+        run: cargo test upgrade
+        env:
+          FSP_REQUIRE_CURL: "1"
+      - name: Upgrade tests against a fake release server
+        run: cargo test --test upgrade
+        env:
+          FSP_REQUIRE_CURL: "1"
 
   dart:
     name: Runtime + examples (Flutter)
@@ -87,14 +137,33 @@ jobs:
           - packages/fespalier_storage
           - packages/fespalier_connectivity
           - packages/fespalier_image
+          - packages/fespalier_http
           - packages/fespalier_dio
+          - packages/fespalier_cratestack
           - packages/fespalier_sentry
+          - packages/fespalier_tolgee
+          - packages/fespalier_forms
+          - packages/fespalier_maps
+          - packages/fespalier_download
+          - packages/fespalier_download_background
+          - packages/fespalier_push
+          - packages/fespalier_biometrics
+          - packages/fespalier_analytics
+          - packages/fespalier_frb
+          - packages/fespalier_riverpod
           - examples/shop
           - examples/features
           - examples/tabs
           - examples/minimal
           - examples/telemetry
           - examples/auth
+          - examples/plugins
+          - examples/downloads
+          - examples/cose
+          - examples/i18n
+          - examples/maps
+          - examples/adopt
+          - examples/offline
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -135,6 +204,8 @@ jobs:
   # Left out on purpose:
   # - packages/fespalier_sign_keypair: flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so it
   #   does not resolve on 3.32 and the package declares that floor itself.
+  # - packages/fespalier_download_background: background_downloader 9.6 needs Flutter 3.47 (Dart
+  #   3.13), so it does not resolve on 3.32 and the package declares that floor itself.
   # - packages/fespalier_devtools: a web app, not a package; its release build is committed and
   #   compared byte for byte on FLUTTER_VERSION (the `devtools` job), and its lockfile is committed
   #   on purpose, which `pub downgrade` would rewrite.
@@ -157,8 +228,19 @@ jobs:
           - packages/fespalier_flags
           - packages/fespalier_storage
           - packages/fespalier_connectivity
+          - packages/fespalier_http
           - packages/fespalier_dio
+          - packages/fespalier_cratestack
           - packages/fespalier_sentry
+          - packages/fespalier_tolgee
+          - packages/fespalier_forms
+          - packages/fespalier_maps
+          - packages/fespalier_download
+          - packages/fespalier_push
+          - packages/fespalier_biometrics
+          - packages/fespalier_analytics
+          - packages/fespalier_frb
+          - packages/fespalier_riverpod
           - examples/minimal
     defaults:
       run:
@@ -203,7 +285,7 @@ jobs:
   scaffold:
     name: Scaffolded files compile
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
     steps:
@@ -229,7 +311,7 @@ jobs:
         working-directory: examples/features
         run: |
           fsp() { cargo run --quiet --manifest-path ../../cli/Cargo.toml -- "$@"; }
-          fsp new 'invoices/[invoiceId]' --data --action --loading --error --layout --guard --transition --nav
+          fsp new 'invoices/[invoiceId]' --data --action --loading --error --layout --guard --transition --nav --leave
           fsp new 'shops/:shop/items/:id/reviews'
           fsp new 'plain' --data
           fsp new '(admin)/users' --layout
@@ -267,6 +349,130 @@ jobs:
           DART
           find lib -name '*.dart' ! -name '*.g.dart' -print0 |
             xargs -0 dart format --output=none --set-exit-if-changed
+          flutter analyze
+      # `fespalier: adapters:` compiles with the generated main() and with `main: manual` (since
+      # 0.11.0): no example has an adapter package, and a nested one would break `just flutter`'s
+      # analyze, so a path package that overrides every member is made in the runner's temp folder.
+      - name: Adapters compile with the generated main and with main manual
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
+        run: |
+          cargo build --quiet --manifest-path cli/Cargo.toml
+          cd "$RUNNER_TEMP"
+          # A path package that overrides every member of a FespalierAdapter.
+          mkdir -p demo_adapter/lib
+          cat > demo_adapter/pubspec.yaml <<'YAML'
+          name: demo_adapter
+          publish_to: none
+          environment:
+            sdk: ^3.8.0
+          dependencies:
+            flutter:
+              sdk: flutter
+            fespalier:
+              path: GITHUB_WORKSPACE/packages/fespalier
+          YAML
+          sed -i "s|GITHUB_WORKSPACE|$GITHUB_WORKSPACE|" demo_adapter/pubspec.yaml
+          cat > demo_adapter/lib/fespalier_adapter.dart <<'DART'
+          import 'dart:async';
+
+          import 'package:fespalier/fespalier.dart';
+          import 'package:fespalier/startup.dart';
+          import 'package:flutter/widgets.dart';
+
+          const adapter = DemoAdapter();
+
+          class DemoAdapter extends FespalierAdapter {
+            const DemoAdapter();
+
+            @override
+            Future<void> zone(Future<void> Function() body) => body();
+
+            @override
+            Future<void>? beforeRun() => null;
+
+            @override
+            List<Override> overrides() => const [];
+
+            @override
+            List<ProviderObserver> providerObservers() => const [];
+
+            @override
+            List<NavigatorObserver> routerObservers() => const [];
+
+            @override
+            Widget wrap(Widget root) => root;
+
+            @override
+            void attach(GoRouter router, ProviderContainer container) {}
+
+            @override
+            FutureOr<InboundLaunch?> launch() => null;
+
+            @override
+            FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
+          }
+          DART
+          flutter create --empty --project-name adapter_app --platforms web adapter_app
+          cd adapter_app
+          flutter pub add fespalier --path "$GITHUB_WORKSPACE/packages/fespalier"
+          flutter pub add demo_adapter --path ../demo_adapter
+          mkdir -p lib/app
+          cat > lib/app/page.dart <<'DART'
+          import 'package:flutter/material.dart';
+
+          class HomePage extends StatelessWidget {
+            const HomePage({super.key});
+
+            @override
+            Widget build(BuildContext context) => const Text('home');
+          }
+          DART
+          # 1. The generated main() calls AppAdapters.
+          printf '\nfespalier:\n  adapters: [demo_adapter]\n' >> pubspec.yaml
+          "$FSP_BIN" gen
+          grep -q 'abstract final class AppAdapters' lib/app.g.dart
+          grep -q 'attach: AppRoutes.attach' lib/app.main.g.dart
+          cat > lib/main.dart <<'DART'
+          import 'package:adapter_app/app.main.g.dart';
+
+          Future<void> main() => AppMain.run();
+          DART
+          flutter analyze
+          # 2. main: manual keeps AppAdapters, and the app's own main() calls it.
+          sed -i 's|^  adapters: \[demo_adapter\]|  main: manual\n  adapters: [demo_adapter]|' pubspec.yaml
+          rm lib/app.main.g.dart
+          "$FSP_BIN" gen
+          test ! -f lib/app.main.g.dart
+          grep -q 'abstract final class AppAdapters' lib/app.g.dart
+          cat > lib/main.dart <<'DART'
+          import 'package:adapter_app/app.g.dart';
+          import 'package:fespalier/fespalier.dart';
+          import 'package:flutter/material.dart';
+
+          Future<void> main() => AppAdapters.zone(() async {
+            WidgetsFlutterBinding.ensureInitialized();
+            if (AppAdapters.beforeRun() case final ready?) await ready;
+            final container = ProviderContainer(
+              overrides: [...AppAdapters.overrides()],
+              observers: [...AppAdapters.providerObservers()],
+            );
+            final launch = await AppAdapters.launch();
+            final router = AppRoutes.router(
+              launch: launch,
+              observers: [...AppAdapters.routerObservers()],
+            );
+            AppRoutes.attach(router, container);
+            runApp(
+              AppAdapters.wrap(
+                UncontrolledProviderScope(
+                  container: container,
+                  child: MaterialApp.router(routerConfig: router),
+                ),
+              ),
+            );
+          });
+          DART
           flutter analyze
       # A release build has none of fespalier's telemetry code either (since 0.8.1): the app does not
       # opt in (`fespalier: telemetry: true`), so no call site passes a `TelemetrySite`, and nothing
@@ -344,7 +550,8 @@ jobs:
             fi
           done
       # `fespalier: adapters:` (since 0.9.0): an app that lists a package gets a generated main() that
-      # imports `package:<name>/fespalier_adapter.dart` and calls the six members of its `adapter`. A
+      # calls the six members of its `adapter`, through app.g.dart's AppAdapters (since 0.11.0),
+      # which imports `package:<name>/fespalier_adapter.dart`. A
       # stand-in package overrides every one of them, so the generated file has to compile against the
       # `FespalierAdapter` it extends. It goes after the release-build checks above, which have
       # their own meaning, and reuses the fresh app.
@@ -391,7 +598,7 @@ jobs:
             printf 'fespalier:\n  adapters: [demo_adapter]\n' >> pubspec.yaml
           fi
           "$FSP_BIN" gen
-          grep -q "package:demo_adapter/fespalier_adapter.dart' as _a0" lib/app.main.g.dart
+          grep -q "package:demo_adapter/fespalier_adapter.dart' as _a0" lib/app.g.dart
           grep -q 'AppMain.routerObservers()' lib/app.main.g.dart
           flutter analyze
       - name: dart run fespalier runs the given fsp
@@ -410,7 +617,7 @@ jobs:
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh
-      # fespalier next to freezed, json_serializable and build_runner (since 0.9.0). No example uses
+      # fespalier next to freezed, json_serializable and build_runner (since 0.16.0). No example uses
       # build_runner, so nothing else notices when it and fsp trip over each other: a freezed `extra`
       # is a private `_Note` that ExtraCodec({Note: ...}) saves as null, and a `lib/app.dart` makes
       # build_runner delete `lib/app.g.dart`. A fresh app with the files in ci/codegen-interop/ shows
@@ -421,6 +628,191 @@ jobs:
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-codegen-interop.sh
+
+  # `fsp create` (since 0.15.0) against the real flutter: the base app, each optional feature on its
+  # own, and every feature at once, made with this checkout as the packages (`--local-packages`) and
+  # checked with `dart format`, `flutter analyze` and `flutter test`. The cases are not written here:
+  # `create-cases` asks the binary for them (`fsp create --list-features --json`, through
+  # scripts/check-create.sh --list), so a feature that lands is a case from its first change. The
+  # script is `just create-check`.
+  create-cases:
+    name: Cases of fsp create
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      cases: ${{ steps.cases.outputs.cases }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      - name: List the cases
+        id: cases
+        shell: bash
+        run: |
+          scripts/check-create.sh --list | tee "$RUNNER_TEMP/cases.txt"
+          echo "cases=$(jq -Rsc 'split("\n") | map(select(length > 0))' "$RUNNER_TEMP/cases.txt")" >> "$GITHUB_OUTPUT"
+
+  create:
+    name: fsp create (${{ matrix.case }})
+    needs: create-cases
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        case: ${{ fromJson(needs.create-cases.outputs.cases) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Make the app, then dart format, analyze and test it
+        env:
+          CASE: ${{ matrix.case }}
+        run: scripts/check-create.sh "$CASE"
+
+  # The declared floor, for what `fsp create` writes: the base app and the app with every feature that
+  # Flutter runs (`all`), made (in a temporary folder, by scripts/check-create.sh) on FLUTTER_FLOOR_VERSION,
+  # then analyzed and tested; then `otel`, which needs a newer Flutter, on FLUTTER_OTEL_FLOOR_VERSION.
+  # A new app takes the newest dependencies its Flutter allows, so this proves that the code a person
+  # starts from compiles on the oldest Flutter we claim, as the `floor` job above does for the packages
+  # at their lowest. No `dart format` here (FSP_CREATE_SKIP_FORMAT): its output depends on the SDK, and
+  # the `create` job checks it.
+  create-floor:
+    name: fsp create (Flutter 3.32)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/cli/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: cli
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}
+          cache: true
+      - run: flutter --version
+      - name: Make the base app and the app with every feature, then analyze and test them
+        env:
+          FSP_CREATE_SKIP_FORMAT: "1"
+        run: scripts/check-create.sh base all
+      # `all` above leaves `otel` out (it needs Flutter 3.35, and says so); this is the Flutter it
+      # does run on, with the two features that compose.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_OTEL_FLOOR_VERSION }}
+          cache: true
+      - run: flutter --version
+      - name: Make the apps with otel, alone and with sentry, then analyze and test them
+        env:
+          FSP_CREATE_SKIP_FORMAT: "1"
+        run: scripts/check-create.sh otel telemetry
+
+  # examples/cose: a CrateStack server (a Rust crate of its own, examples/cose/server) that checks a
+  # COSE_Sign1 signature on every request, and the Flutter app that signs them. The `dart` job above
+  # already runs the app's tests (its end-to-end test skips there: no server binary); this job
+  # builds the server and runs that test against it with FSP_REQUIRE_COSE_SERVER=1, which fails the
+  # test instead of skipping it, so the job cannot go green by not running the server. It is not in
+  # the `floor` job: fespalier_sign_keypair needs Flutter 3.44. `just cose` runs the same steps.
+  cose:
+    name: COSE example (server and app, end to end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server crate pins its own toolchain (cli/tests/versions.rs checks it equals the
+      # generator's); this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/cose/server/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/cose/server
+      # Tests include the two that fail when server/contracts.json or the app's
+      # lib/src/contracts.g.dart is stale against schema.cstack.
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/cose/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      # Licences, advisories, sources: examples/cose/server/deny.toml (cratestack's graph brings a few
+      # more licences than the generator's).
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/cose/server/Cargo.toml
+          command: check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: App (pub get, dart format, analyze)
+        working-directory: examples/cose
+        run: |
+          flutter pub get
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 |
+            xargs -0 dart format --output=none --set-exit-if-changed
+          flutter analyze
+      # Plain `test`s over real sockets: register the device key, a signed write and read, and every
+      # refusal (unregistered key, tampered payload, plain CBOR, COSE to the plain op, replay).
+      - name: App tests, the end-to-end one against the server binary
+        working-directory: examples/cose
+        env:
+          COSE_SERVER_BIN: ${{ github.workspace }}/examples/cose/server/target/debug/cose-demo-server
+          FSP_REQUIRE_COSE_SERVER: "1"
+        run: flutter test
 
   web:
     name: Deferred routes split on the web
@@ -603,9 +995,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      # Every README section, file kind, config key and fsp command claimed by a skill, and
-      # every claim still real; frontmatter, version stamps and links (skills/README.md).
+      # Every README and docs/ section, file kind, config key and fsp command claimed by a skill,
+      # and every claim still real; frontmatter, version stamps, and every link and anchor in the
+      # documentation (skills/README.md).
       - name: Coverage, both ways
         run: node scripts/skills/verify-coverage.mjs
       - name: Formatted (prettier)
-        run: npx --yes prettier@3.8.1 --check "skills/**/*.{md,json}"
+        run: npx --yes prettier@3.8.1 --check README.md "docs/*.md" "skills/**/*.{md,json}"

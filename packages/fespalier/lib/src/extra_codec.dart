@@ -76,7 +76,7 @@ final class ExtraCodec extends Codec<Object?, Object?> {
        );
 
   /// An `ExtraCodec` that finds an object with `is`: the first of [types], in
-  /// the order written, that the object is an instance of (since 0.9.0).
+  /// the order written, that the object is an instance of (since 0.16.0).
   ///
   /// The exact-type constructor never matches a private subclass, and freezed
   /// makes one for every `const factory Note(...) = _Note`: a `Note` you build
@@ -246,7 +246,7 @@ class _Entry {
   static bool _never(Object _) => false;
 }
 
-/// One type that [ExtraCodec.of] saves, and how (since 0.9.0): [toJson] turns
+/// One type that [ExtraCodec.of] saves, and how (since 0.16.0): [toJson] turns
 /// an object into JSON-like data (`null`, `String`, `num`, `bool`, and lists
 /// and maps of them), [fromJson] builds it again.
 ///

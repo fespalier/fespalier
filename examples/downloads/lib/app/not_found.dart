@@ -1,0 +1,12 @@
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Scaffold(body: Center(child: Text('Nothing at ${uri.path}')));
+}

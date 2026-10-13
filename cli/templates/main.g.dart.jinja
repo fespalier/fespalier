@@ -12,9 +12,6 @@ import 'package:fespalier/startup.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 {% endif %}
 import 'package:flutter/{{ "material" if material else "widgets" }}.dart';
-{% for i in extra_imports %}
-{{ i }}
-{% endfor %}
 
 import '{{ output_file }}';
 {% for i in imports %}
@@ -24,6 +21,15 @@ import '{{ i.path }}' as {{ i.alias }};
 /// The app under {{ app_dir }}/, from main() on: startup.dart, splash.dart and app.dart around
 /// [AppRoutes.router].
 abstract final class AppMain {
+{% if launch %}
+  static InboundLaunch? _launch;
+
+  /// Where the app was opened from, asked of the adapters once before the router is built
+  /// (since 0.11.0): `AppRoutes.router(launch: AppMain.launch)`. Null until [run] has asked,
+  /// and on the web.
+  static InboundLaunch? get launch => _launch;
+
+{% endif %}
   /// What lib/main.dart calls: {{ zone_note }}the binding,
   /// {{ "the code of the deferred routes (loaded before the first frame, off the web), " if deferred }}then [root].
   static Future<void> run() => {{ run }};
@@ -36,12 +42,16 @@ abstract final class AppMain {
 {% for s in before_run %}
     {{ s }}
 {% endfor %}
+{% if launch %}
+    final launch = AppAdapters.launch();
+    _launch = launch is Future<InboundLaunch?> ? await launch : launch;
+{% endif %}
     runApp(root());
   }
 
   /// The widget [run] gives `runApp`: startup() (splash.dart while it runs, and if it fails),
   /// then a `ProviderScope` with the overrides it returned around app.dart, which gets
-  /// [router]'s router. [router] is called once, after startup().
+  /// [router]'s router. [router] is called once, after startup(){% if ready %} and ready(){% endif %}.
   static Widget root({GoRouter Function() router = {{ "_router" if router_fn else "AppRoutes.router" }}}) => {% for w in root_wrappers %}{{ w }}({% endfor %}StartupGate(
 {% if extra_overrides %}
     extraOverrides: _extraOverrides,
@@ -60,6 +70,15 @@ abstract final class AppMain {
 {% endif %}
 {% if retry %}
     retry: {{ retry }},
+{% endif %}
+{% if attach %}
+    attach: AppRoutes.attach,
+{% endif %}
+{% if ready %}
+    ready: {{ ready }},
+{% endif %}
+{% if app_attach %}
+    appAttach: {{ app_attach }},
 {% endif %}
     router: router,
     app: app,

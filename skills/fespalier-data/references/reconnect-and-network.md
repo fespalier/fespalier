@@ -20,7 +20,7 @@ dependencies:
       ref: <the same tag>
 ```
 
-(A fragment, not a sample: pub resolves the pair only at a release tag. The root README has the annotated block.) It takes
+(A fragment, not a sample: pub resolves the pair only at a release tag. `docs/data.md` has the annotated block.) It takes
 `connectivity_plus` `>=6.0.1 <8.0.0` (6.0 made a change a `List<ConnectivityResult>`).
 
 ## Wire it
@@ -327,6 +327,9 @@ body marker of your own `/health` if that matters.
 - **A second `Connectivity()` listener of your own beside the package** is the trap connectivity_plus warns about: it is a
   singleton, and "when a second instance is created, the first instance will not be able to listen to the EventChannel".
 - **`hasNetwork` is not "online".** It says "a network interface is up" and nothing more. Do not gate a request on it.
+- **More than data consumes `reconnectSignal`** (since 0.10.0): `fespalier_cratestack`'s `autoSync` runs a sync on it, and
+  `fespalier_tolgee`'s `refreshOnReconnect` asks the CDN again on it **only after a failed fetch**. Both are alive only
+  while watched (the root layout, a scope), so the override with `ConnectivitySignal.new` is the same one line for all.
 - **`reconnectSignal` is only alive while some `refetchOnReconnect` data is.** An override on an app with no such data
   subscribes to nothing, and a test that overrides it but builds no such provider never reaches the plugin.
 

@@ -1,5 +1,180 @@
 # Changelog
 
+## [0.15.0](https://github.com/fespalier/fespalier/compare/v0.14.0...v0.15.0) (2026-10-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **dio:** the package:http libraries live in fespalier_http only ([#149](https://github.com/fespalier/fespalier/issues/149))
+
+### Features
+
+* **cli:** fsp create --features auth,i18n,image ([#169](https://github.com/fespalier/fespalier/issues/169)) ([777a8a0](https://github.com/fespalier/fespalier/commit/777a8a0ffbe0acae0c9e65819a6cdcbf4b3fc6e3))
+* **cli:** fsp create --features devtools,forms,flags,adaptive and --template tabs ([#162](https://github.com/fespalier/fespalier/issues/162)) ([c3d04d3](https://github.com/fespalier/fespalier/commit/c3d04d3ce6d531287eeb6708b48333a166569212))
+* **cli:** fsp create --features http,download ([#173](https://github.com/fespalier/fespalier/issues/173)) ([17d09a1](https://github.com/fespalier/fespalier/commit/17d09a1f510aa8157f6f46ead4e21f0aa632debf))
+* **cli:** fsp create --features otel,sentry ([#166](https://github.com/fespalier/fespalier/issues/166)) ([5b2d2c1](https://github.com/fespalier/fespalier/commit/5b2d2c15b86f9c3e91aaf0bdb647f995c6f1d724))
+* **cli:** fsp create --features storage,connectivity ([#152](https://github.com/fespalier/fespalier/issues/152)) ([4c5f819](https://github.com/fespalier/fespalier/commit/4c5f81945c8ae46b0e26a6020c5263df0fba9678))
+* **cli:** fsp create, a new app with fespalier ([#144](https://github.com/fespalier/fespalier/issues/144)) ([ce06f50](https://github.com/fespalier/fespalier/commit/ce06f50079f5cdc47c7140eb3f1fd04b8f083b05))
+* **cli:** fsp upgrade --check, --dry-run, --json and --version ([#140](https://github.com/fespalier/fespalier/issues/140)) ([6e27751](https://github.com/fespalier/fespalier/commit/6e2775197b9e8721eb9278f51cb473e52aa4ace3))
+* **cli:** fsp upgrade names an app pin that differs from the new fsp ([#161](https://github.com/fespalier/fespalier/issues/161)) ([4a8fc58](https://github.com/fespalier/fespalier/commit/4a8fc58c4c64436f062840f2bd9da27d41fa3e56))
+* **cli:** fsp upgrade replaces a script-installed fsp, checked against the tag's pinned checksums ([#148](https://github.com/fespalier/fespalier/issues/148)) ([bd0380b](https://github.com/fespalier/fespalier/commit/bd0380bf77b3779c5d3d6e0120e390112d6adc8e))
+* **dio:** DioHttpClient, Dio as an http.Client ([#147](https://github.com/fespalier/fespalier/issues/147)) ([ccb6ece](https://github.com/fespalier/fespalier/commit/ccb6ece365865a554067e407f9d9289395fa4d6e))
+* **dio:** the package:http libraries live in fespalier_http only ([#149](https://github.com/fespalier/fespalier/issues/149)) ([a1ae06f](https://github.com/fespalier/fespalier/commit/a1ae06f2b97e97b81578cc510027f8b095da1768))
+* **download:** a durable registry and the providers ([#163](https://github.com/fespalier/fespalier/issues/163)) ([2b4df39](https://github.com/fespalier/fespalier/commit/2b4df3923339279a22ce6b9fadc040d0ae35f95d))
+* **download:** background uploads that never send a write twice ([#176](https://github.com/fespalier/fespalier/issues/176)) ([4782336](https://github.com/fespalier/fespalier/commit/47823369458a36b18d48a6a8d9518311eab04215))
+* **download:** fespalier_download_background, downloads through the OS ([#168](https://github.com/fespalier/fespalier/issues/168)) ([5292b81](https://github.com/fespalier/fespalier/commit/5292b8103123bec0bbb239966f603be8fa9107e1))
+* **download:** fespalier_download, the download model and a fake backend ([#145](https://github.com/fespalier/fespalier/issues/145)) ([9f442b7](https://github.com/fespalier/fespalier/commit/9f442b7937069666b7266933a8c574e0a7043c62))
+* **download:** notification taps open typed routes ([#171](https://github.com/fespalier/fespalier/issues/171)) ([43beb8f](https://github.com/fespalier/fespalier/commit/43beb8f63ebb3d241409b6ebf96f1782e1722a02))
+* **download:** short-lived grants and HttpCredentials for downloads ([#165](https://github.com/fespalier/fespalier/issues/165)) ([78cd54f](https://github.com/fespalier/fespalier/commit/78cd54f80fe7f5b824b6750a97074fcea38a18c6))
+* **download:** the Downloads engine ([#150](https://github.com/fespalier/fespalier/issues/150)) ([709bee9](https://github.com/fespalier/fespalier/commit/709bee9a14bb23257eb582e28e0e3266ed60f29e))
+* **download:** the foreground HTTP backend ([#160](https://github.com/fespalier/fespalier/issues/160)) ([609cfb3](https://github.com/fespalier/fespalier/commit/609cfb34101eb4a1aacd156754ae4ecbd3b9f468))
+* **http,auth:** HttpCredentials, which fespalier_auth's Authorizer implements ([#146](https://github.com/fespalier/fespalier/issues/146)) ([61528c0](https://github.com/fespalier/fespalier/commit/61528c09a0e0af215c4bdad03c3736ce387cd320))
+* **http:** fespalier_http, the package:http half of fespalier_dio ([#142](https://github.com/fespalier/fespalier/issues/142)) ([ca21410](https://github.com/fespalier/fespalier/commit/ca2141077449113a85a81e4ee4742de989188b88))
+
+
+### Bug Fixes
+
+* **cli:** fsp upgrade on Windows, tested on a Windows runner ([#151](https://github.com/fespalier/fespalier/issues/151)) ([3c4e8c7](https://github.com/fespalier/fespalier/commit/3c4e8c75ceb91fcead9583d800cdbcf267cb6073))
+
+
+### Refactoring
+
+* **maps:** file packs download through fespalier_download ([#164](https://github.com/fespalier/fespalier/issues/164)) ([aa3cc91](https://github.com/fespalier/fespalier/commit/aa3cc912b26b36347045a17278b504452fe6cd98))
+
+
+### Documentation
+
+* **examples:** examples/downloads, every [#157](https://github.com/fespalier/fespalier/issues/157) case on one screen ([#172](https://github.com/fespalier/fespalier/issues/172)) ([8bdfc47](https://github.com/fespalier/fespalier/commit/8bdfc4736455a306dcb48d4f2f5a0b7c251eb55c))
+
+
+### Continuous Integration
+
+* a post-publish smoke of fsp create against the released tag ([#175](https://github.com/fespalier/fespalier/issues/175)) ([cc9b4f5](https://github.com/fespalier/fespalier/commit/cc9b4f5e50665865f2f5403b6d2b277e6f6e442d))
+* **skills:** override the whole fespalier_* closure of the companions a sample imports ([#141](https://github.com/fespalier/fespalier/issues/141)) ([be67add](https://github.com/fespalier/fespalier/commit/be67addecaa69609d453f1f01aaae5aad752b7df))
+
+## [0.14.0](https://github.com/fespalier/fespalier/compare/v0.13.1...v0.14.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **push:** `PushSource.tokens` is a `Stream<PushToken>`, `pushToken` is a `StreamProvider<PushToken>`, and `onToken`, `FakePushSource(token:)` and `emitToken` take a `PushToken`. A `PushToken` has an open `String` kind (`PushTokenKind` constants), a non-null value and unmodifiable properties, and its `toString` prints the kind only. A revocation is a separate event, `PushTokenRevoked`, never a null token: `PushSource.revocations` (empty by default), the `pushTokenRevoked` provider, `onTokenRevoked` in `FespalierPush.configure`, and `FakePushSource.revokeToken`. See docs/migration.md, 0.14.0.
+
+### Features
+
+* **push:** hand the app a PushToken, not a String ([0d9cde8](https://github.com/fespalier/fespalier/commit/0d9cde8ab30abda7ce473806b2d8af5471d9224e))
+
+## [0.13.1](https://github.com/fespalier/fespalier/compare/v0.13.0...v0.13.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* a refusal is never hidden behind data kept on error ([#136](https://github.com/fespalier/fespalier/issues/136)) ([80476a2](https://github.com/fespalier/fespalier/commit/80476a2b221a548ea7151c73474b5fd2698dcc4e))
+* **otel:** cap dartastic_opentelemetry_api below 1.0.0-rc.4 ([#135](https://github.com/fespalier/fespalier/issues/135)) ([feb5b0f](https://github.com/fespalier/fespalier/commit/feb5b0f5c287501cc1b2a912fd121ff249383c8c))
+
+
+### Documentation
+
+* a full-stack cose example, a fespalier app and a CrateStack server signing every request with COSE_Sign1 ([#129](https://github.com/fespalier/fespalier/issues/129)) ([fdaad6b](https://github.com/fespalier/fespalier/commit/fdaad6b8a01d98ef228dee27e8e36ce0c54b860f))
+* a maps example, a pin picker and an offline pack with fespalier_maps ([#126](https://github.com/fespalier/fespalier/issues/126)) ([b03d87d](https://github.com/fespalier/fespalier/commit/b03d87d34ad8d3790a86bd4f7441199087710689))
+* an adopt example, a go_router app moving to fespalier ([#127](https://github.com/fespalier/fespalier/issues/127)) ([1bf244d](https://github.com/fespalier/fespalier/commit/1bf244d83979a4d73612562e7f12edd27c491143))
+* an i18n example, translated routes with fespalier_tolgee ([#125](https://github.com/fespalier/fespalier/issues/125)) ([879760b](https://github.com/fespalier/fespalier/commit/879760b8019f7bcad3dacc6c8c540a74a5eee2d2))
+* an offline example, reads, intents and owned rows with fespalier_cratestack ([#128](https://github.com/fespalier/fespalier/issues/128)) ([12403f9](https://github.com/fespalier/fespalier/commit/12403f99bd48d287c73e4195bb13209cdcd7fb94))
+* list every example and point skills at the examples that show them ([#122](https://github.com/fespalier/fespalier/issues/122)) ([6688fa7](https://github.com/fespalier/fespalier/commit/6688fa76237602c4c7461d18a71338596217a795))
+* re-verify every skill against 0.13 ([#137](https://github.com/fespalier/fespalier/issues/137)) ([92aa0a0](https://github.com/fespalier/fespalier/commit/92aa0a0ef15701e7bd20a849cfffa5ea877c6a61))
+* re-verify the troubleshooting skill against 0.13 ([#134](https://github.com/fespalier/fespalier/issues/134)) ([589cf39](https://github.com/fespalier/fespalier/commit/589cf3917c4de168f746c51a9f58e33a030a9e2a))
+
+
+### Tests
+
+* golden fsp diagnostics for broken trees, the troubleshooting skill's example ([#124](https://github.com/fespalier/fespalier/issues/124)) ([10997ac](https://github.com/fespalier/fespalier/commit/10997acff4c9e3a6085b54e2a660bcb2d7414aa8))
+
+## [0.13.0](https://github.com/fespalier/fespalier/compare/v0.12.0...v0.13.0) (2026-10-08)
+
+
+### Features
+
+* **analytics:** fespalier_analytics, screen views with consent ([#118](https://github.com/fespalier/fespalier/issues/118)) ([e1c0abb](https://github.com/fespalier/fespalier/commit/e1c0abb8ca776d389ab7185de2b90cda5e38fcd1))
+* **biometrics:** fespalier_biometrics, an unlock guard that never prompts twice ([#116](https://github.com/fespalier/fespalier/issues/116)) ([b3d22c1](https://github.com/fespalier/fespalier/commit/b3d22c13382bd2c529feed24bf6e7bb72f8b9141))
+* **frb:** fespalier_frb, providers rebuilt by a Rust core's change stream ([#119](https://github.com/fespalier/fespalier/issues/119)) ([5f9407e](https://github.com/fespalier/fespalier/commit/5f9407edc9130c1d8ae35691c5ffe3f6b418fa88))
+* **maps:** fespalier_maps, a pin picker that returns a place ([#113](https://github.com/fespalier/fespalier/issues/113)) ([d5be9b0](https://github.com/fespalier/fespalier/commit/d5be9b0b58873215ba65aa0ea127fbe39562a30f))
+* **maps:** file packs (PMTiles), resumable over HTTP Range ([#120](https://github.com/fespalier/fespalier/issues/120)) ([265a43e](https://github.com/fespalier/fespalier/commit/265a43e3aacb2df553736202e58cdd138665d0f7))
+* **maps:** offline region packs with progress, pause, resume and storage ([#117](https://github.com/fespalier/fespalier/issues/117)) ([ea4cf43](https://github.com/fespalier/fespalier/commit/ea4cf433a0f0c688cc52891ec4abc24ef1706f28))
+* **push:** fespalier_push, notification taps open typed routes ([#115](https://github.com/fespalier/fespalier/issues/115)) ([6b0525f](https://github.com/fespalier/fespalier/commit/6b0525f3f81407e4667757b155642f549e677b81))
+* **riverpod:** fespalier_riverpod, providers per page instance ([#121](https://github.com/fespalier/fespalier/issues/121)) ([4c903b4](https://github.com/fespalier/fespalier/commit/4c903b46cd8fe847d60f7e162c666d63800d1fdf))
+
+## [0.12.0](https://github.com/fespalier/fespalier/compare/v0.11.0...v0.12.0) (2026-10-07)
+
+
+### Features
+
+* fsp links can skip the sitemap and manage the manifest without fingerprints ([#112](https://github.com/fespalier/fespalier/issues/112)) ([326fa04](https://github.com/fespalier/fespalier/commit/326fa04970baed828ac1da1714a4c04efb5743aa))
+* sendPlatformLink, telemetryFollows, and fsp links warns when Flutter deep linking is off ([#110](https://github.com/fespalier/fespalier/issues/110)) ([ae37aae](https://github.com/fespalier/fespalier/commit/ae37aae69f3735473ffd3a63e0bc56058c2a2edb))
+* startup.dart ready(container) and attach(router, container), run on the app's own container before the first route ([#111](https://github.com/fespalier/fespalier/issues/111)) ([db8d370](https://github.com/fespalier/fespalier/commit/db8d3704935c51d838d6a34254ccd52ee35275b2))
+
+
+### Documentation
+
+* README and package READMEs pass markdownlint ([#108](https://github.com/fespalier/fespalier/issues/108)) ([89b4332](https://github.com/fespalier/fespalier/commit/89b43327b6c0f0e7e10e17d28e6393f25a5391ff))
+
+## [0.11.0](https://github.com/fespalier/fespalier/compare/v0.10.0...v0.11.0) (2026-10-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* RouteHooks.onEnter takes a RouteScope, so every app with an observe.dart regenerates app.g.dart with the matching fsp; replace on a tree page now keeps the page's instance id, so a query-only replace is no leave and enter for observe.dart and telemetry.
+* a FespalierTelemetry sink with an exhaustive switch on TelemetryOp stops compiling until it adds a TelemetryOp.custom case (or ends the switch with a wildcard); TelemetryStart gains name and attributes, and TelemetryEnd gains attributes.
+* form() and useForm need the fespalier_forms package. Add fespalier_forms under dependencies, at the same git url and ref as fespalier, and run fsp gen: app.g.dart now imports package:fespalier_forms/fespalier_forms.dart, and fsp reports an error until the dependency is there. Code that names ActionForm, ActionField, ActionTextField, ActionFormFields, FieldCodec, ActionFormMessages, ActionFormValidation or useActionForm imports package:fespalier_forms/fespalier_forms.dart; package:fespalier no longer exports them. FieldErrors, validate() and optimistic() stay in fespalier. See docs/migration.md, 0.11.0.
+
+### Features
+
+* AppAdapters in app.g.dart, adapters with main: manual, FespalierAdapter.attach ([#95](https://github.com/fespalier/fespalier/issues/95)) ([17f0aa5](https://github.com/fespalier/fespalier/commit/17f0aa5b82655fbbe600fec546031c6ceff81f06))
+* AppRoutes.router(launch:) and AppRoutes.onEnter ([#102](https://github.com/fespalier/fespalier/issues/102)) ([beab769](https://github.com/fespalier/fespalier/commit/beab7694405bc872172dc68db1eaa8fb067459f6))
+* forms move out of fespalier into the fespalier_forms package ([b7cf9d4](https://github.com/fespalier/fespalier/commit/b7cf9d4151dc5fc050e18ec2e3e0e65bad3f95d4))
+* **forms:** drafts, a form's input kept per route and restored on return ([#101](https://github.com/fespalier/fespalier/issues/101)) ([f0a3caf](https://github.com/fespalier/fespalier/commit/f0a3cafa7e6ece7b69999bf9f2da73a32595fd5a))
+* **forms:** leaveIfClean, a bottom sheet that asks before unsaved changes go ([#105](https://github.com/fespalier/fespalier/issues/105)) ([d9d929a](https://github.com/fespalier/fespalier/commit/d9d929a4f8647da1260c7bfc8a447638ac496cec))
+* **forms:** multi-page forms, a section's steps sharing one form and one draft ([#106](https://github.com/fespalier/fespalier/issues/106)) ([43da577](https://github.com/fespalier/fespalier/commit/43da5771320b07df5d28b153bd9b04557e3b74e6))
+* fsp links edits AndroidManifest.xml and the entitlements, and --check follows them ([#100](https://github.com/fespalier/fespalier/issues/100)) ([66868e2](https://github.com/fespalier/fespalier/commit/66868e279941610d3b575626df711b3ba81e1d93))
+* fsp links flavours, host-less schemes and path patterns ([#97](https://github.com/fespalier/fespalier/issues/97)) ([c7d226f](https://github.com/fespalier/fespalier/commit/c7d226f7e7fc8956f765d077fbae183cb1ccb33c))
+* InboundLaunch, platform links tagged in telemetry, FespalierAdapter.launch and onEnter ([#99](https://github.com/fespalier/fespalier/issues/99)) ([d93338e](https://github.com/fespalier/fespalier/commit/d93338e6e270b3589fb5b00307ead527b216e9cd))
+* leave.dart, asked before a page goes (GoRoute.onExit), with a back gesture that asks too ([#104](https://github.com/fespalier/fespalier/issues/104)) ([8acb192](https://github.com/fespalier/fespalier/commit/8acb192162be731b0bb57831d942b91d4a36f36a))
+* RouteScope, a page instance's scope for observe.dart's onEnter, with hold and onLeave ([3683868](https://github.com/fespalier/fespalier/commit/3683868d7c1d5761fde34c51b0a530e518a26915))
+* TelemetryOp.custom for packages' own operations ([4f13b41](https://github.com/fespalier/fespalier/commit/4f13b4190f249aefca7aa8d3165fcfca6763f376))
+
+
+### Bug Fixes
+
+* **skills:** no code span ends in a space, so markdownlint passes on skills and docs ([#94](https://github.com/fespalier/fespalier/issues/94)) ([c5529c8](https://github.com/fespalier/fespalier/commit/c5529c86311fd63c653e3411fb1dbd1d587cc2b8))
+
+
+### Continuous Integration
+
+* the 0.9.0 adapters step finds the adapter import in app.g.dart ([#107](https://github.com/fespalier/fespalier/issues/107)) ([7a8dadc](https://github.com/fespalier/fespalier/commit/7a8dadcbab31cb06356178969ab05550065e974b))
+
+## [0.10.0](https://github.com/fespalier/fespalier/compare/v0.9.1...v0.10.0) (2026-10-07)
+
+
+### Features
+
+* fespalier_cratestack, offline-first reads, intents and sync for CrateStack clients ([#90](https://github.com/fespalier/fespalier/issues/90)) ([95fc0c6](https://github.com/fespalier/fespalier/commit/95fc0c62de3e3646186fdc6bbcb4e3dbb7bd0f88))
+* fespalier_tolgee, translations from Tolgee's CDN with a bundled fallback and route locales ([#89](https://github.com/fespalier/fespalier/issues/89)) ([9178376](https://github.com/fespalier/fespalier/commit/9178376152372166cb2c0f6a7002862e1661ad66))
+
+
+### Bug Fixes
+
+* **release:** release-please no longer rewrites third-party version ranges in READMEs ([#86](https://github.com/fespalier/fespalier/issues/86)) ([d194156](https://github.com/fespalier/fespalier/commit/d194156a95587138c1217ce8e6ce4d8d3325683c))
+
+
+### Documentation
+
+* a five-minute README, and the reference in one-topic pages under docs/ ([#91](https://github.com/fespalier/fespalier/issues/91)) ([bfbbf87](https://github.com/fespalier/fespalier/commit/bfbbf87f8aa3531004a1362ec1cf472e5d174e65))
+
+## [0.9.1](https://github.com/fespalier/fespalier/compare/v0.9.0...v0.9.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* semantics_ids keeps each page's text as separate nodes ([#84](https://github.com/fespalier/fespalier/issues/84)) ([31e3d46](https://github.com/fespalier/fespalier/commit/31e3d46b50c1f608c8552d4129e209f1de33cbe1))
+
 ## [0.9.0](https://github.com/fespalier/fespalier/compare/v0.8.1...v0.9.0) (2026-10-04)
 
 

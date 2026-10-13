@@ -1,6 +1,6 @@
 # Telemetry and OpenTelemetry
 
-Since 0.8.1. The README's [Telemetry](https://github.com/fespalier/fespalier#telemetry) section is the user
+Since 0.8.1. The docs' [Telemetry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#telemetry) section is the user
 documentation; this page is what an agent needs to set it up and to say why nothing shows.
 
 Under `fsp dev` (since 0.9.0) the key `t` starts `fsp telemetry` in a pane of its own, and `before: fsp telemetry`
@@ -33,12 +33,12 @@ in `tasks: dev:` starts it with the app: it starts its stack and returns, so it 
 ```yaml
 dependencies:
   fespalier:
-    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier, ref: v0.8.1 }
+    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier, ref: v0.13.0 }
   fespalier_otel:
-    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_otel, ref: v0.8.1 }
+    git: { url: https://github.com/fespalier/fespalier, path: packages/fespalier_otel, ref: v0.13.0 }
 ```
 
-Use the **same `url` spelling (no `.git`) and the same `ref`** for both, or pub fails with `Because ...
+Use the **same `url` spelling (no `.git`) and the same `ref`** (the tag your app pins; `v0.13.0` here) for both, or pub fails with `Because ...
 depends on fespalier from git ... is forbidden`. `otel_zone` pulls `otel_go_router`, which declares
 `go_router: ^17.0.0`: the app resolves go_router 17.5.0 (fespalier accepts 17 and 18), and an app that
 needs 18 adds `dependency_overrides: go_router: ^18.0.0`.
@@ -179,10 +179,32 @@ and what it returns is returned. **The first navigation it starts takes the mark
 closure returns**, so it cannot reach a later one (a closure that starts nothing, or goes where the router
 already is, leaves nothing). Telemetry reports it as `TelemetryStart.source` and `FespalierOtel` as
 `fespalier.navigation.source` on the `navigate` span; `fespalier.navigation.kind` still says how the stack
-changed (a cold start is `initial` with a source). **fespalier never calls it by itself**: a platform deep
-link and the browser's back button look like any other navigation, and the bridge that knows (a
-notification handler) does. Another value asserts in debug, ``navigateFrom: `banner` is not a
+changed (a cold start is `initial` with a source). **fespalier calls it by itself only for a platform link** (since 0.11.0, `launchRouter(links: true)`: `link`, cold start and warm, never on the web); the browser's back button looks like any other navigation, and the bridge that knows (a notification handler) calls `navigateFrom`. Another value asserts in debug, ``navigateFrom: `banner` is not a
 NavigationSource value (notification, shortcut, widget or link)``.
+
+## `TelemetryOp.custom`: a package's own operation (since 0.11.0)
+
+A package that is not fespalier's own reports an operation with `FespalierTelemetry.begin` and `finish`:
+
+```dart
+final token = FespalierTelemetry.begin(
+  const TelemetryStart(
+    TelemetryOp.custom,
+    name: 'fespalier.push.open',
+    attributes: {'fespalier.push.kind': 'alert'},
+  ),
+);
+FespalierTelemetry.finish(
+  token,
+  const TelemetryEnd(TelemetryOutcome.ok, attributes: {'fespalier.push.fresh': true}),
+);
+```
+
+`name` is `fespalier.<pkg>.<op>`, every attribute key starts with `fespalier.<pkg>.` and a value is a String, an
+int, a double or a bool; `begin` asserts it in debug (`TelemetryOp.custom needs a name like
+fespalier.<pkg>.<op>, got ...`). `FespalierOtel` makes a span named `name`; `FespalierSentry` a span described
+by it and never sends the attributes. A sink of your own with an exhaustive `switch` on `TelemetryOp` needs a
+`TelemetryOp.custom` case. docs/observability.md, "Operations of your own: TelemetryOp.custom".
 
 ## Testing
 
@@ -206,6 +228,8 @@ inside `data()` or an action, so a line the code under test adds to `recording.l
 operation. An `image` operation (since 0.9.0, `fespalier_image`) is `#4 start image emgr w=640 preload`, then
 `#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the URL.
 Image spans follow the installed sink and need no `telemetry: true`, like `auth` spans.
+A `custom` operation (since 0.11.0) is `#6 start custom fespalier.push.open fespalier.push.kind=alert`, then
+`#6 end custom ok fespalier.push.fresh=true`: the attributes sorted by key.
 Two sinks next to each other, and a sink of your own that makes its operation current:
 
 ```dart

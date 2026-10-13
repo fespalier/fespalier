@@ -86,6 +86,17 @@ abstract class FespalierTelemetry {
   static void add(FespalierTelemetry sink) =>
       _current = combine([?_current, sink]);
 
+  /// Whether [sink] is the installed sink or one of the sinks combined into it (since 0.13.0).
+  /// An adapter that installed a sink in `beforeRun` asks it from `attach` to find out whether a
+  /// later `install` replaced the slot and dropped it. Compares by identity; reads nothing else.
+  static bool contains(FespalierTelemetry sink) {
+    final current = _current;
+    if (current == null) return false;
+    if (identical(current, sink)) return true;
+    return current is _Combined &&
+        current._children.any((child) => identical(child.sink, sink));
+  }
+
   /// Runs [body] within the operation [token] came from, as fespalier does around `data()`
   /// (since 0.9.0): for adapter packages that start operations of their own with [begin]. [body]
   /// runs once, synchronously; what it returns (the very object) or throws comes back. With no
@@ -102,6 +113,8 @@ abstract class FespalierTelemetry {
   /// the navigation that is in progress, if there is one (`fespalier_image` does: an image that
   /// starts loading while a page is being reached is part of that navigation).
   static Object? begin(TelemetryStart start, {bool underNavigation = false}) {
+    // Only with a sink installed: with telemetry off a package's mistake is not the app's to hear.
+    assert(FespalierTelemetry._current == null || _checkCustom(start));
     final navigation = _pendingNavigation;
     return telemetryBegin(
       underNavigation && start.parent == null && navigation != null
@@ -112,8 +125,10 @@ abstract class FespalierTelemetry {
 
   /// Ends the operation [token] came from (what [begin] returned), for an adapter package
   /// (since 0.9.0). Does nothing without a sink; a sink that throws is printed once and dropped.
-  static void finish(Object? token, TelemetryEnd end) =>
-      telemetryFinish(token, end);
+  static void finish(Object? token, TelemetryEnd end) {
+    assert(FespalierTelemetry._current == null || _checkCustomEnd(end));
+    telemetryFinish(token, end);
+  }
 
   /// An operation started. Returns a token that fespalier hands back to [end] (and, for a
   /// navigation, to [page] and as [TelemetryStart.parent] of what runs during it); null is fine.
@@ -211,6 +226,9 @@ enum TelemetryOp {
 
   /// An image loaded from the network (`package:fespalier_image`, since 0.9.0).
   image,
+
+  /// A package's own operation (since 0.11.0): [TelemetryStart.name] says which.
+  custom,
 }
 
 /// What started. [op] says which fields are set.
@@ -232,6 +250,8 @@ final class TelemetryStart {
     this.imageCdn,
     this.imageWidth,
     this.imagePreload = false,
+    this.name,
+    this.attributes,
   });
 
   /// Which kind of operation started.
@@ -283,6 +303,14 @@ final class TelemetryStart {
   /// image: a precache started the load, not a widget.
   final bool imagePreload;
 
+  /// custom (since 0.11.0): the operation's name, `fespalier.<pkg>.<op>` (for example
+  /// `fespalier.push.open`).
+  final String? name;
+
+  /// custom (since 0.11.0): the operation's own attributes. Values are `String`, `int`, `double`
+  /// or `bool`; every key starts with `fespalier.<pkg>.` (the first two segments of [name]).
+  final Map<String, Object>? attributes;
+
   /// This start with [parent] as its parent, every other field copied. A field added to this
   /// class must be added here too: `telemetry_combine_test.dart` ("combine copies every field of
   /// a start") sets every field and fails when one is lost.
@@ -302,6 +330,8 @@ final class TelemetryStart {
     imageCdn: imageCdn,
     imageWidth: imageWidth,
     imagePreload: imagePreload,
+    name: name,
+    attributes: attributes,
   );
 }
 
@@ -325,6 +355,92 @@ abstract final class NavigationSource {
   static const List<String> values = [notification, shortcut, widget, link];
 }
 
+final RegExp _customName = RegExp(
+  r'^fespalier\.[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$',
+);
+
+/// Package segments a custom operation may not use: they are the namespaces of fespalier's own
+/// attributes (`fespalier.custom.name`, `fespalier.image.cdn`, `fespalier.operation`, ...).
+const Set<String> _reservedPackages = {
+  'custom',
+  'operation',
+  'route',
+  'file',
+  'action',
+  'data',
+  'guard',
+  'redirect',
+  'navigate',
+  'navigation',
+  'page',
+  'deferred',
+  'auth',
+  'image',
+  'async',
+  'keyed',
+  'error',
+};
+
+/// Debug check of the result attributes of a custom operation (since 0.11.0): each key is
+/// `fespalier.<pkg>.<name>` and each value a `String`, `int`, `double` or `bool`. The prefix is the
+/// start's; a sink drops a key outside it. Always true, so it can sit in an `assert`.
+bool _checkCustomEnd(TelemetryEnd end) {
+  for (final MapEntry(:key, :value) in (end.attributes ?? const {}).entries) {
+    if (!RegExp(r'^fespalier\.[a-z][a-z0-9_]*\.').hasMatch(key)) {
+      throw AssertionError(
+        'TelemetryEnd attribute "$key" must start with fespalier.<pkg>.',
+      );
+    }
+    if (value is! String &&
+        value is! int &&
+        value is! double &&
+        value is! bool) {
+      throw AssertionError(
+        'TelemetryEnd attribute "$key" must be a String, int, double or bool, '
+        'got ${value.runtimeType}',
+      );
+    }
+  }
+  return true;
+}
+
+/// Debug check of a [TelemetryOp.custom] start (since 0.11.0): the name's shape, the keys' prefix
+/// and the value types. Always true, so it can sit in an `assert`.
+bool _checkCustom(TelemetryStart start) {
+  if (start.op != TelemetryOp.custom) return true;
+  final name = start.name;
+  if (name == null || !_customName.hasMatch(name)) {
+    throw AssertionError(
+      'TelemetryOp.custom needs a name like fespalier.<pkg>.<op>, got $name',
+    );
+  }
+  final pkg = name.split('.')[1];
+  if (_reservedPackages.contains(pkg)) {
+    throw AssertionError(
+      'TelemetryOp.custom name "$name": "$pkg" is one of fespalier\'s own attribute '
+      'namespaces, pick another package segment',
+    );
+  }
+  final prefix = 'fespalier.$pkg.';
+  for (final MapEntry(:key, :value) in (start.attributes ?? const {}).entries) {
+    if (!key.startsWith(prefix)) {
+      throw AssertionError(
+        'TelemetryOp.custom attribute "$key" must start with "$prefix"',
+      );
+    }
+    if (value is! String &&
+        value is! int &&
+        value is! double &&
+        value is! bool) {
+      throw AssertionError(
+        'TelemetryOp.custom attribute "$key" must be a String, int, double or bool, '
+        'got ${value.runtimeType}',
+      );
+    }
+  }
+  return true;
+}
+
 /// The source the navigation that starts next is marked with, set by [navigateFrom].
 String? _source;
 
@@ -345,8 +461,9 @@ String? _source;
 /// );
 /// ```
 ///
-/// fespalier never calls it by itself: a platform deep link and the browser's back button look
-/// the same to it as any other navigation. The bridge that knows (a notification handler) does.
+/// fespalier calls it by itself only for a platform link (since 0.11.0, `launchRouter` with
+/// `links: true`: `link`, never on the web). The browser's back button looks the same to it as
+/// any other navigation, and the bridge that knows (a notification handler) calls it.
 T navigateFrom<T>(String source, T Function() navigate) {
   assert(
     NavigationSource.values.contains(source),
@@ -371,7 +488,7 @@ String? takeNavigationSource() {
 }
 
 /// The values of [TelemetryEnd.outcome]. They are the contract values of the telemetry
-/// conventions (README, "Telemetry conventions").
+/// conventions (docs/telemetry-conventions.md, "Telemetry conventions").
 abstract final class TelemetryOutcome {
   /// navigate: the location matched a page. action, deferred: it worked.
   static const String ok = 'ok';
@@ -433,6 +550,7 @@ final class TelemetryEnd {
     this.redirected = false,
     this.depth = 0,
     this.imageStatus,
+    this.attributes,
   });
 
   /// One of the [TelemetryOutcome] values.
@@ -468,6 +586,12 @@ final class TelemetryEnd {
 
   /// image (since 0.9.0): the HTTP status of a failed load, when the error carries one.
   final int? imageStatus;
+
+  /// custom (since 0.11.0): the operation's own result attributes. Values are `String`, `int`,
+  /// `double` or `bool`; each key starts with the prefix of the start's [TelemetryStart.name]
+  /// (`fespalier.<pkg>.`). `begin`'s sibling [FespalierTelemetry.finish] asserts the shape in
+  /// debug, and a sink drops a key outside the start's prefix.
+  final Map<String, Object>? attributes;
 }
 
 /// What happened to a page.
@@ -523,6 +647,14 @@ void telemetryAttach(GoRouter router, {required String Function() base}) {
     _report(e);
   }
 }
+
+/// Whether [router] reports its navigations and page events to the installed
+/// [FespalierTelemetry] sink (since 0.12.0): true once `telemetryAttach` ran for it, which the
+/// generated `AppRoutes.attach` does only in an app generated with `telemetry: true`. An adapter
+/// whose sink needs page events calls it from `attach` and reports the missing `telemetry: true`
+/// once. It makes no watch, starts no timer and reads no provider.
+bool telemetryFollows(GoRouter router) =>
+    RouterWatch.peek(router)?.followsTelemetry ?? false;
 
 // ---------------------------------------------------------------------------------------------
 // Dispatch. Everything below is internal: not exported.

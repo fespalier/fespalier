@@ -141,6 +141,14 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_http/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_http/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier_dio/pubspec.yaml"
         },
         {
@@ -149,11 +157,99 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_cratestack/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_cratestack/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier_sentry/pubspec.yaml"
         },
         {
           "type": "generic",
           "path": "packages/fespalier_sentry/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_tolgee/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_tolgee/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_forms/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_forms/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_maps/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_maps/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_download/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_download/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_download_background/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_download_background/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_push/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_push/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_biometrics/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_biometrics/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_analytics/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_analytics/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_frb/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_frb/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_riverpod/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_riverpod/README.md"
         },
         {
           "type": "generic",
@@ -166,6 +262,34 @@
         {
           "type": "generic",
           "path": "README.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/layouts.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/guards.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/data.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/http.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/auth.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/observability.md"
+        },
+        {
+          "type": "generic",
+          "path": "docs/responsive-images.md"
         },
         {
           "type": "generic",

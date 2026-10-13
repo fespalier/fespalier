@@ -1,6 +1,6 @@
 # `route.dart`: case, trailing slashes, localized paths, `nest`, `linkable`, `remount`, `deferred` and `freshness`
 
-As of v0.4.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0, `freshness` since 0.8.1).
+As of v0.13.0 (`linkable` since 0.5.0, `remount` since 0.6.0, `deferred` since 0.7.0, `freshness` since 0.8.1).
 A `route.dart` holds up to seven declarations, and `fsp` reads them **from the source**; it never imports or runs the file, so
 each must be a literal:
 
@@ -171,6 +171,9 @@ exact tag wins over its language. A level with no spelling for the locale keeps
 its canonical one, each level on its own. Every route has `locationFor` (a route
 with no localized segment answers `location`), and query parameters are kept.
 There is **no global locale** on purpose: the app owns its locale and passes it.
+Since 0.10.0 `fespalier_tolgee` is one way to own it: its `TranslationScope` takes the locale from the URL (a `$lang`
+segment or these spellings), `context.routeLocale` reads it, and `relocate(uri, to: 'de', routes: AppManifest.all, segment: 0)`
+respells the current location for a language menu ([`fespalier-i18n`](../../fespalier-i18n/references/locales-and-the-url.md)).
 To get it everywhere, wrap it once:
 `extension on TypedLocation { void goHere(BuildContext c) => go(c, locale: currentLocaleTag()); }`.
 
@@ -396,6 +399,11 @@ effect on routing, `fsp gen` or the manifest.
   one-segment path through the wildcard Android and iOS get for it, `/admin` included; Android has
   no way to exclude a path, so use a more specific tree (or `linkable = false` on the `$slug` folder
   too).
+- `fespalier: links: paths:` (since 0.11.0) lists what the platforms open **instead of** the route-derived entries; a
+  linkable route no entry covers is a warning from `fsp links` that suggests the entry or `const linkable = false;`.
+- `fespalier: links: android_manifest:` and `ios_entitlements:` (since 0.11.0) make `fsp links` edit
+  `AndroidManifest.xml` and the entitlements itself instead of leaving them to paste
+  (`fespalier`, `references/cli-and-config.md`).
 - If nothing is linkable, `fsp links` fails with ``no route can be linked: the app has no page, or
 every folder says `const linkable = false;` ``.
 

@@ -1,6 +1,6 @@
 # The root navigator: `navigator.dart` and `present.dart`
 
-As of v0.4.0. A route's **URL** and the **navigator it renders on** are two
+As of v0.13.0. A route's **URL** and the **navigator it renders on** are two
 decisions. A tab layout puts every route in its folder on a tab's own navigator,
 under the navigation bar. These two files put a route on the **root** navigator
 (above every layout and tab bar) without moving its URL.

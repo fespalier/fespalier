@@ -1,0 +1,82 @@
+import 'dart:io';
+import 'dart:isolate';
+
+import 'package:crypto/crypto.dart' as crypto;
+
+import 'transfer_files.dart';
+
+/// The `dart:io` store.
+TransferFiles defaultTransferFiles() => const _IoFiles();
+
+final class _IoFiles implements TransferFiles {
+  const _IoFiles();
+
+  @override
+  bool get isSupported => true;
+
+  @override
+  Future<int?> length(String path) async {
+    final file = File(path);
+    return await file.exists() ? file.length() : null;
+  }
+
+  @override
+  Future<String?> readText(String path) async {
+    final file = File(path);
+    return await file.exists() ? file.readAsString() : null;
+  }
+
+  @override
+  Future<void> writeText(String path, String text) async {
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    await file.writeAsString(text, flush: true);
+  }
+
+  @override
+  Future<TransferSink> open(String path, {required bool append}) async {
+    final file = File(path);
+    await file.parent.create(recursive: true);
+    final handle = await file.open(
+      mode: append ? FileMode.append : FileMode.write,
+    );
+    return _IoSink(handle);
+  }
+
+  @override
+  Future<void> rename(String from, String to) async {
+    await File(from).rename(to);
+  }
+
+  @override
+  Future<void> delete(String path) async {
+    final file = File(path);
+    if (await file.exists()) await file.delete();
+  }
+
+  @override
+  Future<String> sha256(String path) async {
+    // In another isolate: hashing a large archive must not take frames from the app.
+    return Isolate.run(() async {
+      final digest = await crypto.sha256.bind(File(path).openRead()).first;
+      return digest.toString();
+    });
+  }
+}
+
+final class _IoSink implements TransferSink {
+  _IoSink(this._file);
+
+  final RandomAccessFile _file;
+
+  @override
+  Future<void> add(List<int> chunk) async {
+    await _file.writeFrom(chunk);
+  }
+
+  @override
+  Future<void> close() async {
+    await _file.flush();
+    await _file.close();
+  }
+}

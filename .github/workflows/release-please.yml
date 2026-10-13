@@ -63,7 +63,7 @@ name: release-please
 # `simple` writes `CHANGELOG.md` and, per `release-please-config.json`'s
 # `extra-files`, the annotated version lines in five files: cli/Cargo.toml,
 # packages/fespalier/pubspec.yaml, the `ref:` that `fsp init` prints
-# (cli/src/init.rs), and the install snippets of the two READMEs. It also
+# (cli/src/init.rs), and the install snippets of the READMEs and the docs pages. It also
 # tries `version.txt` with `createIfMissing: false`, so with no such file
 # that update is skipped.
 #
@@ -90,7 +90,7 @@ name: release-please
 # ---------------------------------------------------------------------------
 #   - `cli/Cargo.lock`: generated; the lockfile-sync steps below refresh it.
 #   - `editors/vscode` and `editors/intellij`: the plugins version on their
-#     own (README "Releasing") and are published by hand to their
+#     own (docs/releasing.md, "Releasing") and are published by hand to their
 #     marketplaces.
 #   - `examples/*`: they depend on the package by path.
 #   - `packages/fespalier/lib/src/release_checksums.dart`: written by the

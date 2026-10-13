@@ -441,8 +441,17 @@ is in [`fespalier-guards`](../../fespalier-guards/references/auth-dpop.md).
 ## A form and its pending state (since 0.8.1)
 
 A form's save is held on a `Completer` and the test pumps by frames: no timer, no `runAsync`.
-The page and its `action.dart` are in `fespalier-data`, `references/forms-and-optimistic.md`,
-which has this test as a compiling sample.
+The page and its `action.dart` are in `fespalier-data`, `references/forms.md` (the form is the
+`fespalier_forms` package since 0.11.0), which has this test as a compiling sample.
+`package:fespalier_forms/testing.dart` has `isFieldErrors(fields, message:)`, a matcher for the
+`FieldErrors` an action throws: `throwsA(isFieldErrors({'nickname': 'Taken'}))`.
+A form's draft (since 0.11.0) is tested with a shared `MemoryDataStorage` as `formDraftStorage`, or with
+`seedFormDraft(container, id:, key:, shape:, fields:)` and `readFormDraft(...)` from the same library (the `id` and
+`shape` are the strings in `app.g.dart`); `tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused)`
+writes the draft, and `resumed` has to follow before the next `pump`.
+A form's leave question (since 0.11.0) is answered with `LeavePrompts.answer(LeaveChoice.discard)` (or `.stay`,
+`.keep`) in `overrides`, which skips the sheet; to test the sheet, change a field, navigate away and tap "Keep editing",
+"Discard" or "Keep as draft" (`examples/features/test/leave_nickname_test.dart`).
 
 ```dart
 final api = ProfileApi()..gate = Completer<void>();           // the fake backend holds the save

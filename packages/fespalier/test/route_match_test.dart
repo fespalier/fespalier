@@ -2,6 +2,7 @@
 // and the PrefetchHandle that prefetch returns.
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart' show TestRouteScope;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -103,10 +104,10 @@ final observed = <RouteMatcher>[
         observe: (s, match) {
           final p = (id: Segment.asInt(s, 'id'));
           return [
-            RouteHooks('observe.dart', onEnter: (_) {}),
+            RouteHooks('observe.dart', onEnter: (_, _) {}),
             RouteHooks(
               'products/\$id/observe.dart',
-              onEnter: (_) => seen.add('${p.id} ${match.route.location}'),
+              onEnter: (_, _) => seen.add('${p.id} ${match.route.location}'),
             ),
           ];
         },
@@ -146,7 +147,10 @@ void main() {
       final h = hooks('/products/42').last.onEnter!;
       final container = ProviderContainer();
       addTearDown(container.dispose);
-      container.listen(Provider.autoDispose<void>(h), (_, _) {});
+      container.listen(
+        Provider.autoDispose<void>((ref) => h(ref, TestRouteScope(container))),
+        (_, _) {},
+      );
       expect(seen, ['42 /products/42']);
     });
 

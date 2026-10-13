@@ -507,9 +507,9 @@ fn the_generated_file_registers_and_attaches_only_under_the_const() {
             "{name}"
         );
         assert!(
-            code.contains("    final router = GoRouter(\n")
+            code.contains("      final router = GoRouter(\n")
                 && code.contains(
-                    "    if (kFespalierDevTools) devToolsAttach(router);\n    return router;\n"
+                    "      if (kFespalierDevTools) devToolsAttach(router);\n      return router;\n"
                 ),
             "{name}"
         );

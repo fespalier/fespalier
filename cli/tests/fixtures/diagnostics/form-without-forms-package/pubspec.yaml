@@ -1,0 +1,3 @@
+name: demo
+dependencies:
+  riverpod: ^3.0.0

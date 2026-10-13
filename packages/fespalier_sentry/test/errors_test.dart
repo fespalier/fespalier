@@ -248,6 +248,53 @@ void main() {
       ]);
     });
 
+    testWidgets('a custom operation that fails is no event by default: a '
+        'breadcrumb with the class and not the text', (tester) async {
+      final rig = Rig();
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.custom, name: 'fespalier.push.open'),
+      );
+      FespalierTelemetry.finish(
+        token,
+        TelemetryEnd(
+          TelemetryOutcome.error,
+          isAsync: true,
+          error: StateError('push token abc123 refused'),
+        ),
+      );
+      expect(await rig.sent(tester), isEmpty);
+      expect(rig.sentry.breadcrumbs, [
+        'fespalier.custom custom fespalier.push.open StateError',
+      ]);
+      expect(rig.sentry.breadcrumbs.join(), isNot(contains('abc123')));
+    });
+
+    testWidgets('a custom operation an app opts into is an event tagged '
+        'with its name and grouped by it', (tester) async {
+      final rig = Rig(capture: (error, start) => true);
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.custom, name: 'fespalier.push.open'),
+      );
+      FespalierTelemetry.finish(
+        token,
+        TelemetryEnd(
+          TelemetryOutcome.error,
+          isAsync: true,
+          error: StateError('push token abc123 refused'),
+        ),
+      );
+      final event = events(await rig.sent(tester)).single;
+      expect(
+        map(event['tags'])['fespalier.custom.name'],
+        'fespalier.push.open',
+      );
+      expect(
+        map(map(event['contexts'])['fespalier'])['fespalier.custom.name'],
+        'fespalier.push.open',
+      );
+      expect(event['fingerprint'], ['{{ default }}', 'fespalier.push.open']);
+    });
+
     testWidgets('an image that fails has no error object: a breadcrumb with '
         'its status', (tester) async {
       final rig = Rig();

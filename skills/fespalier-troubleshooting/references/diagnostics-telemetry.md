@@ -4,8 +4,8 @@ As of 0.8.1 (`cli/src/telemetry_stack.rs` for the command, `cli/templates/teleme
 importer). Messages are quoted as they are printed: the `fsp telemetry` ones from `fsp` (to stderr, exit 1), the
 `fespalier:` ones from the `dashboards` container (`docker compose logs dashboards` in the stack folder, which is
 `~/.fespalier/telemetry` unless `--dir` or `FSP_TELEMETRY_DIR` says otherwise), and the two OpenObserve lines from
-OpenObserve itself. The user documentation is the README section
-[Dashboards on your computer](https://github.com/fespalier/fespalier#dashboards-on-your-computer-fsp-telemetry);
+OpenObserve itself. The user documentation is the docs page
+[Dashboards on your computer](https://github.com/fespalier/fespalier/blob/main/docs/telemetry-dashboards.md);
 the use is in `fespalier-testing`, `references/observability.md`.
 
 ## `fsp telemetry` says no
@@ -34,9 +34,9 @@ the use is in `fespalier-testing`, `references/observability.md`.
 folder up or from `--project`, and prints this to stderr **after** the import succeeds and **before** the
 `✓ telemetry stack running` summary. The exit code stays 0:
 
-| Message                                                                                                                                               | Cause and fix                                                                                                                                                                                                                                                                                                                           |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, "Telemetry")`` | The project's `fespalier:` section has `telemetry` off (its default), so the generated file passes no call sites and the dashboards stay empty. Set `telemetry: true`, run `fsp gen`, and install `FespalierOtel` in the app (`fespalier-observability`). Outside a project, or in one whose pubspec does not load, nothing is printed. |
+| Message                                                                                                                                                              | Cause and fix                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, "Telemetry")`` | The project's `fespalier:` section has `telemetry` off (its default), so the generated file passes no call sites and the dashboards stay empty. Set `telemetry: true`, run `fsp gen`, and install `FespalierOtel` in the app (`fespalier-observability`). Outside a project, or in one whose pubspec does not load, nothing is printed. |
 
 ## The importer (`docker compose logs dashboards`)
 
@@ -73,11 +73,11 @@ does not resolve>).` and `fsp telemetry` the "dashboards were not imported" line
 
 `report.py` prints its lines to stdout, and these to the same place (exit codes in brackets):
 
-| Line                                                                                                                               | Meaning and fix                                                                                                  |
-| ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `no fespalier spans in the last hour: is the app running, with telemetry: true and FespalierOtel installed? (README, "Telemetry")` | [0] No app sent a fespalier span in the last hour. The checks of the "dashboards are empty" symptom below apply. |
-| `fespalier: the report's query failed: HTTP {status}: {body}`                                                                      | [1] OpenObserve answered a query with an error; the body says why.                                               |
-| `OpenObserve did not answer at {url} within 5s ({last error}).`                                                                    | [1] OpenObserve is down or restarting (see the importer table).                                                  |
+| Line                                                                                                                                              | Meaning and fix                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `no fespalier spans in the last hour: is the app running, with telemetry: true and FespalierOtel installed? (docs/observability.md, "Telemetry")` | [0] No app sent a fespalier span in the last hour. The checks of the "dashboards are empty" symptom below apply. |
+| `fespalier: the report's query failed: HTTP {status}: {body}`                                                                                     | [1] OpenObserve answered a query with an error; the body says why.                                               |
+| `OpenObserve did not answer at {url} within 5s ({last error}).`                                                                                   | [1] OpenObserve is down or restarting (see the importer table).                                                  |
 
 ## Symptoms
 

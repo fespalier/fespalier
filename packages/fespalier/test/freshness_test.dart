@@ -496,6 +496,41 @@ void main() {
     });
   });
 
+  group('appShowSignal', () {
+    testWidgets(
+      'fires when the app is shown again from hidden, not on inactive and back',
+      (tester) async {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
+        final fired = <int>[];
+        container.listen(appShowSignal, (_, next) => fired.add(next));
+        final binding = tester.binding;
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        expect(fired, isEmpty);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        expect(fired, isEmpty);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        expect(fired, [1]);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        expect(fired, [1]);
+      },
+    );
+
+    testWidgets('its listener goes with the provider', (tester) async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final keep = container.listen(appShowSignal, (_, _) {});
+      expect(container.exists(appShowSignal), isTrue);
+      keep.close();
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(container.exists(appShowSignal), isFalse);
+    });
+  });
+
   group('reconnect', () {
     testWidgets('follows the same rule as resume', (tester) async {
       final loads = Loads();

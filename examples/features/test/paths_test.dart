@@ -12,6 +12,12 @@ Future<void> boot(WidgetTester tester, String location) async {
       // nesting both gives Material pages and error screens on either.
       child: MaterialApp(
         home: mui.MaterialApp.router(
+          // The inner app's own localizations replace flutter's, which Material widgets such as
+          // a TextField look for.
+          localizationsDelegates: const [
+            DefaultMaterialLocalizations.delegate,
+            DefaultWidgetsLocalizations.delegate,
+          ],
           routerConfig: AppRoutes.router(initialLocation: location),
         ),
       ),

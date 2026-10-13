@@ -9,12 +9,19 @@ use crate::config::{MainMode, Pubspec};
 use crate::scan::FileStyle;
 use crate::templates;
 
-const STARTERS: [&str; 5] = ["layout", "page", "not_found", "transition", "app"];
+pub const STARTERS: [&str; 5] = ["layout", "page", "not_found", "transition", "app"];
 
 /// What the starter templates are rendered with.
 #[derive(serde::Serialize)]
 struct Starter<'a> {
     package: &'a str,
+}
+
+/// The text of the starter file `kind` (one of [`STARTERS`]) for the package `package`: what
+/// `fsp init` writes, and `fsp create` writes the same.
+#[must_use]
+pub fn starter(kind: &str, package: &str) -> String {
+    templates::render(&format!("init/{kind}.dart"), Starter { package })
 }
 
 pub fn run(project: &Path) -> Result<()> {
@@ -53,11 +60,7 @@ pub fn run(project: &Path) -> Result<()> {
             eprintln!("  skip  {shown} (exists)");
             continue;
         }
-        let starter = Starter { package: &package };
-        fs::write(
-            &path,
-            templates::render(&format!("init/{kind}.dart"), starter),
-        )?;
+        fs::write(&path, starter(kind, &package))?;
         eprintln!("  new   {shown}");
     }
 
@@ -74,7 +77,7 @@ pub fn run(project: &Path) -> Result<()> {
     if !pubspec.has_dependency {
         next("Add the dependency to pubspec.yaml, then run `flutter pub get`:");
         eprintln!(
-            "\n   dependencies:\n     fespalier:\n       git:\n         url: https://github.com/fespalier/fespalier\n         path: packages/fespalier\n         ref: v0.9.0" // x-release-please-version
+            "\n   dependencies:\n     fespalier:\n       git:\n         url: https://github.com/fespalier/fespalier\n         path: packages/fespalier\n         ref: v0.15.0" // x-release-please-version
         );
     }
     if cfg.main == MainMode::Manual {
@@ -96,7 +99,7 @@ pub fn run(project: &Path) -> Result<()> {
             "\n   import 'package:{package}/{main_in_lib}';\n\n   Future<void> main() => AppMain.run();"
         );
         eprintln!(
-            "\n   The app around the router (theme, title) is {dir}/app.dart; work to do before it starts goes\n   in {dir}/startup.dart (see the README, \"main(): app.dart, startup.dart and splash.dart\").\n   Already have a GoRouter? Mount the tree inside it instead, and set `main: manual`:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])",
+            "\n   The app around the router (theme, title) is {dir}/app.dart; work to do before it starts goes\n   in {dir}/startup.dart (see docs/app-startup.md).\n   Already have a GoRouter? Mount the tree inside it instead, and set `main: manual`:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])",
             dir = cfg.app_dir
         );
     }
@@ -121,7 +124,7 @@ fn tasks_example(project: &Path) -> Result<()> {
         eprintln!("  skip  pubspec.yaml tasks example (exists)");
     } else if text.lines().any(|l| l.starts_with("fespalier:")) {
         eprintln!(
-            "  skip  pubspec.yaml tasks example (fespalier: is already there; README, \"Tasks: commands around `flutter run`\")"
+            "  skip  pubspec.yaml tasks example (fespalier: is already there; docs/cli.md, \"Tasks: commands around `flutter run`\")"
         );
     } else {
         if !text.ends_with('\n') {

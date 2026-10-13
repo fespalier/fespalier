@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use minijinja::Environment;
 use serde::Serialize;
 
-const TEMPLATES: [(&str, &str); 22] = [
+const TEMPLATES: [(&str, &str); 68] = [
     ("app.g.dart", include_str!("../templates/app.g.dart.jinja")),
     (
         "main.g.dart",
@@ -69,6 +69,10 @@ const TEMPLATES: [(&str, &str); 22] = [
         include_str!("../templates/new/observe.dart.jinja"),
     ),
     (
+        "new/leave.dart",
+        include_str!("../templates/new/leave.dart.jinja"),
+    ),
+    (
         "init/layout.dart",
         include_str!("../templates/init/layout.dart.jinja"),
     ),
@@ -91,6 +95,186 @@ const TEMPLATES: [(&str, &str); 22] = [
     (
         "init/pubspec_tasks.yaml",
         include_str!("../templates/init/pubspec_tasks.yaml.jinja"),
+    ),
+    (
+        "create/pubspec.yaml",
+        include_str!("../templates/create/pubspec.yaml.jinja"),
+    ),
+    (
+        "create/main.dart",
+        include_str!("../templates/create/main.dart.jinja"),
+    ),
+    (
+        "create/home.dart",
+        include_str!("../templates/create/home.dart.jinja"),
+    ),
+    (
+        "create/about.dart",
+        include_str!("../templates/create/about.dart.jinja"),
+    ),
+    (
+        "create/storage_test.dart",
+        include_str!("../templates/create/storage_test.dart.jinja"),
+    ),
+    (
+        "create/connectivity_test.dart",
+        include_str!("../templates/create/connectivity_test.dart.jinja"),
+    ),
+    (
+        "create/devtools_options.yaml",
+        include_str!("../templates/create/devtools_options.yaml.jinja"),
+    ),
+    (
+        "create/devtools_test.dart",
+        include_str!("../templates/create/devtools_test.dart.jinja"),
+    ),
+    (
+        "create/flags.dart",
+        include_str!("../templates/create/flags.dart.jinja"),
+    ),
+    (
+        "create/labs_guard.dart",
+        include_str!("../templates/create/labs_guard.dart.jinja"),
+    ),
+    (
+        "create/labs_page.dart",
+        include_str!("../templates/create/labs_page.dart.jinja"),
+    ),
+    (
+        "create/flags_test.dart",
+        include_str!("../templates/create/flags_test.dart.jinja"),
+    ),
+    (
+        "create/contact_action.dart",
+        include_str!("../templates/create/contact_action.dart.jinja"),
+    ),
+    (
+        "create/contact_page.dart",
+        include_str!("../templates/create/contact_page.dart.jinja"),
+    ),
+    (
+        "create/forms_test.dart",
+        include_str!("../templates/create/forms_test.dart.jinja"),
+    ),
+    (
+        "create/tabs_layout.dart",
+        include_str!("../templates/create/tabs_layout.dart.jinja"),
+    ),
+    (
+        "create/tabs_home_nav.dart",
+        include_str!("../templates/create/tabs_home_nav.dart.jinja"),
+    ),
+    (
+        "create/tabs_home_page.dart",
+        include_str!("../templates/create/tabs_home_page.dart.jinja"),
+    ),
+    (
+        "create/tabs_about_nav.dart",
+        include_str!("../templates/create/tabs_about_nav.dart.jinja"),
+    ),
+    (
+        "create/tabs_about_page.dart",
+        include_str!("../templates/create/tabs_about_page.dart.jinja"),
+    ),
+    (
+        "create/adaptive_test.dart",
+        include_str!("../templates/create/adaptive_test.dart.jinja"),
+    ),
+    (
+        "create/otel_test.dart",
+        include_str!("../templates/create/otel_test.dart.jinja"),
+    ),
+    (
+        "create/sentry_test.dart",
+        include_str!("../templates/create/sentry_test.dart.jinja"),
+    ),
+    (
+        "create/auth_setup.dart",
+        include_str!("../templates/create/auth_setup.dart.jinja"),
+    ),
+    (
+        "create/auth_guard.dart",
+        include_str!("../templates/create/auth_guard.dart.jinja"),
+    ),
+    (
+        "create/account_page.dart",
+        include_str!("../templates/create/account_page.dart.jinja"),
+    ),
+    (
+        "create/sign_in_action.dart",
+        include_str!("../templates/create/sign_in_action.dart.jinja"),
+    ),
+    (
+        "create/sign_in_guard.dart",
+        include_str!("../templates/create/sign_in_guard.dart.jinja"),
+    ),
+    (
+        "create/sign_in_page.dart",
+        include_str!("../templates/create/sign_in_page.dart.jinja"),
+    ),
+    (
+        "create/auth_test.dart",
+        include_str!("../templates/create/auth_test.dart.jinja"),
+    ),
+    (
+        "create/i18n_app.dart",
+        include_str!("../templates/create/i18n_app.dart.jinja"),
+    ),
+    (
+        "create/i18n_en.arb",
+        include_str!("../templates/create/i18n_en.arb.jinja"),
+    ),
+    (
+        "create/i18n_fr.arb",
+        include_str!("../templates/create/i18n_fr.arb.jinja"),
+    ),
+    (
+        "create/translations_page.dart",
+        include_str!("../templates/create/translations_page.dart.jinja"),
+    ),
+    (
+        "create/i18n_test.dart",
+        include_str!("../templates/create/i18n_test.dart.jinja"),
+    ),
+    (
+        "create/images.dart",
+        include_str!("../templates/create/images.dart.jinja"),
+    ),
+    (
+        "create/photo_page.dart",
+        include_str!("../templates/create/photo_page.dart.jinja"),
+    ),
+    (
+        "create/image_test.dart",
+        include_str!("../templates/create/image_test.dart.jinja"),
+    ),
+    (
+        "create/api.dart",
+        include_str!("../templates/create/api.dart.jinja"),
+    ),
+    (
+        "create/headlines_data.dart",
+        include_str!("../templates/create/headlines_data.dart.jinja"),
+    ),
+    (
+        "create/headlines_page.dart",
+        include_str!("../templates/create/headlines_page.dart.jinja"),
+    ),
+    (
+        "create/http_test.dart",
+        include_str!("../templates/create/http_test.dart.jinja"),
+    ),
+    (
+        "create/downloads.dart",
+        include_str!("../templates/create/downloads.dart.jinja"),
+    ),
+    (
+        "create/downloads_page.dart",
+        include_str!("../templates/create/downloads_page.dart.jinja"),
+    ),
+    (
+        "create/download_test.dart",
+        include_str!("../templates/create/download_test.dart.jinja"),
     ),
 ];
 

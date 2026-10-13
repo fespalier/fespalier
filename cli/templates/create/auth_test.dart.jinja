@@ -1,0 +1,64 @@
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_auth/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/auth_setup.dart';
+
+void main() {
+  testWidgets('signed out, /account goes to sign-in with where it was going', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/account'),
+      overrides: fakeAuth(),
+    );
+    expect(currentLocation(tester), '/sign-in?from=%2Faccount');
+    expect(find.text('Sign in to see /account'), findsOneWidget);
+  });
+
+  testWidgets('signed in, /account opens, and signing out leaves it', (
+    tester,
+  ) async {
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/account'),
+      overrides: fakeAuth(
+        signedInAs: const AuthUser(id: 'ada-id', name: 'Ada'),
+      ),
+    );
+    expect(currentLocation(tester), '/account');
+    expect(find.text('Signed in as Ada'), findsOneWidget);
+
+    await tester.tap(find.text('Sign out'));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/sign-in?from=%2Faccount');
+  });
+
+  testWidgets('until you connect a provider, signing in says so', (
+    tester,
+  ) async {
+    // The app's own backend, on an in-memory token store: nothing is stored, nothing is asked.
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/sign-in'),
+      overrides: [
+        authConfig.overrideWithValue(
+          AuthConfig(backend: authSetup().backend, store: MemoryTokenStore()),
+        ),
+        authInitialState.overrideWithValue(const SignedOut()),
+      ],
+    );
+    await tester.enterText(find.widgetWithText(TextField, 'User name'), 'ada');
+    await tester.enterText(find.widgetWithText(TextField, 'Password'), 'pw');
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign in'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('connect your identity provider: docs/auth.md'),
+      findsOneWidget,
+    );
+    expect(currentLocation(tester), '/sign-in');
+  });
+}

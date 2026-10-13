@@ -1,0 +1,44 @@
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_forms/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/app/contact/action.dart';
+
+void main() {
+  test('an empty contact is refused with an error per field', () {
+    expect(
+      validate(form()),
+      isFieldErrors({'name': 'Enter your name', 'message': 'Write a message'}),
+    );
+    expect(validate((name: 'Ann', message: 'Hi')), isFieldErrors({}));
+  });
+
+  testWidgets('submitting the empty form shows the errors under the fields', (
+    tester,
+  ) async {
+    await pumpRouter(tester, AppRoutes.router(initialLocation: '/contact'));
+    expect(find.text('Enter your name'), findsNothing);
+
+    await tester.tap(find.text('Send'));
+    await tester.pump();
+    expect(find.text('Enter your name'), findsOneWidget);
+    expect(find.text('Write a message'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Ann');
+    await tester.pump();
+    expect(find.text('Enter your name'), findsNothing);
+  });
+
+  testWidgets('a valid form runs the action and shows no error', (
+    tester,
+  ) async {
+    await pumpRouter(tester, AppRoutes.router(initialLocation: '/contact'));
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Ann');
+    await tester.enterText(find.widgetWithText(TextField, 'Message'), 'Hi');
+    await tester.tap(find.text('Send'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter your name'), findsNothing);
+    expect(find.text('Write a message'), findsNothing);
+  });
+}

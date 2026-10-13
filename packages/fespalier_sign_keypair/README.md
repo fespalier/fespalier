@@ -6,8 +6,8 @@ Device-bound sessions for [`fespalier_auth`](../fespalier_auth) (since 0.9.0): *
 [flutter-sign-keypair](https://github.com/vaam-apps/flutter-sign-keypair). The server binds the access and refresh
 tokens to the key (`cnf.jkt`), so a token copied off the device is useless without the device.
 
-The main README documents it in context:
-[Device-bound tokens](https://github.com/fespalier/fespalier#device-bound-tokens-dpop-with-fespalier_sign_keypair).
+The docs cover it in context:
+[Device-bound tokens](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair).
 This page is the short version.
 
 ## Install
@@ -23,17 +23,17 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0
+      ref: v0.15.0
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.9.0
+      ref: v0.15.0
   fespalier_sign_keypair:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sign_keypair
-      ref: v0.9.0
+      ref: v0.15.0
 ```
 
 <!-- x-release-please-end -->

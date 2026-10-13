@@ -16,6 +16,25 @@
   /// The form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for `build` in a `HookConsumerWidget`: a typed field per field of its input, starting from `{{ a.form.function }}({{ "data" if a.form.has_data }})`; `onSubmit` checks the fields{{ " and `" ~ a.form.validate ~ "()`" if a.form.validate }}, then runs it, and is null while it runs. Since 0.8.1.
   static final {{ a.form.hook }} = (WidgetRef ref, {{ a.form.params }}) => useActionForm(ref, {{ a.provider }}{{ a.key }}, {{ a.form.args }});
 {%- endif %}
+{%- if a.flow %}
+
+
+  /// What the form of `{{ a.name }}()` ({{ a.file }}) is made of: its steps, the fields each asks for, and how they start. Since 0.11.0.
+  static final {{ a.flow.spec }} = FlowSpec(
+{% for arg in a.flow.spec_args %}
+    {{ arg | indent(4) }},
+{% endfor %}
+  );
+
+  /// The multi-page form of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}, for the `build` of the section's layout, in a `HookConsumerWidget`: a typed field per field of its input, shared by every step; `next` checks the fields of the step on screen and goes to the next one, `submit` runs the action. A draft is kept by default, with the steps done. Since 0.11.0.
+  static final {{ a.flow.hook }} = (WidgetRef ref, {{ a.flow.params }}) => {{ a.flow.spec }}.use(ref, {{ a.provider }}{{ a.key }}, {{ a.flow.use_args }});
+
+  /// The flow of the layout above [context], from a step page. Since 0.11.0.
+  static final {{ a.flow.of }} = (BuildContext context) => {{ a.flow.spec }}.of(context);
+
+  /// What a guard in this folder returns to resume the flow: where the first step not done is, when the location asked for is a step past it, else null. Since 0.11.0.
+  static GuardResult {{ a.flow.resume }}(Ref ref, {{ a.flow.resume_params }}) => {{ a.flow.spec }}.resume(ref, {{ a.flow.resume_args }});
+{%- endif %}
 {%- endmacro %}
 {% macro trace_data(p) -%}
 {% if telemetry -%}
@@ -59,6 +78,13 @@ guardWithParams(
   () => {{ seg_fn }}(state),
   (v) => {{ call }},
 )
+{%- endmacro %}
+{% macro leave_scope(page, flow_step) -%}
+{% if flow_step -%}
+leaveScope(state, flowStep({{ page }}))
+{%- else -%}
+leaveScope(state, {{ page }})
+{%- endif %}
 {%- endmacro %}
 {% macro scroll_memory(page) -%}
 RouteScrollMemory(
@@ -104,6 +130,15 @@ StatefulShellRoute.indexedStack(
 {% endif %}
 {% if r.root %}
   parentNavigatorKey: rootNavigatorKey,
+{% endif %}
+{% if r.redirects | length == 1 %}
+  redirect: (context, state) => {{ redirect_call(r.redirects[0]) | indent(2) }},
+{% elif r.redirects %}
+  redirect: (context, state) => firstRedirect([
+{% for c in r.redirects %}
+    () => {{ redirect_call(c) | indent(4) }},
+{% endfor %}
+  ]),
 {% endif %}
   pageBuilder: (context, state, navigationShell) => namedPage({{ r.layout.page_name }}, () => {{ layout_page(r.layout) | indent(2) }}),
   branches: [
@@ -157,8 +192,12 @@ GoRoute(
 {% endfor %}
   ]),
 {% endif %}
+{% if r.leave %}
+  onExit: (context, state) => {{ r.leave | indent(2) }},
+{% endif %}
 {% if r.page %}
-{% set page = with_segments(r.seg_fn, view(r), r.not_found) if r.seg_fn else view(r) %}
+{% set body = leave_scope(view(r), r.flow_step) if (r.leave or r.flow_step) else view(r) %}
+{% set page = with_segments(r.seg_fn, body, r.not_found) if r.seg_fn else body %}
 {% if scroll_restoration %}
 {% set page = scroll_memory(page) %}
 {% endif %}
@@ -194,11 +233,24 @@ GoRoute(
 //   {{ row }}
 {% endfor %}
 
+{% if adapters %}
+import 'dart:async';
+
+{% endif %}
 import 'package:fespalier/fespalier.dart';
 {% if menu %}
 import 'package:fespalier/nav.dart';
 {% endif %}
+{% if forms %}
+import 'package:fespalier_forms/fespalier_forms.dart';
+{% endif %}
 import 'package:flutter/widgets.dart';
+{% if adapters %}
+import 'package:fespalier/startup.dart' show FespalierAdapters, Override;
+{% for a in adapters.imports %}
+import 'package:{{ a.name }}/fespalier_adapter.dart' as {{ a.alias }};
+{% endfor %}
+{% endif %}
 
 {% for i in imports %}
 import '{{ i.path }}'{{ " deferred" if i.deferred }} as _i{{ loop.index0 }};
@@ -207,6 +259,35 @@ import '{{ i.path }}'{{ " deferred" if i.deferred }} as _i{{ loop.index0 }};
 {{ i }}
 {% endfor %}
 
+{% if adapters %}
+/// The packages under `fespalier: adapters:` in pubspec.yaml, in that order (since 0.11.0). The
+/// generated main() (lib/app.main.g.dart) calls these; with `main: manual`, your main() does.
+abstract final class AppAdapters {
+  static final _all = FespalierAdapters([{% for a in adapters.imports %}{{ a.alias }}.adapter{{ ", " if not loop.last }}{% endfor %}]);
+
+  /// Runs [body] inside every adapter's zone, the first one's outermost.
+  static Future<void> zone(Future<void> Function() body) => _all.zone(body);
+
+  /// Each adapter's beforeRun(), in order; null when none has anything to wait for.
+  static Future<void>? beforeRun() => _all.beforeRun();
+
+  /// Where the app was opened from: the first adapter's answer (never asked on the web), since 0.11.0.
+  static FutureOr<InboundLaunch?> launch() => _all.launch();
+
+  /// The ProviderScope's overrides, before startup()'s own.
+  static List<Override> overrides() => _all.overrides();
+
+  /// The ProviderScope's observers.
+  static List<ProviderObserver> providerObservers() => _all.providerObservers();
+
+  /// The router's observers (new ones on each call).
+  static List<NavigatorObserver> routerObservers() => _all.routerObservers();
+
+  /// Wraps the root widget, the first adapter's outermost.
+  static Widget wrap(Widget root) => _all.wrap(root);
+}
+
+{% endif %}
 /// The file tree under {{ app_dir }}/, ready to mount.
 abstract final class AppRoutes {
   static String _base = '/';
@@ -226,8 +307,13 @@ abstract final class AppRoutes {
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
   /// is the root navigator's key, when the app has one to supply.
+  ///
+  /// [launch] (since 0.11.0) is where the app was opened from{{ " (`AppAdapters.launch()`)" if adapters }}: it wins over
+  /// the platform's initial route and marks the first navigation with its source. It is not
+  /// used on the web, where the address bar is the launch.
   static GoRouter router({
     String initialLocation = '/',
+    InboundLaunch? launch,
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
     GlobalKey<NavigatorState>? navigatorKey,
@@ -235,38 +321,70 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = {{ "true" if push_updates_url else "false" }};
-    final router = GoRouter(
-      initialLocation: initialLocation,
-      observers: observers,
-      restorationScopeId: restorationScopeId,
+    return launchRouter(launch, (launch) {
+      final router = GoRouter(
+        initialLocation: launch?.location ?? initialLocation,
+        initialExtra: launch?.extra,
+        overridePlatformDefaultLocation: launch != null,
+        observers: observers,
+        restorationScopeId: restorationScopeId,
 {% if extra_codec %}
-      // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
-      extraCodec: {{ extra_codec }},
+        // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
+        extraCodec: {{ extra_codec }},
 {% endif %}
-      navigatorKey: rootNavigatorKey,
-      routes: routes,
-      errorBuilder: (context, state) => notFound(state.uri),
-    );
+{% if adapters %}
+        onEnter: onEnter,
+{% endif %}
+        navigatorKey: rootNavigatorKey,
+        routes: routes,
+        errorBuilder: (context, state) => notFound(state.uri),
+      );
 {% if attach %}
-    attach(router);
-    return router;
+      attach(router);
+{% else %}
+      if (kFespalierDevTools) devToolsAttach(router);
+{% endif %}
+      return router;
+    }{{ ", links: true" if links }});
   }
+{% if attach %}
 
-  /// Lets {{ "DevTools, the observe.dart hooks and telemetry" if observe and telemetry else ("DevTools and the observe.dart hooks" if observe else "DevTools and telemetry") }} follow [router]: [router] calls it, and an app that mounts the
+  /// Lets {{ attach_what }} follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
-  static void attach(GoRouter router) {
+{% if container_param %}
+  ///
+  /// With [container] (since 0.11.0){% if adapters %}, each adapter's `attach` runs once per router{% endif %}{% if observe %}{{ ", and" if adapters else "," }} the observe.dart hooks run in it{% endif %}. [router]
+  /// calls it without one; the generated main() calls it again with the app's container once
+  /// the ProviderScope exists, and an app that builds its own router or main() calls
+  /// `AppRoutes.attach(router, container)` itself.
+{% endif %}
+  static void attach(GoRouter router, [ProviderContainer? container]) {
     if (kFespalierDevTools) devToolsAttach(router);
 {% if observe %}
-    observeAttach(router, _observeAt);
+    observeAttach(router, _observeAt, container: container);
 {% endif %}
 {% if telemetry %}
     telemetryAttach(router, base: () => _base);
 {% endif %}
+{% if adapters %}
+    if (container != null) AppAdapters._all.attach(router, container);
+{% endif %}
   }
-{% else %}
-    if (kFespalierDevTools) devToolsAttach(router);
-    return router;
-  }
+{% endif %}
+{% if adapters %}
+
+  /// go_router's `onEnter` (since 0.11.0): each adapter's `onEnter`, in the pubspec's order. A
+  /// platform link reaches them with `source: NavigationSource.link`. An app with a GoRouter of
+  /// its own passes `onEnter: AppRoutes.onEnter`.
+  ///
+  /// Any `onEnter` makes go_router parse every navigation asynchronously and apply its
+  /// redirect limit to all of them.
+  static FutureOr<OnEnterResult> onEnter(
+    BuildContext context,
+    GoRouterState current,
+    GoRouterState next,
+    GoRouter router,
+  ) => AppAdapters._all.onEnter(context, current, next, router);
 {% endif %}
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
@@ -392,6 +510,16 @@ abstract final class AppRoutes {
 
 {{ manifest_body(manifest) }}
 {% endif %}
+{% for e in step_enums %}
+
+/// The steps of the form of {{ e.file }}, in order: each is a child folder of the section with a page.dart (since 0.11.0).
+enum {{ e.name }} {
+{% for s in e.steps %}
+  /// `{{ s[1] }}/page.dart`
+  {{ s[0] }}{{ "," if not loop.last else ";" }}
+{% endfor %}
+}
+{% endfor %}
 {% for r in sections %}
 
 {% if r.has_data %}

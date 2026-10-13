@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:http/http.dart' as http;
 
 import 'backend.dart';
@@ -10,8 +11,9 @@ import 'notifier.dart';
 import 'session.dart';
 import 'util.dart';
 
-/// The credentials one send of a request carried (since 0.9.0).
-final class AuthAttempt {
+/// The credentials one send of a request carried (since 0.9.0). It is an [HttpAuthorization]
+/// since 0.15.0.
+final class AuthAttempt implements HttpAuthorization {
   AuthAttempt._({
     required this.method,
     required this.uri,
@@ -23,12 +25,15 @@ final class AuthAttempt {
   });
 
   /// The HTTP method this send is for.
+  @override
   final String method;
 
   /// The URL this send is for.
+  @override
   final Uri uri;
 
   /// `Authorization`, and `DPoP` for a DPoP-bound token; empty when none was attached.
+  @override
   final Map<String, String> headers;
 
   /// The access token the headers carry; null when none was attached.
@@ -46,6 +51,7 @@ final class AuthAttempt {
   /// Whether this send is the one that follows a challenge or a refresh, so a request sent again
   /// by the authorizer: `SessionClient` marks the request (`isAuthReplay`), and
   /// `SessionInterceptor` sets `options.extra[authReplayKey]`.
+  @override
   bool get isReplay => proofRetried || refreshRetried;
 
   bool _proofRetryNext = false;
@@ -63,7 +69,10 @@ const String authReplayKey = 'fespalier.auth.replay';
 /// `SessionClient` and `SessionInterceptor` (dio) are two clients over it. A client of your own
 /// asks [authorize] before each send and [retry] after each response, and sends at most three
 /// times.
-final class Authorizer {
+///
+/// It is an [HttpCredentials] since 0.15.0, so a transfer that is not an `http.Client` can take
+/// it as it is.
+final class Authorizer implements HttpCredentials {
   Authorizer._(this._notifier, this._origins, this._proof);
 
   final AuthSessionNotifier _notifier;
@@ -72,6 +81,7 @@ final class Authorizer {
 
   /// Whether [uri]'s origin (scheme, host and port) is one of `AuthConfig.apiOrigins`. Nothing
   /// else gets a token.
+  @override
   bool covers(Uri uri) {
     if (uri.host.isEmpty) return false;
     for (final origin in _origins) {
@@ -90,17 +100,26 @@ final class Authorizer {
   ///
   /// Throws `AuthRejected` when that refresh was refused (the session is over), and
   /// `AuthUnavailable` when it could not run. Pass the [previous] attempt of the same request
-  /// when sending it again, so the retries are counted.
+  /// when sending it again, so the retries are counted; an `ArgumentError` when it is not an
+  /// attempt this package made. The result is an [AuthAttempt].
+  @override
   Future<AuthAttempt> authorize(
     String method,
     Uri uri, {
-    AuthAttempt? previous,
+    HttpAuthorization? previous,
   }) async {
+    if (previous != null && previous is! AuthAttempt) {
+      throw ArgumentError.value(
+        previous,
+        'previous',
+        'not an AuthAttempt: pass the attempt the Authorizer returned for this request',
+      );
+    }
+    final prior = previous as AuthAttempt?;
     final proofRetried =
-        previous != null && (previous.proofRetried || previous._proofRetryNext);
+        prior != null && (prior.proofRetried || prior._proofRetryNext);
     final refreshRetried =
-        previous != null &&
-        (previous.refreshRetried || previous._refreshRetryNext);
+        prior != null && (prior.refreshRetried || prior._refreshRetryNext);
     AuthAttempt unauthenticated() => AuthAttempt._(
       method: method,
       uri: uri,
@@ -156,8 +175,9 @@ final class Authorizer {
   /// token it carried, after one shared refresh (once). False when the response stands, and when
   /// the refresh was refused (the user is signed out). Throws `AuthUnavailable` when the
   /// refresh could not run.
+  @override
   Future<bool> retry(
-    AuthAttempt attempt, {
+    covariant AuthAttempt attempt, {
     required int statusCode,
     required Map<String, String> headers,
   }) async {

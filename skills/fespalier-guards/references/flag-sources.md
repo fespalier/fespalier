@@ -359,7 +359,7 @@ Future<List<Override>> startup() => startWithGrowthBook();
 OpenFeature is the common interface the vendors above are converging on, and `FlagSource` mirrors it: its static-context
 client has `getBooleanValue`, `getStringValue`, `getIntegerValue` and `getDoubleValue`, synchronously ("a resolver must use
 local state"), and a provider event, `ProviderEventType.configurationChanged`, with the keys that changed.
-**`openfeature_dart_client_sdk` is `0.0.1-beta.2`**, and a beta interface must not be fespalier's public API, so it is a
+**`openfeature_dart_client_sdk` was `0.0.1-beta.2` when this page was written and is `0.0.1` since 2026-10-05 (the sample still builds on it, re-checked 2026-10-08)**, a `0.0.x` interface that must not be fespalier's public API, so it is a
 recipe: the API may change, and fespalier will converge on it when it is stable and has Dart providers for the vendors.
 
 ```dart

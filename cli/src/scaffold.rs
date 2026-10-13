@@ -50,6 +50,9 @@ pub struct NewArgs {
     /// Write observe.dart: hooks that run when a page is entered, focused and left
     #[arg(long)]
     pub observe: bool,
+    /// Write leave.dart: asked before this page goes; true lets it go
+    #[arg(long)]
+    pub leave: bool,
 }
 
 /// What `fsp new` parses: the route flags plus `--no-page`.
@@ -81,6 +84,8 @@ struct Cx {
     pattern: String,
     /// The named parameters of observe.dart's hooks: the segments.
     params: Vec<String>,
+    /// The named parameters of leave.dart's `leave()`: the segments, then `page`.
+    leave_params: Vec<String>,
     /// nav.dart's label: `Orders` for `orders`, `Gift cards` for `gift-cards`.
     nav_label: String,
     /// `const nav = Nav(label: '...');` is longer than 80 columns: one argument per line.
@@ -236,6 +241,11 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         nav_label: nav_label(segs.last()),
         pattern: resolve::pattern(&segs),
         params: seg_cx.iter().map(|s| s.param.clone()).collect(),
+        leave_params: seg_cx
+            .iter()
+            .map(|s| s.param.clone())
+            .chain(["required PageLeave page".to_string()])
+            .collect(),
         stem,
         action_params: seg_cx
             .iter()
@@ -266,6 +276,7 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         ("transition", a.transition),
         ("nav", a.nav),
         ("observe", a.observe),
+        ("leave", a.leave),
     ];
     if !wanted.iter().any(|(_, on)| *on) {
         let why = if is_group {

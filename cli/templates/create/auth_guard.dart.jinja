@@ -1,0 +1,9 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:{{ package }}/app.g.dart';
+
+/// Guards every page in the `(signed-in)` folder: a session, or the sign-in page with where the
+/// user was going. It is synchronous (startup() read the stored session), and signing out moves
+/// the user in that frame (docs/auth.md, "Guarding signed-in routes").
+GuardResult guard(Ref ref, {required Uri uri}) =>
+    requireSignedIn(ref, uri, signIn: (from) => SignInRoute(from: from));

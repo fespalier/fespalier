@@ -69,10 +69,40 @@ fn a_const_page_stays_const_inside_the_semantics() {
     let c = ids(&[("page.dart", HOME)]);
     has(
         &c,
-        &["Semantics(identifier: 'route:/', container: true, child: const _i0.HomePage())"],
+        &[
+            "Semantics(identifier: 'route:/', container: true, explicitChildNodes: true, child: const _i0.HomePage())",
+        ],
     );
     // `Semantics` has no const constructor: only the page it wraps is const.
     lacks(&c, &["const Semantics"]);
+}
+
+#[test]
+fn every_wrapper_keeps_its_pages_text_as_separate_nodes() {
+    // `container: true` gives the identifier a node, and without `explicitChildNodes: true` that
+    // node merges every descendant with no node of its own (the plain `Text` outside a scroll
+    // view) into one label that a screen reader reads as a single block.
+    let c = ids(&[
+        ("page.dart", HOME),
+        ("a/data.dart", "Future<int> data(Ref ref) async => 1;"),
+        (
+            "a/page.dart",
+            &widget("APage", "final int n;", ", required this.n"),
+        ),
+        (
+            "products/$id/page.dart",
+            &widget("ProductPage", "final int id;", ", required this.id"),
+        ),
+    ]);
+    let wrappers = c.matches("Semantics(identifier:").count();
+    assert_eq!(wrappers, 3, "{c}");
+    assert_eq!(
+        c.matches("', container: true, explicitChildNodes: true, child: ")
+            .count(),
+        wrappers,
+        "{c}"
+    );
+    lacks(&c, &["container: false", "explicitChildNodes: false"]);
 }
 
 #[test]
@@ -84,7 +114,7 @@ fn a_page_with_segments_is_wrapped_inside_build_with_params() {
     has(
         &c,
         &[
-            "(v) => Semantics(identifier: 'route:/products/:id', container: true, child: _i0.ProductPage(id: v.id))",
+            "(v) => Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: _i0.ProductPage(id: v.id))",
         ],
     );
     lacks(&c, &["const Semantics"]);
@@ -102,7 +132,7 @@ fn a_data_page_is_wrapped_inside_data_view() {
     has(
         &c,
         &[
-            "data: (d) => Semantics(identifier: 'route:/a', container: true, child: _i1.APage(n: d))",
+            "data: (d) => Semantics(identifier: 'route:/a', container: true, explicitChildNodes: true, child: _i1.APage(n: d))",
             "loading: () => const DefaultLoading(),",
             "error: (e, st, retry) => DefaultError(error: e, retry: retry),",
         ],
@@ -150,7 +180,7 @@ fn section_views_wrap_the_semantics_not_the_reverse() {
         &c,
         &[
             "SectionView(",
-            "data: (s1) => Semantics(identifier: 'route:/shop/cart', container: true, child: _i2.CartPage(shop: s1))",
+            "data: (s1) => Semantics(identifier: 'route:/shop/cart', container: true, explicitChildNodes: true, child: _i2.CartPage(shop: s1))",
         ],
     );
     let section = c.find("SectionView(").unwrap();
@@ -175,8 +205,8 @@ fn transition_and_present_get_the_wrapped_page() {
     has(
         &c,
         &[
-            "Semantics(identifier: 'route:/', container: true, child: const _i0.HomePage())",
-            "Semantics(identifier: 'route:/buy/:id', container: true, child: _i2.BuyPage(id: v.id))",
+            "Semantics(identifier: 'route:/', container: true, explicitChildNodes: true, child: const _i0.HomePage())",
+            "Semantics(identifier: 'route:/buy/:id', container: true, explicitChildNodes: true, child: _i2.BuyPage(id: v.id))",
         ],
     );
     assert_eq!(c.matches("Semantics(identifier:").count(), 2, "{c}");
@@ -258,11 +288,11 @@ fn an_identifier_is_a_dart_literal() {
     assert_eq!(id, r"'route:/it\'s \$x'");
     assert_eq!(
         crate::emit::with_semantics(&id, "const _i0.A()".into()),
-        r"Semantics(identifier: 'route:/it\'s \$x', container: true, child: const _i0.A())"
+        r"Semantics(identifier: 'route:/it\'s \$x', container: true, explicitChildNodes: true, child: const _i0.A())"
     );
     assert_eq!(
         crate::emit::with_semantics("'route:/'", "_i0.A(n: v.n)".into()),
-        "Semantics(identifier: 'route:/', container: true, child: _i0.A(n: v.n))"
+        "Semantics(identifier: 'route:/', container: true, explicitChildNodes: true, child: _i0.A(n: v.n))"
     );
 }
 

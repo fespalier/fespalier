@@ -1,0 +1,41 @@
+name: downloads
+description: fespalier example — downloads with fespalier_download. A list of downloads with start, pause, resume, retry, cancel and remove, a detail page a notification tap opens, and one button per case a device tester needs, with fakes and widget tests.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # Downloads (since 0.15.0): the engine, the foreground HttpDownloadBackend, the durable registry
+  # and the providers. Listed under `fespalier: adapters:` below, configured in main().
+  fespalier_download:
+    path: ../../packages/fespalier_download
+  http: ^1.5.0
+  # The folders a download goes in (fespalier_download has no plugin of its own).
+  path_provider: ^2.1.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# The companions depend on fespalier by repository, as an app does; here they are all the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_http:
+    path: ../../packages/fespalier_http
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator. `adapters` makes app.g.dart call fespalier_download's
+# `fespalier_adapter.dart`: it binds the engine `main()` configured to `downloadsEngine`, opens it
+# before the first frame, and turns a tap on a download's notification into a navigation.
+fespalier:
+  adapters: [fespalier_download]

@@ -409,7 +409,9 @@ void main() {
     test('is silent when nothing is unreadable', () async {
       final store = MapStore();
       await save(TestStorage(store), 'k', 'v', 1);
-      final lines = await printed(() async => TestStorage(store));
+      final lines = await printed(
+        () async => at(minute(2), () => TestStorage(store)),
+      );
       expect(lines, isEmpty);
     });
 
@@ -420,7 +422,10 @@ void main() {
         final writer = TestStorage(store);
         await save(writer, 'b', 'v', 2);
         await save(writer, 'a', 'v', 1);
-        final restarted = TestStorage(store, maxEntries: 1);
+        final restarted = at(
+          minute(3),
+          () => TestStorage(store, maxEntries: 1),
+        );
         await restarted.sweepDone();
         expect(store.ours, ['b'], reason: 'a was written first: evicted');
       },
@@ -432,11 +437,14 @@ void main() {
       for (var i = 1; i <= 5; i++) {
         await save(writer, 'k$i', 'v', i);
       }
-      final restarted = TestStorage(store, maxEntries: 2);
+      final restarted = at(minute(6), () => TestStorage(store, maxEntries: 2));
       expect(restarted.length, 2);
       await restarted.sweepDone();
       expect(store.ours, ['k4', 'k5']);
-      final smaller = TestStorage(store, maxSize: restarted.size - 1);
+      final smaller = at(
+        minute(7),
+        () => TestStorage(store, maxSize: restarted.size - 1),
+      );
       expect(smaller.length, 1);
       await smaller.sweepDone();
       expect(store.ours, ['k5']);

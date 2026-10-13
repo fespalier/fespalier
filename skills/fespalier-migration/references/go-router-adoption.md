@@ -1,6 +1,6 @@
 # Adopting fespalier in an existing go_router app
 
-As of v0.4.0. You do not have to rewrite the router. fespalier's tree mounts **inside**
+As of v0.13.0. You do not have to rewrite the router. fespalier's tree mounts **inside**
 your `GoRouter` under a URL prefix, so you can move routes across one folder at a time
 and keep the rest as they are.
 
@@ -15,7 +15,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0
+      ref: v0.15.0
 ```
 
 <!-- x-release-please-end -->
@@ -141,6 +141,13 @@ void main() =>
     runApp(ProviderScope(child: MaterialApp.router(routerConfig: _router)));
 ```
 
+Under the default `main: auto` the router above goes in `lib/app/app.dart` as `GoRouter router() =>
+buildRouter();` (`fsp` checks only that signature), so the generated `main()` builds it once and
+`startup.dart`'s `ready()` and `attach()` (since 0.12.0) run around it. With `main: manual` neither
+file is read and you call them yourself. `examples/adopt` is the worked move of a 0.11-style `main()`
+into `ready()` and `attach()`, with the old router kept compiled beside a test that opens the same
+URLs in both.
+
 What `mount` changes:
 
 - **`AppRoutes.base` becomes `'/shop'`** (`mount` stores `at` in a static field), every typed
@@ -161,7 +168,11 @@ What `mount` changes:
   router too, with no `refreshListenable` (`fespalier-guards`); a host `refreshListenable`
   is only for a change that is not a provider (and for 0.4.1 and earlier).
 - `AppRoutes.router()` is what you **stop** calling: it is `mount()` inside a router of its
-  own.
+  own. What `router()` does besides, you now do for your router: when `app.g.dart` has `AppRoutes.attach` (an app with an
+  `observe.dart`, `telemetry: true` or `adapters:`), call `AppRoutes.attach(router)` once with your router, or the hooks,
+  telemetry and DevTools never follow it; with `adapters:` also pass `onEnter: AppRoutes.onEnter` to your `GoRouter`
+  (the generated main calls `AppRoutes.attach(router, container)` itself, as it does with an app.dart `router()`; a
+  `main: manual` app does it once the container exists). A plain app with none of these has neither member.
 
 ## 3. Move routes over, one at a time
 

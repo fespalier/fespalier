@@ -1,8 +1,9 @@
+import 'package:fespalier/fespalier.dart' show DataRefusal;
 import 'package:http/http.dart' as http;
 
 /// The server refused the session: an OAuth error such as `invalid_grant` (since 0.9.0). The
-/// session is over, and the user has to sign in again.
-final class AuthRejected implements Exception {
+/// session is over, and the user has to sign in again. A [DataRefusal] (since 0.13.1).
+final class AuthRejected implements Exception, DataRefusal {
   /// The refusal: the OAuth [error] code, and the server's [description] when it gave one.
   const AuthRejected([this.error = 'invalid_grant', this.description]);
 

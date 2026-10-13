@@ -8,7 +8,7 @@ The fake models only what the script relies on, as documented for the REST API: 
 it was given without any git tag, asset names are unique per release (422 otherwise), asset
 downloads redirect to a blob URL, and publishing is a PATCH of `draft`. It proves the script's
 logic (replace, fetch, wait, attach, publish, drop), not GitHub's behaviour: that only a real
-release can show (see "Releasing" in the README). Needs bash, curl and jq; skipped without them.
+release can show (see docs/releasing.md). Needs bash, curl and jq; skipped without them.
 """
 
 import json

@@ -1,5 +1,5 @@
 //! The warning that `build_runner` can delete a generated `X.g.dart` that has an `X.dart` beside
-//! it (`build_runner.rs`, since 0.9.0): when it fires, what it says, and that it is a warning
+//! it (`build_runner.rs`, since 0.16.0): when it fires, what it says, and that it is a warning
 //! `gen`, `check` and `watch` show without failing.
 
 use std::fs;
@@ -298,5 +298,22 @@ fn a_build_yaml_that_keeps_the_file_out_of_the_combining_builder_is_respected() 
     ] {
         write(dir.path(), "build.yaml", &build_yaml);
         assert_eq!(warnings(dir.path()), [DEFAULT], "{build_yaml}");
+    }
+}
+
+/// The warning is quoted word for word where a reader looks it up: the troubleshooting skill's
+/// page for the `fespalier:` section and the CLI reference. A changed message has to change both.
+#[test]
+fn the_skill_and_the_docs_quote_the_warning_exactly() {
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    for page in [
+        "skills/fespalier-troubleshooting/references/diagnostics-config-and-meta.md",
+        "docs/cli.md",
+    ] {
+        let text = fs::read_to_string(repo.join(page)).unwrap();
+        assert!(
+            text.contains(DEFAULT),
+            "{page} no longer quotes the build_runner warning exactly; update it with build_runner.rs"
+        );
     }
 }

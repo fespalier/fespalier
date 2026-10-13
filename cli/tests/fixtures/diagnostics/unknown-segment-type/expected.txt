@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/u/$id/page.dart","line":4,"column":39,"severity":"error","message":"`Uri id`: segments are String, int, double or bool, or an enum"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

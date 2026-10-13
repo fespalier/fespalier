@@ -61,7 +61,7 @@ struct Builder {
 }
 
 /// The markers of a route, in the order `fsp routes` lists its tags. A new marker goes here
-/// and in the README's list; both renderers take them as they are.
+/// and in the list of docs/cli.md; both renderers take them as they are.
 pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     let mut out = vec![];
     if r.redirect.is_some() {
@@ -84,6 +84,12 @@ pub fn markers(r: &Route, root: bool, guarded: bool) -> Vec<&'static str> {
     }
     if r.page.is_some() && !r.observers.is_empty() {
         out.push("observe");
+    }
+    if r.page.is_some() && r.leave.is_some() {
+        out.push("leave");
+    }
+    if r.step_of.is_some() {
+        out.push("flow");
     }
     if r.present.is_some() {
         out.push("present");
@@ -189,7 +195,9 @@ impl Builder {
                     items: self.items(app, children),
                 })
             }
-            Frame::Tabs { id, root, branches } => {
+            Frame::Tabs {
+                id, root, branches, ..
+            } => {
                 let r = &app.routes[*id];
                 let marks = layout_marks(r, *root);
                 let title = with_marks(format!("tabs {}", file(&r.dir, "layout.dart")), &marks);

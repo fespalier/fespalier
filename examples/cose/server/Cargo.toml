@@ -1,0 +1,38 @@
+[package]
+name = "cose-demo-server"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.0"
+license = "MIT"
+publish = false
+description = "The server of fespalier's cose example: CrateStack with COSE_Sign1 on the wire"
+
+[lib]
+name = "cose_demo_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cose-demo-server"
+path = "src/main.rs"
+
+[dependencies]
+# Schema macros emit `::cratestack::*` paths, hence the rename. Exact pin: the wire format
+# (binding version 2) moves with the crate.
+cratestack = { package = "cratestack-api", version = "=0.15.3", default-features = false, features = ["cose"] }
+cratestack-codec-cbor = { version = "=0.15.3", default-features = false }
+# The generated structs derive through bare `serde::` paths.
+serde = { version = "1", features = ["derive"] }
+base64 = "0.23"
+getrandom = "0.4"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

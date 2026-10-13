@@ -1,0 +1,24 @@
+import 'dart:io';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+
+void main() {
+  test('devtools_options.yaml turns the fespalier extension on', () {
+    // docs/devtools.md, "How to see it": committed, so DevTools does not ask once per project.
+    final options = File('devtools_options.yaml').readAsStringSync();
+    expect(options, contains('- fespalier: true'));
+  });
+
+  testWidgets('a debug build has the extension, and the router runs with it', (
+    tester,
+  ) async {
+    // A const that is false in release builds: nothing of DevTools is compiled into those.
+    expect(kFespalierDevTools, isTrue);
+    // AppRoutes.router() hands its router to the extension.
+    await pumpRouter(tester, AppRoutes.router());
+    expect(currentLocation(tester), '/');
+  });
+}

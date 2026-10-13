@@ -1,0 +1,12 @@
+import 'package:flutter/material.dart';
+
+/// Served at `/labs`, behind the `labs` flag. Run with `--dart-define=LABS=true` to see it.
+class LabsPage extends StatelessWidget {
+  const LabsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Labs')),
+    body: const Center(child: Text('The labs flag is on.')),
+  );
+}

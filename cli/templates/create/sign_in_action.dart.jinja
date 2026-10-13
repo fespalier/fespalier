@@ -1,0 +1,25 @@
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The input of the action, and so the fields of the sign-in form.
+typedef SignInFields = ({String username, String password});
+
+SignInFields form() => (username: '', password: '');
+
+/// Checked on the device before the backend is asked.
+FieldErrors? validate(SignInFields input) => FieldErrors({
+  if (input.username.trim().isEmpty) 'username': 'Enter your user name',
+  if (input.password.isEmpty) 'password': 'Enter your password',
+});
+
+/// A backend that throws `FieldErrors` for wrong credentials has them shown under their field.
+Future<void> action(Ref ref, {required SignInFields input}) async {
+  await ref
+      .read(authSession.notifier)
+      .signIn(
+        PasswordSignIn(
+          username: input.username.trim(),
+          password: input.password,
+        ),
+      );
+}

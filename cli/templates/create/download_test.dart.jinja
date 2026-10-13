@@ -1,0 +1,50 @@
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:fespalier_download/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/downloads.dart';
+
+void main() {
+  testWidgets('a download starts, shows its progress and ends', (tester) async {
+    // No network and no disk: the fake backend plays the transfer.
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+    expect(backend.enqueued.single.id, sampleDownload.id);
+
+    backend.emit(sampleDownload.id, const Running(50, 100));
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    backend.emit(sampleDownload.id, Complete(sampleDownload.file, 100));
+    await tester.pump();
+    expect(find.text('Downloaded'), findsOneWidget);
+  });
+
+  testWidgets('a failed download can be tried again', (tester) async {
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+
+    backend.emit(sampleDownload.id, const Failed(DownloadFailure.network));
+    await tester.pump();
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    expect(backend.enqueued, hasLength(2));
+  });
+}

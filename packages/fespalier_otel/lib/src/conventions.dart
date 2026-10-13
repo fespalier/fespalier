@@ -1,7 +1,7 @@
 /// The telemetry conventions, contract version 1 (since 0.8.1): every span name, event name,
-/// attribute key and enum-like value `FespalierOtel` emits. The README's "Telemetry conventions"
-/// section is the published copy; `test/conventions_test.dart` holds each of these as a string
-/// literal, so a rename fails a test before it ships.
+/// attribute key and enum-like value `FespalierOtel` emits. The "Telemetry conventions" section of
+/// docs/telemetry-conventions.md is the published copy; `test/conventions_test.dart` holds each of these as
+/// a string literal, so a rename fails a test before it ships.
 ///
 /// Within version 1 a change may only add: a new attribute key, a new event or a new value of an
 /// enum-like attribute. Renaming or removing one, or changing the meaning or unit of an
@@ -50,6 +50,9 @@ abstract final class FespalierConventions {
 
   /// An image loaded from the network (`package:fespalier_image`, since 0.9.0).
   static const String opImage = 'image';
+
+  /// A package's own operation (since 0.11.0): `fespalier.custom.name` says which.
+  static const String opCustom = 'custom';
 
   // Span names: the operation, then what it is about.
 
@@ -201,8 +204,8 @@ abstract final class FespalierConventions {
   /// How the load ended.
   static const String deferredResult = 'fespalier.deferred.result';
 
-  // The values of `fespalier.action.result`, `fespalier.deferred.result` and
-  // `fespalier.image.result`.
+  // The values of `fespalier.action.result`, `fespalier.deferred.result`,
+  // `fespalier.image.result` and `fespalier.custom.result`.
 
   /// It worked.
   static const String resultOk = 'ok';
@@ -291,6 +294,16 @@ abstract final class FespalierConventions {
 
   /// The HTTP status of a failed load, when known.
   static const String imageStatus = 'fespalier.image.status';
+
+  // Attributes of a `custom` span (since 0.11.0). A package's own `fespalier.<pkg>.*` attributes
+  // on it are that package's contract, not contract version 1's.
+
+  /// The operation's name, `fespalier.<pkg>.<op>` (`fespalier.push.open`).
+  static const String customName = 'fespalier.custom.name';
+
+  /// How the operation ended: the `TelemetryOutcome` the package finished with, usually `ok` or
+  /// `error` (`cancelled`, `disposed` and `rejected` are possible).
+  static const String customResult = 'fespalier.custom.result';
 
   // Events on the `navigate` span.
 

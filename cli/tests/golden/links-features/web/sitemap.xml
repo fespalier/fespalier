@@ -124,6 +124,18 @@
     <loc>https://shop.example.com/search</loc>
   </url>
   <url>
+    <loc>https://shop.example.com/signup/company</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/signup/contact</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/signup/name</loc>
+  </url>
+  <url>
+    <loc>https://shop.example.com/signup/review</loc>
+  </url>
+  <url>
     <loc>https://shop.example.com/ticks</loc>
   </url>
   <url>

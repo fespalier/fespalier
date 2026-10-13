@@ -145,7 +145,7 @@ fn every_guard_data_provider_and_action_is_told_where_it_is() {
     has(
         &on,
         &[
-            "static void attach(GoRouter router) {",
+            "static void attach(GoRouter router, [ProviderContainer? container]) {",
             "if (kFespalierDevTools) devToolsAttach(router);",
             "telemetryAttach(router, base: () => _base);",
             "attach(router);",
@@ -262,7 +262,7 @@ fn observe_and_telemetry_share_attach() {
         &c,
         &[
             "/// Lets DevTools, the observe.dart hooks and telemetry follow [router]",
-            "observeAttach(router, _observeAt);",
+            "observeAttach(router, _observeAt, container: container);",
             "telemetryAttach(router, base: () => _base);",
         ],
     );

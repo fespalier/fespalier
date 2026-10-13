@@ -44,7 +44,11 @@ inside fespalier's own `fespalier: dataCache of <name> ...` line (its text is in
 | `Invalid argument(s): PrefsDataStorage needs a SharedPreferencesWithCache without an allowList: the keys of a dataCache are not known in advance. Use PrefsDataStorage.open(), or create it with const SharedPreferencesWithCacheOptions().`                | **S6.** `PrefsDataStorage(prefs)` got a `SharedPreferencesWithCache` created with an `allowList`. Use `PrefsDataStorage.open()`, or create the instance with `const SharedPreferencesWithCacheOptions()` (no allowList). It is thrown by the constructor, before anything is swept                                                                                 |
 | `Invalid argument (maxSize): must be more than 0: <value>` / `Invalid argument (maxEntries): must be more than 0: <value>`                                                                                                                                  | **S7.** A budget of 0 or less. `open()` throws it too (it is the app's mistake, not a store that cannot open). Give a positive `maxSize` (characters) and `maxEntries`                                                                                                                                                                                             |
 
+<!-- markdownlint-disable MD024 -->
+
 ### Symptoms with no message
+
+<!-- markdownlint-restore -->
 
 | Symptom                                                        | Cause and fix                                                                                                                                                                                     |
 | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -67,7 +71,11 @@ widget test turns into a failure.
 | `fespalier_connectivity: checking connectivity failed: <error>` (debug); with no plugin the error is `MissingPluginException(No implementation found for method check on channel dev.fluttercommunity.plus/connectivity)`                                                                                                                 | **C2.** `ConnectivitySource.check()` failed or threw: at the start (the web's and any platform's first state), or on a resume (the iOS repair). The state is kept, and `hasNetwork` stays `true` until a state is known. In a widget test it comes with C3: override `connectivitySource` with a `FakeConnectivity`                                                                                                                                                        |
 | Flutter's report `══╡ EXCEPTION CAUGHT BY SERVICES LIBRARY ╞══` `The following MissingPluginException was thrown while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status:` `MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)` | **C3.** A widget test reached the plugin, which a VM test does not have: something watched `hasNetwork` or `networkConnectivity`, or built a `refetchOnReconnect` provider with `ConnectivitySignal` as `reconnectSignal`, with `connectivitySource` not overridden. `connectivitySource.overrideWithValue(FakeConnectivity())` in `pumpRouter`'s overrides (and in `fsp test`'s `setup.dart` when a route's page shows a banner). Without it the test fails on the report |
 
+<!-- markdownlint-disable MD024 -->
+
 ### Symptoms with no message
+
+<!-- markdownlint-restore -->
 
 | Symptom                                                                        | Cause and fix                                                                                                                                                                                                                                                                                                                                                     |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

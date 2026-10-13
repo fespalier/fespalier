@@ -1,6 +1,6 @@
 name: fespalier_otel
 description: OpenTelemetry spans for fespalier's navigations, guards, data loads, actions and deferred loads, on the SDK that otel_zone starts.
-version: 0.9.0 # x-release-please-version
+version: 0.15.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -20,10 +20,14 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0 # x-release-please-version
+      ref: v0.15.0 # x-release-please-version
   # The SDK otel_zone starts, with otel_zone's own lower bound: the 1.1 beta line is the current
   # one (otel_zone's pubspec explains why).
   dartastic_opentelemetry: ^1.1.0-beta.15
+  # Capped below rc.4: that release (2026-10-08) added `advisory` to the instrument interfaces,
+  # which the SDK's 1.1.0-beta.15 does not implement, and the SDK only asks for ^1.0.0-rc.3. Lift
+  # the cap with the SDK release that implements it.
+  dartastic_opentelemetry_api: ">=1.0.0-rc.3 <1.0.0-rc.4"
 
 dev_dependencies:
   flutter_lints: ^6.0.0

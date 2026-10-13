@@ -5,7 +5,7 @@ description: "Layouts and shells in fespalier — layout.dart (a ShellRoute arou
 
 # fespalier-layouts
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -62,8 +62,8 @@ ColoredBox`. Give the page a surface of its own:
 Material(type: MaterialType.transparency, child: ListView(children: [...]))
 ```
 
-This is a documented gotcha of the project (the README's "Things to know"), and
-it is reproduced and fixed this way in a test against v0.3.0.
+This is a documented gotcha of the project (`docs/troubleshooting.md`, "Things to know"); the
+wrapper is what `examples/shop`'s `products/page.dart` uses.
 
 ## Tabs
 
@@ -145,6 +145,15 @@ All of it, with compiled samples, is in [`references/adaptive-layouts.md`](refer
 Without the package, or on 0.8.x, [`references/adaptive-by-hand.md`](references/adaptive-by-hand.md) has a
 bar-versus-rail tab layout whose tab state survives a resize, and a drawer-versus-side-list plain layout
 that highlights the current route through `AppManifest.of(GoRouterState.of(context))`.
+
+## Examples
+
+- `examples/tabs`: the tab layout (`(tabs)/layout.dart`, a Library tab that is a tab layout of its own), six `nav.dart` files
+  drawn by `fespalier_adaptive`, and the restoration and resize tests.
+- `examples/features`: a root `layout.dart` and `nav.dart`, the `teams/$teamId` section layout, and the menu and scroll
+  restoration tests.
+
+The `fespalier` skill lists every example.
 
 ## Quick diagnosis
 

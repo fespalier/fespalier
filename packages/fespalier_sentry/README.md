@@ -13,14 +13,13 @@ package is the sink that turns it into Sentry's events, breadcrumbs and, on requ
 `SentryFlutter.init` still starts the SDK, which owns crash capture, sessions, native integrations and the
 transport.
 
-The main README documents all of it: [Sentry](https://github.com/fespalier/fespalier#sentry-fespalier_sentry)
+The docs cover all of it: [Sentry](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#sentry-fespalier_sentry)
 (what Sentry gets, the wiring, tracing, defaults and privacy, testing). This page is the short version.
 
 ## Install
 
 Add it next to fespalier, with the same `url` and the same `ref`: pub resolves the two to one package only if
-they are the same repository dependency. It needs `sentry_flutter` 9.26.0 or newer, which your app depends on
-for `SentryFlutter.init`.
+they are the same repository dependency.
 
 <!-- x-release-please-start-version -->
 
@@ -30,16 +29,18 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0
+      ref: v0.15.0
   fespalier_sentry:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sentry
-      ref: v0.9.0
-  sentry_flutter: ">=0.9.0 <10.0.0"
+      ref: v0.15.0
 ```
 
 <!-- x-release-please-end -->
+
+Your app also depends on `sentry_flutter` for `SentryFlutter.init`, in the range this package accepts:
+`>=9.26.0 <10.0.0`.
 
 Turn telemetry on in `pubspec.yaml` and regenerate:
 
@@ -64,7 +65,7 @@ Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
 );
 
 /// Before the router is built, so the first navigation is reported.
-void startup() => FespalierTelemetry.install(FespalierSentry());
+void startup() => FespalierTelemetry.add(FespalierSentry()); // add, not install: install replaces a sink an adapter added
 
 /// Release health on the web needs it; it makes no transaction.
 List<NavigatorObserver> get routerObservers => [

@@ -4,9 +4,9 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart'
     show NotifierProviderFamily, ProviderListenable, ProviderOrFamily;
 
-import 'action_form.dart' show FieldErrors;
 import 'devtools/devtools.dart'
     show kFespalierDevTools, traceActionEnd, traceActionStart;
+import 'field_errors.dart';
 import 'optimistic.dart' show OptimisticPatch;
 import 'telemetry.dart'
     show

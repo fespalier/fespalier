@@ -798,7 +798,7 @@ pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
             .is_none_or(|v| matches!(v, Value::Mapping(m) if m.is_empty()))
         {
             bail!(
-                "no task `{name}` in `fespalier: tasks:` of pubspec.yaml; there are none yet (README, \"Tasks: commands around `flutter run`\")"
+                "no task `{name}` in `fespalier: tasks:` of pubspec.yaml; there are none yet (docs/cli.md, \"Tasks: commands around `flutter run`\")"
             );
         }
         bail!("no task `{name}` in `fespalier: tasks:` of pubspec.yaml; the tasks are: {known}");

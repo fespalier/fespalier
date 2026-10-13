@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/layout.dart","line":4,"column":7,"severity":"error","message":"`tabs` is missing the branch `b`; list every branch once (`a`, `b`)"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

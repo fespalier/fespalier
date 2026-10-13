@@ -134,6 +134,9 @@ pub struct Variable {
     /// Set when the initializer is a map literal, like `const paths = {'fr': 'produits'};`:
     /// each pair with its key and value as string literals, where they are.
     pub pairs: Option<Vec<StringPair>>,
+    /// Set when the initializer is a map from string literals to lists of string literals, like
+    /// `const steps = {'name': ['name', 'business'], 'review': <String>[]};` (since 0.11.0).
+    pub lists: Option<Vec<ListEntry>>,
     /// Set when the initializer is a constructor call, like `const meta = PageMeta(code: 'x')`:
     /// its named arguments (positional ones are left out).
     pub ctor_args: Option<Vec<ObjectArg>>,
@@ -154,6 +157,15 @@ pub struct StringPair {
     /// `None` when the value isn't a plain string literal.
     pub value: Option<String>,
     pub value_span: Span,
+}
+
+/// `'contact': ['email', 'phone']`: one entry of a map of string lists.
+#[derive(Debug, Clone)]
+pub struct ListEntry {
+    pub key: String,
+    pub key_span: Span,
+    /// Each string of the list, with where it sits.
+    pub values: Vec<(String, Span)>,
 }
 
 /// `'search': TabOptions(preload: true, initialLocation: '/search')`
@@ -576,6 +588,7 @@ impl Reader<'_> {
                 let names = value_node.and_then(|v| self.names(v));
                 let objects = value_node.and_then(|v| self.objects(v));
                 let pairs = value_node.and_then(|v| self.pairs(v));
+                let lists = value_node.and_then(|v| self.lists(v));
                 let ctor_args = value_node.and_then(|v| self.ctor_args(v));
                 let value = value_node.map(|v| self.text(v).split_whitespace().collect::<String>());
                 let string = value_node
@@ -595,6 +608,7 @@ impl Reader<'_> {
                     boolean,
                     objects,
                     pairs,
+                    lists,
                     ctor_args,
                     value,
                     is_const,
@@ -706,6 +720,36 @@ impl Reader<'_> {
                         key_span: Span::of(key),
                         value: literal(value),
                         value_span: Span::of(value),
+                    });
+                }
+                _ => return None,
+            }
+        }
+        Some(out)
+    }
+
+    /// `{'name': ['a', 'b'], 'review': <String>[]}` (optionally `const`) → its entries. `None`
+    /// for anything else: a key or an element that is not a plain string literal, a value that
+    /// is not a list literal, a spread, an `if`.
+    fn lists(&self, v: Node) -> Option<Vec<ListEntry>> {
+        if v.kind() != "set_or_map_literal" {
+            return None;
+        }
+        let mut out = vec![];
+        let mut cur = v.walk();
+        for e in v.named_children(&mut cur) {
+            match e.kind() {
+                "type_arguments" | "comment" | "documentation_comment" => {}
+                "pair" => {
+                    let key = e.child_by_field_name("key")?;
+                    let value = e.child_by_field_name("value")?;
+                    if key.kind() != "string_literal" {
+                        return None;
+                    }
+                    out.push(ListEntry {
+                        key: string_value(self.text(key))?,
+                        key_span: Span::of(key),
+                        values: self.strings(value)?,
                     });
                 }
                 _ => return None,

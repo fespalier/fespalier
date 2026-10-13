@@ -1,0 +1,318 @@
+create my_app (package my_app, features: download)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_download:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_download
+      ref: v<version>
+  http: "^1.5.0"
+  path_provider: "^2.1.0"
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+  test:
+    # /downloads needs the downloads engine: test/download_test.dart overrides it with fakes.
+    skip: [/downloads]
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+
+/// Where each base folder of a download is on this device. fespalier_download names no
+/// plugin for it, so the app does (docs/downloads.md, "The foreground backend").
+Future<String> appBases(DownloadBase base) async => switch (base) {
+  DownloadBase.support => (await getApplicationSupportDirectory()).path,
+  DownloadBase.cache => (await getApplicationCacheDirectory()).path,
+  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,
+};
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+List<Override> startup() => [
+  // fespalier_download: the engine, over a foreground transfer (it stops with the app).
+  downloadsEngine.overrideWithValue(
+    Downloads(
+      backend: HttpDownloadBackend(client: http.Client(), bases: appBases),
+      store: FileDownloadStore(bases: appBases),
+      files: TransferDownloadFiles(bases: appBases),
+    ),
+  ),
+];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== lib/downloads.dart (new)
+import 'package:fespalier_download/fespalier_download.dart';
+
+/// The file the sample page downloads: `--dart-define=DOWNLOAD_URL=https://files.myapp.dev/a.pdf`.
+/// The default is a placeholder, so a run without it ends the download as failed.
+const String downloadUrl = String.fromEnvironment(
+  'DOWNLOAD_URL',
+  defaultValue: 'https://files.example.com/sample.pdf',
+);
+
+/// A download is a request: an id, a URL and where the file goes, as a base folder and a relative
+/// path (never an absolute one: an iOS container's path changes between launches). Add `bytes`
+/// and `sha256` to have the file checked before it is moved into place. A URL that grants access
+/// should be short-lived: never put a long-lived token in a header (docs/downloads.md, "Requests
+/// and files").
+final DownloadRequest sampleDownload = DownloadRequest(
+  id: 'sample',
+  url: Uri.parse(downloadUrl),
+  file: const DownloadLocation(DownloadBase.support, 'downloads/sample.pdf'),
+);
+
+=== lib/app/downloads/page.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/downloads.dart';
+
+/// Served at `/downloads`. Watching `downloads` opens the engine, which settles what a restart
+/// left (lib/app/startup.dart builds it); `downloadStatus` rebuilds this only when this one
+/// download changes. The engine here is the foreground one: a transfer stops when the app is
+/// closed. For downloads that go on while it is closed, use fespalier_download_background
+/// (docs/downloads.md, "The background backend"; it needs Flutter 3.47 and platform setup).
+class DownloadsPage extends ConsumerWidget {
+  const DownloadsPage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(downloads);
+    final status = ref.watch(downloadStatus(sampleDownload.id));
+    final engine = ref.read(downloadsEngine);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Downloads')),
+      body: Center(
+        child: switch (status) {
+          Running(:final received, :final total) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 200,
+                child: LinearProgressIndicator(
+                  value: total == null ? null : received / total,
+                ),
+              ),
+              TextButton(
+                onPressed: () => engine.pause(sampleDownload.id),
+                child: const Text('Pause'),
+              ),
+            ],
+          ),
+          Paused() => FilledButton(
+            onPressed: () => engine.resume(sampleDownload.id),
+            child: const Text('Resume'),
+          ),
+          Queued() || Waiting() || Verifying() => const Text('Working...'),
+          Complete() => const Text('Downloaded'),
+          Failed() => FilledButton(
+            onPressed: () => engine.retry(sampleDownload.id),
+            child: const Text('Try again'),
+          ),
+          _ => FilledButton(
+            onPressed: () => engine.start(sampleDownload),
+            child: const Text('Download'),
+          ),
+        },
+      ),
+    );
+  }
+}
+
+=== test/download_test.dart (new)
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_download/fespalier_download.dart';
+import 'package:fespalier_download/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/downloads.dart';
+
+void main() {
+  testWidgets('a download starts, shows its progress and ends', (tester) async {
+    // No network and no disk: the fake backend plays the transfer.
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+    expect(backend.enqueued.single.id, sampleDownload.id);
+
+    backend.emit(sampleDownload.id, const Running(50, 100));
+    await tester.pump();
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    backend.emit(sampleDownload.id, Complete(sampleDownload.file, 100));
+    await tester.pump();
+    expect(find.text('Downloaded'), findsOneWidget);
+  });
+
+  testWidgets('a failed download can be tried again', (tester) async {
+    final backend = FakeDownloadBackend();
+    await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/downloads'),
+      overrides: downloadTestOverrides(backend: backend),
+    );
+    await tester.tap(find.text('Download'));
+    await tester.pump();
+
+    backend.emit(sampleDownload.id, const Failed(DownloadFailure.network));
+    await tester.pump();
+    expect(find.text('Try again'), findsOneWidget);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    expect(backend.enqueued, hasLength(2));
+  });
+}

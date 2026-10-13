@@ -1,0 +1,11 @@
+import 'package:flutter/material.dart';
+
+/// Served at `/about`: the folder gives the path, and the class gives the route's name
+/// (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Center(child: Text('Every folder next to layout.dart is a tab.'));
+}

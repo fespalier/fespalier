@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/app.dart","line":3,"column":7,"severity":"error","message":"the app's widget gets the router: add `required this.router` (a `GoRouter`) and pass it to `MaterialApp.router(routerConfig: router)`. If this file is not the app around the router, move it out of the app folder's root or set `main: manual`"}
+
+stderr:
+1 error(s); lib/app.g.dart and lib/app.main.g.dart left unchanged

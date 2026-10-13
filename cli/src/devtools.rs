@@ -170,8 +170,14 @@ fn item(app: &App, infos: &HashMap<usize, Info>, frame: &Frame, sites: &mut Site
                 "items": items(app, infos, children, sites),
             })
         }
-        Frame::Tabs { id, root, branches } => {
+        Frame::Tabs {
+            id,
+            root,
+            guards,
+            branches,
+        } => {
             let r = &app.routes[*id];
+            sites.of_shell(app, *id, guards);
             let branches: Vec<Value> = branches
                 .iter()
                 .enumerate()
@@ -210,6 +216,22 @@ impl Sites {
                     "file": rel(&app.routes[g], Kind::Guard),
                     "route": info.class,
                     "pattern": info.path,
+                }),
+            );
+        }
+    }
+
+    /// The guards that run on the tab shell of the layout in folder `id`, before every tab.
+    fn of_shell(&mut self, app: &App, id: usize, guards: &[usize]) {
+        let url = &app.routes[id].url;
+        for &g in guards {
+            self.0.insert(
+                site_guard(g, id),
+                json!({
+                    "kind": "guard",
+                    "file": rel(&app.routes[g], Kind::Guard),
+                    "route": app.routes[id].name.as_deref().map(|n| format!("{n}Route")),
+                    "pattern": resolve::pattern(url),
                 }),
             );
         }

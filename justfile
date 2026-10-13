@@ -6,10 +6,10 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_dio packages/fespalier_sentry examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_download_background packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
-examples := "shop features tabs minimal telemetry auth"
+examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose"
 
 # List recipes
 default:
@@ -86,7 +86,7 @@ flutter:
     done
 
 # What CI's `floor` job runs: the package, its companions that claim Flutter 3.32 and examples/minimal.
-floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_dio packages/fespalier_sentry examples/minimal"
+floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/minimal"
 
 # Needs a Flutter 3.32 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
 # `git clone --depth 1 -b 3.32.8 https://github.com/flutter/flutter ~/flutter-3.32`. Each pubspec.lock
@@ -161,7 +161,7 @@ packaging:
 # The agent skills in skills/ match the code: coverage, frontmatter, stamps, links (needs Node)
 skills:
     node scripts/skills/verify-coverage.mjs
-    npx --yes prettier@3.8.1 --check "skills/**/*.{md,json}"
+    npx --yes prettier@3.8.1 --check README.md "docs/*.md" "skills/**/*.{md,json}"
 
 # Build the skills' code samples, all or the given .md files (needs Flutter; slow, not in `just ci`)
 skill-samples *files:
@@ -172,7 +172,7 @@ skill-samples *files:
 
 # FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk.
 #
-# Regenerate the README screenshots in docs/images/telemetry (Docker, Node, Chromium; about 10 minutes; not part of `just ci` or CI)
+# Regenerate the docs screenshots in docs/images/telemetry (Docker, Node, Chromium; about 10 minutes; not part of `just ci` or CI)
 telemetry-screenshots:
     cd ci/web-routes && npm ci
     node scripts/telemetry/screenshots.mjs
@@ -197,6 +197,31 @@ intellij:
 web-chunks:
     scripts/check-deferred-chunks.sh examples/shop '/checkout=Place order' '/products/:id=Add to cart'
 
+# The cose example's server (examples/cose/server, a standalone Rust crate on cratestack-api 0.15.3):
+# fmt, clippy, tests (incl. the committed contracts.json and lib/src/contracts.g.dart), a locked build and
+# cargo-deny. A cold build compiles cratestack and takes a couple of minutes, so it is not part of `just ci`.
+[working-directory: 'examples/cose/server']
+cose-server:
+    cargo fmt --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+    cargo build --locked
+    cargo deny --config deny.toml check
+
+# What CI's `cose` job runs: the server (`cose-server`), then the app in examples/cose against the binary it
+# built: dart format, analyze and every test, with the end-to-end test required (it fails instead of skipping),
+# (the const lints on the generated code are the `dart` job's and `just flutter`'s). Needs Rust (examples/cose/server/rust-toolchain.toml), cargo-deny
+# and Flutter; not part of `just ci` (`just flutter` runs the app's tests too, the end-to-end one skipped)
+cose: cose-server
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd examples/cose
+    flutter pub get
+    find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -not -path './server/*' -print0 \
+        | xargs -0 dart format --output=none --set-exit-if-changed
+    flutter analyze
+    COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
+
 # The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
 # ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.
 # Needs Flutter and Node; about two minutes, and not part of `just ci` (CI runs it as `web-routes`)
@@ -211,6 +236,13 @@ web-routes:
 dev-e2e:
     scripts/check-dev-e2e.sh
 
+# `fsp create` against the real flutter: the base app and each optional feature, made with this checkout
+# as the packages (`--local-packages`) and checked with `dart format`, `flutter analyze` and `flutter test`.
+# Name cases to run only those (`just create-check base`). Needs Flutter and network; about two minutes per
+# case, and not part of `just ci` (CI's `create` job runs it)
+create-check *cases:
+    scripts/check-create.sh {{ cases }}
+
 # fespalier next to freezed, json_serializable and build_runner, in a fresh app (about two minutes; needs Flutter and
 # network; not part of `just ci`, CI runs it in the `scaffold` job): the warning that build_runner deletes
 # lib/app.g.dart, `output:` as the way out, a freezed `extra` restored through `ExtraCodec.of`, and `DataCache.json`
@@ -221,7 +253,7 @@ codegen-interop:
 # have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
 # `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.32
-# floor is `just floor`, and the README screenshots are `just telemetry-screenshots` (not in CI at all).
+# floor is `just floor`, the cose example with its Rust server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
 ci: lint test deny check-examples flutter devtools packaging telemetry skills

@@ -1,6 +1,6 @@
 # The route manifest and `meta.dart`
 
-As of v0.4.0. The generator knows a lot about every route (typed route, path, folder,
+As of v0.13.0. The generator knows a lot about every route (typed route, path, folder,
 groups, layouts, parameters), and only a person can write the rest: a stable review code,
 a page title, an analytics name. The manifest puts the first at runtime next to the
 second.
@@ -103,6 +103,7 @@ AppRoutes.all;  // every route, in the order of the table at the top of app.g.da
 | `tabs`              | the tabs it sits in, outermost first: `RouteTab(layout, index, branch)`; empty outside tab layouts                                                                                                                                                            |
 | `dataKeys`          | what its `data.dart` is keyed by; `null` without one                                                                                                                                                                                                          |
 | `meta`              | its `meta.dart`, as declared                                                                                                                                                                                                                                  |
+| `deferred`          | `true` when the route's `page.dart` loads on demand (since 0.7.0); `false` otherwise                                                                                                                                                                          |
 
 `AppManifest.of(GoRouterState)` finds the route a layout is showing (`null` in a not-found
 view): it looks the path up in `byPath` after taking `AppRoutes.base` off, so it works under
@@ -167,5 +168,9 @@ project root; `folder`, `layouts` and `tabs[].layout` to the app folder):
 
 `presentation` is `page`, `redirect`, `root` or `custom`; `data_keys` and `meta` are `null`
 without a `data.dart` or `meta.dart` (the meta itself is Dart, so JSON only says where it is);
-`catch_all` is `{"name":"rest","optional":false}` for a route ending in a catch-all; a route with
-localized paths has one more key, `paths`, after `catch_all`.
+`catch_all` is `{"name":"rest","optional":false}` for a route ending in a catch-all. After it come
+keys that only a route with the feature has, in this order (the other rows lack the key): `remount`
+(`on_segments` or `on_location`, since 0.6.0), `deferred` (`true`, since 0.7.0), `freshness` (the file whose
+`Freshness` applies to its `data.dart`) and `cache` (`true` for a `dataCache`), both since 0.8.1, `paths`
+(its path in each locale, when a folder is localized) and `nav` (`{file, label, order}` of the folder's
+`nav.dart`, since 0.8.1).

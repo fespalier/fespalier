@@ -1,17 +1,17 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), a restart over a disk cache (fakePrefsStore and memoryBox from fespalier_storage, since 0.9.0), reconnects and offline banners (FakeConnectivity from fespalier_connectivity, since 0.9.0), the window size of an adaptive layout (fespalier_adaptive, since 0.9.0), Dio and package:http without a network (a fake HttpClientAdapter, a MockClient that races the abort trigger, retriers with zero delays; fespalier_dio, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), a restart over a disk cache (fakePrefsStore and memoryBox from fespalier_storage, since 0.9.0), reconnects and offline banners (FakeConnectivity from fespalier_connectivity, since 0.9.0), translated routes (fakeTranslations, FakeTranslations.strict, RecordingEditor from fespalier_tolgee, since 0.10.0), offline and queued writes (FakeCrateStackTransport, FakeRowServer, ManualSyncTicker, crateStackTestOverrides from fespalier_cratestack, since 0.10.0), the window size of an adaptive layout (fespalier_adaptive, since 0.9.0), Dio and package:http without a network (a fake HttpClientAdapter, a MockClient that races the abort trigger, retriers with zero delays; fespalier_dio, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
 > [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
-`package:fespalier/testing.dart` has two helpers. It is a **separate library**, so
+`package:fespalier/testing.dart` has two helpers, `pumpRouter` and `currentLocation`, and, around them, `sendPlatformLink(tester, Uri)` (since 0.12.0: a warm platform link, as the engine sends it, pumped until idle; see the platform links section of the `fespalier-routing` skill), `RecordingTelemetry`, `TestRouteScope` (since 0.11.0, for an `observe.dart` hook that takes a `RouteScope`) and the `fsp test` pieces `smokeTestRoute` and `findRoutePage`. It is a **separate library**, so
 `package:fespalier/fespalier.dart` never imports `flutter_test`; the package lists
 `flutter_test` (an SDK package) as a dependency, which your app already has as a dev
 dependency.
@@ -52,6 +52,17 @@ testWidgets('shows a product', (tester) async {
   (from `package:fespalier_connectivity/testing.dart`) in `pumpRouter`'s overrides; `fake.offline()` then `fake.online()`
   is a reconnect. **A widget test that reaches the plugin fails** (`while activating platform stream on channel
 dev.fluttercommunity.plus/connectivity_status`). See `references/recipes.md` and [`fespalier-data`](../fespalier-data/SKILL.md).
+- **Translated routes (since 0.10.0).** With `package:fespalier_tolgee`, `overrides: fakeTranslations(bundled: {...}, remote:
+FakeTranslations.strict())` (from `package:fespalier_tolgee/testing.dart`) **and `app: (router) => App(router: router)`**:
+  `pumpRouter`'s default app has no `TranslationScope`, so `context.tr` throws there. `FakeTranslations.strict()` fails the
+  test on a key nobody has; a fetch lands on the next `pump`. See
+  [`fespalier-i18n`](../fespalier-i18n/SKILL.md) (its `testing.md` page).
+- **Offline and queued writes (since 0.10.0).** With `package:fespalier_cratestack`,
+  `crateStackTestOverrides(transport: FakeCrateStackTransport()..on('op', ...))` (from
+  `package:fespalier_cratestack/testing.dart`): `transport.offline = true` queues an intent, then `drain()` sends it once;
+  `loseAnswer('op')` replays under the same key without running twice; `ManualSyncTicker.tick()` is the app's tick and
+  `FakeRowServer` is the row server. The fakes are all `Future.value`s: a pending timer is **your own ticker**. See
+  [`fespalier-offline`](../fespalier-offline/SKILL.md) (its `testing.md` page).
 - **DPoP proofs (since 0.9.0).** With `package:fespalier_sign_keypair`, `FakeDpopSigner` (from
   `package:fespalier_sign_keypair/testing.dart`) is a software key from a fixed scalar (the same on every run, no
   platform), and `verifyDpopProof` is what a fake server checks every proof with. See "DPoP proofs" in
@@ -60,7 +71,8 @@ dev.fluttercommunity.plus/connectivity_status`). See `references/recipes.md` and
   **rail**; set `tester.view.physicalSize` (and `devicePixelRatio = 1`, and `addTearDown(tester.view.reset)`) for a
   bar (under 600) or a drawer (1200 and up). See "An adaptive layout" in
   [`references/recipes.md`](references/recipes.md).
-- **HTTP without a network (since 0.9.0).** With `package:fespalier_dio`, a fake `HttpClientAdapter` under Dio and a
+- **HTTP without a network (since 0.9.0).** With `package:fespalier_dio` or `package:fespalier_http` (the `package:http`
+  half, since 0.15.0; `FakeHttpClient` and `FakeHttpCredentials` are in `package:fespalier_http/testing.dart`), a fake `HttpClientAdapter` under Dio and a
   `MockClient` under `package:http` answer with no network. Dio's chain starts with `Timer.run`: use a plain `test()`,
   `pumpAndSettle()`, or `pump(Duration.zero)` (a bare `pump()` does not run it). A `MockClient` does not abort by itself:
   its handler races `abortTrigger`. Give the retriers zero delays, and count what the adapter saw: a write must be sent
@@ -127,30 +139,32 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 
 ## What to test, and how
 
-| You want to check                                         | Do                                                                                                                                                                                            |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A URL opens its page                                      | `pumpRouter(..., AppRoutes.router(initialLocation: '/products/2'))`, `find.byType(ProductPage)`                                                                                               |
-| Not found                                                 | `/nope` or an unparsable segment (`/products/abc`): the page is never built, guards that read segments are skipped                                                                            |
-| Loading, then data                                        | `settle: false`, `await tester.pump()`, `find.byType(ProductLoading)`, then `pump(delay)`                                                                                                     |
-| An error view                                             | a fake that throws: `error.dart` shows at once (no retries in `pumpRouter`)                                                                                                                   |
-| A backend fake                                            | override the provider your `data()` reads: `overrides: [apiProvider.overrideWithValue(FakeApi())]`                                                                                            |
-| Typed navigation                                          | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                                                                     |
-| A guard                                                   | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself)                                            |
-| A signed-in route (0.9.0, `fespalier_auth`)               | `overrides: fakeAuth(signedInAs: const AuthUser(id: 'ada'))`; signed out: `fakeAuth()`, and the route lands on `/sign-in?from=...`                                                            |
-| HTTP or a retry (0.9.0, `fespalier_dio`)                  | a fake `HttpClientAdapter` or `MockClient`, no network; count what it saw, zero delays for retriers (`references/http.md`)                                                                    |
-| A flagged route (0.9.0, `fespalier_flags`)                | `overrides: [flagSource.overrideWithValue(FakeFlags({'labs': true}))]`; `flags.set('labs', false)`, then `pump()`: the app leaves it                                                          |
-| A restart over a disk cache (0.9.0)                       | `setUp(fakePrefsStore)`, then two `PrefsDataStorage.open()`s; the 2nd `pumpRouter(settle: false)` shows the saved value                                                                       |
-| A reconnect or an offline banner (0.9.0)                  | `connectivitySource.overrideWithValue(FakeConnectivity())`; `fake.offline()` then `fake.online()`, then `pump()`                                                                              |
-| A network image (0.9.0, `fespalier_image`)                | `overrides: [imageCdnProvider.overrideWithValue(fakes.cdn(yourCdn))]` with `FakeImages(image: image)`; `fakes.requested` is every URL asked for; see `recipes.md`                             |
-| Sentry events and breadcrumbs (0.9.0, `fespalier_sentry`) | `RecordingSentry()` and `FespalierTelemetry.install(FespalierSentry(hub: sentry.hub))`; `await tester.pump()`, then `sentry.lines()`, `sentry.sent()`, `sentry.breadcrumbs`; see `recipes.md` |
-| Locations, matches, data providers                        | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                                                                                                   |
-| A `WidgetRef` (prefetch, refresh)                         | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                                                                |
-| An action (a write, since 0.5.0)                          | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                                                                 |
-| Restoration                                               | your own app widget building the router in `State`, `restartAndRestore()`                                                                                                                     |
-| Scroll restoration (0.8.1)                                | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                                                           |
-| A deferred route (0.7.0)                                  | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                                                              |
-| Aging data, a resume, a reconnect, a cache (0.8.1)        | `pump(Duration)` ages by the fake clock; `handleAppLifecycleStateChanged`; `reconnectSignal.notifier.fire()`; a shared `MemoryDataStorage` (`pitfalls.md`)                                    |
-| A `RouteLink` hover (0.5.0)                               | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                                                               |
+| You want to check                                          | Do                                                                                                                                                                                            |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A URL opens its page                                       | `pumpRouter(..., AppRoutes.router(initialLocation: '/products/2'))`, `find.byType(ProductPage)`                                                                                               |
+| Not found                                                  | `/nope` or an unparsable segment (`/products/abc`): the page is never built, guards that read segments are skipped                                                                            |
+| Loading, then data                                         | `settle: false`, `await tester.pump()`, `find.byType(ProductLoading)`, then `pump(delay)`                                                                                                     |
+| An error view                                              | a fake that throws: `error.dart` shows at once (no retries in `pumpRouter`)                                                                                                                   |
+| A backend fake                                             | override the provider your `data()` reads: `overrides: [apiProvider.overrideWithValue(FakeApi())]`                                                                                            |
+| Typed navigation                                           | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                                                                     |
+| A guard                                                    | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself)                                            |
+| A signed-in route (0.9.0, `fespalier_auth`)                | `overrides: fakeAuth(signedInAs: const AuthUser(id: 'ada'))`; signed out: `fakeAuth()`, and the route lands on `/sign-in?from=...`                                                            |
+| HTTP or a retry (0.9.0, `fespalier_dio`, `fespalier_http`) | a fake `HttpClientAdapter` or `MockClient`, no network; count what it saw, zero delays for retriers (`references/http.md`)                                                                    |
+| A flagged route (0.9.0, `fespalier_flags`)                 | `overrides: [flagSource.overrideWithValue(FakeFlags({'labs': true}))]`; `flags.set('labs', false)`, then `pump()`: the app leaves it                                                          |
+| A restart over a disk cache (0.9.0)                        | `setUp(fakePrefsStore)`, then two `PrefsDataStorage.open()`s; the 2nd `pumpRouter(settle: false)` shows the saved value                                                                       |
+| A reconnect or an offline banner (0.9.0)                   | `connectivitySource.overrideWithValue(FakeConnectivity())`; `fake.offline()` then `fake.online()`, then `pump()`                                                                              |
+| A translated route (0.10.0, `fespalier_tolgee`)            | `overrides: fakeTranslations(bundled: ..., remote: FakeTranslations.strict())` and `app: (router) => App(router: router)`; see `fespalier-i18n`                                               |
+| A queued write or a sync (0.10.0, `fespalier_cratestack`)  | `crateStackTestOverrides(transport: fake)`; `fake.offline = true`, then `drain()`; `ManualSyncTicker.tick()`; see `fespalier-offline`                                                         |
+| A network image (0.9.0, `fespalier_image`)                 | `overrides: [imageCdnProvider.overrideWithValue(fakes.cdn(yourCdn))]` with `FakeImages(image: image)`; `fakes.requested` is every URL asked for; see `recipes.md`                             |
+| Sentry events and breadcrumbs (0.9.0, `fespalier_sentry`)  | `RecordingSentry()` and `FespalierTelemetry.install(FespalierSentry(hub: sentry.hub))`; `await tester.pump()`, then `sentry.lines()`, `sentry.sent()`, `sentry.breadcrumbs`; see `recipes.md` |
+| Locations, matches, data providers                         | plain `test()`: `.location`, `locationFor`, `AppRoutes.dataAt(uri)`, `AppRoutes.match(uri)`                                                                                                   |
+| A `WidgetRef` (prefetch, refresh)                          | `tester.element(find.byType(SomeConsumerWidget)) as WidgetRef`                                                                                                                                |
+| An action (a write, since 0.5.0)                           | `container.read(XRoute.action(1).notifier).call(input)`; see `fespalier-data`                                                                                                                 |
+| Restoration                                                | your own app widget building the router in `State`, `restartAndRestore()`                                                                                                                     |
+| Scroll restoration (0.8.1)                                 | play the browser with `pushRouteInformation` **and the state the app reported**; a location alone starts at the top (`pitfalls.md`)                                                           |
+| A deferred route (0.7.0)                                   | `pumpRouter` loads it; with your own router, `await tester.runAsync(AppRoutes.loadDeferred)` before `pumpWidget` (`pitfalls.md`)                                                              |
+| Aging data, a resume, a reconnect, a cache (0.8.1)         | `pump(Duration)` ages by the fake clock; `handleAppLifecycleStateChanged`; `reconnectSignal.notifier.fire()`; a shared `MemoryDataStorage` (`pitfalls.md`)                                    |
+| A `RouteLink` hover (0.5.0)                                | a mouse `createGesture`, `moveTo`, `pump`; `container.exists(XRoute.data(...))` (`pitfalls.md`)                                                                                               |
 
 Full compiled tests for all of these are in
 [`references/recipes.md`](references/recipes.md); the traps, each of which cost a test
@@ -181,6 +195,14 @@ the terminal. The command, the
 endpoint an app on an emulator, a simulator, a phone or the web uses, which dashboard answers which
 question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a web app) are in
 [`references/observability.md`](references/observability.md).
+
+## Examples
+
+`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry`, `examples/adopt`, `examples/cose`, `examples/i18n`,
+`examples/maps` and `examples/offline` test their routes with `pumpRouter` from `package:fespalier/testing.dart`; `examples/plugins` pumps
+`AppMain.root()` (and uses `pumpRouter` in its push test), and `examples/tabs` builds its own `MaterialApp.router`. `examples/shop` also carries what `fsp test` and
+`fsp maestro` write (`test/routes/`, `.maestro/routes/`);
+the `fespalier` skill lists every example.
 
 ## Three facts to keep in mind
 

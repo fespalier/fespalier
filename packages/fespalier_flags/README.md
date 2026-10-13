@@ -5,9 +5,9 @@ at once, a guard watches it (`flagGuard`), and a route behind a flag and its men
 run guards. fespalier itself has no flag feature: no file kind, no `fespalier:` key, no `fsp` command, and the generated
 code is the same bytes. This package depends on nothing beyond fespalier, starts no timer and polls nothing.
 
-The main README documents all of it: [Feature flags](https://github.com/fespalier/fespalier#feature-flags-fespalier_flags)
-(the patterns, live updates, the caveats), [where values come from](https://github.com/fespalier/fespalier#where-flag-values-come-from)
-and [testing](https://github.com/fespalier/fespalier#testing-flagged-routes). This page is the short version.
+The docs cover all of it: [Feature flags](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#feature-flags-fespalier_flags)
+(the patterns, live updates, the caveats), [where values come from](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#where-flag-values-come-from)
+and [testing](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#testing-flagged-routes). This page is the short version.
 
 ## Install
 
@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0
+      ref: v0.15.0
   fespalier_flags:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_flags
-      ref: v0.9.0
+      ref: v0.15.0
 ```
 
 <!-- x-release-please-end -->

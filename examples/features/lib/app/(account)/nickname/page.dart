@@ -1,11 +1,17 @@
 import 'package:features/app.g.dart';
 import 'package:features/nicknames.dart';
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_forms/fespalier_forms.dart';
 import 'package:flutter/material.dart';
 
 /// A form on an action: `NicknameRoute.useForm` gives a typed field per field of the action's
 /// input, errors per field, a submit that is null while the save runs, and `reset`. The
 /// title shows `profile` as the save will leave it from the moment it starts.
+///
+/// `draft:` keeps what the user typed per route, so leaving the page (or closing the app) and
+/// coming back finds the form as it was (since 0.11.0). It is opt-in for each form, and a form with
+/// a field that must not be written to disk (a password) lists it in `FormDraft(exclude: {...})`.
+/// Nothing is kept unless the app gives a `formDraftStorage` (or a `dataCacheStorage`).
 ///
 /// A real hook: the page is a [HookConsumerWidget].
 class NicknamePage extends HookConsumerWidget {
@@ -16,7 +22,11 @@ class NicknamePage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final form = NicknameRoute.useForm(ref, data: profile);
+    final form = NicknameRoute.useForm(
+      ref,
+      data: profile,
+      draft: const FormDraft(),
+    );
     final f = form.fields;
     return Scaffold(
       body: Column(

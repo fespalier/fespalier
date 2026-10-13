@@ -123,7 +123,21 @@ fn views_built_without_arguments_are_const_when_their_constructor_is() {
 
 #[test]
 fn committed_output_is_up_to_date() {
-    for name in ["shop", "features", "tabs", "minimal", "telemetry", "auth"] {
+    for name in [
+        "shop",
+        "features",
+        "tabs",
+        "minimal",
+        "telemetry",
+        "auth",
+        "plugins",
+        "downloads",
+        "cose",
+        "i18n",
+        "maps",
+        "adopt",
+        "offline",
+    ] {
         // The examples' own pubspec.yaml: `output_manifest:` and `meta:` change what is written.
         let cfg = Config::load(&examples(name)).unwrap();
         let (code, main, diags, app) =
@@ -183,7 +197,21 @@ fn committed_output_is_up_to_date() {
 /// `examples/shop` has a string path that matches and a silenced one that does not.
 #[test]
 fn examples_have_no_unknown_paths() {
-    for name in ["shop", "features", "tabs", "minimal", "telemetry", "auth"] {
+    for name in [
+        "shop",
+        "features",
+        "tabs",
+        "minimal",
+        "telemetry",
+        "auth",
+        "plugins",
+        "downloads",
+        "cose",
+        "i18n",
+        "maps",
+        "adopt",
+        "offline",
+    ] {
         let cfg = Config::load(&examples(name)).unwrap();
         let (_, diags, app) = crate::analyze(&examples(name).join("lib/app"), &cfg).unwrap();
         assert!(diags.0.is_empty(), "{name}: {:?}", diags.0);
@@ -943,6 +971,7 @@ fn scaffold_then_generate() {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
     };
     scaffold::new_route(dir.path(), &args("orders/[orderId]", true)).unwrap();
     let data = fs::read_to_string(dir.path().join("lib/app/orders/$orderId/data.dart")).unwrap();
@@ -1361,6 +1390,7 @@ fn scaffold_writes_a_transition() {
         transition: true,
         nav: false,
         observe: false,
+        leave: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
     let t = fs::read_to_string(dir.path().join("lib/app/docs/transition.dart")).unwrap();
@@ -1803,6 +1833,37 @@ fn config_defaults_and_custom_paths() {
 }
 
 #[test]
+fn pubspec_reads_the_fespalier_ref() {
+    let pin = |y: &str| crate::config::Pubspec::parse(y).unwrap().pinned_ref;
+    let repo = "name: a\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: v0.14.0\n      path: packages/fespalier\n";
+    assert_eq!(pin(repo).as_deref(), Some("v0.14.0"));
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    path: ../x\n"),
+        None
+    );
+    assert_eq!(pin("name: a\ndependencies:\n  fespalier: ^1.0.0\n"), None);
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git: https://x/y\n"),
+        None
+    );
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git:\n      url: u\n"),
+        None
+    );
+    assert_eq!(pin("name: a\n"), None);
+    // Malformed shapes read as no pin, never an error.
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git:\n      ref: [1, 2]\n"),
+        None
+    );
+    assert_eq!(
+        pin("name: a\ndependencies:\n  fespalier:\n    git: 3\n"),
+        None
+    );
+    assert_eq!(pin("name: a\ndependencies: []\n"), None);
+}
+
+#[test]
 fn config_errors_are_clear() {
     let e = format!(
         "{:#}",
@@ -1936,6 +1997,7 @@ fn scaffold_honours_app_dir() {
         transition: false,
         nav: false,
         observe: false,
+        leave: false,
     };
     scaffold::new_route(dir.path(), &args).unwrap();
     assert!(dir.path().join("lib/pages/docs/$slug/page.dart").exists());
@@ -2413,7 +2475,7 @@ fn a_hook_that_takes_a_widget_ref_is_told_to_take_a_ref() {
 
 #[test]
 fn a_view_file_may_hold_other_public_classes_if_one_is_a_widget() {
-    // The README says "one public widget class": a class that isn't a widget beside it is fine,
+    // The docs (docs/file-kinds.md) say "one public widget class": a class that isn't a widget beside it is fine,
     // and only an ambiguous file is an error.
     let c = code(&[(
         "a/page.dart",
@@ -2576,19 +2638,40 @@ fn guards_above_a_tab_layout_cover_every_tab() {
         ("(tabs)/profile/page.dart", &page("Profile")),
         ("(tabs)/profile/edit/page.dart", &page("Edit")),
     ]);
-    // One per tab's first-level route; /profile/edit nests inside /profile.
-    assert_eq!(guard_calls(&c), 2, "{c}");
+    // One, on the tab shell (since 0.11.0): a switch between tabs does not copy it into each
+    // tab's route, so a leave.dart can tell a tab's own guard from the one above them.
+    assert_eq!(guard_calls(&c), 1, "{c}");
     assert!(!c.contains("firstRedirect"), "{c}");
+    let shell = at(&c, "StatefulShellRoute");
+    let branches = at(&c, "branches:");
+    assert!(
+        c[shell..branches].contains("redirect: (context, state) => traceGuard(state, 'g1@"),
+        "{c}"
+    );
+    assert!(!c[branches..].contains("redirect:"), "{c}");
 
     // A guard in the tab layout's own folder, which has a page: it covers the
-    // page and the tabs beside it.
+    // page and the tabs beside it, from the shell too.
     let c = code(&[
         ("layout.dart", TABS),
         ("page.dart", HOME),
         ("guard.dart", NOOP_GUARD),
         ("search/page.dart", &page("Search")),
     ]);
-    assert_eq!(guard_calls(&c), 2, "{c}");
+    assert_eq!(guard_calls(&c), 1, "{c}");
+    let branches = at(&c, "branches:");
+    assert!(!c[branches..].contains("redirect:"), "{c}");
+
+    // A guard of a tab's own stays on that tab's route.
+    let c = code(&[
+        ("(tabs)/layout.dart", TABS),
+        ("(tabs)/search/page.dart", &page("Search")),
+        ("(tabs)/profile/page.dart", &page("Profile")),
+        ("(tabs)/profile/guard.dart", NOOP_GUARD),
+    ]);
+    assert_eq!(guard_calls(&c), 1, "{c}");
+    let branches = at(&c, "branches:");
+    assert!(c[branches..].contains("redirect:"), "{c}");
 }
 
 #[test]

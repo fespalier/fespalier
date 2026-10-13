@@ -1,0 +1,7 @@
+exit: 1
+stdout:
+{"file":"lib/app/stats","line":null,"column":null,"severity":"warning","message":"folder has no page.dart and no routes below it; skipped"}
+{"file":"lib/app/stats/data.dart","line":null,"column":null,"severity":"error","message":"data.dart has no page.dart to feed; with a layout.dart beside it, it would be the data of the section below that layout"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

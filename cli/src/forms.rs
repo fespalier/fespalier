@@ -6,7 +6,10 @@
 //! This module holds what the resolver needs to read them: the names, the field kinds a text
 //! field can take, and how the fields of an action's input record are read.
 
+use crate::config::Config;
 use crate::dart::{Ty, Typedef};
+use crate::diag::Diags;
+use crate::resolve::App;
 
 /// What a companion function is for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,10 +20,18 @@ pub enum Companion {
     Validate,
     /// `optimistic(T current, Input input)`: what the page shows while the write is in flight.
     Optimistic,
+    /// `skip(Step step, Input input)`: whether a step of a multi-page form is left out (since
+    /// 0.11.0).
+    Skip,
 }
 
 impl Companion {
-    pub const ALL: [Companion; 3] = [Companion::Form, Companion::Validate, Companion::Optimistic];
+    pub const ALL: [Companion; 4] = [
+        Companion::Form,
+        Companion::Validate,
+        Companion::Optimistic,
+        Companion::Skip,
+    ];
 
     /// The companion's name for the plain action: `form`.
     pub fn plain(self) -> &'static str {
@@ -28,6 +39,7 @@ impl Companion {
             Companion::Form => "form",
             Companion::Validate => "validate",
             Companion::Optimistic => "optimistic",
+            Companion::Skip => "skip",
         }
     }
 
@@ -37,6 +49,7 @@ impl Companion {
             Companion::Form => "Form",
             Companion::Validate => "Validate",
             Companion::Optimistic => "Optimistic",
+            Companion::Skip => "Skip",
         }
     }
 
@@ -46,6 +59,7 @@ impl Companion {
             Companion::Form => "form",
             Companion::Validate => "validation",
             Companion::Optimistic => "optimistic patch",
+            Companion::Skip => "skip rule",
         }
     }
 }
@@ -60,6 +74,61 @@ pub fn companion(action: &str, role: Companion) -> String {
     }
 }
 
+/// The name of the `const steps` map of the action called `action` (since 0.11.0): `steps`, or
+/// `approveSteps` for `approve`. A map there makes the action's form a multi-page one.
+pub fn steps_name(action: &str) -> String {
+    if action == "action" {
+        "steps".to_string()
+    } else {
+        format!("{action}Steps")
+    }
+}
+
+/// Whether `v` is meant as the steps of a flow (since 0.11.0): a map literal, well formed or not.
+/// Any other `steps` (a number, a list) is the app's own and is left alone.
+pub fn is_steps(v: &crate::dart::Variable) -> bool {
+    v.lists.is_some()
+        || v.value
+            .as_deref()
+            .is_some_and(|t| t.starts_with('{') || t.starts_with("const{"))
+}
+
+/// Whether a module declares the steps of some action in it: a `steps` map, or `<name>Steps` beside
+/// a function `<name>`.
+pub fn has_steps(m: &crate::dart::Module) -> bool {
+    m.variables.iter().any(|v| {
+        is_steps(v)
+            && (v.name == "steps"
+                || v.name
+                    .strip_suffix("Steps")
+                    .is_some_and(|a| m.functions.iter().any(|f| f.name == a)))
+    })
+}
+
+/// `form()` needs the `fespalier_forms` package (since 0.11.0): the generated file imports it. An
+/// error at each `form()` of an app that does not list it under `dependencies:`.
+pub fn check_dependency(app: &App, cfg: &Config, diags: &mut Diags) {
+    if cfg.forms_dependency {
+        return;
+    }
+    for (action, form) in app
+        .routes
+        .iter()
+        .flat_map(|r| &r.actions)
+        .filter_map(|a| a.form.as_ref().map(|f| (a, f)))
+    {
+        let message = missing_package(&form.function, &action.name);
+        diags.error(&form.file, Some(&form.span), &message);
+    }
+}
+
+/// The message of [`check_dependency`]: `form` is the form of `action`.
+pub fn missing_package(form: &str, action: &str) -> String {
+    format!(
+        "`{form}()` is the form of `{action}()`, and since 0.11.0 forms are in the fespalier_forms package: add `fespalier_forms` under `dependencies:` in pubspec.yaml, with the same git `url` and `ref` as fespalier"
+    )
+}
+
 /// The `FieldCodec` a text field of this exact type is read with, or `None` for a field of
 /// another type (a `bool`, an enum, a date...), which is a plain value field.
 pub fn codec(ty: &str) -> Option<&'static str> {
@@ -72,6 +141,19 @@ pub fn codec(ty: &str) -> Option<&'static str> {
         "double?" => "optionalDecimal",
         "num" => "number",
         "num?" => "optionalNumber",
+        _ => return None,
+    })
+}
+
+/// The `DraftCodec` that keeps a value field of this exact type in a draft (since 0.11.0), for a
+/// `bool` and a `DateTime`; enums are found by the resolver. `None` for any other type: it is not
+/// drafted.
+pub fn draft_codec(ty: &str) -> Option<&'static str> {
+    Some(match ty {
+        "bool" => "boolean",
+        "bool?" => "optionalBoolean",
+        "DateTime" => "dateTime",
+        "DateTime?" => "optionalDateTime",
         _ => return None,
     })
 }

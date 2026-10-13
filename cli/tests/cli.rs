@@ -118,7 +118,7 @@ fn gen_and_check_report_success() {
 }
 
 /// `check` writes and compares nothing, so it passes while the committed output is stale; the
-/// README says so, and tells CI to run `gen` and then fail on a diff to catch that.
+/// docs/getting-started.md says so, and tells CI to run `gen` and then fail on a diff to catch that.
 #[test]
 fn check_passes_while_the_committed_output_is_stale() {
     let dir = project();
@@ -211,7 +211,7 @@ fn new_observe_writes_the_hooks_and_the_generated_file_attaches_them() {
     );
     let code = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     assert!(
-        code.contains("observeAttach(router, _observeAt);"),
+        code.contains("observeAttach(router, _observeAt, container: container);"),
         "{code}"
     );
     // `fsp new` with nothing to write names every flag, this one included.
@@ -2168,7 +2168,7 @@ fn telemetry_report_names_the_exit_code_when_the_report_fails() {
     assert_eq!(err, "the report failed (exit 1); the lines above say why\n");
 }
 
-const TELEMETRY_W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (README, \"Telemetry\")\n";
+const TELEMETRY_W1: &str = "⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, \"Telemetry\")\n";
 
 #[cfg(unix)]
 #[test]
@@ -2979,7 +2979,7 @@ fn run_says_what_is_wrong_with_the_name() {
     assert_eq!(code, Some(1));
     assert_eq!(
         err,
-        "no task `nope` in `fespalier: tasks:` of pubspec.yaml; there are none yet (README, \"Tasks: commands around `flutter run`\")\n"
+        "no task `nope` in `fespalier: tasks:` of pubspec.yaml; there are none yet (docs/cli.md, \"Tasks: commands around `flutter run`\")\n"
     );
     let (code, _, err) = fsp_task(dir.path(), &["run", "dev"], &[]);
     assert_eq!(code, Some(1));
@@ -3142,10 +3142,11 @@ fsp run codegen in {root}
     assert!(!dir.path().join("lib/app.g.dart").exists());
 }
 
-/// `fespalier: adapters:` (since 0.9.0) writes the generated `main()` on its own, importing each
-/// package's `fespalier_adapter.dart`, and `main: manual` with it is refused by every command.
+/// `fespalier: adapters:` (since 0.9.0) writes the generated `main()` on its own, calling
+/// `AppAdapters`, which `app.g.dart` defines; `main: manual` keeps `AppAdapters` and writes no
+/// main (since 0.11.0, it used to be refused).
 #[test]
-fn adapters_write_the_main_and_main_manual_refuses_them() {
+fn adapters_write_the_main_and_main_manual_keeps_them() {
     let dir = project();
     fs::write(
         dir.path().join("pubspec.yaml"),
@@ -3161,25 +3162,856 @@ fn adapters_write_the_main_and_main_manual_refuses_them() {
     );
     let main = fs::read_to_string(dir.path().join("lib/app.main.g.dart")).unwrap();
     assert!(
-        main.contains("import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;")
-            && main.contains("static Future<void> run() => _a0.adapter.zone(_main);"),
+        main.contains("static Future<void> run() => AppAdapters.zone(_main);")
+            && !main.contains("fespalier_adapter.dart"),
         "{main}"
+    );
+    let app_g = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(
+        app_g.contains("import 'package:fespalier_sentry/fespalier_adapter.dart' as _a0;")
+            && app_g.contains("FespalierAdapters([_a0.adapter])"),
+        "{app_g}"
     );
     assert_eq!(
         fsp(dir.path(), &["check"]),
         (true, "✓ 1 route, no errors\n".into())
     );
 
+    fs::remove_file(dir.path().join("lib/app.main.g.dart")).unwrap();
     fs::write(
         dir.path().join("pubspec.yaml"),
         "name: demo\ndependencies:\n  fespalier_sentry: ^1.0.0\nfespalier:\n  main: manual\n  adapters: [fespalier_sentry]\n",
     )
     .unwrap();
-    for command in ["check", "gen"] {
-        let (ok, err) = fsp(dir.path(), &[command]);
+    assert_eq!(
+        fsp(dir.path(), &["gen"]),
+        (true, "✓ 1 route, lib/app.g.dart unchanged\n".into())
+    );
+    assert!(!dir.path().join("lib/app.main.g.dart").exists());
+    let app_g = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(
+        app_g.contains("abstract final class AppAdapters"),
+        "{app_g}"
+    );
+    assert_eq!(
+        fsp(dir.path(), &["check"]),
+        (true, "✓ 1 route, no errors\n".into())
+    );
+}
+
+#[test]
+fn links_out_false_manages_only_the_platform_files_and_needs_no_fingerprints() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    fs::write(
+        root.join(manifest_path),
+        include_str!("fixtures/links/AndroidManifest.xml"),
+    )
+    .unwrap();
+    let section = |out: &str, sha: bool| {
+        let sha = if sha {
+            "    android_sha256: [\"14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5\"]\n"
+        } else {
+            ""
+        };
+        format!(
+            "{base}fespalier:\n  links:\n    domains: [shop.example.com]\n    android_package: com.example.shop\n{sha}    android_manifest: {manifest_path}\n{out}"
+        )
+    };
+
+    // A package without fingerprints is refused while the sitemap and assetlinks are written.
+    fs::write(&pubspec, section("", false)).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        !ok && err.contains("needs `android_sha256` while `fsp links` writes assetlinks.json"),
+        "{err}"
+    );
+    assert!(!root.join("links").exists());
+
+    // The default still writes the sitemap.
+    fs::write(&pubspec, section("", true)).unwrap();
+    assert!(fsp_full(root, &["links"], &[]).0);
+    assert!(root.join("links/web/sitemap.xml").exists());
+    fs::remove_dir_all(root.join("links")).unwrap();
+    fs::write(
+        root.join(manifest_path),
+        include_str!("fixtures/links/AndroidManifest.xml"),
+    )
+    .unwrap();
+
+    // `out: false`: no fingerprints needed, only the manifest is written and checked.
+    fs::write(&pubspec, section("    out: false\n", false)).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains("1 file(s) out of date; run `fsp links`"),
+        "{err}"
+    );
+    assert!(!err.contains("sitemap"), "{err}");
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(ok, "{err}");
+    assert!(err.contains(&format!("  edited {manifest_path}")), "{err}");
+    assert!(
+        err.contains("✓ links: 1 platform files (0 written, 1 edited, 0 unchanged)"),
+        "{err}"
+    );
+    assert!(!root.join("links").exists(), "no sitemap, no folder");
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains("✓ links: 1 platform files are up to date"),
+        "{err}"
+    );
+
+    // --check ignores a sitemap that is there, and `out: true` is refused.
+    fs::create_dir_all(root.join("links/web")).unwrap();
+    fs::write(root.join("links/web/sitemap.xml"), "stale").unwrap();
+    assert!(fsp_full(root, &["links", "--check"], &[]).0);
+    fs::write(&pubspec, section("    out: true\n", true)).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        !ok && err.contains("`fespalier.links.out` is a folder, or `false`"),
+        "{err}"
+    );
+}
+
+#[test]
+fn links_edits_the_platform_files_and_check_follows_them() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    let plist_path = "ios/Runner/Runner.entitlements";
+    let keys = format!(
+        "{LINKS}    android_manifest: {manifest_path}\n    ios_entitlements: {plist_path}\n"
+    );
+    fs::write(&pubspec, format!("{base}{keys}")).unwrap();
+
+    // The manifest has to exist: `fsp` edits it, it does not create it.
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        !ok && err.contains(&format!(
+            "{manifest_path} not found (`fespalier.links.android_manifest`); run `flutter create --platforms android .`, or fix the path"
+        )),
+        "{err}"
+    );
+    assert!(!root.join("links").exists(), "an error writes nothing");
+
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    let template = include_str!("fixtures/links/AndroidManifest.xml");
+    fs::write(root.join(manifest_path), template).unwrap();
+    fs::create_dir_all(root.join("ios/Runner.xcodeproj")).unwrap();
+    fs::create_dir_all(root.join("ios/Runner")).unwrap();
+    fs::write(
+        root.join("ios/Runner.xcodeproj/project.pbxproj"),
+        "CODE_SIGN_ENTITLEMENTS = Runner/Other.entitlements;\n",
+    )
+    .unwrap();
+
+    // `--check` names what is missing and writes nothing.
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.contains(&format!("{manifest_path} has no fsp links markers yet")),
+        "{err}"
+    );
+    assert!(err.contains(&format!("{plist_path} is missing")), "{err}");
+    assert!(
+        err.contains("7 file(s) out of date; run `fsp links`"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(manifest_path)).unwrap(),
+        template
+    );
+    assert!(!root.join(plist_path).exists());
+
+    // `fsp links` edits and writes them, and says the Xcode project doesn't use the file.
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(ok, "{err}");
+    assert!(err.contains(&format!("  edited {manifest_path}")), "{err}");
+    assert!(err.contains(&format!("  wrote {plist_path}")), "{err}");
+    assert!(
+        err.contains(&format!(
+            "warning: {plist_path} is not set as CODE_SIGN_ENTITLEMENTS in ios/Runner.xcodeproj/project.pbxproj, so no build uses it: add the Associated Domains capability in Xcode, or point the build setting at this file"
+        )),
+        "{err}"
+    );
+    assert!(
+        err.contains("and 2 platform files (1 written, 1 edited, 0 unchanged)"),
+        "{err}"
+    );
+    let manifest = fs::read_to_string(root.join(manifest_path)).unwrap();
+    assert!(manifest.contains("<!-- fsp links: begin. "), "{manifest}");
+    assert!(
+        manifest.contains("<data android:host=\"shop.example.com\" />"),
+        "{manifest}"
+    );
+    assert!(
+        fs::read_to_string(root.join(plist_path))
+            .unwrap()
+            .contains("<string>applinks:shop.example.com</string>")
+    );
+
+    // The paste files say `fsp` does the pasting, and no temporary file stays behind.
+    let paste = fs::read_to_string(root.join("links/android/intent-filters.xml")).unwrap();
+    assert!(
+        paste.contains("this file is a copy to read, don't paste it"),
+        "{paste}"
+    );
+    let paste = fs::read_to_string(root.join("links/ios/associated-domains.entitlements")).unwrap();
+    assert!(
+        paste.contains("this file is a copy to read, don't paste it"),
+        "{paste}"
+    );
+    assert!(
+        !root
+            .join("ios/Runner/.Runner.entitlements.fsp-tmp")
+            .exists()
+    );
+
+    // Pointing the build setting at it quiets the warning; everything is up to date.
+    fs::write(
+        root.join("ios/Runner.xcodeproj/project.pbxproj"),
+        "CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;\n",
+    )
+    .unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains("✓ links: 5 files in links are up to date, and 2 platform files")
+            && !err.contains("warning"),
+        "{err}"
+    );
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && !err.contains("  edited ") && err.contains("(0 written, 0 edited, 2 unchanged)"),
+        "{err}"
+    );
+
+    // A new route makes the manifest stale: `--check` names it, `fsp links` fixes it.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains(&format!(
+            "{manifest_path}: the intent filters between the fsp links markers are out of date"
+        )),
+        "{err}"
+    );
+    let stale = fs::read_to_string(root.join(manifest_path)).unwrap();
+    assert_eq!(stale, manifest, "--check writes nothing");
+    assert!(fsp_full(root, &["links"], &[]).0);
+    assert!(fsp_full(root, &["links", "--check"], &[]).0);
+
+    // A changed domain makes the entitlements stale.
+    let moved = keys.replace("shop.example.com]", "shop.example.com, www.example.com]");
+    fs::write(&pubspec, format!("{base}{moved}")).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        !ok && err.contains(&format!(
+            "{plist_path}: the applinks: entries of com.apple.developer.associated-domains are out of date"
+        )),
+        "{err}"
+    );
+    assert!(fsp_full(root, &["links"], &[]).0);
+    assert!(
+        fs::read_to_string(root.join(plist_path))
+            .unwrap()
+            .contains("applinks:www.example.com")
+    );
+    assert!(fsp_full(root, &["links", "--check"], &[]).0);
+
+    // A filter of the app's own outside the markers is a warning, not a failure.
+    let with_own = fs::read_to_string(root.join(manifest_path))
+        .unwrap()
+        .replacen(
+            "        </activity>\n",
+            "            <intent-filter>\n                <action android:name=\"android.intent.action.VIEW\"/>\n                <data android:scheme=\"https\" android:host=\"shop.example.com\"/>\n            </intent-filter>\n        </activity>\n",
+            1,
+        );
+    fs::write(root.join(manifest_path), with_own).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains(&format!("warning: {manifest_path}:"))
+            && err.contains(
+                "an <intent-filter> for `shop.example.com` outside the fsp links markers"
+            ),
+        "{err}"
+    );
+}
+
+/// Flutter's own deep linking switch turned off is a warning of `fsp links`, in both files, and
+/// neither file is touched by it.
+#[test]
+fn links_warns_when_flutter_deep_linking_is_off() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    let plist_path = "ios/Runner/Runner.entitlements";
+    fs::write(
+        &pubspec,
+        format!(
+            "{base}{LINKS}    android_manifest: {manifest_path}\n    ios_entitlements: {plist_path}\n"
+        ),
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    fs::create_dir_all(root.join("ios/Runner")).unwrap();
+    let template = include_str!("fixtures/links/AndroidManifest.xml");
+    fs::write(root.join(manifest_path), template).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && !err.contains("eeplinking") && !err.contains("eepLinking"),
+        "{err}"
+    );
+
+    // Off in the manifest and in Info.plist: two warnings, `--check` still passes.
+    let off = fs::read_to_string(root.join(manifest_path)).unwrap().replacen(
+        "<intent-filter>\n                <action android:name=\"android.intent.action.MAIN\"/>",
+        "<meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n            <intent-filter>\n                <action android:name=\"android.intent.action.MAIN\"/>",
+        1,
+    );
+    fs::write(root.join(manifest_path), &off).unwrap();
+    let info = "<plist version=\"1.0\">\n<dict>\n\t<key>FlutterDeepLinkingEnabled</key>\n\t<false/>\n</dict>\n</plist>\n";
+    fs::write(root.join("ios/Runner/Info.plist"), info).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links", "--check"], &[]);
+    assert!(
+        ok && err.contains(&format!(
+            "warning: flutter_deeplinking_enabled is false in {manifest_path}: Flutter will not hand links to the router"
+        )) && err.contains(
+            "warning: FlutterDeepLinkingEnabled is false in ios/Runner/Info.plist: Flutter will not hand links to the router"
+        ),
+        "{err}"
+    );
+    assert_eq!(fs::read_to_string(root.join(manifest_path)).unwrap(), off);
+    assert_eq!(
+        fs::read_to_string(root.join("ios/Runner/Info.plist")).unwrap(),
+        info
+    );
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && err.contains("warning: flutter_deeplinking_enabled is false"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("ios/Runner/Info.plist")).unwrap(),
+        info
+    );
+}
+
+/// Without `android_manifest:` the manifest is still read, at the path `flutter create` uses,
+/// and never written.
+#[test]
+fn links_reads_the_default_manifest_for_flutter_deep_linking() {
+    let dir = project();
+    let root = dir.path();
+    let pubspec = root.join("pubspec.yaml");
+    let base = fs::read_to_string(&pubspec).unwrap();
+    fs::write(&pubspec, format!("{base}{LINKS}")).unwrap();
+    let manifest_path = "android/app/src/main/AndroidManifest.xml";
+    fs::create_dir_all(root.join("android/app/src/main")).unwrap();
+    let manifest = "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">\n  <application>\n    <activity android:name=\".MainActivity\">\n      <meta-data android:name=\"flutter_deeplinking_enabled\" android:value=\"false\" />\n    </activity>\n  </application>\n</manifest>\n";
+    fs::write(root.join(manifest_path), manifest).unwrap();
+    let (ok, _, err) = fsp_full(root, &["links"], &[]);
+    assert!(
+        ok && err.contains(&format!(
+            "warning: flutter_deeplinking_enabled is false in {manifest_path}: Flutter will not hand links to the router"
+        )),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.join(manifest_path)).unwrap(),
+        manifest
+    );
+}
+
+// --- `fsp create` -------------------------------------------------------------------------------
+//
+// Against a stand-in `flutter` that makes the little `flutter create --empty` makes, so the
+// order of the calls, the sibling folder and its rename, and the clean-up on failure are what is
+// tested; `scripts/check-create.sh` (`just create-check`) runs the real flutter.
+
+/// A folder with a stand-in `flutter` in `bin/`. It logs its arguments to `$FAKE_LOG`.
+/// `--version --machine` prints a notice and then `{"frameworkVersion": $FAKE_FLUTTER_VERSION}`;
+/// `create` makes the folder named by its last argument (and exits `$FAKE_CREATE_EXIT` after
+/// that, when set); `pub get` logs its folder (and exits `$FAKE_PUBGET_EXIT`, when set). Both
+/// print to stdout, as flutter does.
+#[cfg(unix)]
+fn create_root() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    write_executable(
+        &bin.join("flutter"),
+        r#"#!/bin/sh
+echo "$*" >> "$FAKE_LOG"
+case "$1" in
+  --version)
+    printf 'A notice before the JSON\n{"frameworkVersion":"%s"}\n' "${FAKE_FLUTTER_VERSION:-3.47.5}"
+    exit 0 ;;
+  create)
+    for last; do :; done
+    mkdir -p "$last/lib" "$last/web"
+    printf 'name: stand_in\n' > "$last/pubspec.yaml"
+    printf 'void main() {}\n' > "$last/lib/main.dart"
+    printf 'from flutter create\n' > "$last/README.md"
+    echo "Creating project $last..."
+    [ -n "$FAKE_CREATE_EXIT" ] && exit "$FAKE_CREATE_EXIT"
+    exit 0 ;;
+  pub)
+    echo "pub get in $PWD" >> "$FAKE_LOG"
+    echo "Resolving dependencies..."
+    [ -n "$FAKE_PUBGET_EXIT" ] && exit "$FAKE_PUBGET_EXIT"
+    exit 0 ;;
+  *) exit 9 ;;
+esac
+"#,
+    );
+    dir
+}
+
+/// The names in `root` that are left over from a `fsp create`.
+#[cfg(unix)]
+fn staging_folders(root: &Path) -> Vec<String> {
+    fs::read_dir(root)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| n.contains(".fsp-create-"))
+        .collect()
+}
+
+#[cfg(unix)]
+fn flutter_log(root: &Path) -> Vec<String> {
+    fs::read_to_string(root.join("flutter.log"))
+        .unwrap_or_default()
+        .lines()
+        .map(String::from)
+        .collect()
+}
+
+#[cfg(unix)]
+#[test]
+fn create_makes_the_app_in_a_sibling_folder_then_moves_it_into_place() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, out, err) = fsp_task(root, &["create", "app", "--org", "com.example"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    // Without --json, flutter's own output is on stdout, where it printed it.
+    assert!(out.contains("Creating project"), "{out}");
+    // Flutter's version first, then `create` into a sibling of the app (with no `pub get`: the
+    // package config would hold the sibling's path), then `pub get` in the app itself.
+    let log = flutter_log(root);
+    assert_eq!(log[0], "--version --machine");
+    let staging = format!("{}/.app.fsp-create-", root.display());
+    assert!(
+        log[1].starts_with("create --no-pub --empty --project-name=app --org=com.example "),
+        "{log:?}"
+    );
+    assert!(log[1].contains(&staging), "{log:?}");
+    assert_eq!(log[2], "pub get");
+    assert_eq!(log[3], format!("pub get in {}", root.join("app").display()));
+    assert_eq!(log.len(), 4, "{log:?}");
+    assert!(staging_folders(root).is_empty());
+    // The pubspec and main.dart are ours, the rest is what flutter made.
+    let app = root.join("app");
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    assert!(pubspec.starts_with("name: app\n"), "{pubspec}");
+    assert!(pubspec.contains("  fespalier:\n    git:\n"), "{pubspec}");
+    assert!(
+        fs::read_to_string(app.join("lib/main.dart"))
+            .unwrap()
+            .contains("AppMain.run()")
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("README.md")).unwrap(),
+        "from flutter create\n"
+    );
+    // ... and `gen` and `test` ran, in the app.
+    assert!(app.join("lib/app.g.dart").is_file());
+    assert!(app.join("lib/app.main.g.dart").is_file());
+    let tests = fs::read_to_string(app.join("test/routes/routes_test.dart")).unwrap();
+    assert!(tests.starts_with("// Written by `fsp test`"), "{tests}");
+    assert!(
+        err.contains("✓ 2 routes → lib/app.g.dart, lib/app.main.g.dart"),
+        "{err}"
+    );
+    assert!(
+        err.contains("✓ created app\n\nNext steps\n  cd app\n  fsp dev"),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn create_replaces_an_empty_folder_and_makes_the_parents() {
+    let dir = create_root();
+    let root = dir.path();
+    fs::create_dir_all(root.join("empty")).unwrap();
+    let (code, _, err) = fsp_task(root, &["create", "empty"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(root.join("empty/lib/app/page.dart").is_file());
+    let (code, _, err) = fsp_task(root, &["create", "apps/nested/deep_app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(root.join("apps/nested/deep_app/pubspec.yaml").is_file());
+    assert!(staging_folders(&root.join("apps/nested")).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn create_refuses_a_folder_that_is_not_empty_and_changes_nothing() {
+    let dir = create_root();
+    let root = dir.path();
+    fs::create_dir_all(root.join("app")).unwrap();
+    fs::write(root.join("app/keep.txt"), "mine").unwrap();
+    let (code, _, err) = fsp_task(root, &["create", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("app is not empty"), "{err}");
+    assert_eq!(
+        fs::read_to_string(root.join("app/keep.txt")).unwrap(),
+        "mine"
+    );
+    assert!(!flutter_log(root).iter().any(|l| l.starts_with("create")));
+    assert!(staging_folders(root).is_empty());
+    // A file in the way.
+    fs::write(root.join("file"), "").unwrap();
+    let (code, _, err) = fsp_task(root, &["create", "file"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("exists and is a file"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn create_that_fails_before_the_move_leaves_nothing_behind() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, _, err) = fsp_task(root, &["create", "app"], &[("FAKE_CREATE_EXIT", "3")]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("failed (exit 3)"), "{err}");
+    assert!(!root.join("app").exists());
+    assert!(
+        staging_folders(root).is_empty(),
+        "{:?}",
+        staging_folders(root)
+    );
+    assert!(!flutter_log(root).iter().any(|l| l.starts_with("pub")));
+}
+
+#[cfg(unix)]
+#[test]
+fn create_that_fails_after_the_move_keeps_the_app_and_says_what_is_left() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, _, err) = fsp_task(root, &["create", "app"], &[("FAKE_PUBGET_EXIT", "1")]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("flutter pub get failed"), "{err}");
+    assert!(
+        err.contains("The app is in app; fix that and finish with:\n  cd app\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    assert!(root.join("app/pubspec.yaml").is_file());
+    assert!(!root.join("app/lib/app.g.dart").exists());
+    assert!(staging_folders(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn create_dry_run_writes_nothing_and_does_not_run_flutter() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, out, err) = fsp_task(root, &["create", "app", "--dry-run"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.starts_with("create app (package app, features: none)\n"),
+        "{err}"
+    );
+    assert!(err.contains("\n=== lib/app/page.dart (new)\n"), "{err}");
+    assert!(!root.join("app").exists());
+    assert!(!root.join("flutter.log").exists(), "flutter was run");
+}
+
+#[cfg(unix)]
+#[test]
+fn create_json_prints_events_on_stdout_and_nothing_else() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, out, err) = fsp_task(root, &["create", "app", "--json"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    // flutter's own output ("Creating project…") went to stderr, so every line is JSON.
+    assert!(err.contains("Creating project"), "{err}");
+    let events: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap_or_else(|e| panic!("{l}: {e}")))
+        .collect();
+    let kinds: Vec<&str> = events
+        .iter()
+        .map(|e| e["event"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds[0], "run");
+    assert!(
+        events[0]["command"]
+            .as_str()
+            .unwrap()
+            .starts_with("flutter create --no-pub")
+    );
+    assert_eq!(*kinds.last().unwrap(), "done");
+    assert_eq!(
+        events.last().unwrap(),
+        &serde_json::json!({"event":"done","dir":"app","name":"app","features":[],"dry_run":false})
+    );
+    let files: Vec<&str> = events
+        .iter()
+        .filter(|e| e["event"] == "file")
+        .map(|e| e["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(files[..2], ["pubspec.yaml", "lib/main.dart"]);
+    assert!(files.contains(&"lib/app/about/page.dart"), "{files:?}");
+    // The commands, in order.
+    let commands: Vec<&str> = events
+        .iter()
+        .filter(|e| e["event"] == "run")
+        .map(|e| e["command"].as_str().unwrap())
+        .collect();
+    assert_eq!(commands[1..], ["flutter pub get", "fsp gen", "fsp test"]);
+}
+
+#[cfg(unix)]
+#[test]
+fn create_dry_run_json_has_the_content_and_an_error_is_an_event() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, out, _) = fsp_task(root, &["create", "app", "--dry-run", "--json"], &[]);
+    assert_eq!(code, Some(0));
+    let pubspec: serde_json::Value = out
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|e| e["event"] == "file" && e["path"] == "pubspec.yaml")
+        .unwrap();
+    assert_eq!(pubspec["action"], "overwrite");
+    assert!(
+        pubspec["content"]
+            .as_str()
+            .unwrap()
+            .starts_with("name: app\n")
+    );
+    // A failure is an `error` event on stdout and the text on stderr.
+    let (code, out, err) = fsp_task(
+        root,
+        &["create", "app", "--json"],
+        &[("FAKE_CREATE_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1));
+    let last: serde_json::Value = serde_json::from_str(out.lines().last().unwrap()).unwrap();
+    assert_eq!(last["event"], "error");
+    assert!(
+        last["message"]
+            .as_str()
+            .unwrap()
+            .contains("failed (exit 3)"),
+        "{last}"
+    );
+    assert!(err.contains("failed (exit 3)"));
+}
+
+#[cfg(unix)]
+#[test]
+fn create_takes_its_folder_as_the_argument_and_refuses_project() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, _, err) = fsp_task(root, &["--project", "somewhere", "create", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("fsp create takes the new app's folder as its argument"),
+        "{err}"
+    );
+    assert!(!root.join("app").exists());
+    assert!(!root.join("flutter.log").exists());
+    // No folder at all is the usage error.
+    let (code, _, err) = fsp_task(root, &["create"], &[]);
+    assert_eq!(code, Some(2));
+    assert!(err.contains("<DIR>"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn create_needs_a_flutter_that_is_there_and_new_enough() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, _, err) = fsp_task(
+        root,
+        &["create", "app"],
+        &[("FAKE_FLUTTER_VERSION", "3.31.2")],
+    );
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("Flutter 3.31.2 is too old: fespalier needs Flutter 3.32 or newer"),
+        "{err}"
+    );
+    assert!(!flutter_log(root).iter().any(|l| l.starts_with("create")));
+    assert!(!root.join("app").exists());
+    // No flutter on PATH.
+    fs::create_dir_all(root.join("nothing")).unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["create", "app"])
+            .env("PATH", root.join("nothing"))
+            .current_dir(root),
+    )
+    .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("`flutter` is not on PATH: install Flutter"),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn create_flags_reach_flutter_and_pub_get() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, _, err) = fsp_task(
+        root,
+        &[
+            "create",
+            "app",
+            "--project-name",
+            "shop",
+            "--platforms",
+            "web,android",
+            "--offline",
+            "--description",
+            "A shop",
+        ],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    let log = flutter_log(root);
+    assert!(
+        log[1].starts_with("create --no-pub --empty --project-name=shop --platforms=web,android "),
+        "{log:?}"
+    );
+    assert_eq!(log[2], "pub get --offline");
+    let pubspec = fs::read_to_string(root.join("app/pubspec.yaml")).unwrap();
+    assert!(
+        pubspec.starts_with("name: shop\ndescription: A shop\n"),
+        "{pubspec}"
+    );
+    // --no-pub-get: the app is written and generated, `pub get` is left to the person.
+    let before = flutter_log(root).len();
+    let (code, _, err) = fsp_task(root, &["create", "second", "--no-pub-get"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    let after = flutter_log(root);
+    // Its version check and its `create`, and nothing more.
+    assert_eq!(after.len(), before + 2, "{after:?}");
+    assert!(root.join("second/lib/app.g.dart").is_file());
+    assert!(
+        err.contains("Next steps\n  cd second\n  flutter pub get\n  fsp dev"),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn create_local_packages_writes_paths_and_checks_the_checkout() {
+    let dir = create_root();
+    let root = dir.path();
+    let (code, _, err) = fsp_task(root, &["create", "app", "--local-packages", "nowhere"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("--local-packages nowhere: no such folder"),
+        "{err}"
+    );
+    fs::create_dir_all(root.join("empty_checkout")).unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["create", "app", "--local-packages", "empty_checkout"],
+        &[],
+    );
+    assert_eq!(code, Some(1));
+    assert!(err.contains("not a checkout of fespalier"), "{err}");
+    // A checkout: the packages are paths into it, and nothing is a git dependency.
+    fs::create_dir_all(root.join("checkout/packages/fespalier")).unwrap();
+    fs::write(
+        root.join("checkout/packages/fespalier/pubspec.yaml"),
+        "name: fespalier\n",
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["create", "app", "--local-packages", "checkout"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    let pubspec = fs::read_to_string(root.join("app/pubspec.yaml")).unwrap();
+    let checkout = fs::canonicalize(root.join("checkout")).unwrap();
+    assert!(
+        pubspec.contains(&format!(
+            "  fespalier:\n    path: {}/packages/fespalier\n",
+            checkout.display()
+        )),
+        "{pubspec}"
+    );
+    assert!(!pubspec.contains("git:"), "{pubspec}");
+}
+
+#[test]
+fn create_lists_its_features() {
+    let dir = tempfile::tempdir().unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["create", "--list-features", "--json"])
+            .current_dir(dir.path()),
+    )
+    .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    // Every line is a feature as JSON (none yet: no lines).
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let feature: serde_json::Value = serde_json::from_str(line).unwrap();
         assert!(
-            !ok && err.contains("`fespalier.adapters` is wired by the generated main(), and `main: manual` writes none; remove `main: manual`, or wire each adapter in your own main() and remove `adapters`"),
-            "{command}: {err}"
+            feature["id"].is_string() && feature["flutter"].is_string(),
+            "{line}"
         );
     }
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["create", "--list-features"])
+            .current_dir(dir.path()),
+    )
+    .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(!out.stdout.is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn create_dot_fills_the_empty_folder_it_runs_in() {
+    let dir = create_root();
+    let root = dir.path();
+    let here = root.join("my_shop");
+    fs::create_dir_all(&here).unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["create", "."])
+            .env("PATH", path_with(&root.join("bin")))
+            .env("FAKE_LOG", root.join("flutter.log"))
+            .current_dir(&here),
+    )
+    .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "{err}");
+    // The folder is the app (named after it), and is the same folder: nothing was swapped.
+    assert!(here.join("lib/app.g.dart").is_file());
+    assert!(
+        fs::read_to_string(here.join("pubspec.yaml"))
+            .unwrap()
+            .starts_with("name: my_shop\n")
+    );
+    assert!(staging_folders(root).is_empty());
 }

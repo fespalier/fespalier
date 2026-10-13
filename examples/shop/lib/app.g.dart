@@ -47,8 +47,13 @@ abstract final class AppRoutes {
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
   /// is the root navigator's key, when the app has one to supply.
+  ///
+  /// [launch] (since 0.11.0) is where the app was opened from: it wins over
+  /// the platform's initial route and marks the first navigation with its source. It is not
+  /// used on the web, where the address bar is the launch.
   static GoRouter router({
     String initialLocation = '/',
+    InboundLaunch? launch,
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
     GlobalKey<NavigatorState>? navigatorKey,
@@ -56,16 +61,20 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = false;
-    final router = GoRouter(
-      initialLocation: initialLocation,
-      observers: observers,
-      restorationScopeId: restorationScopeId,
-      navigatorKey: rootNavigatorKey,
-      routes: routes,
-      errorBuilder: (context, state) => notFound(state.uri),
-    );
-    if (kFespalierDevTools) devToolsAttach(router);
-    return router;
+    return launchRouter(launch, (launch) {
+      final router = GoRouter(
+        initialLocation: launch?.location ?? initialLocation,
+        initialExtra: launch?.extra,
+        overridePlatformDefaultLocation: launch != null,
+        observers: observers,
+        restorationScopeId: restorationScopeId,
+        navigatorKey: rootNavigatorKey,
+        routes: routes,
+        errorBuilder: (context, state) => notFound(state.uri),
+      );
+      if (kFespalierDevTools) devToolsAttach(router);
+      return router;
+    });
   }
 
   /// The routes alone, to embed in an existing GoRouter under [at]. Give it that
@@ -95,14 +104,14 @@ abstract final class AppRoutes {
             path: joinLocation(at, '/'),
             pageBuilder: (context, state) => namedPage('/', () => _i3.transition(
               state.pageKey,
-              Semantics(identifier: 'route:/', container: true, child: const _i0.HomePage()),
+              Semantics(identifier: 'route:/', container: true, explicitChildNodes: true, child: const _i0.HomePage()),
             )),
             routes: [
               GoRoute(
                 path: 'cart',
                 pageBuilder: (context, state) => namedPage('/cart', () => _i3.transition(
                   state.pageKey,
-                  Semantics(identifier: 'route:/cart', container: true, child: const _i6.CartPage()),
+                  Semantics(identifier: 'route:/cart', container: true, explicitChildNodes: true, child: const _i6.CartPage()),
                 )),
               ),
               GoRoute(
@@ -112,7 +121,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   DeferredView(
                     library: _lib2,
-                    page: () => Semantics(identifier: 'route:/checkout', container: true, child: _i7.CheckoutPage()),
+                    page: () => Semantics(identifier: 'route:/checkout', container: true, explicitChildNodes: true, child: _i7.CheckoutPage()),
                     loading: () => const _i1.RootLoading(),
                     error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                   ),
@@ -127,7 +136,7 @@ abstract final class AppRoutes {
                     (v) => DataView(
                       watch: (ref) => watchData(ref, 'd5', _i10.data),
                       refresh: (ref) => ref.invalidate(_i10.data),
-                      data: (d) => Semantics(identifier: 'route:/products', container: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
+                      data: (d) => Semantics(identifier: 'route:/products', container: true, explicitChildNodes: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
                       loading: () => const _i12.ProductsLoading(),
                       error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                       keepPrevious: true,
@@ -145,7 +154,7 @@ abstract final class AppRoutes {
                         (v) => DataView(
                           watch: (ref) => watchData(ref, 'd6', _data6(v.id)),
                           refresh: (ref) => ref.invalidate(_data6(v.id)),
-                          data: (d) => Semantics(identifier: 'route:/products/:id', container: true, child: _i14.ProductPage(product: d)),
+                          data: (d) => Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: _i14.ProductPage(product: d)),
                           loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
@@ -164,7 +173,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   buildWithParams(
                     () => _params4(state),
-                    (v) => Semantics(identifier: 'route:/greet/:name', container: true, child: _i9.GreetPage(name: v.name)),
+                    (v) => Semantics(identifier: 'route:/greet/:name', container: true, explicitChildNodes: true, child: _i9.GreetPage(name: v.name)),
                     () => notFound(state.uri),
                   ),
                 )),

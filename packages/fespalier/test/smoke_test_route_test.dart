@@ -25,9 +25,14 @@ final itemProvider = FutureProvider.autoDispose.family<int, int>((
 final signedInProvider = Provider<bool>((ref) => false);
 
 /// A page whose widget is a `Semantics(identifier: 'route:<pattern>')`, as `semantics_ids: true`
-/// makes every page.
-Widget route(String pattern, Widget child) =>
-    Semantics(identifier: 'route:$pattern', child: child);
+/// makes every page: the same arguments the generated wrapper has (`with_semantics` in
+/// cli/src/emit.rs), so `findRoutePage` is tried against the shape an app really gets.
+Widget route(String pattern, Widget child) => Semantics(
+  identifier: 'route:$pattern',
+  container: true,
+  explicitChildNodes: true,
+  child: child,
+);
 
 class ItemsPage extends ConsumerWidget {
   const ItemsPage({super.key});

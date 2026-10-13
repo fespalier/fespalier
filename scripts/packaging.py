@@ -9,7 +9,7 @@ and writes
   fsp.rb    Homebrew formula (macOS x64/arm64, Linux x64/arm64)
   fsp.json  Scoop manifest (Windows x64)
 
-Both point at the GitHub Release assets for `v<version>`. See "Releasing" in the README for
+Both point at the GitHub Release assets for `v<version>`. See docs/releasing.md for
 how they reach a Homebrew tap and a Scoop bucket. Standard library only.
 """
 

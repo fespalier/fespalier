@@ -1,0 +1,1889 @@
+{
+  "_comment": "Unary COSE vectors (ADR 0006 §§3-5, and the decisions on cratestack#1005: audience in the AAD and Cratestack-Nonce for unsigned requests, 2026-09-24; request_kind in the response AAD and a non-empty audience, 2026-09-25; and on cratestack#1006: bound_headers [Idempotency-Key, If-Match] after payload_type, 2026-09-26; and on cratestack#1123: binding version 2, where element 7 is `contract_sha`, the called op's contract digest, in place of version 1's whole-schema `schema_sha`, 2026-09-30). Hex throughout. Payload: payment-fixture.json; keys: keys.json. Every case must open with a verifier holding only the key its `key` names (requests: at `verifier_now`, with `skew_secs`). `to_be_signed` is the logical Sig_structure / MAC_structure, even where the implementation computes over it in pieces. ESP256 senders MUST emit low-s: verifiers refuse a high s (neg-esp256-high-s). Every `negative` vector must be refused as `expected` says by a verifier in `mode` holding exactly `verifier_keys`, at `verifier_now` with `skew_secs`.",
+  "cases": [
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "ed25519",
+      "name": "rpc-request-sign1-ed25519-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 224,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845819a301320448be5de2f4bcdc383a0fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840729fbf60b464058552ed45c40628442cbc226918c611d4550fd2fe864f1c2a141a6f567f0aeb9da307aec940cc0e259dd30e555850f93f7d1b6cd4dc4771a907",
+      "cti": "002a",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "ed25519",
+      "name": "rpc-request-sign1-ed25519-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301320448be5de2f4bcdc383a0fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 210,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315819a301320448be5de2f4bcdc383a0fa2061a6ab13b800742002a585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 200
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584077c5e17de4d8a71b0fbb8aa8fcf421b6f9efbdc442f944b989ed6798473fed8ff266d24c6b0af0243839a678cea6e0f542f0cf511b672802777bc387b8326404",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a18c8",
+      "iat": null,
+      "key": "ed25519",
+      "name": "rpc-response-sign1-ed25519",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a201320448be5de2f4bcdc383a",
+      "request_digest_of": "rpc-request-sign1-ed25519-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 197,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201320448be5de2f4bcdc383a58828c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a18c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 404
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa0582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e6458401613db1e248150dbb760f94dc40acb2eb112f022a2229d3ecb291358b3fb02c154872ee0da73262f0aeef61048d7c2d03f57bbb60a362a87e57e86b56c049d07",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a190194",
+      "iat": null,
+      "key": "ed25519",
+      "name": "rpc-error-response-sign1-ed25519",
+      "payload": "a264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "protected": "a201320448be5de2f4bcdc383a",
+      "request_digest_of": "rpc-request-sign1-ed25519-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 127,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201320448be5de2f4bcdc383a58838c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a190194582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458405fce27a5b6364be926dc57c949cd9e6f1fe28732f555e58f37532c135945270c19779771cad1c071850f3592378ea5dbbec80788d103d59df4a35f3678b60f3d",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": false,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "p256",
+      "name": "rpc-request-sign1-esp256-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 224,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315827a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845819a301280448750ca40795ab23e50fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458403937ff82e25ccd1656a3ba15c1887647af5a607d7523ded0019137e5e5fc84e20f9a78358e2cf5dc5d2086b8861aa90d03f36d5ce119518c8d3ae98f06a5a862",
+      "cti": "002a",
+      "deterministic": false,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "p256",
+      "name": "rpc-request-sign1-esp256-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301280448750ca40795ab23e50fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 210,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315819a301280448750ca40795ab23e50fa2061a6ab13b800742002a585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "b3e12c08e12f51b7c12a2e9556596c7fdd5ecb9b1979c5706d4218b84f265ed4",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 200
+      },
+      "cose": "d2844da201280448750ca40795ab23e5a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840791e2e032d6070ff479d925ed76febab3c70e55fb1f2e8048c16d0daef10aaa15496a76d79e45c6962e60d127c4bd674293fe7097d1d155eac4fd7c5e14af5c6",
+      "cti": null,
+      "deterministic": false,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820b3e12c08e12f51b7c12a2e9556596c7fdd5ecb9b1979c5706d4218b84f265ed418c8",
+      "iat": null,
+      "key": "p256",
+      "name": "rpc-response-sign1-esp256",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a201280448750ca40795ab23e5",
+      "request_digest_of": "rpc-request-sign1-esp256-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 197,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201280448750ca40795ab23e558828c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820b3e12c08e12f51b7c12a2e9556596c7fdd5ecb9b1979c5706d4218b84f265ed418c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "b3e12c08e12f51b7c12a2e9556596c7fdd5ecb9b1979c5706d4218b84f265ed4",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 404
+      },
+      "cose": "d2844da201280448750ca40795ab23e5a0582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64584050dc8dcd0984fe26c6271e11df0e18eed1d565797cfecc30cc4d10329bb118ff342100366108f07f41a99287f871a7727317113fcfa40f4ce5614347ce50d5b1",
+      "cti": null,
+      "deterministic": false,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820b3e12c08e12f51b7c12a2e9556596c7fdd5ecb9b1979c5706d4218b84f265ed4190194",
+      "iat": null,
+      "key": "p256",
+      "name": "rpc-error-response-sign1-esp256",
+      "payload": "a264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "protected": "a201280448750ca40795ab23e5",
+      "request_digest_of": "rpc-request-sign1-esp256-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 127,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201280448750ca40795ab23e558838c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6015820b3e12c08e12f51b7c12a2e9556596c7fdd5ecb9b1979c5706d4218b84f265ed4190194582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d1845827a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570744899b8d32162d39804",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "hmac-256-64",
+      "name": "rpc-request-mac0-hmac256-64-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 167,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305827a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d1845819a3010404488439440003a3c5e10fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074484953910dbf671195",
+      "cti": "002a",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "hmac-256-64",
+      "name": "rpc-request-mac0-hmac256-64-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010404488439440003a3c5e10fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 153,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305819a3010404488439440003a3c5e10fa2061a6ab13b800742002a585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "8ada5ee0dc19d915edae75739eba78cf7cc402018d8f51b42fb3e4485e3e965c",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 200
+      },
+      "cose": "d1844da2010404488439440003a3c5e1a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707448c3eba349103d1e97",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f60158208ada5ee0dc19d915edae75739eba78cf7cc402018d8f51b42fb3e4485e3e965c18c8",
+      "iat": null,
+      "key": "hmac-256-64",
+      "name": "rpc-response-mac0-hmac256-64",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a2010404488439440003a3c5e1",
+      "request_digest_of": "rpc-request-mac0-hmac256-64-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 140,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010404488439440003a3c5e158828c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f60158208ada5ee0dc19d915edae75739eba78cf7cc402018d8f51b42fb3e4485e3e965c18c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "8ada5ee0dc19d915edae75739eba78cf7cc402018d8f51b42fb3e4485e3e965c",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 404
+      },
+      "cose": "d1844da2010404488439440003a3c5e1a0582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64483b3719a686551908",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f60158208ada5ee0dc19d915edae75739eba78cf7cc402018d8f51b42fb3e4485e3e965c190194",
+      "iat": null,
+      "key": "hmac-256-64",
+      "name": "rpc-error-response-mac0-hmac256-64",
+      "payload": "a264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "protected": "a2010404488439440003a3c5e1",
+      "request_digest_of": "rpc-request-mac0-hmac256-64-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 70,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010404488439440003a3c5e158838c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f60158208ada5ee0dc19d915edae75739eba78cf7cc402018d8f51b42fb3e4485e3e965c190194582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d1845827a3010504488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745820206d450edbc698f83adb3912e7a9b01866a5b4444b3f70c5f78c126f7dcedbf2",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "hmac-256-256",
+      "name": "rpc-request-mac0-hmac256-256-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010504488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 192,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305827a3010504488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d1845819a3010504488439440003a3c5e10fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074582041cd0ccc1f010a1a454c95629b1a36df1f37b25041a8a92ca0544dc6adbefa46",
+      "cti": "002a",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "hmac-256-256",
+      "name": "rpc-request-mac0-hmac256-256-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010504488439440003a3c5e10fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 178,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305819a3010504488439440003a3c5e10fa2061a6ab13b800742002a585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "55f754b4701cfc7e94bc19b9a1c0907da20b26b751f432954dcdf69899afca28",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 200
+      },
+      "cose": "d1844da2010504488439440003a3c5e1a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745820c12e30e5b940e5f079fa118df5cd6375bfac9b78d8cea3a6e1978bba5d2a188e",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f601582055f754b4701cfc7e94bc19b9a1c0907da20b26b751f432954dcdf69899afca2818c8",
+      "iat": null,
+      "key": "hmac-256-256",
+      "name": "rpc-response-mac0-hmac256-256",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a2010504488439440003a3c5e1",
+      "request_digest_of": "rpc-request-mac0-hmac256-256-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 165,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010504488439440003a3c5e158828c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f601582055f754b4701cfc7e94bc19b9a1c0907da20b26b751f432954dcdf69899afca2818c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "55f754b4701cfc7e94bc19b9a1c0907da20b26b751f432954dcdf69899afca28",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 404
+      },
+      "cose": "d1844da2010504488439440003a3c5e1a0582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64582041c6e8beb625bdfb9ca3a339a4b1a8b8c9a2cf5c57e576fea18866512ab16ddc",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f601582055f754b4701cfc7e94bc19b9a1c0907da20b26b751f432954dcdf69899afca28190194",
+      "iat": null,
+      "key": "hmac-256-256",
+      "name": "rpc-error-response-mac0-hmac256-256",
+      "payload": "a264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "protected": "a2010504488439440003a3c5e1",
+      "request_digest_of": "rpc-request-mac0-hmac256-256-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 95,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010504488439440003a3c5e158838c02687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f601582055f754b4701cfc7e94bc19b9a1c0907da20b26b751f432954dcdf69899afca28190194582aa264636f6465696e6f745f666f756e64676d657373616765717061796d656e74206e6f7420666f756e64",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584004d21dec60f61308cdf1588dec1112cc64fd81935f003069f5505fdeabfbd7fc12af11f0b418809a73df1c0c13bf21bd2609aa87947b958b48919afdf52c1a02",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "ed25519",
+      "name": "rest-request-sign1-ed25519-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 224,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f8358938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d2845819a301320448be5de2f4bcdc383a0fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458403dbe12b15eb37504b091da46a1f1fcd1babb27b34e05ef02ce41ff39c5f675a41d03778fc9dba8c2076f39568ac00b5e25048514415ed751dd68e184a1238308",
+      "cti": "002a",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "ed25519",
+      "name": "rest-request-sign1-ed25519-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301320448be5de2f4bcdc383a0fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 210,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315819a301320448be5de2f4bcdc383a0fa2061a6ab13b800742002a58938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": "5ef585657f6087182dfc398ff8c6cbef145ae4b60d15f10afb0f784dff29d770",
+        "request_kind": 1,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840685a01cccfada0184752b94f441f80ed6af69f00b0d3becf7077b0df9d24adeabbf8b0a49e5726ff3a72aa8d329a8fa30a0583f5acad3ae753960ce3d0b7ba0d",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233220158205ef585657f6087182dfc398ff8c6cbef145ae4b60d15f10afb0f784dff29d77018c8",
+      "iat": null,
+      "key": "ed25519",
+      "name": "rest-response-sign1-ed25519",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a201320448be5de2f4bcdc383a",
+      "request_digest_of": "rest-request-sign1-ed25519-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 197,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201320448be5de2f4bcdc383a58b88c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233220158205ef585657f6087182dfc398ff8c6cbef145ae4b60d15f10afb0f784dff29d77018c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d2845827a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458403ae9951ffc44099c6d0f22bda8b8a90afdb8b678e8400fb3d9290be784c58fe34dac9ef3260588817141f605285af1f29daf0f11adfbfc72b3bd4a816810aead",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": false,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "p256",
+      "name": "rest-request-sign1-esp256-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 224,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315827a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f8358938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d2845819a301280448750ca40795ab23e50fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458409649242ff151d96aca56c64535138686325b7c4b3f75c49f97e65da2aecfc8dc4d18e6676482105f9d1043e87f55c057c9fa85fbeae39191f6a0518e0519a1de",
+      "cti": "002a",
+      "deterministic": false,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "p256",
+      "name": "rest-request-sign1-esp256-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301280448750ca40795ab23e50fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 210,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315819a301280448750ca40795ab23e50fa2061a6ab13b800742002a58938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": "f352738e2a6c753c1eecfe2c4e2a57cb6eacbb6b467ac8bcbb646d7a2752e81c",
+        "request_kind": 1,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d2844da201280448750ca40795ab23e5a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840e26c97a58697116dde2a74ba45bc29cf3cd13761778a0fda6daba96afbbd2a403fcbebd191649916d55313ab4da7a2e4f24f78049e85191f60d9d4c9397e6975",
+      "cti": null,
+      "deterministic": false,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322015820f352738e2a6c753c1eecfe2c4e2a57cb6eacbb6b467ac8bcbb646d7a2752e81c18c8",
+      "iat": null,
+      "key": "p256",
+      "name": "rest-response-sign1-esp256",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a201280448750ca40795ab23e5",
+      "request_digest_of": "rest-request-sign1-esp256-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 197,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201280448750ca40795ab23e558b88c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322015820f352738e2a6c753c1eecfe2c4e2a57cb6eacbb6b467ac8bcbb646d7a2752e81c18c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d1845827a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707448ccdaf7103c586356",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "hmac-256-64",
+      "name": "rest-request-mac0-hmac256-64-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 167,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305827a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f8358938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d1845819a3010404488439440003a3c5e10fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074489e33262734d70418",
+      "cti": "002a",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "hmac-256-64",
+      "name": "rest-request-mac0-hmac256-64-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010404488439440003a3c5e10fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 153,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305819a3010404488439440003a3c5e10fa2061a6ab13b800742002a58938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": "0528710f6b7cb3304da62186ccd9155f14ac89e1be5f24353a05a0b14575d74c",
+        "request_kind": 1,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d1844da2010404488439440003a3c5e1a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707448c7ed43a7f605f700",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233220158200528710f6b7cb3304da62186ccd9155f14ac89e1be5f24353a05a0b14575d74c18c8",
+      "iat": null,
+      "key": "hmac-256-64",
+      "name": "rest-response-mac0-hmac256-64",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a2010404488439440003a3c5e1",
+      "request_digest_of": "rest-request-mac0-hmac256-64-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 140,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010404488439440003a3c5e158b88c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233220158200528710f6b7cb3304da62186ccd9155f14ac89e1be5f24353a05a0b14575d74c18c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d1845827a3010504488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458201f4dcce9fabc7d7ac655a44736b360d07338a7dc340a0478695eb12d401f2417",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "hmac-256-256",
+      "name": "rest-request-mac0-hmac256-256-cti16",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010504488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 192,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305827a3010504488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f8358938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d1845819a3010504488439440003a3c5e10fa2061a6ab13b800742002aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745820b7f4366a3a59b2af71ae20492a1692bd451290a209c985c681740170e7704b0d",
+      "cti": "002a",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d3766336163223322",
+      "iat": 1790000000,
+      "key": "hmac-256-256",
+      "name": "rest-request-mac0-hmac256-256-cti2",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a3010504488439440003a3c5e10fa2061a6ab13b800742002a",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 178,
+      "skew_secs": 300,
+      "to_be_signed": "84644d4143305819a3010504488439440003a3c5e10fa2061a6ab13b800742002a58938902687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361632233225870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": "25bd720aefe515bf836eb5c5f221daedd43f7864bbb3100d61d8b4041e48f581",
+        "request_kind": 1,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d1844da2010504488439440003a3c5e1a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745820d6f6f0f6e5b59c7c7e73632b8acff3d6328c5fda40a444e7467b7f5b4ae9f67b",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d376633616322332201582025bd720aefe515bf836eb5c5f221daedd43f7864bbb3100d61d8b4041e48f58118c8",
+      "iat": null,
+      "key": "hmac-256-256",
+      "name": "rest-response-mac0-hmac256-256",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a2010504488439440003a3c5e1",
+      "request_digest_of": "rest-request-mac0-hmac256-256-cti16",
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 165,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010504488439440003a3c5e158b88c02687061796d656e74736350555478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f376d6472795f72756e3d66616c73655820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d376633616322332201582025bd720aefe515bf836eb5c5f221daedd43f7864bbb3100d61d8b4041e48f58118c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "GET",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe7364181",
+        "request_kind": 0,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584074d21c3d9ff58548f94e5a6c7a209ccbeb6b295ec64f331e329050b616aabf29e72cfaef3049ca6ccba2bb5b2d255e376b5989156f40068f5aa3b5d82ca8150a",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c8",
+      "iat": null,
+      "key": "ed25519",
+      "name": "rest-get-response-sign1-ed25519-unsigned-request",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a201320448be5de2f4bcdc383a",
+      "request_digest_of": null,
+      "request_nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "request_payload": "",
+      "size": 197,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201320448be5de2f4bcdc383a58a88c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -9,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "GET",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe7364181",
+        "request_kind": 0,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d2844da201280448750ca40795ab23e5a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840e0693bdbf6234f8a70373c866d60d840d0750cafca4d255772d49b3c17adf5416d6d01d116979bf3e47bfb30490e0cc06da85800968d538a90bd11c23f9cfcb9",
+      "cti": null,
+      "deterministic": false,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c8",
+      "iat": null,
+      "key": "p256",
+      "name": "rest-get-response-sign1-esp256-unsigned-request",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a201280448750ca40795ab23e5",
+      "request_digest_of": null,
+      "request_nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "request_payload": "",
+      "size": 197,
+      "skew_secs": null,
+      "to_be_signed": "846a5369676e6174757265314da201280448750ca40795ab23e558a88c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 4,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "GET",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe7364181",
+        "request_kind": 0,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d1844da2010404488439440003a3c5e1a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570744822bc12e52aa4bcca",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c8",
+      "iat": null,
+      "key": "hmac-256-64",
+      "name": "rest-get-response-mac0-hmac256-64-unsigned-request",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a2010404488439440003a3c5e1",
+      "request_digest_of": null,
+      "request_nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "request_payload": "",
+      "size": 140,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010404488439440003a3c5e158a88c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": 5,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "GET",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe7364181",
+        "request_kind": 0,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d1844da2010504488439440003a3c5e1a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458205e484bbddb613ff7bedeee281ecfb4edb4fdd7f0c9f27cad75e7a781bc8db90d",
+      "cti": null,
+      "deterministic": true,
+      "direction": "response",
+      "external_aad": "8c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c8",
+      "iat": null,
+      "key": "hmac-256-256",
+      "name": "rest-get-response-mac0-hmac256-256-unsigned-request",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a2010504488439440003a3c5e1",
+      "request_digest_of": null,
+      "request_nonce": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "request_payload": "",
+      "size": 165,
+      "skew_secs": null,
+      "to_be_signed": "84644d4143304da2010504488439440003a3c5e158a88c02687061796d656e74736347455478242f6163636f756e74732f7b6163636f756e745f69647d2f7061796d656e74732f7b69647d82666163635f3432657061795f37f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282696964656d2d37663361f6005820d6f99ae1f2f35082c7cb9ef66f8d66fa1e1e878f9f1ad6b50f31d25fe736418118c85870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": null
+    },
+    {
+      "alg_id": -19,
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": "",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "cti": "3c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "deterministic": true,
+      "direction": "request",
+      "external_aad": "8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f6",
+      "iat": 1790000000,
+      "key": "ed25519",
+      "name": "rpc-request-sign1-ed25519-cti16-empty-query",
+      "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "protected": "a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83",
+      "request_digest_of": null,
+      "request_nonce": null,
+      "request_payload": null,
+      "size": 224,
+      "skew_secs": 300,
+      "to_be_signed": "846a5369676e6174757265315827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83585d8902687061796d656e747364504f5354746d6f64656c2e5061796d656e742e63726561746580f65820a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a706170706c69636174696f6e2f63626f7282f6f65870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074",
+      "verifier_now": 1790000000
+    }
+  ],
+  "negative": [
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": "\"3\""
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "PUT",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": "dry_run=false",
+        "request_digest": null,
+        "request_kind": null,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": null
+      },
+      "cose": "d2845827a301280448750ca40795ab23e50fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458403ae9951ffc44099c6d0f22bda8b8a90afdb8b678e8400fb3d9290be784c58fe3b253610bd9fa777f8ebe09fad7a50e0d1f37eb9bf91ba2123ffc8041945276a4",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-esp256-high-s",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "p256"
+      ],
+      "verifier_now": 1790000000,
+      "why": "the valid request's ESP256 signature with s replaced by n - s: it verifies mathematically, but only low-s is accepted, so a third party cannot re-spell a signed message"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d1845827a3010404488439440003a3c5e10fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570744899b8d32162d39804",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "mac0",
+      "name": "neg-hmac-64-bit-tag-for-a-256-256-key",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "hmac-256-256"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid HMAC 256/64 (alg 4) request; the verifier's key for this secret is configured for HMAC 256/256 only"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845826a301320447010101010101010fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840518d5b63997e1a88f4ede4134ddce6c15706a76efbe6bb9b378aa85b57151aa0454db14f3989551bc69eea1456e74e881505a5f74cf3fee9160f0ea6d48f3708",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-kid-7-bytes",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "correctly signed, but the kid is 7 bytes, not 8"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845828a3013204490101010101010101010fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840f84e6f1fbbf77f4523fc785a916889caa6e02d8f7691483007685733341bc1b46aa8c2acccc0ea5972000b5a5ec254c261db057a59c2f386ce01d2573c4d5904",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-kid-9-bytes",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "correctly signed, but the kid is 9 bytes, not 8"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840a8ba92c1af1f2da1b6a79e0eb1dc69f1ab6e26b54f17241d520ba5fbdc896da6fb6362119c3dacf4ef986a411840d6551f63a95f2e58a09ed1f08e5a0b9e6903",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-kid-of-another-key",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519",
+        "ed25519_other"
+      ],
+      "verifier_now": 1790000000,
+      "why": "signed by ed25519_other under ed25519's kid; the verifier holds both keys, and only a key whose own kid is the header's may verify. A resolver that returns keys by kid already filters ed25519_other out, so there this vector exercises only the signature check; it exercises the opener's own kid-equality check in an implementation whose resolver does not pre-filter by kid"
+    },
+    {
+      "binding": {
+        "audience": "ledger",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-wrong-audience",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request sealed for audience \"payments\", opened by the service \"ledger\""
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a10448be5de2f4bcdc383a5870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-kid-in-unprotected-header",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request with {4: kid} added to the unprotected header, which must be empty"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301270448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840f0d17f48d1bd0c4bdd487d61204faf6edd9e32191fb583127929948d4e2ef91eadceb3617633db8ac233c02b0e0a9b0f17104f9faf0a544469b80e9f6a0b9803",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-alg-minus-8",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "correctly signed Ed25519 under the deprecated polymorphic alg -8 (RFC 9864)"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c0600",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-trailing-byte",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request followed by one extra byte"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": "idem-7f3a",
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "GET",
+        "path_params": [
+          "acc_42",
+          "pay_7"
+        ],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "1c712ecc21e27e374111d5a1beeaf75a4e343b3814c1847cba14013420809873",
+        "request_kind": 0,
+        "route": "/accounts/{account_id}/payments/{id}",
+        "status": 200
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584074d21c3d9ff58548f94e5a6c7a209ccbeb6b295ec64f331e329050b616aabf29e72cfaef3049ca6ccba2bb5b2d255e376b5989156f40068f5aa3b5d82ca8150a",
+      "direction": "response",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-response-to-another-get",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a signed response to an unsigned GET carrying one Cratestack-Nonce, presented as the answer to a GET of the same URL with another nonce"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657075584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-tampered-payload",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request with the last payload byte's low bit flipped"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8107503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-tampered-protected-header",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request with iat's last byte's low bit flipped in the protected header: still well-formed and fresh, but not what was signed"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.refund",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-aad-route-mismatch",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request for model.Payment.create, opened as model.Payment.refund"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840208a76e3ab74781b0473fcfb5194e6a9da785a8647f6c9d0b8fae01baa455d85572b33b69c7f354c801afd63f5d600f84f615d17fc3675b6015a1f63d8492b00",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-contract-sha",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request whose op contract digest has one bit flipped: sealed for another wire shape of model.Payment.create"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "fa07f1832fb010ff740824d1990190619cc30052eed20989b586ac121f46d60d",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.refund",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584033b78e6e4d3471ba9afda9ad2cb7b975f5cae8b74470531d64836c85062885e216d0afc920dc5b5e61b99528625817c789b078d071eb72e03373a16ee8fe6303",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-contract-cross-op",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a request to model.Payment.refund sealed under the digest of model.Payment.create: the route matches, only the op's contract digest is another op's"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e74207365707458408b0226f885141bdda170218c0f37d1c600d6e6642f9f6c2c1f6168c45646d9b48b6fe7e54bba6b27e80e8683c89f0db8145145b38aea973170d536c5eb865507",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-binding-v1",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "correctly signed over the binding version 1 AAD (the same elements, version 1 in place of 2, schema_sha where contract_sha sits): a version 2 verifier refuses version 1"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "f088d0d688f808a95c3e2fd6b041df7ce74bb2f44916487e91605c2198cbbdc5",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 200
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584077c5e17de4d8a71b0fbb8aa8fcf421b6f9efbdc442f944b989ed6798473fed8ff266d24c6b0af0243839a678cea6e0f542f0cf511b672802777bc387b8326404",
+      "direction": "response",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-request-digest-mismatch",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a signed response to rpc-request-sign1-ed25519-cti16, presented as the answer to rpc-request-sign1-ed25519-cti2"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-stale-iat",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000301,
+      "why": "a valid request with iat = 1790000000, opened when the verifier's clock reads iat + skew + 1"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d1845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-wrong-tag",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid COSE_Sign1 request re-tagged 17 (COSE_Mac0), opened by a Sign1 verifier"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a0590070a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074584068a4d23aa86784147bb8b16ee3d211e9640276f91605e3f9fccacb55030e7035683022a74d972b171c8b60a3eb7167a4a7fa72acdb2a71e36c8a46158ba27c06",
+      "direction": "request",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-non-minimal-cbor-head",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "a valid request whose payload bstr head is re-encoded as 0x59 0x00 0x70 instead of 0x58 0x70; the signature still verifies over the canonical Sig_structure, so only strict parsing refuses it"
+    },
+    {
+      "binding": {
+        "audience": "payments",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": "e95b17d4f0bd2cb145bdad985d332a557cd29fd30db3dff9c0004156c137834a",
+        "request_kind": 1,
+        "route": "model.Payment.create",
+        "status": 400
+      },
+      "cose": "d2844da201320448be5de2f4bcdc383aa053a1656572726f726b62616420726571756573745840e13d97792554d327e36e46bce08eb40d4252bf34f9d6760de661725d0dc3ce19c4fc90b8cd777760252d3f85b907f453f1219cc4b53f8e1a308810716eb3440d",
+      "direction": "response",
+      "expected": "reject: 401 unauthenticated",
+      "mode": "sign1",
+      "name": "neg-request-kind-mismatch",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "the server's answer to an UNSIGNED request whose Cratestack-Nonce is the first 16 bytes of rpc-request-sign1-ed25519-cti16 and whose body is the rest: its digest equals the signed request's (and the status, 400, is the one the client expects), so only request_kind (0, not 1) tells them apart"
+    },
+    {
+      "binding": {
+        "audience": "",
+        "bound_headers": {
+          "idempotency_key": null,
+          "if_match": null
+        },
+        "contract_sha": "a73857a1ee92de06939047d9544afefd554ab8eb8df6c91dcd740ca875f0a56a",
+        "method": "POST",
+        "path_params": [],
+        "payload_type": "application/cbor",
+        "query": null,
+        "request_digest": null,
+        "request_kind": null,
+        "route": "model.Payment.create",
+        "status": null
+      },
+      "cose": "d2845827a301320448be5de2f4bcdc383a0fa2061a6ab13b8007503c9a5e71d20b48f6a1c7e4029b6d5f83a05870a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e7420736570745840247e6796d38c06dc550424d286ed81a4ca818b15070cba6002fa3774e5dc06722567350b5a870f1eae9e756d4ff53595ca31f90820d4a83da69f6a78f9e5b206",
+      "direction": "request",
+      "expected": "reject: 500 local misuse, before the body is read",
+      "mode": "sign1",
+      "name": "neg-empty-audience",
+      "skew_secs": 300,
+      "verifier_keys": [
+        "ed25519"
+      ],
+      "verifier_now": 1790000000,
+      "why": "correctly signed over an AAD whose audience is the empty string; an empty audience binds no recipient, so the verifier refuses it as misuse before reading the body"
+    }
+  ],
+  "payload": "a7626964500192f5a87c3e7b219d4f6a1e2c3b4d5e6570617965726d416d696e61205463686f75706f66616d6f756e741a0001e8486863757272656e6379635841466673746174757367736574746c65646a637265617465645f61741a6ab13b80646e6f74656972656e742073657074"
+}

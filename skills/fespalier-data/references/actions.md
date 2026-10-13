@@ -132,7 +132,8 @@ class RefundPage extends HookConsumerWidget {
   is a positional `Ref`, **except the companions** (since 0.8.1): `form`, `validate` and
   `optimistic` beside `action`, or `approveForm`, `approveValidate` and `approveOptimistic`
   beside `approve`, are the form, the validation and the optimistic patch of that action
-  ([`forms-and-optimistic.md`](forms-and-optimistic.md)), never actions, even with a `Ref` (that is
+  ([`forms.md`](forms.md) for `form()`, since 0.11.0 the `fespalier_forms` package;
+  [`optimistic.md`](optimistic.md) for the other two), never actions, even with a `Ref` (that is
   an error). An app on 0.7.0 that had an _action_ called `form` beside `action` must rename it. A function called `action` is always one, so a missing `Ref`
   is reported on it. Private functions and helpers that take no `Ref` are ignored. A
   file with none is an error.

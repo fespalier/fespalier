@@ -42,8 +42,13 @@ abstract final class AppRoutes {
 
   /// A standalone router for `MaterialApp.router(routerConfig: ...)`. [navigatorKey]
   /// is the root navigator's key, when the app has one to supply.
+  ///
+  /// [launch] (since 0.11.0) is where the app was opened from: it wins over
+  /// the platform's initial route and marks the first navigation with its source. It is not
+  /// used on the web, where the address bar is the launch.
   static GoRouter router({
     String initialLocation = '/',
+    InboundLaunch? launch,
     List<NavigatorObserver>? observers,
     String? restorationScopeId,
     GlobalKey<NavigatorState>? navigatorKey,
@@ -51,23 +56,32 @@ abstract final class AppRoutes {
     final routes = mount(navigatorKey: navigatorKey);
     // pubspec `push_updates_url`: set on every call, so it is the same in each test and each app.
     GoRouter.optionURLReflectsImperativeAPIs = false;
-    final router = GoRouter(
-      initialLocation: initialLocation,
-      observers: observers,
-      restorationScopeId: restorationScopeId,
-      navigatorKey: rootNavigatorKey,
-      routes: routes,
-      errorBuilder: (context, state) => notFound(state.uri),
-    );
-    attach(router);
-    return router;
+    return launchRouter(launch, (launch) {
+      final router = GoRouter(
+        initialLocation: launch?.location ?? initialLocation,
+        initialExtra: launch?.extra,
+        overridePlatformDefaultLocation: launch != null,
+        observers: observers,
+        restorationScopeId: restorationScopeId,
+        navigatorKey: rootNavigatorKey,
+        routes: routes,
+        errorBuilder: (context, state) => notFound(state.uri),
+      );
+      attach(router);
+      return router;
+    }, links: true);
   }
 
   /// Lets DevTools, the observe.dart hooks and telemetry follow [router]: [router] calls it, and an app that mounts the
   /// tree in a GoRouter of its own calls it once with that router.
-  static void attach(GoRouter router) {
+  ///
+  /// With [container] (since 0.11.0), the observe.dart hooks run in it. [router]
+  /// calls it without one; the generated main() calls it again with the app's container once
+  /// the ProviderScope exists, and an app that builds its own router or main() calls
+  /// `AppRoutes.attach(router, container)` itself.
+  static void attach(GoRouter router, [ProviderContainer? container]) {
     if (kFespalierDevTools) devToolsAttach(router);
-    observeAttach(router, _observeAt);
+    observeAttach(router, _observeAt, container: container);
     telemetryAttach(router, base: () => _base);
   }
 
@@ -160,22 +174,22 @@ abstract final class AppRoutes {
   static final List<RouteMatcher> _matchers = [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['orders'], (s) => UrlMatch(s.uri, const OrdersRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['login'], (s) => UrlMatch(s.uri, const LoginRoute(), const {}, const []), observe: (s, m) {
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
       ];
     }),
     RouteMatcher(['orders', ':id'], (s) {
@@ -184,8 +198,8 @@ abstract final class AppRoutes {
     }, observe: (s, m) {
       final o4 = _observe4(s);
       return [
-      RouteHooks('observe.dart', onEnter: (ref) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
-      RouteHooks('(tabs)/orders/\$id/observe.dart', onEnter: (ref) => _i8.onEnter(ref, id: o4.id), onLeave: (ref) => _i8.onLeave(ref, id: o4.id), onFocus: (ref) => _i8.onFocus(ref, id: o4.id)),
+      RouteHooks('observe.dart', onEnter: (ref, scope) => _i0.onEnter(ref, route: m.route), onLeave: (ref) => _i0.onLeave(ref, route: m.route)),
+      RouteHooks('(tabs)/orders/\$id/observe.dart', onEnter: (ref, scope) => _i8.onEnter(ref, id: o4.id, scope: scope), onLeave: (ref) => _i8.onLeave(ref, id: o4.id), onFocus: (ref) => _i8.onFocus(ref, id: o4.id)),
       ];
     }),
   ];

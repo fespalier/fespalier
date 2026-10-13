@@ -1,0 +1,19 @@
+import 'package:fespalier_download/fespalier_download.dart';
+
+/// The file the sample page downloads: `--dart-define=DOWNLOAD_URL=https://files.myapp.dev/a.pdf`.
+/// The default is a placeholder, so a run without it ends the download as failed.
+const String downloadUrl = String.fromEnvironment(
+  'DOWNLOAD_URL',
+  defaultValue: 'https://files.example.com/sample.pdf',
+);
+
+/// A download is a request: an id, a URL and where the file goes, as a base folder and a relative
+/// path (never an absolute one: an iOS container's path changes between launches). Add `bytes`
+/// and `sha256` to have the file checked before it is moved into place. A URL that grants access
+/// should be short-lived: never put a long-lived token in a header (docs/downloads.md, "Requests
+/// and files").
+final DownloadRequest sampleDownload = DownloadRequest(
+  id: 'sample',
+  url: Uri.parse(downloadUrl),
+  file: const DownloadLocation(DownloadBase.support, 'downloads/sample.pdf'),
+);

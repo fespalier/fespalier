@@ -1,6 +1,6 @@
 //! The full-screen view of `fsp dev`, drawn into a `TestBackend`: golden screens (the text, and a
 //! sidecar of the styled runs, so colours are pinned too), the pieces (marks, wrapping, scrolling,
-//! links, the picker), and the README screenshot, an SVG made from the same buffer.
+//! links, the picker), and the docs screenshot (docs/cli.md), an SVG made from the same buffer.
 //!
 //! The goldens are in `tests/golden/dev-tui/`; `FSP_UPDATE_GOLDEN=1 cargo test dev_tui_tests::`
 //! rewrites them and `docs/images/fsp-dev.svg`.
@@ -108,7 +108,7 @@ fn report(wrote: bool, errors: usize, first_error: Option<FirstError>) -> GenRep
     }
 }
 
-/// The screen of README: the Android app is up, a regeneration restarted it 4 s ago.
+/// The screen of the docs (docs/cli.md): the Android app is up, a regeneration restarted it 4 s ago.
 fn running() -> DevState {
     let mut s = fresh(pixel(), 100, 30);
     start_app(&mut s, "emulator-5554");
@@ -974,7 +974,7 @@ fn several_devices_ask_in_the_view_and_the_remembered_one_is_preselected() {
     assert_eq!(Picker::new(devices.len(), default).cursor, 1);
 }
 
-// --- the README screenshot ----------------------------------------------------------------------
+// --- the docs screenshot ----------------------------------------------------------------------
 
 const CELL_W: f64 = 8.4;
 const CELL_H: f64 = 18.0;

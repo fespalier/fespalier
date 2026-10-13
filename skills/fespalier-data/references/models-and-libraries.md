@@ -1,6 +1,6 @@
 # Models, collections, validation and results
 
-Since 0.9.0, and only advice: **fespalier depends on none of these packages**, and `fsp` reads none of them
+Since 0.16.0, and only advice: **fespalier depends on none of these packages**, and `fsp` reads none of them
 (it does not know what `@freezed` is). They meet it in six places, and each has one trap:
 
 | Where                              | What it needs from your type                                                                                                                     | The trap                                                                                                                                      |
@@ -8,7 +8,7 @@ Since 0.9.0, and only advice: **fespalier depends on none of these packages**, a
 | The value `data()` returns         | `==`. Riverpod 3 filters every update by `==`, so an equal reload is not a change                                                                | A class with no `==` is a new value on every reload; a list field is compared by identity (below)                                             |
 | An `extra`                         | `toJson` and `fromJson`, in `extra_codec.dart`                                                                                                   | freezed's factory syntax makes a private `_Note`: `ExtraCodec.of`, not `ExtraCodec({...})` (`fespalier-routing`, `typed-routes-and-extra.md`) |
 | `DataCache<T>.json`                | `toJson` that returns **JSON data** (a `Map`), and `fromJson` that takes `Object?`                                                               | dart_mappable's `toJson()` returns a **String**: pass `toMap`                                                                                 |
-| An action's `input`                | Any type, but a **form** (`form()`, `useForm`) needs a **record** declared in the same `action.dart` (`forms-and-optimistic.md`)                 | A model class is not supported as a form's input: map the record to your model inside `action()`                                              |
+| An action's `input`                | Any type, but a **form** (`form()`, `useForm`) needs a **record** declared in the same `action.dart` (`forms.md`)                                | A model class is not supported as a form's input: map the record to your model inside `action()`                                              |
 | `validate()`                       | A pure `FieldErrors? validate(Input input)`; any library is an adapter around it (below)                                                         | It runs in the form **and** in the action, before the write                                                                                   |
 | Failures, from `data()`/`action()` | They **throw**: `error.dart` gets the object as `Object error`, an action's failure lands in its `state`, `FieldErrors` under the field it names | Do not return a result from `data()`: unwrap it there (below)                                                                                 |
 
@@ -28,7 +28,7 @@ Pick by the Dart your app builds with, since the newest releases moved up:
 | any                        | **dart_mappable 4.10.0**: one builder for `==`, `copyWith` and a `Map`/JSON conversion   | `class Order with OrderMappable`; `toMap()` and `OrderMapper.fromMap(map)` are the data, `toJson()` is a String. Its classes are their own runtime type |
 
 - **freezed's two syntaxes are not the same to `ExtraCodec`.** `const factory Note(...) = _Note;` builds a `_Note`
-  (an exact type lookup misses it: `ExtraCodec.of`, since 0.9.0); the primary-constructor form and dart_mappable
+  (an exact type lookup misses it: `ExtraCodec.of`, since 0.16.0); the primary-constructor form and dart_mappable
   classes are their own runtime type.
 - **Equality is why you want one.** freezed, dart_mappable and records have `==` by value, so a `Stream<T>` or a
   reloaded `Future<T>` of equal values wakes nothing up. A hand-written `==` that compares a `List` field with `==`

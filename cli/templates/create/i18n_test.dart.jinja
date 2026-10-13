@@ -1,0 +1,70 @@
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/app/app.dart';
+
+/// Opens the app at [location] with the catalogs in assets/i18n/, as startup() reads them. The
+/// app's own App is passed: pumpRouter's default has no translation scope.
+Future<void> open(WidgetTester tester, String location) async {
+  final bundled = (await tester.runAsync(
+    () => BundledTranslations.load(locales: const ['en', 'fr']),
+  ))!;
+  await pumpRouter(
+    tester,
+    AppRoutes.router(initialLocation: location),
+    app: (router) => App(router: router),
+    overrides: [
+      translationsConfig.overrideWithValue(
+        Translations(bundled: bundled, baseLocale: 'en'),
+      ),
+    ],
+  );
+}
+
+void main() {
+  testWidgets('the first frame is translated, and ?lang= opens it in French', (
+    tester,
+  ) async {
+    await open(tester, '/translations');
+    expect(find.text('Hello'), findsOneWidget);
+
+    await open(tester, '/translations?lang=fr');
+    expect(find.text('Bonjour'), findsOneWidget);
+    expect(find.text('Hello'), findsNothing);
+  });
+
+  testWidgets('switching the language changes the location and the text', (
+    tester,
+  ) async {
+    await open(tester, '/translations?lang=en');
+    expect(find.text('Hello'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('lang-fr')));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/translations?lang=fr');
+    expect(find.text('Bonjour'), findsOneWidget);
+    // The Material strings follow the route too.
+    expect(
+      Localizations.localeOf(tester.element(find.byType(Scaffold).first)),
+      const Locale('fr'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('lang-en')));
+    await tester.pumpAndSettle();
+    expect(find.text('Hello'), findsOneWidget);
+  });
+
+  testWidgets('an ICU plural picks the form of the count', (tester) async {
+    await open(tester, '/translations?lang=fr');
+    expect(find.text('1 article en stock'), findsOneWidget);
+    await tester.tap(find.text('En ajouter un'));
+    await tester.pump();
+    expect(find.text('2 articles en stock'), findsOneWidget);
+    await tester.tap(find.text('En retirer un'));
+    await tester.tap(find.text('En retirer un'));
+    await tester.pump();
+    expect(find.text('Épuisé'), findsOneWidget);
+  });
+}

@@ -1,0 +1,223 @@
+create my_app (package my_app, features: sentry)
+run   flutter create --no-pub --empty --project-name=my_app <staging>
+move  <staging> -> my_app
+run   flutter pub get
+run   fsp gen
+run   fsp test
+
+=== pubspec.yaml (overwrite)
+name: my_app
+description: A new fespalier app.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v<version>
+  fespalier_sentry:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_sentry
+      ref: v<version>
+  sentry_flutter: ">=9.26.0 <10.0.0"
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator; docs/configuration.md lists every key.
+fespalier:
+  telemetry: true
+
+=== lib/main.dart (overwrite)
+import 'package:my_app/app.main.g.dart';
+
+// The app is lib/app/app.dart; AppMain (lib/app.main.g.dart) is generated from it: the
+// ProviderScope, the router and runApp. Work to do before it starts goes in lib/app/startup.dart.
+Future<void> main() => AppMain.run();
+
+=== lib/app/about/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/about`: the folder gives the path (about/page.dart) and the class gives the
+/// route's name (AboutPage becomes AboutRoute).
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Every folder under lib/app/ is a path.'),
+        TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          child: const Text('Home'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/app.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+
+/// The app around the router: theme, title, locales. The generated main() builds it
+/// (lib/app.main.g.dart) and gives it the router.
+class App extends StatelessWidget {
+  const App({super.key, required this.router});
+
+  final GoRouter router;
+
+  @override
+  Widget build(BuildContext context) =>
+      MaterialApp.router(title: 'my_app', routerConfig: router);
+}
+
+=== lib/app/layout.dart (new)
+import 'package:flutter/material.dart';
+
+/// Wraps every page below this folder; `child` is the page.
+///
+/// The transparent [Material] gives ink widgets on a page (`ListTile`, `InkWell`)
+/// something to paint on under the Scaffold's body.
+class AppLayout extends StatelessWidget {
+  const AppLayout({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(
+      child: Material(type: MaterialType.transparency, child: child),
+    ),
+  );
+}
+
+=== lib/app/not_found.dart (new)
+import 'package:flutter/material.dart';
+
+/// Shown when no route matches.
+class NotFoundPage extends StatelessWidget {
+  const NotFoundPage({super.key, required this.uri});
+
+  final Uri uri;
+
+  @override
+  Widget build(BuildContext context) =>
+      Center(child: Text('Nothing at ${uri.path}'));
+}
+
+=== lib/app/page.dart (new)
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+/// Served at `/`: page.dart in lib/app/ is the home page. The route is named after the class
+/// (HomePage becomes HomeRoute), and AboutRoute below is generated from lib/app/about/page.dart.
+class HomePage extends StatelessWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Hello from fespalier'),
+        TextButton(
+          onPressed: () => const AboutRoute().go(context),
+          child: const Text('About'),
+        ),
+      ],
+    ),
+  );
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_sentry/fespalier_sentry.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+/// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
+/// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
+/// --dart-define=SENTRY_DSN=https://... sends events to your project.
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(
+    options,
+    dsn: const String.fromEnvironment('SENTRY_DSN'),
+  ),
+  appRunner: body,
+);
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+void startup() {
+  // Before the router exists, so the first navigation is reported.
+  FespalierTelemetry.install(FespalierSentry());
+}
+
+List<NavigatorObserver> get routerObservers => [
+  if (kIsWeb) FespalierSentry.navigatorObserver(),
+];
+
+=== lib/app/transition.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/widgets.dart';
+
+/// How every route animates in; a folder's own transition.dart overrides it.
+/// Try Transitions.cupertino, fade, slide or none.
+Page<void> transition(LocalKey key, Widget child) =>
+    Transitions.material(key, child);
+
+=== test/sentry_test.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_sentry/fespalier_sentry.dart';
+import 'package:fespalier_sentry/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  tearDown(() => FespalierTelemetry.install(null));
+
+  testWidgets('a page change is a breadcrumb, and an error knows its screen', (
+    tester,
+  ) async {
+    // A real Sentry hub whose transport keeps what it would send: no network, no DSN.
+    final sentry = RecordingSentry(
+      configure: (options) => FespalierSentry.configure(
+        options,
+        dsn: 'https://key@sentry.invalid/1',
+      ),
+    );
+    FespalierTelemetry.install(FespalierSentry(hub: sentry.hub));
+    final router = AppRoutes.router();
+    await pumpRouter(tester, router);
+    router.go('/about');
+    await tester.pumpAndSettle();
+    expect(sentry.breadcrumbs, contains('navigation enter /about'));
+
+    // What Sentry's own integrations do with an uncaught error.
+    await sentry.hub.captureException(StateError('crash'));
+    await tester.pump();
+    final event = (await sentry.sent()).single;
+    expect(event['transaction'], '/about');
+    expect(event['tags'], containsPair('fespalier.route', '/about'));
+  });
+}

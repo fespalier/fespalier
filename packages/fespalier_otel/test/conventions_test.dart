@@ -1,4 +1,4 @@
-// The telemetry conventions, contract version 1 (README, "Telemetry conventions"): every name
+// The telemetry conventions, contract version 1 (docs/telemetry-conventions.md, "Telemetry conventions"): every name
 // below is a string literal on purpose. A dashboard is built on these, so renaming one must
 // fail here before it can ship; adding one is allowed (add its line).
 import 'package:fespalier/fespalier.dart' show NavigationSource;
@@ -106,6 +106,12 @@ void main() {
       ],
       ['expired', 'unauthorized', 'forced'],
     );
+  });
+
+  test('the custom operation (since 0.11.0)', () {
+    expect(FespalierConventions.opCustom, 'custom');
+    expect(FespalierConventions.customName, 'fespalier.custom.name');
+    expect(FespalierConventions.customResult, 'fespalier.custom.result');
   });
 
   test('the image attributes (since 0.9.0)', () {

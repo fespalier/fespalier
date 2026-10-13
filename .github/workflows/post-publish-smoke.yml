@@ -1,0 +1,129 @@
+# After a release is published: install the `fsp` that users get and make an app with it, the way a
+# person would, against the release's own git tag. NOT a gate and not part of the release: this is its
+# own workflow, so it cannot fail, hold up or cancel a Release run (a job of release.yml would be
+# ordered with the publish by `needs:` and would show in its result). A red run here means "look at
+# the release", never "the release did not happen". See docs/releasing.md, "The post-publish smoke".
+#
+#   release: published   fired by release.yml's publish step, which uses the org's release-please
+#                        App token (an event raised with GITHUB_TOKEN would start nothing)
+#   workflow_dispatch    re-run against an existing release: Actions > post-publish-smoke > Run
+#                        workflow > the tag, e.g. v0.15.0
+#
+# It is the one check that nothing before the release can make: `fsp create` without
+# `--local-packages` writes git dependencies on the tag, and the tag's packages are only known good
+# now. It installs with install.sh, as the README tells users to (the script checks the archive's
+# SHA-256), then makes the base app and `--features all` and runs `flutter analyze` and
+# `flutter test` (`fsp create` itself runs `flutter pub get`).
+name: post-publish-smoke
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to check, e.g. v0.15.0'
+        required: true
+        type: string
+
+permissions: {}
+
+# Per tag; a newer run for the same tag replaces an older one (nothing here writes anything).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: true
+
+env:
+  # Keep equal to ci.yml's (cli/tests/versions.rs checks it).
+  FLUTTER_VERSION: 3.47.5
+
+jobs:
+  smoke:
+    name: fsp create (${{ matrix.case }}) on the published release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - case: base
+            features: ''
+          - case: all
+            features: all
+    env:
+      TAG_FROM_RELEASE: ${{ github.event.release.tag_name }}
+      TAG_FROM_INPUT: ${{ inputs.tag }}
+      FEATURES: ${{ matrix.features }}
+      CASE: ${{ matrix.case }}
+    steps:
+      - name: Read and check the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          tag="${TAG_FROM_RELEASE:-$TAG_FROM_INPUT}"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::the tag must look like v1.2.3 (got '${tag}')"
+            exit 1
+          }
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+
+      # The user's path: the script from the repository's main branch (the URL `fsp upgrade` and the
+      # README print), the archive and its .sha256 from the release; the script refuses a mismatch.
+      - name: Install fsp with install.sh
+        env:
+          FSP_VERSION: ${{ steps.tag.outputs.tag }}
+          FSP_INSTALL_DIR: ${{ runner.temp }}/fsp-bin
+        run: |
+          set -euo pipefail
+          curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
+          echo "$FSP_INSTALL_DIR" >> "$GITHUB_PATH"
+
+      - name: The installed fsp is the release
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          fsp --version
+          [[ "$(fsp --version)" == *"${TAG#v}"* ]] || {
+            echo "::error::fsp --version does not say ${TAG#v}"
+            exit 1
+          }
+
+      # No --local-packages: the app's pubspec points at the release tag in git, which is the
+      # point. `fsp create` runs `flutter pub get` itself.
+      - name: Make the app
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          args=(--platforms web)
+          if [ -n "$FEATURES" ]; then args+=(--features "$FEATURES"); fi
+          fsp create "smoke_${CASE}" "${args[@]}"
+
+      - name: flutter analyze
+        working-directory: ${{ runner.temp }}/smoke_${{ matrix.case }}
+        run: flutter analyze
+
+      - name: flutter test
+        working-directory: ${{ runner.temp }}/smoke_${{ matrix.case }}
+        run: flutter test
+
+      - name: Say what failed
+        if: failure()
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          {
+            echo "### Post-publish smoke failed: ${TAG}, case \`${CASE}\`"
+            echo
+            echo "The release is published and unaffected. A user who installs ${TAG} and runs"
+            echo "\`fsp create\` may get a broken app. Read the failed step above; to re-run after a"
+            echo "fix, use _Run workflow_ with the tag (docs/releasing.md, \"The post-publish smoke\")."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::post-publish smoke (${CASE}) failed for ${TAG}; the release itself is unaffected"

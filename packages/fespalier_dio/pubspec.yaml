@@ -1,6 +1,6 @@
 name: fespalier_dio
-description: Dio and package:http for fespalier — requests cancelled with their page, server validation errors on action.dart forms, and writes that are never retried.
-version: 0.9.0 # x-release-please-version
+description: Dio and package:http for fespalier — requests cancelled with their page, server validation errors on fespalier_forms forms, and writes that are never retried.
+version: 0.15.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -12,7 +12,6 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
-  # Pure Dart, both: an app pays only for the library it imports (fespalier_dio.dart or http.dart).
   # 5.7.0: the lowest the floor job can test. The tests run WriteGuard against dio_smart_retry,
   # whose own constraint is `dio: ^5.7.0`, so `flutter pub downgrade` cannot resolve anything
   # lower; a constraint no run exercises is not claimed (the library alone compiles on 5.4.0).
@@ -25,8 +24,14 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.9.0 # x-release-please-version
-  # 1.5.0: Abortable requests.
+      ref: v0.15.0 # x-release-please-version
+  # The package:http half, and the write rule and the problem decoders both clients share.
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.15.0 # x-release-please-version
+  # 1.5.0: Abortable requests, which DioHttpClient turns into a CancelToken (package:fespalier_dio/client.dart).
   http: ^1.5.0
 
 dev_dependencies:
@@ -41,3 +46,5 @@ dev_dependencies:
 dependency_overrides:
   fespalier:
     path: ../fespalier
+  fespalier_http:
+    path: ../fespalier_http

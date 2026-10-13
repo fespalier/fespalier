@@ -1,11 +1,11 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 its forms: form(), validate() and optimistic()), and since 0.9.0 fespalier_dio, which ties Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.9.0 how models, immutable collections, validation libraries and results meet it (freezed, dart_mappable, fast_immutable_collections, acanthis, result_dart). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 validate() with FieldErrors and optimistic(), and its forms: form() and useForm, which are the fespalier_forms package since 0.11.0 and a breaking move out of fespalier, with opt-in drafts: FormDraft, formDraftStorage, formDraftScope, clearFormDrafts, DraftCodec), and since 0.9.0 fespalier_dio and fespalier_http (the package:http half since 0.15.0, on 0.14.0 and earlier fespalier_dio/http.dart), which tie Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.13.0 fespalier_frb (a Rust core's change stream held in one subscription, a topic provider that a data.dart watches so a matching event rebuilds it, InvalidationTable, and initRustCore for startup()), and since 0.13.0 fespalier_riverpod (a provider per page instance: two pushes of one route are two states, a query change or a remount is one, holdForPage keeps state the page reads but does not watch, usePageInstance), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack), and since 0.16.0 how models, immutable collections, validation libraries and results meet it (freezed, dart_mappable, fast_immutable_collections, acanthis, result_dart). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
 
-> **Verified against fespalier `122cb07f` (2026-10-01), release v0.4.0.**
+> **Verified against fespalier `589cf391` (2026-10-08), release v0.13.0.**
 > These skills ship in the fespalier repository, and CI checks them against its code
 > on every change. Version-sensitive claims say the release they became true in; if
 > your app pins another fespalier, trust that release's code over this page. See
@@ -88,7 +88,7 @@ final dataCache = DataCache<Product>.json(toJson: (p) => p.toJson(), fromJson: (
 | What loads a stale value                                                 | A **read**: a new listener (a page opening, `SectionView`, `prefetch`/`preload`, `read`), a listener coming back (page uncovered, tab shown), or a resume/reconnect signal                                                                                                  |
 | What it shows meanwhile                                                  | The stale value **at once**, then the new one (`keep_previous` decides if `loading.dart` shows)                                                                                                                                                                             |
 | `refetchOnResume` / `refetchOnReconnect`                                 | Signals (`appResumeSignal`, `reconnectSignal`); threshold `staleTime ?? Duration.zero`. `reconnectSignal` **never fires by itself**: override it or call `fire()` `fespalier_connectivity` (0.9.0) is that signal: `reconnectSignal.overrideWith(ConnectivitySignal.new)`   |
-| A failed reload                                                          | Keeps the page on its data (`keepDataOnError: true` on the `DataView`); `error.dart` only when there is nothing to show                                                                                                                                                     |
+| A failed reload                                                          | Keeps the page on its data (`keepDataOnError: true` on the `DataView`); `error.dart` only when there is nothing to show, or when the error is a `DataRefusal` (since 0.13.1)                                                                                                |
 | An invalidation (`ref.invalidate`, `refresh`, an action's `invalidates`) | Loads **at once**, whatever the `staleTime`: it is not a read                                                                                                                                                                                                               |
 | `dataCache`                                                              | Saved only if the app overrides `dataCacheStorage` (`null` by default). `MemoryDataStorage` for tests and the web; a `Storage<String, String>` on disk to survive a restart: `fespalier_storage` (0.9.0), `PrefsDataStorage` or `HiveDataStorage`, first frame, size budget |
 
@@ -103,6 +103,27 @@ reconnect signal, `hasNetwork` and an offline banner, connectivity versus reacha
 `FakeConnectivity`. [`references/storage-backends.md`](references/storage-backends.md)
 (since 0.9.0) is `fespalier_storage`: choosing Prefs or Hive, the budget and eviction, versioning, corrupt entries, sign-out, the web's
 quota, and a restart test that compiles.
+
+**A Rust core that says what changed (since 0.13.0).** `fespalier_frb`: `ChangeFeed(open)` holds the core's change stream in
+**one** keep-alive subscription, `feed.topic<K>(matches)(key)` is a provider whose value moves only on a matching event, and a
+`data.dart` that does `ref.watch(orderChanged(id))` is rebuilt exactly then: no listener, no timer, no `invalidate` in the code
+that holds the stream. `InvalidationTable` is the pure form for an app that owns its subscription
+(`table.apply(event, container.invalidate)`). It has **no `flutter_rust_bridge` dependency** (the bindings pin their own runtime):
+do not add one. Starting the core is the app's, not an adapter's: `Future<void> startup() => initRustCore(RustLib.init);`, and
+`ready(container)` for what must run on the container after it. Equal events are two changes (`Change.seq`), events fed together
+are one rebuild, a debounce would be a timer. [`references/change-feeds.md`](references/change-feeds.md) has the samples that compile,
+`startup()` versus `ready()`, and the tests with `FakeChangeSource`.
+
+**State that belongs to one page on a navigator (since 0.13.0).** A `data.dart` is keyed by the location, so `/c/1` is one
+provider however often it is shown. `fespalier_riverpod` keys a provider by the **page instance** instead: `PageInstance<R>`
+is core's `pageInstanceId` (the same string as `RouteScope.id`) plus the typed route, equal **by id only**, so `/c/1` pushed
+twice is two states while `/c/1?q=2` and a `remount` are one. `pageProvider` / `pageNotifierProvider` are auto-dispose
+families keyed by it, `PageInstance.of(context, ChatRoute.of)` (or `usePageInstance(ChatRoute.of)`) is the page's key,
+`PageInstance.ofScope(scope, route)` the same key from an `observe.dart`, and `holdForPage(scope, provider)` (`scope.hold`
+by another name) keeps state the page reads but does not watch, or that must outlive its widgets, until the page leaves (a
+parked tab that watches keeps its state anyway; `onEnter` fires when the page first becomes top). The family keeps
+the route it was first made with: what follows the query is `data.dart`'s. Nothing here survives a restart.
+[`references/page-providers.md`](references/page-providers.md) has the samples that compile and the tests.
 
 ## Typed helpers, prefetch, lookup
 
@@ -164,11 +185,14 @@ await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: th
 [`references/actions.md`](references/actions.md) has the rules, the generated members,
 what is invalidated and a test that compiles.
 
-## Forms and optimistic updates (since 0.8.1)
+## Forms and optimistic updates (since 0.8.1; forms are `fespalier_forms` since 0.11.0)
 
 Not a file kind: `form()`, `validate()` and `optimistic()` are _companion functions_ in the
 `action.dart` of their action (`approveForm`, `approveValidate`, `approveOptimistic` beside
-`approve`), and never actions themselves.
+`approve`), and never actions themselves. **`form()` needs the `fespalier_forms` package** (since
+0.11.0): list it under `dependencies:` at the same git `url` and `ref` as `fespalier`, or `fsp`
+reports an error at the `form()`; the generated file imports it only in an app with a form.
+`FieldErrors`, `validate()` and `optimistic()` stay in `fespalier`.
 
 ```dart
 typedef NicknameFields = ({String nickname, bool newsletter});   // the input: a record, named fields
@@ -190,15 +214,35 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
   data has loaded again (no frame of the old value, `keep_previous: false` too). `XRoute.data`,
   `read` and `refresh` stay the server's value.
 - Fields the user has not changed follow new data; changed ones keep what was typed.
+- **Drafts (since 0.11.0), opt-in**: `useForm(ref, data: p, draft: const FormDraft(exclude: {'password'}))`
+  keeps what changed per route (written when the page is disposed and when the app goes to the
+  background, restored when the form starts, deleted by a success or `reset()`) in
+  `formDraftStorage` (your `dataCacheStorage` by default), scoped by `formDraftScope`; `clearFormDrafts`
+  at sign-out.
+- **Leaving with unsaved changes (since 0.11.0)**: a `leave.dart` that is `leaveIfClean(context, ref, page)`
+  asks when a form has changed, in a bottom sheet: "Keep editing", "Discard" and, for a form with a
+  `draft:`, "Keep as draft". The form registers itself as the page's `LeaveSource`; `leavePrompt` is the
+  app's question (override it on material_ui); `LeavePrompts.answer(choice)` is the test's.
 
-[`references/forms-and-optimistic.md`](references/forms-and-optimistic.md) has every rule and a
-sample that compiles, with its test.
+- **Multi-page forms (since 0.11.0)**: a section whose `action.dart` has `const steps` (step folder to the fields it
+  asks for) is one form over several pages with one draft: `SignupSection.useFlow(ref)` in the layout (inside a
+  `FormFlowScope`), `flowOf(context)` in a step, `flow.next(context)` checking that step's fields only, `back`, `goTo`,
+  `progress`, server errors sent to the step that owns the field, a `guard.dart` calling `resume(ref, uri:)`, and one
+  `leave.dart` beside the layout asked once when the flow is left.
 
-## HTTP clients: `fespalier_dio` (since 0.9.0)
+[`references/forms.md`](references/forms.md) (the package, `form()` and `useForm`, fields, submit and
+errors, drafts, a sample that compiles with its test),
+[`references/flows.md`](references/flows.md) (multi-page forms) and
+[`references/optimistic.md`](references/optimistic.md) (`validate()`, `FieldErrors` and `optimistic()`)
+have every rule.
 
-The core has no HTTP client. `package:fespalier_dio` (a repository dependency next to fespalier, **same `url` and
-`ref`**) makes Dio and `package:http` keep three promises. It changes no generated code, file kind, key or command,
-and starts no timer.
+## HTTP clients: `fespalier_http` and `fespalier_dio` (since 0.9.0, split in 0.15.0)
+
+The core has no HTTP client. `package:fespalier_dio` (Dio) and, **since 0.15.0**, `package:fespalier_http`
+(`package:http`; on 0.14.0 and earlier it was `package:fespalier_dio/http.dart`, **removed in 0.15.0, not
+deprecated**: change the import to `package:fespalier_http/fespalier_http.dart`), repository dependencies next to
+fespalier with **the same `url` and `ref`**, make the two clients keep three promises. They change no generated code,
+file kind, key or command, and start no timer.
 
 ```dart
 final cancel = ref.cancelToken();                       // Dio, in a data.dart: before the first await
@@ -222,17 +266,43 @@ WriteGuard.install(dio);                                // the last call on the 
 - **A write is never sent twice.** `dio_smart_retry` and `RetryClient` retry writes by default. `WriteGuard.install(dio)`
   puts a guard **first** that refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS`, `TRACE`, unless
   it has an `Idempotency-Key` header or `extra[WriteGuard.idempotent]`) and returns the first error, except after a 401
-  (an auth refresh). `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put
+  (an auth refresh); `HttpWrites.isWrite` is that one rule for both clients (since 0.15.0). `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put
   `WriteGuardClient(inner)` inside the `RetryClient` and pass it `when: WriteGuardClient.readsOnly()` and
   `whenError: WriteGuardClient.readErrorsOnly(rule)`. A retrier **before** the guard gives `WriteNotRetried`.
 - **Keep one retry layer**: Riverpod's data retry and an HTTP retrier multiply each other's attempts.
+- **The layers, outside in (since 0.15.0, proved by a test):** `ref.abortable(...)`, then
+  `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), ...))`. A retrier _outside_ the session
+  sends the session a streamed copy that it will not send again after a 401, so use it only for DPoP. Any
+  `http.Client` fits the seam, `DioHttpClient(dio)` (`package:fespalier_dio/client.dart`) included; `HttpCredentials`
+  (`Authorizer` implements it) is the session for a transfer that is not an `http.Client`. Do not claim
+  `cupertino_http` honours an abort: it is unchecked.
 - **Not in it:** a retry policy of its own (a backoff needs a timer), logging, tracing (use `otel_dio` or `sentry_dio`).
 
 [`references/http.md`](references/http.md) has the samples that compile and every rule; its tests are in
 [`fespalier-testing`](../fespalier-testing/SKILL.md) (its `http.md`), its messages in
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-errors-and-http.md`).
 
-## Models, collections, validation and results (since 0.9.0)
+## Offline-first and CrateStack (since 0.10.0)
+
+`package:fespalier_cratestack` (a repository dependency next to fespalier, **same `url` and `ref`**) adds a second way to
+make a read survive without a network, and a queue for writes. It changes no generated code, file kind, key or
+command. It is two skills of its own: [`fespalier-offline`](../fespalier-offline/SKILL.md) (the ideas and the API) and
+[`fespalier-cratestack`](../fespalier-cratestack/SKILL.md) (wiring a CrateStack client).
+
+- **`dataCache` or `ref.serve`, never both.** `dataCache` (since 0.8.1) saves **a route's value** under its key and shows
+  it while the network is slow or away; `ref.serve(key:, codec:, fetch:)` saves **an account's answer** and returns a
+  `Served<T>` that says where the value came from (`network` or `local`) and when (`fetchedAt`), so the page can write
+  "offline copy, as of 10:42". `serve` keeps its own copy, per account, in a `LocalStore` or a `ReadCache`: do not put
+  `dataCache` over it. `freshness` still decides **when** a read runs again; `serve` decides **where** the answer comes
+  from.
+- **The page type is `Served<T>`**, spelled exactly as `data()` returns it (`FutureOr<Served<List<Order>>>` is matched as
+  `Served<List<Order>>`): `fsp` matches by type, syntactically.
+- **Only a connection failure falls back to the device**; a refusal goes to `error.dart` like any error. A single row with
+  nothing saved is `CrateStackNoLocalData`; a list says `neverFetched`.
+- **A write that is the server's decision is an intent** (`ref.read(intentQueue).submit(...)` in an `action.dart`): it
+  returns `Accepted` or `Queued`, never a success the server has not given.
+
+## Models, collections, validation and results (since 0.16.0)
 
 fespalier depends on **none** of freezed, dart_mappable, fast_immutable_collections, acanthis, luthor,
 result_dart or fpdart, and `fsp` does not read them: they meet it in the value `data()` returns (Riverpod 3 filters
@@ -264,6 +334,17 @@ function's own result (a value stays a value, a `Future` stays the `Future`), an
 followed since 0.8.1 as an `app provider`, through the state the views got; its other listeners are not
 visible (`fespalier-troubleshooting`, its DevTools page).
 
+## Examples
+
+Read these before inventing a pattern; each compiles and has widget tests
+(the `fespalier` skill lists them all).
+
+- `examples/features`: a `data.dart` keyed by a segment (`catalog/$productId`), a `teams/$teamId` section with its `data.dart`
+  and `action.dart` (an optimistic `addMember`), forms on `action.dart`, a `Stream` in `ticks/data.dart`, and the cache and
+  reconnect pair (`test/offline_test.dart`, `test/freshness_test.dart`).
+- `examples/shop`: `products/$id/data.dart` with `error.dart` and Retry, and `test/refresh_test.dart`.
+- `examples/auth`: two `data.dart` files (`orders/` and `orders/$id/`) that share one token refresh.
+
 ## Common symptoms
 
 | Symptom                                                        | Look at                                                                                                                                                                         |
@@ -282,7 +363,10 @@ visible (`fespalier-troubleshooting`, its DevTools page).
 | An offline banner stays up after the network came back (0.9.0) | A hand-written signal that never asks again on a resume (iOS drops background events): use `fespalier_connectivity`                                                             |
 | The form forgot what I typed (0.8.1)                           | The data loaded again while the fields were untouched: only fields the user changed are kept                                                                                    |
 | The page flashes the old value after a save                    | `optimistic()` patches another type than the page shows, or the data is not in `invalidates`                                                                                    |
-| A request outlives its page (0.9.0)                            | `fespalier_dio`: the token was asked after an `await`, or not given to the request (`references/http.md`)                                                                       |
-| A 422 is not under its field (0.9.0)                           | `fespalier_dio`: `withFieldErrors()` is missing or found no field: statuses, decoder, names (`references/http.md`)                                                              |
+| A request outlives its page (0.9.0)                            | `fespalier_dio` or `fespalier_http`: the token was asked after an `await`, or not given to the request (`references/http.md`)                                                   |
+| A 422 is not under its field (0.9.0)                           | `fespalier_dio` or `fespalier_http`: `withFieldErrors()` is missing or found no field: statuses, decoder, names (`references/http.md`)                                          |
 | A write is retried, or `WriteNotRetried` (0.9.0)               | `WriteGuard` is not first (`WriteGuard.install(dio)` last), or the retrier has no `readsOnly` (`references/http.md`)                                                            |
+| Another account's data shows offline (0.10.0)                  | Impossible by design: every `serve` answer, intent and row is keyed by `crateStackScope`. A copy that did show means the scope is not the signed-in user (`fespalier-offline`)  |
+| A queued write never sends (0.10.0)                            | `fespalier_cratestack`: nothing watches `autoSync`, no trigger runs, or the intent is another account's (`fespalier-troubleshooting`, its `diagnostics-cratestack.md`)          |
+| A CrateStack read is cancelled with another page (0.10.0)      | A provider is built inside `ref.cancellable(...)`: read and watch others before it, and keep the body to the client call (`fespalier-cratestack`)                               |
 | An fsp error on `data.dart` or `action.dart`                   | `fespalier-troubleshooting`                                                                                                                                                     |

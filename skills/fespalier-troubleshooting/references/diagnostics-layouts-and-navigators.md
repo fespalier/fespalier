@@ -1,6 +1,6 @@
 # Diagnostics: layouts, tabs and the root navigator
 
-As of v0.4.0 (`cli/src/resolve.rs`, `emit.rs`). Each message is followed by its cause
+As of v0.13.0 (`cli/src/resolve.rs`, `emit.rs`). Each message is followed by its cause
 and fix. `fespalier-layouts` and `fespalier-routing` explain the rules behind them.
 
 ## Layouts and tab layouts

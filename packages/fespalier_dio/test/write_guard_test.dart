@@ -20,7 +20,7 @@ const notRetried =
     'the error of its first send is unknown. A write is never retried. Call '
     'WriteGuard.install(dio) after adding every other interceptor: it puts WriteGuard first.';
 
-/// A Dio over [adapter] with the retry interceptor and the guard, the order the README gives.
+/// A Dio over [adapter] with the retry interceptor and the guard, the order docs/http.md gives.
 Dio retrying(
   FakeAdapter adapter, {
   FutureOr<bool> Function(DioException error, int attempt)? evaluator,

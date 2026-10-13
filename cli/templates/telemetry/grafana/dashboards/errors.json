@@ -477,6 +477,18 @@
                 "value": "Image load"
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "custom"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Package operation"
+              }
+            ]
           }
         ]
       },
@@ -572,6 +584,10 @@
                       "image": {
                         "text": "Image load",
                         "index": 7
+                      },
+                      "custom": {
+                        "text": "Package operation",
+                        "index": 8
                       }
                     }
                   }
@@ -791,6 +807,10 @@
                       "image": {
                         "text": "Image load",
                         "index": 7
+                      },
+                      "custom": {
+                        "text": "Package operation",
+                        "index": 8
                       }
                     }
                   }

@@ -1,6 +1,6 @@
 # Tab layouts: `tabs`, `tabOptions` and `container`
 
-As of v0.4.0. A `layout.dart` that asks for a `StatefulNavigationShell` (a
+As of v0.13.0. A `layout.dart` that asks for a `StatefulNavigationShell` (a
 parameter named `navigationShell` or `shell`, or typed that way) **instead of** a
 `Widget child` is a **tab layout**. It becomes a go_router
 `StatefulShellRoute.indexedStack` (or, with a `container`, your own
@@ -237,8 +237,11 @@ shows. Give it a `page.dart` and that page becomes the inner layout's first tab.
   subfolder (`a tab layout folder can't hold a redirect.dart`).
 - A root-navigator route (`navigator.dart`, `present.dart`) **cannot be the first
   route of a tab** or sit directly in the layout (`fespalier-routing`).
-- There is no `redirect` on the `StatefulShellRoute`: guards run on each page's
+- There is no `redirect` on a plain `ShellRoute`: guards run on each page's
   route, which go_router runs for deep links and for navigation inside a shell,
-  tabs included.
+  tabs included. **One exception, since 0.11.0:** the guards above a tab layout (its
+  folder's own, or a page-less folder over it) are generated once, as the
+  `StatefulShellRoute`'s `redirect:`, not copied into each tab's route; a tab's own
+  `guard.dart` stays on its route (`fespalier-guards`).
 - Tab stacks and the selected tab are restored after a restart when the router has a
   `restorationScopeId` (see `transitions-and-restoration.md`).

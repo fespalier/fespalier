@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/data.dart","line":1,"column":13,"severity":"error","message":"data() must take `Ref ref` first"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

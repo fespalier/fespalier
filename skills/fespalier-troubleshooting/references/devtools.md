@@ -5,8 +5,8 @@ debug or profile mode. It shows the route tree `fsp` wrote, the router's locatio
 history of the locations it committed, which guards and redirects answered, the state of every
 `data.dart` provider, and the runs of the actions; it takes a location to `go`, `push` or `replace`
 to, builds a provider again, and asks the IDE to open a file. Use it to see what a live app is doing
-before reading code: the README's
-[DevTools extension](https://github.com/fespalier/fespalier#devtools-extension) section is the
+before reading code: the
+[DevTools extension](https://github.com/fespalier/fespalier/blob/main/docs/devtools.md) section is the
 user documentation.
 
 ## When to reach for it

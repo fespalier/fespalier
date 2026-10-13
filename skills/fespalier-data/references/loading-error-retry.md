@@ -178,7 +178,8 @@ fespalier:
 
 Its `DataView` gets `keepDataOnError: true`: a reload that fails keeps the page on the value it had (the error is in
 `XRoute.watch(ref).error`), and `error.dart` only shows when there is nothing to show, whatever `keep_previous`
-says. And a value Riverpod's offline persistence restored (`isFromCache`) is shown while the fresh one loads, with
+says, or (since 0.13.1) when the error is a `DataRefusal`: a refusal such as `CrateStackRefused` or `AuthRejected` replaces
+the page with `error.dart`, and its retry recovers it. And a value Riverpod's offline persistence restored (`isFromCache`) is shown while the fresh one loads, with
 `keep_previous: false` too. See [`freshness-and-cache.md`](freshness-and-cache.md).
 
 ## Reloads from code

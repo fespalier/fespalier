@@ -173,6 +173,17 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.imagePreload: start.imagePreload,
           },
         ),
+        // The package's own name and attributes (validated in debug by `begin`); an error's text
+        // is never recorded for it, see [end].
+        TelemetryOp.custom => (
+          start.name ?? FespalierConventions.opCustom,
+          <String, Object>{
+            // The package's own attributes first: a convention key wins over one of the same name.
+            ...?start.attributes,
+            FespalierConventions.operation: FespalierConventions.opCustom,
+            FespalierConventions.customName: ?start.name,
+          },
+        ),
       };
       final parent = start.parent;
       final span = tracer.startSpan(
@@ -182,7 +193,7 @@ final class FespalierOtel extends FespalierTelemetry {
         parentSpan: parent is _Running ? parent.span : null,
         attributes: OTel.attributesFromMap(attributes),
       );
-      return _Running(span, start.op);
+      return _Running(span, start.op, prefix: _customPrefix(start));
     } catch (_) {
       return null;
     }
@@ -233,9 +244,11 @@ final class FespalierOtel extends FespalierTelemetry {
       final error = end.error;
       if (end.outcome == TelemetryOutcome.error &&
           error != null &&
-          (token.op == TelemetryOp.auth || token.op == TelemetryOp.image)) {
-        // An auth error's text may name a host or an endpoint, an image error's the URL: the class
-        // is all that is kept.
+          (token.op == TelemetryOp.auth ||
+              token.op == TelemetryOp.image ||
+              token.op == TelemetryOp.custom)) {
+        // An auth error's text may name a host or an endpoint, an image error's the URL, a custom
+        // operation's anything: the class is all that is kept.
         span.setStringAttribute<String>(
           FespalierConventions.errorType,
           error.runtimeType.toString(),
@@ -312,6 +325,27 @@ final class FespalierOtel extends FespalierTelemetry {
         final status = end.imageStatus;
         if (status != null) {
           span.setIntAttribute(FespalierConventions.imageStatus, status);
+        }
+      case TelemetryOp.custom:
+        span.setStringAttribute<String>(
+          FespalierConventions.customResult,
+          end.outcome,
+        );
+        span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+        final prefix = running.prefix;
+        for (final MapEntry(:key, :value)
+            in (end.attributes ?? const {}).entries) {
+          if (prefix == null || !key.startsWith(prefix)) continue;
+          switch (value) {
+            case final String v:
+              span.setStringAttribute<String>(key, v);
+            case final int v:
+              span.setIntAttribute(key, v);
+            case final double v:
+              span.setDoubleAttribute(key, v);
+            case final bool v:
+              span.setBoolAttribute(key, v);
+          }
         }
     }
   }
@@ -394,8 +428,19 @@ final class FespalierOtel extends FespalierTelemetry {
 }
 
 /// A span being made, and what it is: the token this adapter hands fespalier.
+String? _customPrefix(TelemetryStart start) {
+  final parts = start.name?.split('.');
+  if (start.op != TelemetryOp.custom || parts == null || parts.length < 2) {
+    return null;
+  }
+  return '${parts[0]}.${parts[1]}.';
+}
+
 final class _Running {
-  _Running(this.span, this.op);
+  _Running(this.span, this.op, {this.prefix});
+
+  /// custom: `fespalier.<pkg>.`, the only keys the package's end attributes may set.
+  final String? prefix;
 
   final Span span;
   final TelemetryOp op;

@@ -15,6 +15,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -27,6 +28,41 @@ import 'src/telemetry.dart';
 /// (since 0.8.1): the setup file of `fsp test` returns a `List<Override>` and imports it from
 /// here.
 export 'package:hooks_riverpod/misc.dart' show Override;
+
+/// A `RouteScope` for a test of an `observe.dart` hook that takes one (since 0.11.0).
+export 'src/route_scope.dart' show TestRouteScope;
+
+/// Delivers [link] to the app the way the platform does when a user opens an App Link, a
+/// Universal Link or a custom scheme while it runs (since 0.12.0): a `pushRouteInformation`
+/// message on the `flutter/navigation` channel, which Flutter hands to the router, so go_router
+/// parses it and, in an app generated with `telemetry: true` or `adapters:` (the router is built
+/// with `links: true`), `onEnter` of each adapter sees it with `source` `link` and telemetry
+/// reports `fespalier.navigation.source=link`. Then, unless [settle] is false, it pumps until nothing
+/// is scheduled (turn it off to look at a loading view, as with `pumpRouter`).
+///
+/// ```dart
+/// await pumpRouter(tester, AppRoutes.router());
+/// await sendPlatformLink(tester, Uri.parse('https://shop.example.com/products/2'));
+/// expect(currentLocation(tester), '/products/2');
+/// ```
+///
+/// A warm link only: a cold start is `tester.binding.platformDispatcher.defaultRouteNameTestValue`
+/// set before `pumpRouter`. A link whose host the manifest does not list reaches the router all
+/// the same: the platform's association check is not part of a widget test.
+Future<void> sendPlatformLink(
+  WidgetTester tester,
+  Uri link, {
+  bool settle = true,
+}) async {
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    const JSONMethodCodec().encodeMethodCall(
+      MethodCall('pushRouteInformation', {'location': link.toString()}),
+    ),
+    (_) {},
+  );
+  if (settle) await tester.pumpAndSettle();
+}
 
 Duration? _noRetry(int retryCount, Object error) => null;
 
@@ -75,7 +111,7 @@ void _dispose(GoRouter router) {
 ///
 /// The default app is Flutter's `MaterialApp`. With go_router 18, which looks for
 /// `package:material_ui`'s instead, routes without a `transition.dart` don't
-/// animate in tests, and go_router's own error screen is unstyled (see the README).
+/// animate in tests, and go_router's own error screen is unstyled (see docs/getting-started.md, "go_router 18 and Material").
 Future<ProviderContainer> pumpRouter(
   WidgetTester tester,
   GoRouter router, {
@@ -197,6 +233,7 @@ final class RecordingTelemetry extends FespalierTelemetry {
       TelemetryOp.image =>
         '${start.imageCdn} w=${start.imageWidth}'
             '${start.imagePreload ? ' preload' : ''}',
+      TelemetryOp.custom => _custom(start.name, start.attributes),
       _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
     };
     final parent = start.parent == null ? '' : ' parent=#${start.parent}';
@@ -221,6 +258,10 @@ final class RecordingTelemetry extends FespalierTelemetry {
         if (end.location != null) 'at=${end.location}',
       ],
       if (end.imageStatus != null) 'status=${end.imageStatus}',
+      if (op == TelemetryOp.custom &&
+          end.attributes != null &&
+          end.attributes!.isNotEmpty)
+        _sorted(end.attributes!),
       if (end.error != null) 'error=${end.error}',
     ];
     log.add(parts.join(' '));
@@ -245,6 +286,14 @@ final class RecordingTelemetry extends FespalierTelemetry {
     }
   }
 }
+
+String _sorted(Map<String, Object> attributes) {
+  final keys = attributes.keys.toList()..sort();
+  return keys.map((k) => '$k=${attributes[k]}').join(' ');
+}
+
+String _custom(String? name, Map<String, Object>? attributes) =>
+    '${name ?? 'custom'}${attributes == null || attributes.isEmpty ? '' : ' ${_sorted(attributes)}'}';
 
 /// The page of the route whose pattern is [pattern] (`/products/:id`), found by the
 /// `Semantics(identifier: 'route:<pattern>')` that `semantics_ids: true` gives it. Needs no

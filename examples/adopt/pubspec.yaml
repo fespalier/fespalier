@@ -1,0 +1,28 @@
+name: adopt
+description: fespalier example — a go_router app half-way through adopting fespalier. The old routes stay, the new pages are mounted under /shop, and startup.dart has the 0.12 ready()/attach() move.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # In your own app this is a `git:` dependency (see the main README).
+  fespalier:
+    path: ../../packages/fespalier
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+# Read by the `fsp` generator. No `main:` key: the default, `auto`, writes lib/app.main.g.dart
+# from app.dart and startup.dart, and the router() in app.dart is the half-moved one.
+fespalier:
+  # `none`: a failing data() shows error.dart at once instead of waiting for Riverpod's retries.
+  data_retry: none

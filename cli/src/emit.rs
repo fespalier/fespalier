@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde::Serialize;
 
+use crate::adapters::{self, AdaptersCx};
 use crate::config::{Config, DataRetry, Remount};
 use crate::dart::Span;
 use crate::devtools;
@@ -41,6 +42,8 @@ struct FileCx {
     routes: Vec<RouteCx>,
     /// A typed handle for each section's data.dart.
     sections: Vec<SectionCx>,
+    /// The enum of the steps of each multi-page form (since 0.11.0).
+    step_enums: Vec<StepEnumCx>,
     /// How `AppRoutes.matchUrl` matches a location to a route, most specific first.
     matchers: Vec<MatcherCx>,
     params_fns: Vec<ParamsFnCx>,
@@ -74,6 +77,8 @@ struct FileCx {
     /// Some route takes a parameter, so has a `copyWith`: the file defines the sentinel
     /// (`_keep`) that tells a parameter left out from one passed as `null`.
     copy_with: bool,
+    /// Some action has a `form()`: the file imports `package:fespalier_forms` (since 0.11.0).
+    forms: bool,
     /// `AppMenu`, when some folder has a nav.dart (since 0.8.1).
     menu: Option<MenuCx>,
     /// Some page has observe.dart hooks: `AppRoutes.attach` runs them, through `_observeAt`.
@@ -84,6 +89,16 @@ struct FileCx {
     /// The generated `AppRoutes.attach` exists: for observe.dart hooks (and, with `telemetry`,
     /// for telemetry). Without either, `router()` attaches DevTools as it always did.
     attach: bool,
+    /// `fespalier: adapters:` is not empty: the file defines `AppAdapters` (since 0.11.0).
+    adapters: Option<AdaptersCx>,
+    /// `AppRoutes.attach` takes the app's `ProviderContainer`: for the adapters' `attach` and
+    /// for the observe.dart hooks' `RouteScope` (since 0.11.0).
+    container_param: bool,
+    /// What `AppRoutes.attach`'s doc comment says follows the router.
+    attach_what: String,
+    /// `launchRouter(links: true)`: platform links are marked `NavigationSource.link`, for
+    /// telemetry and for the adapters' `onEnter` (since 0.11.0).
+    links: bool,
 }
 
 /// One `import` of the generated file.
@@ -142,6 +157,12 @@ struct TreeCx {
     root_at: Option<(String, Option<Span>)>,
     /// A tab shell's `navigatorContainerBuilder`, when its layout.dart has a `container`.
     container: Option<String>,
+    /// For a `GoRoute` whose folder has a leave.dart: the `onExit` expression (since 0.11.0); the
+    /// page is wrapped in `leaveScope`.
+    leave: Option<String>,
+    /// The page is a step of a flow (since 0.11.0): `flowStep` registers the flow of the layout
+    /// above in the page's `LeaveScope`.
+    flow_step: bool,
     routes: Vec<TreeCx>,
     /// Starts with a `:segment` (or, for a `ShellRoute`, holds a route that does).
     #[serde(skip)]
@@ -392,6 +413,9 @@ struct ActionCx {
     optimistic: Option<String>,
     /// The `useForm` hook, when the action has a `form()` (since 0.8.1).
     form: Option<FormCx>,
+    /// The members of a multi-page form, when the action has `const steps` (since 0.11.0): in
+    /// place of the `useForm` hook.
+    flow: Option<FlowCx>,
     /// The providers a success invalidates.
     invalidates: String,
     /// `{required int id, required _i5.Input input}`: the named parameters of the one-shot helper.
@@ -494,6 +518,8 @@ enum ParamsFn {
     Guard(usize),
     /// What one folder's observe.dart reads from the URL.
     Observe(usize),
+    /// What one folder's leave.dart reads from the URL.
+    Leave(usize),
 }
 
 impl ParamsFn {
@@ -503,8 +529,39 @@ impl ParamsFn {
             ParamsFn::Layout(id) => format!("_layout{id}"),
             ParamsFn::Guard(id) => format!("_guard{id}"),
             ParamsFn::Observe(id) => format!("_observe{id}"),
+            ParamsFn::Leave(id) => format!("_leave{id}"),
         }
     }
+}
+
+/// The members of an action with `const steps`: the multi-page form of a section.
+#[derive(Serialize)]
+struct FlowCx {
+    /// The private `FlowSpec` the members share: `_flow`.
+    spec: String,
+    /// The arguments of its constructor, one per line.
+    spec_args: Vec<String>,
+    /// The members: `useFlow`, `flowOf` and `resume`, or the action's own.
+    hook: String,
+    of: String,
+    resume: String,
+    /// `{required int id, ActionFormValidation validation = ...}`.
+    params: String,
+    /// What `use` is called with after the provider.
+    use_args: String,
+    /// `{required int id, required Uri uri}`, and what `resume` is called with.
+    resume_params: String,
+    resume_args: String,
+}
+
+/// The step enum of a flow: `enum SignupStep { name, company }`.
+#[derive(Serialize)]
+struct StepEnumCx {
+    name: String,
+    /// The `action.dart` it is the steps of.
+    file: String,
+    /// Each constant and the folder of its page, in order.
+    steps: Vec<(String, String)>,
 }
 
 /// The form hook of an action with a `form()`.
@@ -645,6 +702,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         copy_with: routes.iter().any(|r| !r.fields.is_empty()),
         routes,
         sections: sections(app, diags),
+        step_enums: step_enums(app),
         matchers,
         params_fns: fns.into_iter().map(|f| params_fn(app, f)).collect(),
         providers: app
@@ -662,9 +720,17 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         devtools_tree: dart_str(&devtools::compact(app, cfg)),
         devtools_providers: devtools_providers(app),
         case_sensitive: app.routes[0].case_sensitive,
+        forms: app
+            .routes
+            .iter()
+            .any(|r| r.actions.iter().any(|a| a.form.is_some())),
         observe: has_observe,
         telemetry: cfg.telemetry,
-        attach: has_observe || cfg.telemetry,
+        attach: has_observe || cfg.telemetry || !cfg.adapters.is_empty(),
+        container_param: has_observe || !cfg.adapters.is_empty(),
+        adapters: adapters::cx(&cfg.adapters),
+        attach_what: attach_what(has_observe, cfg.telemetry, !cfg.adapters.is_empty()),
+        links: cfg.telemetry || !cfg.adapters.is_empty(),
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
@@ -672,6 +738,26 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         scroll_restoration: cfg.scroll_restoration,
     };
     templates::render("app.g.dart", &cx)
+}
+
+/// `DevTools and the observe.dart hooks`: what `AppRoutes.attach` lets follow the router.
+fn attach_what(observe: bool, telemetry: bool, adapters: bool) -> String {
+    let mut parts = vec!["DevTools"];
+    if observe {
+        parts.push("the observe.dart hooks");
+    }
+    if telemetry {
+        parts.push("telemetry");
+    }
+    if adapters {
+        parts.push("the adapters");
+    }
+    let last = parts.pop().unwrap_or_default();
+    if parts.is_empty() {
+        last.to_string()
+    } else {
+        format!("{} and {last}", parts.join(", "))
+    }
 }
 
 /// One entry of the `RouteBase` tree that `app.g.dart` hands to `go_router`, as data: what
@@ -702,6 +788,8 @@ pub enum Frame {
     Tabs {
         id: usize,
         root: bool,
+        /// The folders of the guards that run on the shell, before every tab (since 0.11.0).
+        guards: Vec<usize>,
         branches: Vec<(String, Vec<Frame>)>,
     },
 }
@@ -711,15 +799,30 @@ pub fn frames(app: &App) -> Vec<Frame> {
     fn frame(t: TreeCx) -> Frame {
         let children = |routes: Vec<TreeCx>| routes.into_iter().map(frame).collect();
         match (t.layout.is_some(), t.serves) {
-            (true, _) if !t.branches.is_empty() => Frame::Tabs {
-                id: t.id,
-                root: t.root,
-                branches: t
-                    .branches
-                    .into_iter()
-                    .map(|b| (b.name, children(b.routes)))
-                    .collect(),
-            },
+            (true, _) if !t.branches.is_empty() => {
+                let guards: Vec<usize> = t.redirects.iter().filter_map(|c| c.guard).collect();
+                Frame::Tabs {
+                    id: t.id,
+                    root: t.root,
+                    branches: t
+                        .branches
+                        .into_iter()
+                        .map(|b| {
+                            let mut routes: Vec<Frame> = children(b.routes);
+                            // The tab shell's guards cover each tab's first routes, as ever.
+                            if !guards.is_empty() {
+                                for f in &mut routes {
+                                    if let Frame::Route { guarded, .. } = f {
+                                        *guarded = true;
+                                    }
+                                }
+                            }
+                            (b.name, routes)
+                        })
+                        .collect(),
+                    guards,
+                }
+            }
             (true, _) | (false, None) => Frame::Shell {
                 id: t.id,
                 root: t.root,
@@ -878,6 +981,9 @@ fn in_builder(b: &Bind) -> String {
         Bind::Uri => "uri".into(),
         // Only an observe.dart hook takes this; `observe_closure` spells it.
         Bind::Route => "m.route".into(),
+        Bind::Scope => "scope".into(),
+        // Only a leave.dart takes this; `leave_expr` spells it.
+        Bind::PageLeave => "page".into(),
         Bind::PageKey => "state.pageKey".into(),
         Bind::State => "state".into(),
         Bind::IsShell => "false".into(),
@@ -965,10 +1071,23 @@ fn routes_of(
             let mut out: Vec<TreeCx> = parent
                 .iter()
                 .map(|p| {
-                    without_catch_all(page_route(app, id, top, p, false, inherited, fns, ids), r)
+                    without_catch_all(
+                        page_route(app, id, top, p, false, inherited, OwnGuard::Route, fns, ids),
+                        r,
+                    )
                 })
                 .collect();
-            out.push(page_route(app, id, top, &path, true, inherited, fns, ids));
+            out.push(page_route(
+                app,
+                id,
+                top,
+                &path,
+                true,
+                inherited,
+                OwnGuard::Route,
+                fns,
+                ids,
+            ));
             // What leaves the page goes beside it, below its guard too: the routes are the
             // page's siblings, with the folders in between in their paths.
             let mut leaving = vec![];
@@ -1015,6 +1134,8 @@ fn routes_of(
             root: r.root,
             root_at: r.root.then(|| (rel(r, Kind::Layout), None)),
             container: None,
+            leave: None,
+            flow_step: false,
             dynamic: out.iter().any(|r| r.dynamic),
             catch_all: out.iter().any(|r| r.catch_all),
             serves: None,
@@ -1298,40 +1419,59 @@ fn not_founds(app: &App) -> Vec<NotFoundCx> {
         .collect()
 }
 
+/// The calls of the guards in folders `guards` (outermost first), as the redirects of the route
+/// or tab shell of folder `id`.
+fn guard_calls(
+    app: &App,
+    id: usize,
+    guards: &[usize],
+    fns: &mut BTreeSet<ParamsFn>,
+) -> Vec<CallCx> {
+    let r = &app.routes[id];
+    guards
+        .iter()
+        .map(|&g| {
+            let guard = app.routes[g]
+                .guard
+                .as_ref()
+                .expect("inherited guards have a guard");
+            let seg_fn = (!guard.keys().is_empty()).then(|| {
+                fns.insert(ParamsFn::Guard(g));
+                ParamsFn::Guard(g).name()
+            });
+            hook_call(
+                guard,
+                "guard",
+                &devtools::site_guard(g, id),
+                Some(g),
+                seg_fn,
+                (rel(&app.routes[g], Kind::Guard), resolve::pattern(&r.url)),
+            )
+        })
+        .collect()
+}
+
 /// The redirect chain of a route: the guards inherited from page-less folders
-/// above (outermost first), then the folder's own guard and `redirect.dart`.
-/// `seg_fn` parses the route's own params for the last two.
+/// above (outermost first), then the folder's own guard (unless `own_guard` is off: the tab
+/// shell of the folder runs it) and `redirect.dart`. `seg_fn` parses the route's own params for
+/// the last two.
 fn redirects_of(
     app: &App,
     id: usize,
     inherited: &[usize],
+    own_guard: bool,
     seg_fn: &Option<String>,
     fns: &mut BTreeSet<ParamsFn>,
 ) -> Vec<CallCx> {
     let r = &app.routes[id];
-    let mut out = vec![];
-    for &g in inherited {
-        let guard = app.routes[g]
-            .guard
-            .as_ref()
-            .expect("inherited guards have a guard");
-        let seg_fn = (!guard.keys().is_empty()).then(|| {
-            fns.insert(ParamsFn::Guard(g));
-            ParamsFn::Guard(g).name()
-        });
-        out.push(hook_call(
-            guard,
-            "guard",
-            &devtools::site_guard(g, id),
-            Some(g),
-            seg_fn,
-            (rel(&app.routes[g], Kind::Guard), resolve::pattern(&r.url)),
-        ));
-    }
+    let mut out = guard_calls(app, id, inherited, fns);
     for (hook, name, site, guard) in [
         (&r.guard, "guard", devtools::site_guard(id, id), Some(id)),
         (&r.redirect, "redirect", devtools::site_redirect(id), None),
     ] {
+        if name == "guard" && !own_guard {
+            continue;
+        }
         if let Some(h) = hook {
             let own = seg_fn.clone().filter(|_| !h.keys().is_empty());
             let kind = if name == "guard" {
@@ -1388,6 +1528,55 @@ fn hook_call(
     }
 }
 
+/// The `onExit` of a folder's `GoRoute` for its leave.dart (since 0.11.0): `leaveExit` asks the
+/// function, with the root navigator's `context` (`go_router`'s) and a throwaway `Ref`, and hands it
+/// what the page registered as `page`. A segment that doesn't parse lets the page go (it shows
+/// not-found). `state` is the one of the route that is exiting.
+///
+/// `_i3.leave(context, ref, id: v.id, uri: state.uri, page: page)`, inside `leaveWithParams` when
+/// it reads the URL.
+fn leave_expr(app: &App, r: &Route, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
+    let l = r.leave.as_ref()?;
+    let mut args = vec![];
+    if l.takes_context {
+        args.push("context".to_string());
+    }
+    if l.takes_ref {
+        args.push("ref".to_string());
+    }
+    args.extend(l.args.iter().map(|a| match a.bind {
+        Bind::Uri => format!("{}: state.uri", a.name),
+        Bind::PageLeave => format!("{}: page", a.name),
+        _ => format!("{}: {}", a.name, in_hook(&a.bind)),
+    }));
+    let call = format!("_i{}.leave({})", l.import, args.join(", "));
+    let call = if l.keys().is_empty() {
+        call
+    } else {
+        fns.insert(ParamsFn::Leave(id));
+        format!(
+            "leaveWithParams(() => {}(state), (v) => {call})",
+            ParamsFn::Leave(id).name()
+        )
+    };
+    // A step of a flow is asked about by the section's leave.dart, and only when the navigation
+    // leaves the section: `within` is its path, under the mount prefix.
+    let within = r
+        .step_of
+        .map(|s| {
+            format!(
+                ", within: joinLocation(at, {})",
+                dart_str(&resolve::pattern(&app.routes[s].url))
+            )
+        })
+        .unwrap_or_default();
+    let owner = r.step_of.map_or(r, |s| &app.routes[s]);
+    Some(format!(
+        "leaveExit(context, state, {}, (ref, page) => {call}{within})",
+        dart_str(&rel(owner, Kind::Leave))
+    ))
+}
+
 /// The parse function a route's own guard and redirect share, when it needs one.
 fn own_seg_fn(app: &App, id: usize, fns: &mut BTreeSet<ParamsFn>) -> Option<String> {
     (!app.url_params(&app.routes[id]).is_empty()).then(|| {
@@ -1425,8 +1614,21 @@ fn deferred_view(library: &str, page: &str, loading: &str, error: &str) -> Strin
 /// tree exactly when the page is built (a loading, error or not-found view does not carry it).
 /// `Semantics` has no `const` constructor, so the wrapper is never `const`; a `const` page call
 /// keeps its own `const`, so the page is still built once.
+///
+/// `container: true` gives the identifier a node of its own to sit on, and `explicitChildNodes:
+/// true` keeps that node empty. Without it the node merges every descendant that has no node of
+/// its own into one label, and a screen reader reads the plain `Text` outside a scroll view (a
+/// status line, a sheet's footer, a title and its line) as a single block.
 pub(crate) fn with_semantics(id: &str, page: String) -> String {
-    format!("Semantics(identifier: {id}, container: true, child: {page})")
+    format!("Semantics(identifier: {id}, container: true, explicitChildNodes: true, child: {page})")
+}
+
+/// Whose guard of the folder a page's route runs: the route's own, or (a tab layout's own page)
+/// the tab shell's.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OwnGuard {
+    Route,
+    Shell,
 }
 
 /// The `GoRoute` for a folder's page.dart. Its subfolders' routes nest below it,
@@ -1439,9 +1641,11 @@ fn page_route(
     path: &str,
     nested: bool,
     inherited: &[usize],
+    guards: OwnGuard,
     fns: &mut BTreeSet<ParamsFn>,
     ids: bool,
 ) -> TreeCx {
+    let own_guard = guards == OwnGuard::Route;
     let r = &app.routes[id];
     let page = r.page.as_ref().expect("page_route needs a page.dart");
     let routes = if nested {
@@ -1455,7 +1659,7 @@ fn page_route(
         vec![]
     };
     let seg_fn = own_seg_fn(app, id, fns);
-    let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let redirects = redirects_of(app, id, inherited, own_guard, &seg_fn, fns);
     let remount = remount_args(r);
     let root_key = r.root && r.layout.is_none();
     let (loading, error) = fallbacks(r);
@@ -1519,6 +1723,8 @@ fn page_route(
         root: root_key,
         root_at: root_key.then(|| (rel(r, Kind::Page), r.page_span.clone())),
         container: None,
+        leave: leave_expr(app, r, id, fns),
+        flow_step: r.step_of.is_some(),
         routes,
         dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
@@ -1533,7 +1739,7 @@ fn page_route(
         localized: locale::is_localized(path),
         sibling: r.sibling,
         id,
-        guarded: !inherited.is_empty() || r.guard.is_some(),
+        guarded: !inherited.is_empty() || (own_guard && r.guard.is_some()),
     }
 }
 
@@ -1548,7 +1754,7 @@ fn redirect_route(
 ) -> TreeCx {
     let r = &app.routes[id];
     let seg_fn = own_seg_fn(app, id, fns);
-    let redirects = redirects_of(app, id, inherited, &seg_fn, fns);
+    let redirects = redirects_of(app, id, inherited, true, &seg_fn, fns);
     TreeCx {
         layout: None,
         branches: vec![],
@@ -1573,6 +1779,8 @@ fn redirect_route(
         root: false,
         root_at: None,
         container: None,
+        leave: None,
+        flow_step: false,
         routes: vec![],
         dynamic: locale::has_params(path),
         catch_all: path.contains("(.+)"),
@@ -1620,9 +1828,21 @@ fn tab_routes(
         .enumerate()
         .map(|(i, b)| {
             let routes = match *b {
-                Branch::Own => vec![page_route(app, id, top, path, false, inherited, fns, ids)],
+                // The guards above the tabs run on the tab shell, not on each tab: a tab
+                // switch is then asked about only for a guard of the tab's own.
+                Branch::Own => vec![page_route(
+                    app,
+                    id,
+                    top,
+                    path,
+                    false,
+                    &[],
+                    OwnGuard::Shell,
+                    fns,
+                    ids,
+                )],
                 Branch::Folder(c) => {
-                    static_first(routes_of(app, c, top, &next, &below, false, fns, ids))
+                    static_first(routes_of(app, c, top, &next, &[], false, fns, ids))
                 }
             };
             // go_router opens a tab at its first route, and can't do that for a route with a
@@ -1661,7 +1881,7 @@ fn tab_routes(
         catch_all: branches.iter().flat_map(|b| &b.routes).any(|r| r.catch_all),
         branches,
         path: String::new(),
-        redirects: vec![],
+
         not_found_builder: false,
         seg_fn: None,
         page: String::new(),
@@ -1677,6 +1897,9 @@ fn tab_routes(
         container: app.routes[id]
             .container
             .then(|| format!("_i{}.container", layout.import)),
+        redirects: guard_calls(app, id, &below, fns),
+        leave: None,
+        flow_step: false,
         serves: None,
         has_params: false,
         case_sensitive: true,
@@ -2037,7 +2260,14 @@ fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
 }
 
 /// The `useForm` hook of an action: a typed field for each field of its input record.
-fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx {
+fn form_cx(
+    r: &Route,
+    a: &Action,
+    f: &resolve::Form,
+    hook: &str,
+    keys: &[String],
+    key_names: &[String],
+) -> FormCx {
     let input_ty = &a.input.ty;
     let mut params: Vec<String> = keys.to_vec();
     if let Some(d) = &f.data {
@@ -2048,25 +2278,11 @@ fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx
             "ActionFormValidation validation = ActionFormValidation.afterSubmit",
             "bool resetOnSuccess = false",
             "ActionFormMessages messages = const ActionFormMessages()",
+            "FormDraft? draft",
         ]
         .map(String::from),
     );
-    let fields: Vec<String> = f
-        .fields
-        .iter()
-        .map(|field| {
-            let n = &field.name;
-            match field.codec {
-                Some(codec) => format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})"),
-                None => format!("{n}: f.value('{n}', (v) => v.{n})"),
-            }
-        })
-        .collect();
-    let input: Vec<String> = f
-        .fields
-        .iter()
-        .map(|field| format!("{n}: f.{n}.value", n = field.name))
-        .collect();
+    let (fields, input) = form_field_exprs(f);
     let (data, take) = if f.data.is_some() {
         ("data", "data")
     } else {
@@ -2092,6 +2308,17 @@ fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx
         ]
         .map(String::from),
     );
+    // Where a draft of this form is kept: the action, its family key, and the fields it holds
+    // (so that a form that changed drops the drafts of the old one).
+    args.push(format!(
+        "id: {}",
+        dart_str(&format!("{}#{}", rel(r, Kind::Action), a.name))
+    ));
+    if !key_names.is_empty() {
+        args.push(format!("key: [{}]", key_names.join(", ")));
+    }
+    args.push(format!("shape: {}", dart_str(&form_shape(f))));
+    args.push("draft: draft".to_string());
     FormCx {
         hook: hook.to_string(),
         function: f.function.clone(),
@@ -2100,6 +2327,161 @@ fn form_cx(a: &Action, f: &resolve::Form, hook: &str, keys: &[String]) -> FormCx
         params: format!("{{{}}}", params.join(", ")),
         args: args.join(", "),
     }
+}
+
+/// The step enums of the app's flows.
+fn step_enums(app: &App) -> Vec<StepEnumCx> {
+    app.routes
+        .iter()
+        .flat_map(|r| {
+            r.actions.iter().filter_map(move |a| {
+                let steps = a.steps.as_ref()?;
+                Some(StepEnumCx {
+                    name: steps.enum_name.clone(),
+                    file: rel(r, Kind::Action),
+                    steps: steps
+                        .steps
+                        .iter()
+                        .map(|s| (s.constant.clone(), s.folder.clone()))
+                        .collect(),
+                })
+            })
+        })
+        .collect()
+}
+
+/// The members of the multi-page form of an action with `const steps`: a private `FlowSpec` that
+/// holds everything the form is made from, and the hook, the reader and the guard's `resume` that
+/// go through it.
+fn flow_cx(
+    app: &App,
+    r: &Route,
+    a: &Action,
+    (f, steps): (&resolve::Form, &resolve::StepFlow),
+    (names, keys, key_names): (&ActionNames, &[String], &[String]),
+) -> FlowCx {
+    let input_ty = &a.input.ty;
+    let (fields, input) = form_field_exprs(f);
+    let e = &steps.enum_name;
+    let route_of = |folder: &str| {
+        let dir = format!(
+            "{}{folder}",
+            if r.dir.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", r.dir)
+            }
+        );
+        let step = app
+            .routes
+            .iter()
+            .find(|c| c.dir == dir && c.step_of.is_some());
+        step.and_then(|c| c.name.as_deref())
+            .map_or_else(|| "null".to_string(), |n| format!("const {n}Route()"))
+    };
+    let routes: Vec<String> = steps
+        .steps
+        .iter()
+        .map(|s| format!("{e}.{}: {}", s.constant, route_of(&s.folder)))
+        .collect();
+    let mut owners = vec![];
+    for s in &steps.steps {
+        for field in &s.fields {
+            owners.push(format!("'{field}': {e}.{}", s.constant));
+        }
+    }
+    let mut spec_args = vec![
+        format!(
+            "id: {}",
+            dart_str(&format!("{}#{}", rel(r, Kind::Action), a.name))
+        ),
+        format!("shape: {}", dart_str(&form_shape(f))),
+        format!("steps: {e}.values"),
+        format!("routes: {{{}}}", routes.join(", ")),
+        format!("owners: const {{{}}}", owners.join(", ")),
+    ];
+    if let Some(skip) = &steps.skip {
+        spec_args.push(format!("skip: _i{}.{skip}", a.import));
+    }
+    spec_args.extend([
+        format!("initial: _i{}.{}", a.import, f.function),
+        format!(
+            "fields: (ActionFormFields<{input_ty}> f) => ({})",
+            fields.join(", ")
+        ),
+        format!("input: (f) => ({})", input.join(", ")),
+    ]);
+    if let Some(v) = &a.validate {
+        spec_args.push(format!("validate: _i{}.{v}", a.import));
+    }
+    let key = if key_names.is_empty() {
+        String::new()
+    } else {
+        format!("key: [{}], ", key_names.join(", "))
+    };
+    let mut params: Vec<String> = keys.to_vec();
+    params.extend(
+        [
+            "ActionFormValidation validation = ActionFormValidation.afterSubmit",
+            "FormDraft? draft = const FormDraft()",
+            "ActionFormMessages messages = const ActionFormMessages()",
+        ]
+        .map(String::from),
+    );
+    let mut resume_params: Vec<String> = keys.to_vec();
+    resume_params.push("required Uri uri".into());
+    FlowCx {
+        spec: if a.name == "action" {
+            "_flow".to_string()
+        } else {
+            format!("_{}Flow", a.name)
+        },
+        spec_args,
+        hook: names.flow_hook.clone(),
+        of: names.flow_of.clone(),
+        resume: names.resume.clone(),
+        params: format!("{{{}}}", params.join(", ")),
+        use_args: format!("{key}validation: validation, draft: draft, messages: messages"),
+        resume_params: format!("{{{}}}", resume_params.join(", ")),
+        resume_args: format!("{key}uri: uri"),
+    }
+}
+
+/// `nickname:String,age:int?`: a form's fields and types, so a form that changed drops the drafts
+/// of the old one.
+fn form_shape(f: &resolve::Form) -> String {
+    let shape: Vec<String> = f
+        .fields
+        .iter()
+        .map(|f| format!("{}:{}", f.name, f.ty))
+        .collect();
+    shape.join(",")
+}
+
+/// What a form builds its fields with, and the input it makes of them.
+fn form_field_exprs(f: &resolve::Form) -> (Vec<String>, Vec<String>) {
+    let fields = f
+        .fields
+        .iter()
+        .map(|field| {
+            let n = &field.name;
+            match (field.codec, &field.draft) {
+                (Some(codec), _) => {
+                    format!("{n}: f.text('{n}', (v) => v.{n}, FieldCodec.{codec})")
+                }
+                (None, Some(draft)) => {
+                    format!("{n}: f.value('{n}', (v) => v.{n}, draft: {draft})")
+                }
+                (None, None) => format!("{n}: f.value('{n}', (v) => v.{n})"),
+            }
+        })
+        .collect();
+    let input = f
+        .fields
+        .iter()
+        .map(|field| format!("{n}: f.{n}.value", n = field.name))
+        .collect();
+    (fields, input)
 }
 
 fn provider_expr(id: usize, d: &Data) -> String {
@@ -2291,6 +2673,14 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
             params.push(format!("required {input}"));
             let hook_keys = keyed_params(app, r, &d);
             let hook_keys_list = keyed_param_list(app, r, &d);
+            // The names of those hook parameters, for the draft's key: the same list, never more.
+            let typed = data_params(app, r);
+            let hook_key_names: Vec<String> = d
+                .keys
+                .iter()
+                .filter(|k| typed.iter().any(|(n, _)| n == *k))
+                .cloned()
+                .collect();
             // The key a target data.dart is called with, from the action's own keys.
             let key_of = |td: &Data| match (td.keys.as_slice(), td.record) {
                 ([], _) => String::new(),
@@ -2332,6 +2722,9 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 Flow::FutureOr => ("runActionOr", "watchActionOr", "Returns its result as the action does (a value when the action gave one, else a `Future`), or throws what the action threw"),
                 Flow::Sync => ("runActionSync", "watchActionSync", "Returns its result at once, or throws what the action threw"),
             };
+            let flow = a.steps.as_ref().zip(a.form.as_ref()).map(|(steps, f)| {
+                flow_cx(app, r, a, (f, steps), (&names, &hook_keys_list, &hook_key_names))
+            });
             ActionCx {
                 name: a.name.clone(),
                 file: rel(r, Kind::Action),
@@ -2351,7 +2744,12 @@ fn actions_of(app: &App, id: usize, r: &Route) -> Vec<ActionCx> {
                 call: format!("_i{}.{}({})", a.import, a.name, call_args.join(", ")),
                 validate: a.validate.as_ref().map(|v| format!("_i{}.{v}", a.import)),
                 optimistic,
-                form: a.form.as_ref().map(|f| form_cx(a, f, &names.form_hook, &hook_keys_list)),
+                form: a
+                    .form
+                    .as_ref()
+                    .filter(|_| a.steps.is_none())
+                    .map(|f| form_cx(r, a, f, &names.form_hook, &hook_keys_list, &hook_key_names)),
+                flow,
                 key_param: key_ty,
                 invalidates: if invalidates.is_empty() {
                     format!("const <{list}>[]")
@@ -2470,12 +2868,21 @@ fn observe_closure(app: &App, r: &Route, fns: &mut BTreeSet<ParamsFn>) -> String
                 args.extend(h.args.iter().map(|a| match a.bind {
                     Bind::Uri => format!("{}: s.uri", a.name),
                     Bind::Route => format!("{}: m.route", a.name),
+                    Bind::Scope => format!("{}: scope", a.name),
                     _ => format!("{}: {var}.{}", a.name, a.name),
                 }));
+                // `onEnter` always takes `(ref, scope)`: wildcards don't exist before Dart 3.7.
+                let closure = if h.name == "onEnter" {
+                    "ref, scope"
+                } else if h.takes_ref {
+                    "ref"
+                } else {
+                    "_"
+                };
                 format!(
                     "{}: ({}) => _i{}.{}({})",
                     h.name,
-                    if h.takes_ref { "ref" } else { "_" },
+                    closure,
                     o.import,
                     h.name,
                     args.join(", ")
@@ -2696,12 +3103,25 @@ fn params_fn(app: &App, f: ParamsFn) -> ParamsFnCx {
             p.retain(|(n, _)| keys.contains(n));
             p
         }
+        ParamsFn::Leave(id) => {
+            let r = &app.routes[id];
+            let keys = r
+                .leave
+                .as_ref()
+                .map(resolve::Leave::keys)
+                .unwrap_or_default();
+            let mut p = app.typed_segs(r);
+            p.extend(r.query.iter().cloned());
+            p.retain(|(n, _)| keys.contains(n));
+            p
+        }
     };
     let owner = match f {
         ParamsFn::Route(id)
         | ParamsFn::Layout(id)
         | ParamsFn::Guard(id)
-        | ParamsFn::Observe(id) => &app.routes[id],
+        | ParamsFn::Observe(id)
+        | ParamsFn::Leave(id) => &app.routes[id],
     };
     let catch_all = |n: &str| {
         owner
@@ -2977,6 +3397,12 @@ pub fn tags(r: &Route) -> Vec<&'static str> {
     }
     if r.page.is_some() && !r.observers.is_empty() {
         tags.push("observe");
+    }
+    if r.page.is_some() && r.leave.is_some() {
+        tags.push("leave");
+    }
+    if r.step_of.is_some() {
+        tags.push("flow");
     }
     if r.layout.is_some() {
         tags.push("layout");

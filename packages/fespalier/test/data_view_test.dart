@@ -511,6 +511,45 @@ void main() {
       expect(find.text('error Exception: offline'), findsOneWidget);
     });
 
+    testWidgets('a failed reload with a DataRefusal shows the error over the '
+        'data it had (since 0.13.1)', (tester) async {
+      Object? failure;
+      var n = 0;
+      final p = FutureProvider.autoDispose((ref) async {
+        n++;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        if (failure != null) throw failure;
+        return n;
+      });
+      await tester.pumpWidget(
+        ProviderScope(retry: (_, _) => null, child: keepView(p)),
+      );
+      await ms(tester, 20);
+      expect(find.text('data 1'), findsOneWidget);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(DataView<int>)),
+      );
+
+      // An offline error keeps the page.
+      failure = Exception('offline');
+      container.invalidate(p);
+      await ms(tester, 20);
+      expect(find.text('data 1'), findsOneWidget);
+
+      // A refusal does not.
+      failure = const _Refused();
+      container.invalidate(p);
+      await ms(tester, 20);
+      expect(find.text('error refused'), findsOneWidget);
+      expect(find.textContaining('data'), findsNothing);
+
+      // A reload that works brings the page back.
+      failure = null;
+      container.invalidate(p);
+      await ms(tester, 20);
+      expect(find.text('data 4'), findsOneWidget);
+    });
+
     testWidgets('a value restored from the cache shows with keepPrevious: false, '
         'a reload without one still loads', (tester) async {
       final storage = MemoryDataStorage()
@@ -641,4 +680,11 @@ void main() {
       expect(find.text('data 3'), findsOneWidget);
     });
   });
+}
+
+class _Refused implements Exception, DataRefusal {
+  const _Refused();
+
+  @override
+  String toString() => 'refused';
 }

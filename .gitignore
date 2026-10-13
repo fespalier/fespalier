@@ -1,4 +1,5 @@
 cli/target/
+examples/cose/server/target/
 .dart_tool/
 build/
 .packages

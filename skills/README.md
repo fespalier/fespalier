@@ -91,7 +91,11 @@ widget test.
   `package:fespalier_<name>/` (since 0.9.0: `fespalier_auth`, `fespalier_flags`, and every
   other `packages/fespalier_<name>/` of the checkout) builds against that package by path,
   with no edit to the script; a plugin or SDK a recipe needs goes in a
-  `# pubspec.yaml dependencies` YAML block, whose lines are merged under `dependencies:`.
+  `# pubspec.yaml dependencies` YAML block, whose lines are merged under `dependencies:`. A
+  `# pubspec.yaml` block is merged into the scratch pubspec in page order, so blocks that share a
+  section (`fespalier:` once per command) are merged key by key; a block that sets a key an earlier
+  one already set (two samples of one key, or the defaults listing) is built on its own, and the
+  output says so.
 - **The diagnostics are real.** Each message in `fespalier-troubleshooting` was read
   from the generator's source or reproduced with `fsp check` on a tree that triggers it.
 - **Where the docs and the code disagree, the code wins**, the docs are fixed, and

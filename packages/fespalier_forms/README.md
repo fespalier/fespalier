@@ -23,12 +23,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.0
+      ref: v0.17.1
   fespalier_forms:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_forms
-      ref: v0.17.0
+      ref: v0.17.1
 ```
 
 <!-- x-release-please-end -->

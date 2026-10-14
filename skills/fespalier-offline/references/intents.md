@@ -52,7 +52,8 @@ key matters) is in [`fespalier-cratestack`](../../fespalier-cratestack/reference
 ## Operating the queue
 
 - `ref.read(intentQueue).list()` every intent of the account, oldest first (empty while signed out);
-  `pendingIntents(subject)` only the undecided ones, for a banner and a row's "cancelling...";
+  `pendingIntents(subject)` only the undecided ones, for a banner and a row's "cancelling..." (a store that throws is an
+  `AsyncError`, read once and not retried: since 0.16.0 the provider starts no `Timer`);
   `discard(id)` deletes one (the person gave up on a `failed` or `conflict` one); `clear()` deletes the account's.
 - `drain()` sends every pending intent, oldest first, one at a time, **skipping a subject with an undecided earlier
   one**, and stops at the first `CrateStackOffline` and when the account changes. Since 0.16.0 it reads each intent

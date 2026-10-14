@@ -249,7 +249,7 @@ Not `RouteLink`: a link the **platform** opens. `docs/navigation.md` has the pag
 4. In a widget test, `await sendPlatformLink(tester, Uri.parse('https://shop.example.com/orders/42'))` after `pumpRouter`
    (`package:fespalier/testing.dart`): a warm link through `flutter/navigation`, pumped until idle. Cold start:
    `tester.binding.platformDispatcher.defaultRouteNameTestValue` before `pumpRouter`. `source=link` and `onEnter` need a
-   router made with `links: true` (an app with telemetry or adapters); the page opens either way. It cannot prove a
+   router made with `links: true` (an app with telemetry, or with an adapter that has an `onEnter` since 0.16.0); the page opens either way. It cannot prove a
    domain is verified.
 
 `fsp links` warns, and does not fail `--check`, when Flutter's switch is off: `flutter_deeplinking_enabled is false in

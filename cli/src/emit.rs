@@ -96,9 +96,11 @@ struct FileCx {
     container_param: bool,
     /// What `AppRoutes.attach`'s doc comment says follows the router.
     attach_what: String,
-    /// `launchRouter(links: true)`: platform links are marked `NavigationSource.link`, for
-    /// telemetry and for the adapters' `onEnter` (since 0.11.0).
-    links: bool,
+    /// The `links:` argument of `launchRouter`, when there is one: platform links are marked
+    /// `NavigationSource.link`, for telemetry (`true`) and for the adapters' `onEnter` (since
+    /// 0.11.0). With adapters and no telemetry it is `AppAdapters.handlesEnter`, since only an
+    /// `onEnter` reads the mark (since 0.16.0): no adapter handling it, no binding observer.
+    links: Option<&'static str>,
     /// The host of `AppRoutes.urlOf` (since 0.16.0): the first of `links: domains:`. None, and no
     /// `urlOf`, without a `links:` section or when its domains are not usable.
     url_host: Option<String>,
@@ -733,7 +735,13 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         container_param: has_observe || !cfg.adapters.is_empty(),
         adapters: adapters::cx(&cfg.adapters),
         attach_what: attach_what(has_observe, cfg.telemetry, !cfg.adapters.is_empty()),
-        links: cfg.telemetry || !cfg.adapters.is_empty(),
+        links: if cfg.telemetry {
+            Some("true")
+        } else if cfg.adapters.is_empty() {
+            None
+        } else {
+            Some("AppAdapters.handlesEnter")
+        },
         url_host: url_host(cfg, diags),
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,

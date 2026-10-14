@@ -210,7 +210,7 @@ What you give up by building the router yourself: `AppRoutes.router()` also pass
 use them. The `errorBuilder` above is what `AppRoutes.router()` sets; keep it so
 unknown paths still show your `not_found.dart`. It also called `AppRoutes.attach(router)` (DevTools, and
 the `observe.dart` hooks and telemetry when the app has them; since 0.11.0 `AppRoutes.attach(router, container)` also runs the
-adapters' `attach`) and, with `adapters:`, passed `onEnter: AppRoutes.onEnter`: a router of your own does both
+adapters' `attach`) and, with `adapters:`, passed `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null` (since 0.16.0): a router of your own does both
 itself (`docs/adapters.md`: its `onEnter` section, and "With main: manual: AppAdapters" for `attach`).
 
 ### On 0.4.1 and earlier

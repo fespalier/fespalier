@@ -15,7 +15,7 @@ fespalier:
   adapters: [fespalier_push]
 ```
 
-Any `onEnter` makes go_router parse every navigation asynchronously, and an app with adapters has one (see [Adapters in the generated `main()`](adapters.md#adapters-in-the-generated-main)); an app without adapters keeps go_router's simplest path.
+Any `onEnter` makes go_router parse every navigation asynchronously, but `fespalier_push` has none (it opens a tap through `launch()` and `attach()`), so an app that lists it keeps go_router's synchronous parsing; only an adapter with an `onEnter` getter makes the router pass one (since 0.16.0; before, any adapter did: see [Adapters in the generated `main()`](adapters.md#adapters-in-the-generated-main)).
 
 ## Configure
 
@@ -32,7 +32,7 @@ Future<void> main() {
 
 - `source` is a `PushSource` (below), `route` maps a payload to a place, `onToken` and `onTokenRevoked` (since 0.14.0) are optional.
 - Calling `configure` twice replaces (a hot restart runs `main()` again).
-- **Unconfigured, the adapter says so once and does nothing**: one `FlutterError` reports `fespalier_push is listed under`fespalier: adapters:`but was never configured: call FespalierPush.configure(source: ..., route: ...) in main() before AppMain.run()`, and `launch()` and `attach()` do nothing. It never throws out of them: an adapter must not stop an app from starting.
+- **Unconfigured, the adapter says so once and does nothing**: one `FlutterError` reports ``fespalier_push is listed under `fespalier: adapters:` but was never configured: call FespalierPush.configure(source: ..., route: ...) in main() before AppMain.run()``, and `launch()` and `attach()` do nothing. It never throws out of them: an adapter must not stop an app from starting.
 - With `main: manual`, call `configure` in your own `main()` before `AppAdapters.zone`.
 
 A `PushSource` is what a push provider gives the package:

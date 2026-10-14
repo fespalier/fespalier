@@ -51,9 +51,12 @@ new key): end a test that mounted under a prefix with `addTearDown(AppRoutes.mou
   it without a container, and it makes `devToolsAttach`, the `observe.dart` hooks (`observeAttach`, with the container),
   `telemetryAttach` and each adapter's `attach` (with the container, once per router) follow that router. An app
   that builds its own `GoRouter` calls it once with that router (`fespalier-migration`).
-- **`AppRoutes.onEnter`** (only with `adapters:`): go_router's `onEnter`, each adapter's in the pubspec's order; an app with
-  a router of its own passes `onEnter: AppRoutes.onEnter`. Without adapters it does not exist, so an app keeps
-  go_router's simplest path (any `onEnter` makes go_router parse every navigation asynchronously).
+- **`AppRoutes.onEnter`** (only with `adapters:`): go_router's `onEnter`, the `FespalierAdapter.onEnter` getter's function of each
+  adapter that has one (since 0.16.0), in the pubspec's order. `AppRoutes.router` passes it as
+  `onEnter: AppAdapters.handlesEnter ? onEnter : null`, so only an app with an adapter that has one gets it; an app with
+  a router of its own passes the same. Without one (and without adapters, where it does not exist) an app keeps
+  go_router's simplest path (any `onEnter` makes go_router parse every navigation asynchronously). `AppAdapters.handlesEnter`
+  is true when any adapter's getter is not null, and `launchRouter` gets `links: AppAdapters.handlesEnter` with adapters and no telemetry.
 - **`enum <Name>Step`** (since 0.11.0): the steps of a multi-page form, one per step folder (`fespalier-data`).
 
 ## `AppManifest`

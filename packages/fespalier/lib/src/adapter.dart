@@ -68,15 +68,33 @@ abstract class FespalierAdapter {
   /// `Future` delays the first frame like [beforeRun], so keep it to a local read.
   FutureOr<InboundLaunch?> launch() => null;
 
-  /// A navigation is about to be parsed (go_router's `onEnter`, since 0.11.0): null to have no
-  /// say, `Allow(then: ...)` to run something after it, `Block.then(...)` to stop it (rewriting a
+  /// What this adapter does when a navigation is about to be parsed (go_router's `onEnter`,
+  /// since 0.11.0 as a method; a getter that answers a [FespalierEnter] since 0.16.0), or null
+  /// for no say, which is the default. The function answers null to have no say on one navigation,
+  /// `Allow(then: ...)` to run something after it, or `Block.then(...)` to stop it (rewriting a
   /// custom-scheme link: `Block.then(() => router.go('/orders/42'))`, which keeps the link's
   /// `source`). The first adapter to block wins. Never block [InboundNavigation.initial]
   /// (go_router has no route yet and shows an error page): fespalier allows it, reports it with
   /// `FlutterError.reportError`, and still runs the block's `then`; answer [launch] instead.
   ///
-  /// A `then` runs after the navigation commits (go_router 17.2.3, the lowest fespalier takes,
-  /// and later; before 17.2 it ran inside the parse, before the commit, and could be lost).
-  /// Any `onEnter` makes go_router parse every navigation asynchronously.
-  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) => null;
+  /// ```dart
+  /// @override
+  /// FespalierEnter? get onEnter => (navigation) {
+  ///   if (navigation.next.uri.scheme != 'vaam') return null;
+  ///   return Block.then(() => navigation.router.go('/orders/42'));
+  /// };
+  /// ```
+  ///
+  /// It is a getter, and not a method, on purpose: any `onEnter` makes go_router parse every
+  /// navigation asynchronously, so the generated `AppRoutes.router` passes one only when some
+  /// adapter's getter is not null (`AppAdapters.handlesEnter`), and only those adapters are asked.
+  /// An adapter that overrides the method of 0.15 and earlier no longer compiles, instead of being
+  /// skipped without a word. With such an adapter, `go()` then `push()` in one handler ends with the
+  /// `go()` lost, so an app with one pushes after the `go()` committed. A `then` runs after the
+  /// navigation commits (go_router 17.2.3, the lowest fespalier takes, and later; before 17.2 it
+  /// ran inside the parse, before the commit, and could be lost).
+  ///
+  /// Read once, when the router is built (`FespalierAdapters`), so answer the same thing every
+  /// time; return a tear-off or a closure over the adapter's own fields. No timer.
+  FespalierEnter? get onEnter => null;
 }

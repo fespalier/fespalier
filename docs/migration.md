@@ -29,9 +29,9 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
-0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, fixes the places where a write could be sent twice, a provider
-started a hidden timer, a notification tap was lost and a step name did not compile, so an app sees different outcomes
-there, and adds opt-in tooling:
+0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, changes one member of `FespalierAdapter`, fixes the places where a
+write could be sent twice, a provider started a hidden timer, a notification tap was lost and a step name did not compile,
+so an app sees different outcomes there, and adds opt-in tooling:
 
 - **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
   Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
@@ -39,7 +39,7 @@ there, and adds opt-in tooling:
   their own). On an older Flutter `flutter pub get` fails naming the SDK, and `fsp create` says
   `Flutter {v} is too old: fespalier needs Flutter 3.35 or newer`. Upgrade Flutter (3.35.7 is the last 3.35 patch, Dart
   3.9.2), set the same `flutter-version` in CI, and raise your own `environment:`; an app that has to stay on 3.32 to 3.34
-  stays on 0.15.x. `lib/app.g.dart` is unchanged.
+  stays on 0.15.x. The floor does not change `lib/app.g.dart`.
 
   ```yaml
   environment:
@@ -54,6 +54,43 @@ there, and adds opt-in tooling:
   asserted on a platform payload with no leading slash. On 17.2.3 neither needs a workaround.
 - `fsp create --features all` now includes `otel` on every supported Flutter, and an app it makes declares
   `sdk: ^3.9.0` and `flutter: ">=3.35.0"`.
+
+The generated `app.g.dart` changes in an app with `adapters:` (regenerate: `AppAdapters.handlesEnter`, and the router
+passes `onEnter` only when an adapter has one) and is unchanged in an app without. Adapters:
+
+- **An adapter's `onEnter` is a getter** ([Adapters](adapters.md)). `FespalierAdapter.onEnter` was a method in
+  0.11.0 to 0.15.0 and is now a nullable getter, `FespalierEnter? get onEnter => null;`, where `FespalierEnter` is the
+  function type of the old method. `AppRoutes.router` passes go_router an `onEnter` only when some adapter's getter is
+  not null (`onEnter: AppAdapters.handlesEnter ? onEnter : null`; before, any `adapters:` entry passed one), and only
+  those adapters are asked. **An adapter that overrides the method no longer compiles**, which is the point: the
+  analyzer says `Class 'MyAdapter' can't define method 'onEnter' and have field 'FespalierAdapter.onEnter' with the same name.`
+  instead of the adapter being skipped without a word. No first-party adapter had an `onEnter`. Regenerate (`fsp gen`):
+  `lib/app.g.dart` changes in an app with `adapters:`, and not in one without.
+
+  ```dart
+  // Before (0.15.0)
+  @override
+  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+    if (navigation.next.uri.scheme != 'vaam') return null;
+    return Block.then(() => navigation.router.go('/orders/42'));
+  }
+
+  // After (0.16.0)
+  @override
+  FespalierEnter? get onEnter => (navigation) {
+    if (navigation.next.uri.scheme != 'vaam') return null;
+    return Block.then(() => navigation.router.go('/orders/42'));
+  };
+  ```
+
+- **`go()` then `push()` keeps both again, in an app whose adapters have no `onEnter`.** Any `onEnter` makes go_router
+  parse every navigation asynchronously, so before 0.16.0 `router.go('/a'); router.push('/b');` ended as `/home > /b` and
+  `currentConfiguration` lagged a frame in every app with `adapters:`; now it is `/a > /b`, committed in the call. An app
+  with an adapter that has an `onEnter` still has the async parse.
+- **A router of your own** passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null` instead of
+  `onEnter: AppRoutes.onEnter`.
+
+The other fixes make a write that could be sent twice be sent once, so an app sees different outcomes in these places:
 
 - **An upload after a `5xx`, `408` or `499` is `Failed(other)`, an unknown outcome** ([Uploads](downloads.md#uploads)).
   On 0.15.0 every HTTP error but 401 and 403 ended `Failed(rejected)`, and `Uploads.retry` sent an upload without an

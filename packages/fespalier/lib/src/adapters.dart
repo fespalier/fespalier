@@ -133,13 +133,40 @@ final class FespalierAdapters {
     return found;
   }
 
-  /// go_router's `onEnter` (`AppRoutes.onEnter`): each adapter's `onEnter`, in order. The first
+  /// The adapters' `onEnter` getters that answer a function (since 0.16.0), in order: read once,
+  /// the first time `handlesEnter` or `onEnter` is asked. A getter that throws is reported and
+  /// counts as null.
+  late final List<_Enterer> _enterers = _readEnterers();
+
+  List<_Enterer> _readEnterers() {
+    final found = <_Enterer>[];
+    for (final adapter in _adapters) {
+      try {
+        if (adapter.onEnter case final enter?) {
+          found.add(_Enterer(adapter, enter));
+        }
+      } catch (error, stackTrace) {
+        _report(error, stackTrace, 'while reading $adapter.onEnter');
+      }
+    }
+    return found;
+  }
+
+  /// Whether any adapter has an [FespalierAdapter.onEnter] (since 0.16.0): the generated
+  /// `AppRoutes.router` passes go_router `onEnter` only then (`AppAdapters.handlesEnter`), so an
+  /// app whose adapters have none keeps go_router's synchronous parsing. Read when the router is
+  /// built; no `Future`, no microtask.
+  bool get handlesEnter => _enterers.isNotEmpty;
+
+  /// go_router's `onEnter` (`AppRoutes.onEnter`): the [FespalierAdapter.onEnter] of each adapter
+  /// that has one (since 0.16.0; the others are not asked), in order. The first
   /// `Block` wins and is returned as it is (the `then`s of the `Allow`s before it are dropped: the
   /// navigation did not happen); otherwise the `Allow.then` callbacks are run in order as one
   /// `Allow(then:)`, and when no adapter has a say the answer is `Allow()`. Sync stays sync: a
   /// `Future` appears only if an adapter's answer is one. Blocking the initial navigation is
   /// refused (allowed, and reported in debug). An adapter that throws is reported and counts as
-  /// no say.
+  /// no say. Pass it to go_router as `handlesEnter ? onEnter : null`: with no adapter having one,
+  /// any `onEnter` only costs the router its synchronous parsing.
   FutureOr<OnEnterResult> onEnter(
     BuildContext context,
     GoRouterState current,
@@ -164,11 +191,11 @@ final class FespalierAdapters {
     int from,
     List<OnEnterThenCallback> thens,
   ) {
-    for (var i = from; i < _adapters.length; i++) {
-      final adapter = _adapters[i];
+    for (var i = from; i < _enterers.length; i++) {
+      final adapter = _enterers[i].adapter;
       final FutureOr<OnEnterResult>? answer;
       try {
-        answer = adapter.onEnter(navigation);
+        answer = _enterers[i].enter(navigation);
       } catch (error, stackTrace) {
         _report(error, stackTrace, 'in $adapter.onEnter');
         continue;
@@ -266,4 +293,14 @@ final class FespalierAdapters {
       ),
     );
   }
+}
+
+/// An adapter and its `onEnter` function. A class, not a record in a typed list: the VM refuses a
+/// closure whose inferred return type is narrower (`Block?`) as an element of a generic collection
+/// of [FespalierEnter], though the assignment itself is fine.
+final class _Enterer {
+  _Enterer(this.adapter, this.enter);
+
+  final FespalierAdapter adapter;
+  final FespalierEnter enter;
 }

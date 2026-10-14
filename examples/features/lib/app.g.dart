@@ -1510,6 +1510,9 @@ abstract final class AppRoutes {
   /// The route manifest adds `match`, which also names the route's info.
   static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers, caseSensitive: false);
 
+  /// The https URL of [route] on features.example.com, the first of `fespalier: links: domains` (since 0.16.0): what a share sheet, a notification or an `og:url` gives out. [locale] picks the spelling of its localized segments (`fr-CA` falls back to `fr`); the mount prefix is in it.
+  static Uri urlOf(TypedLocation route, {String? locale}) => Uri.parse('https://features.example.com${route.locationFor(locale)}');
+
   /// The providers of the data of the route at [uri], outermost first: the `data.dart` of
   /// each section above it, then its own. They are the ones the page watches (`dataAt(uri)`
   /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with

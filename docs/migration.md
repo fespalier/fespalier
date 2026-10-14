@@ -29,9 +29,9 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
-0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, and fixes the places where a write could be sent twice, a provider
+0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, fixes the places where a write could be sent twice, a provider
 started a hidden timer, a notification tap was lost and a step name did not compile, so an app sees different outcomes
-in these places:
+there, and adds opt-in tooling:
 
 - **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
   Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
@@ -69,6 +69,15 @@ in these places:
   behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
 - **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
   while the drain was busy is not sent from a stale list.
+- **An app with a `links:` section gets [`AppRoutes.urlOf`](cli.md#urls-to-share-approutesurlof)** when it regenerates,
+  the absolute URL of a route on the first domain: a doc comment and one method after `matchUrl`. An app without
+  `links:` regenerates byte for byte, and a first domain that is not usable is a warning of `fsp gen`, as before.
+- **`fespalier: test: a11y:` is opt-in** ([Route smoke tests](route-tests.md#route-smoke-tests-fsp-test)). With `true`
+  (or a list of `tap_targets`, `labels`, `contrast`) every test `fsp test` writes also checks Flutter's accessibility
+  guidelines once its page is on screen; without it the file is the one it always was.
+- **The DevTools extension has an _Adapters_ tab** ([DevTools extension](devtools.md#what-it-shows)), and the protocol is
+  still 1: `hello` lists `adapters` in its features. A tool of your own that compares `features` exactly should ask
+  `contains`.
 - **A plugin that throws is not asked again** ([Biometric unlock](guards.md#biometric-unlock-fespalier_biometrics), [Push](push.md), [Offline-first](offline-first.md), [Change feeds](data.md)). `biometricAvailable`, `pushPermission`, `pendingIntents` and `ChangeFeed.latest` did not set `retry:`, so Riverpod 3's default re-asked a throwing plugin or store up to ten times over about 50 seconds, with a `Timer`. They now keep the error and ask once; `ref.invalidate(provider)` asks again.
 - **A notification tap while the app starts is opened** ([Push](push.md#cold-start-and-taps)). It was lost (`launch()` runs before `runApp`, `attach` after the first frame, and nobody listened to `taps` in between). `launch()` now keeps the latest tap and `attach` opens it once; the cold-start notification seen again on `taps` is still opened once. A `PushSource.taps` on a platform channel must return one stream every time, because `taps` is listened to twice while the app starts.
 - **`fsp check` refuses a step folder that is no Dart enum constant** ([Multi-page forms](forms.md)): `final`, `new`, `default`, `in`, `values`, `index`, a name that starts with a digit (`2fa`), or two folders that become one constant. They used to pass and write a step enum that did not compile; rename the folder and its key in `steps`.

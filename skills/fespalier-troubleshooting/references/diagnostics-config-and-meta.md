@@ -24,7 +24,8 @@ message, and exits 1.
 ## `fsp links` (since 0.5.0)
 
 The `links:` values are checked only by `fsp links` (`fsp gen` and `fsp check` read the section
-but never look at its values); an unknown key under `links:` is an `invalid pubspec.yaml: fespalier.links: unknown
+but look at nothing in it except, since 0.16.0, the first of `domains`, for `AppRoutes.urlOf`: see the end of this
+section); an unknown key under `links:` is an `invalid pubspec.yaml: fespalier.links: unknown
 field ...` error everywhere, like any other. These are printed without a code frame, and exit 1:
 
 | Message                                                                                                                                                                                                                                                                                                  | Cause and fix                                                                                                                                                                                                             |
@@ -74,6 +75,23 @@ field ...` error everywhere, like any other. These are printed without a code fr
 | `` no route can be linked: the app has no page, or every folder says `const linkable = false;` ``                                                                                                                                                                                                        | Nothing to list                                                                                                                                                                                                           |
 | `links/web/sitemap.xml is missing` / `... is out of date` / `... is not wanted by this config`, then `` N file(s) out of date; run `fsp links` ``                                                                                                                                                        | `fsp links --check`: the files on disk differ from what `fsp links` would write; run it and commit                                                                                                                        |
 | `android/app/src/main/AndroidManifest.xml has no fsp links markers yet` / `...: the intent filters between the fsp links markers are out of date` / `ios/Runner/Runner.entitlements: the applinks: entries of com.apple.developer.associated-domains are out of date` / `... is missing`                 | `fsp links --check` with `android_manifest:` or `ios_entitlements:`: the platform file differs from what `fsp links` would write; run it and commit (since 0.11.0)                                                        |
+
+### `AppRoutes.urlOf` is not generated (since 0.16.0)
+
+`fsp gen` (and `check`, `watch`) reads `links: domains` for the host of `AppRoutes.urlOf`. A `links:` section whose
+domains `fsp links` would refuse gives **a warning on `pubspec.yaml` with no code frame, no `urlOf`, and exit 0**: the
+text is `` `AppRoutes.urlOf` is not generated: `` followed by the very message `fsp links` stops with for that key.
+Nothing else in the section is looked at, so a bad `android_sha256` with good domains still gets `urlOf`.
+
+| Printed                                                                                                                                                                                                                  | Cause and fix                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `` ! pubspec.yaml  `AppRoutes.urlOf` is not generated: `fespalier.links.domains` is required: list the host names the app opens, e.g. `domains: [shop.example.com]` ``                                                   | `links:` has no `domains`, or an empty list: add `domains: [shop.example.com]`  |
+| ``! pubspec.yaml  `AppRoutes.urlOf` is not generated: `fespalier.links.domains`: `https://x.com/` is not a host name; write it as `shop.example.com`, with no scheme, port or path (an international name in punycode)`` | An entry with a scheme, port or path, one label, or characters beyond ASCII     |
+| ``! pubspec.yaml  `AppRoutes.urlOf` is not generated: `fespalier.links.domains`: the sitemap's URLs are on the first domain, so it can't be the wildcard `*.example.com`; list a host name first``                       | A `*.` domain first: the first domain is the host of `urlOf` and of the sitemap |
+
+`urlOf` is `static Uri urlOf(TypedLocation route, {String? locale})`, `https://<first domain>` and
+`route.locationFor(locale)`, the mount prefix included. An app without `links:` has none, and its `app.g.dart` is
+what it was.
 
 ## String paths (`lints: unknown_path`, since 0.7.0; segment types since 0.8.1)
 
@@ -242,14 +260,14 @@ again, then check that the part files in the folder are the ones the build just 
 the wrong type is an error everywhere. These are printed without a code frame and exit 1 (the pubspec path
 comes first on the serde ones):
 
-| Message                                                                                                                                           | Cause and fix                                          |
-| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| ``invalid pubspec.yaml: fespalier.test: unknown field `folder`, expected one of `out`, `setup`, `timeout`, `samples`, `skip` at line 4 column 5`` | An unknown key under `test:`, checked by every command |
-| `invalid pubspec.yaml: fespalier.test.timeout: invalid type: string "soon", expected i64 at line 4 column 14`                                     | `timeout` is a whole number                            |
-| ``invalid pubspec.yaml: fespalier.test.samples: invalid type: integer `3`, expected a map at line 4 column 14``                                   | `samples` is a map of folder to value                  |
-| `invalid pubspec.yaml: fespalier.test.skip: invalid type: string "x", expected a sequence at line 4 column 11`                                    | `skip` is a list of patterns                           |
-| `invalid pubspec.yaml: fespalier.test.setup: invalid type: sequence, expected a string at line 4 column 12`                                       | `setup` is one path                                    |
-| ``invalid pubspec.yaml: fespalier.test: invalid type: integer `3`, expected struct TestConfig at line 3 column 9``                                | `test:` is a map                                       |
+| Message                                                                                                                                                   | Cause and fix                                                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ``invalid pubspec.yaml: fespalier.test: unknown field `folder`, expected one of `out`, `setup`, `timeout`, `samples`, `skip`, `a11y` at line 4 column 5`` | An unknown key under `test:`, checked by every command (`a11y` is the last of the list since 0.16.0; an older `fsp` rejects `a11y:` with this message) |
+| `invalid pubspec.yaml: fespalier.test.timeout: invalid type: string "soon", expected i64 at line 4 column 14`                                             | `timeout` is a whole number                                                                                                                            |
+| ``invalid pubspec.yaml: fespalier.test.samples: invalid type: integer `3`, expected a map at line 4 column 14``                                           | `samples` is a map of folder to value                                                                                                                  |
+| `invalid pubspec.yaml: fespalier.test.skip: invalid type: string "x", expected a sequence at line 4 column 11`                                            | `skip` is a list of patterns                                                                                                                           |
+| `invalid pubspec.yaml: fespalier.test.setup: invalid type: sequence, expected a string at line 4 column 12`                                               | `setup` is one path                                                                                                                                    |
+| ``invalid pubspec.yaml: fespalier.test: invalid type: integer `3`, expected struct TestConfig at line 3 column 9``                                        | `test:` is a map                                                                                                                                       |
 
 The messages of `fsp test` itself, in the order it can raise them:
 
@@ -260,6 +278,8 @@ The messages of `fsp test` itself, in the order it can raise them:
 | `` `fespalier.test.out` must be `test`, `integration_test` or a folder below one of them, where `flutter test` finds tests, got `lib/routes` ``                                                                                          | `flutter test` finds no test elsewhere                                                                                                                     |
 | `` `fespalier.test.setup` must be a .dart file inside the project (relative, no `..`), got `../setup.dart` ``                                                                                                                            | `setup` is a `.dart` file of the project                                                                                                                   |
 | `` `fespalier.test.timeout` is in milliseconds of the test's fake clock, from 1000 to 600000, got `5` ``                                                                                                                                 | A test waits this long on the **fake** clock, not the real one                                                                                             |
+| `` `fespalier.test.a11y` is `true` (every guideline), `false`, or a list of `tap_targets`, `labels` and `contrast`, got `sometimes` ``                                                                                                   | Since 0.16.0. `a11y` is a bool or a list of names; a string, a number or a map is none of those. It prints what was written (a map as JSON)                |
+| `` `fespalier.test.a11y`: `colour` is not a guideline; use `tap_targets` (48×48 on Android, 44×44 on iOS), `labels` or `contrast` ``                                                                                                     | Since 0.16.0. A name in the list that is not one of the three (case counts; a number or a bool in the list is shown as it is)                              |
 | `` `fespalier.test.setup`: test/mine/setup.dart does not exist ``                                                                                                                                                                        | A configured `setup` must exist. The default `<out>/setup.dart` is optional                                                                                |
 | `N error(s); no tests`                                                                                                                                                                                                                   | The app folder has errors (printed above); fix them as `fsp check` says                                                                                    |
 | `` `fespalier.test.skip`: `/nope` is not a route; write the pattern as `fsp routes` prints it (`/products/:id`) ``                                                                                                                       | Copy the pattern from `fsp routes`                                                                                                                         |
@@ -296,6 +316,16 @@ And the one a **test** prints, from `smokeTestRoute` in `flutter test`:
 | Message                                                                                                                                                                                                                | Cause and fix                                                                                                                                                                                                                                        |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `The page of /items is not on screen after 30000 ms of fake time: the router is at /sign-in. A guard that redirects, a data.dart that fails or never completes, or an exception while building (above) keeps it away.` | The location is where the router ended. Another path: a guard redirected (give `setup.dart` an `overrides` that gets past it). The route's own path: the page never built (a failing or never-completing `data.dart`, or an exception printed above) |
+
+With `a11y` on (since 0.16.0) `smokeTestRoute` also fails with Flutter's own message from `meetsGuideline`, in
+`flutter test` and not in `fsp test`. The whole screen is checked, so a widget in a shared layout fails every route
+under it:
+
+| Message                                                                                                                                     | Cause and fix                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `Expected: Tappable widgets should have a semantic label`                                                                                   | `labels`: a tappable node has no label. Give an `IconButton` a `tooltip`, or wrap the widget in `Semantics(label:)`  |
+| `expected tap target size of at least Size(48.0, 48.0), but found Size(88.0, 28.0)` (44 for iOS' guideline)                                 | `tap_targets`: a tappable node is too small. A `TextButton` pads itself to 48; an `InkWell` around a `Text` does not |
+| `Expected: Text contrast should follow WCAG guidelines ... Expected contrast ratio of at least 4.5 but found 1.10 for a font size of 14.0.` | `contrast`: text is too pale for its background (3 for large text). Darken it, or leave `contrast` out of the list   |
 
 See `fespalier-testing`, `references/route-smoke-tests.md` for the setup file and the pitfalls.
 

@@ -13,8 +13,14 @@ class AppLayout extends ConsumerWidget {
     final count = ref.watch(cartCountProvider);
     return Scaffold(
       appBar: AppBar(
-        title: InkWell(
-          onTap: () => const HomeRoute().go(context),
+        // A button, not an InkWell around a Text: its tap target is 48 pixels high, which
+        // `test: a11y` (pubspec.yaml) checks on every route.
+        title: TextButton(
+          onPressed: () => const HomeRoute().go(context),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.onSurface,
+            textStyle: Theme.of(context).textTheme.titleLarge,
+          ),
           child: const Text('Shop'),
         ),
         actions: [
@@ -23,6 +29,8 @@ class AppLayout extends ConsumerWidget {
             child: const Text('Products'),
           ),
           IconButton(
+            // The label a screen reader says, and `test: a11y` (pubspec.yaml) checks for.
+            tooltip: 'Cart',
             onPressed: () => const CartRoute().go(context),
             icon: Badge.count(
               count: count,

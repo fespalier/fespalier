@@ -5,6 +5,8 @@
 // A widget smoke test per route: each opens the route at a sample URL with pumpRouter and
 // waits, on the test's fake clock, until its page is on screen. Provider overrides come
 // from test/routes/setup.dart.
+// Each test also checks Flutter's accessibility guidelines (tap targets, labels, contrast)
+// once its page is on screen.
 
 import 'package:fespalier/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,6 +26,7 @@ void main() {
       overrides: setup.overrides(
         '/',
       ),
+      guidelines: routeA11yGuidelines,
     ),
   );
   testWidgets(
@@ -37,6 +40,7 @@ void main() {
       overrides: setup.overrides(
         '/cart',
       ),
+      guidelines: routeA11yGuidelines,
     ),
   );
   // Guarded by checkout/guard.dart.
@@ -51,6 +55,7 @@ void main() {
       overrides: setup.overrides(
         '/checkout',
       ),
+      guidelines: routeA11yGuidelines,
     ),
   );
   testWidgets(
@@ -64,6 +69,7 @@ void main() {
       overrides: setup.overrides(
         '/greet/:name',
       ),
+      guidelines: routeA11yGuidelines,
     ),
   );
   testWidgets(
@@ -77,6 +83,7 @@ void main() {
       overrides: setup.overrides(
         '/products',
       ),
+      guidelines: routeA11yGuidelines,
     ),
   );
   testWidgets(
@@ -90,6 +97,7 @@ void main() {
       overrides: setup.overrides(
         '/products/:id',
       ),
+      guidelines: routeA11yGuidelines,
     ),
   );
 }

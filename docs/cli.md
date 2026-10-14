@@ -349,7 +349,7 @@ links/
 - The Android files are written when `android_package` is set (it needs `android_sha256`, and the reverse), the iOS ones when `ios_app_id` is, and the sitemap always.
 - **`out: false`** (since 0.12.0) writes nothing below `out`: no sitemap, no `.well-known` files, no copies of the snippets. `fsp links` then manages only the [platform files](#editing-androidmanifestxml-and-the-entitlements) you opted into (`android_manifest`, `ios_entitlements`), and `fsp links --check` compares only those, ignoring whatever is left in the old folder (`fsp links` doesn't remove it). `true` is an error. Use it when the app serves its own `/.well-known` files and sitemap. It needs something to manage: without `android_manifest` or `ios_entitlements` it is an error (``leaves `fsp links` nothing to write``). The rest of the config is checked as usual: the first domain still can't be a wildcard, and `ios_app_id` still takes a Team ID. A YAML 1.2 `out: no` is the folder `no/`, not `false`.
 - **`android_sha256` is optional with `out: false`** (since 0.12.0): the fingerprints only go into `assetlinks.json`, which isn't written then, so `android_package` can stand alone (the manifest's filters don't need them), and `android_sha256` without `android_package` is still an error. Any you list are still checked. While `fsp links` writes `assetlinks.json`, `android_package` without `android_sha256` is the error ``needs `android_sha256` while `fsp links` writes assetlinks.json``.
-- A missing key, or a fingerprint or package that isn't one, is an error that names the key. Only `fsp links` checks them: a mistake there never stops `fsp gen`.
+- A missing key, or a fingerprint or package that isn't one, is an error that names the key. Only `fsp links` checks them: a mistake there never stops `fsp gen`. (Since 0.16.0 `fsp gen` also reads `domains`, for [`AppRoutes.urlOf`](#urls-to-share-approutesurlof), and warns when the first one is not usable; it never fails on it.)
 - A file the config no longer asks for is removed by `fsp links` and reported by `--check`.
 
 **What is listed.** Each route's path, in each spelling of its [localized paths](routing.md#localized-paths), and every route in a folder that doesn't say [`const linkable = false;`](configuration.md#per-folder-settings-routedart) (a `route.dart` constant, inherited down the tree). Redirects are opened by the app, so they are in the Android and iOS lists; a sitemap leaves them out.
@@ -480,6 +480,27 @@ Since 0.11.0. Run `fsp links --check` next to `fsp check`, so a new route or a c
 ```
 
 With the platform files opted in, the same step also fails when someone changed a route and forgot to run `fsp links`, or hand-edited the lines between the markers. The fix is the one command locally: `dart run fespalier links`, and commit the result. Warnings (a filter outside the markers, an entitlements file no build uses, a `paths:` entry no route matches) print but don't fail the step.
+
+### URLs to share: `AppRoutes.urlOf`
+
+Since 0.16.0. The domain you gave `links:` is also where the app's routes live on the web, so `fsp gen` writes one more method into `AppRoutes` when `links:` has a usable first domain: the https URL of a typed route. It is what a share sheet, a notification payload or an `og:url` gives out, built from the route, so a renamed folder or a changed parameter cannot leave a stale string behind.
+
+```dart
+AppRoutes.urlOf(const ProductRoute(id: 2)); // https://shop.example.com/products/2
+AppRoutes.urlOf(const HelpTopicRoute(topic: 'routing'), locale: 'fr'); // https://shop.example.com/aide/routing
+```
+
+```dart
+static Uri urlOf(TypedLocation route, {String? locale}) =>
+    Uri.parse('https://shop.example.com${route.locationFor(locale)}');
+```
+
+- **The host** is the first of `domains:`, in lower case: the one the sitemap is on. It is plain `https`; the custom `scheme` is not used, because a custom-scheme link opens the app only where it is installed, and a link to share must open anywhere.
+- **`locale`** picks the spelling of the [localized segments](routing.md#localized-paths), as `route.go(context, locale:)` does: `fr-CA` falls back to `fr`, and a locale the route has no spelling for gives the canonical path.
+- **The mount prefix is in it**, as in `route.location`: with `AppRoutes.mount(at: '/shop')` the URL is `https://shop.example.com/shop/products/2`. The sitemap and the platform files list the routes' own paths, so this is the one place the prefix shows up; keep the domain's server in step with it.
+- **Without `links:`, there is no `urlOf`**, and the generated file is what it was.
+- **A `links:` whose domains `fsp links` would refuse** (none, an entry that is not a host name, a wildcard first) gives no `urlOf` and a warning on `pubspec.yaml`, ``! pubspec.yaml  `AppRoutes.urlOf` is not generated: `fespalier.links.domains` is required: ...``, and `fsp gen` goes on. Fix the key (the same message is the error `fsp links` stops with). Only `domains` is read by `fsp gen`: the rest of the section, a bad `android_sha256` included, is still checked by `fsp links` alone.
+- **It builds a URL, it does not check one.** Whether the domain's server answers there, and whether the platforms open it in the app, is what the [files above](#deep-links-and-a-sitemap-fsp-links) are for.
 
 ## Checking string paths
 

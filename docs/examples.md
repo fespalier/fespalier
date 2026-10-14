@@ -25,6 +25,9 @@ Things to try:
 - `/products/abc`: the int parse fails, so you get `not_found.dart`.
 - `/checkout` with an empty cart: the guard redirects to `/cart`.
 - `/greet/you`.
+- `flutter test test/routes` runs [`fsp test`](route-tests.md#route-smoke-tests-fsp-test)'s smoke test of every route, with
+  `test: a11y: true` (since 0.16.0): each also checks Flutter's tap-target, label and contrast guidelines on the whole screen.
+  The app bar's title is a `TextButton` and its icon buttons have tooltips because those checks failed on them.
 
 Since 0.9.0 the product photos come from an [EmgR](https://github.com/vaam-apps/image-resizer) on this
 computer, unsigned. `examples/shop/lib/images.dart` says how to run it (`ALLOW_UNSIGNED_REQUESTS=true`,
@@ -94,6 +97,8 @@ a server each photo fails and shows the product's initial.
   set the page title; its tests join a review-code check on `AppRoutes.all`.
 - It sets `scroll_restoration: true` (since 0.8.1): `/feed` has two lists under `PageStorageKey`s, and
   its tests play the browser's back and forward.
+- It sets `links: domains` (since 0.16.0), so its `app.g.dart` has [`AppRoutes.urlOf`](cli.md#urls-to-share-approutesurlof);
+  `test/url_of_test.dart` checks the canonical, `fr` and `fr-CA` spellings and a mount prefix.
 
 **Feature flags** (since 0.9.0). `/labs` is a route behind a feature flag
 ([`fespalier_flags`](guards.md#feature-flags-fespalier_flags)): `lib/app/labs/guard.dart` is one

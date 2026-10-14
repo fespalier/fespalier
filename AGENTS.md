@@ -181,7 +181,10 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   that the build script refreshes and a test compares. The extension's `pubspec.lock` is committed on
   purpose (a build must not change when a dependency publishes) and has no `fespalier` in it, which is why
   the protocol is copied and not a path dependency: a release bump would make the lock stale.
-  `config.yaml`'s `version:` is release-please's, like the pubspec's.
+  `config.yaml`'s `version:` is release-please's, like the pubspec's. Protocol additions stay protocol 1 only
+  while they are optional: a new method, event, record or feature name, and a key whose absence reads as its
+  default (the adapters of 0.16.0, `DevToolsAdapters` and the Adapters tab, are the model; an older app sends
+  no `adapters`).
 - **fespalier must not make apps flaky.** Everything the DevTools support adds sits behind
   `kFespalierDevTools` (a `const`, false in release), so a release build has none of it (CI greps a
   release build for `ext.fespalier`); in debug it starts no timer, schedules no frame, reads no

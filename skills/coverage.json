@@ -80,6 +80,7 @@
         "docs/cli.md#Host-less schemes and path patterns",
         "docs/cli.md#Editing AndroidManifest.xml and the entitlements",
         "docs/cli.md#Links in CI",
+        "docs/cli.md#URLs to share: `AppRoutes.urlOf`",
         "docs/route-tests.md#Maestro flows (`fsp maestro`)",
         "docs/cli.md#Web chunk sizes (`fsp size`)",
         "README.md",

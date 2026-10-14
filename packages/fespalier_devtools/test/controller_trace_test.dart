@@ -41,6 +41,7 @@ void main() {
       expect(controller.supports(DevToolsFeatures.data), isFalse);
       expect(controller.supports(DevToolsFeatures.actions), isFalse);
       expect(controller.supports(DevToolsFeatures.open), isFalse);
+      expect(controller.supports(DevToolsFeatures.adapters), isFalse);
       // Its snapshot has none of the lists, and is read.
       expect(controller.snapshot!.guards, isEmpty);
     });

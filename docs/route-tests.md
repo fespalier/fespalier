@@ -150,7 +150,32 @@ fespalier:
     samples: # default: `maestro.samples`; same format
       products/$id: 1
     skip: [/admin] # patterns as `fsp routes` prints them
+    a11y: true # since 0.16.0; default false. `true` | `false` | a list of `tap_targets`, `labels`, `contrast`
 ```
+
+**Accessibility (`a11y`).** Since 0.16.0. With `a11y: true` each test also checks Flutter's own
+[accessibility guidelines](https://api.flutter.dev/flutter/flutter_test/AccessibilityGuideline-class.html) once its page is on screen, with the
+semantics tree on, so the smoke test that proves a route exists proves it can be used with a screen reader and a thumb:
+
+```yaml
+fespalier:
+  test:
+    a11y: true # every guideline
+    # a11y: [tap_targets, labels] # or only some; `false` and `[]` are none (the default)
+```
+
+| Value         | Checks                                                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tap_targets` | `androidTapTargetGuideline` (48×48) and `iOSTapTargetGuideline` (44×44): a tappable widget is big enough                                    |
+| `labels`      | `labeledTapTargetGuideline`: a tappable widget has a semantic label (an `IconButton` needs a `tooltip`)                                     |
+| `contrast`    | `textContrastGuideline`: text against its background meets the WCAG ratio (4.5, or 3 for large text), read from the pixels the test renders |
+
+- **What the test gets.** `a11y: true` adds `guidelines: routeA11yGuidelines,` to each `smokeTestRoute` (the runtime's list of all four constants, in `package:fespalier/testing.dart`). A list of only some declares `const _a11y = [androidTapTargetGuideline, ...];` once in the file and passes `guidelines: _a11y,`. The same set gives the same file, whatever the order or repeats in the pubspec, and a list of all three is `true`. The header of the file says which are on (`// Each test also checks Flutter's accessibility guidelines (tap targets, labels, contrast) once its page is on screen.`).
+- **A hand-written test** passes the same: `smokeTestRoute(tester, '/', router, guidelines: routeA11yGuidelines)`. `guidelines:` is empty by default and then nothing changes. The semantics handle is taken for the check and released after it, also when the test fails.
+- **The whole screen is checked,** not just the page: the layout's app bar, the tab bar, a floating button. A failure in shared chrome therefore fails every route under it, and one fix clears them all. The first guideline that fails ends a test, so a screen with several problems shows them one kind at a time.
+- **A failure** is Flutter's own, naming the node: `Expected: Tappable widgets should have a semantic label`, `expected tap target size of at least Size(48.0, 48.0), but found Size(88.0, 28.0)`, or `Expected contrast ratio of at least 4.5 but found 1.10 for a font size of 14.0.` Fix the widget: a `tooltip` on an `IconButton`, a `TextButton` for an `InkWell` around a `Text`, a darker colour. A guideline switched off in the list is for a cause in Flutter or a design you cannot change; say why in a comment next to it.
+- **Contrast reads pixels** and can move with a Flutter upgrade; `tap_targets` and `labels` read the semantics tree and do not. An app with a known contrast problem can still check the other two.
+- The values are checked only by `fsp test`: `` `fespalier.test.a11y` is `true` (every guideline), `false`, or a list of `tap_targets`, `labels` and `contrast`, got `sometimes` `` for a value of another kind, and `` `fespalier.test.a11y`: `colour` is not a guideline; use `tap_targets` (48×48 on Android, 44×44 on iOS), `labels` or `contrast` `` for a name in the list. `examples/shop` turns it on.
 
 **Samples** are the values of the dynamic folders, in the format of [`maestro.samples`](#maestro-flows-fsp-maestro). When `test.samples` is not there, `maestro.samples` is used (only that key of `maestro:` is read, so a `maestro:` section that `fsp maestro` would refuse does not stop `fsp test`). With neither, a route with a dynamic segment is skipped. A sample is percent-encoded and checked against the segment's type, with the same messages as Maestro's, naming `fespalier.test.samples` or `fespalier.maestro.samples`, whichever is in use.
 

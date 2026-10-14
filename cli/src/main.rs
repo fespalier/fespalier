@@ -592,6 +592,8 @@ mod tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]
+mod url_of_tests;
+#[cfg(test)]
 mod url_state_tests;
 #[cfg(test)]
 mod views_tests;

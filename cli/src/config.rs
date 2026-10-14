@@ -53,6 +53,7 @@
 //!     samples:              # default: the maestro ones
 //!       products/$id: 1
 //!     skip: [/admin]        # patterns as `fsp routes` prints them
+//!     a11y: true            # since 0.16.0; default false. Or a list: [tap_targets, labels, contrast]
 //!   tasks:                  # default: none; what `fsp dev`, `fsp build` and `fsp run` run (see `tasks.rs`)
 //!     dev:
 //!       before: dart run build_runner build   # one command, or a list; the first that fails stops
@@ -249,8 +250,10 @@ pub struct Config {
     pub telemetry: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
-    /// The `links:` section, as written. Only `fsp links` reads it, and it checks the values
-    /// then ([`LinksConfig::validate`]), so a mistake in it never stops `fsp gen`.
+    /// The `links:` section, as written. `fsp links` checks the values
+    /// ([`LinksConfig::validate`]); `fsp gen` reads only the first of the `domains` for
+    /// `AppRoutes.urlOf` (since 0.16.0, [`LinksConfig::domains`]) and warns when it is not
+    /// usable, so a mistake in the section never stops `fsp gen`.
     pub links: Option<LinksConfig>,
     /// The `lints:` section: how each lint over the app's own code reports.
     pub lints: Lints,
@@ -651,8 +654,11 @@ fn ios_app(
 }
 
 impl LinksConfig {
-    /// Checks the values, naming the key at fault.
-    pub fn validate(&self) -> Result<Links> {
+    /// The `domains:` list, checked: lower-case host names, each once, the first of them the one
+    /// the sitemap and `AppRoutes.urlOf` (since 0.16.0) are on, which is therefore never a
+    /// wildcard. Naming the key at fault. `fsp links` checks it first of all, and `fsp gen` only
+    /// to warn that `urlOf` is not generated.
+    pub fn domains(&self) -> Result<Vec<String>> {
         let mut domains: Vec<String> = vec![];
         for raw in self.domains.as_deref().unwrap_or_default() {
             let Some(host) = host_name(raw) else {
@@ -674,6 +680,12 @@ impl LinksConfig {
                 "`fespalier.links.domains`: the sitemap's URLs are on the first domain, so it can't be the wildcard `{first}`; list a host name first"
             );
         }
+        Ok(domains)
+    }
+
+    /// Checks the values, naming the key at fault.
+    pub fn validate(&self) -> Result<Links> {
+        let domains = self.domains()?;
 
         if self.flavors.as_ref().is_some_and(|f| f.0.is_empty()) {
             bail!("`fespalier.links.flavors` is empty: list a flavour, or leave it out");
@@ -1171,6 +1183,9 @@ pub struct TestConfig {
     timeout: Option<i64>,
     samples: Option<BTreeMap<String, Value>>,
     skip: Option<Vec<String>>,
+    /// `a11y:` as written (since 0.16.0): `true`, `false` or a list of guideline names. A
+    /// `Value`, so serde never fails on it: [`TestConfig::validate`] says what is wrong.
+    a11y: Option<Value>,
 }
 
 /// The `test:` section, checked: what `fsp test` writes a test file for.
@@ -1186,6 +1201,57 @@ pub struct Test {
     pub timeout: u32,
     /// The patterns (as `fsp routes` prints them) that get no test.
     pub skip: Vec<String>,
+    /// The accessibility guidelines each test checks once its page is on screen (since 0.16.0),
+    /// each once, in [`Guideline::ALL`]'s order. Empty is none.
+    pub a11y: Vec<Guideline>,
+}
+
+/// One group of Flutter's accessibility guidelines that `test: a11y:` can switch on (since
+/// 0.16.0): what `meetsGuideline` checks in `smokeTestRoute(guidelines:)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Guideline {
+    /// `androidTapTargetGuideline` (48x48) and `iOSTapTargetGuideline` (44x44).
+    TapTargets,
+    /// `labeledTapTargetGuideline`: a tappable widget has a semantic label.
+    Labels,
+    /// `textContrastGuideline`: WCAG text contrast.
+    Contrast,
+}
+
+impl Guideline {
+    /// Every guideline, in the order the generated test lists them.
+    pub const ALL: [Guideline; 3] = [
+        Guideline::TapTargets,
+        Guideline::Labels,
+        Guideline::Contrast,
+    ];
+
+    /// The name `a11y:` takes.
+    pub fn key(self) -> &'static str {
+        match self {
+            Guideline::TapTargets => "tap_targets",
+            Guideline::Labels => "labels",
+            Guideline::Contrast => "contrast",
+        }
+    }
+
+    /// The Dart constants of `package:flutter_test` that check it.
+    pub fn constants(self) -> &'static [&'static str] {
+        match self {
+            Guideline::TapTargets => &["androidTapTargetGuideline", "iOSTapTargetGuideline"],
+            Guideline::Labels => &["labeledTapTargetGuideline"],
+            Guideline::Contrast => &["textContrastGuideline"],
+        }
+    }
+
+    /// How the generated file's header says it.
+    pub fn words(self) -> &'static str {
+        match self {
+            Guideline::TapTargets => "tap targets",
+            Guideline::Labels => "labels",
+            Guideline::Contrast => "contrast",
+        }
+    }
 }
 
 impl Test {
@@ -1252,7 +1318,44 @@ impl TestConfig {
             setup,
             timeout,
             skip: self.skip.clone().unwrap_or_default(),
+            a11y: a11y(self.a11y.as_ref())?,
         })
+    }
+}
+
+/// `test: a11y:` (since 0.16.0): `true` is every guideline, `false` and `[]` none, and a list
+/// names some of them. Each once, in [`Guideline::ALL`]'s order, so the same set gives the same
+/// test file whatever order or repeats the pubspec has.
+fn a11y(raw: Option<&Value>) -> Result<Vec<Guideline>> {
+    let wrong = |v: &Value| {
+        anyhow!(
+            "`fespalier.test.a11y` is `true` (every guideline), `false`, or a list of `tap_targets`, `labels` and `contrast`, got `{}`",
+            shown_value(v)
+        )
+    };
+    match raw {
+        None | Some(Value::Bool(false)) => Ok(vec![]),
+        Some(Value::Bool(true)) => Ok(Guideline::ALL.to_vec()),
+        Some(Value::Sequence(names)) => {
+            let mut out = vec![];
+            for name in names {
+                let Some(guideline) = name
+                    .as_str()
+                    .and_then(|n| Guideline::ALL.into_iter().find(|g| g.key() == n))
+                else {
+                    bail!(
+                        "`fespalier.test.a11y`: `{}` is not a guideline; use `tap_targets` (48×48 on Android, 44×44 on iOS), `labels` or `contrast`",
+                        shown_value(name)
+                    );
+                };
+                if !out.contains(&guideline) {
+                    out.push(guideline);
+                }
+            }
+            out.sort_by_key(|g| Guideline::ALL.iter().position(|a| a == g));
+            Ok(out)
+        }
+        Some(other) => Err(wrong(other)),
     }
 }
 

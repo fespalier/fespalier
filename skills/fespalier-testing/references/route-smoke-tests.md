@@ -1,7 +1,8 @@
 # Route smoke tests: `fsp test`, `setup.dart` and `smokeTestRoute`
 
 As of 0.8.1 (`cli/src/smoke.rs`, `cli/src/samples.rs`, `packages/fespalier/lib/testing.dart`). Everything here is
-new in 0.8.1: an app on an older fespalier has no `fsp test`, no `smokeTestRoute` and no `pumpRouter(app:)`.
+new in 0.8.1 except where it says otherwise (`test: a11y:` and `guidelines:` are 0.16.0): an app on an older fespalier
+has no `fsp test`, no `smokeTestRoute` and no `pumpRouter(app:)`.
 
 `fsp test` writes **one file**, `test/routes/routes_test.dart`, with a widget test per route. It proves what a
 Maestro flow proves (the route exists, its guards let it through, its data loaded, its page was built) in
@@ -15,7 +16,8 @@ flutter test
 
 ## What a test does
 
-`smokeTestRoute(tester, pattern, router, {page, overrides, app, timeout})` runs:
+`smokeTestRoute(tester, pattern, router, {page, overrides, app, timeout, guidelines})` runs (`guidelines`
+since 0.16.0, see [Accessibility](#accessibility-test-a11y-since-0160)):
 
 1. `pumpRouter(..., settle: false)`, which loads the code of deferred routes first.
 2. It pumps **100 ms of fake time at a time** until the page is found. A `data.dart` fake that answers after
@@ -26,7 +28,7 @@ flutter test
    The page of /items is not on screen after 30000 ms of fake time: the router is at /sign-in. A guard that redirects, a data.dart that fails or never completes, or an exception while building (above) keeps it away.
    ```
 
-4. `expect(page, findsOneWidget)`.
+4. `expect(page, findsOneWidget)`, then each of `guidelines` (none by default) with `meetsGuideline`.
 5. It takes the tree down (`pumpWidget(SizedBox())`) and runs the clock `timeout` on. A fake's pending
    **one-shot** timer fires with no widget left to react, so the test does not end with "A Timer is still
    pending".
@@ -83,6 +85,46 @@ file's header), when it is a redirect, listed in `test.skip`, a dynamic route wi
 `overrides`, or a function page without `semantics_ids`. None fails `--check`. A route with
 `const linkable = false;` is tested. Samples are `test.samples`, else `maestro.samples` (only that key of
 `maestro:` is read), else none; the format and the checks are Maestro's.
+
+## Accessibility: `test: a11y:` (since 0.16.0)
+
+`fespalier: test: a11y:` makes every smoke test also check Flutter's accessibility guidelines once its page is on
+screen, with the semantics tree on. The default is off, and an app that never sets it gets the file it always got.
+
+```yaml
+fespalier:
+  test:
+    a11y: true # every guideline
+    # a11y: [tap_targets, labels] # or some of them; false and [] are none
+```
+
+| Value         | Passes to `meetsGuideline`                                              | A failure says                                                                      |
+| ------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `tap_targets` | `androidTapTargetGuideline` (48×48) and `iOSTapTargetGuideline` (44×44) | `expected tap target size of at least Size(48.0, 48.0), but found Size(88.0, 28.0)` |
+| `labels`      | `labeledTapTargetGuideline`                                             | `Expected: Tappable widgets should have a semantic label`                           |
+| `contrast`    | `textContrastGuideline`                                                 | `Expected contrast ratio of at least 4.5 but found 1.10 for a font size of 14.0.`   |
+
+- **The generated test.** `true` (or a list of all three) adds `guidelines: routeA11yGuidelines,` to each
+  `smokeTestRoute`, after `app:` and before `timeout:`. A list of only some declares
+  `const _a11y = [androidTapTargetGuideline, ...];` once, before `void main()`, and passes `guidelines: _a11y,`. The
+  header of the file gains `// Each test also checks Flutter's accessibility guidelines (tap targets, labels)` and
+  `// once its page is on screen.` with the words of the guidelines that are on. The set is read in a fixed order and
+  each once, so the same set is the same file.
+- **`routeA11yGuidelines`** (`package:fespalier/testing.dart`) is the four Flutter constants. A hand-written test
+  passes it, or any `List<AccessibilityGuideline>`, as `guidelines:`; empty is the default and changes nothing. The
+  semantics handle is taken for the check and released after it, also when the test fails, so a test that runs with
+  `semanticsEnabled: false` still checks.
+- **The whole tree is checked,** the layout's app bar, tab bar and floating buttons included, so one inaccessible widget
+  in shared chrome fails **every route** under it. Fix the widget once (`examples/shop` needed a `tooltip` on three
+  `IconButton`s and a `TextButton` in place of an `InkWell` around a `Text`). The first guideline that fails ends a
+  test, so the next kind of problem shows only after the first is fixed.
+- **Contrast reads the rendered pixels** and runs on the real event loop inside the fake clock (Flutter does that
+  itself), so it works, but it can move with a Flutter upgrade; `tap_targets` and `labels` read the semantics tree. An
+  app with a known contrast problem lists the other two, with a comment saying why.
+- **Messages** (`fsp test` only; `gen` never reads them): `` `fespalier.test.a11y` is `true` (every guideline), `false`, or a list of `tap_targets`, `labels` and `contrast`, got `sometimes` `` and
+  `` `fespalier.test.a11y`: `colour` is not a guideline; use `tap_targets` (48×48 on Android, 44×44 on iOS), `labels` or `contrast` ``
+  (`references/diagnostics-config-and-meta.md` in `fespalier-troubleshooting`). The unknown-key list under `test:`
+  ends with `a11y` since 0.16.0.
 
 ## Pitfalls
 

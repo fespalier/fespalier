@@ -927,6 +927,8 @@ jobs:
         run: python3 scripts/test_verify_staged.py
       - name: Stage, fetch, attach and publish release assets (fake GitHub API)
         run: python3 scripts/test_release_assets.py
+      - name: Recover a release PR merged before its pins (manual Release run)
+        run: python3 scripts/test_release_dispatch.py
 
   telemetry:
     name: Telemetry stack files and dashboards

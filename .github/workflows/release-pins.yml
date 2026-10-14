@@ -37,8 +37,12 @@ name: Release pins
 # job: a push made with it raises no workflow events, so the release PR would get no CI run on
 # the pin commit; and it cannot see a draft release. No fallback to it (org releasing.md, trap 1).
 #
-# Optionally make `Release pins gate` a required check on main: a release PR then cannot be
-# merged before its head is pinned and verified. Non-release PRs skip the job and pass.
+# Make `Release pins gate` a required status check on main. That is a repository setting, which
+# no workflow can switch on, and it is what keeps a release PR from being merged before its head
+# is pinned and verified. Without it v0.17.1 was merged a minute after release-please opened the
+# PR, before this workflow had built, staged or pinned anything: the tag carried 0.17.0's pins,
+# and publishing it took a manual run of release.yml with the tag and the pin commit
+# (docs/releasing.md). Non-release PRs skip the job and pass.
 
 on:
   pull_request:

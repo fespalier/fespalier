@@ -151,12 +151,13 @@ telemetry-dashboards:
 telemetry-smoke:
     python3 scripts/telemetry/smoke.py
 
-# The Homebrew/Scoop rendering, checksum pinning and release staging tests
+# The Homebrew/Scoop rendering, checksum pinning, release staging and manual-release tests
 packaging:
     python3 scripts/test_packaging.py
     python3 scripts/test_pin_checksums.py
     python3 scripts/test_verify_staged.py
     python3 scripts/test_release_assets.py
+    python3 scripts/test_release_dispatch.py
 
 # The agent skills in skills/ match the code: coverage, frontmatter, stamps, links (needs Node)
 skills:

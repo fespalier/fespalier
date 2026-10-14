@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.17.2
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.17.1
+      ref: v0.17.2
 ```
 <!-- x-release-please-end -->
 

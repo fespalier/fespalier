@@ -194,6 +194,26 @@ The graph shows what `app.g.dart` gives go_router, not the folders. **Nodes** ar
 
 The generated file is not formatted by default, so a committed `app.g.dart` doesn't depend on which Dart SDK ran `fsp`. To format it, use `fsp gen --format` or `format: true` in the pubspec section. It pipes the file through `dart format` (which needs `dart` on your `PATH`; without it `fsp` warns and writes the unformatted code), using your package's language version and `analysis_options.yaml` (`formatter: page_width`). `fsp gen` compares the formatted text with the file on disk, so a formatted file that is up to date stays "unchanged". `fsp watch`, `fsp new` and `fsp init` follow `format:` too; `fsp check` writes and compares nothing, so it never runs `dart`.
 
+**build_runner.** `build_runner` can delete the generated file (since 0.16.0: `fsp` warns about it). The builders that write `.g.dart` files (json_serializable, riverpod_generator, ...) claim an `X.g.dart` for every `X.dart` in the package, so with a `lib/app.dart` beside `lib/app.g.dart` a `dart run build_runner build` deletes the file `fsp` wrote, and logs nothing; `lib/app.dart` is a common name in a Flutter app. `fsp gen`, `check`, `watch` and `dev` warn when the output is `X.g.dart`, an `X.dart` exists beside it and `build_runner` is under `dependencies` or `dev_dependencies`. It is a warning on that `.dart` file, and the commands still succeed:
+
+```text
+warning: lib/app.dart: `build_runner` can delete `lib/app.g.dart`: `lib/app.dart` exists, so the builders that write `.g.dart` files (json_serializable, riverpod_generator, ...) claim that path as an output of theirs, and `dart run build_runner build` removes the file `fsp` wrote; set `fespalier: output:` in pubspec.yaml to another file (for example `lib/routes.g.dart`), or rename `lib/app.dart`
+```
+
+Either way out works: `output: lib/routes.g.dart` (any `.g.dart` with no `.dart` beside it, or a name that doesn't end in `.g.dart`) or renaming `lib/app.dart`. A third keeps `lib/app.dart` out of the builder that claims every `.g.dart`, in `build.yaml` (checked with build_runner 2.16.1); `fsp` doesn't warn when it reads exactly that:
+
+```yaml
+targets:
+  $default:
+    builders:
+      source_gen:combining_builder:
+        generate_for:
+          exclude:
+            - lib/app.dart
+```
+
+`lib/app.dart` then can't have generated parts of its own. The same check covers `output_manifest` and the generated `lib/app.main.g.dart`. Without `build_runner`, or without an `X.dart` beside the output, nothing is said.
+
 ### What the commands print
 
 - `fsp gen`: `✓ 12 routes → lib/app.g.dart`, or `✓ 12 routes, lib/app.g.dart unchanged` when the output didn't change. With `output_manifest`, or a [generated `main()`](app-startup.md) (since 0.8.1), every file is named: `✓ 12 routes → lib/app.g.dart, lib/app.main.g.dart`.
@@ -271,12 +291,12 @@ Add what your app needs around `flutter run` under `tasks:` in the `fespalier:` 
 fespalier:
   tasks:
     dev:
-      before: dart run build_runner build -d # runs first; if it fails, fsp dev stops
+      before: dart run build_runner build # runs first; if it fails, fsp dev stops
       with:
-        build_runner: dart run build_runner watch -d # runs alongside, in a pane of its own
+        build_runner: dart run build_runner watch # runs alongside, in a pane of its own
       env:
         API_URL: http://localhost:8080
-    codegen: dart run build_runner build -d # fsp run codegen
+    codegen: dart run build_runner build # fsp run codegen
 ```
 
 | Key          | What it is                                                                                                                                                                                                   |
@@ -288,6 +308,7 @@ fespalier:
 | `env`        | Variables for these commands (not for the app: use `--dart-define` for that).                                                                                                                                |
 | `hot_reload` | `dev` only. `false` turns the automatic reload and restart off; `r` and `R` still work.                                                                                                                      |
 
+- `build_runner` needs no `-d` here: since build_runner 2.7.0 it ignores the flag and deletes conflicting outputs on its own. That is also why it can delete `lib/app.g.dart`, in `before`, in `with` and in `fsp run codegen` alike, when a `lib/app.dart` exists and a builder writes `.g.dart` files (json_serializable, riverpod_generator, ...): they claim an `X.g.dart` for every `X.dart`, `fsp`'s file included, and nothing is logged. Since 0.16.0 `fsp dev` warns about it (as `fsp gen` does, see [The generator](#the-generator)); set `output: lib/routes.g.dart` in the `fespalier:` section, or rename `lib/app.dart`, before you add these tasks.
 - A command written as a string runs in the shell (`sh` on macOS and Linux, `cmd` on Windows). Written as a list (`[flutter, test]`) it runs with no shell, the same everywhere.
 - `fsp` at the start of a command is the `fsp` running the task, even under `dart run fespalier`.
 - A list under `before` or `after` is a list of commands, so `before: [dart, run, x]` is three shell commands; write `before: [[dart, run, x]]` for one command with no shell.

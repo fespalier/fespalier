@@ -56,13 +56,13 @@
 //!     a11y: true            # since 0.16.0; default false. Or a list: [tap_targets, labels, contrast]
 //!   tasks:                  # default: none; what `fsp dev`, `fsp build` and `fsp run` run (see `tasks.rs`)
 //!     dev:
-//!       before: dart run build_runner build -d   # one command, or a list; the first that fails stops
+//!       before: dart run build_runner build   # one command, or a list; the first that fails stops
 //!       with:                                    # long-running, next to flutter, one pane each
-//!         build_runner: dart run build_runner watch -d
+//!         build_runner: dart run build_runner watch
 //!       run: flutter run                         # default; fsp adds --machine, -d and the args after --
 //!       env: { API_URL: "http://localhost:8080" }
 //!       hot_reload: true                         # default
-//!     codegen: dart run build_runner build -d    # `fsp run codegen`
+//!     codegen: dart run build_runner build      # `fsp run codegen`
 //!   adapters: [fespalier_sentry]   # default: none; packages that plug into the generated main() (see `adapters.rs`)
 //! ```
 //!
@@ -279,6 +279,10 @@ pub struct Config {
     /// generated file imports it. `true` without a pubspec, so a test needs none; the output
     /// still depends on the pubspec alone.
     pub forms_dependency: bool,
+    /// `build_runner` is listed under `dependencies` or `dev_dependencies`: what makes a
+    /// generated `X.g.dart` next to an `X.dart` a file it deletes (see `build_runner.rs`, since
+    /// 0.16.0). Read from the pubspec, never from `fespalier:`.
+    pub build_runner: bool,
 }
 
 impl Default for Config {
@@ -310,6 +314,7 @@ impl Default for Config {
             main: MainMode::Auto,
             adapters: vec![],
             forms_dependency: true,
+            build_runner: false,
         }
     }
 }
@@ -330,6 +335,7 @@ pub struct Pubspec {
 struct RawPubspec {
     name: Option<String>,
     dependencies: Option<Value>,
+    dev_dependencies: Option<Value>,
     fespalier: Option<RawConfig>,
 }
 
@@ -1628,8 +1634,10 @@ impl Pubspec {
                 }
             }
         }
-        let has_dependency =
-            matches!(&raw.dependencies, Some(Value::Mapping(m)) if m.contains_key("fespalier"));
+        let lists = |name: &str, section: &Option<Value>| matches!(section, Some(Value::Mapping(m)) if m.contains_key(name));
+        let has_dependency = lists("fespalier", &raw.dependencies);
+        config.build_runner = lists("build_runner", &raw.dependencies)
+            || lists("build_runner", &raw.dev_dependencies);
         // A pubspec with no `dependencies:` at all (a test's) says nothing, so it keeps the default.
         if let Some(Value::Mapping(m)) = &raw.dependencies {
             config.forms_dependency = m.contains_key("fespalier_forms");

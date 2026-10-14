@@ -32,7 +32,8 @@ What changed between releases, newest first, each with a link to the reference s
 0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, changes one member of `FespalierAdapter`, fixes the places where a
 write could be sent twice, a provider started a hidden timer, a notification tap was lost and a step name did not compile,
 makes three outcomes of the network packages right (one port, `DownloadBackend.resume`, gains a named parameter: see the
-resume item), so an app sees different outcomes there, and adds opt-in tooling:
+resume item), so an app sees different outcomes there, and adds opt-in tooling. The last three items are about code generators, and change nothing for an
+app that does not use freezed or `build_runner`:
 
 - **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
   Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
@@ -140,6 +141,24 @@ The other fixes make a write that could be sent twice be sent once, so an app se
 - **A plugin that throws is not asked again** ([Biometric unlock](guards.md#biometric-unlock-fespalier_biometrics), [Push](push.md), [Offline-first](offline-first.md), [Change feeds](data.md)). `biometricAvailable`, `pushPermission`, `pendingIntents` and `ChangeFeed.latest` did not set `retry:`, so Riverpod 3's default re-asked a throwing plugin or store up to ten times over about 50 seconds, with a `Timer`. They now keep the error and ask once; `ref.invalidate(provider)` asks again.
 - **A notification tap while the app starts is opened** ([Push](push.md#cold-start-and-taps)). It was lost (`launch()` runs before `runApp`, `attach` after the first frame, and nobody listened to `taps` in between). `launch()` now keeps the latest tap and `attach` opens it once; the cold-start notification seen again on `taps` is still opened once. A `PushSource.taps` on a platform channel must return one stream every time, because `taps` is listened to twice while the app starts.
 - **`fsp check` refuses a step folder that is no Dart enum constant** ([Multi-page forms](forms.md)): `final`, `new`, `default`, `in`, `values`, `index`, a name that starts with a digit (`2fa`), or two folders that become one constant. They used to pass and write a step enum that did not compile; rename the folder and its key in `steps`.
+- **`ExtraCodec.of` finds an `extra` with `is`, so a freezed class restores** ([Restoring `extra` on the web](navigation.md#restoring-extra-on-the-web)). Nothing is removed or renamed; this is for an app whose `extra` is a freezed class written as `const factory Note(...) = _Note`. The object is a private `_Note`, so `ExtraCodec({Note: ...})`, which looks a type up by its exact runtime type, never matched it: the extra was saved as `null` and a web reload gave the page `null`, without a word. Change `lib/app/extra_codec.dart`, and keep the old constructor for anything else:
+
+  ```dart
+  // Before (0.15.0 and earlier): never matches a freezed `Note`
+  final extraCodec = ExtraCodec({
+    Note: (toJson: (Note n) => n.toJson(), fromJson: Note.fromJson),
+  });
+
+  // After (0.16.0): the first ExtraType the object `is` takes it
+  final extraCodec = ExtraCodec.of([
+    ExtraType<Note>(toJson: (n) => n.toJson(), fromJson: Note.fromJson),
+  ]);
+  ```
+
+  A debug build now also prints one line, once per type, for an `extra` that no entry takes (a release build prints nothing), so the next one you forget is not silent.
+
+- **`fsp` warns when `build_runner` would delete `lib/app.g.dart`** ([The generator](cli.md#the-generator)). The builders that write `.g.dart` files (json_serializable, riverpod_generator) claim an `X.g.dart` for every `X.dart`, so an app with `build_runner` and a `lib/app.dart` loses fespalier's default output on the next `dart run build_runner build`, with nothing logged. `fsp gen`, `check`, `watch` and `dev` now warn on `lib/app.dart`, and still succeed; the generated code is unchanged. Set `output: lib/routes.g.dart` (then `fsp gen`, and change the `app.g.dart` imports), rename `lib/app.dart`, or keep `lib/app.dart` out of `source_gen:combining_builder` in `build.yaml`, which `fsp` reads and then stays quiet.
+- **The examples no longer pass `-d` to `build_runner`.** It has ignored the flag since 2.7.0. The commented `tasks:` that `fsp init` and `fsp create` write, and the docs, leave it out; a `tasks:` you wrote with `-d` still works.
 
 ### 0.15.0
 

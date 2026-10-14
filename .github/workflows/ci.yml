@@ -613,6 +613,17 @@ jobs:
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh
+      # fespalier next to freezed, json_serializable and build_runner (since 0.16.0). No example uses
+      # build_runner, so nothing else notices when it and fsp trip over each other: a freezed `extra`
+      # is a private `_Note` that ExtraCodec({Note: ...}) saves as null, and a `lib/app.dart` makes
+      # build_runner delete `lib/app.g.dart`. A fresh app with the files in ci/codegen-interop/ shows
+      # the warning and the deletion, then `output: lib/routes.g.dart`, the extra and DataCache.json
+      # working next to a build_runner build. The script is `just codegen-interop`.
+      - name: A freezed extra and build_runner next to fsp gen
+        timeout-minutes: 10
+        env:
+          FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
+        run: scripts/check-codegen-interop.sh
 
   # `fsp create` (since 0.15.0) against the real flutter: the base app, each optional feature on its
   # own, and every feature at once, made with this checkout as the packages (`--local-packages`) and

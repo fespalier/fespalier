@@ -11,7 +11,7 @@ the project root and must be under `lib/`, and `output` must be a `.dart` file.
 ```yaml
 fespalier:
   app_dir: lib/app
-  output: lib/app.g.dart
+  output: lib/app.g.dart # a .g.dart: build_runner can delete it beside a lib/app.dart (since 0.16.0 fsp warns)
   format: false
   case_sensitive: true
   remount: never # `on_segments` | `on_location`
@@ -63,12 +63,14 @@ fespalier:
   #   a11y: true                  # since 0.16.0; default false. Or a list: [tap_targets, labels, contrast]
   # tasks:                        # no default: what `fsp dev`, `fsp build` and `fsp run` run (since 0.9.0)
   #   dev:
-  #     before: dart run build_runner build -d
+  #     before: dart run build_runner build
   #     with:
-  #       build_runner: dart run build_runner watch -d
-  #   codegen: dart run build_runner build -d
+  #       build_runner: dart run build_runner watch
+  #   codegen: dart run build_runner build
   # adapters: [my_tools]         # no default: packages that plug into the generated main() (since 0.9.0)
 ```
+
+`output` is a `.g.dart` file by default, which `build_runner` can delete when a `lib/app.dart` is beside it (since 0.16.0: `fsp` warns, and `output: lib/routes.g.dart` is the way out; see [The generator](cli.md#the-generator)).
 
 ## Keys
 

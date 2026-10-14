@@ -243,7 +243,14 @@ dev-e2e:
 create-check *cases:
     scripts/check-create.sh {{ cases }}
 
-# The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only; the editor jobs
+# fespalier next to freezed, json_serializable and build_runner, in a fresh app (about two minutes; needs Flutter and
+# network; not part of `just ci`, CI runs it in the `scaffold` job): the warning that build_runner deletes
+# lib/app.g.dart, `output:` as the way out, a freezed `extra` restored through `ExtraCodec.of`, and `DataCache.json`
+codegen-interop:
+    scripts/check-codegen-interop.sh
+
+# The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps that
+# have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs
 # are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
 # `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.35
 # floor is `just floor`, the cose example with its Rust server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).

@@ -43,6 +43,13 @@ What they print, to stderr unless noted:
   not only under `lib/app/`; `--json` gives that path as `file`). A warning never changes the
   exit code or the success line. See `fespalier-routing`, `references/typed-routes-and-extra.md`
   ("String paths"), and `lints:` below.
+- `gen`, `check`, `watch` and `dev` also warn when **`build_runner` can delete the output** (since 0.16.0): the
+  output is `X.g.dart`, an `X.dart` is beside it (a `lib/app.dart` for the default `lib/app.g.dart`) and
+  `build_runner` is under `dependencies` or `dev_dependencies`. The warning is on that `.dart` file
+  (``warning: lib/app.dart: `build_runner` can delete `lib/app.g.dart`: ...``; `--json` gives `file`
+  `lib/app.dart` and `line` `null`), and never changes the exit code. The way out is `output:` in another
+  file (`lib/routes.g.dart`) or renaming the `.dart` file; the text is in `fespalier-troubleshooting`,
+  `references/diagnostics-config-and-meta.md`.
 - `watch`: `watching lib/app/ …`, the `gen` line at startup, then a line (with a
   duration) each time a save changes the output. An edit that changes nothing
   generated (a `build` method) prints nothing.
@@ -528,17 +535,17 @@ hot reload; a pass with errors sends nothing, and `app.g.dart` is left as it was
 fespalier:
   tasks: # since 0.9.0; read only by `fsp dev`, `fsp build` and `fsp run`
     dev:
-      before: dart run build_runner build -d # one command, or a list; in order; the first that fails stops
+      before: dart run build_runner build # one command, or a list; in order; the first that fails stops
       with: # long-running, next to flutter; each gets a pane named by its key
-        build_runner: dart run build_runner watch -d
+        build_runner: dart run build_runner watch
       run: fvm flutter run # default `flutter run`; fsp adds --machine, -d <device> and the args after --
       env: # for every command of this task, not for the app (that is --dart-define)
         API_URL: http://localhost:8080
       hot_reload: true # default; false: no automatic reload or restart (r and R still work)
       after: [] # runs when `run` exits 0
     build: # `fsp build <target>`: fsp gen, then `<run> <target> <args>`
-      before: [dart run build_runner build -d]
-    codegen: dart run build_runner build -d # a task that is only `run`; `fsp run codegen`
+      before: [dart run build_runner build]
+    codegen: dart run build_runner build # a task that is only `run`; `fsp run codegen`
     check: # `fsp run check`
       before: [fsp check, fsp test --check]
       run: [flutter, test] # a list is argv: no shell, the same on every OS
@@ -556,6 +563,12 @@ fespalier:
 - **Every command** runs in the project root with the task's `env` and `FSP=<path of this fsp>`; `fsp build` also
   sets `FSP_BUILD_TARGET`. A task other than `dev` and `build` needs a `run`; `hot_reload` is `dev` only; a
   `with` name is `[A-Za-z0-9_-]{1,20}`, not `flutter` or `fsp`.
+- **`build_runner` and `lib/app.dart`.** `build_runner` needs no `-d`: it has ignored the flag since 2.7.0 and always
+  deletes conflicting outputs, which is why the examples do not pass it. It is also why a `lib/app.g.dart` that a
+  builder claims (json_serializable, riverpod_generator and the other `.g.dart` writers claim an `X.g.dart` for every
+  `X.dart`, so a `lib/app.dart` claims it) is deleted, with nothing logged: in `before`, in `with` (a `watch` does
+  it again on every save) and in `fsp run codegen` alike. `fsp` warns (above). **Set `output: lib/routes.g.dart` (or
+  rename `lib/app.dart`) before you write a `build_runner` task**; `fsp init`'s commented example says so.
 - **Checked by the commands that read it.** `Config.tasks` is the raw value, so a mistake in `tasks:` never fails
   `fsp gen`, `check` or `watch`; `fsp dev`, `build` and `run` report it with the key (the 17 messages are in
   `fespalier-troubleshooting`, `references/diagnostics-dev.md`). `--dry-run` prints the plan and runs nothing.
@@ -648,14 +661,14 @@ fespalier:
   # maestro: {url: http://localhost:8080}  # see `fsp maestro` above
   # size: {main: 3 MB, routes: {/checkout: 8 KB}}  # since 0.8.1; see `fsp size` above
   # test: {timeout: 30000}                # since 0.8.1; see `fsp test` above
-  # tasks: {codegen: dart run build_runner build -d}   # since 0.9.0; see `fsp dev` below
+  # tasks: {codegen: dart run build_runner build}   # since 0.9.0; see `fsp dev` below
   # adapters: [my_tools]   # since 0.9.0; packages that plug into the generated main(), see app-main.md
 ```
 
 | Key                  | Values                                           | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `app_dir`            | a path under `lib/`                              | Where the tree is. Not under `lib/`: `` `fespalier.app_dir` must be a path under lib/ (it is imported as package code) ``                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `output`             | a `.dart` path under `lib/`                      | Where `app.g.dart` goes: `` `fespalier.output` must be a .dart file ``                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `output`             | a `.dart` path under `lib/`                      | Where `app.g.dart` goes: `` `fespalier.output` must be a .dart file `` A `.g.dart` with an `X.dart` beside it is a file `build_runner` can delete: `gen`, `check` and `watch` warn since 0.16.0 (see `fsp gen` above); `lib/routes.g.dart` is the way out                                                                                                                                                                                                                                                                                                                                 |
 | `format`             | `true` / `false`                                 | Run `dart format` on the output (needs `dart` on `PATH`; without it `fsp` warns and writes the unformatted code)                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `case_sensitive`     | `true` / `false`                                 | `false` emits `caseSensitive: false` on every route; a `route.dart` overrides it per folder                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `remount`            | `never` / `on_segments` / `on_location`          | When a page gets a fresh state because its URL changed (since 0.6.0): `on_segments` when a segment's value changes, `on_location` on any change, the query included; a `route.dart` overrides it per folder. See `fespalier-routing`. Another value: `` invalid pubspec.yaml: fespalier.remount: unknown variant `x`, expected one of `never`, `on_segments`, `on_location` ``                                                                                                                                                                                                            |

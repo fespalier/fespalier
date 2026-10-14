@@ -1,7 +1,7 @@
 # Diagnostics: config, `meta.dart`, `route.dart`, localized paths and the CLI
 
 As of v0.13.0 (`cli/src/config.rs`, `resolve.rs`, `locale.rs`, `manifest.rs`, `main.rs`,
-`init.rs`, `scaffold.rs`; since 0.7.0 also `lint.rs` and, for the `fsp maestro` section, `maestro.rs`; since 0.8.1 `entry.rs` (its own page: `diagnostics-app-main.md`), also `size.rs` for `fsp size`, and `smoke.rs` and `samples.rs` for `fsp test`). Messages are quoted as `fsp` prints them.
+`init.rs`, `scaffold.rs`; since 0.7.0 also `lint.rs` and, since 0.16.0, `build_runner.rs` and, for the `fsp maestro` section, `maestro.rs`; since 0.8.1 `entry.rs` (its own page: `diagnostics-app-main.md`), also `size.rs` for `fsp size`, and `smoke.rs` and `samples.rs` for `fsp test`). Messages are quoted as `fsp` prints them.
 
 ## The `fespalier:` section of `pubspec.yaml`
 
@@ -329,6 +329,27 @@ under it:
 
 See `fespalier-testing`, `references/route-smoke-tests.md` for the setup file and the pitfalls.
 
+## `build_runner` can delete the output (since 0.16.0; `build_runner.rs`)
+
+A **warning** from `fsp gen`, `check`, `watch` and `dev` (the `fsp` pane), on the `.dart` file that sits beside a generated
+`.g.dart`. It has no code frame, never changes the exit code or the success line, and in `--json` has `file`
+`lib/app.dart` and `line` `null`. It fires when **all three** hold: an output (`output`, `output_manifest`, or the
+generated `main()`) is `X.g.dart`; `X.dart` exists beside it; and `build_runner` is under `dependencies` or
+`dev_dependencies` of the pubspec, and `build.yaml` does not keep `X.dart` out of the combining builder (its
+`source_gen:combining_builder` has `generate_for: exclude:` with exactly that file; any other shape, a glob or a file
+that does not parse is not read, so the warning stays). Nothing else is checked about the builders: with no `.g.dart`
+builder the warning is a false alarm, and it is cheap to follow anyway.
+
+| Message                                                                                                                                                                                                                                                                                                                                                                                                             | Cause and fix                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ``warning: lib/app.dart: `build_runner` can delete `lib/app.g.dart`: `lib/app.dart` exists, so the builders that write `.g.dart` files (json_serializable, riverpod_generator, ...) claim that path as an output of theirs, and `dart run build_runner build` removes the file `fsp` wrote; set `fespalier: output:` in pubspec.yaml to another file (for example `lib/routes.g.dart`), or rename `lib/app.dart` `` | source_gen's combining builder gives every `X.dart` an `X.g.dart`, and build_runner (2.7.0 and later, with or without `-d`) deletes a file at an output path it did not write, without a word. Set `output: lib/routes.g.dart` in the `fespalier:` section (and run `fsp gen`), or rename `lib/app.dart`. A `fsp dev` with a `build_runner` task hits it on every save |
+
+The same text names another file and key where it applies: for `output_manifest: lib/app.routes.g.dart` with a
+`lib/app.routes.dart`, `` `build_runner` can delete `lib/app.routes.g.dart`: `lib/app.routes.dart` exists ... set `fespalier: output_manifest:` in pubspec.yaml to another file (for example `lib/app.manifest.g.dart`) ... ``;
+for the generated main() (`lib/app.main.g.dart`, with a `lib/app.main.dart`) it says `output:` again, since the main
+follows `output`. The example it gives is the first of `routes`, `app_routes`, `fsp_routes` (the manifest: `app.routes`, `app.manifest`) that has no `.dart` file beside it.
+Any output that is not a `.g.dart` (`lib/app.routes.dart`) is left alone.
+
 ## The command line
 
 | Message                                                                                                                                              | Cause and fix                                                                 |
@@ -469,5 +490,17 @@ check, so you may get a collision error while you fix another entry.
 | warning `extra_codec.dart is only read at the root of the app folder, so this one is ignored`                                                                         | A copy in a subfolder                  |
 
 Runtime, from `ExtraCodec`: `` two types are saved as `X`: give one of them another name with
-`names:` `` (an `ArgumentError` at construction); with `strict: true`, `a Foo isn't registered in
-the ExtraCodec`.
+`names:` `` (an `ArgumentError` at construction; with `ExtraCodec.of`, since 0.16.0, `` ... with `name:` ``);
+with `strict: true`, `a Foo isn't registered in the ExtraCodec`, and since 0.16.0 the text goes on after a
+semicolon with what to register.
+
+In a **debug** build (since 0.16.0), an `extra` that no entry takes is saved as `null` and one `debugPrint` line
+says so, once per runtime type (a release build prints nothing). A freezed `Note(...)` is a private `_Note`, which
+`ExtraCodec({Note: ...})` never matches (an exact lookup), and it gets this one:
+
+```text
+fespalier: a _Note isn't registered in the ExtraCodec; it is a private class, such as freezed makes for `const factory Note(...) = _Note`; register its public type with `ExtraCodec.of([ExtraType<Note>(...)])` (until then this extra is saved as null, so a reload gives the page null)
+```
+
+A type whose name does not start with `_` gets ``a Foo isn't registered in the ExtraCodec; register it with `ExtraCodec.of([ExtraType<Foo>(toJson: ..., fromJson: ...)])`, or as `Foo` in `ExtraCodec({...})` `` in its place. The fix is
+`ExtraCodec.of` (`fespalier-routing`, `references/typed-routes-and-extra.md`).

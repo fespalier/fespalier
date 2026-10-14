@@ -180,13 +180,25 @@ final extraCodec = ExtraCodec({
 
 `ExtraCodec` takes each type and how it becomes JSON and back (annotate the parameter of `toJson`; a constructor tear-off does for `fromJson`), and saves an object under its type's name. `null`, strings, numbers, booleans and plain JSON lists and maps need no entry.
 
-It never breaks navigation: an object whose type isn't registered is saved as `null`, and saved data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`, so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that checks you registered every type.
+It never breaks navigation: an object whose type isn't registered is saved as `null` (a debug build says so, below), and saved data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`, so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that checks you registered every type.
 
-- The type is looked up by its exact runtime type: register each subclass of a sealed class.
-- The name is `Type.toString()`, which a release build for the web minifies (stable within a build, different in the next). To keep saved data readable across deployments, name the types: `ExtraCodec({...}, names: {Note: 'note'})`.
+- `ExtraCodec({...})` looks the type up by its exact runtime type: register each subclass of a sealed class. **That never matches a class freezed makes** from `const factory Note(...) = _Note`: the object is a private `_Note`, not a `Note`, so a `Note` entry finds nothing and the extra is saved as `null`. Use `ExtraCodec.of` for those (since 0.16.0).
+- The name is `Type.toString()`, which a release build for the web minifies (stable within a build, different in the next). To keep saved data readable across deployments, name the types: `ExtraCodec({...}, names: {Note: 'note'})`, or `ExtraType<Note>(..., name: 'note')`.
 - Write your own `Codec<Object?, Object?>` instead if you like (`const extraCodec = MyCodec();`).
 - `AppRoutes.mount()` doesn't take it: a router you build yourself passes `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what it is given a `restorationScopeId` for (see [State restoration](layouts.md#state-restoration)).
 - `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an error.
+
+**`ExtraCodec.of`** (since 0.16.0) takes a list of `ExtraType<T>` and matches an object with `is T`, **the first one in the order written**, so a freezed class, a sealed family or a class with private subclasses needs one entry, and the most specific type goes first:
+
+```dart
+// lib/app/extra_codec.dart
+final extraCodec = ExtraCodec.of([
+  ExtraType<Note>(toJson: (n) => n.toJson(), fromJson: Note.fromJson), // a freezed `_Note` is a Note
+  ExtraType<Shape>(toJson: (s) => s.toJson(), fromJson: Shape.fromJson, name: 'shape'),
+]);
+```
+
+`toJson`'s parameter is a `T`, so a closure needs no annotation; `name:` is the name in the saved data (default `T.toString()`, minified on the web, as above). With `Shape` before `Circle`, a `Circle` is saved as a `Shape`. Nothing else differs: the same `strict`, the same `null` for what it can't save or read, and two entries with one name are an error. In a debug build, an object that no entry takes prints one line, once per type, that says what to register (a private type such as `_Note` gets the freezed hint), and is still saved as `null`; a release build prints nothing and behaves as before.
 
 ## The root navigator (`navigator.dart`)
 

@@ -5,12 +5,12 @@
 //! fespalier:
 //!   tasks:
 //!     dev:
-//!       before: dart run build_runner build -d
+//!       before: dart run build_runner build
 //!       with:
-//!         build_runner: dart run build_runner watch -d
+//!         build_runner: dart run build_runner watch
 //!       run: flutter run
 //!       env: { API_URL: "http://localhost:8080" }
-//!     codegen: dart run build_runner build -d
+//!     codegen: dart run build_runner build
 //! ```
 //!
 //! A command is a string, which the shell runs (`sh -c` on Unix, `cmd /d /s /c` on Windows), or a
@@ -165,7 +165,7 @@ fn steps(task: &str, key: &str, v: &Value) -> Result<Vec<Cmd>> {
 fn with_map(task: &str, v: &Value) -> Result<Vec<(String, Cmd)>> {
     let Value::Mapping(map) = v else {
         bail!(
-            "`fespalier.tasks.{task}.with` must be a map of names to commands, e.g. `build_runner: dart run build_runner watch -d`, got `{}`",
+            "`fespalier.tasks.{task}.with` must be a map of names to commands, e.g. `build_runner: dart run build_runner watch`, got `{}`",
             shown_value(v)
         );
     };
@@ -307,7 +307,7 @@ impl Tasks {
         };
         let Value::Mapping(map) = v else {
             bail!(
-                "`fespalier.tasks` must be a map of task names to tasks, e.g. `codegen: dart run build_runner build -d`"
+                "`fespalier.tasks` must be a map of task names to tasks, e.g. `codegen: dart run build_runner build`"
             );
         };
         let mut tasks = vec![];

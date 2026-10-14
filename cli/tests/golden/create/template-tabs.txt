@@ -40,12 +40,13 @@ flutter:
 
 # fsp dev reads tasks: from here (docs/cli.md, "Running your app: `fsp dev`").
 # fespalier:
+#   # build_runner deletes lib/app.g.dart when a lib/app.dart exists (docs/cli.md, "The generator"): set output: lib/routes.g.dart first
 #   tasks:
 #     dev:
-#       before: dart run build_runner build -d # one-shot, before flutter run
+#       before: dart run build_runner build # one-shot, before flutter run
 #       with:
-#         build_runner: dart run build_runner watch -d # long-running, next to it
-#     codegen: dart run build_runner build -d # fsp run codegen
+#         build_runner: dart run build_runner watch # long-running, next to it
+#     codegen: dart run build_runner build # fsp run codegen
 
 === lib/main.dart (overwrite)
 import 'package:my_app/app.main.g.dart';

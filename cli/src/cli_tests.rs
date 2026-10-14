@@ -302,7 +302,7 @@ fn init_appends_a_commented_tasks_example_once() {
         "{after_first}"
     );
     assert!(
-        after_first.ends_with("#     codegen: dart run build_runner build -d # fsp run codegen\n")
+        after_first.ends_with("#     codegen: dart run build_runner build # fsp run codegen\n")
     );
     let after = crate::config::Pubspec::load(dir.path()).unwrap();
     assert_eq!(before.name, after.name);

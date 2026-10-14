@@ -193,9 +193,20 @@ jobs:
           # lint.yml already uses for its fix-commit push.
           persist-credentials: false
 
+      # The toolchain cli/rust-toolchain.toml pins, read as ci.yml reads it. The action is pinned to
+      # a commit of its `master` branch: its `stable` branch is regenerated, so a commit pinned there
+      # drops out of the repository's history (zizmor's `impostor-commit`).
+      - name: Read the Rust toolchain
+        id: toolchain
+        if: steps.release.outputs.prs_created == 'true'
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' cli/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
       - name: Install Rust
         if: steps.release.outputs.prs_created == 'true'
-        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # `stable` branch head, 2026-09-19
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
 
       # No dependency cache here, deliberately. zizmor's `cache-poisoning`
       # audit flags a restored cache in a job that also publishes: a poisoned

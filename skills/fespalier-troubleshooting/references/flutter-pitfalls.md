@@ -61,13 +61,13 @@ fespalier's default output, is one of them. `lib/app.dart` is a common name, so 
 afterwards writes the file again, and the next build deletes it again; `fsp watch` does not notice (it ignores its
 own output).
 
-- **Since 0.16.0** `fsp gen`, `check`, `watch` and `dev` warn when the output is `X.g.dart`, `X.dart` is beside it and
+- **Since 0.17.0** `fsp gen`, `check`, `watch` and `dev` warn when the output is `X.g.dart`, `X.dart` is beside it and
   `build_runner` is a dependency (the text: `references/diagnostics-config-and-meta.md`).
 - **The fix is either of two:** `output: lib/routes.g.dart` in the `fespalier:` section of pubspec.yaml (then
   `fsp gen`; the generated `main()` moves with it to `lib/routes.main.g.dart`, and the files for the old name are
   yours to delete), or renaming `lib/app.dart`. Any `.g.dart` with no `.dart` beside it, or a name that is not a
   `.g.dart` at all, is safe.
-- **On 0.15.0 and earlier** nothing warns: look for a `lib/app.dart` (and `lib/app.main.dart`, `lib/app.routes.dart` for
+- **On 0.16.0 and earlier** nothing warns: look for a `lib/app.dart` (and `lib/app.main.dart`, `lib/app.routes.dart` for
   the other outputs) when the file goes missing.
 - **A third way**, when `lib/app.dart` must stay and the output must not move: keep `lib/app.dart` out of the
   combining builder in `build.yaml` (checked with build_runner 2.16.1 and json_serializable 6.14.1), so nothing claims
@@ -93,10 +93,10 @@ own output).
 
 Symptoms: a page that asks for `Note? extra` shows its fallback after a web reload or `restartAndRestore`, though
 `extra_codec.dart` has `Note: (toJson: ..., fromJson: ...)`; the debug console says
-`fespalier: a _Note isn't registered in the ExtraCodec; ...` (0.16.0; before that nothing says anything).
+`fespalier: a _Note isn't registered in the ExtraCodec; ...` (0.17.0; before that nothing says anything).
 
 Cause: freezed's `const factory Note(...) = _Note;` makes `Note(...)` a private `_Note`, and `ExtraCodec({...})`
-finds a type by its **exact** runtime type, so it saves `null`. Use `ExtraCodec.of([ExtraType<Note>(...)])` (0.16.0),
+finds a type by its **exact** runtime type, so it saves `null`. Use `ExtraCodec.of([ExtraType<Note>(...)])` (0.17.0),
 which matches with `is`; see `fespalier-routing`, `references/typed-routes-and-extra.md`. freezed 4's
 primary-constructor form and dart*mappable classes are their own runtime type and were never affected; built_value's
 `*$Note` is not so lucky.

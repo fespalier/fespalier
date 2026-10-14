@@ -1,5 +1,5 @@
 //! The warning that `build_runner` can delete a generated `X.g.dart` that has an `X.dart` beside
-//! it (`build_runner.rs`, since 0.16.0): when it fires, what it says, and that it is a warning
+//! it (`build_runner.rs`, since 0.17.0): when it fires, what it says, and that it is a warning
 //! `gen`, `check` and `watch` show without failing.
 
 use std::fs;

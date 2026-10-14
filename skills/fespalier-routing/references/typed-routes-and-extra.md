@@ -393,7 +393,7 @@ config key). The generated `AppRoutes.router()` passes it as
   saved data that no longer reads (the type was removed, or `fromJson` throws)
   comes back as `null`, so a page falls back to what the URL says. Pass
   `strict: true` to throw instead, in a test that checks you registered every
-  type. Since 0.16.0 a **debug** build also says so, once per type (below); a
+  type. Since 0.17.0 a **debug** build also says so, once per type (below); a
   release build prints nothing.
 - `ExtraCodec({...})` looks the type up by its **exact runtime type**: register
   each subclass of a sealed class. **That never matches a freezed class** (below).
@@ -404,7 +404,7 @@ config key). The generated `AppRoutes.router()` passes it as
 - Write your own `Codec<Object?, Object?>` if you prefer
   (`const extraCodec = MyCodec();`).
 
-### A freezed `extra` restores as `null`: `ExtraCodec.of` (since 0.16.0)
+### A freezed `extra` restores as `null`: `ExtraCodec.of` (since 0.17.0)
 
 With freezed's usual syntax, `const factory Note(...) = _Note;`, an object you
 build with `Note(...)` is a **private `_Note`**, and its `runtimeType` is not
@@ -412,7 +412,7 @@ build with `Note(...)` is a **private `_Note`**, and its `runtimeType` is not
 it as `null` without a word, and the page gets `null` after a web reload or a
 restore. built*value's `*$Note` does the same. freezed 4's primary-constructor
 form (`@freezed class Person({...}) with _$Person;`) and dart_mappable classes
-are their own runtime type and work with the exact lookup. **On 0.15.0 and earlier**
+are their own runtime type and work with the exact lookup. **On 0.16.0 and earlier**
 there is no fix but a codec of your own.
 
 ```dart

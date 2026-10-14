@@ -213,7 +213,9 @@ configuration) and a package that wants an `http.Client` (`fespalier_maps`' `pac
 final httpClient = Provider<http.Client>((ref) => DioHttpClient(ref.watch(dio)));
 ```
 
-The body is streamed (`ResponseType.stream`) and every status is an answer, as `package:http` clients do (a 404 is a response, an interceptor that rejects on a status still can). An `Abortable` request's `abortTrigger` cancels the Dio request (`RequestAbortedException`), any other failure is an `http.ClientException`, a request's `Range` header passes through, and `close()` does nothing: the Dio belongs to the provider that made it.
+The response body is streamed (`ResponseType.stream`) and every status is an answer, as `package:http` clients do (a 404 is a response, an interceptor that rejects on a status still can). An `Abortable` request's `abortTrigger` cancels the Dio request (`RequestAbortedException`), any other failure is an `http.ClientException` (its message names Dio's message or, when Dio has none, the cause an interceptor or an adapter threw: since 0.16.0 `fespalier_dio: unknown: <cause>`, where it was `fespalier_dio: unknown`), a request's `Range` header passes through, and `close()` does nothing: the Dio belongs to the provider that made it.
+
+**A body and a session that sends the request again** (since 0.16.0). A request made of bytes (an `http.Request`, which `get`, `post`, `put`, `patch` and `delete` make) goes to Dio as bytes, so `SessionInterceptor` can send it again whole after a 401 and a refresh, and `WriteGuard` lets that one second send of a write through (the server refused the first before running it). A streamed or multipart request (`StreamedRequest`, `MultipartRequest`) streams its body, which can be read once: `SessionInterceptor` does not send it again, and the caller gets the 401 as a response, after the refresh, so its next attempt works. Before 0.16.0 every body streamed, and a request with a body that got a 401 through a session failed with `ClientException: fespalier_dio: unknown`: the refresh never helped it.
 
 ## The wrapping order
 

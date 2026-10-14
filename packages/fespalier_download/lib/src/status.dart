@@ -23,7 +23,11 @@ enum DownloadFailure {
   /// The request was not valid.
   invalidRequest,
 
-  /// The network failed.
+  /// The network failed. Also what a download ends with when the credentials for it could not be
+  /// asked for because the app's server was not reached (since 0.16.0): a grantor or an
+  /// `HttpCredentials` that throws an `http.ClientException`, as `fespalier_auth`'s
+  /// `AuthUnavailable` does when a token cannot refresh offline. Nothing was refused, so asking
+  /// again with `Downloads.retry` is right.
   network,
 
   /// The server refused: an HTTP error that asking again will not fix.

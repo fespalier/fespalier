@@ -111,8 +111,11 @@ final engine = Downloads(
 ```
 
 It is asked before each start, retry and resume, and **once more after a 401 or 403**: the engine cancels the failed
-attempt (the bytes the backend kept stay) and enqueues again with the new grant. A second 401 or 403, or a grantor that
-throws, ends `Failed(unauthorized)`; a cancel, remove, restart or sign-out meanwhile wins. `HttpDownloadBackend(credentials:)`
+attempt (the bytes the backend kept stay) and enqueues again with the new grant. A resume goes to the address its grant
+names, and each start, retry and resume has its own one renewal (since 0.16.0). A second 401 or 403, or a grantor that
+throws, ends `Failed(unauthorized)`, except a grantor (or an `HttpCredentials`) that throws an `http.ClientException`, such
+as `fespalier_auth`'s `AuthUnavailable` when a token cannot refresh offline: nothing was refused, so that ends
+`Failed(network)` and `retry` goes on (since 0.16.0). A cancel, remove, restart or sign-out meanwhile wins. `HttpDownloadBackend(credentials:)`
 takes any `HttpCredentials` (`fespalier_auth`'s `Authorizer`): each send of the foreground transfer is authorized, and a
 4xx asks `retry` for one re-send, at most three sends. Plain `headers` are stored in plaintext; never put a refresh
 token or a long-lived bearer in a request or a grant, and a DPoP proof cannot be signed per send by a background backend.

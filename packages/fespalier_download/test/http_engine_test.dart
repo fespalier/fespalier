@@ -7,6 +7,7 @@ import 'package:fespalier/testing.dart';
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 
 import 'file_server.dart';
 import 'rig.dart' show defaultBases, loc;
@@ -159,6 +160,70 @@ void main() {
   });
 
   test(
+    'a paused download resumes from the address it is granted then, whatever it was before',
+    () async {
+      // A signed address is good for minutes: only the latest one is, the ones before it expired
+      // while the download was paused.
+      var live = 0;
+      final asked = <bool>[];
+      final signed = _SignedAddresses(
+        server.client,
+        (url) => url.path == '/sig-$live',
+      );
+      final d = Downloads(
+        backend: HttpDownloadBackend(
+          client: signed,
+          bases: defaultBases,
+          files: files,
+        ),
+        store: store,
+        files: TransferDownloadFiles(bases: defaultBases, files: files),
+        grantor: (request, {required renewal}) {
+          asked.add(renewal);
+          return DownloadGrant(
+            url: Uri.parse('https://cdn.example.com/sig-$live'),
+          );
+        },
+      );
+      void holdAtSecondChunk() {
+        server.beforeChunk = (i) =>
+            i == 1 ? Completer<void>().future : Future<void>.value();
+      }
+
+      await d.open();
+      holdAtSecondChunk();
+      await d.start(secret(bytes: 450));
+      await pumpEventQueue();
+      expect(await d.pause(secretId), isTrue);
+      expect(d.statusOf(secretId), isA<Paused>());
+
+      live = 1; // a long pause: the first address has expired
+      holdAtSecondChunk();
+      expect(await d.resume(secretId), isTrue);
+      await pumpEventQueue();
+      expect(
+        signed.seen,
+        ['/sig-0', '/sig-1'],
+        reason:
+            'the resume goes to the address it was granted, not the old one',
+      );
+      expect(await d.pause(secretId), isTrue);
+      expect(d.statusOf(secretId), isA<Paused>());
+
+      live = 2; // and again
+      server.beforeChunk = null;
+      expect(await d.resume(secretId), isTrue);
+      await until(d, secretId, (s) => s is Complete);
+
+      expect(signed.seen, ['/sig-0', '/sig-1', '/sig-2']);
+      expect(asked, [false, false, false], reason: 'no renewal was needed');
+      expect(files.bytesOf(onDisk), body);
+      await d.close();
+    },
+    timeout: const Timeout(Duration(seconds: 10)),
+  );
+
+  test(
     'after a restart the engine finds the download ended, and retry continues it',
     () async {
       final gate = Completer<void>();
@@ -236,4 +301,24 @@ void main() {
       expect(server.requests, isEmpty);
     },
   );
+}
+
+// A client that answers 403 to an address that is not good any more, and passes the others on.
+class _SignedAddresses extends http.BaseClient {
+  _SignedAddresses(this._inner, this._valid);
+
+  final http.Client _inner;
+  final bool Function(Uri url) _valid;
+
+  /// The path of each request, in order.
+  final List<String> seen = [];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    seen.add(request.url.path);
+    if (!_valid(request.url)) {
+      return Future.value(http.StreamedResponse(const Stream.empty(), 403));
+    }
+    return _inner.send(request);
+  }
 }

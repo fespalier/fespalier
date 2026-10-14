@@ -16,7 +16,8 @@ backend.tap('manual-42'); // DownloadTapKind.body
 
 - `emit` and `tap` throw a `StateError` before `open` and after `close`.
 - It records `enqueued` (the requests), `authorizations` (the extra headers of each `enqueue` and `resume`), `paused`,
-  `resumed`, `cancelled`, `cancelAllCalls` and the last `notifications`.
+  `resumed`, `resumeUrls` (the `url:` of each `resume`, null when none; since 0.16.0), `cancelled`, `cancelAllCalls` and the last
+  `notifications`.
 - `accepts: false` makes `enqueue` and `resume` answer false. `capabilities` without `pause` makes `pause` and `resume`
   answer false.
 - `FakeDownloadBackend(replay: {id: status})` reports those statuses to the listener inside `open`, as a backend that kept

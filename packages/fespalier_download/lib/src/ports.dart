@@ -103,9 +103,14 @@ abstract interface class DownloadBackend {
 
   /// Resumes the download [id], with fresh [authorization] headers when it needs them. False
   /// when it cannot be resumed.
+  ///
+  /// [url] is the address the app's grant names for this attempt (since 0.16.0), which replaces
+  /// the one the download was going to; null keeps the backend's own. The bytes already kept
+  /// stay: the attempt goes on from them, to the new address.
   Future<bool> resume(
     String id, {
     Map<String, String> authorization = const {},
+    Uri? url,
   });
 
   /// Stops the download [id] and removes what it kept.

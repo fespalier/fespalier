@@ -14,12 +14,19 @@ import 'package:http/http.dart' as http;
 ///
 /// Behaviour:
 ///
-/// * The body is streamed (`ResponseType.stream`) and every status is an answer, not an
+/// * The response body is streamed (`ResponseType.stream`) and every status is an answer, not an
 ///   exception (`validateStatus: (_) => true`): a 404 or a 500 comes back as a response, as
 ///   `package:http` clients do. An interceptor that rejects on a status still can.
+/// * A request made of bytes (an `http.Request`, which `get`, `post`, `put`, `patch` and `delete`
+///   make) sends its body as bytes, so an interceptor that sends the same request again (a
+///   session refreshing after a 401) can: the body goes out whole a second time. A streamed or
+///   multipart request streams its body, which can be read once, so it cannot be sent again (since
+///   0.16.0; before it, every body streamed and no request with a body could be replayed).
 /// * An `Abortable` request's `abortTrigger` cancels a `CancelToken`, through a side `then` (no
 ///   timer): the request fails with `http.RequestAbortedException`. Any other `DioException` of
-///   type `cancel` is the same; every other failure is an `http.ClientException`.
+///   type `cancel` is the same; every other failure is an `http.ClientException` whose message
+///   names the type and Dio's message or, when it has none, the error an interceptor or adapter
+///   threw (the cause, since 0.16.0).
 /// * [close] does nothing: the Dio belongs to whoever made it (usually a provider that closes it).
 ///
 /// A request's `followRedirects`, `maxRedirects` and `persistentConnection` are passed on; the
@@ -49,11 +56,21 @@ final class DioHttpClient extends http.BaseClient {
 
     final headers = Map<String, Object?>.of(request.headers);
     final length = request.contentLength;
-    final Stream<Uint8List>? body;
+    final Object? body;
     if (length == 0) {
       body = null;
     } else {
-      body = request.finalize().map(Uint8List.fromList);
+      if (request is http.Request) {
+        // A request made of bytes (`get`, `post`, `put`, `patch` and `delete` make one) goes as
+        // bytes: an interceptor that sends the same `RequestOptions` again (a session, after a
+        // 401 and a refresh) sends the whole body again. Finalized, as every client does, so
+        // that the request cannot be sent twice by the caller.
+        request.finalize();
+        body = request.bodyBytes;
+      } else {
+        // A streamed or multipart body can be read once: it is streamed, and cannot be replayed.
+        body = request.finalize().map(Uint8List.fromList);
+      }
       if (length != null) {
         headers.removeWhere((k, _) => k.toLowerCase() == 'content-length');
         headers[Headers.contentLengthHeader] = '$length';
@@ -80,8 +97,11 @@ final class DioHttpClient extends http.BaseClient {
       if (CancelToken.isCancel(error)) {
         throw http.RequestAbortedException(request.url);
       }
+      // What Dio says, or else what an interceptor or an adapter threw (an `unknown` failure
+      // has no message): the cause is the part that tells what went wrong.
+      final reason = error.message ?? error.error;
       throw http.ClientException(
-        'fespalier_dio: ${error.type.name}${error.message == null ? '' : ': ${error.message}'}',
+        'fespalier_dio: ${error.type.name}${reason == null ? '' : ': $reason'}',
         request.url,
       );
     }

@@ -4,7 +4,8 @@ name: Build fsp
 # (fsp-<target>.tar.gz, or .zip for Windows) with its .sha256 as the workflow artifact
 # `fsp-<target>`. A reusable workflow, called by
 #   - release-pins.yml, on the release-please PR: these are the binaries that get pinned,
-#     staged and later attached to the release.
+#     staged and later attached to the release;
+#   - release.yml, on a manual run: a build-only smoke test, nothing is published.
 #
 # No dependency cache on purpose. These binaries are published, and a restored cache is
 # exactly what zizmor's `cache-poisoning` audit flags in a job that feeds a release (the

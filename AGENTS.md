@@ -226,6 +226,12 @@ data(...))`; the others keep `traceData`. A `fespalier_otel` convention is contr
   writes is wrapped in `namedPage('<pattern>', () => ...)`, so **every app's `app.g.dart` changed** in
   0.9.0 (two lines per page builder): never hand-edit them, and a new place that builds a `Page` reads
   `Transitions.pageName`.
+- **A provider that can fail says `retry:`.** Riverpod 3 retries a provider that fails with an `Exception` (a plugin's
+  `PlatformException`, a store's error) after 200 ms, doubling, up to ten times, with a `Timer`: a hidden timer, and a
+  pending one in any widget test whose fake throws. Every `FutureProvider`, `StreamProvider` and async notifier
+  provider declared in a package's `lib/` passes `retry: (_, _) => null` (or its own policy); a sync provider fails only
+  for a programming error (an `Error`), which is never retried. Each such package's `test/no_timers_test.dart` reads
+  `lib/` and fails on a declaration without `retry:`.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`, which reads the READMEs and every `docs/*.md`; if that test fails after your change, you moved or removed an annotation. A docs page that gains or loses an annotated block is added to or removed from `extra-files` in `release-please-config.json`.
   The annotation is for fespalier's own version only: release-please's updater replaces the first

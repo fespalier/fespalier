@@ -41,6 +41,7 @@ Not an `fsp` diagnostic: a `FlutterError` printed once when the app runs. An ada
   started (`launch()` has run by then), or a widget test boots `AppMain.root()` (which runs no `main()`) without calling
   it. Taps then open the app and navigate nowhere, and `pushSource` throws `pushSource: no PushSource`. Fix: call it
   first thing in `main()` (with `main: manual`, before `AppAdapters.zone`), or in the test's `setUp`.
+- `in the stream of notification taps` (a `FlutterError` from library `fespalier_push`, printed once per error): the source's `taps` stream failed, or reading `taps` threw. Since 0.16.0 it can come while the app starts too (`launch()` listens to `taps` until `attach`), and a source that fails there fails once: nothing retries, the package starts no timer. Fix the source (a plugin error on the stream); a tap after `attach` still arrives unless the stream ended.
 - ``fespalier_analytics is listed under `fespalier: adapters:` but was never configured: call FespalierAnalytics.configure(backend) in main() before AppMain.run()`` (since 0.13.0):
   the same cause for `fespalier_analytics`: no `FespalierAnalytics.configure` before `AppMain.run()` (the sink is added to
   telemetry in `beforeRun()`, so a later call installs nothing the first navigation sees). Nothing is recorded until it is called.

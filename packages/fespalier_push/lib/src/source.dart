@@ -20,8 +20,12 @@ abstract class PushSource {
   FutureOr<PushMessage?> initialTap();
 
   /// Taps on a notification while the app runs or sits in the background. Listened to once per
-  /// `ProviderScope`; make it a broadcast stream, so a tap that arrives before the subscription
-  /// does not wait for it (and a rebuilt scope can listen again).
+  /// `ProviderScope`, and (since 0.16.0) once more from `launch()` until the scope's own
+  /// subscription exists: the adapter keeps the latest tap that arrives while the app starts (one,
+  /// not a queue) and opens it after the first frame. Make it a broadcast stream, so a rebuilt
+  /// scope can listen again; and when it is built on a platform channel, return the same stream
+  /// every time (a `late final` field), as for [tokens]: two `receiveBroadcastStream()` of one
+  /// channel replace each other's handler.
   Stream<PushMessage> get taps;
 
   /// Messages delivered while the app is in the foreground. Nothing is shown for them: it is

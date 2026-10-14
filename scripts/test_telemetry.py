@@ -7,7 +7,8 @@
 2. Every attribute and value a query, a collector dimension or fields.json names is in the telemetry
    conventions (packages/fespalier_otel/lib/src/conventions.dart, read by build_dashboards.py).
 3. The OpenObserve and Grafana JSON have the structure each server needs, and the same panels.
-4. compose.yaml pins every image by tag and digest, binds ports to loopback, and agrees with
+4. compose.yaml pins every image by tag and digest (from ghcr.io or mirror.gcr.io, never Docker Hub or
+   ECR Public, whose anonymous pull limits can fail CI), binds ports to loopback, and agrees with
    env.example; `docker compose config` accepts it (skipped without Docker Compose, unless
    FSP_REQUIRE_DOCKER=1, which CI sets: then it fails instead).
 5. The dashboards are plain: questions for titles, a description on every panel, one table of
@@ -640,6 +641,14 @@ class Compose(unittest.TestCase):
         self.assertEqual(4, len(images))
         for image in images:
             self.assertRegex(image, r"^[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$")
+
+    def test_images_come_from_registries_without_an_anonymous_pull_limit(self):
+        # An image with no registry host is Docker Hub's, which limits anonymous pulls, and
+        # public.ecr.aws (Amazon ECR Public) caps anonymous data per address: the telemetry-smoke job
+        # failed on it (`toomanyrequests: Data limit exceeded`).
+        images = re.findall(r"^\s+image: (\S+)$", COMPOSE.read_text(), re.M)
+        for image in images:
+            self.assertIn(image.split("/")[0], {"ghcr.io", "mirror.gcr.io"}, image)
 
     def test_compose_defaults_agree_with_env_example(self):
         text = COMPOSE.read_text()

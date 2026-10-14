@@ -1,6 +1,9 @@
 # fespalier's local telemetry stack (since 0.8.1). Written by `fsp telemetry`: don't edit it, run
 # `fsp telemetry` again. Settings go in .env next to this file (see env.example).
 # Runs as it is too: `docker compose up -d`, and `--profile grafana` for Grafana.
+# Images are pinned by tag and digest. The collector comes from its own registry (ghcr.io), the rest
+# from mirror.gcr.io, Google's mirror of Docker Hub (the same images and digests), so a pull does not
+# count against the anonymous limits of Docker Hub or Amazon ECR Public.
 name: fespalier-telemetry
 
 x-openobserve-credentials: &credentials
@@ -23,7 +26,7 @@ services:
     restart: unless-stopped
 
   openobserve:
-    image: public.ecr.aws/zinclabs/openobserve:v1.0.4@sha256:d4a878fac1f6c56003764f7f2a1625668917388f167e222c8c810de3f54c56ba
+    image: mirror.gcr.io/openobserve/openobserve:v1.0.4@sha256:d4a878fac1f6c56003764f7f2a1625668917388f167e222c8c810de3f54c56ba
     environment:
       ZO_ROOT_USER_EMAIL: ${FSP_O2_EMAIL:-dev@fespalier.local}
       ZO_ROOT_USER_PASSWORD: ${FSP_O2_PASSWORD:-Fespalier-local-1}
@@ -37,7 +40,7 @@ services:
     restart: unless-stopped
 
   dashboards:
-    image: python:3.14.8-alpine3.24@sha256:8acac70227ce3b34da9453120c375cc5b66cd0b062d4dc6bc74286f81a3819e1
+    image: mirror.gcr.io/library/python:3.14.8-alpine3.24@sha256:8acac70227ce3b34da9453120c375cc5b66cd0b062d4dc6bc74286f81a3819e1
     command: ["python3", "/fespalier/import.py"]
     environment:
       <<: *credentials
@@ -52,7 +55,7 @@ services:
 
   grafana:
     profiles: [grafana]
-    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    image: mirror.gcr.io/grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
     environment:
       <<: *credentials
       GF_SECURITY_ADMIN_USER: admin

@@ -1,15 +1,16 @@
 name: Release
 
-# Publishes an fsp release. Nobody starts this by hand: merging the release-please PR makes
-# release-please create the tag `vX.Y.Z` and a DRAFT GitHub Release (release-please.yml), and the
-# tag push starts this workflow.
+# Publishes an fsp release. Nobody starts this by hand in the normal course: merging the
+# release-please PR makes release-please create the tag `vX.Y.Z` and a DRAFT GitHub Release
+# (release-please.yml), and the tag push starts this workflow.
 #
 #   push of a `v*.*.*` tag   guard, then publish
-#   workflow_dispatch        build-only smoke test of the five targets and of the Homebrew and
-#                            Scoop rendering; the archives are kept as workflow artifacts and
-#                            nothing is published (the old `publish` input is gone)
+#   workflow_dispatch        the same guard and publish for a tag that already exists, with the
+#                            staged archives verified against the pins of a named pin commit
+#                            instead of the tag's own: the recovery for a release PR that was
+#                            merged before release-pins had pinned it (see "The manual run")
 #
-# Nothing is built here on a tag. The binaries were built on the release PR by release-pins.yml,
+# Nothing is built here. The binaries were built on the release PR by release-pins.yml,
 # their SHA-256s were committed to that PR (packages/fespalier/lib/src/release_checksums.dart,
 # which `dart run fespalier` verifies its download against), and the archives themselves wait in
 # a staging draft release. Builds are not reproducible, so a rebuild would not match the pins.
@@ -31,41 +32,118 @@ name: Release
 #
 # If this fails the release stays a draft with the tag in place: fix the cause and re-run the
 # failed jobs. See docs/releasing.md.
+#
+# The manual run: a release PR merged before its pins (v0.17.1)
+# -------------------------------------------------------------
+# release-pins.yml pushes `chore: pin fsp X.Y.Z checksums` to the release branch AFTER it has
+# built and staged the binaries, which takes many minutes. A release PR merged in the meantime is
+# tagged WITHOUT its pins: the tag's release_checksums.dart still pins the previous release, so
+# verify-staged.sh's third check can never pass on it, and when the tag's run starts before the
+# binaries are staged, `fetch` finds no staging draft at all. Re-running the failed jobs cannot
+# help once the tag's pins are the wrong ones: the tag is fixed. The pin commit exists, though,
+# on the release branch, for exactly the tagged source, and the staging draft ends up holding
+# exactly the archives it pins. So the manual run takes
+#
+#   tag    the existing tag to publish, `vX.Y.Z`
+#   pins   the full SHA of that release's `chore: pin fsp X.Y.Z checksums` commit
+#
+# and runs the same jobs, with two differences. The guard refuses the run unless the tag exists,
+# the commit is the pin commit of the tag's version, and its cli/ tree equals the tag's (the pins
+# were made for exactly the tagged source). And the staged archives are verified against that
+# commit's release_checksums.dart (verify-staged.sh's PINS_FILE) instead of the tag's; the
+# version and cli/ tree checks against build-info.json stay. The workflow definition comes from
+# the default branch, which the run must be started from; every script it runs is the tag's own.
+# After verification everything is as for a tag push: it publishes the draft Release
+# release-please made for that tag, drops the staging draft and updates Homebrew and Scoop.
+#
+# A package at such a tag carries the previous release's pins, so `dart run fespalier` finds
+# `pinnedVersion` is another version and falls back to the release's `.sha256` file (the comment
+# at the top of release_checksums.dart). Making `Release pins gate` a required check on main
+# prevents all of this (docs/releasing.md).
 
 on:
   push:
     tags: ['v*.*.*']
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The existing tag to publish, vX.Y.Z (its Release must still be a draft)
+        required: true
+        type: string
+      pins:
+        description: "The full SHA of that version's pin commit, subject: chore: pin fsp X.Y.Z checksums"
+        required: true
+        type: string
 
 permissions: {}
 
-# Keyed per ref, never cancelling: a publish interrupted halfway is the one failure that cannot
+# Keyed per tag, never cancelling: a publish interrupted halfway is the one failure that cannot
 # be re-run into a clean state, and under a global key a newer pending run cancels an older
-# pending one (org releasing.md, trap 11).
+# pending one (org releasing.md, trap 11). A manual run shares the key of its tag's push run, so
+# the two queue instead of publishing side by side.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
   cancel-in-progress: false
 
 jobs:
   # A tag names the version every artifact ships as; nothing else compares it with the files.
   guard:
     name: Tag matches every version
-    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+    env:
+      # The manual run's inputs (empty on a tag push), only ever read as environment variables.
+      INPUT_TAG: ${{ inputs.tag }}
+      INPUT_PINS: ${{ inputs.pins }}
+      # contents: read, so it can read the tag and the pin commit
+      GH_TOKEN: ${{ github.token }}
     outputs:
+      tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.guard.outputs.version }}
+      pins: ${{ steps.pins.outputs.pins }}
     steps:
+      # On a tag push, the tag that was pushed. On a manual run, the `tag` input, once it has
+      # the shape of a release tag and exists. The pattern comes before anything is echoed: a
+      # workflow command ends at the newline, and the inputs are free text.
+      - name: Name the tag to release
+        id: tag
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" != workflow_dispatch ]]; then
+            echo "tag=${REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          fail() { echo "::error::$*"; exit 1; }
+          [[ "$REF" == "refs/heads/${DEFAULT_BRANCH}" ]] \
+            || fail "start this workflow from ${DEFAULT_BRANCH}, not from ${REF}: its definition must be the default branch's (the scripts it runs are the tag's)"
+          [[ "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || fail "the 'tag' input must be a release tag such as v1.2.3"
+          [[ "$INPUT_PINS" =~ ^[0-9a-f]{40}$ ]] \
+            || fail "the 'pins' input must be the full 40-character lowercase SHA of a 'chore: pin fsp X.Y.Z checksums' commit"
+          git ls-remote --exit-code --tags "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${INPUT_TAG}" > /dev/null \
+            || fail "${INPUT_TAG} is not a tag of ${GITHUB_REPOSITORY}"
+          echo "manual run: publishing ${INPUT_TAG}, verified against the pin commit ${INPUT_PINS}"
+          echo "tag=${INPUT_TAG}" >> "$GITHUB_OUTPUT"
+
+      # A manual run builds on the tag's own tree: the guard below and every script `publish`
+      # runs are the tag's, and only this workflow file comes from the default branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', steps.tag.outputs.tag) || '' }}
           persist-credentials: false
 
       - name: Tag matches the manifest versions
         id: guard
+        env:
+          TAG_NAME: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/v}"
+          TAG="${TAG_NAME#v}"
           # scripts/read-version.sh tolerates the trailing `# x-release-please-version` on the
           # version lines (an end-anchored sed reads them as EMPTY: how vsms published nothing
           # for v0.3.2) and fails on an empty result. `cargo test --test versions` runs these
@@ -81,6 +159,47 @@ jobs:
           done
           echo "version=${TAG}" >> "$GITHUB_OUTPUT"
 
+      # Manual run only. The pins must be those of this very tag's source: the pin commit of
+      # this version, whose cli/ tree is the tag's cli/ tree (the fsp build reads cli/ and
+      # nothing else, so the archives built from it are the tagged code). verify-staged.sh
+      # checks the rest later: that the staged archives are the ones the commit pins.
+      - name: The pin commit belongs to this tag
+        id: pins
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+          version="${TAG#v}"
+          pins_file=packages/fespalier/lib/src/release_checksums.dart
+          if ! git rev-parse -q --verify "refs/tags/${TAG}^{commit}" > /dev/null; then
+            git fetch --no-tags --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "+refs/tags/${TAG}:refs/tags/${TAG}" \
+              || fail "cannot fetch ${TAG} from ${GITHUB_REPOSITORY}"
+          fi
+          tag_commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          [[ "$(git rev-parse HEAD)" == "$tag_commit" ]] || fail "the checkout is not ${TAG}"
+          # The pin commit may sit on no branch any more (release-please force-pushes the release
+          # branch whenever main moves), so ask for the SHA itself, as a checkout of a SHA does.
+          if ! git cat-file -e "${INPUT_PINS}^{commit}" 2> /dev/null; then
+            git fetch --no-tags --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$INPUT_PINS" \
+              || fail "cannot fetch ${INPUT_PINS} from ${GITHUB_REPOSITORY}: is it the full SHA of the pin commit?"
+          fi
+          git cat-file -e "${INPUT_PINS}^{commit}" 2> /dev/null || fail "${INPUT_PINS} is not a commit of ${GITHUB_REPOSITORY}"
+          subject="$(git log -1 --format=%s "$INPUT_PINS")"
+          [[ "$subject" == "chore: pin fsp ${version} checksums" ]] \
+            || fail "${INPUT_PINS} is '${subject}', not 'chore: pin fsp ${version} checksums': pass the pin commit of ${TAG}"
+          want="$(git rev-parse "${tag_commit}:cli")"
+          have="$(git rev-parse "${INPUT_PINS}:cli")"
+          [[ "$want" == "$have" ]] \
+            || fail "cli/ of the pin commit (tree ${have}) is not cli/ of ${TAG} (tree ${want}): the pins were made for other source than this tag"
+          pinned="$(git show "${INPUT_PINS}:${pins_file}")"
+          grep -qxF "const pinnedVersion = '${version}';" <<< "$pinned" \
+            || fail "${pins_file} in the pin commit does not pin ${version}"
+          own="$(sed -n "s/^const pinnedVersion = '\([^']*\)';.*/\1/p" "$pins_file")"
+          echo "${TAG}'s own ${pins_file} pins '${own}'; the staged archives are verified against ${INPUT_PINS}, whose cli/ tree (${have}) is the tag's"
+          echo "pins=${INPUT_PINS}" >> "$GITHUB_OUTPUT"
+
   publish:
     name: Verify, attach and publish
     needs: guard
@@ -90,7 +209,9 @@ jobs:
       contents: read
     env:
       VERSION: ${{ needs.guard.outputs.version }}
-      TAG: ${{ github.ref_name }}
+      TAG: ${{ needs.guard.outputs.tag }}
+      # the pin commit of a manual run (empty on a tag push)
+      PINS: ${{ needs.guard.outputs.pins }}
     steps:
       - name: Mint a GitHub App token
         id: app-token
@@ -103,9 +224,23 @@ jobs:
           # draft. Without this the token carries every permission the App holds.
           permission-contents: write
 
+      # On a manual run, the tag's own tree, as in the guard: the scripts below are the tag's.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', needs.guard.outputs.tag) || '' }}
           persist-credentials: false
+
+      # Manual run only: the pins to verify against are the pin commit's release_checksums.dart,
+      # which the guard has checked is the pin commit of this tag's version and source.
+      - name: Read the pins from the pin commit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$PINS"
+          git show "${PINS}:packages/fespalier/lib/src/release_checksums.dart" > "${RUNNER_TEMP}/release_checksums.dart"
+          cat "${RUNNER_TEMP}/release_checksums.dart"
 
       - name: Fetch the binaries staged on the release PR
         env:
@@ -114,7 +249,20 @@ jobs:
 
       # Refuses anything that is not the pinned build, before anything is attached.
       - name: Verify the staged archives against the pins in this tag
+        if: github.event_name == 'push'
         run: scripts/verify-staged.sh "$VERSION" staged
+
+      # PINS_FILE is verify-staged.sh's override of the file the third check reads. The tag's
+      # own pins are not looked at: on a tag whose release PR was merged before its pin commit
+      # they are the previous release's. The first two checks (the version and the cli/ tree in
+      # build-info.json against the checked-out tag) are unchanged.
+      - name: Verify the staged archives against the pins in the pin commit (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PINS_FILE: ${{ runner.temp }}/release_checksums.dart
+        run: |
+          echo "manual run: ${TAG}'s archives are verified against the pins in ${PINS}, not against the pins in the tag"
+          scripts/verify-staged.sh "$VERSION" staged
 
       - name: Render the release files from the verified archives
         run: |
@@ -295,40 +443,3 @@ jobs:
             git -C bucket push "https://x-access-token:${TOKEN}@github.com/${REPO}.git" \
               "HEAD:refs/heads/$(git -C bucket symbolic-ref --short HEAD)"
           fi
-
-  # Manual run: build and render only. Nothing is published, nothing is written.
-  build:
-    name: Build fsp (smoke test)
-    if: github.event_name == 'workflow_dispatch'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/build-fsp.yml
-    with:
-      retention-days: 7
-
-  packaging:
-    name: Render Homebrew and Scoop files (smoke test)
-    if: github.event_name == 'workflow_dispatch'
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: fsp-*
-          path: dist
-          merge-multiple: true
-
-      - name: Render
-        run: |
-          set -euo pipefail
-          version="$(scripts/read-version.sh cargo)"
-          python3 scripts/test_packaging.py
-          python3 scripts/packaging.py --version "$version" --dist dist --out packaging
-          cat packaging/fsp.rb packaging/fsp.json

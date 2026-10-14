@@ -4,8 +4,7 @@ name: Build fsp
 # (fsp-<target>.tar.gz, or .zip for Windows) with its .sha256 as the workflow artifact
 # `fsp-<target>`. A reusable workflow, called by
 #   - release-pins.yml, on the release-please PR: these are the binaries that get pinned,
-#     staged and later attached to the release;
-#   - release.yml, on a manual run: a build-only smoke test, nothing is published.
+#     staged and later attached to the release.
 #
 # No dependency cache on purpose. These binaries are published, and a restored cache is
 # exactly what zizmor's `cache-poisoning` audit flags in a job that feeds a release (the
@@ -49,8 +48,18 @@ jobs:
           ref: ${{ inputs.ref }}
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # `stable` branch head, 2026-09-19
+      # The toolchain is pinned once, in cli/rust-toolchain.toml; this reads it from there, as ci.yml
+      # does. The action is pinned to a commit of its `master` branch: its `stable` branch is
+      # regenerated, so a commit pinned there drops out of the repository's history (zizmor's
+      # `impostor-commit`).
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' cli/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
         with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
           targets: ${{ matrix.target }}
 
       - name: Build

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.16.0](https://github.com/fespalier/fespalier/compare/v0.15.0...v0.16.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* replay bodies after a 401 in DioHttpClient, an offline refresh is a network failure, a resume uses its grant ([#184](https://github.com/fespalier/fespalier/issues/184))
+* an adapter with an onEnter method no longer compiles; override the getter instead (docs/adapters.md and the 0.15 to 0.16 migration notes show the change).
+* Flutter 3.35 and Dart 3.9 are the floor ([#180](https://github.com/fespalier/fespalier/issues/180))
+
+### Features
+
+* accessibility checks in fsp test, AppRoutes.urlOf, and an Adapters tab in DevTools ([#179](https://github.com/fespalier/fespalier/issues/179)) ([76d9cde](https://github.com/fespalier/fespalier/commit/76d9cde00bc6802b2f6b42092701cc66d610b034))
+* Flutter 3.35 and Dart 3.9 are the floor ([#180](https://github.com/fespalier/fespalier/issues/180)) ([970d4d1](https://github.com/fespalier/fespalier/commit/970d4d191dd338463ea10c6b81f1f78df35b5216))
+
+
+### Bug Fixes
+
+* a write is never sent twice, for uploads after a 5xx or an unsaved registry and for CrateStack's bare 5xx and drain ([#178](https://github.com/fespalier/fespalier/issues/178)) ([de1ea9d](https://github.com/fespalier/fespalier/commit/de1ea9df61c426c933d8c8bf15a48fe2c234e076))
+* pass go_router's onEnter only when an adapter has one ([#183](https://github.com/fespalier/fespalier/issues/183)) ([c240c34](https://github.com/fespalier/fespalier/commit/c240c341e6addbe7e43e0d2b6354155557d02737))
+* refuse step names that are no Dart enum constant, drop hidden provider retries, keep startup push taps ([#182](https://github.com/fespalier/fespalier/issues/182)) ([526df0b](https://github.com/fespalier/fespalier/commit/526df0bea9ab623b6c06c4156e74b79728f78f39))
+* replay bodies after a 401 in DioHttpClient, an offline refresh is a network failure, a resume uses its grant ([#184](https://github.com/fespalier/fespalier/issues/184)) ([051217f](https://github.com/fespalier/fespalier/commit/051217fc8baa4f1cfdc25f2b42efd0908de8973b))
+
 ## [0.15.0](https://github.com/fespalier/fespalier/compare/v0.14.0...v0.15.0) (2026-10-09)
 
 

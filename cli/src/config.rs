@@ -281,7 +281,7 @@ pub struct Config {
     pub forms_dependency: bool,
     /// `build_runner` is listed under `dependencies` or `dev_dependencies`: what makes a
     /// generated `X.g.dart` next to an `X.dart` a file it deletes (see `build_runner.rs`, since
-    /// 0.16.0). Read from the pubspec, never from `fespalier:`.
+    /// 0.17.0). Read from the pubspec, never from `fespalier:`.
     pub build_runner: bool,
 }
 

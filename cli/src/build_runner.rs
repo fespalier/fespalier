@@ -1,4 +1,4 @@
-//! The one way `build_runner` undoes what `fsp` writes (since 0.16.0).
+//! The one way `build_runner` undoes what `fsp` writes (since 0.17.0).
 //!
 //! `fsp gen` writes `lib/app.g.dart`. `build_runner` declares the outputs of the builders that
 //! write `.g.dart` files (`json_serializable`, `riverpod_generator`, ...) through `source_gen`'s

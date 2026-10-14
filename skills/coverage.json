@@ -675,6 +675,7 @@
         "docs/getting-started.md#go_router 18 and Material",
         "docs/migration.md#Adopting fespalier in a go_router app",
         "docs/migration.md#Upgrading",
+        "docs/migration.md#0.17.0",
         "docs/migration.md#0.16.0",
         "docs/migration.md#0.15.0",
         "docs/migration.md#0.14.0",

@@ -1,6 +1,6 @@
 # Models, collections, validation and results
 
-Since 0.16.0, and only advice: **fespalier depends on none of these packages**, and `fsp` reads none of them
+Since 0.17.0, and only advice: **fespalier depends on none of these packages**, and `fsp` reads none of them
 (it does not know what `@freezed` is). They meet it in six places, and each has one trap:
 
 | Where                              | What it needs from your type                                                                                                                     | The trap                                                                                                                                      |
@@ -28,7 +28,7 @@ Pick by the Dart your app builds with, since the newest releases moved up:
 | any                        | **dart_mappable 4.10.0**: one builder for `==`, `copyWith` and a `Map`/JSON conversion   | `class Order with OrderMappable`; `toMap()` and `OrderMapper.fromMap(map)` are the data, `toJson()` is a String. Its classes are their own runtime type |
 
 - **freezed's two syntaxes are not the same to `ExtraCodec`.** `const factory Note(...) = _Note;` builds a `_Note`
-  (an exact type lookup misses it: `ExtraCodec.of`, since 0.16.0); the primary-constructor form and dart_mappable
+  (an exact type lookup misses it: `ExtraCodec.of`, since 0.17.0); the primary-constructor form and dart_mappable
   classes are their own runtime type.
 - **Equality is why you want one.** freezed, dart_mappable and records have `==` by value, so a `Stream<T>` or a
   reloaded `Future<T>` of equal values wakes nothing up. A hand-written `==` that compares a `List` field with `==`

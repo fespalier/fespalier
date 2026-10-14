@@ -182,13 +182,13 @@ final extraCodec = ExtraCodec({
 
 It never breaks navigation: an object whose type isn't registered is saved as `null` (a debug build says so, below), and saved data that no longer reads (the type was removed, or `fromJson` throws) comes back as `null`, so a page falls back to what the URL says. Pass `strict: true` to throw instead, in a test that checks you registered every type.
 
-- `ExtraCodec({...})` looks the type up by its exact runtime type: register each subclass of a sealed class. **That never matches a class freezed makes** from `const factory Note(...) = _Note`: the object is a private `_Note`, not a `Note`, so a `Note` entry finds nothing and the extra is saved as `null`. Use `ExtraCodec.of` for those (since 0.16.0).
+- `ExtraCodec({...})` looks the type up by its exact runtime type: register each subclass of a sealed class. **That never matches a class freezed makes** from `const factory Note(...) = _Note`: the object is a private `_Note`, not a `Note`, so a `Note` entry finds nothing and the extra is saved as `null`. Use `ExtraCodec.of` for those (since 0.17.0).
 - The name is `Type.toString()`, which a release build for the web minifies (stable within a build, different in the next). To keep saved data readable across deployments, name the types: `ExtraCodec({...}, names: {Note: 'note'})`, or `ExtraType<Note>(..., name: 'note')`.
 - Write your own `Codec<Object?, Object?>` instead if you like (`const extraCodec = MyCodec();`).
 - `AppRoutes.mount()` doesn't take it: a router you build yourself passes `extraCodec: extraCodec` (imported from that file) to `GoRouter`. A router restores only what it is given a `restorationScopeId` for (see [State restoration](layouts.md#state-restoration)).
 - `extra_codec.dart` in a subfolder is a warning, and a file without an `extraCodec` is an error.
 
-**`ExtraCodec.of`** (since 0.16.0) takes a list of `ExtraType<T>` and matches an object with `is T`, **the first one in the order written**, so a freezed class, a sealed family or a class with private subclasses needs one entry, and the most specific type goes first:
+**`ExtraCodec.of`** (since 0.17.0) takes a list of `ExtraType<T>` and matches an object with `is T`, **the first one in the order written**, so a freezed class, a sealed family or a class with private subclasses needs one entry, and the most specific type goes first:
 
 ```dart
 // lib/app/extra_codec.dart

@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.17.2](https://github.com/fespalier/fespalier/compare/v0.17.1...v0.17.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **release:** a manual recovery path for a release PR merged before its pins ([#191](https://github.com/fespalier/fespalier/issues/191)) ([1719c69](https://github.com/fespalier/fespalier/commit/1719c69b64ef0757efbe3a0eb20ee9b8672f335b))
+
+
+### Documentation
+
+* **skills:** the skill samples build again: merged pubspec blocks and the leaving-a-page sample ([#190](https://github.com/fespalier/fespalier/issues/190)) ([a99d132](https://github.com/fespalier/fespalier/commit/a99d132f446f45b68d7cfcf17c202ffd51e7e7cc))
+
+
+### Continuous Integration
+
+* report Markdown lint findings instead of pushing autofixes ([#192](https://github.com/fespalier/fespalier/issues/192)) ([54c8c76](https://github.com/fespalier/fespalier/commit/54c8c76202ee59dc76fe0f5af8bf8eec5e7b441e))
+
 ## [0.17.1](https://github.com/fespalier/fespalier/compare/v0.17.0...v0.17.1) (2026-10-14)
 
 

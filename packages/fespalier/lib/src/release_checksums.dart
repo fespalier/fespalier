@@ -9,18 +9,18 @@
 // or empty.
 
 /// The version [pinnedChecksums] belongs to, or `''` when nothing is pinned.
-const pinnedVersion = '0.17.0';
+const pinnedVersion = '0.17.2';
 
 /// Release target -> SHA-256 of its archive (`fsp-<target>.tar.gz` / `.zip`).
 const pinnedChecksums = <String, String>{
   'aarch64-apple-darwin':
-      '71fb1c7e28542fdc604ed5dcf930514682f22dbc08a35dd4b48a79f45cbd7dbc',
+      'd606bc54eaf0b822b2116acc9ce99733828b02736ef0ed29a45f36d84fae222d',
   'aarch64-unknown-linux-gnu':
-      '94580e116e7884681ae562a6a51f655eb3c86087c1e29a29c0ea04c0c96d2c09',
+      'b3a35045b2f8caefb2d50075cb5ee39d8bdc669ca58f0a2aa9c24ebbc1ba30a6',
   'x86_64-apple-darwin':
-      '5136b321c8446dcf555170aca1b30a2950649494f196463c956af3307d44a65e',
+      '0ad3e31117f8e10cfa33f6236d39f36c85c4f51b3118e9b94a865e9b2053d7f4',
   'x86_64-pc-windows-msvc':
-      '1c14bcc5383d0c957eff94e4d534aefcd04569b049bd3835153db81e21c26196',
+      '27699804320b313e913694987a04d87d2c16c760eae807faf1289c5a4a272b1b',
   'x86_64-unknown-linux-gnu':
-      '42194bbebd8692236e2827c0b87638e570c403cf0f6c67086a4b5df8a6fbaf13',
+      '35b87a484934abe79ed343ddd123bca30dba975c06170550ffb9c00215c82c6e',
 };

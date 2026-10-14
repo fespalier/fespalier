@@ -9,6 +9,7 @@ call in progress. `fsp gen` emits it as the `onExit` of the folder's `GoRoute`, 
 // lib/app/orders/$id/edit/leave.dart
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
+import 'package:my_app/discard_sheet.dart';
 
 /// Asked before /orders/:id/edit goes. True lets it go; false keeps it.
 LeaveResult leave(BuildContext context, Ref ref, {required int id, required PageLeave page}) async {
@@ -18,7 +19,37 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
 }
 ```
 
-`fsp new 'orders/[id]/edit' --leave` writes it.
+`fsp new 'orders/[id]/edit' --leave` writes it. The folder needs its `page.dart` (see "The file" below), and
+`DiscardSheet` is any widget that pops a `bool`:
+
+```dart
+// lib/app/orders/$id/edit/page.dart
+import 'package:flutter/material.dart';
+
+class EditOrderPage extends StatelessWidget {
+  const EditOrderPage({super.key, required this.id});
+
+  final int id;
+
+  @override
+  Widget build(BuildContext context) => Text('edit order $id');
+}
+```
+
+```dart
+// lib/discard_sheet.dart
+import 'package:flutter/material.dart';
+
+class DiscardSheet extends StatelessWidget {
+  const DiscardSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: () => Navigator.pop(context, true),
+    child: const Text('Discard changes'),
+  );
+}
+```
 
 ## The file
 

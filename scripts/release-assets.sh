@@ -11,7 +11,8 @@
 #
 #   stage  DIR            replace the staging draft with the files in DIR:
 #                         fsp-*.tar.gz, fsp-*.zip and build-info.json
-#   fetch  DIR            download every asset of the staging draft into DIR
+#   fetch  DIR            download every asset of the staging draft into DIR (the environment's
+#                         VERSION, when set, only personalises the error for a missing draft)
 #   ensure TAG [WAIT]     print the id of the GitHub Release for TAG (draft or not), waiting up
 #                         to WAIT seconds (default 600) for release-please to create it, and
 #                         creating a draft only if it never appears (a tag pushed by hand)
@@ -132,10 +133,14 @@ cmd_stage() {
 }
 
 cmd_fetch() {
-  local dir="$1" ids id name aid
+  local dir="$1" ids id name aid ver="${VERSION:-X.Y.Z}"
   ids="$(staging_ids)"
   [[ -n "$ids" ]] || {
-    echo "::error::no staging draft '$STAGING_TAG': the release PR's binaries were never staged, or were deleted. Re-run the release-pins workflow on the release PR, or start the release over." >&2
+    # One line, since a workflow command ends at the newline. On a tag, the usual cause is a
+    # release PR merged before release-pins had built, staged and pinned it (v0.17.1): the
+    # tag then carries the previous release's pins, and the pin commit lands on the release
+    # branch afterwards. docs/releasing.md has the recovery.
+    echo "::error::no staging draft '$STAGING_TAG': the binaries were never staged, or were deleted. On a release PR, re-run the release-pins workflow. On a tag, the release PR was probably merged before release-pins had staged and pinned it (the pin commit lands on the release branch after the merge): wait for that run to finish, then run the Release workflow by hand from the default branch (Actions, Release, Run workflow) with tag v${ver} and the full SHA of the pin commit, the first line of: git log origin/release-please--branches--main --grep '^chore: pin fsp ${ver} checksums\$' --format=%H (docs/releasing.md, 'The release PR was merged before its pins'). If no pin commit exists, or the binaries are gone for good, fix forward with the next release." >&2
     return 1
   }
   id="$(head -n 1 <<< "$ids")"

@@ -168,8 +168,8 @@ class ReleaseAssets(unittest.TestCase):
             "GITHUB_UPLOADS_URL": f"{host}/uploads",
         }
 
-    def run_script(self, *args, token="writer", check=True):
-        env = {**self.env, "GH_TOKEN": token}
+    def run_script(self, *args, token="writer", check=True, **extra_env):
+        env = {**self.env, "GH_TOKEN": token, **extra_env}
         p = subprocess.run(["bash", str(SCRIPT), *args], env=env, capture_output=True, text=True, timeout=60)
         if check and p.returncode != 0:
             self.fail(f"{args} exited {p.returncode}\n{p.stdout}\n{p.stderr}")
@@ -216,6 +216,33 @@ class ReleaseAssets(unittest.TestCase):
         p = self.run_script("fetch", str(self.tmp / "out"), check=False)
         self.assertNotEqual(p.returncode, 0)
         self.assertIn("no staging draft", p.stderr)
+
+    def test_the_missing_draft_error_names_the_recovery(self):
+        # v0.17.1: the release PR was merged before release-pins staged and pinned it, so the
+        # tag's run found no draft. The message has to say what to do, in one line (a workflow
+        # command ends at the newline), with the version when the job knows it.
+        p = self.run_script("fetch", str(self.tmp / "out"), check=False, VERSION="1.2.3")
+        self.assertNotEqual(p.returncode, 0)
+        lines = p.stderr.strip().splitlines()
+        self.assertEqual(len(lines), 1, p.stderr)
+        self.assertTrue(lines[0].startswith("::error::"), p.stderr)
+        for part in (
+            "merged before release-pins had staged and pinned it",
+            "wait for that run to finish",
+            "run the Release workflow by hand",
+            "tag v1.2.3",
+            "git log origin/release-please--branches--main --grep '^chore: pin fsp 1.2.3 checksums$'",
+            "docs/releasing.md",
+        ):
+            self.assertIn(part, p.stderr)
+        self.assertNotIn("start the release over", p.stderr)
+
+    def test_the_missing_draft_error_without_a_version_keeps_a_placeholder(self):
+        env = {k: v for k, v in self.env.items() if k != "VERSION"}
+        p = subprocess.run(["bash", str(SCRIPT), "fetch", str(self.tmp / "out")], env=env, capture_output=True, text=True, timeout=60)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("tag vX.Y.Z", p.stderr)
+        self.assertIn("'^chore: pin fsp X.Y.Z checksums$'", p.stderr)
 
     def test_a_token_without_write_access_cannot_see_the_draft(self):
         self.run_script("stage", str(self.dist()))

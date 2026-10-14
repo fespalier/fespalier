@@ -1,6 +1,8 @@
+import 'package:fespalier/fespalier.dart' show ProviderContainer;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'message.dart';
 import 'route.dart';
 import 'source.dart';
 import 'token.dart';
@@ -8,6 +10,38 @@ import 'token.dart';
 /// The message id that cold-started the app, so the same tap seen again on `taps` is dropped
 /// once. Internal: `lib/src` is not exported.
 String? pushColdStartId;
+
+/// The message that cold-started the app, for a source that gives no id: a tap held during startup
+/// with the same payload is that notification again. Internal, like [pushColdStartId].
+PushMessage? pushColdStartMessage;
+
+/// The taps that arrive while the app starts (since 0.16.0). `launch()` runs before `runApp` and
+/// `attach` after the router is shown, and `taps` is a broadcast stream: a tap in between has no
+/// listener. `launch()` listens to `taps` in a private container ([container]) and keeps the
+/// latest one ([held], one and never a queue: the newest replaces the one before); `attach`
+/// subscribes the app's container first, then ends the hold, which disposes the private container
+/// and so its subscription, and opens what was kept. Internal: `lib/src` is not exported.
+final class PushTapHold {
+  /// The private container that holds the subscription; null when no hold is running.
+  ProviderContainer? container;
+
+  /// The latest tap seen since the hold started.
+  PushMessage? held;
+
+  /// Ends the hold: disposes its container (and with it the subscription to `taps`) and answers the
+  /// latest tap it kept, or null.
+  PushMessage? end() {
+    final owned = container;
+    container = null;
+    final tap = held;
+    held = null;
+    owned?.dispose();
+    return tap;
+  }
+}
+
+/// The one hold of the process, started by `PushAdapter.launch` and ended by `attach`.
+final PushTapHold pushTapHold = PushTapHold();
 
 /// What `FespalierPush.configure` stored.
 final class PushConfig {
@@ -50,6 +84,8 @@ abstract final class FespalierPush {
     void Function(PushToken token)? onToken,
     void Function(PushTokenRevoked revoked)? onTokenRevoked,
   }) {
+    // A hold listens to the source it was started for: a new source starts over at launch().
+    pushTapHold.end();
     _config = PushConfig(source, route, onToken, onTokenRevoked);
     _reported = false;
   }
@@ -57,9 +93,11 @@ abstract final class FespalierPush {
   /// Forgets what [configure] stored, for a test that sets up its own.
   @visibleForTesting
   static void debugReset() {
+    pushTapHold.end();
     _config = null;
     _reported = false;
     pushColdStartId = null;
+    pushColdStartMessage = null;
   }
 
   static PushConfig? _config;

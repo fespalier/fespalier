@@ -32,6 +32,7 @@ void main() {
     FakePushSource source, {
     void Function(PushToken)? onToken,
     void Function(PushTokenRevoked)? onTokenRevoked,
+    void Function()? whileStarting,
   }) async {
     push = source;
     addTearDown(push.close);
@@ -42,6 +43,11 @@ void main() {
       onTokenRevoked: onTokenRevoked,
     );
     final launch = await AppAdapters.launch();
+    if (whileStarting != null) {
+      // startup() is running: no router yet, nobody but the adapter on `taps`.
+      whileStarting();
+      await tester.pump();
+    }
     await tester.pumpWidget(
       AppMain.root(
         router: () => AppRoutes.router(
@@ -99,6 +105,62 @@ void main() {
     expect(rec.log, contains(contains('fespalier.push.state=warm')));
     expect(rec.log, contains(contains('fespalier.push.routed=true')));
   });
+
+  testWidgets('a tap while the app starts opens once, after the first frame', (
+    tester,
+  ) async {
+    await boot(
+      tester,
+      FakePushSource(),
+      whileStarting: () =>
+          push.tap(const PushMessage(id: 's1', data: {'link': '/orders/7'})),
+    );
+    expect(find.text('Order 7'), findsOneWidget);
+    expect(here(tester), '/orders/7');
+    expect(
+      rec.log.where((l) => l.contains('start navigate /orders/7')),
+      hasLength(1),
+    );
+    expect(rec.log, contains(contains('fespalier.push.state=warm')));
+  });
+
+  testWidgets('only the latest tap while the app starts opens', (tester) async {
+    await boot(
+      tester,
+      FakePushSource(),
+      whileStarting: () {
+        push
+          ..tap(const PushMessage(id: 's1', data: {'link': '/orders/7'}))
+          ..tap(const PushMessage(id: 's2', data: {'link': '/orders/8'}));
+      },
+    );
+    expect(find.text('Order 8'), findsOneWidget);
+    expect(
+      rec.log.where((l) => l.contains('start navigate /orders/7')),
+      isEmpty,
+    );
+  });
+
+  testWidgets(
+    'the cold-start tap seen again on taps while starting opens once',
+    (tester) async {
+      const cold = PushMessage(id: 'c1', data: {'link': '/orders/42'});
+      await boot(
+        tester,
+        FakePushSource(initial: cold),
+        whileStarting: () => push.tap(cold),
+      );
+      expect(find.text('Order 42'), findsOneWidget);
+      expect(
+        rec.log.where((l) => l.contains('start navigate /orders/42')),
+        hasLength(1),
+      );
+      expect(
+        rec.log.where((l) => l.contains('fespalier.push.state=warm')),
+        isEmpty,
+      );
+    },
+  );
 
   testWidgets('the buttons of the home page are taps through the same path', (
     tester,

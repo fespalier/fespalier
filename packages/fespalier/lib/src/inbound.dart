@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
@@ -72,6 +74,12 @@ final class InboundNavigation {
   final String? source;
 }
 
+/// What an adapter answers for a navigation go_router is about to parse (`FespalierAdapter.onEnter`,
+/// since 0.16.0): null for no say, `Allow(then: ...)` or `Block.then(...)`. Sync stays sync: a
+/// `Future` only if the adapter's own answer is one.
+typedef FespalierEnter =
+    FutureOr<OnEnterResult>? Function(InboundNavigation navigation);
+
 /// Whether this build is the web, overridable by a test.
 @visibleForTesting
 bool? debugInboundWeb;
@@ -86,7 +94,8 @@ bool get inboundIsWeb => debugInboundWeb ?? kIsWeb;
 /// expected to start the router at `launch.location` (`overridePlatformDefaultLocation`), over
 /// the platform's initial route, and the first navigation is marked with `launch.source`.
 ///
-/// With [links] set (an app with telemetry or adapters) every platform link is marked
+/// With [links] set (an app with telemetry, or with an adapter that has an `onEnter`, since
+/// 0.16.0) every platform link is marked
 /// `NavigationSource.link`, launch or not: each one the running app receives, and, without a
 /// launch, a deep link in the platform's initial route (Android hands it over there; iOS delivers
 /// it after the first frame, as a link received while running). Never on the web. [make] runs

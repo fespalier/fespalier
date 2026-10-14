@@ -37,6 +37,11 @@ Future<Account> action(Ref ref, {required SignupFields input}) => ref.read(api).
 - The generated file declares `enum SignupStep { name, company, contact, review }` (a folder `contact_info` is
   `contactInfo`) and the section's handle gets `useFlow`, `flowOf` and `resume` in place of `useForm`
   (`use<Action>Flow`, `<action>FlowOf`, `<action>Resume` for another action).
+- **A step's name is an enum constant, so it must be one** (since 0.16.0; before, `fsp check` passed and the generated
+  file did not compile): not a Dart reserved word (`final`, `new`, `default`, `in`, `class`...), not `values`, `index`,
+  `hashCode`, `toString`, `runtimeType` or `noSuchMethod`, not starting with a digit (`2fa`), and no two folders that
+  become the same constant (`contact_info` and `contact-info`). `fsp check` names the step and a name that works
+  (`final_step`, `step_2fa`); rename the folder and its key in `steps`. `get`, `static`, `await` and `name` are fine.
 - **Not supported:** a path with a dynamic segment above the flow, a localized path (`route.dart` `paths`), a flow
   inside a flow, a `form()` that takes a value. Each is an `fsp` error (`fespalier-troubleshooting`,
   `diagnostics-data-and-hooks.md`, "Multi-page forms").

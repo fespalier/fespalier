@@ -51,6 +51,10 @@ final biometricPrompt = Provider<BiometricPrompt>(
 
 /// Whether the device can ask now (since 0.13.0): for an unlock page that offers "Use your passcode"
 /// instead of a button that cannot work.
+///
+/// A prompt that throws is an `AsyncError`, read once: no retry, which would be a `Timer` (since
+/// 0.16.0; Riverpod's default re-asked the plugin up to ten times). `ref.invalidate` asks again.
 final biometricAvailable = FutureProvider.autoDispose<bool>(
   (ref) => ref.watch(biometricPrompt).isAvailable(),
+  retry: (_, _) => null,
 );

@@ -21,6 +21,7 @@ class _Recording extends FespalierAdapter {
     this.provider,
     this.launchAnswer,
     this.enter,
+    this.handles = true,
   });
 
   final String name;
@@ -31,6 +32,7 @@ class _Recording extends FespalierAdapter {
   final Provider<String>? provider;
   final FutureOr<InboundLaunch?> Function()? launchAnswer;
   final FutureOr<OnEnterResult>? Function(InboundNavigation)? enter;
+  final bool handles;
 
   @override
   FutureOr<InboundLaunch?> launch() {
@@ -39,10 +41,12 @@ class _Recording extends FespalierAdapter {
   }
 
   @override
-  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
-    log.add('$name onEnter');
-    return enter?.call(navigation);
-  }
+  FespalierEnter? get onEnter => handles
+      ? (navigation) {
+          log.add('$name onEnter');
+          return enter?.call(navigation);
+        }
+      : null;
 
   @override
   Future<void> zone(Future<void> Function() body) async {
@@ -360,6 +364,55 @@ void main() {
     });
   });
 
+  group('handlesEnter (since 0.16.0)', () {
+    test('an adapter has no onEnter unless it gives one', () {
+      expect(const _Plain().onEnter, isNull);
+    });
+
+    test('none of the adapters: false, so go_router gets no onEnter', () {
+      expect(FespalierAdapters(const []).handlesEnter, isFalse);
+      expect(
+        FespalierAdapters(const [_Plain(), _Plain()]).handlesEnter,
+        isFalse,
+      );
+      expect(
+        FespalierAdapters([_Recording('a', handles: false)]).handlesEnter,
+        isFalse,
+      );
+    });
+
+    test('one is enough, wherever it is', () {
+      expect(
+        FespalierAdapters([const _Plain(), _Recording('b')]).handlesEnter,
+        isTrue,
+      );
+      expect(
+        FespalierAdapters([_Recording('a'), const _Plain()]).handlesEnter,
+        isTrue,
+      );
+    });
+
+    test('asking it calls no onEnter', () {
+      final all = FespalierAdapters([_Recording('a')]);
+      expect(all.handlesEnter, isTrue);
+      expect(log, isEmpty);
+    });
+
+    test('a getter that throws is reported and counts as none', () {
+      final errors = <FlutterErrorDetails>[];
+      final old = FlutterError.onError;
+      FlutterError.onError = errors.add;
+      addTearDown(() => FlutterError.onError = old);
+      final all = FespalierAdapters([_Throwing(), _Recording('b')]);
+      expect(all.handlesEnter, isTrue);
+      expect(errors, hasLength(1));
+      expect(errors.single.exception.toString(), contains('no getter for you'));
+      // Read once: asking again reports nothing more.
+      expect(all.handlesEnter, isTrue);
+      expect(errors, hasLength(1));
+    });
+  });
+
   group('onEnter', () {
     /// A router, and `onEnter` of [adapters] applied to the state it shows.
     Future<Enter> enterWith(
@@ -388,6 +441,31 @@ void main() {
       expect(result, isA<Allow>());
       expect((result as Allow).then, isNull);
       expect(log, ['a onEnter', 'b onEnter']);
+    });
+
+    testWidgets('only the adapters that handle onEnter are asked', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [
+        _Recording('a', handles: false, enter: (_) => const Block.stop()),
+        _Recording('b', enter: (_) => Allow(then: () => log.add('then b'))),
+        _Recording('c', handles: false, enter: (_) => const Block.stop()),
+      ]);
+      final result = enter();
+      expect(result, isA<Allow>());
+      expect(log, ['b onEnter']);
+    });
+
+    testWidgets('no adapter handles it: nobody is asked, a plain Allow', (
+      tester,
+    ) async {
+      final enter = await enterWith(tester, [
+        _Recording('a', handles: false, enter: (_) => const Block.stop()),
+      ]);
+      final result = enter();
+      expect(result, isA<Allow>());
+      expect((result as Allow).then, isNull);
+      expect(log, isEmpty);
     });
 
     testWidgets('the first Block wins, and the later adapters are not asked', (
@@ -489,6 +567,11 @@ void main() {
 
 class _Plain extends FespalierAdapter {
   const _Plain();
+}
+
+class _Throwing extends FespalierAdapter {
+  @override
+  FespalierEnter? get onEnter => throw StateError('no getter for you');
 }
 
 void _noop() {}

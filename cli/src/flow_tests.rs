@@ -500,3 +500,187 @@ fn a_flow_leave_can_read_the_uri() {
         ],
     );
 }
+
+// ---- a step name that is no enum constant (since 0.16.0) ----
+
+/// The signup section with one more step folder, `folder`, whose page class is `class`.
+fn with_step(folder: &str, class: &str) -> Vec<(String, String)> {
+    let steps = format!(
+        "const steps = {{'name': ['name', 'business', 'company', 'email', 'phone'], '{folder}': <String>[]}};\n"
+    );
+    let mut files = signup(&action_file(&[FIELDS, FORM, &steps, ACTION]), &[]);
+    files.push((
+        format!("signup/{folder}/page.dart"),
+        format!("class {class} extends StatelessWidget {{ const {class}({{super.key}}); }}"),
+    ));
+    files
+}
+
+#[test]
+fn a_step_named_with_a_dart_reserved_word_is_refused() {
+    for word in [
+        "final", "new", "default", "in", "is", "class", "if", "continue", "null", "true", "var",
+        "this", "super", "switch", "with",
+    ] {
+        let e = error(&with_step(word, "SignupExtraPage"));
+        assert!(e.starts_with("✗ signup/action.dart:"), "{e}");
+        assert!(
+            e.ends_with(&format!(
+                "  `'{word}'` can't be a step: it becomes the constant `{word}` of `SignupStep`, and `{word}` is a Dart reserved word; rename the folder and its key in `steps`, e.g. `'{word}_step'`"
+            )),
+            "{e}"
+        );
+    }
+}
+
+#[test]
+fn a_reserved_word_is_found_after_the_name_becomes_lower_camel_case() {
+    // `Final` and `FINAL` are `final` once written as a constant.
+    for folder in ["Final", "FINAL"] {
+        let e = error(&with_step(folder, "SignupExtraPage"));
+        assert!(
+            e.ends_with(&format!(
+                "  `'{folder}'` can't be a step: it becomes the constant `final` of `SignupStep`, and `final` is a Dart reserved word; rename the folder and its key in `steps`, e.g. `'final_step'`"
+            )),
+            "{e}"
+        );
+    }
+}
+
+#[test]
+fn a_step_named_like_a_member_every_enum_has_is_refused() {
+    for member in [
+        "values",
+        "index",
+        "hashCode",
+        "toString",
+        "runtimeType",
+        "noSuchMethod",
+    ] {
+        let e = error(&with_step(member, "SignupExtraPage"));
+        assert!(
+            e.ends_with(&format!(
+                "  `'{member}'` can't be a step: it becomes the constant `{member}` of `SignupStep`, and an enum already has a member called `{member}`; rename the folder and its key in `steps`, e.g. `'{member}_step'`"
+            )),
+            "{e}"
+        );
+    }
+}
+
+#[test]
+fn a_step_that_starts_with_a_digit_is_refused() {
+    let e = error(&with_step("2fa", "SignupTwoFaPage"));
+    assert!(e.starts_with("✗ signup/action.dart:"), "{e}");
+    assert!(
+        e.ends_with("  `'2fa'` can't be a step: it becomes the constant `2fa` of `SignupStep`, and `2fa` starts with a digit, so it is not a Dart identifier; rename the folder and its key in `steps`, e.g. `'step_2fa'`"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_step_with_no_letter_or_digit_is_refused() {
+    let e = error(&with_step("-", "SignupDashPage"));
+    assert!(
+        e.ends_with("  `'-'` can't be a step: it has no letter or digit to name the constant of `SignupStep` after; rename the folder and its key in `steps`, e.g. `'step'`"),
+        "{e}"
+    );
+}
+
+/// The rule is the analyzer's: every word it refuses as an enum constant is refused here, and
+/// no other is. Without `dart` (or `FSP_DART`) on the `PATH` there is nothing to ask: skip.
+#[test]
+fn step_constants_follow_the_dart_analyzer() {
+    const WORDS: &str = "assert break case catch class const continue default do else enum extends false final \
+        finally for if in is new null rethrow return super switch this throw true try var void while with \
+        abstract as base covariant deferred dynamic export extension external factory Function get hide \
+        implements import interface late library mixin of on operator part required sealed set show static \
+        sync typedef when async await yield inline type record pattern name value data step \
+        values index hashCode toString runtimeType noSuchMethod finalStep first last length";
+    let words: Vec<&str> = WORDS.split_whitespace().collect();
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("pubspec.yaml"), "name: probe\n").unwrap();
+    for word in &words {
+        let body = format!("enum E {{ a, {word}; }}\nObject use() => E.{word};\n");
+        std::fs::write(dir.path().join(format!("w_{word}.dart")), body).unwrap();
+    }
+    let dart = std::env::var("FSP_DART").unwrap_or_else(|_| "dart".into());
+    let Ok(out) = std::process::Command::new(dart)
+        .args(["analyze", "--format=machine"])
+        .arg(dir.path())
+        .output()
+    else {
+        return;
+    };
+    let report =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    for word in &words {
+        let refused = report.contains(&format!("w_{word}.dart|"));
+        let ours = crate::resolve::step_constant_fault(word, "E").is_some();
+        assert_eq!(
+            refused,
+            ours,
+            "`{word}`: the analyzer {} it as an enum constant, fsp {}\n{report}",
+            if refused { "refuses" } else { "accepts" },
+            if ours { "refuses" } else { "accepts" },
+        );
+    }
+}
+
+#[test]
+fn every_step_with_a_bad_name_is_reported() {
+    let steps = "const steps = {'name': ['name', 'business', 'company', 'email', 'phone'], 'final': <String>[], 'new': <String>[]};\n";
+    let mut files = signup(&action_file(&[FIELDS, FORM, steps, ACTION]), &[]);
+    files.push(step_page("final"));
+    files.push(step_page("new"));
+    let e = errors(&refs(&files));
+    assert_eq!(e.lines().count(), 2, "{e}");
+    assert!(e.contains("`'final'` can't be a step"), "{e}");
+    assert!(e.contains("`'new'` can't be a step"), "{e}");
+}
+
+#[test]
+fn a_step_name_the_dart_grammar_allows_is_a_constant() {
+    // Built-in and contextual words are fine as an enum constant; so is `name`.
+    let page = |class: &str| {
+        format!("class {class} extends StatelessWidget {{ const {class}({{super.key}}); }}")
+    };
+    let steps = "const steps = {'name': ['name', 'business', 'company', 'email', 'phone'], 'get': <String>[], 'static': <String>[], 'await': <String>[], 'final_step': <String>[], 'in-person': <String>[]};\n";
+    let mut files = signup(&action_file(&[FIELDS, FORM, steps, ACTION]), &[]);
+    for (folder, class) in [
+        ("get", "SignupGetPage"),
+        ("static", "SignupStaticPage"),
+        ("await", "SignupAwaitPage"),
+        ("final_step", "SignupFinalStepPage"),
+        ("in-person", "SignupInPersonPage"),
+    ] {
+        files.push((format!("signup/{folder}/page.dart"), page(class)));
+    }
+    let c = code(&refs(&files));
+    has(
+        &c,
+        &[
+            "  /// `get/page.dart`\n  get,\n",
+            "  /// `static/page.dart`\n  static,\n",
+            "  /// `await/page.dart`\n  await,\n",
+            "  /// `final_step/page.dart`\n  finalStep,\n",
+            "  /// `in-person/page.dart`\n  inPerson;\n",
+        ],
+    );
+}
+
+#[test]
+fn two_steps_cannot_become_the_same_constant() {
+    // Folders that differ only in their separators are one constant (and one route class name).
+    let steps = "const steps = {'name': ['name', 'business', 'company', 'email', 'phone'], 'contact_info': <String>[], 'contact-info': <String>[]};\n";
+    let mut files = signup(&action_file(&[FIELDS, FORM, steps, ACTION]), &[]);
+    files.push(step_page_in("signup", "contact_info"));
+    files.push((
+        "signup/contact-info/page.dart".into(),
+        "class SignupContactInfoDashPage extends StatelessWidget { const SignupContactInfoDashPage({super.key}); }".into(),
+    ));
+    let e = errors(&refs(&files));
+    assert!(
+        e.contains("`'contact_info'` and `'contact-info'` both become the constant `contactInfo` of `SignupStep`: rename one of the folders and its key in `steps`"),
+        "{e}"
+    );
+}

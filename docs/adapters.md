@@ -44,10 +44,40 @@ adds nothing, so an adapter overrides what it needs:
 | `wrap(root)`                | Around the root widget, outside the `ProviderScope` and the splash too                                         | `SentryWidget`, `PostHogWidget`                                                                                                                    |
 | `attach(router, container)` | Once per router (since 0.11.0), after the first frame that shows the router (the app's `ProviderScope` exists) | Subscribing to something that outlives a screen (a notification tap, a shortcut) with `container.listen`. Do not navigate synchronously            |
 | `launch()`                  | Once, after `beforeRun()`, before the router is built (since 0.11.0); never on the web                         | Where the app was opened from: a notification tap that cold-started it, a shortcut. Return `null` when this adapter did not; the first answer wins |
-| `onEnter(navigation)`       | For every navigation go_router parses, the first one included (since 0.11.0)                                   | Rewriting a custom-scheme link, a push payload link. `null` for no say, `Allow(then:)` or `Block.then(...)`; never block `navigation.initial`      |
+| `onEnter` (a getter)        | For every navigation go_router parses, the first one included (since 0.11.0; a getter since 0.16.0)            | Rewriting a custom-scheme link. Return a function: `null` for no say, `Allow(then:)` or `Block.then(...)`; never block `navigation.initial`        |
 
 Write adapters with `extends FespalierAdapter`, never `implements`: a member added later (`attach` is
 one, since 0.11.0) has a default for a subclass and breaks a class that implements all of them.
+
+**`onEnter` is a getter that answers a function (since 0.16.0).** An adapter that has something to say about a
+navigation overrides the `onEnter` getter and returns a `FespalierEnter`, a function of the `InboundNavigation`; every
+other adapter keeps the default, `null`:
+
+```dart
+class LinkRewriter extends FespalierAdapter {
+  const LinkRewriter();
+
+  @override
+  FespalierEnter? get onEnter => (navigation) {
+    if (navigation.next.uri.scheme != 'vaam') return null;
+    return Block.then(() => navigation.router.go('/orders/42'));
+  };
+}
+```
+
+It is a getter, and not the method it was in 0.11.0 to 0.15.0, so that the choice cannot be missed. Any `onEnter` makes
+go_router parse every navigation asynchronously, so `AppRoutes.router` passes one only when some adapter's getter is not
+null (`AppAdapters.handlesEnter`), and `fsp` cannot tell which adapters have one (the output is a function of the
+pubspec alone). With a method, an adapter that forgot the opt-in would be skipped without a word. With a getter, an
+adapter written for 0.15 that still defines `onEnter(InboundNavigation navigation) { ... }` **does not compile**:
+`Class 'LinkRewriter' can't define method 'onEnter' and have field 'FespalierAdapter.onEnter' with the same name.` Change the
+method to the getter above (the migration notes have a before and after). The getter is read once, when the router is
+built, and only the adapters whose getter is not null are asked, in the pubspec's order.
+
+An app whose adapters have no `onEnter` keeps go_router's synchronous parsing: `router.go('/a'); router.push('/b');` in
+one handler ends with `/a > /b`. With an adapter that has one it ends with `/b` pushed on the location from before the
+`go` (the `go` is lost) and `currentConfiguration` lags until the next frame, so write an `onEnter` only when
+`launch()`, `attach()` and a `listen` cannot do the job. No first-party adapter has one.
 
 **Order and rules.** The first package in the list is the outermost: its zone and its wrapper go around
 the others'.
@@ -80,16 +110,19 @@ abstract final class AppAdapters {
   static List<ProviderObserver> providerObservers() => _all.providerObservers();
   static List<NavigatorObserver> routerObservers() => _all.routerObservers();
   static Widget wrap(Widget root) => _all.wrap(root);
+  static bool get handlesEnter => _all.handlesEnter; // any adapter's onEnter is not null, since 0.16.0
 }
 
 // AppRoutes.attach(router, [container]) also runs each adapter's attach(router, container)
 // AppRoutes.onEnter(context, current, next, router) forwards to _all.onEnter (since 0.11.0), and
-// AppRoutes.router(launch:, ...) passes it to GoRouter(onEnter:)
+// AppRoutes.router(launch:, ...) passes GoRouter(onEnter: AppAdapters.handlesEnter ? onEnter : null)
 ```
 
 `AppRoutes.router` takes `launch:` (an `InboundLaunch`), with or without adapters, and `AppRoutes.onEnter` exists only
-with adapters: without them go_router keeps its simplest code path, and with them every navigation is parsed
-asynchronously and counts against go_router's redirect limit (any `onEnter` does that). See
+with adapters. go_router gets it **only when an adapter has an `onEnter`** (`AppAdapters.handlesEnter`, since 0.16.0;
+before, any `adapters:` entry passed it): any `onEnter` makes go_router parse every navigation asynchronously and count against its
+redirect limit, so without one go_router keeps its simplest code path, as in an app without adapters. An app that builds
+a `GoRouter` of its own passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null`. See
 [Opening the app](navigation.md#opening-the-app-launches-and-platform-links).
 
 `FespalierAdapters` (in `package:fespalier/startup.dart`) holds the order, so it is Dart that is tested, not
@@ -145,8 +178,9 @@ router exists: [`ready()` and `attach()`](app-startup.md).
 
 **`launch` and `onEnter` (since 0.11.0).** `FespalierAdapters.launch()` asks every adapter once, in order, and the
 first non-null answer (an `InboundLaunch`) wins; it is `null` on the web and sync unless an adapter answers with a
-`Future`. `FespalierAdapters.onEnter` (what the generated `AppRoutes.onEnter` forwards to) composes the adapters'
-answers: the first `Block` wins, the `Allow.then` callbacks run in order as one, and no say is `Allow()`. Blocking
+`Future`. `FespalierAdapters.onEnter` (what the generated `AppRoutes.onEnter` forwards to) composes the answers of the adapters
+whose `onEnter` getter is not null (since 0.16.0; `FespalierAdapters.handlesEnter` is true when any is, the others are not
+asked): the first `Block` wins, the `Allow.then` callbacks run in order as one, and no say is `Allow()`. Blocking
 the initial navigation is refused: it is allowed, reported with `FlutterError.reportError` in every mode, and the block's `then` still runs; answer `launch()` instead. `InboundNavigation.initial` is true when go_router has no route yet (it hands the same state as current and next). A `Block.then` for a platform link keeps the link's mark: the `go` inside it is reported with `source=link`. See
 [Opening the app](navigation.md#opening-the-app-launches-and-platform-links).
 

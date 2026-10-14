@@ -39,7 +39,7 @@ dependencies:
 | `requireUnlocked(ref, uri, unlock:, maxAge:)`      | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
 | `withBiometrics(ref, reason, action, maxAge:)`     | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
 | `biometricPolicy`, `BiometricPolicy(resumeGrace:)` | When the app relocks on a return from the background. Default: 10 seconds or more after the unlock; `Duration.zero` is every return                                                                              |
-| `biometricAvailable`                               | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work)                                                                                                            |
+| `biometricAvailable`                               | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                     |
 | `FakeBiometricPrompt`, `biometricTestOverrides`    | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
 
 ## The starter

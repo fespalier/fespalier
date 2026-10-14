@@ -222,10 +222,16 @@ data(...))`; the others keep `traceData`. A `fespalier_otel` convention is contr
   the pub cache or `pub get`, so `fsp check` is the same before and after. Since 0.11.0 the calls go through
   `AppAdapters`, which `app.g.dart` defines (a `FespalierAdapters` from `packages/fespalier/lib/src/adapters.dart`
   holds the order), whatever `main:` says, so `main: manual` apps call it from their own `main()`, and
-  `AppRoutes.attach(router, container)` runs each adapter's `attach` once per router. `AppRoutes.router(launch:)` builds the router inside `launchRouter` (`links: true` with telemetry or adapters; the generated main passes it `AppAdapters.launch()`'s answer), and `AppRoutes.onEnter` exists **only with adapters**: any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit, so an app without adapters keeps go_router's simplest code path (**every app's `app.g.dart` changed** in 0.11.0 for the `launchRouter` wrapper). Each page builder the generator
+  `AppRoutes.attach(router, container)` runs each adapter's `attach` once per router. `AppRoutes.router(launch:)` builds the router inside `launchRouter` (`links: true` with telemetry, `links: AppAdapters.handlesEnter` with adapters alone; the generated main passes it `AppAdapters.launch()`'s answer), and `AppRoutes.onEnter` exists **only with adapters** and is **passed to go_router only when an adapter has an `onEnter`** (`FespalierAdapter.onEnter` is a nullable getter that answers a `FespalierEnter` since 0.16.0, null by default, so a 0.15 adapter with an `onEnter` method fails to compile instead of being skipped: `onEnter: AppAdapters.handlesEnter ? onEnter : null`, and `FespalierAdapters.onEnter` asks only the adapters whose getter is not null): any `onEnter` makes go_router parse every navigation asynchronously and apply its redirect limit (a `go()` then a `push()` in one handler loses the `go()`), so an app whose adapters leave it alone keeps go_router's simplest code path (**every app's `app.g.dart` changed** in 0.11.0 for the `launchRouter` wrapper). Never pass `onEnter` unconditionally. Each page builder the generator
   writes is wrapped in `namedPage('<pattern>', () => ...)`, so **every app's `app.g.dart` changed** in
   0.9.0 (two lines per page builder): never hand-edit them, and a new place that builds a `Page` reads
   `Transitions.pageName`.
+- **A provider that can fail says `retry:`.** Riverpod 3 retries a provider that fails with an `Exception` (a plugin's
+  `PlatformException`, a store's error) after 200 ms, doubling, up to ten times, with a `Timer`: a hidden timer, and a
+  pending one in any widget test whose fake throws. Every `FutureProvider`, `StreamProvider` and async notifier
+  provider declared in a package's `lib/` passes `retry: (_, _) => null` (or its own policy); a sync provider fails only
+  for a programming error (an `Error`), which is never retried. Each such package's `test/no_timers_test.dart` reads
+  `lib/` and fails on a declaration without `retry:`.
 - Every place that spells out the release version is annotated for release-please and checked by
   `cli/tests/versions.rs`, which reads the READMEs and every `docs/*.md`; if that test fails after your change, you moved or removed an annotation. A docs page that gains or loses an annotated block is added to or removed from `extra-files` in `release-please-config.json`.
   The annotation is for fespalier's own version only: release-please's updater replaces the first

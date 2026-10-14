@@ -64,6 +64,111 @@ void main() {
     expect(options.headers['x-a'], 'b');
   });
 
+  group('a body and a session that sends the request again', () {
+    // What SessionInterceptor does after a 401 and a refresh: the same RequestOptions go through
+    // the Dio once more, marked as the replay.
+    Dio replayingDio(FakeAdapter adapter) {
+      final dio = dioOver(adapter);
+      dio.interceptors.add(_ReplayOn401(dio));
+      return dio;
+    }
+
+    test('a POST with a body is sent again whole after a 401', () async {
+      final adapter = FakeAdapter.sequence([
+        () => emptyAnswer(401),
+        () => ResponseBody.fromString('ok', 200),
+      ]);
+      final client = DioHttpClient(replayingDio(adapter));
+      final response = await client.post(url, body: 'hello');
+      expect(response.statusCode, 200);
+      expect(response.body, 'ok');
+      expect(adapter.sent, 2);
+      expect(adapter.bodies, [utf8.encode('hello'), utf8.encode('hello')]);
+    });
+
+    test(
+      'a plain request reaches Dio as bytes, a streamed one as a stream',
+      () async {
+        final adapter = FakeAdapter((options, _) async => emptyAnswer(200));
+        final client = DioHttpClient(dioOver(adapter));
+        await client.post(url, body: 'plain');
+        final streamed = http.StreamedRequest('POST', url)
+          ..sink.add(utf8.encode('streamed'));
+        unawaited(streamed.sink.close());
+        await client.send(streamed);
+        expect(adapter.requests[0].data, isA<Uint8List>());
+        expect(adapter.requests[1].data, isA<Stream<Uint8List>>());
+        expect(adapter.bodies, [utf8.encode('plain'), utf8.encode('streamed')]);
+      },
+    );
+
+    test('Content-Length is the length of the bytes', () async {
+      final adapter = FakeAdapter((options, _) async => emptyAnswer(200));
+      final client = DioHttpClient(dioOver(adapter));
+      await client.post(url, body: 'héllo');
+      expect(adapter.requests.single.headers['content-length'], '6');
+    });
+
+    test('a write whose 401 is replayed is sent twice, and no more', () async {
+      final adapter = FakeAdapter((options, _) async => emptyAnswer(401));
+      final dio = replayingDio(adapter);
+      WriteGuard.install(dio);
+      final response = await DioHttpClient(dio).put(url, body: 'x');
+      // The replay is the documented exception to "a write is never sent again": the server
+      // refused the first send before running it. The second 401 is the answer.
+      expect(response.statusCode, 401);
+      expect(adapter.sent, 2);
+      expect(adapter.bodies, [utf8.encode('x'), utf8.encode('x')]);
+    });
+
+    test(
+      'a write that fails after a 401 replay is not sent a third time',
+      () async {
+        final adapter = FakeAdapter((options, _) async {
+          if (options.extra['replayed'] == true) {
+            throw DioException(
+              requestOptions: options,
+              type: DioExceptionType.connectionError,
+            );
+          }
+          return emptyAnswer(401);
+        });
+        final dio = replayingDio(adapter);
+        dio.interceptors.add(
+          RetryInterceptor(
+            dio: dio,
+            retries: 3,
+            retryDelays: const [Duration.zero],
+          ),
+        );
+        WriteGuard.install(dio);
+        await expectLater(
+          DioHttpClient(dio).post(url, body: 'x'),
+          throwsA(isA<http.ClientException>()),
+        );
+        expect(adapter.sent, 2);
+      },
+    );
+  });
+
+  test(
+    'a failure that is not a DioException keeps its cause in the message',
+    () async {
+      final adapter = FakeAdapter(
+        (options, _) async => throw StateError('boom'),
+      );
+      final client = DioHttpClient(dioOver(adapter));
+      try {
+        await client.get(url);
+        fail('should throw');
+      } on http.ClientException catch (error) {
+        expect(error.uri, url);
+        expect(error.message, startsWith('fespalier_dio: unknown: '));
+        expect(error.message, contains('boom'));
+      }
+    },
+  );
+
   test('a Range header passes through, and a 206 is the answer', () async {
     final adapter = FakeAdapter(
       (options, _) async => ResponseBody.fromString(
@@ -210,4 +315,29 @@ void main() {
     final res = await dio.get<String>(url.toString());
     expect(res.statusCode, 200);
   });
+}
+
+/// Sends a request that got a 401 once more, through the same Dio and with the same
+/// `RequestOptions`, as `SessionInterceptor` does after a refresh.
+final class _ReplayOn401 extends Interceptor {
+  _ReplayOn401(this.dio);
+
+  final Dio dio;
+
+  @override
+  Future<void> onResponse(
+    Response<dynamic> response,
+    ResponseInterceptorHandler handler,
+  ) async {
+    final options = response.requestOptions;
+    if (response.statusCode != 401 || options.extra['replayed'] == true) {
+      return handler.next(response);
+    }
+    options.extra['replayed'] = true;
+    try {
+      handler.next(await dio.fetch<dynamic>(options));
+    } on DioException catch (error) {
+      handler.reject(error);
+    }
+  }
 }

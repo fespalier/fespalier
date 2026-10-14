@@ -554,6 +554,43 @@ void main() {
       },
     );
 
+    test('resume with the address a fresh grant names resumes the task there (UNCHECKED on a device)', () async {
+      final before = t.enqueued.single.url;
+      expect(
+        await b.resume(
+          'a',
+          authorization: {'Authorization': 'new'},
+          url: Uri.parse('https://cdn.example.com/fresh?sig=2'),
+        ),
+        isTrue,
+      );
+      expect(t.resumed.single.url, 'https://cdn.example.com/fresh?sig=2');
+      expect(t.resumed.single.url, isNot(before));
+      expect(t.resumed.single.headers, {'Authorization': 'new'});
+      expect(t.resumed.single.taskId, 'a');
+      expect(t.resumed.single.filename, t.enqueued.single.filename);
+    });
+
+    test(
+      'resume with an address and no new headers keeps the headers',
+      () async {
+        await b.enqueue(
+          DownloadRequest(
+            id: 'h',
+            url: Uri.parse('https://files.example.com/h'),
+            file: const DownloadLocation(DownloadBase.support, 'h.bin'),
+            headers: const {'x-app': '1'},
+          ),
+        );
+        expect(
+          await b.resume('h', url: Uri.parse('https://cdn.example.com/other')),
+          isTrue,
+        );
+        expect(t.resumed.single.url, 'https://cdn.example.com/other');
+        expect(t.resumed.single.headers, {'x-app': '1'});
+      },
+    );
+
     test('resume with no resume data is the plugin\'s false', () async {
       t.resumeAccepts = false;
       expect(await b.resume('a'), isFalse);

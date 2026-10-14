@@ -1,5 +1,6 @@
 // SessionInterceptor on a Dio with a fake adapter: the same policy as SessionClient, on dio's types.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -36,6 +37,10 @@ final class Seen {
 /// A server: 401 to every token but [good], and whatever [extra] says in the headers.
 final class FakeAdapter implements HttpClientAdapter {
   final List<Seen> seen = [];
+
+  /// The body of each request, as the adapter read it (a stream can be read once, as it is for a
+  /// real adapter).
+  final List<List<int>> bodies = [];
   String good = 'fake-access-1';
   Map<String, List<String>> extra = {};
 
@@ -47,6 +52,13 @@ final class FakeAdapter implements HttpClientAdapter {
   ) async {
     final call = Seen(options);
     seen.add(call);
+    final body = <int>[];
+    if (requestStream != null) {
+      await for (final chunk in requestStream) {
+        body.addAll(chunk);
+      }
+    }
+    bodies.add(body);
     final token = call.header('Authorization');
     final ok = token != null && token.endsWith(good);
     return ResponseBody.fromString(
@@ -179,6 +191,60 @@ void main() {
       );
     },
   );
+
+  test('a body of bytes is sent again whole', () async {
+    setUpDio();
+    final response = await dio.post<String>(
+      'https://api.example.com/orders',
+      data: Uint8List.fromList(utf8.encode('item')),
+    );
+    expect(response.statusCode, 200);
+    expect(adapter.bodies, [utf8.encode('item'), utf8.encode('item')]);
+    expect(backend.refreshes, 1);
+  });
+
+  group('a body that is a stream', () {
+    // What a streamed `package:http` request becomes in `DioHttpClient`: it can be read once.
+    Stream<Uint8List> body() =>
+        Stream<Uint8List>.value(Uint8List.fromList(utf8.encode('item')));
+
+    test(
+      'is not sent again: the caller gets the 401, after the refresh',
+      () async {
+        setUpDio();
+        await expectLater(
+          dio.post<String>('https://api.example.com/orders', data: body()),
+          throwsA(
+            isA<DioException>()
+                .having((e) => e.response?.statusCode, 'status', 401)
+                .having((e) => e.error, 'no failure of its own', isNull),
+          ),
+        );
+        expect(adapter.seen, hasLength(1));
+        expect(adapter.bodies.single, utf8.encode('item'));
+        expect(backend.refreshes, 1, reason: 'so that its next attempt works');
+        expect(
+          (await dio.get<String>('https://api.example.com/orders')).statusCode,
+          200,
+        );
+      },
+    );
+
+    test(
+      'with a client that takes a 401 as an answer, it is the answer',
+      () async {
+        setUpDio();
+        final response = await dio.post<String>(
+          'https://api.example.com/orders',
+          data: body(),
+          options: Options(validateStatus: (_) => true),
+        );
+        expect(response.statusCode, 401);
+        expect(adapter.seen, hasLength(1));
+        expect(backend.refreshes, 1);
+      },
+    );
+  });
 
   test(
     'a 401 when the refresh is refused: the 401, and the user is signed out',

@@ -31,8 +31,9 @@ What changed between releases, newest first, each with a link to the reference s
 
 0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, changes one member of `FespalierAdapter`, fixes the places where a
 write could be sent twice, a provider started a hidden timer, a notification tap was lost and a step name did not compile,
-so an app sees different outcomes there, and adds opt-in tooling. The last three items are about code generators, and change nothing for an app that does not use freezed or
-`build_runner`:
+makes three outcomes of the network packages right (one port, `DownloadBackend.resume`, gains a named parameter: see the
+resume item), so an app sees different outcomes there, and adds opt-in tooling. The last three items are about code generators, and change nothing for an
+app that does not use freezed or `build_runner`:
 
 - **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
   Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
@@ -107,6 +108,27 @@ The other fixes make a write that could be sent twice be sent once, so an app se
   behind `serve` falls back to the saved copy on it. On 0.15.0 the next key could run a committed write twice.
 - **`IntentQueue.drain` reads each intent again before it sends it,** so an intent that was accepted, discarded or wiped
   while the drain was busy is not sent from a stale list.
+- **A request with a body is sent again after a 401 through `DioHttpClient`** ([HTTP clients](http.md)). An
+  `http.Request` (`get`, `post`, `put`, `patch`, `delete`) goes to Dio as bytes, so `SessionInterceptor` refreshes and
+  sends it again whole (`WriteGuard` lets that one second send of a write through, as it always did after a 401). Before
+  0.16.0 it failed with `ClientException: fespalier_dio: unknown` and the refresh never helped: remove a retry you wrote
+  around that. A streamed or multipart request is not sent again: the caller gets the 401 as the response, after the
+  refresh. A `ClientException` from `DioHttpClient` that has no Dio message now carries its cause
+  (`fespalier_dio: unknown: <cause>`): code that compared the whole message changes.
+- **Offline while a token refreshes is `Failed(network)`, no longer `Failed(unauthorized)`** ([Credentials](downloads.md#credentials)).
+  A download whose credentials could not be reached ends `network` when its grantor, or the `HttpCredentials` of
+  `HttpDownloadBackend`, throws an `http.ClientException` (`fespalier_auth`'s `AuthUnavailable` is one). `unauthorized`
+  stays for a refusal and for any other throw. If your app treats `unauthorized` as "sign the person in again", it no
+  longer does that for being offline: show "offline, try again" for `network` and call `Downloads.retry`. A `resume` whose
+  grantor cannot be reached leaves the download `Paused` and returns false.
+- **A paused download resumes from its freshly granted address, and each resume gets its own renewal**
+  ([Credentials](downloads.md#credentials)). Before 0.16.0 `resume` asked the grantor and threw the new `url` away, so an
+  expired signed address earned a 403 first, and only one renewal existed for the whole life of the download: a second
+  long pause ended `Failed(unauthorized)`. Now `resume` goes to the grant's `url` (the bytes kept stay), and a start, a
+  retry and a resume each have one renewal. The grant a `resume` asks for is used now, not
+  discarded. **A `DownloadBackend` of your own** (a fake in a test, a custom transfer) must accept the new `url:` named
+  parameter of `resume(id, {authorization, url})`: `flutter analyze` names the override that is missing it.
+  `FakeDownloadBackend.resumeUrls` records it.
 - **An app with a `links:` section gets [`AppRoutes.urlOf`](cli.md#urls-to-share-approutesurlof)** when it regenerates,
   the absolute URL of a route on the first domain: a doc comment and one method after `matchUrl`. An app without
   `links:` regenerates byte for byte, and a first domain that is not usable is a warning of `fsp gen`, as before.

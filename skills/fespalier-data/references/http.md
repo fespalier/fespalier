@@ -52,9 +52,12 @@ more specific one wins.
 
 - **The seam is `package:http`'s `Client`.** Any `http.Client` fits `ref.abortable(...)`, `WriteGuardClient`, a
   `RetryClient` and a `SessionClient`: `IOClient`, `cronet_http`, `cupertino_http` or `DioHttpClient(dio)`. Whether
-  `cupertino_http` honours an abort is **not checked**: do not promise it. `DioHttpClient` streams the body, returns
+  `cupertino_http` honours an abort is **not checked**: do not promise it. `DioHttpClient` streams the response body, returns
   every status as a response, turns an `Abortable` trigger into a Dio cancel (`RequestAbortedException`), and its
-  `close()` does nothing (the Dio belongs to its provider).
+  `close()` does nothing (the Dio belongs to its provider). Since 0.16.0 an `http.Request` (`get`, `post`, `put`, `patch`,
+  `delete`) sends its body as bytes, so `SessionInterceptor` sends it again whole after a 401 and a refresh (`WriteGuard`
+  lets that one second send through); a streamed or multipart request streams its body and is not sent again (the caller
+  gets the 401, after the refresh). A failure that has no Dio message keeps its cause: `fespalier_dio: unknown: <cause>`.
 - **The order** that is proved (`packages/fespalier_auth/test/wrapping_order_test.dart`), outside in:
   `ref.abortable(...)`, then `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), when:
 WriteGuardClient.readsOnly(), whenError: WriteGuardClient.readErrorsOnly(...)))`. **A retrier outside the session

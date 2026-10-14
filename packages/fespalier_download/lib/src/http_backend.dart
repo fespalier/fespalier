@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fespalier_http/fespalier_http.dart' show HttpCredentials;
 import 'package:http/http.dart' as http;
 
+import 'grant.dart';
 import 'location.dart';
 import 'ports.dart';
 import 'request.dart';
@@ -146,6 +147,9 @@ class HttpDownloadBackend implements DownloadBackend {
   /// `fespalier_auth`'s `SessionClient` does. They live in memory for the send: nothing is
   /// written to disk. It is a foreground-only path: the operating system's download service has
   /// no session, so a background backend takes a short-lived grant instead (see [DownloadGrant]).
+  /// A throw ends the download `Failed(unauthorized)`, except an `http.ClientException` (the
+  /// session could not be reached: `AuthUnavailable`, offline), which ends it `Failed(network)`
+  /// since 0.16.0.
   final HttpCredentials? credentials;
 
   DownloadEvents? _events;
@@ -352,10 +356,15 @@ class HttpDownloadBackend implements DownloadBackend {
   Future<bool> resume(
     String id, {
     Map<String, String> authorization = const {},
+    Uri? url,
   }) async {
     final entry = _entries[id];
     if (entry == null || _events == null || entry.phase != _Phase.paused) {
       return false;
+    }
+    // The partial file stays: the new attempt asks the new address for the rest of it.
+    if (url != null) {
+      entry.request = DownloadGrant(url: url).applyTo(entry.request);
     }
     _begin(entry, authorization);
     return true;

@@ -53,6 +53,9 @@ class FakeDownloadBackend implements DownloadBackend {
   /// The ids passed to [resume], in order.
   final List<String> resumed = [];
 
+  /// The `url` of each [resume], in order (null when the engine passed none; since 0.16.0).
+  final List<Uri?> resumeUrls = [];
+
   /// The ids passed to [cancel], in order.
   final List<String> cancelled = [];
 
@@ -116,8 +119,10 @@ class FakeDownloadBackend implements DownloadBackend {
   Future<bool> resume(
     String id, {
     Map<String, String> authorization = const {},
+    Uri? url,
   }) async {
     resumed.add(id);
+    resumeUrls.add(url);
     authorizations.add(authorization);
     return capabilities.pause && accepts;
   }

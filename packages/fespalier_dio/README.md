@@ -50,17 +50,18 @@ Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`) and on 
 
 `DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
 translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
-The body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
+The response body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
 `Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
-`ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
+`ClientException` (its message names Dio's message or, when Dio has none, the cause an interceptor or an adapter threw,
+since 0.16.0), and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
 passes through. `cupertino_http` is not claimed to honour an abort.
 
-`DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
-translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
-The body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
-`Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
-`ClientException`, and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
-passes through. `cupertino_http` is not claimed to honour an abort.
+A request made of bytes (an `http.Request`, which `get`, `post`, `put`, `patch` and `delete` make) sends its body as
+bytes (since 0.16.0), so an interceptor that sends it again, `fespalier_auth`'s `SessionInterceptor` after a 401 and a
+refresh, sends the whole body a second time. A streamed or multipart request streams its body, which can be read once:
+`SessionInterceptor` does not send it again, and the caller gets the 401 as a response, after the refresh. Before
+0.16.0 every body streamed, and a request with a body that got a 401 through a session failed with
+`ClientException: fespalier_dio: unknown`.
 
 ## Cancel a load whose page is gone
 

@@ -152,8 +152,10 @@ class HttpTransfer {
   /// The session's credentials, asked before each send (`authorize`) and after a refusal
   /// (`retry`), for this foreground transfer only: the app is running, so its session is there.
   /// A transfer sends one `GET`, which is safe to send again; at most three sends per request.
-  /// Null sends [headers] alone. A throw from the credentials ends the transfer
-  /// `unauthorized`.
+  /// Null sends [headers] alone. A throw from the credentials ends the transfer `unauthorized`,
+  /// except an `http.ClientException` (the session could not be reached, as `AuthUnavailable`
+  /// is when a token cannot refresh offline), which ends it `network` (since 0.16.0): nothing was
+  /// refused, and `Downloads.retry` goes on from the partial file.
   final HttpCredentials? credentials;
 
   // The attempt of the request being sent, kept while [credentials] asks for a re-send.
@@ -332,6 +334,12 @@ class HttpTransfer {
         );
         _sends++;
         request.headers.addAll(attempt.headers);
+      } on http.ClientException {
+        // The session could not be reached (no network while its token refreshes,
+        // `AuthUnavailable`): nothing was refused, so this is not a lost session.
+        done.complete();
+        if (!_stopped) _fail(DownloadFailure.network);
+        return _Step.stop;
       } catch (_) {
         done.complete();
         if (!_stopped) _fail(DownloadFailure.unauthorized);
@@ -394,6 +402,10 @@ class HttpTransfer {
       );
       if (again && !_stopped && !_abort.isCompleted) return true;
       return false;
+    } on http.ClientException {
+      // As for authorize: the refresh could not run, which says nothing about the session.
+      if (!_stopped) _fail(DownloadFailure.network);
+      return null;
     } catch (_) {
       if (!_stopped) _fail(DownloadFailure.unauthorized);
       return null;

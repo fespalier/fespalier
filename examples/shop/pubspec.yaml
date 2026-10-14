@@ -47,6 +47,11 @@ fespalier:
     samples:
       greet/$name: Ada
       products/$id: 1
+  # `fsp test` writes test/routes/routes_test.dart, a smoke test per route. `a11y: true` also has each
+  # test check Flutter's accessibility guidelines (tap targets, labels, contrast) once its page is
+  # on screen (docs/route-tests.md, "Route smoke tests (`fsp test`)").
+  test:
+    a11y: true
   # `fsp size` reads build/web after `flutter build web`; `just web-chunks` checks these budgets
   # (docs/cli.md, "Web chunk sizes (`fsp size`)"). The measured sizes are 2.38 MB, 5,266 B and 6,028 B (fespalier_image
   # is in the first: the product list is eager, and its photos with it).

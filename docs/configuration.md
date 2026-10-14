@@ -25,7 +25,7 @@ fespalier:
   meta: optional # `required`: every route needs a meta.dart
   # meta_unique: [code]       # no two routes may pass the same literal `code:` to `meta`
   # output_manifest: lib/app.routes.g.dart   # no default: the manifest lives in `output`
-  # links:                        # no default: what `fsp links` writes (see below)
+  # links:                        # no default: what `fsp links` writes (see below); `domains` is also AppRoutes.urlOf's host (since 0.16.0)
   #   domains: [shop.example.com]
   #   scheme: myshop
   #   scheme_host: true           # since 0.11.0; `false`: myshop:///path, no host
@@ -60,6 +60,7 @@ fespalier:
   #   samples:                    # default: the `maestro:` ones
   #     products/$id: 1
   #   skip: [/admin]              # patterns as `fsp routes` prints them
+  #   a11y: true                  # since 0.16.0; default false. Or a list: [tap_targets, labels, contrast]
   # tasks:                        # no default: what `fsp dev`, `fsp build` and `fsp run` run (since 0.9.0)
   #   dev:
   #     before: dart run build_runner build -d
@@ -149,6 +150,8 @@ address bar (and in the browser's history) as `go` does, and back pops it.
 ### links
 
 `links:` is what [`fsp links`](cli.md#deep-links-and-a-sitemap-fsp-links) reads; only that command checks its values.
+Since 0.16.0 `fsp gen` also reads `domains`: the first one is the host of
+[`AppRoutes.urlOf`](cli.md#urls-to-share-approutesurlof), and one that is not usable is a warning, never an error.
 Since 0.11.0 it also takes `flavors:` (one app per build flavour, [Flavours](cli.md#flavours)), `scheme_host`
 and `paths:` ([Host-less schemes and path patterns](cli.md#host-less-schemes-and-path-patterns)).
 `android_manifest` (top level only) and `ios_entitlements` (per flavour, or flat for one app) make `fsp links` edit those files
@@ -178,6 +181,8 @@ that isn't a bool is an error.
 ### test
 
 `test:` (since 0.8.1) is what [`fsp test`](route-tests.md#route-smoke-tests-fsp-test) reads, and only that command checks it.
+`a11y` (since 0.16.0) is `true`, `false` or a list of `tap_targets`, `labels` and `contrast`: whether each test also
+checks [Flutter's accessibility guidelines](route-tests.md#route-smoke-tests-fsp-test) once its page is on screen.
 
 ### tasks
 

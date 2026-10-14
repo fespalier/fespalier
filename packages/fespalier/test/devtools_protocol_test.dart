@@ -378,6 +378,83 @@ void main() {
       expect(SnapshotRecord.fromJson(wire(snapshot.toJson())), snapshot);
     });
 
+    test('AdapterRecord and AdapterValueRecord, shown, hidden and cut', () {
+      const shown = AdapterRecord(
+        seq: 14,
+        adapter: 'fespalier_flags',
+        title: 'Feature flags',
+        at: 1696230000123,
+        values: [
+          AdapterValueRecord(key: 'new_checkout', value: Shown('bool', 'true')),
+          AdapterValueRecord(
+            key: 'override',
+            value: Shown('String', 'off'),
+            editable: true,
+          ),
+        ],
+        truncated: true,
+      );
+      final back = AdapterRecord.fromJson(wire(shown.toJson()));
+      expect(back, shown);
+      expect(back.hashCode, shown.hashCode);
+      expect(back.values.last.editable, isTrue);
+      expect(back.values.first.editable, isFalse);
+      expect(back.truncated, isTrue);
+      expect(back.removed, isFalse);
+      const hidden = AdapterRecord(
+        seq: 15,
+        adapter: 'fespalier_flags',
+        at: 1696230000500,
+        removed: true,
+      );
+      final backHidden = AdapterRecord.fromJson(wire(hidden.toJson()));
+      expect(backHidden, hidden);
+      expect(backHidden.title, isNull);
+      expect(backHidden.values, isEmpty);
+      expect(backHidden.removed, isTrue);
+      expect(shown, isNot(equals(hidden)));
+    });
+
+    test('a snapshot carries the adapters', () {
+      const snapshot = SnapshotRecord(
+        event: 9,
+        registered: true,
+        attached: true,
+        adapters: [
+          AdapterRecord(
+            seq: 3,
+            adapter: 'fespalier_launch',
+            at: 1,
+            values: [
+              AdapterValueRecord(
+                key: 'last',
+                value: Shown('String', '/orders/5'),
+              ),
+            ],
+          ),
+        ],
+      );
+      final back = SnapshotRecord.fromJson(wire(snapshot.toJson()));
+      expect(back, snapshot);
+      expect(back.adapters.single.adapter, 'fespalier_launch');
+    });
+
+    test('the adapters are protocol 1: the names, and a snapshot of an older '
+        'app without the key', () {
+      expect(DevToolsMethods.adapterEdit, 'ext.fespalier.adapterEdit');
+      expect(DevToolsEvents.adapter, 'fespalier:adapter');
+      expect(DevToolsEvents.isFespalier(DevToolsEvents.adapter), isTrue);
+      expect(DevToolsFeatures.adapters, 'adapters');
+      final older = SnapshotRecord.fromJson({
+        'protocol': 1,
+        'event': 3,
+        'registered': true,
+        'attached': true,
+      });
+      expect(older.adapters, isEmpty);
+      expect(devToolsProtocol, 1);
+    });
+
     test('a navigation names the guards behind it', () {
       const nav = NavigationRecord(
         seq: 12,

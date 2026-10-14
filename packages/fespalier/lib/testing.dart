@@ -303,6 +303,17 @@ Finder findRoutePage(String pattern) => find.byWidgetPredicate(
   description: 'the page of $pattern',
 );
 
+/// Every guideline `fsp test` checks with `test: a11y: true` (since 0.16.0): Flutter's own, from
+/// `package:flutter_test`. A tappable widget is at least 48x48 on Android and 44x44 on iOS, has a
+/// semantic label, and text meets WCAG contrast. The generated test passes this list to
+/// [smokeTestRoute] as `guidelines:`; with only some of them on, it declares a list of its own.
+const List<AccessibilityGuideline> routeA11yGuidelines = [
+  androidTapTargetGuideline,
+  iOSTapTargetGuideline,
+  labeledTapTargetGuideline,
+  textContrastGuideline,
+];
+
 /// What `fsp test` runs for each route (since 0.8.1): boots [router] with [pumpRouter] (and
 /// [overrides], [app]), pumps on the fake clock until [page] (by default
 /// `findRoutePage(pattern)`) is on screen, expects exactly one, then takes the tree down and
@@ -313,6 +324,14 @@ Finder findRoutePage(String pattern) => find.byWidgetPredicate(
 /// fake time, not real time, naming where the router is. A guard that redirects (no override to
 /// get past it), a `data.dart` that fails or never completes, or an exception while building the
 /// page keeps it away.
+///
+/// [guidelines] (since 0.16.0) are Flutter's accessibility guidelines, checked one after the other
+/// with `meetsGuideline` once the page is on screen, with the semantics tree on for the call:
+/// [routeA11yGuidelines] is every one `fsp test` knows, and what `fespalier: test: a11y: true`
+/// passes. The whole tree is checked, so a failure in shared chrome (the shell, the bars around
+/// the page) fails every route. None by default, and then nothing changes. The checks run on the
+/// fake clock; `textContrastGuideline` renders the frame itself, on the real event loop, and
+/// needs no help.
 Future<void> smokeTestRoute(
   WidgetTester tester,
   String pattern,
@@ -321,35 +340,46 @@ Future<void> smokeTestRoute(
   List<Override> overrides = const [],
   Widget Function(GoRouter router)? app,
   Duration timeout = const Duration(seconds: 30),
+  List<AccessibilityGuideline> guidelines = const [],
 }) async {
   final finder = page ?? findRoutePage(pattern);
-  await pumpRouter(
-    tester,
-    router,
-    overrides: overrides,
-    app: app,
-    settle: false,
-  );
-  const step = Duration(milliseconds: 100);
-  var waited = Duration.zero;
-  while (finder.evaluate().isEmpty) {
-    if (waited >= timeout) {
-      String at;
-      try {
-        at = currentLocation(tester);
-      } on Object {
-        at = 'unknown';
+  // The guidelines read the semantics tree, which is off unless a handle asks for it.
+  final semantics = guidelines.isEmpty ? null : tester.ensureSemantics();
+  try {
+    await pumpRouter(
+      tester,
+      router,
+      overrides: overrides,
+      app: app,
+      settle: false,
+    );
+    const step = Duration(milliseconds: 100);
+    var waited = Duration.zero;
+    while (finder.evaluate().isEmpty) {
+      if (waited >= timeout) {
+        String at;
+        try {
+          at = currentLocation(tester);
+        } on Object {
+          at = 'unknown';
+        }
+        fail(
+          'The page of $pattern is not on screen after ${timeout.inMilliseconds} ms of fake '
+          'time: the router is at $at. A guard that redirects, a data.dart that fails or '
+          'never completes, or an exception while building (above) keeps it away.',
+        );
       }
-      fail(
-        'The page of $pattern is not on screen after ${timeout.inMilliseconds} ms of fake '
-        'time: the router is at $at. A guard that redirects, a data.dart that fails or '
-        'never completes, or an exception while building (above) keeps it away.',
-      );
+      await tester.pump(step);
+      waited += step;
     }
-    await tester.pump(step);
-    waited += step;
+    expect(finder, findsOneWidget);
+    for (final guideline in guidelines) {
+      await expectLater(tester, meetsGuideline(guideline));
+    }
+  } finally {
+    // A test that failed above must not end with the handle open.
+    semantics?.dispose();
   }
-  expect(finder, findsOneWidget);
   // Take the tree down and run the clock on: a fake's pending one-shot timer fires with no
   // widget left to react, so the test does not end with "A Timer is still pending".
   await tester.pumpWidget(const SizedBox());

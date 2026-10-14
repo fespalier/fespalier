@@ -3,28 +3,30 @@
 Since 0.7.0 fespalier has a Flutter DevTools extension: a `fespalier` tab for a running app in
 debug or profile mode. It shows the route tree `fsp` wrote, the router's location, its stack and the
 history of the locations it committed, which guards and redirects answered, the state of every
-`data.dart` provider, and the runs of the actions; it takes a location to `go`, `push` or `replace`
-to, builds a provider again, and asks the IDE to open a file. Use it to see what a live app is doing
+`data.dart` provider, and the runs of the actions (and, since 0.16.0, what the adapter packages show: the
+_Adapters_ tab); it takes a location to `go`, `push` or `replace`
+to, builds a provider again, sets a value an adapter lets it set, and asks the IDE to open a file. Use it to see what a live app is doing
 before reading code: the
 [DevTools extension](https://github.com/fespalier/fespalier/blob/main/docs/devtools.md) section is the
 user documentation.
 
 ## When to reach for it
 
-| The question                                                | Where                                                                                          |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Which file serves this URL?                                 | **Location**: the route class and its file. **Routes** (or **Match**) for a URL not open now   |
-| Why is this page's parameter `null`?                        | **Location**, Parameters: name, declared type and the value the app's parser made of the URL   |
-| What is on the stack, and which layout is around a page?    | **Stack**: pages, `layout …` and `tabs … · tab n` shells, `pushed` pages                       |
-| How did I get here: a `go`, a `push`, a redirect?           | **Location**, History: `initial`, `go`, `push`, `pop`, `replace`, `refresh` per commit         |
-| Does `/orders/5/refund` match, and what are its parameters? | The go-to bar's **Match**: runs no guard, builds nothing, navigates nowhere                    |
-| Which guard redirected me, or did not run?                  | **Guards**: `pass`, `redirect` (with where to), `pending`, `error`, `skipped` per decision     |
-| What led to this redirect chain?                            | **Location**, History: the badge (`2 guards`) on the entry opens the decisions behind it       |
-| Is this data loading, cached, failed or rebuilt?            | **Data**: `loading`, `data`, `error`, `stream`, `disposed`, builds, key, value                 |
-| Why does a page show stale data?                            | **Data**: when it was last updated; **Invalidate** builds it again                             |
-| Who keeps this provider alive? (since 0.8.1)                | **Data**, **Holders**: the page, a section, a prefetch, a `RouteLink` preload, other listeners |
-| Did the action run, and what did it return or throw?        | **Actions**: `running`, `done`, `error`, how long, the input and the result                    |
-| Which guard, `data.dart` or action does a route have?       | **Routes**, select a row: the sites on that route, each with an **Open in IDE** button         |
+| The question                                                 | Where                                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Which file serves this URL?                                  | **Location**: the route class and its file. **Routes** (or **Match**) for a URL not open now           |
+| Why is this page's parameter `null`?                         | **Location**, Parameters: name, declared type and the value the app's parser made of the URL           |
+| What is on the stack, and which layout is around a page?     | **Stack**: pages, `layout …` and `tabs … · tab n` shells, `pushed` pages                               |
+| How did I get here: a `go`, a `push`, a redirect?            | **Location**, History: `initial`, `go`, `push`, `pop`, `replace`, `refresh` per commit                 |
+| Does `/orders/5/refund` match, and what are its parameters?  | The go-to bar's **Match**: runs no guard, builds nothing, navigates nowhere                            |
+| Which guard redirected me, or did not run?                   | **Guards**: `pass`, `redirect` (with where to), `pending`, `error`, `skipped` per decision             |
+| What led to this redirect chain?                             | **Location**, History: the badge (`2 guards`) on the entry opens the decisions behind it               |
+| Is this data loading, cached, failed or rebuilt?             | **Data**: `loading`, `data`, `error`, `stream`, `disposed`, builds, key, value                         |
+| Why does a page show stale data?                             | **Data**: when it was last updated; **Invalidate** builds it again                                     |
+| Who keeps this provider alive? (since 0.8.1)                 | **Data**, **Holders**: the page, a section, a prefetch, a `RouteLink` preload, other listeners         |
+| Did the action run, and what did it return or throw?         | **Actions**: `running`, `done`, `error`, how long, the input and the result                            |
+| What does an adapter package say, and can I set it? (0.16.0) | **Adapters**: a card per package, its values with their types; an editable key has a field and **Set** |
+| Which guard, `data.dart` or action does a route have?        | **Routes**, select a row: the sites on that route, each with an **Open in IDE** button                 |
 
 `fsp routes --graph json` prints the same tree without an app.
 
@@ -78,6 +80,23 @@ Quoted from the extension.
 | `guard #3 is no longer kept`                                                           | The history entry names a guard decision the app dropped (it keeps the last 200)                                                                                                                                                    |
 | `This app does not report its guards: it uses a fespalier from before this panel.`     | The app's `hello` does not list `guards` (`data` and `actions` say the same for theirs): a pinned development commit of 0.7.0 from before the panel. Update fespalier                                                               |
 
+## What the Adapters tab says (since 0.16.0)
+
+Quoted from the extension and the app. A package puts a card here by calling `DevToolsAdapters.show(adapter, values,
+{title, editable, onEdit})` from `package:fespalier/fespalier.dart` and takes it away with `DevToolsAdapters.hide(adapter)`.
+
+| Text                                                                                                                             | Meaning                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `No adapter has shown anything yet. Packages such as fespalier_flags and fespalier_launch list their state here (since 0.16.0).` | No package called `show` since the app started: none is listed in `fespalier: adapters:`, none uses DevTools, or its state has not changed yet. Not a fault |
+| `This app does not report its adapters: it uses a fespalier from before this panel.`                                             | The app's `hello` does not list `adapters`: fespalier before 0.16.0. Update the app's fespalier                                                             |
+| `The adapter gave more values than the app keeps: only the first 64 are shown.`                                                  | `show` got more than 64 keys. The first 64, in the map's order, are kept                                                                                    |
+| `updated 12:03:04.120 (3 s before the last refresh)`                                                                             | When the package last called `show`, counted to the last time the tab fetched: the extension runs no timer, so it does not tick                             |
+| `no adapter fespalier_flags is shown`                                                                                            | **Set** on a card whose package called `hide` (or was dropped, with 32 shown) in the meantime. Shown in a snackbar                                          |
+| `` `limit` of fespalier_flags is not editable ``                                                                                 | The key is not in `editable`, the package gave no `onEdit`, or it gave no value for the key. Shown in a snackbar                                            |
+| `onEdit threw: Bad state: no flags yet`                                                                                          | The package's `onEdit` threw; the text after the colon is its error. The app goes on                                                                        |
+| ``missing parameter `adapter` ``                                                                                                 | A tool called `ext.fespalier.adapterEdit` without `adapter` (or `key`); the JSON-RPC error `-32602`. The extension always sends both                        |
+| ``the app did not set `limit` ``                                                                                                 | The app answered `ok: false` with no reason (an app of a newer protocol 1 than the extension knows)                                                         |
+
 ## Traps
 
 - **No tab in a release build, by design.** `kFespalierDevTools` is a `const` that is false there,
@@ -111,6 +130,12 @@ provider)` is `ref.watch(provider)` that also notes the view as a holder. In rel
   other listener of a provider fespalier built is counted (`N other listeners`), not named: Riverpod 3.4 does
   not export who listens to a provider. Use Riverpod's own DevTools tab for the graph. fespalier adds no
   `ProviderObserver`.
+- **`DevToolsAdapters.show` is a debug-and-profile feature, like the rest.** In a release build `show` and `hide` are empty
+  calls (`kFespalierDevTools`); build the values under `if (kFespalierDevTools)` so the map is not made either. It
+  turns each value to its type and the start of its `toString()` (200 characters) when called, keeps 64 keys of at most
+  32 packages (the one shown least recently goes, with a `removed` event), starts no timer and listens to nothing: call
+  it when the state changes, and `hide` it from the `ref.onDispose` of the provider that showed it. The registry keeps the
+  `onEdit` closure until then.
 - **A guard or a data function that throws before it returns** is not shown: the wrapper only sees what
   came back. go_router or Riverpod get the error as they always did.
 - **A `Stream` provider shows the state `stream` and no value**, because nothing listens to the stream.
@@ -126,27 +151,30 @@ provider)` is `ref.watch(provider)` that also notes the view as a holder. In rel
 For a tool of your own. All are `dart:developer` service extensions; every answer and event carries
 `"protocol": 1`, and a change that only adds keys stays protocol 1: ignore keys you do not know, and ask
 for what `hello`'s `features` lists (`navigation`, `match`, `navigate`, `guards`, `data`, `actions`,
-`open`, and since 0.8.1 `holders` and `watched`).
+`open`, since 0.8.1 `holders` and `watched`, and since 0.16.0 `adapters`).
 
-| Method                     | Parameters                                          | Errors                                                                                                                                                                                              |
-| -------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ext.fespalier.hello`      | none                                                |                                                                                                                                                                                                     |
-| `ext.fespalier.tree`       | none                                                |                                                                                                                                                                                                     |
-| `ext.fespalier.snapshot`   | none                                                |                                                                                                                                                                                                     |
-| `ext.fespalier.match`      | `location`                                          | ``missing parameter `location` ``, `no fespalier router attached` (no app registered)                                                                                                               |
-| `ext.fespalier.navigate`   | `mode` (`go`, `push`, `replace`, `pop`), `location` | ``unknown mode `teleport`: one of go, push, replace, pop``, `no fespalier router attached`                                                                                                          |
-| `ext.fespalier.clear`      | `what` (`history`, `guards`, `actions`, `all`)      | ``unknown `what` `x`: one of history, guards, actions, all``                                                                                                                                        |
-| `ext.fespalier.invalidate` | `id` (a data record's)                              | ``missing parameter `id` ``, ``parameter `id` is not a number: `x` ``; `{"ok": false}` for an id that is unknown, disposed or whose `Ref` is gone                                                   |
-| `ext.fespalier.holders`    | `id` (a data record's)                              | ``missing parameter `id` ``, ``parameter `id` is not a number: `x` ``; `{"found": false}` for an id that is not tracked (since 0.8.1)                                                               |
-| `ext.fespalier.open`       | `file` (one of the tree's `file`s)                  | ``missing parameter `file` ``, `` `x.dart` is not a file of the route tree ``, `no fespalier app registered`, `the app folder is not a folder of a package under lib/` (`app_dir` is not in `lib/`) |
+| Method                      | Parameters                                          | Errors                                                                                                                                                                                                                                                                       |
+| --------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ext.fespalier.hello`       | none                                                |                                                                                                                                                                                                                                                                              |
+| `ext.fespalier.tree`        | none                                                |                                                                                                                                                                                                                                                                              |
+| `ext.fespalier.snapshot`    | none                                                |                                                                                                                                                                                                                                                                              |
+| `ext.fespalier.match`       | `location`                                          | ``missing parameter `location` ``, `no fespalier router attached` (no app registered)                                                                                                                                                                                        |
+| `ext.fespalier.navigate`    | `mode` (`go`, `push`, `replace`, `pop`), `location` | ``unknown mode `teleport`: one of go, push, replace, pop``, `no fespalier router attached`                                                                                                                                                                                   |
+| `ext.fespalier.clear`       | `what` (`history`, `guards`, `actions`, `all`)      | ``unknown `what` `x`: one of history, guards, actions, all``                                                                                                                                                                                                                 |
+| `ext.fespalier.invalidate`  | `id` (a data record's)                              | ``missing parameter `id` ``, ``parameter `id` is not a number: `x` ``; `{"ok": false}` for an id that is unknown, disposed or whose `Ref` is gone                                                                                                                            |
+| `ext.fespalier.holders`     | `id` (a data record's)                              | ``missing parameter `id` ``, ``parameter `id` is not a number: `x` ``; `{"found": false}` for an id that is not tracked (since 0.8.1)                                                                                                                                        |
+| `ext.fespalier.open`        | `file` (one of the tree's `file`s)                  | ``missing parameter `file` ``, `` `x.dart` is not a file of the route tree ``, `no fespalier app registered`, `the app folder is not a folder of a package under lib/` (`app_dir` is not in `lib/`)                                                                          |
+| `ext.fespalier.adapterEdit` | `adapter`, `key`, `value` (the text; may be empty)  | ``missing parameter `adapter` ``, ``missing parameter `key` ``; `{"ok": false, "reason": "no adapter fespalier_flags is shown"}`, ``{"ok": false, "reason": "`limit` of fespalier_flags is not editable"}`` or `{"ok": false, "reason": "onEdit threw: ..."}` (since 0.16.0) |
 
 A bad parameter is the JSON-RPC code `-32602`, any other failure `-32000`. Events are
-`fespalier:registered`, `fespalier:navigation`, `fespalier:guard`, `fespalier:data` and
-`fespalier:action`, posted only while a tool listens, each with an `"event"` number from one counter:
+`fespalier:registered`, `fespalier:navigation`, `fespalier:guard`, `fespalier:data`,
+`fespalier:action` and, since 0.16.0, `fespalier:adapter`, posted only while a tool listens, each with an `"event"` number from one counter:
 a number that skips means events were missed, so fetch `snapshot`. A `guard` event is sent again with
 the same `seq` when an async guard settles; a `data` event on every build, settle, failure and disposal
 (one record per container, site and key, and the `id` is what `invalidate` takes); an `action` event at
-the start and the end of a run. The lists are bounded: 100 locations, 200 guard decisions, 100 action
+the start and the end of a run; an `adapter` event on every `show` and `hide` (one record per package: `{seq, adapter, title, at,
+values: [{key, value, editable}], truncated, removed}`, `removed` when it was hidden or dropped, and the snapshot's `adapters`
+lists the live ones by name, none from an app older than 0.16.0). The lists are bounded: 100 locations, 200 guard decisions, 100 action
 runs, the live providers and the last 50 disposed. A user value (an `extra`, a parsed parameter, a data
 key or value, an action's input or result) is sent as `{"type", "text"}`, the text cut to 200
 characters, `<toString threw>` when its `toString` throws, and `<gone>` when a value that is held

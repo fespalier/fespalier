@@ -123,22 +123,24 @@ void main() {
   });
 
   group('tabs', () {
-    testWidgets('are Location, Stack, Routes, Guards, Data and Actions', (
-      tester,
-    ) async {
-      await pumpApp(tester, FakeFespalierClient());
-      for (final name in [
-        'Location',
-        'Stack',
-        'Routes',
-        'Guards',
-        'Data',
-        'Actions',
-      ]) {
-        expect(find.widgetWithText(Tab, name), findsOneWidget, reason: name);
-      }
-      expect(find.byType(Tab), findsNWidgets(6));
-    });
+    testWidgets(
+      'are Location, Stack, Routes, Guards, Data, Actions and Adapters',
+      (tester) async {
+        await pumpApp(tester, FakeFespalierClient());
+        for (final name in [
+          'Location',
+          'Stack',
+          'Routes',
+          'Guards',
+          'Data',
+          'Actions',
+          'Adapters',
+        ]) {
+          expect(find.widgetWithText(Tab, name), findsOneWidget, reason: name);
+        }
+        expect(find.byType(Tab), findsNWidgets(7));
+      },
+    );
 
     testWidgets('switch between the panels', (tester) async {
       await pumpApp(tester, FakeFespalierClient());

@@ -33,11 +33,13 @@ class ProductPage extends HookConsumerWidget {
           Row(
             children: [
               IconButton(
+                tooltip: 'Fewer',
                 onPressed: qty.value > 1 ? () => qty.value-- : null,
                 icon: const Icon(Icons.remove),
               ),
               Text('${qty.value}'),
               IconButton(
+                tooltip: 'More',
                 onPressed: () => qty.value++,
                 icon: const Icon(Icons.add),
               ),

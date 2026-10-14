@@ -1,7 +1,7 @@
 /// What the extension knows about the app: fetched when DevTools connects and when the app says
 /// something changed. It starts no timer: everything it does is an answer to a call or an event.
 ///
-/// A guard, data or action event carries its record, so it is merged into the snapshot without a
+/// A guard, data, action or adapter event carries its record, so it is merged into the snapshot without a
 /// call, as long as no event was missed; a gap in the event numbers fetches the snapshot again.
 library;
 
@@ -179,12 +179,15 @@ class FespalierController extends ChangeNotifier {
         // A snapshot that is newer than the event has the event in it.
         if (number is int && seen != null && number <= seen) return;
         unawaited(_refreshSnapshot());
-      case DevToolsEvents.guard || DevToolsEvents.data || DevToolsEvents.action:
+      case DevToolsEvents.guard ||
+          DevToolsEvents.data ||
+          DevToolsEvents.action ||
+          DevToolsEvents.adapter:
         _merge(event);
     }
   }
 
-  /// Puts the record of a guard, data or action event into the snapshot. An event the snapshot
+  /// Puts the record of a guard, data, action or adapter event into the snapshot. An event the snapshot
   /// has already, or one that is not the next in line, is not merged: the first is in it, and
   /// the second means something was missed, so the snapshot is fetched again.
   void _merge(FespalierEvent event) {
@@ -231,6 +234,15 @@ class FespalierController extends ChangeNotifier {
               actionLimit,
             ),
           );
+        case DevToolsEvents.adapter:
+          _snapshot = _with(
+            snapshot,
+            number,
+            adapters: _putAdapter(
+              snapshot.adapters,
+              AdapterRecord.fromJson(record),
+            ),
+          );
       }
     } on Object {
       unawaited(_refreshSnapshot());
@@ -247,6 +259,7 @@ class FespalierController extends ChangeNotifier {
     List<GuardRecord>? guards,
     List<DataRecord>? data,
     List<ActionRecord>? actions,
+    List<AdapterRecord>? adapters,
   }) => SnapshotRecord(
     protocol: snapshot.protocol,
     event: number,
@@ -258,6 +271,7 @@ class FespalierController extends ChangeNotifier {
     guards: guards ?? snapshot.guards,
     data: data ?? snapshot.data,
     actions: actions ?? snapshot.actions,
+    adapters: adapters ?? snapshot.adapters,
   );
 
   /// [list] with [record] in place of the one with the same key, or at the end; the oldest go
@@ -271,6 +285,20 @@ class FespalierController extends ChangeNotifier {
       out.add(record);
     }
     return out.length > limit ? out.sublist(out.length - limit) : out;
+  }
+
+  /// The adapters with [record] in place of the one of the same adapter, by name as the app sends
+  /// them; a `removed` record drops its adapter (since 0.16.0).
+  List<AdapterRecord> _putAdapter(
+    List<AdapterRecord> list,
+    AdapterRecord record,
+  ) {
+    final out = [
+      for (final a in list)
+        if (a.adapter != record.adapter) a,
+    ];
+    if (!record.removed) out.add(record);
+    return out..sort((a, b) => a.adapter.compareTo(b.adapter));
   }
 
   /// The data records with [record] in place of its own: the live ones stay, the disposed ones
@@ -398,6 +426,24 @@ class FespalierController extends ChangeNotifier {
       _actionError = '$e';
       if (!_disposed) notifyListeners();
       return null;
+    }
+  }
+
+  /// Sets [key] of [adapter]'s values to the text [value] (since 0.16.0): the app calls the `onEdit`
+  /// the adapter gave. Null when it did; otherwise why not, as the app says it (`reason`) or as the
+  /// call failed. The new values arrive as an `adapter` event, when the adapter shows them again.
+  Future<String?> adapterEdit(String adapter, String key, String value) async {
+    try {
+      final answer = await client.call(DevToolsMethods.adapterEdit, {
+        'adapter': adapter,
+        'key': key,
+        'value': value,
+      });
+      if (answer['ok'] == true) return null;
+      final reason = answer['reason'];
+      return reason is String ? reason : 'the app did not set `$key`';
+    } on Object catch (e) {
+      return '$e';
     }
   }
 

@@ -89,6 +89,23 @@ void main() {
     });
 
     test(
+      'passes adapterEdit its three parameters, an empty text included',
+      () async {
+        await rig.client.call('ext.fespalier.adapterEdit', {
+          'adapter': 'fespalier_flags',
+          'key': 'new_checkout',
+          'value': '',
+        });
+        expect(rig.calls.single.$1, 'ext.fespalier.adapterEdit');
+        expect(rig.calls.single.$2, {
+          'adapter': 'fespalier_flags',
+          'key': 'new_checkout',
+          'value': '',
+        });
+      },
+    );
+
+    test(
       'maps an RPCError to a FespalierError with the app\'s message',
       () async {
         rig.answer = (method, args) => throw RPCError.withDetails(
@@ -140,6 +157,22 @@ void main() {
       expect(seen, hasLength(1));
       expect(seen.single.kind, 'fespalier:navigation');
       expect(seen.single.payload, {'protocol': 1, 'event': 4});
+    });
+
+    test('passes an adapter event, with its record', () async {
+      final seen = <FespalierEvent>[];
+      final sub = rig.client.events.listen(seen.add);
+      rig.stream.add(
+        extensionEvent('fespalier:adapter', {
+          'protocol': 1,
+          'event': 5,
+          'record': {'adapter': 'fespalier_flags'},
+        }),
+      );
+      await pumpEventQueue();
+      await sub.cancel();
+      expect(seen.single.kind, 'fespalier:adapter');
+      expect(seen.single.payload['record'], {'adapter': 'fespalier_flags'});
     });
 
     test('filters out what is not fespalier\'s', () async {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/fespalier/fespalier/compare/v0.17.0...v0.17.1) (2026-10-14)
+
+
+### Documentation
+
+* ExtraCodec.of and the build_runner warning ship in 0.17.0, not 0.16.0 ([#187](https://github.com/fespalier/fespalier/issues/187)) ([e3763c5](https://github.com/fespalier/fespalier/commit/e3763c5bfeee70dca60e68b61b3e8f6df4722390))
+
 ## [0.17.0](https://github.com/fespalier/fespalier/compare/v0.16.0...v0.17.0) (2026-10-14)
 
 

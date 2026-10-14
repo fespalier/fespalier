@@ -4,4 +4,4 @@
 library;
 
 /// The fespalier release this runtime is part of.
-const String fespalierVersion = '0.17.0'; // x-release-please-version
+const String fespalierVersion = '0.17.1'; // x-release-please-version

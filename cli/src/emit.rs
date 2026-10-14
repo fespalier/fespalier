@@ -17,7 +17,7 @@ use crate::adapters::{self, AdaptersCx};
 use crate::config::{Config, DataRetry, Remount};
 use crate::dart::Span;
 use crate::devtools;
-use crate::diag::Diags;
+use crate::diag::{Base, Diags, Level};
 use crate::enums;
 use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
@@ -101,6 +101,9 @@ struct FileCx {
     /// 0.11.0). With adapters and no telemetry it is `AppAdapters.handlesEnter`, since only an
     /// `onEnter` reads the mark (since 0.16.0): no adapter handling it, no binding observer.
     links: Option<&'static str>,
+    /// The host of `AppRoutes.urlOf` (since 0.16.0): the first of `links: domains:`. None, and no
+    /// `urlOf`, without a `links:` section or when its domains are not usable.
+    url_host: Option<String>,
 }
 
 /// One `import` of the generated file.
@@ -739,6 +742,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         } else {
             Some("AppAdapters.handlesEnter")
         },
+        url_host: url_host(cfg, diags),
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
@@ -746,6 +750,26 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         scroll_restoration: cfg.scroll_restoration,
     };
     templates::render("app.g.dart", &cx)
+}
+
+/// The host `AppRoutes.urlOf` puts in its URLs (since 0.16.0): the first of `links: domains:`.
+/// Only a `links:` section asks for it, and one whose domains `fsp links` would refuse gets a
+/// warning on pubspec.yaml and no `urlOf`: `fsp gen` never stops on `links:`.
+fn url_host(cfg: &Config, diags: &mut Diags) -> Option<String> {
+    let links = cfg.links.as_ref()?;
+    match links.domains() {
+        Ok(domains) => domains.into_iter().next(),
+        Err(why) => {
+            diags.add(
+                Level::Warning,
+                Base::Project,
+                "pubspec.yaml",
+                None,
+                format!("`AppRoutes.urlOf` is not generated: {why}"),
+            );
+            None
+        }
+    }
 }
 
 /// `DevTools and the observe.dart hooks`: what `AppRoutes.attach` lets follow the router.

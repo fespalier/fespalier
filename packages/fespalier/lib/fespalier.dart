@@ -35,9 +35,11 @@ export 'src/data_refusal.dart';
 export 'src/data_view.dart';
 export 'src/deferred.dart';
 // DevTools support (since 0.7.0): what a generated app.g.dart registers and attaches
-// (`watchData` since 0.8.1).
+// (`watchData` since 0.8.1), and what an adapter package shows in the Adapters tab
+// (`DevToolsAdapters`, since 0.16.0).
 export 'src/devtools/devtools.dart'
     show
+        DevToolsAdapters,
         devToolsAttach,
         devToolsRegister,
         kFespalierDevTools,

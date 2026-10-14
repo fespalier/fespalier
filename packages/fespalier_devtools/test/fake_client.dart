@@ -31,8 +31,8 @@ const firstFeatures = [
   DevToolsFeatures.navigate,
 ];
 
-/// What the app lists now (0.8.1: with the holders and the app's own providers).
-const allFeatures = [
+/// What an app of 0.8.1 to 0.15 lists: the holders and the app's own providers, no adapters.
+const featuresBeforeAdapters = [
   ...firstFeatures,
   DevToolsFeatures.guards,
   DevToolsFeatures.data,
@@ -41,6 +41,9 @@ const allFeatures = [
   DevToolsFeatures.holders,
   DevToolsFeatures.watched,
 ];
+
+/// What the app lists now (0.16.0: with the adapters).
+const allFeatures = [...featuresBeforeAdapters, DevToolsFeatures.adapters];
 
 typedef Handler =
     FutureOr<Map<String, Object?>> Function(Map<String, String> params);
@@ -73,6 +76,7 @@ class FakeFespalierClient implements FespalierClient {
       DevToolsMethods.clear: (_) => {'protocol': protocol, 'ok': true},
       DevToolsMethods.invalidate: (_) => {'protocol': protocol, 'ok': true},
       DevToolsMethods.open: (_) => {'protocol': protocol, 'ok': true},
+      DevToolsMethods.adapterEdit: (_) => {'protocol': protocol, 'ok': true},
       DevToolsMethods.match: (params) =>
           MatchRecord(location: params['location']!).toJson(),
       ...handlers,

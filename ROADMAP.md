@@ -30,9 +30,8 @@ Flutter 3.32, with the lowest dependencies it allows.
 
 ## Next
 
-- **Core seams the adapters need.** `AppRoutes.urlOf`, a DevTools panel adapters can post to, and
-  `test: a11y: true` in `fsp test`.
-- **Adapters**, each a small package:
+- **Adapters**, each a small package (the seams they need are in core: `AppRoutes.urlOf`, the DevTools
+  _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
   - `fespalier_launch`: shortcut and home-widget taps open typed routes, the first screen on a cold
     start (notification taps are `fespalier_push`, since 0.13.0).
   - `fespalier_crashlytics`: errors from the telemetry sink, named by route pattern and tagged with

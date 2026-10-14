@@ -462,6 +462,11 @@ abstract final class AppRoutes {
   /// The route manifest adds `match`, which also names the route's info.
   static UrlMatch? matchUrl(Uri uri) => matchRoutes(uri, base, _matchers{{ ", caseSensitive: false" if not case_sensitive }});
 
+{% if url_host %}
+  /// The https URL of [route] on {{ url_host }}, the first of `fespalier: links: domains` (since 0.16.0): what a share sheet, a notification or an `og:url` gives out. [locale] picks the spelling of its localized segments (`fr-CA` falls back to `fr`); the mount prefix is in it.
+  static Uri urlOf(TypedLocation route, {String? locale}) => Uri.parse('https://{{ url_host }}${route.locationFor(locale)}');
+
+{% endif %}
 {% if observe %}
   /// The observe.dart hooks of the page at [uri], outermost first.
   static List<RouteHooks> _observeAt(Uri uri) => observeRoutes(uri, base, _matchers{{ ", caseSensitive: false" if not case_sensitive }});

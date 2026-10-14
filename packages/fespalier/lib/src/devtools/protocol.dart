@@ -1,7 +1,8 @@
 /// The wire format between a running app and fespalier's DevTools extension, protocol 1
 /// (since 0.7.0): the names of the service extensions and events, and the records they carry.
 /// What 0.8.1 added (`holders`, and a data record's `via`, `provider` and `listeners`) is
-/// additive, so it is still protocol 1.
+/// additive, so it is still protocol 1, and so is what 0.16.0 added (the adapters: the `adapter`
+/// event, the `adapterEdit` method, the `adapters` feature and a snapshot's `adapters`).
 ///
 /// This file imports nothing, so the extension (a Flutter web app that cannot import
 /// `package:fespalier`) holds a byte-identical copy: `scripts/build-devtools-extension.sh`
@@ -69,6 +70,12 @@ abstract final class DevToolsMethods {
   /// Parameter `id` (a [DataRecord]'s), since 0.8.1. Answers a [HoldersRecord]: who holds that
   /// provider now, computed when asked. Listed as [DevToolsFeatures.holders].
   static const String holders = 'ext.fespalier.holders';
+
+  /// Parameters `adapter`, `key` and `value` (the text typed; it may be empty), since 0.16.0.
+  /// Calls the `onEdit` the adapter gave `DevToolsAdapters.show` for that key, and answers
+  /// `{"protocol": 1, "ok": true}`, or `"ok": false` with a `"reason"`. Listed in `hello`'s
+  /// features as [DevToolsFeatures.adapters].
+  static const String adapterEdit = 'ext.fespalier.adapterEdit';
 }
 
 /// The kinds of the events an app posts (`dart:developer`'s `postEvent`, on the `Extension`
@@ -91,6 +98,10 @@ abstract final class DevToolsEvents {
 
   /// An action started or ended. The payload's `record` is an [ActionRecord].
   static const String action = 'fespalier:action';
+
+  /// An adapter showed or hid its values (since 0.16.0). The payload's `record` is an
+  /// [AdapterRecord].
+  static const String adapter = 'fespalier:adapter';
 
   /// Whether a stream event of this kind is fespalier's.
   static bool isFespalier(String kind) => kind.startsWith('fespalier:');
@@ -127,6 +138,10 @@ abstract final class DevToolsFeatures {
   /// A `data.dart` that returns or selects the app's own provider is followed too: the
   /// [DataRecord]s with `via` [DataVia.watch] (since 0.8.1).
   static const String watched = 'watched';
+
+  /// The adapters' values: `adapters` in the snapshot, the `adapter` event and the `adapterEdit`
+  /// method (since 0.16.0).
+  static const String adapters = 'adapters';
 }
 
 /// The values of `navigate`'s `mode`.
@@ -599,6 +614,7 @@ final class SnapshotRecord {
     this.guards = const [],
     this.data = const [],
     this.actions = const [],
+    this.adapters = const [],
   });
 
   /// Reads what [toJson] wrote.
@@ -629,6 +645,10 @@ final class SnapshotRecord {
     actions: [
       for (final a in _list(json, 'actions'))
         ActionRecord.fromJson(a! as Map<String, Object?>),
+    ],
+    adapters: [
+      for (final a in _list(json, 'adapters'))
+        AdapterRecord.fromJson(a! as Map<String, Object?>),
     ],
   );
 
@@ -664,6 +684,10 @@ final class SnapshotRecord {
   /// The action runs, oldest first. Empty without [DevToolsFeatures.actions].
   final List<ActionRecord> actions;
 
+  /// What the adapters show now, by adapter name (since 0.16.0). Empty without
+  /// [DevToolsFeatures.adapters]; an app older than 0.16.0 sends none.
+  final List<AdapterRecord> adapters;
+
   /// The response of `snapshot`.
   Map<String, Object?> toJson() => {
     'protocol': protocol,
@@ -676,6 +700,7 @@ final class SnapshotRecord {
     'guards': [for (final g in guards) g.toJson()],
     'data': [for (final d in data) d.toJson()],
     'actions': [for (final a in actions) a.toJson()],
+    'adapters': [for (final a in adapters) a.toJson()],
   };
 
   @override
@@ -1056,6 +1081,116 @@ final class ActionRecord {
   @override
   bool operator ==(Object other) =>
       other is ActionRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// What an adapter package shows in the extension's _Adapters_ tab (since 0.16.0): a few named
+/// values, such as the flags a package resolved or the last notification it opened. The `adapter`
+/// event's record, and each of a [SnapshotRecord]'s `adapters`.
+final class AdapterRecord {
+  /// What [adapter] shows as of [at]. A [removed] record has no [values].
+  const AdapterRecord({
+    required this.seq,
+    required this.adapter,
+    this.title,
+    required this.at,
+    this.values = const [],
+    this.truncated = false,
+    this.removed = false,
+  });
+
+  /// Reads what [toJson] wrote; a missing optional key is its default.
+  factory AdapterRecord.fromJson(Map<String, Object?> json) => AdapterRecord(
+    seq: _int(json, 'seq'),
+    adapter: _string(json, 'adapter'),
+    title: _stringOrNull(json, 'title'),
+    at: _int(json, 'at'),
+    values: [
+      for (final v in _list(json, 'values'))
+        AdapterValueRecord.fromJson(v! as Map<String, Object?>),
+    ],
+    truncated: json['truncated'] == true,
+    removed: json['removed'] == true,
+  );
+
+  /// A number for the record, from the same counter as [NavigationRecord.seq].
+  final int seq;
+
+  /// The package that shows them: its name (`fespalier_flags`).
+  final String adapter;
+
+  /// What the card is called, or null for the package's name.
+  final String? title;
+
+  /// When it was shown, in milliseconds since the epoch.
+  final int at;
+
+  /// The values, in the order the adapter gave them.
+  final List<AdapterValueRecord> values;
+
+  /// Whether the adapter gave more values than the app keeps (64).
+  final bool truncated;
+
+  /// The adapter hid its values (`DevToolsAdapters.hide`): the reader drops it.
+  final bool removed;
+
+  /// A part of a [SnapshotRecord] and of the `adapter` event.
+  Map<String, Object?> toJson() => {
+    'seq': seq,
+    'adapter': adapter,
+    'title': title,
+    'at': at,
+    'values': [for (final v in values) v.toJson()],
+    'truncated': truncated,
+    'removed': removed,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is AdapterRecord && _same(toJson(), other.toJson());
+
+  @override
+  int get hashCode => _hash(toJson());
+}
+
+/// One value an adapter shows (since 0.16.0).
+final class AdapterValueRecord {
+  /// A value under [key], which a developer may set from the tool when it is [editable].
+  const AdapterValueRecord({
+    required this.key,
+    required this.value,
+    this.editable = false,
+  });
+
+  /// Reads what [toJson] wrote.
+  factory AdapterValueRecord.fromJson(Map<String, Object?> json) =>
+      AdapterValueRecord(
+        key: _string(json, 'key'),
+        value: Shown.fromJson(json['value']! as Map<String, Object?>),
+        editable: json['editable'] == true,
+      );
+
+  /// The name the adapter gave it.
+  final String key;
+
+  /// The value: its type and the start of its text.
+  final Shown value;
+
+  /// Whether `adapterEdit` takes this key.
+  final bool editable;
+
+  /// A part of an [AdapterRecord].
+  Map<String, Object?> toJson() => {
+    'key': key,
+    'value': value.toJson(),
+    'editable': editable,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is AdapterValueRecord && _same(toJson(), other.toJson());
 
   @override
   int get hashCode => _hash(toJson());

@@ -39,7 +39,7 @@ have="$(git rev-parse HEAD:cli)"
 # PINS_FILE, when set, is the file the third check reads instead of this commit's own
 # release_checksums.dart: the tests use it, and so does the manual run of release.yml, which
 # publishes a tag whose release PR was merged before its pins (the pin commit's file).
-python3 scripts/pin_checksums.py --check --version "$version" --dist "$dir" ${PINS_FILE:+--out "$PINS_FILE"} \
-  || fail "the staged archives are not the ones release_checksums.dart pins for ${version}"
+python3 scripts/pin_checksums.py --check --version "$version" --dist "$dir" ${PINS_FILE:+--out "$PINS_FILE"} ||
+  fail "the staged archives are not the ones release_checksums.dart pins for ${version}"
 
 echo "verified: the staged archives are the ${version} binaries built from this cli/ tree and pinned in this commit"

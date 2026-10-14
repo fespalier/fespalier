@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/fespalier/fespalier/compare/v0.16.0...v0.17.0) (2026-10-14)
+
+
+### Features
+
+* ExtraCodec.of restores a freezed extra, and fsp warns when build_runner would delete lib/app.g.dart ([#185](https://github.com/fespalier/fespalier/issues/185)) ([0ae9669](https://github.com/fespalier/fespalier/commit/0ae96696fb5adca8abf564ffdc607fbd1d0506b7))
+
 ## [0.16.0](https://github.com/fespalier/fespalier/compare/v0.15.0...v0.16.0) (2026-10-14)
 
 

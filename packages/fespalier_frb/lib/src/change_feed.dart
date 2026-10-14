@@ -86,17 +86,25 @@ final class ChangeFeed<E> {
   /// `ChangeFeed((ref) => ref.watch(core).changes())`. A `ref.watch` inside it rebuilds the
   /// subscription when the core provider changes, which is what an app that restarts its core
   /// wants. [name] shows in the DevTools extension and in errors.
+  ///
+  /// A failure of [open] is kept in [latest] and [open] is not called again: no retry, which
+  /// would be a `Timer` (since 0.16.0; Riverpod's default called it again after 200 ms, up to ten
+  /// times).
   ChangeFeed(Stream<E> Function(Ref ref) open, {String? name})
     : _name = name,
-      latest = StreamProvider<Change<E>>((ref) {
-        var seq = 0;
-        final log = _ChangeLog<E>();
-        return open(ref).map((event) {
-          final change = Change<E>._(event, ++seq, log);
-          log.add(change);
-          return change;
-        });
-      }, name: name == null ? null : '$name.latest');
+      latest = StreamProvider<Change<E>>(
+        (ref) {
+          var seq = 0;
+          final log = _ChangeLog<E>();
+          return open(ref).map((event) {
+            final change = Change<E>._(event, ++seq, log);
+            log.add(change);
+            return change;
+          });
+        },
+        name: name == null ? null : '$name.latest',
+        retry: (_, _) => null,
+      );
 
   final String? _name;
 

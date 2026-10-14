@@ -1,8 +1,6 @@
 // InboundLaunch and launchRouter (since 0.11.0): a launch beats the platform's initial route and
 // marks the first navigation; a platform deep link is tagged `link` (cold start and warm), an
 // in-app `go` is not, and the web tags nothing. No timer.
-import 'dart:async';
-
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/src/inbound.dart'
     show debugInboundWeb, debugResetPlatformLinks;
@@ -289,16 +287,16 @@ class _Spy extends FespalierAdapter {
   final List<(String, bool, String?)> seen;
 
   @override
-  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+  FespalierEnter? get onEnter => (navigation) {
     seen.add((navigation.next.uri.path, navigation.initial, navigation.source));
     return null;
-  }
+  };
 }
 
 class _Rewrite extends FespalierAdapter {
   @override
-  FutureOr<OnEnterResult>? onEnter(InboundNavigation navigation) {
+  FespalierEnter? get onEnter => (navigation) {
     if (navigation.next.uri.path != '/custom') return null;
     return Block.then(() => navigation.router.go('/orders/9'));
-  }
+  };
 }

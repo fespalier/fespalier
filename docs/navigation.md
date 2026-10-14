@@ -432,12 +432,13 @@ InboundLaunch.to(OrderRoute(id: 42), source: NavigationSource.shortcut, extra: p
 initial route (go_router lets a cold-start deep link beat `initialLocation`, unless `overridePlatformDefaultLocation` is
 set, which a launch sets) and the first navigation is marked with `launch.source`.
 
-**A platform link.** With `links: true` (an app with telemetry or adapters), `launchRouter` registers one binding
-observer before go_router's provider does, launch or not. Each link the running app receives is marked
+**A platform link.** With `links: true` (an app with telemetry, or with an adapter that has an `onEnter`, since 0.16.0),
+`launchRouter` registers one binding observer before go_router's provider does, launch or not. Each link the running app receives is marked
 `NavigationSource.link`, and so is a deep link in the platform's initial route; an in-app `go` to the same location is
 not. Links are matched the way go_router reads them (a full URL, a trailing slash or none). The observer only stores the
-location: no timer, no frame, no listener on the router. An app with neither telemetry nor adapters adds nothing, and a
-router made with `links: false` is never marked. Never on the web.
+location: no timer, no frame, no listener on the router. An app with neither telemetry nor an adapter that has an
+`onEnter` adds nothing (adapters without an `onEnter` add nothing since 0.16.0; before, any adapter added the
+observer), and a router made with `links: false` is never marked. Never on the web.
 
 - **Android** hands a cold-start link to Flutter as the initial route, so it is the router's first navigation
   (`InboundNavigation.initial`), marked `link`.
@@ -446,24 +447,35 @@ router made with `links: false` is never marked. Never on the web.
   in `launch()`; `onEnter` sees it.
 - A host that drives `NavigationChannel.pushRoute` (add-to-app) is marked `link` too.
 
-An adapter's `onEnter` sees the same mark as `InboundNavigation.source`. Any `onEnter` makes go_router parse every
-navigation asynchronously and applies its redirect limit to each. `InboundNavigation.initial` is true when go_router has no
-route yet, and that navigation must not be blocked (fespalier allows it and reports it).
+An adapter's `onEnter` (a getter that answers a function, since 0.16.0) sees the same mark as
+`InboundNavigation.source`. Any `onEnter` makes go_router parse every navigation asynchronously and
+applies its redirect limit to each. `InboundNavigation.initial` is true when go_router has no route yet, and that
+navigation must not be blocked (fespalier allows it and reports it).
 
 **Generated.** `AppRoutes.router(launch:)` calls `launchRouter` for you: `launch` is the `InboundLaunch` the app was
 opened with (null: none), the router starts at `launch.location` with `launch.extra` over the platform's initial route,
-and `links: true` is passed when the app has `telemetry: true` or `adapters:`. The generated main asks
+and `links: true` is passed when the app has `telemetry: true` (`links: AppAdapters.handlesEnter` with `adapters:` and no
+telemetry, since 0.16.0). The generated main asks
 `AppAdapters.launch()` once, after `beforeRun()` and before the router exists, and passes the answer to
 `AppRoutes.router(launch: AppMain.launch)`; with `main: manual` your `main()` does the same
 (`final launch = await AppAdapters.launch();`, see [With `main: manual`](adapters.md#with-main-manual-appadapters)). An
 `app.dart` `router()` that builds the router itself passes `launch: AppMain.launch` on, or `fsp` warns (see
 [Adapters](adapters.md)). `launch:` is ignored on the web.
 
-With adapters, `AppRoutes.router` also passes `onEnter: AppRoutes.onEnter`, which forwards to the adapters' `onEnter`
-in the pubspec's order; an app that builds a `GoRouter` of its own passes `onEnter: AppRoutes.onEnter` itself.
-Without adapters there is no `AppRoutes.onEnter`, and go_router keeps its simplest code path. **Any `onEnter`, this one
-included, makes go_router parse every navigation asynchronously and apply its redirect limit to all of them**, so an app
-with adapters that has none with an `onEnter` to offer pays that for nothing: leave `adapters:` for the packages you use.
+With adapters, `AppRoutes.router` passes go_router `onEnter: AppAdapters.handlesEnter ? onEnter : null` (since 0.16.0):
+`AppRoutes.onEnter` forwards to the `onEnter` of the adapters that have one (`FespalierAdapter.onEnter`, a getter that
+answers a function, is not null), in the pubspec's order, and **it is passed only when at least one adapter has one**. No
+first-party adapter has one, so an app with `fespalier_push`, `fespalier_analytics` or `fespalier_download` keeps
+go_router's synchronous parsing, as an app without adapters does (there is no `AppRoutes.onEnter` without adapters). An
+app that builds a `GoRouter` of its own passes `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null` itself.
+
+**Any `onEnter`, this one included, makes go_router parse every navigation asynchronously and apply its redirect limit
+to all of them**, so for an app with an adapter that has one, `router.go('/a'); router.push('/b');` in one handler
+ends with `/b` pushed on the location from before the `go` (the `go` is lost: the router has not committed it when
+the `push` reads the location) and `currentConfiguration` lags until the next frame. Navigate once per handler there, or
+push after the `go` committed. Before 0.16.0 every app with `adapters:` had this, whether or not an adapter had anything
+to say. An adapter written for 0.15 or earlier that defines an `onEnter` method no longer compiles, and changes it to the
+getter ([Adapters](adapters.md)).
 
 ### Platform links end to end
 
@@ -502,7 +514,7 @@ testWidgets('a link opens the order', (tester) async {
 
 It pumps until nothing is scheduled. It is a warm link: for a cold start, set
 `tester.binding.platformDispatcher.defaultRouteNameTestValue` before `pumpRouter`. The router has to come from a
-`launchRouter` with `links: true` (an app with telemetry or adapters) for `onEnter` and telemetry to see
+`launchRouter` with `links: true` (an app with telemetry, or with an adapter that has an `onEnter`) for `onEnter` and telemetry to see
 `source=link`; the page opens either way. A widget test cannot say whether a platform verified the domain: only step 4
 does.
 

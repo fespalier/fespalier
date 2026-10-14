@@ -224,6 +224,16 @@ plugin until it is used (so `AppMain.root()` boots in a widget test).
   the first `Block` wins and the `then`s of the `Allow`s run in order. Never block `navigation.initial` (it is allowed, reported in every mode, and its `then` still runs). A `then` runs after the commit (go_router 17.2.3, the lowest since 0.16.0, and later; before 17.2 it ran inside the parse, before it). `launchRouter` and the platform-link marks are in `fespalier-routing`. The generated main asks
   `AppAdapters.launch()` once and gives `AppRoutes.router(launch: AppMain.launch)` the answer; with `main: manual`, `final launch = await AppAdapters.launch();`
   and `AppRoutes.router(launch: launch, ...)`. `AppRoutes.onEnter` exists only with adapters (go_router parses every navigation asynchronously, with its redirect limit, as soon as any `onEnter` is set).
+- **`onEnter` is a getter (since 0.16.0).** An adapter that wants go_router's `onEnter` overrides
+  `FespalierEnter? get onEnter => (navigation) { ... };` (a function of the `InboundNavigation`; the default is `null`). It was
+  a method up to 0.15.0, and a method of that name now **fails to compile** (`Class 'X' can't define method 'onEnter' and have field 'FespalierAdapter.onEnter' with the same name.`):
+  change it to the getter, `return` as before. `AppRoutes.router` passes go_router
+  `onEnter: AppAdapters.handlesEnter ? onEnter : null`, so `onEnter` reaches go_router **only when some adapter's getter is not
+  null**, and only those adapters are asked. No first-party adapter has one, so an app with `fespalier_push`,
+  `fespalier_analytics` or `fespalier_download` keeps go_router's synchronous parsing. With an adapter that has one,
+  `router.go('/a'); router.push('/b');` in one handler loses the `go()` (`/home > /b`) and `currentConfiguration` lags a
+  frame: before 0.16.0 every app with `adapters:` had that. An app with a router of its own passes
+  `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null`.
 - **`extends`, never `implements`** `FespalierAdapter`: a member added later (`attach`, since 0.11.0) has a default
   for a subclass only.
 - **`attach` (since 0.11.0).** The generated main passes `AppRoutes.attach` to the `StartupGate`, which calls it

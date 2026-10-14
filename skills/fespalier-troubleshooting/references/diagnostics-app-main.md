@@ -41,12 +41,13 @@ Not an `fsp` diagnostic: a `FlutterError` printed once when the app runs. An ada
   started (`launch()` has run by then), or a widget test boots `AppMain.root()` (which runs no `main()`) without calling
   it. Taps then open the app and navigate nowhere, and `pushSource` throws `pushSource: no PushSource`. Fix: call it
   first thing in `main()` (with `main: manual`, before `AppAdapters.zone`), or in the test's `setUp`.
+- `in the stream of notification taps` (a `FlutterError` from library `fespalier_push`, printed once per error): the source's `taps` stream failed, or reading `taps` threw. Since 0.16.0 it can come while the app starts too (`launch()` listens to `taps` until `attach`), and a source that fails there fails once: nothing retries, the package starts no timer. Fix the source (a plugin error on the stream); a tap after `attach` still arrives unless the stream ended.
 - ``fespalier_analytics is listed under `fespalier: adapters:` but was never configured: call FespalierAnalytics.configure(backend) in main() before AppMain.run()`` (since 0.13.0):
   the same cause for `fespalier_analytics`: no `FespalierAnalytics.configure` before `AppMain.run()` (the sink is added to
   telemetry in `beforeRun()`, so a later call installs nothing the first navigation sees). Nothing is recorded until it is called.
-- ``fespalier_analytics records no screen: this app's router does not report page events to telemetry. Set `telemetry: true`under`fespalier:`in pubspec.yaml and run`fsp gen```(since 0.13.0):
-the app was generated without`telemetry: true`, so no page event reaches the sink (`telemetryFollows(router)`is false). Turn
-it on and run`fsp gen`. A backend that never gets a call while consent is `undecided`or`denied` is not this: that is the rule.
+- ``fespalier_analytics records no screen: this app's router does not report page events to telemetry. Set `telemetry: true` under `fespalier:` in pubspec.yaml and run `fsp gen`.`` (since 0.13.0):
+  the app was generated without `telemetry: true`, so no page event reaches the sink (`telemetryFollows(router)` is false). Turn
+  it on and run `fsp gen`. A backend that never gets a call while consent is `undecided` or `denied` is not this: that is the rule.
 
 ## Root files
 
@@ -99,3 +100,5 @@ it on and run`fsp gen`. A backend that never gets a call while consent is `undec
 | Web URLs still have `#` with the generated `main()`                                | Call `usePathUrlStrategy()` as the first line of `startup()` (and add `flutter_web_plugins` to `pubspec.yaml`)                                                  |
 | `adapters:` lists a package and nothing happens (no zone, no observer, no wrapper) | `lib/main.dart` does not call the generated main: it has to be `Future<void> main() => AppMain.run();`. `fsp` does not read `lib/main.dart`, so it says nothing |
 | In debug, Riverpod says "Tried to override a provider twice" at startup            | An adapter's `overrides()` and `startup()` override the same provider (the adapters' come first): override it in one place                                      |
+| An `onEnter` method: `can't define method 'onEnter' and have field` (0.16.0)       | `onEnter` is a getter now: `@override FespalierEnter? get onEnter => (navigation) { ... };`, see `fespalier-migration`                                          |
+| `go()` then `push()` in one handler loses the `go()`, `/home > /b` (since 0.16.0)  | An adapter has an `onEnter`, so go_router parses every navigation async (any `adapters:` entry did before 0.16.0). Push after the `go` committed                |

@@ -42,8 +42,12 @@ final pushReceived = StreamProvider<PushMessage>(
 );
 
 /// The notification permission as the platform reports it now. It never asks.
+///
+/// A source that throws is an `AsyncError`, read once: no retry, which would be a `Timer` (since
+/// 0.16.0; Riverpod's default re-asked the plugin up to ten times). `ref.invalidate` asks again.
 final pushPermission = FutureProvider.autoDispose<PushPermission>(
   (ref) => ref.watch(pushSource).permission(),
+  retry: (_, _) => null,
 );
 
 /// Shows the platform's own prompt (the app decides when), then refreshes [pushPermission].

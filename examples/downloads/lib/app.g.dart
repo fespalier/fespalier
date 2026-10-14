@@ -40,6 +40,11 @@ abstract final class AppAdapters {
 
   /// Wraps the root widget, the first adapter's outermost.
   static Widget wrap(Widget root) => _all.wrap(root);
+
+  /// Whether any adapter has an `onEnter` (`FespalierAdapter.onEnter` is not null, since 0.16.0).
+  /// `AppRoutes.router` passes go_router's `onEnter` only then: any `onEnter` makes go_router
+  /// parse every navigation asynchronously.
+  static bool get handlesEnter => _all.handlesEnter;
 }
 
 /// The file tree under lib/app/, ready to mount.
@@ -82,14 +87,14 @@ abstract final class AppRoutes {
         overridePlatformDefaultLocation: launch != null,
         observers: observers,
         restorationScopeId: restorationScopeId,
-        onEnter: onEnter,
+        onEnter: AppAdapters.handlesEnter ? onEnter : null,
         navigatorKey: rootNavigatorKey,
         routes: routes,
         errorBuilder: (context, state) => notFound(state.uri),
       );
       attach(router);
       return router;
-    }, links: true);
+    }, links: AppAdapters.handlesEnter);
   }
 
   /// Lets DevTools and the adapters follow [router]: [router] calls it, and an app that mounts the
@@ -104,12 +109,14 @@ abstract final class AppRoutes {
     if (container != null) AppAdapters._all.attach(router, container);
   }
 
-  /// go_router's `onEnter` (since 0.11.0): each adapter's `onEnter`, in the pubspec's order. A
-  /// platform link reaches them with `source: NavigationSource.link`. An app with a GoRouter of
-  /// its own passes `onEnter: AppRoutes.onEnter`.
+  /// go_router's `onEnter` (since 0.11.0): the `onEnter` of each adapter that has one
+  /// (`FespalierAdapter.onEnter` is a getter since 0.16.0), in the pubspec's order. A platform link
+  /// reaches them with `source: NavigationSource.link`. An app with a GoRouter of its own passes
+  /// `onEnter: AppAdapters.handlesEnter ? AppRoutes.onEnter : null`, as [router] does.
   ///
   /// Any `onEnter` makes go_router parse every navigation asynchronously and apply its
-  /// redirect limit to all of them.
+  /// redirect limit to all of them, which is why [router] passes it only when an adapter has
+  /// one (since 0.16.0): without one, `go()` then `push()` in a handler keeps both.
   static FutureOr<OnEnterResult> onEnter(
     BuildContext context,
     GoRouterState current,

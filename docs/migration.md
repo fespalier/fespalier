@@ -29,9 +29,9 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.16.0
 
-0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, fixes the places where a write could be sent twice, and makes three
-outcomes of the network packages right (one port, `DownloadBackend.resume`, gains a named parameter: see the last item), so an
-app sees different outcomes in these places:
+0.16.0 raises the floor to Flutter 3.35 and Dart 3.9, fixes the places where a write could be sent twice, makes three
+outcomes of the network packages right (one port, `DownloadBackend.resume`, gains a named parameter: see the resume item),
+and adds opt-in tooling, so an app sees different outcomes in these places:
 
 - **Flutter 3.35 and Dart 3.9 are the floor** ([Requirements](getting-started.md#requirements)). **Breaking, for an app on
   Flutter 3.32 to 3.34:** `fespalier` and every companion that was in the 3.32 floor job declare `sdk: ^3.9.0` and
@@ -90,6 +90,15 @@ app sees different outcomes in these places:
   discarded. **A `DownloadBackend` of your own** (a fake in a test, a custom transfer) must accept the new `url:` named
   parameter of `resume(id, {authorization, url})`: `flutter analyze` names the override that is missing it.
   `FakeDownloadBackend.resumeUrls` records it.
+- **An app with a `links:` section gets [`AppRoutes.urlOf`](cli.md#urls-to-share-approutesurlof)** when it regenerates,
+  the absolute URL of a route on the first domain: a doc comment and one method after `matchUrl`. An app without
+  `links:` regenerates byte for byte, and a first domain that is not usable is a warning of `fsp gen`, as before.
+- **`fespalier: test: a11y:` is opt-in** ([Route smoke tests](route-tests.md#route-smoke-tests-fsp-test)). With `true`
+  (or a list of `tap_targets`, `labels`, `contrast`) every test `fsp test` writes also checks Flutter's accessibility
+  guidelines once its page is on screen; without it the file is the one it always was.
+- **The DevTools extension has an _Adapters_ tab** ([DevTools extension](devtools.md#what-it-shows)), and the protocol is
+  still 1: `hello` lists `adapters` in its features. A tool of your own that compares `features` exactly should ask
+  `contains`.
 
 ### 0.15.0
 

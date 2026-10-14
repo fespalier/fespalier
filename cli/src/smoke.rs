@@ -21,6 +21,10 @@
 //! and `app(GoRouter router)`, the app around the router. `fsp test` only reads which of the two
 //! it declares. A guarded route has no test unless there are `overrides` to get past its guard.
 //!
+//! `test: a11y:` (since 0.16.0) adds `guidelines:` to each `smokeTestRoute`, which checks Flutter's
+//! accessibility guidelines once the page is on screen: `routeA11yGuidelines` for all of them,
+//! or a `_a11y` list the file declares when only some are on.
+//!
 //! The file starts with [`MARKER`]. `fsp test` never overwrites a file of that name that does not.
 
 use std::collections::HashMap;
@@ -30,7 +34,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
-use crate::config::{Config, DEFAULT_TEST_TIMEOUT, Test, parent, relative_dir};
+use crate::config::{Config, DEFAULT_TEST_TIMEOUT, Guideline, Test, parent, relative_dir};
 use crate::dart::Function;
 use crate::emit::{dart_str, rel};
 use crate::maestro::{Skip, guards_above};
@@ -98,6 +102,29 @@ fn import_as(uri: &str, alias: &str) -> String {
     } else {
         format!("{one}\n")
     }
+}
+
+/// What the file calls its own list of guidelines (`test: a11y:` with only some of them).
+const A11Y_LIST: &str = "_a11y";
+
+/// The `guidelines:` argument: the runtime's list for every guideline, else the file's own.
+fn guidelines_name(on: &[Guideline]) -> &'static str {
+    if Guideline::ALL.iter().all(|g| on.contains(g)) {
+        "routeA11yGuidelines"
+    } else {
+        A11Y_LIST
+    }
+}
+
+/// `const _a11y = [...];` for the guidelines that are on, one to a line with a trailing comma, so
+/// `dart format` keeps it split in both of its styles.
+fn a11y_list(on: &[Guideline]) -> String {
+    let mut out = format!("\nconst {A11Y_LIST} = [\n");
+    for constant in on.iter().copied().flat_map(Guideline::constants) {
+        let _ = writeln!(out, "  {constant},");
+    }
+    out.push_str("];\n");
+    out
 }
 
 /// Every pattern of `skip` must be the pattern of a route, as `fsp routes` prints it.
@@ -204,6 +231,13 @@ pub fn file(app: &App, cfg: &Config, cx: &TestCx) -> Result<(String, Vec<Skip>)>
         if cx.setup.as_ref().is_some_and(|s| s.app) {
             line.push_str("      app: setup.app,\n");
         }
+        if !cx.test.a11y.is_empty() {
+            let _ = writeln!(
+                line,
+                "      guidelines: {},",
+                guidelines_name(&cx.test.a11y)
+            );
+        }
         if cx.test.timeout != DEFAULT_TEST_TIMEOUT {
             let _ = writeln!(
                 line,
@@ -237,6 +271,14 @@ pub fn file(app: &App, cfg: &Config, cx: &TestCx) -> Result<(String, Vec<Skip>)>
         ),
         None => "No setup file: the tests boot\n// without provider overrides.\n".to_string(),
     });
+    if !cx.test.a11y.is_empty() {
+        let words: Vec<&str> = cx.test.a11y.iter().copied().map(Guideline::words).collect();
+        let _ = writeln!(
+            out,
+            "// Each test also checks Flutter's accessibility guidelines ({})\n// once its page is on screen.",
+            words.join(", ")
+        );
+    }
     if !skips.is_empty() {
         out.push_str("//\n");
         for s in &skips {
@@ -265,6 +307,9 @@ pub fn file(app: &App, cfg: &Config, cx: &TestCx) -> Result<(String, Vec<Skip>)>
             &dart_str(&setup_import(&cx.test.out, &s.path)),
             "setup",
         ));
+    }
+    if !cx.test.a11y.is_empty() && guidelines_name(&cx.test.a11y) == A11Y_LIST {
+        out.push_str(&a11y_list(&cx.test.a11y));
     }
     out.push_str("\nvoid main() {\n");
     for (guards, line) in &tests {

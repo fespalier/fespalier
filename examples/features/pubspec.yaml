@@ -51,3 +51,8 @@ fespalier:
   # Each page gets a PageStorage per history entry: the browser's back and forward bring a
   # keyed scrollable back to where it was (docs/layouts.md, "Scroll restoration"); a `go` starts at the top.
   scroll_restoration: true
+  # The host of `AppRoutes.urlOf(route)`, the https URL a share sheet or a notification gives out
+  # (docs/cli.md, "URLs to share"). `fsp links` reads the same section for the sitemap and the
+  # platform files; this example sets only the domain, which `urlOf` needs.
+  links:
+    domains: [features.example.com]

@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::{DEFAULT_TEST_OUT, DEFAULT_TEST_TIMEOUT, Pubspec, Test};
+use crate::config::{DEFAULT_TEST_OUT, DEFAULT_TEST_TIMEOUT, Guideline, Pubspec, Test};
 use crate::maestro::Skip;
 use crate::smoke::{self, Built};
 
@@ -141,6 +141,7 @@ fn the_defaults() {
     assert_eq!(t.setup, None);
     assert_eq!(t.setup_path(), "test/routes/setup.dart");
     assert!(t.skip.is_empty());
+    assert!(t.a11y.is_empty());
 }
 
 #[test]
@@ -150,6 +151,7 @@ fn the_keys_are_read() {
         "setup: test/helpers/setup.dart",
         "timeout: 5000",
         "skip: [/admin]",
+        "a11y: [contrast]",
     ])
     .unwrap();
     assert_eq!(t.out, "integration_test/routes");
@@ -157,6 +159,7 @@ fn the_keys_are_read() {
     assert_eq!(t.setup_path(), "test/helpers/setup.dart");
     assert_eq!(t.timeout, 5000);
     assert_eq!(t.skip, ["/admin"]);
+    assert_eq!(t.a11y, [Guideline::Contrast]);
 }
 
 #[test]
@@ -167,7 +170,7 @@ fn an_unknown_key_is_refused_with_the_known_ones() {
     );
     assert!(
         err.contains(
-            "unknown field `folder`, expected one of `out`, `setup`, `timeout`, `samples`, `skip`"
+            "unknown field `folder`, expected one of `out`, `setup`, `timeout`, `samples`, `skip`, `a11y`"
         ),
         "{err}"
     );
@@ -223,6 +226,58 @@ fn timeout_is_in_milliseconds_of_the_fake_clock() {
     }
     assert_eq!(validated(&["timeout: 1000"]).unwrap().timeout, 1000);
     assert_eq!(validated(&["timeout: 600000"]).unwrap().timeout, 600_000);
+}
+
+#[test]
+fn a11y_is_true_false_or_a_list_of_guidelines() {
+    use Guideline::{Contrast, Labels, TapTargets};
+    assert_eq!(validated(&["a11y: true"]).unwrap().a11y, Guideline::ALL);
+    for none in ["a11y: false", "a11y: []", "a11y:"] {
+        assert!(validated(&[none]).unwrap().a11y.is_empty(), "{none}");
+    }
+    assert_eq!(
+        validated(&["a11y: [contrast, tap_targets]"]).unwrap().a11y,
+        [TapTargets, Contrast],
+        "a list is read in the guidelines' own order"
+    );
+    assert_eq!(
+        validated(&["a11y: [labels, labels, tap_targets, labels]"])
+            .unwrap()
+            .a11y,
+        [TapTargets, Labels],
+        "a guideline named twice counts once"
+    );
+}
+
+#[test]
+fn a11y_mistakes_name_the_key_and_what_was_written() {
+    for (written, shown) in [
+        ("a11y: sometimes", "sometimes"),
+        ("a11y: 3", "3"),
+        ("a11y: {contrast: true}", "{\"contrast\":true}"),
+    ] {
+        assert_eq!(
+            validation_error(&[written]),
+            format!(
+                "`fespalier.test.a11y` is `true` (every guideline), `false`, or a list of `tap_targets`, `labels` and `contrast`, got `{shown}`"
+            ),
+            "{written}"
+        );
+    }
+    for (written, shown) in [
+        ("a11y: [tap_targets, colour]", "colour"),
+        ("a11y: [Contrast]", "Contrast"),
+        ("a11y: [true]", "true"),
+        ("a11y: [1]", "1"),
+    ] {
+        assert_eq!(
+            validation_error(&[written]),
+            format!(
+                "`fespalier.test.a11y`: `{shown}` is not a guideline; use `tap_targets` (48×48 on Android, 44×44 on iOS), `labels` or `contrast`"
+            ),
+            "{written}"
+        );
+    }
 }
 
 // --- the text -------------------------------------------------------------------
@@ -303,6 +358,99 @@ fn the_setup_files_functions_are_passed_on() {
     assert!(!none.contains("setup.dart"));
     assert!(!none.contains("as setup"));
     assert!(!none.contains("setup."));
+}
+
+#[test]
+fn no_a11y_means_no_guidelines_anywhere_in_the_file() {
+    for test in [&[][..], &["a11y: false"], &["a11y: []"]] {
+        let text = text_of(&[SEMANTICS], test, &[home()], None);
+        assert!(!text.contains("uidelines"), "{test:?}\n{text}");
+        assert!(!text.contains("_a11y"), "{test:?}");
+    }
+}
+
+#[test]
+fn a11y_true_passes_every_guideline_the_runtime_has() {
+    let text = text_of(&[SEMANTICS], &["a11y: true"], &[home()], None);
+    assert!(text.contains(
+        "// waits, on the test's fake clock, until its page is on screen. No setup file: the tests boot\n// without provider overrides.\n// Each test also checks Flutter's accessibility guidelines (tap targets, labels, contrast)\n// once its page is on screen.\n\nimport"
+    ), "{text}");
+    assert!(text.contains(
+        "      AppRoutes.router(\n        initialLocation: '/',\n      ),\n      guidelines: routeA11yGuidelines,\n    ),\n  );\n"
+    ));
+    // The runtime's own list: nothing to declare.
+    assert!(!text.contains("_a11y"));
+    assert!(text.contains("import 'package:fespalier/testing.dart';\n"));
+    // A list of all three is the same as true.
+    assert_eq!(
+        text_of(
+            &[SEMANTICS],
+            &["a11y: [contrast, labels, tap_targets, contrast]"],
+            &[home()],
+            None
+        ),
+        text
+    );
+}
+
+#[test]
+fn a11y_in_a_list_declares_the_guidelines_the_file_checks() {
+    let text = text_of(
+        &[SEMANTICS],
+        &["a11y: [tap_targets, labels]"],
+        &[home(), f("cart/page.dart", page("Cart"))],
+        None,
+    );
+    assert!(text.contains(
+        "// Each test also checks Flutter's accessibility guidelines (tap targets, labels)\n// once its page is on screen.\n"
+    ));
+    assert!(text.contains(
+        "\nconst _a11y = [\n  androidTapTargetGuideline,\n  iOSTapTargetGuideline,\n  labeledTapTargetGuideline,\n];\n\nvoid main() {\n"
+    ), "{text}");
+    assert_eq!(text.matches("      guidelines: _a11y,\n").count(), 2);
+    assert!(!text.contains("routeA11yGuidelines"));
+    assert!(!text.contains("textContrastGuideline"));
+
+    let contrast = text_of(&[SEMANTICS], &["a11y: [contrast]"], &[home()], None);
+    assert!(contrast.contains("guidelines (contrast)\n// once its page"));
+    assert!(
+        contrast.contains("\nconst _a11y = [\n  textContrastGuideline,\n];\n\nvoid main() {\n")
+    );
+}
+
+#[test]
+fn guidelines_come_after_the_setup_and_before_the_timeout() {
+    let text = text_of(
+        &[SEMANTICS],
+        &["a11y: true", "timeout: 5000"],
+        &[home()],
+        Some(&format!("{OVERRIDES}\n{APP}\n")),
+    );
+    assert!(text.contains(
+        "      overrides: setup.overrides(\n        '/',\n      ),\n      app: setup.app,\n      guidelines: routeA11yGuidelines,\n      timeout: const Duration(milliseconds: 5000),\n    ),\n"
+    ), "{text}");
+}
+
+#[test]
+fn a_file_with_every_skip_and_a11y_keeps_the_header_in_order() {
+    let files = [home(), f("p/$id/page.dart", typed_page("P", "id", "int"))];
+    let text = text_of(&[SEMANTICS], &["a11y: [labels]"], &files, None);
+    let header: Vec<&str> = text.lines().take(11).collect();
+    assert_eq!(
+        header[5],
+        "// waits, on the test's fake clock, until its page is on screen. No setup file: the tests boot"
+    );
+    assert_eq!(header[6], "// without provider overrides.");
+    assert_eq!(
+        header[7],
+        "// Each test also checks Flutter's accessibility guidelines (labels)"
+    );
+    assert_eq!(header[8], "// once its page is on screen.");
+    assert_eq!(header[9], "//");
+    assert_eq!(
+        header[10],
+        "//   skipped /p/:id: no sample for p/$id in `fespalier.test.samples`"
+    );
 }
 
 #[test]
@@ -807,21 +955,27 @@ fn the_file_is_dart_format_clean_in_both_styles() {
     for version in ["3.5", "3.9"] {
         for semantics in [true, false] {
             for setup in [None, Some(OVERRIDES), Some(APP)] {
-                let extra: &[&str] = if semantics { &[SEMANTICS] } else { &[] };
-                let others: Vec<(&str, &str)> = setup.map(|s| (SETUP, s)).into_iter().collect();
-                let dir = project_with(&pubspec(extra, &test), &files, &others);
-                with_language_version(dir.path(), version);
-                let b = smoke::build(dir.path()).unwrap();
-                let path = dir.path().join(&b.shown);
-                let (formatted, warning) = crate::format::format_dart(&b.text, &path);
-                if warning.is_some() {
-                    return;
+                // No guidelines, every guideline (the runtime's list), and a list of some (the
+                // file's own `_a11y`), since 0.16.0.
+                for a11y in ["a11y: false", "a11y: true", "a11y: [tap_targets, contrast]"] {
+                    let extra: &[&str] = if semantics { &[SEMANTICS] } else { &[] };
+                    let others: Vec<(&str, &str)> = setup.map(|s| (SETUP, s)).into_iter().collect();
+                    let mut lines = test.to_vec();
+                    lines.push(a11y);
+                    let dir = project_with(&pubspec(extra, &lines), &files, &others);
+                    with_language_version(dir.path(), version);
+                    let b = smoke::build(dir.path()).unwrap();
+                    let path = dir.path().join(&b.shown);
+                    let (formatted, warning) = crate::format::format_dart(&b.text, &path);
+                    if warning.is_some() {
+                        return;
+                    }
+                    let changed = b.text.lines().zip(formatted.lines()).find(|(a, b)| a != b);
+                    assert!(
+                        b.text == formatted,
+                        "not dart-format clean under {version} (semantics_ids {semantics}, setup {setup:?}, {a11y}): first change {changed:?}"
+                    );
                 }
-                let changed = b.text.lines().zip(formatted.lines()).find(|(a, b)| a != b);
-                assert!(
-                    b.text == formatted,
-                    "not dart-format clean under {version} (semantics_ids {semantics}, setup {setup:?}): first change {changed:?}"
-                );
             }
         }
     }

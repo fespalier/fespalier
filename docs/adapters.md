@@ -150,6 +150,31 @@ answers: the first `Block` wins, the `Allow.then` callbacks run in order as one,
 the initial navigation is refused: it is allowed, reported with `FlutterError.reportError` in every mode, and the block's `then` still runs; answer `launch()` instead. `InboundNavigation.initial` is true when go_router has no route yet (it hands the same state as current and next). A `Block.then` for a platform link keeps the link's mark: the `go` inside it is reported with `source=link`. See
 [Opening the app](navigation.md#opening-the-app-launches-and-platform-links).
 
+**Showing state in DevTools (since 0.16.0).** An adapter that has state worth looking at while the app runs (the flags it
+resolved, the last notification it opened) can list it in the [DevTools extension](devtools.md)'s _Adapters_ tab, and let a
+developer set a value from there:
+
+```dart
+// in the adapter package, whenever its state changes
+if (kFespalierDevTools) {
+  DevToolsAdapters.show(
+    'my_tools', // your package's name: one card per name
+    {'mode': mode, 'last_payload': lastPayload},
+    title: 'My tools',
+    editable: {'mode'}, // keys a developer may set
+    onEdit: (key, text) => setMode(text), // in the app; usually ends with another `show`
+  );
+}
+```
+
+`show` replaces what the package showed before, keeps the first 64 keys (and 32 packages) and turns each value to its type and
+the start of its `toString()` at once, so the map is not kept. Call `DevToolsAdapters.hide('my_tools')` from the
+`ref.onDispose` of the provider that showed it. It is behind `kFespalierDevTools`: in a release build both are empty calls,
+and building the values under the same `if` keeps the map out of the release build too. It starts no timer and listens
+to nothing, so call it when your state changes, not on a schedule. The registry holds `onEdit` until `hide` or the next
+`show`: do not close over a `Ref` that should be gone. An `onEdit` that throws is answered to DevTools as
+`onEdit threw: ...`; it never reaches the app.
+
 **Two things to check.**
 
 - **`lib/main.dart` has to call `AppMain.run()`, or call `AppAdapters` itself.** Adapters are wired by the

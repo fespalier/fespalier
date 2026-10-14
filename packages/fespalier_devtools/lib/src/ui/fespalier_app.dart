@@ -1,4 +1,4 @@
-/// The extension's one screen: a status line, the go-to bar and six tabs.
+/// The extension's one screen: a status line, the go-to bar and seven tabs.
 library;
 
 import 'package:devtools_app_shared/ui.dart';
@@ -8,6 +8,7 @@ import '../client.dart';
 import '../controller.dart';
 import '../protocol.dart';
 import 'actions_panel.dart';
+import 'adapters_panel.dart';
 import 'chips.dart';
 import 'data_panel.dart';
 import 'go_to_bar.dart';
@@ -56,7 +57,7 @@ class _FespalierAppState extends State<FespalierApp>
   late final FespalierController _controller = FespalierController(
     widget.client,
   );
-  late final TabController _tabs = TabController(length: 6, vsync: this);
+  late final TabController _tabs = TabController(length: 7, vsync: this);
 
   @override
   void dispose() {
@@ -92,6 +93,7 @@ class _FespalierAppState extends State<FespalierApp>
                   Tab(text: 'Guards'),
                   Tab(text: 'Data'),
                   Tab(text: 'Actions'),
+                  Tab(text: 'Adapters'),
                 ],
               ),
               Expanded(
@@ -104,6 +106,7 @@ class _FespalierAppState extends State<FespalierApp>
                     GuardsPanel(controller: _controller),
                     DataPanel(controller: _controller),
                     ActionsPanel(controller: _controller),
+                    AdaptersPanel(controller: _controller),
                   ],
                 ),
               ),

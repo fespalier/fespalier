@@ -1,0 +1,40 @@
+name: fespalier_crashlytics
+description: "Crashlytics for fespalier: non-fatal errors named by the route pattern and tagged with the app file that threw, a log line per page change, and the screen as a custom key. The Firebase SDK is the app's."
+version: 0.17.2 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_crashlytics
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
+
+dependencies:
+  # The repeat window reads the time from here, so a test's withClock decides it.
+  clock: ^1.1.1
+  flutter:
+    sdk: flutter
+  # The same repository dependency an app writes (same url, path and ref), so the two resolve to
+  # one package: a path dependency would resolve "at <sha>" and conflict with the app's tag.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.17.2 # x-release-please-version
+  # No Firebase package is a dependency, on purpose: every Firebase plugin of an app shares one
+  # core major, and a range in this git-pinned companion would hold them back at each Firebase
+  # major until fespalier ships. The reporter is a port (CrashReporter); the Firebase binding is a
+  # compiled recipe in skills/fespalier-observability/references/crashlytics.md.
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# In this repository the package is built against the fespalier beside it. A dependency's
+# overrides are ignored, so apps never see this.
+dependency_overrides:
+  fespalier:
+    path: ../fespalier

@@ -34,8 +34,6 @@ Flutter 3.32, with the lowest dependencies it allows.
   _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
   - `fespalier_launch`: shortcut and home-widget taps open typed routes, the first screen on a cold
     start (notification taps are `fespalier_push`, since 0.13.0).
-  - `fespalier_crashlytics`: errors from the telemetry sink, named by route pattern and tagged with
-    the file that threw (three calls in a sink of your own until then).
   - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
     `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
   - `fespalier_dio`, the rest: composed with `fespalier_auth` (DPoP and refresh under a retry

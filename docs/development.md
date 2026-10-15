@@ -31,6 +31,7 @@ packages/fespalier_download/   downloads: DownloadRequest, DownloadStatus and th
 packages/fespalier_download_background/   the background download backend over background_downloader, Flutter 3.47 (since 0.15.0)
 packages/fespalier_push/   notification taps open typed routes: PushSource, linkRoute, an adapter (since 0.13.0)
 packages/fespalier_analytics/   screen views by route pattern, with consent: AnalyticsBackend, AnalyticsSink, an adapter (since 0.13.0)
+packages/fespalier_crashlytics/   Crashlytics: non-fatals named by the route and the file, page logs, a CrashReporter port (since 0.18.0)
 packages/fespalier_devtools/   the DevTools extension's source (a Flutter web app, tested on the VM)
 packages/fespalier/extension/devtools/   what DevTools loads: config.yaml (its version is release-please's)
                      and build/, the extension's release build, committed

@@ -173,6 +173,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_tolgee`              | translations from Tolgee or your own server, offline-safe (since 0.10.0)                          | [Translations](docs/i18n-tolgee.md)                                                |
 | `fespalier_push`                | notification taps open typed routes, cold start and warm (since 0.13.0)                           | [Push notifications](docs/push.md)                                                 |
 | `fespalier_analytics`           | screen views by route pattern, sent only with consent (since 0.13.0)                              | [Analytics](docs/analytics.md)                                                     |
+| `fespalier_crashlytics`         | Crashlytics non-fatals named by the route and the file (since 0.18.0)                             | [Crashlytics](docs/observability.md#crashlytics)                                   |
 | DevTools extension              | routes, guards, data and actions in Flutter DevTools                                              | [DevTools extension](docs/devtools.md)                                             |
 | Editor plugins                  | `fsp` diagnostics in VS Code and IntelliJ                                                         | [Editor plugins](docs/cli.md#editor-plugins)                                       |
 

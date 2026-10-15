@@ -530,10 +530,120 @@ testWidgets('a refused refund is an event on its route and its file', (tester) a
 
 ## Crashlytics
 
-There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
+Since 0.18.0. `package:fespalier_crashlytics` is the telemetry sink for [Firebase Crashlytics](https://firebase.google.com/docs/crashlytics), and it reports **non-fatal** errors. Out of the box, every failure of a guard, a `data.dart`, an action or a deferred load is a report whose **reason** names the route pattern and the app file that threw (`in data products/$id/data.dart on /products/:id`), with the same names as custom keys. The screen is a custom key too, so a crash that the app's own handlers record says where the person was, and each page change is a line in the log.
 
-- `end` records a non-fatal error;
-- `page` logs the page change;
-- a navigation's end sets the route as a custom key.
+The package has **no Firebase dependency**. It defines a port, `CrashReporter`, of three calls (`recordError`, `setCustomKey` and `log`), and the app passes a reporter that forwards them to Firebase. That reporter, `FirebaseCrashReporter`, is a compiled recipe in the [`fespalier-observability` skill](../skills/fespalier-observability/references/crashlytics.md), which `just skill-samples` builds against the SDK. The reason is that every Firebase plugin of an app shares one core major, so a range in a git-pinned companion would hold them all back at each Firebase major until fespalier ships. The port also lets another reporter (Bugsnag, Datadog) make the same three calls.
 
-Write it with `if` chains, not a `switch` over `TelemetryOp`, so an operation added later never breaks the app's build. `FespalierTelemetry.combine([FespalierSentry(), yourSink])` sends to both.
+Add it next to fespalier, with the same `url` and the same `ref` (as for `fespalier_sentry`):
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.17.2
+  fespalier_crashlytics:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_crashlytics
+      ref: v0.17.2
+```
+
+<!-- x-release-please-end -->
+
+The app also adds `firebase_core` (`^4.15.0`) and `firebase_crashlytics` (`^5.4.0`), the versions the recipe was built against. Their floors (Flutter 3.27, Dart 3.6) are the app's floors, not fespalier's, which is Flutter 3.35.
+
+### What Crashlytics gets from fespalier
+
+| fespalier reports                                                       | In Crashlytics, by default                                                                                                                                                                                                                                                    |
+| ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| outcome `error` with an exception (guard, `data`, `action`, `deferred`) | a **non-fatal** report with the reason `in data products/$id/data.dart on /products/:id` and the keys `fespalier_operation`, `fespalier_route`, `fespalier_file` and `fespalier_action` (`''` when there is none); the exception object and its stack trace, as the app's own |
+| the same failure again within `repeatWindow` (30 seconds)               | a log line, `data products/$id/data.dart StateError again`, not another report: Riverpod retries a failing `data()`                                                                                                                                                           |
+| a `FieldErrors` (a validation answer)                                   | **not** a report: a log line, `action items/$id/action.dart rejected` (its messages can echo what the user typed)                                                                                                                                                             |
+| an `auth` step that fails (`fespalier_auth`)                            | not a report (the next request retries it): a log line with the class of the error, `auth refresh StateError`, never its text                                                                                                                                                 |
+| a `custom` operation that fails (a package's own)                       | not a report: a log line with the class, `custom fespalier.push.open StateError`; `capture:` opts in, and the report is then named by the operation, `in custom fespalier.push.open`                                                                                          |
+| an `image` that fails with no error object (`fespalier_image`)          | a log line, `image emgr error status=404`, never the URL                                                                                                                                                                                                                      |
+| a committed navigation                                                  | the custom key `fespalier_screen` is the route pattern (`/products/:id`), sent only when it changes; a location that matched no route sets it to `''` and logs `navigation not found`                                                                                         |
+| a page `enter` or `focus`                                               | a log line, `navigation enter /products/:id` (a leave is no line)                                                                                                                                                                                                             |
+| a navigation that a newer one superseded                                | nothing                                                                                                                                                                                                                                                                       |
+| a crash that Firebase's own handlers record                             | a **fatal** report, which carries `fespalier_screen` and the keys of the last error the sink recorded (see below)                                                                                                                                                             |
+
+**Never sent:** segment values, query values, family keys, `extra`, action inputs and results, data values, a `FieldErrors`, a URL and an id. No error's text is in a reason, a key or a log line. The exception object itself goes to Crashlytics as the app's own, which is what Firebase's handlers do with every error: its message is in the report the way Firebase always shows it, and the sink adds none. A reporter that knows a message is sensitive can redact it there.
+
+**The keys are session-wide.** Crashlytics keeps custom keys for the whole session, not per report. So the four error keys hold the last recorded error until the next one, and `fespalier_screen` is where the person is now. The sink sends a key only when its value changes, and the recipe sets each key of a report and waits for it before it records, because Android runs each plugin call on a thread pool and the order is not otherwise kept.
+
+The sink sends **no OpenTelemetry trace link** in this version: [`fespalier_sentry`](#sentry-fespalier_sentry) keeps that link, and a Crashlytics report has no span to point to.
+
+**UNCHECKED on a device.** The tests pin what the sink sends to the reporter, not what the Crashlytics console shows. Not yet seen on a device: how the console shows the reason in the issue's message, the four error keys and `fespalier_screen` on a report, the log lines a report carries, and that a report carries the keys set just before it.
+
+### Wiring Crashlytics
+
+Crashlytics starts in `startup()`, which the app calls before the router is built, so the first navigation is reported. The recipe's `startup()` is in `lib/app/startup.dart`, and `crashSink` is the one sink for the app's life, in `lib/crash/firebase_crash_reporter.dart` (both in the skill's [`crashlytics.md`](../skills/fespalier-observability/references/crashlytics.md)):
+
+```dart
+Future<void> startup() async {
+  if (kIsWeb || !_crashlyticsPlatforms.contains(defaultTargetPlatform)) return;
+  await Firebase.initializeApp(); // `flutterfire configure` writes DefaultFirebaseOptions for it
+  FlutterError.onError = (details) {
+    if (crashSink.reported(details.exception)) {
+      FlutterError.presentError(details);
+    } else {
+      unawaited(FirebaseCrashlytics.instance.recordFlutterFatalError(details));
+    }
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    if (!crashSink.reported(error)) {
+      unawaited(FirebaseCrashlytics.instance.recordError(error, stack, fatal: true));
+    }
+    return true;
+  };
+  if (!FespalierTelemetry.contains(crashSink)) FespalierTelemetry.add(crashSink);
+}
+```
+
+The rules:
+
+- **`telemetry: true`.** The guards, `data()`, the actions and the navigations report to a sink only in an app generated with it. Without it no operation of the app reaches the sink: no report and no screen.
+- **Install before the router.** `startup()` runs before the router is built, so the first navigation is reported.
+- **`add`, not `install`.** `install` replaces the one slot, and it would drop a sink an adapter or Sentry added. `add` keeps it.
+- **The `contains` guard.** The splash's retry runs `startup()` again. Without the guard the sink is added twice and each failure is reported twice.
+- **Android, iOS and macOS only.** On the web, Linux and Windows the recipe returns early: no Crashlytics, and no sink.
+- **Next to the others.** Add it beside `FespalierSentry` or `FespalierOtel` with `FespalierTelemetry.add`, or in one `FespalierTelemetry.combine`: each sink gets its own tokens, and a sink that throws is isolated, so it costs its own reports and nothing else.
+- **The options.** `logs:` (default `true`) writes the page changes and the failures the sink does not report as log lines; `capture:` decides which failures are reports (`FespalierCrashlytics.unexpected` by default: all but a `FieldErrors`, an `auth` step and a `custom` operation); `repeatWindow:` is the 30 seconds after which the same failure is a report again (`Duration.zero`: every one).
+
+Installed, every call is synchronous: a sync guard or `data()` stays sync, the reporter's `Future` is awaited by nobody and its failure is handled where it is returned, and the sink starts no timer and listens to nothing.
+
+### Uncaught errors are reported once
+
+The sink reports a failure **first, synchronously**: before an action's error is rethrown to the caller, and before the frame that rethrows a `data()` error in `build`. So an error the app's global handlers see has been reported already. That is what `FespalierCrashlytics.reported(error)` answers: true for an error object the sink saw (a report, a repeat, or a log line by class, a `FieldErrors` included), compared by identity, over the last 32 it saw.
+
+The recipe's two handlers use it. `FlutterError.onError` still calls `FlutterError.presentError` for an error the sink reported, so the app shows what it shows in debug, and `PlatformDispatcher.onError` returns `true` without a second report. The sink sets no global handler of its own: the handlers are the app's, and a crash that no fespalier operation reported is recorded by Firebase's handlers as before.
+
+**UNCHECKED on a device.** That a release build reports each error once, on Android and on iOS, and that Firebase's handlers do not report what the sink already did.
+
+### Testing with Crashlytics
+
+`package:fespalier_crashlytics/testing.dart` has `RecordingCrashlytics`, a `CrashReporter` that keeps what it is given: `errors` (each a `RecordedError` with the error object, its stack trace, its reason and a snapshot of the keys), `keys` (the session's keys, as Crashlytics keeps them), `logs`, `lines` (one per call, in order: `key <name>=<value>`, `log <message>`, `error <ExceptionType> <reason>`) and `strings` (every reason, every key value ever set and every log line, never an error object). `RecordingCrashlytics(throwing: true)` makes every call throw, and `failing: true` makes every call return a failed `Future`, to test that the app does not notice a broken reporter. `clear()` forgets what was recorded and keeps the session's keys, as Crashlytics does.
+
+```dart
+test('a data error is one report named by its route and file, and no text is sent', () {
+  final crash = RecordingCrashlytics();
+  FespalierTelemetry.install(FespalierCrashlytics(crash));
+  final token = FespalierTelemetry.begin(
+    TelemetryStart(
+      TelemetryOp.data,
+      site: TelemetrySite(r'orders/$id/data.dart', route: '/orders/:id'),
+    ),
+  );
+  FespalierTelemetry.finish(
+    token,
+    TelemetryEnd(TelemetryOutcome.error, error: StateError('order 4242 is gone')),
+  );
+  expect(crash.lines, [r'error StateError in data orders/$id/data.dart on /orders/:id']);
+  expect(crash.strings, everyElement(isNot(contains('4242'))));
+  FespalierTelemetry.install(null);
+});
+```

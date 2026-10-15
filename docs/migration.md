@@ -27,6 +27,14 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.18.0
+
+- **New, opt-in: `fespalier_crashlytics`** ([Crashlytics](observability.md#crashlytics)). Nothing changes for an app that does not add it, and `app.g.dart` is unchanged. A Crashlytics sink of your own (the three calls the 0.9.0 docs described) can be replaced:
+  - add the package at the same `ref`
+  - copy `FirebaseCrashReporter`
+  - `FespalierTelemetry.add(FespalierCrashlytics(...))` in `startup()`
+  - make Firebase's handlers skip `reported(error)`
+
 ### 0.17.0
 
 0.17.0 is about code generators, where fespalier and freezed or `build_runner` trip over each other, and it changes

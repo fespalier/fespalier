@@ -624,6 +624,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "needs `local_auth` and device setup, a compiled recipe in the skills, not a dependency",
     ),
     (
+        "fespalier_crashlytics",
+        "needs Firebase and its console setup (a google-services file, symbol uploads), which are the app's own; the app brings its reporter",
+    ),
+    (
         "fespalier_cratestack",
         "needs a generated CrateStack client that is specific to the app, so there is nothing to scaffold",
     ),

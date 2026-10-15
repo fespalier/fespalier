@@ -262,7 +262,7 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 22] = [
+const COMPANIONS: [&str; 23] = [
     "packages/fespalier_otel/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
@@ -285,6 +285,7 @@ const COMPANIONS: [&str; 22] = [
     "packages/fespalier_analytics/pubspec.yaml",
     "packages/fespalier_frb/pubspec.yaml",
     "packages/fespalier_riverpod/pubspec.yaml",
+    "packages/fespalier_crashlytics/pubspec.yaml",
 ];
 
 #[test]
@@ -434,6 +435,7 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_analytics/README.md",
         "packages/fespalier_frb/README.md",
         "packages/fespalier_riverpod/README.md",
+        "packages/fespalier_crashlytics/README.md",
     ]
     .map(String::from)
     .to_vec();
@@ -509,6 +511,8 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier_frb/README.md",
         "packages/fespalier_riverpod/pubspec.yaml",
         "packages/fespalier_riverpod/README.md",
+        "packages/fespalier_crashlytics/pubspec.yaml",
+        "packages/fespalier_crashlytics/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",

@@ -1,6 +1,6 @@
 ---
 name: fespalier-observability
-description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, and, since 0.11.0, the page instance's RouteScope that onEnter takes with hold and onLeave, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace; and, since 0.13.0, fespalier_analytics (screen views by route pattern to an analytics backend of yours, only with consent: nothing sent or kept while undecided or denied, no replay on grant, screenName from meta.dart, time on screen, the AnalyticsBackend interface with Firebase Analytics, PostHog, Mixpanel and Amplitude as compiled recipes, configure before AppMain.run, telemetry: true required, RecordingAnalytics for tests). Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
+description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, and, since 0.11.0, the page instance's RouteScope that onEnter takes with hold and onLeave, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace; and, since 0.13.0, fespalier_analytics (screen views by route pattern to an analytics backend of yours, only with consent: nothing sent or kept while undecided or denied, no replay on grant, screenName from meta.dart, time on screen, the AnalyticsBackend interface with Firebase Analytics, PostHog, Mixpanel and Amplitude as compiled recipes, configure before AppMain.run, telemetry: true required, RecordingAnalytics for tests); and, since 0.18.0, fespalier_crashlytics (Crashlytics non-fatals named by the route pattern and the file that threw, fespalier_* custom keys, page logs, Firebase's handlers skipping what the sink reported, the CrashReporter interface with Firebase as a compiled recipe, RecordingCrashlytics for tests). Load before adding an observe.dart, turning on telemetry, wiring otel_zone, Sentry or Crashlytics, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
 ---
 
 # fespalier-observability
@@ -119,6 +119,15 @@ and the stored answer is loaded in `startup()` (`FespalierAnalytics.sink?.consen
 Read [`references/analytics.md`](references/analytics.md) for the wiring, consent, `screenName` from `meta.dart` and testing, and
 [`references/analytics-backends.md`](references/analytics-backends.md) for the four vendor recipes.
 
+## Crashlytics (since 0.18.0)
+
+`package:fespalier_crashlytics` reports every failure of a guard, `data.dart`, action or deferred load as a **non-fatal** Crashlytics
+report named by the route pattern and the app file that threw (`in data products/$id/data.dart on /products/:id`), sets the screen as a
+custom key and logs each page change. **No Firebase is a dependency**: the sink reports through a `CrashReporter` port, and
+`FirebaseCrashReporter` is a compiled recipe built by `just skill-samples`. In `startup()`, after `Firebase.initializeApp`:
+`if (!FespalierTelemetry.contains(crashSink)) FespalierTelemetry.add(crashSink);`, with both handlers skipping `crashSink.reported(error)`.
+Read [`references/crashlytics.md`](references/crashlytics.md) for the recipe, the keys, the handlers, the never-sent list and testing with `RecordingCrashlytics`.
+
 ## The traps
 
 - **Hooks fire after the frame.** `context.go('/x')` followed at once by an assertion sees nothing:
@@ -154,6 +163,10 @@ zoneValues: {...})`.
   17 and 18.
 - **`OtelZone.runGuarded` leaves a Flutter web app blank.** Run the body as it is on the web
   (`kIsWeb ? body() : observability.runGuarded(body)`). Since 0.8.1, known limitation.
+- **Nothing arrives without `telemetry: true`, or when `startup()` returns before `Firebase.initializeApp`** (since 0.18.0): no operation
+  reaches the sink without the config key, and the recipe adds the sink after Firebase starts, so on a platform it skips there is no sink.
+- **An error reported twice: the handlers did not check `reported`** (since 0.18.0). The sink reports first; `FlutterError.onError` and
+  `PlatformDispatcher.onError` must skip what `crashSink.reported(error)` answers true for, or Crashlytics gets two reports of one error.
 
 ## Where the code is
 
@@ -166,6 +179,7 @@ zoneValues: {...})`.
   `devtools/devtools.dart`), `navigation_kind.dart` (the `initial`/`go`/`push`/`pop`/`replace`/`refresh` classifier DevTools
   shares) and `version.dart`; the adapters are `packages/fespalier_otel/` and, since 0.9.0, `packages/fespalier_sentry/`
   (`traceOf` and `linkTrace` in `telemetry.dart` are how the two share a trace).
+- Crashlytics (since 0.18.0): `packages/fespalier_crashlytics/` (`lib/src/sink.dart` the sink, `reporter.dart` the `CrashReporter` port, `keys.dart` the five keys, `lib/testing.dart` `RecordingCrashlytics`); the Firebase binding is the recipe in `references/crashlytics.md`.
 - Analytics (since 0.13.0): `packages/fespalier_analytics/` (`lib/src/sink.dart` the sink and `FespalierAnalytics`, `lib/fespalier_adapter.dart`, `lib/testing.dart`).
 - Scaffold: `fsp new 'orders/[id]' --observe` writes `observe.dart`.
 - The example is `examples/telemetry`: lifecycle tests and span tests, on go_router 17.

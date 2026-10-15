@@ -33,7 +33,6 @@ it ships.
   table. In debug the router could rebuild itself on `reassemble` (go_router's
   `GoRouter.routingConfig`, with a `ValueListenable<RoutingConfig>`); a regeneration would then need
   only a hot reload and keep the app's state.
-- **Flutter 3.47.7.** A `build:` change on its own, with `just devtools-build`.
 - **OpenTelemetry Collector 0.162.0.** Its image is published: a `build:` bump of
   `cli/templates/telemetry/compose.yaml` (tag and index digest), with `just telemetry-smoke`.
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.18.0](https://github.com/fespalier/fespalier/compare/v0.17.2...v0.18.0) (2026-10-15)
+
+
+### Features
+
+* **frb:** ChangeCodec decodes a core's raw or batched events ([#203](https://github.com/fespalier/fespalier/issues/203)) ([88a9829](https://github.com/fespalier/fespalier/commit/88a9829f111c6a9d2e255e895530a40f30519bbb))
+* **launch:** shortcut and home-screen widget taps open typed routes ([#201](https://github.com/fespalier/fespalier/issues/201)) ([a7437c1](https://github.com/fespalier/fespalier/commit/a7437c12b736832f55e08232bc41af29e0592fb5))
+* **telemetry:** fespalier.data.attempt, data.source, action.rolled_back and action.invalid, with their dashboard tiles ([#200](https://github.com/fespalier/fespalier/issues/200)) ([b4c05bb](https://github.com/fespalier/fespalier/commit/b4c05bb14d6452da73d01780b5286c68dcd8adbe))
+
+
+### Documentation
+
+* the roadmap without what has shipped ([#195](https://github.com/fespalier/fespalier/issues/195)) ([836544d](https://github.com/fespalier/fespalier/commit/836544d000fa0c76922422abc7cb24eed12f3bff))
+
+
+### Build System
+
+* Flutter 3.47.7 ([#198](https://github.com/fespalier/fespalier/issues/198)) ([f2b35e8](https://github.com/fespalier/fespalier/commit/f2b35e85c87947b29938f0d20eb07c8f62f5e5f1))
+* rustls 0.23.46 in the cose server (RUSTSEC-2026-0349) ([#196](https://github.com/fespalier/fespalier/issues/196)) ([84d824c](https://github.com/fespalier/fespalier/commit/84d824c5f32b47ad988ca2ee0a34be64c9a9d456))
+
 ## [0.17.2](https://github.com/fespalier/fespalier/compare/v0.17.1...v0.17.2) (2026-10-14)
 
 

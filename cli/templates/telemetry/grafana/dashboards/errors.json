@@ -720,6 +720,87 @@
     {
       "id": 9,
       "type": "table",
+      "title": "Which screen was the app on when it crashed?",
+      "description": "Native crashes and freezes by the screen the app showed when it died (since 0.18.0, when the app names it; see docs/observability.md). Unknown: it did not say. Open that screen's files first.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 25,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (otel_zone_crashed_screen) (sum_over_time(fespalier_app_crashes{service_name=\"$service\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "Times",
+            "desc": true
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "otel_zone_crashed_screen": 0,
+              "Value #A": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "otel_zone_crashed_screen": "Screen",
+              "Value #A": "Times",
+              "Value": "Times"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
       "title": "What failed last?",
       "description": "The latest 50 failures with their message and trace id; click a trace id in OpenObserve's Traces to see the whole navigation.",
       "datasource": {

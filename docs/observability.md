@@ -152,7 +152,7 @@ dependencies:
 otel_zone:
   git:
     url: https://github.com/vaam-apps/flutter-otel-zone
-    ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21 # a commit, not a tag
+    ref: 7fbdf64092626a66837ce04caa35411ea4f7df70 # a commit, not a tag
 ```
 
 `otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`, so an app with it resolves go_router 17 (fespalier accepts 17 and 18). An app that needs 18 adds `dependency_overrides: go_router: ^18.0.0`, as `otel_zone`'s README says. `examples/telemetry` is on go_router 17.
@@ -190,6 +190,29 @@ Future<void> guarded(Future<void> Function() body) =>
   `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there is one. Without it a debug build exports to `http://10.0.2.2:4318` on Android (the emulator's host) and `http://localhost:4318` elsewhere; a release build gets `''`, which `otel_zone` takes as "telemetry off", so a store build never sends to a developer's computer.
 
 **Known limitation on the web (since 0.8.1).** `OtelZone.runGuarded` never runs its body there, so the app stays blank: it builds a `ReceivePort`, which `dart:isolate` does not support on the web (`start()` works). Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does; the error hooks `runGuarded` installs are then missing there.
+
+### The screen a native crash happened on
+
+Since 0.18.0. A native crash or an ANR that `otel_zone` records can say which screen the app was showing when it died: the record carries `otel_zone.crashed.screen`, and the Errors dashboard has a table of crashes and freezes by screen, "Which screen was the app on when it crashed?". The app does not write the call itself: `FespalierOtel` makes it on every committed navigation when it is given `onScreen`.
+
+```dart
+FespalierTelemetry.install(
+  FespalierOtel(
+    isReady: () => observability.isReady,
+    onScreen: observability.setCrashScreen,
+  ),
+);
+```
+
+It needs `otel_zone` v0.7.0 or later; the pin above is the commit that carries the call.
+
+- **What it is told:** the route **pattern** of the page on screen, `/orders/:id`, the value of `fespalier.route`. It is `null` after a navigation that matched no route, and a superseded navigation tells nothing, because the one that replaced it does. Only navigations that have a span tell it, so it is called only while the SDK is up. It never receives a location, a segment or a query value.
+- **What it costs without `onScreen`:** nothing. The call is not made, and nothing is sent to the platform.
+- **What the platform keeps:** a screen is trimmed, and kept only if it is at most 64 UTF-8 bytes with no control character. Anything else is `null`: it clears the previous value and is never cut to fit. On Android the screen is part of the 128-byte process state summary, and it is the first field dropped when the summary is full. `otel_zone`'s `redact` scrubs it at export, as it does every attribute, so a pattern a redactor would mangle reaches the collector mangled.
+- **Where each kind of record gets its screen:** an Android JVM crash from memory; a native crash, an ANR, a signal or a low-memory kill from the process state summary, on Android 11 (API 30) and later, so below API 30 only the JVM crashes carry it; an iOS `NSException` from memory; an iOS MetricKit crash from a small per-run file matched by process id, on iOS 17 and later, and only when exactly one run matches. An iOS hang never carries one, because the process lived on. An Android ANR carries the last screen the platform received, because the frozen main thread cannot navigate, and a kill in the background carries the screen the app was left on.
+- **What it is not:** a recovered crash is not stamped with the screen the app shows now, because it happened in an earlier launch. A crash that names no screen is `unknown` in the table, never a guess.
+
+The platform details are in [`otel_zone`'s README](https://github.com/vaam-apps/flutter-otel-zone#which-screen-it-died-on), which lists the summary's layout and the cost of a change. **UNCHECKED on a device:** no CI test reads a native crash record. Whether each platform above names the screen it should, on a real phone or simulator, is a device run, not something this package has verified.
 
 ### Several sinks: combine and add
 
@@ -535,7 +558,7 @@ testWidgets('a refused refund is an event on its route and its file', (tester) a
 
 ## Crashlytics
 
-There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
+There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). A native crash that `otel_zone` records already names the screen it happened on (since 0.18.0): see [The screen a native crash happened on](#the-screen-a-native-crash-happened-on). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
 
 - `end` records a non-fatal error;
 - `page` logs the page change;

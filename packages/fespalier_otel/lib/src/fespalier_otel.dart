@@ -28,22 +28,40 @@ import 'conventions.dart';
 ///
 /// Since 0.9.0 a data span and an action span are the current span while `data()` or the action
 /// runs ([within]), so the spans that `otel_http` and `otel_dio` make inside them, after an
-/// `await` too, are their children. Next to another sink (Sentry, analytics), install both with
-/// `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
+/// `await` too, are their children. Since 0.18.0 [onScreen] hears each committed navigation's
+/// page, so a native crash record can name its screen. Next to another sink (Sentry, analytics),
+/// install both with `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
 final class FespalierOtel extends FespalierTelemetry {
   /// [isReady] says whether the SDK is up: pass `() => observability.isReady` with `otel_zone`.
   /// Leave it out when the app initialises the SDK itself before installing this.
   ///
   /// [recordLocations] adds `url.path`, `url.query` and `fespalier.guard.location`: segment and
   /// query values are app data, so it is off.
-  FespalierOtel({bool Function()? isReady, this.recordLocations = false})
-    : _isReady = isReady;
+  ///
+  /// [onScreen] (since 0.18.0) is called with the route pattern of the page on screen after each
+  /// committed navigation this adapter makes a span for: pass `observability.setCrashScreen` with
+  /// `otel_zone` (v0.7.0 or later), and a native crash record names its screen.
+  FespalierOtel({
+    bool Function()? isReady,
+    this.recordLocations = false,
+    this.onScreen,
+  }) : _isReady = isReady;
 
   final bool Function()? _isReady;
 
   /// Whether spans carry the committed location (`url.path`, `url.query`) and where a guard
   /// redirected to (`fespalier.guard.location`).
   final bool recordLocations;
+
+  /// Told the route pattern of the page on screen, at the end of every committed navigation that
+  /// this adapter makes a span for, so only while the SDK is up (since 0.18.0). It is called with
+  /// `null` after a navigation that matched no route, and not at all for a superseded one. It never
+  /// receives a location, a segment or a query value. A callback that throws costs nothing but
+  /// itself.
+  ///
+  /// `otel_zone`'s `setCrashScreen` is the intended callback: `FespalierOtel(onScreen:
+  /// observability.setCrashScreen)`. Null by default, which costs nothing.
+  final void Function(String? route)? onScreen;
 
   Tracer? _tracer;
 
@@ -239,6 +257,7 @@ final class FespalierOtel extends FespalierTelemetry {
   @override
   void end(Object? token, TelemetryEnd end) {
     if (token is! _Running) return;
+    if (token.op == TelemetryOp.navigate) _screen(end);
     final span = token.span;
     try {
       _describe(token, end);
@@ -273,6 +292,19 @@ final class FespalierOtel extends FespalierTelemetry {
       } catch (_) {
         // Same.
       }
+    }
+  }
+
+  /// Tells [onScreen] the page a committed navigation ended on (since 0.18.0). It is the `route` of
+  /// the navigation's end, which is null when no route matched; a superseded navigation tells
+  /// nothing, because the one that replaced it will.
+  void _screen(TelemetryEnd end) {
+    final hook = onScreen;
+    if (hook == null || end.outcome == TelemetryOutcome.superseded) return;
+    try {
+      hook(end.outcome == TelemetryOutcome.notFound ? null : end.route);
+    } catch (_) {
+      // The app's callback costs only itself: the span is still described and ended.
     }
   }
 

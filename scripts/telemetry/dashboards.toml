@@ -793,6 +793,18 @@ description = "What broke, where, and with which error: failed checks, loads, ac
   promql = [{ expr = "sum by (exception_type) (sum_over_time(fespalier_app_errors{ {sel} }[$__range]))" }]
 
   [[dashboard.panels]]
+  id = "crashes_by_screen"
+  title = "Which screen was the app on when it crashed?"
+  type = "table"
+  stream_type = "logs"
+  description = "Native crashes and freezes by the screen the app showed when it died (since 0.18.0, when the app names it; see docs/observability.md). Unknown: it did not say. Open that screen's files first."
+  sql = "SELECT COALESCE(otel_zone_crashed_screen, 'unknown') AS screen, COUNT(*) AS n {from} WHERE event_name IN ('device.crash', 'device.anr') AND {svc} GROUP BY screen ORDER BY n DESC"
+  columns = [{ name = "screen", axis = "x", label = "Screen" }, { name = "n", label = "Times" }]
+  rename = { otel_zone_crashed_screen = "screen" }
+  sort = "n"
+  promql = [{ expr = "sum by (otel_zone_crashed_screen) (sum_over_time(fespalier_app_crashes{ {sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
   id = "recent"
   title = "What failed last?"
   type = "table"

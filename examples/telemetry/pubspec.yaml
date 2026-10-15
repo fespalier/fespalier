@@ -15,13 +15,13 @@ dependencies:
     path: ../../packages/fespalier_otel
   fespalier_sentry:
     path: ../../packages/fespalier_sentry
-  # Not on pub.dev: a git dependency, pinned to a commit (v0.5.0). It is a Flutter plugin (native
+  # Not on pub.dev: a git dependency, pinned to a commit (v0.7.0). It is a Flutter plugin (native
   # crash capture on Android and iOS). It depends on otel_go_router, which declares
   # `go_router: ^17.0.0`, so this is the one example on go_router 17.
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
-      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+      ref: 7fbdf64092626a66837ce04caa35411ea4f7df70
   # Sentry's SDK: fespalier_sentry re-exports nothing of it, and `SentryFlutter.init` is the app's.
   # 9.26.0 is the oldest the package supports (it reads `enableStandaloneAppStartTracing`).
   sentry_flutter: ">=9.26.0 <10.0.0"

@@ -734,6 +734,7 @@
         "docs/observability.md#Sentry defaults and privacy",
         "docs/observability.md#Testing with Sentry",
         "docs/observability.md#Crashlytics",
+        "docs/observability.md#The screen a native crash happened on",
         "packages/fespalier_sentry/README.md",
         "packages/fespalier_sentry/lib/fespalier_sentry.dart",
         "packages/fespalier_sentry/lib/testing.dart",

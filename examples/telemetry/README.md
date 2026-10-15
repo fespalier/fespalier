@@ -18,6 +18,10 @@ refused) and its own `observe.dart`, a guarded and deferred settings page, and a
   and it leaves a web app blank). `SENTRY_DSN` is empty by default: nothing is sent; run it with
   `--dart-define=SENTRY_DSN=...` for events in your project. A failure while the app starts arrives
   through `FlutterError.reportError`.
+- `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.18.0) names the page the app shows
+  for every navigation, so a native crash record carries `otel_zone.crashed.screen`, and the Errors
+  dashboard has a table of crashes by screen. It needs `otel_zone` v0.7.0 or later (the pin in
+  `pubspec.yaml`), and the platform's limits are in otel_zone's README, "Which screen it died on".
 - `test/telemetry_test.dart` runs the app on the SDK's in-memory exporter and reads the spans:
   a navigation with its guard, data load and page events as children and events, an action, and a
   deferred load.

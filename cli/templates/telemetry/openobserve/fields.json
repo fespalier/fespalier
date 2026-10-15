@@ -48,6 +48,7 @@
     "exception_type",
     "exception_message",
     "event_name",
-    "body"
+    "body",
+    "otel_zone_crashed_screen"
   ]
 }

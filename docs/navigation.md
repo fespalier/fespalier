@@ -430,7 +430,7 @@ InboundLaunch.to(OrderRoute(id: 42), source: NavigationSource.shortcut, extra: p
 `launchRouter(launch, (launch) => GoRouter(...), links: true)` builds the router. `make` receives the launch that applies
 (null on the web, where the address bar is the launch and a launch is never used). A launch wins over the platform's
 initial route (go_router lets a cold-start deep link beat `initialLocation`, unless `overridePlatformDefaultLocation` is
-set, which a launch sets) and the first navigation is marked with `launch.source`.
+set, which a launch sets) and the first navigation is marked with `launch.source`. `fespalier_launch` (since 0.18.0) answers `launch()` for a home-screen shortcut or a widget tap, see [Shortcuts and widgets](launch.md).
 
 **A platform link.** With `links: true` (an app with telemetry, or with an adapter that has an `onEnter`, since 0.16.0),
 `launchRouter` registers one binding observer before go_router's provider does, launch or not. Each link the running app receives is marked

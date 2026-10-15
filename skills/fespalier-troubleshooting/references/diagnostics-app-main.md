@@ -48,6 +48,12 @@ Not an `fsp` diagnostic: a `FlutterError` printed once when the app runs. An ada
 - ``fespalier_analytics records no screen: this app's router does not report page events to telemetry. Set `telemetry: true` under `fespalier:` in pubspec.yaml and run `fsp gen`.`` (since 0.13.0):
   the app was generated without `telemetry: true`, so no page event reaches the sink (`telemetryFollows(router)` is false). Turn
   it on and run `fsp gen`. A backend that never gets a call while consent is `undecided` or `denied` is not this: that is the rule.
+- ``fespalier_launch is listed under `fespalier: adapters:` but was never configured: call FespalierLaunch.configure(sources: [...], route: ...) in main() before AppMain.run()`` (since 0.18.0):
+  `fespalier_launch` is an adapter but `main()` never called `FespalierLaunch.configure`, or called it after `AppMain.run()`
+  started, or a widget test boots `AppMain.root()` without calling it. A shortcut or a widget tap then opens the app and
+  navigates nowhere. Fix: call it first thing in `main()` (with `main: manual`, before `AppAdapters.zone`), or in the test's
+  `setUp`. A test that does not use launch sources passes `sources: const []`: nothing opens, and nothing is reported.
+- `reading the action that opened the app`, `in the stream of launch actions`, `mapping the action to a route` and `opening the action` (since 0.18.0; a `FlutterError` from library `fespalier_launch`, printed once per error, nothing retried): a source's `initialAction()` threw or failed, a source's `actions` stream failed (or its getter threw), the app's mapping threw, or the navigation call threw. The first two are the plugin's failure; the last two are the app's own code (`launchRoute` must be quick, synchronous and must not throw). Nothing is retried: no timer reads the source again, so each error is reported once.
 
 ## Root files
 

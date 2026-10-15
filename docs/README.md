@@ -25,6 +25,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, status, engine, restarts, background |
 | [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens              |
 | [Analytics](analytics.md)                                          | Screen views by route pattern with consent, `fespalier_analytics`: sink, backends, testing            |
+| [Shortcuts and widgets](launch.md)                                 | Shortcuts and home-screen widgets open typed routes with `fespalier_launch`: cold start, warm taps    |
 | [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |
 | [Telemetry conventions](telemetry-conventions.md)                  | Span, event and attribute names: contract version 1                                                   |
 | [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana                                                              |
@@ -58,6 +59,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [adapters.md](adapters.md): Adapters in the generated `main()`
 - [push.md](push.md): Push notifications: fespalier_push · Install · Configure · Mapping a payload · Cold start and taps · Tokens and permission · Testing
 - [analytics.md](analytics.md): Analytics: fespalier_analytics · Install · Screen names · Consent · Time on screen · Backends · Testing
+- [launch.md](launch.md): Shortcuts and home-screen widgets: fespalier_launch · Install · Configure · Mapping an action · Cold start and taps · Widgets and platform links · Testing
 - [route-tests.md](route-tests.md): Maestro flows (`fsp maestro`) · Route smoke tests (`fsp test`)
 - [auth.md](auth.md): Authentication · Installing fespalier_auth · The session · Restoring at startup · Guarding signed-in routes · Signing in and out · Calling your API · OpenID Connect and Keycloak · Firebase, Supabase and your own API · Device-bound tokens: DPoP with fespalier_sign_keypair · Testing signed-in routes
 - [telemetry-conventions.md](telemetry-conventions.md): Telemetry conventions

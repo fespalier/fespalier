@@ -147,6 +147,7 @@ jobs:
           - packages/fespalier_analytics
           - packages/fespalier_frb
           - packages/fespalier_riverpod
+          - packages/fespalier_launch
           - examples/shop
           - examples/features
           - examples/tabs
@@ -237,6 +238,7 @@ jobs:
           - packages/fespalier_analytics
           - packages/fespalier_frb
           - packages/fespalier_riverpod
+          - packages/fespalier_launch
           - examples/minimal
     defaults:
       run:

@@ -372,7 +372,18 @@
         "kind:leave.dart",
         "docs/navigation.md#Leaving a page: `leave.dart`",
         "packages/fespalier/lib/src/leave.dart",
-        "cli/templates/new/leave.dart.jinja"
+        "cli/templates/new/leave.dart.jinja",
+        "docs/launch.md",
+        "docs/launch.md#Install",
+        "docs/launch.md#Configure",
+        "docs/launch.md#Mapping an action",
+        "docs/launch.md#Cold start and taps",
+        "docs/launch.md#Widgets and platform links",
+        "docs/launch.md#Testing",
+        "packages/fespalier_launch/README.md",
+        "packages/fespalier_launch/lib/fespalier_launch.dart",
+        "packages/fespalier_launch/lib/fespalier_adapter.dart",
+        "packages/fespalier_launch/lib/testing.dart"
       ]
     },
     "fespalier-data": {
@@ -675,6 +686,7 @@
         "docs/getting-started.md#go_router 18 and Material",
         "docs/migration.md#Adopting fespalier in a go_router app",
         "docs/migration.md#Upgrading",
+        "docs/migration.md#0.18.0",
         "docs/migration.md#0.17.0",
         "docs/migration.md#0.16.0",
         "docs/migration.md#0.15.0",

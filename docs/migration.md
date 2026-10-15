@@ -27,6 +27,10 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.18.0
+
+- **`fespalier_launch` is new and opt-in** ([Shortcuts and widgets](launch.md)). It opens a typed route from a home-screen shortcut or a widget tap, cold or while the app runs. An app that does not list it regenerates an identical `app.g.dart`, and nothing else changes. An app that lists it gets one more adapter in `AppAdapters`, calls `FespalierLaunch.configure(sources:, route:)` in `main()` before `AppMain.run()`, and configures it in every widget test that boots `AppMain.root()` (`FespalierLaunch.debugReset()` in `setUp` and `tearDown`, as for fespalier_push). The plugins (quick_actions, home_widget) stay the app's: the recipes are in the `fespalier-routing` skill.
+
 ### 0.17.0
 
 0.17.0 is about code generators, where fespalier and freezed or `build_runner` trip over each other, and it changes

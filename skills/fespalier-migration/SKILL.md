@@ -31,6 +31,21 @@ flutter analyze && flutter test
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
+## 0.17 to 0.18: what to check
+
+0.18.0 breaks nothing, and the generated `app.g.dart` is unchanged. It adds four attributes to the spans of a data
+load and an action (item 1), and the telemetry stack needs one restart to show them (item 2).
+
+1. **Four attributes are new on the data and action spans**: `fespalier.data.attempt`, `fespalier.data.source`,
+   `fespalier.action.rolled_back` and `fespalier.action.invalid`. They come with `telemetry: true`, like the others.
+   A test that compares `RecordingTelemetry` lines whole gains the `attempt=`, `source=`, `rolled_back=` and
+   `invalid` tokens. See [`fespalier-observability`](../fespalier-observability/SKILL.md) (its `conventions.md`).
+2. **Restart the telemetry stack once for the new tiles.** Run `fsp telemetry` again, then `fsp telemetry --stop`
+   and `fsp telemetry`, so the collector reads its four new dimensions. An app before 0.18.0 sends none of them,
+   so those tiles read 0.
+
+Details: `docs/migration.md`, "0.18.0".
+
 ## 0.16 to 0.17: what to check
 
 0.17.0 breaks nothing, and changes nothing for an app that uses neither freezed nor `build_runner`: the generated

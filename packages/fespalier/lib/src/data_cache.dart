@@ -12,6 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show AsyncNotifierProviderFamily;
 
 import 'freshness.dart';
+import 'telemetry.dart' show telemetryDataCache, telemetryOn;
 
 /// How a data.dart's value is saved for the next start (since 0.8.1):
 /// `final dataCache = DataCache<Product>.json(toJson: ..., fromJson: ...);`.
@@ -252,6 +253,10 @@ final class CachedData<T> extends AsyncNotifier<T> {
   Object? _decoded;
   bool _encodeFailed = false;
 
+  /// Whether the saved copy became the state during this build (since 0.18.0): the data span's
+  /// `fespalier.data.source` says `cache` then. Reset at each build, set by [_restore].
+  bool _shown = false;
+
   bool get _hasFreshValue {
     try {
       return state is AsyncData<T>;
@@ -283,6 +288,7 @@ final class CachedData<T> extends AsyncNotifier<T> {
   T _restore(String _) {
     final value = _decoded as T;
     _decoded = null;
+    _shown = true;
     return value;
   }
 
@@ -301,6 +307,7 @@ final class CachedData<T> extends AsyncNotifier<T> {
 
   @override
   FutureOr<T> build() {
+    _shown = false;
     final storage = ref.watch(dataCacheStorage);
     if (storage != null) {
       persist<String, String>(
@@ -314,6 +321,8 @@ final class CachedData<T> extends AsyncNotifier<T> {
         ),
       );
     }
+    // Only with a sink: the probe is read when the load ends (since 0.18.0).
+    if (telemetryOn) telemetryDataCache(ref, () => _shown);
     final value = _fetch(ref);
     final freshness = _freshness;
     return freshness == null ? value : freshData(ref, freshness, value);

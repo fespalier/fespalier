@@ -242,6 +242,7 @@ final class TelemetryStart {
     this.uri,
     this.parent,
     this.keyed = false,
+    this.dataAttempt,
     this.authStep,
     this.authBackend,
     this.authTrigger,
@@ -276,6 +277,10 @@ final class TelemetryStart {
   /// data: whether the provider is a family (keyed by segments or query parameters). The key
   /// itself is never reported.
   final bool keyed;
+
+  /// data (since 0.18.0): which try this load is, 1, or n + 1 when Riverpod ran the provider again
+  /// on its own after try n failed; null for other operations. A `Stream` load is always 1.
+  final int? dataAttempt;
 
   /// auth (since 0.9.0): which step, `restore`, `sign_in`, `refresh` or `sign_out`.
   final String? authStep;
@@ -322,6 +327,7 @@ final class TelemetryStart {
     uri: uri,
     parent: parent,
     keyed: keyed,
+    dataAttempt: dataAttempt,
     authStep: authStep,
     authBackend: authBackend,
     authTrigger: authTrigger,
@@ -353,6 +359,21 @@ abstract final class NavigationSource {
 
   /// Every value, in this order.
   static const List<String> values = [notification, shortcut, widget, link];
+}
+
+/// Where a data load's content came from (since 0.18.0): the values of [TelemetryEnd.dataSource]
+/// and of `fespalier.data.source`. Telemetry conventions, contract version 1.
+abstract final class TelemetryDataSource {
+  /// The saved copy of a `dataCache` became the state during this load, so it was shown before the
+  /// fetch settled.
+  static const String cache = 'cache';
+
+  /// The value came from the fetch: no saved copy was shown. Also for a data.dart whose
+  /// `dataCache` has no `dataCacheStorage`, where nothing is saved.
+  static const String fetch = 'fetch';
+
+  /// Every value, in this order.
+  static const List<String> values = [cache, fetch];
 }
 
 final RegExp _customName = RegExp(
@@ -551,6 +572,9 @@ final class TelemetryEnd {
     this.depth = 0,
     this.imageStatus,
     this.attributes,
+    this.dataSource,
+    this.actionRolledBack,
+    this.actionInvalid = false,
   });
 
   /// One of the [TelemetryOutcome] values.
@@ -586,6 +610,19 @@ final class TelemetryEnd {
 
   /// image (since 0.9.0): the HTTP status of a failed load, when the error carries one.
   final int? imageStatus;
+
+  /// data (since 0.18.0): where the content came from, a [TelemetryDataSource] value; null for a
+  /// data.dart with no `dataCache`.
+  final String? dataSource;
+
+  /// action (since 0.18.0): an `optimistic()` patch was shown for this run and then undone (true)
+  /// or kept (false); null when no patch was shown. A failed run whose state is no longer mounted
+  /// keeps its patch, so it is false there.
+  final bool? actionRolledBack;
+
+  /// action (since 0.18.0): the run ended with [FieldErrors], which `validate()` or the action's own
+  /// code threw. Only a run that ended with [TelemetryOutcome.error] can be invalid.
+  final bool actionInvalid;
 
   /// custom (since 0.11.0): the operation's own result attributes. Values are `String`, `int`,
   /// `double` or `bool`; each key starts with the prefix of the start's [TelemetryStart.name]
@@ -869,39 +906,159 @@ TelemetryEnd _guardEnd(String? location, bool isAsync) => TelemetryEnd(
 /// (since 0.9.0), which starts it before.
 void telemetryDataTrace(
   Ref ref,
+  String site,
   TelemetrySite telemetry,
-  bool keyed,
+  Object? key,
   Object? result,
 ) {
   if (FespalierTelemetry._current == null) return;
   try {
-    telemetryDataEnd(ref, telemetryDataStart(telemetry, keyed), result);
+    telemetryDataEnd(
+      ref,
+      telemetryDataStart(ref, site, telemetry, key),
+      result,
+    );
   } catch (e) {
     _report(e);
   }
 }
 
 /// A data load starts, before `data()` runs (since 0.9.0): returns its token, null with no sink
-/// (or when the sink threw).
-Object? telemetryDataStart(TelemetrySite telemetry, bool keyed) {
+/// (or when the sink threw). Since 0.18.0 it also says which try the load is
+/// ([TelemetryStart.dataAttempt]), so [ref], [site] and [key] are what the provider was built with.
+Object? telemetryDataStart(
+  Ref ref,
+  String site,
+  TelemetrySite telemetry,
+  Object? key,
+) {
   if (FespalierTelemetry._current == null) return null;
   return telemetryBegin(
     TelemetryStart(
       TelemetryOp.data,
       site: telemetry,
-      keyed: keyed,
+      keyed: key != null,
       parent: _pendingNavigation,
+      dataAttempt: _dataAttempt(ref, site, key),
     ),
   );
 }
 
 /// `data()` threw before it returned (since 0.9.0): the span [token] came from ends with an error.
-void telemetryDataThrew(Object? token, Object error, StackTrace stackTrace) {
+/// Since 0.18.0 the failure counts for the next try, and the end says where the content came from.
+void telemetryDataThrew(
+  Ref ref,
+  Object? token,
+  Object error,
+  StackTrace stackTrace,
+) {
   if (FespalierTelemetry._current == null) return;
+  _dataSettled(ref, failed: true);
   telemetryFinish(
     token,
-    TelemetryEnd(TelemetryOutcome.error, error: error, stackTrace: stackTrace),
+    TelemetryEnd(
+      TelemetryOutcome.error,
+      error: error,
+      stackTrace: stackTrace,
+      dataSource: _dataSource(ref),
+    ),
   );
+}
+
+/// One load of a data provider, as the try counter sees it (since 0.18.0).
+final class _DataRun {
+  _DataRun(this.attempt, this.runs, this.id);
+
+  /// Which try this load is, from 1.
+  final int attempt;
+
+  /// The container's table of runs this one is in, and its key there.
+  final Map<(String, Object?), _DataRun> runs;
+  final (String, Object?) id;
+
+  /// The load failed: the next build of the provider, when Riverpod runs it again, is the next try.
+  bool failed = false;
+
+  /// The provider was invalidated by hand after this load (`invalidate`, `refresh`,
+  /// `invalidateSelf`): the next build is a fresh start, not a retry.
+  bool manual = false;
+}
+
+/// The runs of each container's data providers, by the provider's site and key (since 0.18.0). An
+/// entry stays only while the last load of its provider failed, so it is small.
+final Expando<Map<(String, Object?), _DataRun>> _dataRuns = Expando(
+  'fespalier data runs',
+);
+
+/// The run of each data provider's build, by its [Ref] (since 0.18.0).
+final Expando<_DataRun> _runOf = Expando('fespalier data run');
+
+/// Which try a data load is (since 0.18.0): the try after the last load of the same provider when
+/// that load failed, and the provider was neither invalidated by hand nor rebuilt for a dependency
+/// change or a first build; otherwise 1. Riverpod keeps its own retry count private, so fespalier
+/// counts the tries itself: a rebuild that Riverpod's `retry:` starts after a failure is the next
+/// try. Synchronous, with one `onManualInvalidation` callback per build and no timer. Null when it
+/// threw (printed once).
+int? _dataAttempt(Ref ref, String site, Object? key) {
+  try {
+    final runs = _dataRuns[ref.container] ??= {};
+    final id = (site, key);
+    final last = runs[id];
+    final attempt =
+        last != null &&
+            last.failed &&
+            !last.manual &&
+            !ref.isFirstBuild &&
+            !ref.isReload
+        ? last.attempt + 1
+        : 1;
+    final run = _DataRun(attempt, runs, id);
+    runs[id] = run;
+    _runOf[ref] = run;
+    // A life-cycle callback of this build, dropped by Riverpod when the build is replaced. It is
+    // experimental in Riverpod 3.3 (present since the floor): the one API that tells a manual
+    // invalidation from a retry.
+    // ignore: experimental_member_use
+    ref.onManualInvalidation(() {
+      run.manual = true;
+    });
+    return attempt;
+  } catch (e) {
+    _report(e);
+    return null;
+  }
+}
+
+/// A data load of [ref] ended (since 0.18.0): [failed] for an error, which the next try counts from;
+/// anything else forgets the run, so the next build starts at 1. It is called from a callback of
+/// the provider's build too (its dispose), so it uses no [Ref] API.
+void _dataSettled(Ref ref, {required bool failed}) {
+  final run = _runOf[ref];
+  if (run == null) return;
+  if (failed) {
+    run.failed = true;
+  } else if (identical(run.runs[run.id], run)) {
+    run.runs.remove(run.id);
+  }
+}
+
+/// The saved copy a `dataCache` provider shows during a build, as [CachedData] tells it (since
+/// 0.18.0): [shown] says whether it became the state during that build. Read when the load ends.
+/// Reports nothing itself.
+final Expando<bool Function()> _savedCopy = Expando('fespalier dataCache');
+
+/// Tells telemetry how [ref]'s `dataCache` shows its saved copy (since 0.18.0). Called only while a
+/// sink is installed.
+void telemetryDataCache(Ref ref, bool Function() shown) {
+  _savedCopy[ref] = shown;
+}
+
+/// Where the content of [ref]'s data load came from, read now (since 0.18.0): `cache` or `fetch`
+/// for a provider with a `dataCache`, null for one without.
+String? _dataSource(Ref ref) {
+  final shown = _savedCopy[ref];
+  if (shown == null) return null;
+  return shown() ? TelemetryDataSource.cache : TelemetryDataSource.fetch;
 }
 
 /// `data()` returned [result]: a value ends the span [token] came from at once, a `Future` ends it
@@ -911,32 +1068,39 @@ void telemetryDataEnd(Ref ref, Object? token, Object? result) {
   try {
     if (result is Future<Object?>) {
       var ended = false;
-      void end(TelemetryEnd e) {
+      void end(String outcome, {Object? error, StackTrace? stack}) {
         if (ended) return;
         ended = true;
-        telemetryFinish(token, e);
+        _dataSettled(ref, failed: outcome == TelemetryOutcome.error);
+        telemetryFinish(
+          token,
+          TelemetryEnd(
+            outcome,
+            isAsync: true,
+            error: error,
+            stackTrace: stack,
+            dataSource: _dataSource(ref),
+          ),
+        );
       }
 
       unawaited(
         result.then<void>(
-          (_) => end(const TelemetryEnd(TelemetryOutcome.data, isAsync: true)),
-          onError: (Object error, StackTrace stack) => end(
-            TelemetryEnd(
-              TelemetryOutcome.error,
-              isAsync: true,
-              error: error,
-              stackTrace: stack,
-            ),
-          ),
+          (_) => end(TelemetryOutcome.data),
+          onError: (Object error, StackTrace stack) =>
+              end(TelemetryOutcome.error, error: error, stack: stack),
         ),
       );
-      ref.onDispose(
-        () => end(const TelemetryEnd(TelemetryOutcome.disposed, isAsync: true)),
-      );
+      ref.onDispose(() => end(TelemetryOutcome.disposed));
     } else if (result is Stream<Object?>) {
+      _dataSettled(ref, failed: false);
       telemetryFinish(token, const TelemetryEnd(TelemetryOutcome.stream));
     } else {
-      telemetryFinish(token, const TelemetryEnd(TelemetryOutcome.data));
+      _dataSettled(ref, failed: false);
+      telemetryFinish(
+        token,
+        TelemetryEnd(TelemetryOutcome.data, dataSource: _dataSource(ref)),
+      );
     }
   } catch (e) {
     _report(e);
@@ -950,12 +1114,17 @@ Object? telemetryActionStart(TelemetrySite telemetry) {
 }
 
 /// The action run [token] ended, with [error] when it failed.
+///
+/// Since 0.18.0 [rolledBack] says whether an `optimistic()` patch was shown and then undone (null when
+/// none was shown), and [invalid] whether the run ended with `FieldErrors`.
 void telemetryActionEnd(
   Object? token, {
   required bool isAsync,
   bool failed = false,
   Object? error,
   StackTrace? stackTrace,
+  bool? rolledBack,
+  bool invalid = false,
 }) {
   if (FespalierTelemetry._current == null) return;
   telemetryFinish(
@@ -965,6 +1134,8 @@ void telemetryActionEnd(
       isAsync: isAsync,
       error: error,
       stackTrace: stackTrace,
+      actionRolledBack: rolledBack,
+      actionInvalid: invalid,
     ),
   );
 }

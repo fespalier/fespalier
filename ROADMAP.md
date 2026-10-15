@@ -58,10 +58,6 @@ Flutter 3.32, with the lowest dependencies it allows.
   packs will move onto it. What a device would show about the background backend is issue #158.
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
-- **The four telemetry attributes documented as not emitted**: `fespalier.data.attempt`,
-  `fespalier.data.source`, `fespalier.action.rolled_back`, `fespalier.action.invalid`. Forms and
-  data freshness now have what they need; adding them brings back the retries, cache-hits and
-  rollbacks panels.
 - **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
   changes, because the generated router is built once, so a hot reload would keep the old route
   table. In debug the router could rebuild itself on `reassemble` (go_router's

@@ -233,6 +233,8 @@ data() and actions run outside it (use runZoned with zoneValues, not runZonedGua
 
 The data span starts **before** `data()` runs, so its duration includes the synchronous part, and a `data()` that throws before it returns has a `data` span with `fespalier.data.state = error` and `fespalier.async = false`.
 
+Since 0.18.0 a sink also reads what the span of a load and of an action say about itself: `TelemetryStart.dataAttempt` (which try the load is: `1`, or n + 1 when Riverpod ran a failed provider again on its own), `TelemetryEnd.dataSource` (`cache` or `fetch`, for a data.dart with a `dataCache`), and, on an action's end, `TelemetryEnd.actionRolledBack` and `TelemetryEnd.actionInvalid`. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the attribute names.
+
 ### Where a navigation came from: navigateFrom
 
 Since 0.9.0. A navigation that starts from a tap on a notification, a home-screen shortcut or widget, or a link a bridge handed over looks like any other `go` to fespalier. `navigateFrom` marks it:
@@ -308,6 +310,7 @@ Each operation is `#n`, which ties its `start` line to its `end` line and names 
 
 - `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what runs inside a `data()` or an action, so a test can see a call run within its operation.
 - An `image` operation (since 0.9.0) is `#4 start image emgr w=640 preload` and, when it ends, `#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the URL.
+- Since 0.18.0 a line can also say `attempt=N` (a data start that is the Nth try of a retry), `source=cache` or `source=fetch` (a data end of a `dataCache`), `rolled_back=true` or `rolled_back=false` (an action end with an optimistic patch shown), and `invalid` (an action that ended with `FieldErrors`).
 
 To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart`, install `FespalierOtel()`, and read the exporter after a `pump()`: a span is exported when it ends. `OTel.initialize` runs once per isolate, so once per test file. `examples/telemetry/test/` does both.
 
@@ -320,6 +323,8 @@ With a sink installed, fespalier never creates a `Future`, a microtask or a time
 - a sync guard, `data()` or action is reported with its start and its end in the same call stack;
 - an async one is reported through a side listener on the very `Future` (which handles its own error, so it cannot make an unhandled one);
 - the wrappers return the very object they were given.
+
+Since 0.18.0, with a sink, each data load also registers one `ref.onManualInvalidation` callback, which Riverpod drops when the provider rebuilds, and keeps one small entry per provider whose last load failed; the next load that succeeds removes it.
 
 What does schedule microtasks is the OpenTelemetry SDK itself, whose span processors are `async` methods: they run when a span starts or ends, never in the path of a value the app gets. A backgrounded app draws no frames, so a navigation made in the background ends its span at the next frame after the app resumes.
 

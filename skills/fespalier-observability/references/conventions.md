@@ -35,7 +35,9 @@ guard, redirect         fespalier.guard.decision = pass | redirect | error | ski
                         fespalier.guard.location (recordLocations only)
 data                    fespalier.data.state = data | error | stream | disposed
                         fespalier.data.keyed (bool)
+                        fespalier.data.attempt (int), fespalier.data.source = cache | fetch (since 0.18.0)
 action                  fespalier.action.name, fespalier.action.result = ok | error
+                        fespalier.action.rolled_back (bool), fespalier.action.invalid (bool) (since 0.18.0)
 deferred                fespalier.deferred.result = ok | error
 auth (since 0.9.0)      fespalier.auth.operation = restore | sign_in | refresh | sign_out
                         fespalier.auth.result = ok | none | expired | rejected | cancelled | error
@@ -97,9 +99,20 @@ enter, focus events     fespalier.route
   sends a `custom` operation's attributes.
 - **Superseded** navigations never committed: no kind, no route, no `redirected` or `depth`. Leave them
   out of latency panels.
-- **Not emitted** (so no dashboard panel charts one): a data attempt (Riverpod does not tell a
-  provider its retry count), a data source (network or cache), an action rolled back, an action rejected
-  by validation.
+- **Since 0.18.0 four attributes say more about a load and an action**, and an app on an older fespalier
+  sends none of them:
+  - `fespalier.data.attempt` is which try a load is. Riverpod runs a failed provider again on its own, so a
+    retry is try 2, 3 and so on; fespalier counts the tries from the rebuilds it sees, since Riverpod keeps its
+    retry count private. A reload the app asks for (`invalidate`, `refresh`) is try 1. A `Stream` load is always
+    1, and a hot reload's rebuild of a failed load counts as a retry.
+  - `fespalier.data.source` is `cache` when the saved copy of a `dataCache` was on screen before the fresh data
+    arrived, and `fetch` otherwise (also with no `dataCacheStorage`). Absent for a data.dart with no `dataCache`.
+  - `fespalier.action.rolled_back` is set when an `optimistic()` patch was shown for the run: `true` when the write
+    failed and the patch was taken back, `false` when it was kept. Absent without a shown patch. A form does no
+    rollback of its own.
+  - `fespalier.action.invalid` is `true` on an `error` whose cause was `FieldErrors` (`validate()` refused the
+    input, or the action named wrong fields). A form whose own check stops a submit before the action runs makes
+    no span, so it is not counted.
 - **Metrics**: none. Derive them in the collector with the `spanmetrics` connector, using these
   attributes as dimensions. The `fespalier.auth.*`, `fespalier.image.*` and `fespalier.custom.*` attributes and `fespalier.navigation.source` are not
   dimensions of the collector `fsp telemetry` starts yet (since 0.9.0).

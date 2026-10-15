@@ -1,7 +1,8 @@
 // The telemetry conventions, contract version 1 (docs/telemetry-conventions.md, "Telemetry conventions"): every name
 // below is a string literal on purpose. A dashboard is built on these, so renaming one must
 // fail here before it can ship; adding one is allowed (add its line).
-import 'package:fespalier/fespalier.dart' show NavigationSource;
+import 'package:fespalier/fespalier.dart'
+    show NavigationSource, TelemetryDataSource;
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,6 +72,30 @@ void main() {
     expect(FespalierConventions.deferredResult, 'fespalier.deferred.result');
     expect(FespalierConventions.pageDuration, 'fespalier.page.duration_ms');
   });
+
+  test(
+    'the attempt, source, rollback and invalid attributes (since 0.18.0)',
+    () {
+      expect(FespalierConventions.dataAttempt, 'fespalier.data.attempt');
+      expect(FespalierConventions.dataSource, 'fespalier.data.source');
+      expect(
+        FespalierConventions.actionRolledBack,
+        'fespalier.action.rolled_back',
+      );
+      expect(FespalierConventions.actionInvalid, 'fespalier.action.invalid');
+      expect(
+        [
+          FespalierConventions.dataSourceCache,
+          FespalierConventions.dataSourceFetch,
+        ],
+        ['cache', 'fetch'],
+      );
+      expect(TelemetryDataSource.values, [
+        FespalierConventions.dataSourceCache,
+        FespalierConventions.dataSourceFetch,
+      ]);
+    },
+  );
 
   test('the auth attributes and values (since 0.9.0)', () {
     expect(FespalierConventions.authOperation, 'fespalier.auth.operation');

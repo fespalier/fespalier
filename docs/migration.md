@@ -27,6 +27,13 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.18.0
+
+0.18.0 adds four telemetry attributes and breaks nothing: the generated `app.g.dart` is unchanged, and an app that does not use telemetry changes nothing.
+
+- **Four attributes on the data and action spans**: `fespalier.data.attempt` (which try a load is), `fespalier.data.source` (`cache` or `fetch` for a `dataCache`), `fespalier.action.rolled_back` (an optimistic patch was taken back) and `fespalier.action.invalid` (the run ended with `FieldErrors`). They come with `telemetry: true`, like the others; the names are in [Telemetry conventions](telemetry-conventions.md#telemetry-conventions). A `RecordingTelemetry` log gains the `attempt=`, `source=`, `rolled_back=` and `invalid` tokens, so a test that compares whole lines needs them.
+- **The Screens and Actions tiles for them need the stack restarted once**: run `fsp telemetry` again for the tiles, then `fsp telemetry --stop` and `fsp telemetry`, so the collector reads its four new dimensions ([Dashboards on your computer](telemetry-dashboards.md)). An app before 0.18.0 sends none of the four, so those tiles read 0.
+
 ### 0.17.0
 
 0.17.0 is about code generators, where fespalier and freezed or `build_runner` trip over each other, and it changes

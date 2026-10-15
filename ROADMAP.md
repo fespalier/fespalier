@@ -15,7 +15,9 @@ it ships.
     the file that threw (three calls in a sink of your own until then).
   - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
     `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
-  - `fespalier_dio`, the rest: OpenTelemetry trace headers on each request.
+  - `fespalier_dio`, the rest: a test of `fespalier_auth`'s `SessionInterceptor` under `dio_smart_retry`
+    (a DPoP proof per retry, one replay after a refresh); trace headers stay `otel_dio`'s
+    (docs/http.md).
 - **`fespalier_biometrics`, the rest.** The unlock guard ships in 0.13.0 (docs/guards.md). Not built: a lock
   screen widget, an idle lock on a timer, and a secret kept behind the biometric (a keystore's job).
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a
@@ -33,7 +35,9 @@ it ships.
   table. In debug the router could rebuild itself on `reassemble` (go_router's
   `GoRouter.routingConfig`, with a `ValueListenable<RoutingConfig>`); a regeneration would then need
   only a hot reload and keep the app's state.
-- **Flutter 3.47.6.** A `build:` change on its own, with `just devtools-build`.
+- **Flutter 3.47.7.** A `build:` change on its own, with `just devtools-build`.
+- **OpenTelemetry Collector 0.162.0.** Its image is published: a `build:` bump of
+  `cli/templates/telemetry/compose.yaml` (tag and index digest), with `just telemetry-smoke`.
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
   configurations.
 - **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks
@@ -50,13 +54,12 @@ it ships.
 ## Waiting on others
 
 - **go_router 18 in `examples/telemetry`.** `otel_go_router` 0.3.0 accepts go_router 18, but
-  `otel_zone` at the commit the example pins still asks for `otel_go_router` ^0.2.0, which requires
-  `go_router: ^17.0.0`. fespalier itself supports 17 and 18.
+  `otel_zone` (v0.5.0, which the example pins, and v0.6.0 alike) still asks for
+  `otel_go_router: ^0.2.0`, which requires `go_router: ^17.0.0`; the fix belongs in
+  vaam-apps/flutter-otel-zone. fespalier itself supports 17 and 18.
 - **`runGuarded` on the web.** `otel_zone`'s `runGuarded` never runs its body in a Flutter web app,
   so the docs use `kIsWeb ? body() : observability.runGuarded(body)` until it is fixed in
   vaam-apps/flutter-otel-zone.
-- **OpenTelemetry Collector 0.162.0.** Tagged, but no image is published yet; the stack stays on
-  0.161.0 until one is.
 - **OpenObserve:** a click on a stat tile opens nothing, and PromQL's `or vector(0)` returns no
-  series (v1.0.4). Drill-down is on the tables and charts until then, and the Grafana tiles work
-  around the second.
+  series (v1.0.4; v1.1.0 not checked yet). Drill-down is on the tables and charts until then, and the
+  Grafana tiles work around the second.

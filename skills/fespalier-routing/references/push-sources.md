@@ -757,7 +757,7 @@ One plugin for the Chinese Android vendor channels (and APNs on iOS), derived fr
 issued the id (`mi` is `PushTokenKind.mipush`, `huawei` is `hms`, `honor`, `oppo`, `vivo` and `apns` are the same-named constants,
 and `meizu`, which has no constant, stays the string `meizu`), `value`: the vendor's `regId`. **`flutter_mix_push` 1.0.0 needs
 Flutter 3.44 and Dart 3.12.1**, above fespalier's own floor (3.35): it is the app's floor if it uses it. This repository's
-pinned Flutter (3.47.5) builds it, and this recipe is compiled by `just skill-samples` with it; on an older Flutter, `pub get`
+pinned Flutter (3.47.7) builds it, and this recipe is compiled by `just skill-samples` with it; on an older Flutter, `pub get`
 fails and the recipe is prose only. The vendor keys are Gradle manifest placeholders (`MI_APP_ID`, `OPPO_APP_KEY`, ...: the
 plugin's README), and a vendor without one is skipped. The plugin reports **no revocation** (no unregister event), so
 `revocations` is empty. It has no read-only permission query, so `permission()` answers `notDetermined` until

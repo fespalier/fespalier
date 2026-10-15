@@ -18,7 +18,7 @@ Android phone or iPhone and one desktop (macOS, Windows or Linux), and report wh
 ### What you need
 
 - [Flutter](https://docs.flutter.dev/get-started/install) (the version in `FLUTTER_VERSION` of
-  [`ci.yml`](../../.github/workflows/ci.yml), 3.47.5 when this was written), and the platform tools of the device you test on
+  [`ci.yml`](../../.github/workflows/ci.yml)), and the platform tools of the device you test on
   (Android Studio or Xcode).
 - A clone of this repository, on the commit you were asked to test.
 - Wi-Fi, and about 300 MB free on the device.

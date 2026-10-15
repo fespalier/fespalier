@@ -3,11 +3,13 @@
 // AppMain.root(), as main() runs it, with FakePushSource in place of the vendor SDK.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
+import 'package:fespalier_launch/fespalier_launch.dart';
 import 'package:fespalier_push/fespalier_push.dart';
 import 'package:fespalier_push/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugins/app.g.dart';
 import 'package:plugins/app.main.g.dart';
+import 'package:plugins/launch.dart';
 import 'package:plugins/push.dart';
 
 void main() {
@@ -16,6 +18,7 @@ void main() {
 
   setUp(() {
     FespalierPush.debugReset();
+    FespalierLaunch.debugReset();
     sentTokens.clear();
     revokedTokens.clear();
     rec = RecordingTelemetry();
@@ -24,6 +27,7 @@ void main() {
   tearDown(() {
     FespalierTelemetry.install(null);
     FespalierPush.debugReset();
+    FespalierLaunch.debugReset();
   });
 
   /// main() on the way to runApp: the adapters' launch() first, then the app around the router.
@@ -42,6 +46,8 @@ void main() {
       onToken: onToken,
       onTokenRevoked: onTokenRevoked,
     );
+    // fespalier_launch is listed too: configured with no sources, so it opens nothing here.
+    FespalierLaunch.configure(sources: const [], route: launchRoute);
     final launch = await AppAdapters.launch();
     if (whileStarting != null) {
       // startup() is running: no router yet, nobody but the adapter on `taps`.

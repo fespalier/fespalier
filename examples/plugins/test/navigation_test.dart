@@ -1,7 +1,7 @@
-// The adapters this app lists (fespalier_push, fespalier_analytics) answer nothing to onEnter, so
-// the generated router passes go_router no onEnter: navigation parses synchronously, as in an app
-// without adapters. A go() followed by a push() in one handler keeps both (since 0.16.0; before
-// it, the go was lost, because any onEnter makes go_router parse asynchronously).
+// The adapters this app lists (fespalier_push, fespalier_analytics, fespalier_launch) answer nothing
+// to onEnter, so the generated router passes go_router no onEnter: navigation parses synchronously,
+// as in an app without adapters. A go() followed by a push() in one handler keeps both (since
+// 0.16.0; before it, the go was lost, because any onEnter makes go_router parse asynchronously).
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';

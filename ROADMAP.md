@@ -9,8 +9,6 @@ it ships.
 
 - **Adapters**, each a small package (the seams they need are in core: `AppRoutes.urlOf`, the DevTools
   _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
-  - `fespalier_launch`: shortcut and home-widget taps open typed routes, the first screen on a cold
-    start (notification taps are `fespalier_push`, since 0.13.0).
   - `fespalier_crashlytics`: errors from the telemetry sink, named by route pattern and tagged with
     the file that threw (three calls in a sink of your own until then).
   - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which

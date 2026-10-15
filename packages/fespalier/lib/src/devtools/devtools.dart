@@ -638,7 +638,7 @@ T traceData<T>(
 }) {
   if (kFespalierDevTools) _traceData(ref, site, key, result);
   if (telemetry != null) {
-    telemetryDataTrace(ref, telemetry, key != null, result);
+    telemetryDataTrace(ref, site, telemetry, key, result);
   }
   return result;
 }
@@ -660,12 +660,12 @@ T traceDataCall<T>(
   T Function() call, {
   required TelemetrySite telemetry,
 }) {
-  final token = telemetryDataStart(telemetry, key != null);
+  final token = telemetryDataStart(ref, site, telemetry, key);
   final T result;
   try {
     result = telemetryWithin(token, call);
   } catch (error, stackTrace) {
-    telemetryDataThrew(token, error, stackTrace);
+    telemetryDataThrew(ref, token, error, stackTrace);
     rethrow;
   }
   if (kFespalierDevTools) _traceData(ref, site, key, result);

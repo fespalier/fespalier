@@ -181,11 +181,11 @@ String currentLocation(WidgetTester tester) {
 /// The grammar of a line:
 ///
 /// ```text
-/// #n start OP WHAT [keyed] [parent=#m]
+/// #n start OP WHAT [keyed] [attempt=N] [parent=#m]
 /// #n start navigate LOCATION [source=S]
 /// #n start auth STEP backend=NAME [trigger=T] [dpop]
 /// #n start image CDN w=WIDTH [preload]
-/// #n end OP OUTCOME [async] [-> LOCATION] [status=N] [error=TEXT]
+/// #n end OP OUTCOME [async] [-> LOCATION] [status=N] [source=S] [rolled_back=B] [invalid] [error=TEXT]
 /// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
 /// #n page enter|focus|leave PATTERN
 /// #n within enter|exit
@@ -200,6 +200,11 @@ String currentLocation(WidgetTester tester) {
 /// names the URL builder and the width asked for, and says `preload` when a precache started it;
 /// a failed image's end line has `status=N` when the error carried an HTTP status. It never has
 /// the URL.
+///
+/// Since 0.18.0 a data start line says `attempt=N` when the load is the Nth try of a retry (N above
+/// 1; a first try has none), a data end line says `source=cache` or `source=fetch` for a
+/// `dataCache` provider, and an action end line says `rolled_back=true` or `rolled_back=false` when
+/// an `optimistic()` patch was shown, and `invalid` when the run ended with `FieldErrors`.
 ///
 /// With [recordWithin] (since 0.9.0) the recorder also writes `within enter` and `within exit`
 /// around what runs inside a `data()` or an action ([FespalierTelemetry.within]), so a test can
@@ -236,7 +241,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
         '${start.imageCdn} w=${start.imageWidth}'
             '${start.imagePreload ? ' preload' : ''}',
       TelemetryOp.custom => _custom(start.name, start.attributes),
-      _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
+      _ =>
+        '${start.site?.file}${start.keyed ? ' keyed' : ''}'
+            '${(start.dataAttempt ?? 1) > 1 ? ' attempt=${start.dataAttempt}' : ''}',
     };
     final parent = start.parent == null ? '' : ' parent=#${start.parent}';
     log.add('#$id start ${start.op.name} $what$parent');
@@ -260,6 +267,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
         if (end.location != null) 'at=${end.location}',
       ],
       if (end.imageStatus != null) 'status=${end.imageStatus}',
+      if (end.dataSource != null) 'source=${end.dataSource}',
+      if (end.actionRolledBack != null) 'rolled_back=${end.actionRolledBack}',
+      if (end.actionInvalid) 'invalid',
       if (op == TelemetryOp.custom &&
           end.attributes != null &&
           end.attributes!.isNotEmpty)

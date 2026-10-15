@@ -907,6 +907,135 @@ void main() {
     expect(exporter.spanNames, ['action items/\$id/action.dart#rename']);
   });
 
+  group('retries, saved copies, rollbacks and validation (since 0.18.0)', () {
+    test('a data span has its attempt', () async {
+      var calls = 0;
+      final p = FutureProvider.autoDispose<int>(
+        (ref) => traceDataCall(ref, 'd3', null, () async {
+          calls++;
+          if (calls == 1) throw StateError('try 1');
+          return calls;
+        }, telemetry: dataSite),
+      );
+      final c = ProviderContainer(
+        retry: (n, _) => n == 0 ? Duration.zero : null,
+      );
+      addTearDown(c.dispose);
+      c.listen(p, (_, _) {}, onError: (_, _) {});
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final spans = exporter.findSpansByName('data items/\$id/data.dart');
+      expect(
+        [for (final s in spans) s.attributes.getInt('fespalier.data.attempt')],
+        [1, 2],
+      );
+    });
+
+    test('a data span has its source when it is told one', () {
+      final told = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.data, site: dataSite),
+      );
+      FespalierTelemetry.finish(
+        told,
+        const TelemetryEnd(
+          TelemetryOutcome.data,
+          isAsync: true,
+          dataSource: TelemetryDataSource.cache,
+        ),
+      );
+      final untold = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.data, site: dataSite),
+      );
+      FespalierTelemetry.finish(
+        untold,
+        const TelemetryEnd(TelemetryOutcome.data, isAsync: true),
+      );
+      final spans = exporter.findSpansByName('data items/\$id/data.dart');
+      expect(spans, hasLength(2));
+      expect(
+        spans.first.attributes.getString('fespalier.data.source'),
+        'cache',
+      );
+      expect(
+        spans.last.attributes.keys,
+        isNot(contains('fespalier.data.source')),
+      );
+    });
+
+    test('an optimistic action that fails says rolled_back true, one that '
+        'works false', () async {
+      final data = FutureProvider.autoDispose<int>((ref) async => 1);
+      final layer = optimisticLayer(data);
+      final save = actionProvider<int, int>(
+        (ref, input) async {
+          if (input < 0) throw StateError('no');
+          return input;
+        },
+        invalidates: () => const [],
+        optimistic: () => layer.patch((int v, int input) => input),
+        telemetry: actionSite,
+      );
+      final c = ProviderContainer(retry: (_, _) => null);
+      addTearDown(c.dispose);
+      c.listen(data, (_, _) {});
+      c.listen(layer, (_, _) {});
+      c.listen(save, (_, _) {});
+      await expectLater(
+        Future.value(c.read(save.notifier).call(-1)),
+        throwsStateError,
+      );
+      await c.read(save.notifier).call(5);
+      final spans = exporter.findSpansByName(
+        'action items/\$id/action.dart#rename',
+      );
+      expect(spans, hasLength(2));
+      expect(
+        spans.first.attributes.getBool('fespalier.action.rolled_back'),
+        true,
+      );
+      expect(
+        spans.last.attributes.getBool('fespalier.action.rolled_back'),
+        false,
+      );
+      expect(spans.last.attributes.getBool('fespalier.action.invalid'), isNull);
+    });
+
+    test('an action refused by validate() is invalid, a StateError is not, a '
+        'success has neither', () async {
+      final rename = actionProvider<String, String>(
+        (ref, input) => input.toUpperCase(),
+        invalidates: () => const [],
+        validate: (input) =>
+            input.isEmpty ? const FieldErrors({'name': 'Required'}) : null,
+        telemetry: actionSite,
+      );
+      final boom = actionProvider<String, String>(
+        (ref, input) => throw StateError('no'),
+        invalidates: () => const [],
+        telemetry: actionSite,
+      );
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      c.listen(rename, (_, _) {});
+      c.listen(boom, (_, _) {});
+      expect(
+        () => c.read(rename.notifier).call(''),
+        throwsA(isA<FieldErrors>()),
+      );
+      expect(() => c.read(boom.notifier).call('a'), throwsStateError);
+      expect(c.read(rename.notifier).call('a'), 'A');
+      final spans = exporter.findSpansByName(
+        'action items/\$id/action.dart#rename',
+      );
+      expect(spans, hasLength(3));
+      expect(spans[0].attributes.getBool('fespalier.action.invalid'), true);
+      expect(spans[1].attributes.getBool('fespalier.action.invalid'), false);
+      expect(spans[2].attributes.getBool('fespalier.action.invalid'), isNull);
+      expect(spans[2].attributes.getString('fespalier.action.result'), 'ok');
+    });
+  });
+
   // Last in the file: by now every operation has run. This is the golden list of what fespalier
   // emits, contract version 1. A name that is not in it was added (add it here, and to the
   // docs/telemetry-conventions.md); one that is gone was renamed or removed, which is version 2.
@@ -942,8 +1071,12 @@ void main() {
       'fespalier.guard.location',
       'fespalier.data.state',
       'fespalier.data.keyed',
+      'fespalier.data.attempt',
+      'fespalier.data.source',
       'fespalier.action.name',
       'fespalier.action.result',
+      'fespalier.action.rolled_back',
+      'fespalier.action.invalid',
       'fespalier.deferred.result',
       'fespalier.auth.operation',
       'fespalier.auth.result',

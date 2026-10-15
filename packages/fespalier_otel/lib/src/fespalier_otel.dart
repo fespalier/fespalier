@@ -131,6 +131,7 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.route: ?site?.route,
             FespalierConventions.file: ?site?.file,
             FespalierConventions.dataKeyed: start.keyed,
+            FespalierConventions.dataAttempt: ?start.dataAttempt,
           },
         ),
         TelemetryOp.action => (
@@ -300,12 +301,32 @@ final class FespalierOtel extends FespalierTelemetry {
           end.outcome,
         );
         span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+        final source = end.dataSource;
+        if (source != null) {
+          span.setStringAttribute<String>(
+            FespalierConventions.dataSource,
+            source,
+          );
+        }
       case TelemetryOp.action:
         span.setStringAttribute<String>(
           FespalierConventions.actionResult,
           end.outcome,
         );
         span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+        final rolledBack = end.actionRolledBack;
+        if (rolledBack != null) {
+          span.setBoolAttribute(
+            FespalierConventions.actionRolledBack,
+            rolledBack,
+          );
+        }
+        if (end.outcome == TelemetryOutcome.error) {
+          span.setBoolAttribute(
+            FespalierConventions.actionInvalid,
+            end.actionInvalid,
+          );
+        }
       case TelemetryOp.deferred:
         span.setStringAttribute<String>(
           FespalierConventions.deferredResult,

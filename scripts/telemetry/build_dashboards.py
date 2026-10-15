@@ -65,6 +65,8 @@ BOOLEAN_ATTRS = {
     "fespalier.data.keyed",
     "fespalier.auth.dpop",
     "fespalier.image.preload",
+    "fespalier.action.rolled_back",
+    "fespalier.action.invalid",
 }
 # A constant named `<prefix><Value>` is a value of the attribute on the right; one named
 # `result<Value>` is a value of both result attributes.
@@ -79,6 +81,7 @@ VALUE_OF = {
     "state": ["fespalier.data.state"],
     "result": ["fespalier.action.result", "fespalier.deferred.result", "fespalier.image.result"],
     "source": ["fespalier.navigation.source"],
+    "dataSource": ["fespalier.data.source"],
 }
 DART_CONST = re.compile(r"^\s*static const String (\w+) = '([^']*)';", re.M)
 
@@ -93,7 +96,7 @@ class Conventions:
         self.event_attrs = set(SEMCONV_EVENT_ATTRS)
         values = {}  # attribute key -> its values, in declaration order
         for name, value in DART_CONST.findall(text):
-            prefix = re.match(r"(authOp|authResult|authTrigger|op|kind|outcome|decision|state|result|source)[A-Z]", name)
+            prefix = re.match(r"(authOp|authResult|authTrigger|op|kind|outcome|decision|state|result|source|dataSource)[A-Z]", name)
             if name in ("version", "scope", "spanNavigateNotFound"):
                 continue
             if prefix:

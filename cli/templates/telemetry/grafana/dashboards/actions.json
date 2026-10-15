@@ -333,6 +333,128 @@
     },
     {
       "id": 6,
+      "type": "stat",
+      "title": "How many optimistic updates were undone?",
+      "description": "Changes shown on screen before the write, then taken back because the write failed. Only actions with an optimistic() count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_rolled_back=\"true\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "How many runs did validation stop?",
+      "description": "Runs that ended with FieldErrors: validate() refused the input, or the server named wrong fields. A form that stops a submit itself is not counted.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_invalid=\"true\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 8,
       "type": "table",
       "title": "Which actions are slow or failing?",
       "description": "Each action with its runs, failure rate, typical and slowest-5 % time. File is the action.dart to open.",
@@ -342,7 +464,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 11,
         "w": 24,
         "h": 6
       },
@@ -377,7 +499,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])))",
+          "expr": "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_rolled_back=\"true\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,
@@ -385,6 +507,30 @@
         },
         {
           "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_invalid=\"true\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "F",
           "datasource": {
             "type": "prometheus",
             "uid": "fespalier-openobserve"
@@ -541,22 +687,26 @@
               "Value #A": 2,
               "Value #B": 3,
               "Value #C": 4,
-              "Value #D": 5
+              "Value #D": 5,
+              "Value #E": 6,
+              "Value #F": 7
             },
             "renameByName": {
               "fespalier_action_name": "Action",
               "fespalier_file": "File",
               "Value #A": "Runs",
               "Value #B": "Failed",
-              "Value #C": "Typical",
-              "Value #D": "Slowest 5 %"
+              "Value #C": "Undone",
+              "Value #D": "Stopped by validation",
+              "Value #E": "Typical",
+              "Value #F": "Slowest 5 %"
             }
           }
         }
       ]
     },
     {
-      "id": 7,
+      "id": 9,
       "type": "timeseries",
       "title": "When do people use each action?",
       "description": "Runs over time, per action.",
@@ -566,7 +716,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 17,
         "w": 24,
         "h": 9
       },
@@ -613,7 +763,7 @@
       "options": {}
     },
     {
-      "id": 8,
+      "id": 10,
       "type": "timeseries",
       "title": "When did actions fail?",
       "description": "Failed runs over time, per action. A spike usually lines up with a server problem or a release.",
@@ -623,7 +773,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 22,
+        "y": 26,
         "w": 24,
         "h": 9
       },

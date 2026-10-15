@@ -177,6 +177,14 @@ abstract final class FespalierConventions {
   /// Whether the provider is a family. The key itself is never recorded.
   static const String dataKeyed = 'fespalier.data.keyed';
 
+  /// Which try the load is: 1, or n + 1 when Riverpod ran the provider again on its own after try n
+  /// failed (since 0.18.0). A `Stream` load is always 1.
+  static const String dataAttempt = 'fespalier.data.attempt';
+
+  /// Where the content came from, `cache` or `fetch`, for a data.dart with a `dataCache` (since
+  /// 0.18.0). Absent for a data.dart without one.
+  static const String dataSource = 'fespalier.data.source';
+
   // The values of `fespalier.data.state`.
 
   /// The value is there.
@@ -191,6 +199,15 @@ abstract final class FespalierConventions {
   /// The provider was disposed before its `Future` settled.
   static const String stateDisposed = 'disposed';
 
+  // The values of `fespalier.data.source` (since 0.18.0).
+
+  /// The saved copy of a `dataCache` was on screen before the fetch settled (a retry or a reload
+  /// after an offline start counts, while the copy is still shown).
+  static const String dataSourceCache = 'cache';
+
+  /// The value came from the fetch: no saved copy was on screen.
+  static const String dataSourceFetch = 'fetch';
+
   // Attributes of an `action` span.
 
   /// The function's name in `action.dart`.
@@ -198,6 +215,14 @@ abstract final class FespalierConventions {
 
   /// How the run ended. The input and the returned value are never recorded.
   static const String actionResult = 'fespalier.action.result';
+
+  /// An optimistic patch was shown for the run and then undone (`true`), or kept (`false`). Absent
+  /// when no patch was shown (since 0.18.0).
+  static const String actionRolledBack = 'fespalier.action.rolled_back';
+
+  /// The run ended with `FieldErrors`: `validate()` refused its input, or the action named wrong
+  /// fields. Recorded on an error only (since 0.18.0).
+  static const String actionInvalid = 'fespalier.action.invalid';
 
   // Attributes of a `deferred` span.
 

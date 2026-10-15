@@ -78,18 +78,20 @@ All in OpenObserve's folder `fespalier` (and Grafana's, where **App health** is 
 range is the last hour, and the **App** variable starts on the first app. Every title is a question, and the
 ⓘ next to it (Grafana: (i)) says what the panel shows, what good looks like and which file to open.
 
-| Question                                                     | Dashboard                | Panel                                                                   |
-| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------------------- |
-| Is the app fast, and does it work?                           | `fespalier · App health` | Eight tiles; _Verdicts, in words_ (OpenObserve)                         |
-| Do screens open quickly? Does content load quickly?          | App health               | _Do screens open quickly?_; _Does content load quickly?_                |
-| Which screen is slow?                                        | `fespalier · Screens`    | _How long does each screen take?_; _Are screens getting slower?_        |
-| Which `data.dart` fails or is slow?                          | Screens                  | _Which data.dart files are slow or failing?_                            |
-| Which guard sends users away, throws, or keeps them waiting? | Screens                  | _Do checks slow screens down?_; _Where were people sent instead?_       |
-| Is a route the app links to missing?                         | Screens                  | _How often does a link lead nowhere?_                                   |
-| How long does a deferred page's code take?                   | Screens                  | _How long does a deferred page's code take to arrive?_                  |
-| Which action fails, and how slow is it?                      | `fespalier · Actions`    | _Which actions are slow or failing?_                                    |
-| What failed, where, with which message and trace?            | `fespalier · Errors`     | _What failed, and where?_; _What failed last?_ (OpenObserve)            |
-| Did the app crash or hit an uncaught error?                  | Errors (and App health)  | _Did anything throw an uncaught error?_; _Did the app crash or freeze?_ |
+| Question                                                     | Dashboard                | Panel                                                                                    |
+| ------------------------------------------------------------ | ------------------------ | ---------------------------------------------------------------------------------------- |
+| Is the app fast, and does it work?                           | `fespalier · App health` | Eight tiles; _Verdicts, in words_ (OpenObserve)                                          |
+| Do screens open quickly? Does content load quickly?          | App health               | _Do screens open quickly?_; _Does content load quickly?_                                 |
+| Which screen is slow?                                        | `fespalier · Screens`    | _How long does each screen take?_; _Are screens getting slower?_                         |
+| Which `data.dart` fails or is slow?                          | Screens                  | _Which data.dart files are slow or failing?_                                             |
+| Which guard sends users away, throws, or keeps them waiting? | Screens                  | _Do checks slow screens down?_; _Where were people sent instead?_                        |
+| Is a route the app links to missing?                         | Screens                  | _How often does a link lead nowhere?_                                                    |
+| How long does a deferred page's code take?                   | Screens                  | _How long does a deferred page's code take to arrive?_                                   |
+| Which action fails, and how slow is it?                      | `fespalier · Actions`    | _Which actions are slow or failing?_                                                     |
+| Do loads retry, or show saved content first?                 | Screens                  | _How many loads were automatic retries?_; _How many loads showed saved content at once?_ |
+| Are optimistic updates undone, or does validation stop runs? | `fespalier · Actions`    | _How many optimistic updates were undone?_; _How many runs did validation stop?_         |
+| What failed, where, with which message and trace?            | `fespalier · Errors`     | _What failed, and where?_; _What failed last?_ (OpenObserve)                             |
+| Did the app crash or hit an uncaught error?                  | Errors (and App health)  | _Did anything throw an uncaught error?_; _Did the app crash or freeze?_                  |
 
 Guards, `data.dart` and deferred pages are on **Screens**, not on dashboards of their own, because a developer
 thinks "this screen is slow". Clicking a row of an OpenObserve table (a tile in Grafana) opens the dashboard that
@@ -116,8 +118,9 @@ reason for each.
 A tile that rests on **fewer than 20 samples is grey and says _Not enough data yet_** (the verdict table says _Too
 few to judge_). Colour is not the only signal: OpenObserve's _Verdicts, in words_ says each answer as text.
 
-Panels for retries, cache hits, optimistic rollbacks and submits stopped by validation exist only when
-the telemetry conventions emit those attributes (they are not in contract v1).
+Since 0.18.0 the Screens and Actions dashboards have panels for retries, saved copies shown, optimistic
+updates undone and runs validation stopped. An app on an older fespalier sends none of those attributes,
+so those panels read 0.
 
 ## A summary without a browser: `--report` (since 0.8.1)
 

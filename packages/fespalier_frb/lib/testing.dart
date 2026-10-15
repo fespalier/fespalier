@@ -4,13 +4,22 @@ library;
 import 'dart:async';
 
 export 'package:fespalier_frb/fespalier_frb.dart'
-    show Change, ChangeFeed, InvalidationRule, InvalidationTable;
+    show
+        Change,
+        ChangeCodec,
+        ChangeFeed,
+        InvalidationRule,
+        InvalidationTable,
+        UnknownChange;
 
 /// A fake Rust core's change stream (since 0.13.0): fed by the test, counting its listeners.
 ///
 /// `ChangeFeed((ref) => fake.stream)` is the feed under test. Events are delivered **synchronously**
 /// to the one subscription (a broadcast controller, or a single-subscription one with
 /// `broadcast: false`, like flutter_rust_bridge's streams, which refuse a second listener).
+///
+/// Since 0.18.0 it is also the raw source of a `ChangeCodec`: `FakeChangeSource<String>`, or
+/// `<Uint8List>`.
 final class FakeChangeSource<E> {
   /// Creates a source. [broadcast] false makes it single-subscription, like a generated stream.
   FakeChangeSource({bool broadcast = true}) {

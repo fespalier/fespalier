@@ -31,6 +31,17 @@ flutter analyze && flutter test
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
+## 0.17 to 0.18: what to check
+
+Bump the `ref:` of `fespalier` and every companion to the 0.18.0 tag, regenerate, read the diff, then:
+
+1. **Optional (`fespalier_frb`): decode raw core messages with `ChangeCodec`.** Nothing changes for a feed over typed events.
+   An `open` that decodes raw messages itself (`.map(decode)`) turns one bad message into an `AsyncError` in `latest`;
+   `.transform(ChangeCodec(decode))` skips and counts it instead and keeps the feed going. Throw `UnknownChange` from the
+   decoder for a variant a newer core added. See [`fespalier-data`](../fespalier-data/SKILL.md) (its `change-feeds.md`).
+
+Details: `docs/migration.md`, "0.18.0".
+
 ## 0.16 to 0.17: what to check
 
 0.17.0 breaks nothing, and changes nothing for an app that uses neither freezed nor `build_runner`: the generated

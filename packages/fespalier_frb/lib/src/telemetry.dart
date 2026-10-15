@@ -3,7 +3,8 @@ import 'package:fespalier/fespalier.dart';
 /// The operation name of the core's initialisation (`TelemetryOp.custom`, since 0.13.0).
 const String frbInitOp = 'fespalier.frb.init';
 
-/// The result attribute of the initialisation: `ok` or `error`.
+/// The result attribute of `fespalier.frb.init` (`ok` or `error`) and, since 0.18.0, of
+/// `fespalier.frb.decode` (`unknown` or `error`).
 const String frbResultAttribute = 'fespalier.frb.result';
 
 /// Runs a Rust core's initialisation for `startup()` and reports it (since 0.13.0).
@@ -50,4 +51,32 @@ Future<void> initRustCore(Future<void> Function() init) async {
       ),
     );
   }
+}
+
+/// The operation name of a message or batch item that a `ChangeCodec` skipped
+/// (`TelemetryOp.custom`, since 0.18.0).
+const String frbDecodeOp = 'fespalier.frb.decode';
+
+/// End attribute of [frbDecodeOp]: how many skips of its kind (`unknown` or `error`) the codec
+/// has made so far, this one included (an `int`, since 0.18.0).
+const String frbSkippedAttribute = 'fespalier.frb.skipped';
+
+/// Reports one skip as a span that starts and ends at once (since 0.18.0; not exported): ends
+/// `skipped` with result `unknown`, or `error` with result `error`, and the count. Never the
+/// message, a name from the wire or the error. Without a sink, one null check.
+void reportDecodeSkipped({required bool unknown, required int count}) {
+  if (FespalierTelemetry.current == null) return;
+  final token = FespalierTelemetry.begin(
+    const TelemetryStart(TelemetryOp.custom, name: frbDecodeOp),
+  );
+  FespalierTelemetry.finish(
+    token,
+    TelemetryEnd(
+      unknown ? TelemetryOutcome.skipped : TelemetryOutcome.error,
+      attributes: {
+        frbResultAttribute: unknown ? 'unknown' : 'error',
+        frbSkippedAttribute: count,
+      },
+    ),
+  );
 }

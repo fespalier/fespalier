@@ -27,6 +27,10 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.18.0
+
+- **`fespalier_frb` decodes raw core messages: `ChangeCodec`** ([Decoding a core's events](data.md#decoding-a-cores-events-changecodec)). Nothing changes for a feed over typed events, and `ChangeFeed` is unchanged. If your `open` decodes raw messages itself (`rawChanges().map(decode)`), a message that failed to decode was an `AsyncError` in `latest`; with `.transform(ChangeCodec(decode))` it is skipped and counted, `latest` keeps its last change, and a decoder can throw `UnknownChange` for a variant a newer core added.
+
 ### 0.17.0
 
 0.17.0 is about code generators, where fespalier and freezed or `build_runner` trip over each other, and it changes

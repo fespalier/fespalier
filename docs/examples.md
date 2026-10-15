@@ -172,12 +172,14 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 
 ## plugins
 
-`examples/plugins` (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics):
+`examples/plugins` (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics), and [`fespalier_launch`](../packages/fespalier_launch) (since 0.18.0) for home-screen shortcuts and widgets:
 
-- `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics]`; `main.dart` calls `FespalierPush.configure(...)` and `FespalierAnalytics.configure(...)` before `AppMain.run()`;
+- `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics, fespalier_launch]`; `main.dart` calls `FespalierPush.configure(...)`, `FespalierAnalytics.configure(...)` and `FespalierLaunch.configure(...)` (since 0.18.0) before `AppMain.run()`;
 - a `FakePushSource` in place of Firebase Messaging, and debug buttons on the home page that simulate a tap on a notification, a `RecordingAnalytics` in place of the analytics SDK, and the consent buttons of a banner (`analyticsConsent`);
 - an order page, a page behind a session guard and a login page that sends the person back;
+- two `FakeLaunchSource`s, one for shortcuts and one for widget taps (since 0.18.0), and debug buttons on the home page that simulate a shortcut (`last_order`, order 42) and a widget tap (`plugins:///orders/7`, order 7), mapped by `launchRoute` in `lib/launch.dart`;
 - tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token and revocation callbacks, with `source=notification` read from `RecordingTelemetry`.
+- launch tests through `AppMain.root()` (since 0.18.0, [Shortcuts and widgets](launch.md)): a cold start from a shortcut or a widget, a tap while the app runs and one while it starts, a signed-out shortcut to a guarded page, a URI and a shortcut the app does not map, and the two home-page buttons, with `source=shortcut` or `source=widget` read from `RecordingTelemetry`;
 - analytics tests through `AppMain.root()` ([Analytics](analytics.md)): the first screen as a view named by `screenName`, nothing sent while undecided or after a refusal, a notification tap as a view with its source, a screen named `null` skipped, and no segment value in anything the backend is given.
 
 ## downloads

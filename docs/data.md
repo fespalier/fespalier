@@ -68,6 +68,8 @@ A provider that failed and is being retried is `AsyncLoading` with its error sti
 
 **A route with a `freshness` or a `dataCache`** (since 0.8.1) keeps its data when a reload fails, whatever `keep_previous` says: `error.dart` only shows when there is nothing to show (see [Freshness](#freshness-staletime-resume-and-reconnect)). And `DataView` shows a value that Riverpod's offline persistence restored (`isFromCache`) while the fresh one loads, with `keep_previous: false` too.
 
+**Telemetry** (since 0.18.0): the data span says which try a load is (`fespalier.data.attempt`). A retry that Riverpod runs on its own after a failure is try 2, 3 and so on, and a reload the app asks for is try 1 again. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
+
 ### Freshness: `staleTime`, resume and reconnect
 
 Since 0.8.1 a `data.dart` can say when its value is old enough to load again. It is opt in: a route without the declaration loads once and keeps the value for as long as something watches it.
@@ -252,6 +254,8 @@ In debug (`debugPrint`, nothing in a release build) it prints `fespalier: dataCa
 The key a value is saved under is `fespalier:<folder>` plus the route's keys in path order as JSON, e.g. `fespalier:products/$id[42]` (the folder is the `data.dart`'s, relative to the app folder, so it is stable across `fsp gen`). An enum key is saved by its `name`, a `DateTime` as ISO 8601, a list as a list, anything else by its `toString()`, which is how a custom segment type is spelled in a URL: keep that stable (a web release build that minifies class names would change it).
 
 Don't write an optimistic value with `state =` on this provider's notifier: Riverpod saves every `AsyncData` it sets, so the guess would be saved. Keep optimistic values in a layer above the data provider.
+
+**Telemetry** (since 0.18.0): the data span says whether the saved copy was on screen before the fresh data arrived (`fespalier.data.source` is `cache`), or not (`fetch`). A retry after an offline start still has the copy on screen, so it says `cache`; once fetched data has replaced the copy, a reload says `fetch`. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
 
 **Testing.** With no `dataCacheStorage` override, nothing is saved. To test the cache, share a `MemoryDataStorage` between two `pumpRouter` calls, which stands in for a restart:
 

@@ -1,7 +1,9 @@
 import 'package:fespalier_analytics/fespalier_analytics.dart';
+import 'package:fespalier_launch/fespalier_launch.dart';
 import 'package:fespalier_push/fespalier_push.dart';
 import 'package:plugins/analytics.dart';
 import 'package:plugins/app.main.g.dart';
+import 'package:plugins/launch.dart';
 import 'package:plugins/push.dart';
 
 // A package that needs the app's own code is configured before the adapters run, which is
@@ -9,7 +11,9 @@ import 'package:plugins/push.dart';
 // need your code"). No telemetry sink is installed here beyond the analytics one the adapter
 // adds, so nothing else is reported; the tests install a recording one. The analytics consent
 // starts undecided: nothing is sent until the home page's buttons say so (a real app asks, and
-// stores the answer in startup.dart).
+// stores the answer in startup.dart). The launch sources are the shortcut and the widget fakes:
+// a cold start from either is answered in launch(), a tap while the app runs in attach()
+// (since 0.18.0).
 Future<void> main() {
   FespalierPush.configure(
     source: demoPush,
@@ -18,5 +22,9 @@ Future<void> main() {
     onTokenRevoked: dropToken,
   );
   FespalierAnalytics.configure(demoAnalytics, screenName: screenName);
+  FespalierLaunch.configure(
+    sources: [demoShortcuts, demoWidget],
+    route: launchRoute,
+  );
   return AppMain.run();
 }

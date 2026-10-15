@@ -9,8 +9,6 @@ it ships.
 
 - **Adapters**, each a small package (the seams they need are in core: `AppRoutes.urlOf`, the DevTools
   _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
-  - `fespalier_launch`: shortcut and home-widget taps open typed routes, the first screen on a cold
-    start (notification taps are `fespalier_push`, since 0.13.0).
   - `fespalier_crashlytics`: errors from the telemetry sink, named by route pattern and tagged with
     the file that threw (three calls in a sink of your own until then).
   - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
@@ -25,10 +23,6 @@ it ships.
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
-- **The four telemetry attributes documented as not emitted**: `fespalier.data.attempt`,
-  `fespalier.data.source`, `fespalier.action.rolled_back`, `fespalier.action.invalid`. Forms and
-  data freshness now have what they need; adding them brings back the retries, cache-hits and
-  rollbacks panels.
 - **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
   changes, because the generated router is built once, so a hot reload would keep the old route
   table. In debug the router could rebuild itself on `reassemble` (go_router's

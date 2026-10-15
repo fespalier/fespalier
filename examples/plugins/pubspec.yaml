@@ -1,5 +1,5 @@
 name: plugins
-description: fespalier example — the plugin packages through adapters. Notification taps open typed routes (fespalier_push) and screen views are reported with consent (fespalier_analytics), with fakes and widget tests.
+description: fespalier example — the plugin packages through adapters. Notification taps open typed routes (fespalier_push), home-screen shortcut and widget taps do too (fespalier_launch), and screen views are reported with consent (fespalier_analytics), with fakes and widget tests.
 publish_to: none
 version: 0.1.0
 
@@ -17,6 +17,9 @@ dependencies:
   # Screen views with consent (since 0.13.0): listed under `fespalier: adapters:` below, configured in main().
   fespalier_analytics:
     path: ../../packages/fespalier_analytics
+  # Home-screen shortcut and widget taps (since 0.18.0): listed under `fespalier: adapters:` below, configured in main().
+  fespalier_launch:
+    path: ../../packages/fespalier_launch
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -33,8 +36,9 @@ flutter:
 
 # Read by the `fsp` generator. `adapters` makes app.g.dart call each package's
 # `fespalier_adapter.dart` (cold start through launch(), taps through attach(), the analytics sink
-# through beforeRun()); `telemetry` makes the navigation a tap opens report `source=notification`,
-# and is what gives fespalier_analytics its page events.
+# through beforeRun(), the shortcut and widget taps through launch() and attach()); `telemetry` makes
+# the navigation a tap opens report `source=notification` (`shortcut` or `widget` for the launch
+# package), and is what gives fespalier_analytics its page events.
 fespalier:
   telemetry: true
-  adapters: [fespalier_push, fespalier_analytics]
+  adapters: [fespalier_push, fespalier_analytics, fespalier_launch]

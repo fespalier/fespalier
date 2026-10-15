@@ -49,6 +49,8 @@ def attrs(mapping):
 class Seed:
     def __init__(self, service=SERVICE, seed=1, now=None, navigations=200):
         self.rng = random.Random(seed)
+        # Its own generator for the attributes added in 0.18.0, so the other spans are the same as before.
+        self.extra = random.Random(seed + 7)
         self.service = service
         self.now = int((time.time() if now is None else now) * 1e9)
         self.spans = []  # (span dict for OTLP, flat attributes for counting)
@@ -87,6 +89,7 @@ class Seed:
 
     def _build(self, navigations):
         rng = self.rng
+        extra = self.extra
         # Spread over the last 25 minutes, oldest first.
         clock = self.now - int(25 * 60 * 1e9)
         step = int(25 * 60 * 1e9 / (navigations * 4 + 20))
@@ -179,6 +182,8 @@ class Seed:
                         "fespalier.async": is_async,
                         "fespalier.data.state": state,
                         "fespalier.data.keyed": "$id" in file,
+                        "fespalier.data.attempt": 1 if state == "stream" or extra.random() < 0.8 else extra.choice([2, 3]),
+                        "fespalier.data.source": ("cache" if extra.random() < 0.5 else "fetch") if file in ("products/data.dart", "cart/data.dart") and state != "stream" else None,
                         "error.type": error,
                     },
                     error,
@@ -204,6 +209,10 @@ class Seed:
             if rng.random() < 0.16:
                 action, file, action_route = rng.choice(ACTIONS)
                 error = rng.choice(ERROR_TYPES) if rng.random() < 0.25 else None
+                # A failure that names wrong fields (FieldErrors), not a crash.
+                invalid = bool(error) and extra.random() < 0.4
+                if invalid:
+                    error = "FieldErrors"
                 self.span(
                     f"action {file}#{action}",
                     clock,
@@ -217,6 +226,8 @@ class Seed:
                         "fespalier.async": True,
                         "fespalier.action.name": action,
                         "fespalier.action.result": "error" if error else "ok",
+                        "fespalier.action.invalid": invalid if error else None,
+                        "fespalier.action.rolled_back": bool(error) if action == "approve" else None,
                         "error.type": error,
                     },
                     error,
@@ -278,13 +289,21 @@ class Seed:
         failed = count(lambda a: a["_error"])
         action_runs = count(op("action"))
         action_failures = count(both(op("action"), is_("fespalier.action.result", "error")))
+        retries = count(both(op("data"), lambda a: (a.get("fespalier.data.attempt") or 1) > 1))
+        cache_hits = count(both(op("data"), is_("fespalier.data.source", "cache")))
+        rollbacks = count(both(op("action"), is_("fespalier.action.rolled_back", True)))
+        invalid = count(both(op("action"), is_("fespalier.action.invalid", True)))
         return {
             "health/screens_viewed": viewed,
             "health/uncaught": errors,
             "health/crashes": crashes,
             "screens/screens_viewed": viewed,
+            "screens/retries": retries,
+            "screens/cache_hits": cache_hits,
             "actions/runs": action_runs,
             "actions/failures": action_failures,
+            "actions/rollbacks": rollbacks,
+            "actions/invalid": invalid,
             "errors/failed_spans": failed,
             "errors/uncaught": errors,
             "errors/crashes": crashes,

@@ -400,6 +400,7 @@ void main() {
           uri: uri,
           parent: nav,
           keyed: true,
+          dataAttempt: 3,
           authStep: 'refresh',
           authBackend: 'oidc',
           authTrigger: 'expired',
@@ -422,6 +423,7 @@ void main() {
           expect(copy.uri, uri);
           expect(copy.parent, parent);
           expect(copy.keyed, isTrue);
+          expect(copy.dataAttempt, 3);
           expect(copy.authStep, 'refresh');
           expect(copy.authBackend, 'oidc');
           expect(copy.authTrigger, 'expired');

@@ -177,6 +177,8 @@ nav_ok_outcome_sel = '{sel:navigate}, fespalier_navigation_outcome="ok"'
 action_error_sel = '{sel:action}, fespalier_action_result="error"'
 action_ok_sel = '{sel:action}, fespalier_action_result="ok"'
 failed_sel = '{sel}, status_code="STATUS_CODE_ERROR"'
+data_retry_sql = "fespalier_operation = 'data' AND fespalier_data_attempt <> '1'"
+data_retry_sel = '{sel:data}, fespalier_data_attempt=~"[2-9]|[1-9][0-9]+"'
 
 # ================================================================================================
 # App health: the home page. One tile per question, then the same checks in words.
@@ -475,6 +477,24 @@ description = "Are screens opening fast, where do people go, and what slows a sc
   columns = [{ name = "from_screen", axis = "x", label = "From" }, { name = "to_screen", axis = "x", label = "To" }, { name = "n", label = "Times" }]
 
   [[dashboard.panels]]
+  id = "retries"
+  title = "How many loads were automatic retries?"
+  type = "stat"
+  description = "Loads that ran again on their own after the first try failed (Riverpod's retry). A reload you asked for is not counted. Many retries usually mean a flaky server or a slow network."
+  sql = "SELECT COUNT(*) AS retries {from} WHERE {data_retry_sql} AND {svc}"
+  columns = [{ name = "retries" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {data_retry_sel} }[$__range]))" }]
+
+  [[dashboard.panels]]
+  id = "cache_hits"
+  title = "How many loads showed saved content at once?"
+  type = "stat"
+  description = "Loads where the saved copy of a dataCache was on screen before the fresh data arrived. Only data.dart files with a dataCache count."
+  sql = "SELECT COUNT(*) AS cache_hits {from} WHERE {data_sql} AND fespalier_data_source = 'cache' AND {svc}"
+  columns = [{ name = "cache_hits" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_source="cache" }[$__range]))' }]
+
+  [[dashboard.panels]]
   id = "by_data"
   title = "Which data.dart files are slow or failing?"
   type = "table"
@@ -483,13 +503,15 @@ description = "Are screens opening fast, where do people go, and what slows a sc
   verdicts = { failed_pct = "failure_rate", p95_ms = "content_load" }
   units = { failed_pct = "percent", p50_ms = "ms", p95_ms = "ms" }
   description = "Each data.dart with its loads, failure rate and slowest-5 % time. Abandoned means the user left before it finished; many abandoned loads mean it is too slow."
-  sql = "SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, {rate_of:{data_error_sql}|{data_timed_sql}} AS failed_pct, {n_of:fespalier_data_state = 'disposed'} AS abandoned, {p50_of:{data_timed_sql}} AS p50_ms, {p95_of:{data_timed_sql}} AS p95_ms {from} WHERE {data_sql} AND {svc} GROUP BY file, route ORDER BY p95_ms DESC NULLS LAST"
+  sql = "SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, {rate_of:{data_error_sql}|{data_timed_sql}} AS failed_pct, {n_of:fespalier_data_state = 'disposed'} AS abandoned, {n_of:fespalier_data_attempt <> '1'} AS retries, {n_of:fespalier_data_source = 'cache'} AS from_cache, {p50_of:{data_timed_sql}} AS p50_ms, {p95_of:{data_timed_sql}} AS p95_ms {from} WHERE {data_sql} AND {svc} GROUP BY file, route ORDER BY p95_ms DESC NULLS LAST"
   columns = [
     { name = "file", axis = "x", label = "File" },
     { name = "route", axis = "x", label = "Screen" },
     { name = "loads", label = "Loads" },
     { name = "failed_pct", label = "Failed" },
     { name = "abandoned", label = "Abandoned" },
+    { name = "retries", label = "Retries" },
+    { name = "from_cache", label = "Saved copy shown" },
     { name = "p50_ms", label = "Typical" },
     { name = "p95_ms", label = "Slowest 5 %" },
   ]
@@ -498,6 +520,8 @@ description = "Are screens opening fast, where do people go, and what slows a sc
     { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data} }[$__range]))" },
     { expr = "100 * (sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_timed_sel} }[$__range])) - sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_ok_sel} }[$__range]))) / sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_timed_sel} }[$__range]))" },
     { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_state="disposed" }[$__range]))' },
+    { expr = "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {data_retry_sel} }[$__range]))" },
+    { expr = 'sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{ {sel:data}, fespalier_data_source="cache" }[$__range]))' },
     { expr = "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
     { expr = "histogram_quantile(0.95, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{ {data_timed_sel} }[$__range])))" },
   ]
@@ -614,6 +638,24 @@ description = "What people do (each function in an action.dart), and whether it 
   promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {action_error_sel} }[$__range]))" }]
 
   [[dashboard.panels]]
+  id = "rollbacks"
+  title = "How many optimistic updates were undone?"
+  type = "stat"
+  description = "Changes shown on screen before the write, then taken back because the write failed. Only actions with an optimistic() count."
+  sql = "SELECT COUNT(*) AS rollbacks {from} WHERE fespalier_operation = 'action' AND fespalier_action_rolled_back = 'true' AND {svc}"
+  columns = [{ name = "rollbacks" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_rolled_back="true" }[$__range]))' }]
+
+  [[dashboard.panels]]
+  id = "invalid"
+  title = "How many runs did validation stop?"
+  type = "stat"
+  description = "Runs that ended with FieldErrors: validate() refused the input, or the server named wrong fields. A form that stops a submit itself is not counted."
+  sql = "SELECT COUNT(*) AS invalid {from} WHERE fespalier_operation = 'action' AND fespalier_action_invalid = 'true' AND {svc}"
+  columns = [{ name = "invalid" }]
+  promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_invalid="true" }[$__range]))' }]
+
+  [[dashboard.panels]]
   id = "by_action"
   title = "Which actions are slow or failing?"
   type = "table"
@@ -623,12 +665,14 @@ description = "What people do (each function in an action.dart), and whether it 
   verdicts = { failed_pct = "failure_rate", p95_ms = "action_time" }
   units = { failed_pct = "percent", p50_ms = "ms", p95_ms = "ms" }
   description = "Each action with its runs, failure rate, typical and slowest-5 % time. File is the action.dart to open."
-  sql = "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, {rate_of:{action_error_sql}|{action_sql}} AS failed_pct, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE {action_sql} AND {svc} GROUP BY action, file ORDER BY failed_pct DESC, runs DESC"
+  sql = "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, {rate_of:{action_error_sql}|{action_sql}} AS failed_pct, {n_of:fespalier_action_rolled_back = 'true'} AS undone, {n_of:fespalier_action_invalid = 'true'} AS invalid, {p50} AS p50_ms, {p95} AS p95_ms {from} WHERE {action_sql} AND {svc} GROUP BY action, file ORDER BY failed_pct DESC, runs DESC"
   columns = [
     { name = "action", axis = "x", label = "Action" },
     { name = "file", axis = "x", label = "File" },
     { name = "runs", label = "Runs" },
     { name = "failed_pct", label = "Failed" },
+    { name = "undone", label = "Undone" },
+    { name = "invalid", label = "Stopped by validation" },
     { name = "p50_ms", label = "Typical" },
     { name = "p95_ms", label = "Slowest 5 %" },
   ]
@@ -636,6 +680,8 @@ description = "What people do (each function in an action.dart), and whether it 
   promql = [
     { expr = "sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
     { expr = "100 * (sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range])) - sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {action_ok_sel} }[$__range]))) / sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action} }[$__range]))" },
+    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_rolled_back="true" }[$__range]))' },
+    { expr = 'sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{ {sel:action}, fespalier_action_invalid="true" }[$__range]))' },
     { expr = "histogram_quantile(0.5, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
     { expr = "histogram_quantile(0.95, sum by (le, fespalier_action_name, fespalier_file) (sum_over_time(fespalier_duration_bucket{ {sel:action} }[$__range])))" },
   ]

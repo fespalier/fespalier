@@ -692,6 +692,128 @@
     },
     {
       "id": 9,
+      "type": "stat",
+      "title": "How many loads were automatic retries?",
+      "description": "Loads that ran again on their own after the first try failed (Riverpod's retry). A reload you asked for is not counted. Many retries usually mean a flaky server or a slow network.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 23,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_attempt=~\"[2-9]|[1-9][0-9]+\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "How many loads showed saved content at once?",
+      "description": "Loads where the saved copy of a dataCache was on screen before the fresh data arrived. Only data.dart files with a dataCache count.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 23,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_source=\"cache\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 11,
       "type": "table",
       "title": "Which data.dart files are slow or failing?",
       "description": "Each data.dart with its loads, failure rate and slowest-5 % time. Abandoned means the user left before it finished; many abandoned loads mean it is too slow.",
@@ -748,7 +870,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])))",
+          "expr": "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_attempt=~\"[2-9]|[1-9][0-9]+\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,
@@ -756,6 +878,30 @@
         },
         {
           "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum by (fespalier_file, fespalier_route) (sum_over_time(fespalier_calls{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_source=\"cache\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "histogram_quantile(0.5, sum by (le, fespalier_file, fespalier_route) (sum_over_time(fespalier_duration_bucket{fespalier_operation=\"data\", service_name=\"$service\", fespalier_data_state=~\"data|error\"}[$__range])))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false,
+          "format": "table"
+        },
+        {
+          "refId": "G",
           "datasource": {
             "type": "prometheus",
             "uid": "fespalier-openobserve"
@@ -913,7 +1059,9 @@
               "Value #B": 3,
               "Value #C": 4,
               "Value #D": 5,
-              "Value #E": 6
+              "Value #E": 6,
+              "Value #F": 7,
+              "Value #G": 8
             },
             "renameByName": {
               "fespalier_file": "File",
@@ -921,15 +1069,17 @@
               "Value #A": "Loads",
               "Value #B": "Failed",
               "Value #C": "Abandoned",
-              "Value #D": "Typical",
-              "Value #E": "Slowest 5 %"
+              "Value #D": "Retries",
+              "Value #E": "Saved copy shown",
+              "Value #F": "Typical",
+              "Value #G": "Slowest 5 %"
             }
           }
         }
       ]
     },
     {
-      "id": 10,
+      "id": 12,
       "type": "table",
       "title": "Do checks slow screens down?",
       "description": "Each guard.dart and redirect.dart: how often it ran, sent people elsewhere or threw, and how long an async one kept them waiting. A check runs before the screen shows, so keep it under 100 ms.",
@@ -1095,7 +1245,7 @@
       ]
     },
     {
-      "id": 11,
+      "id": 13,
       "type": "table",
       "title": "Where were people sent instead?",
       "description": "Screens people landed on after a guard or redirect.dart sent them away, usually the sign-in screen.",
@@ -1169,7 +1319,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 14,
       "type": "table",
       "title": "How long does a deferred page's code take to arrive?",
       "description": "Only for deferred pages (deferred: true, mostly on the web): how long the page's code takes to download. Good: under 500 ms. If not: split it, or make fewer pages deferred.",
@@ -1321,7 +1471,7 @@
       ]
     },
     {
-      "id": 13,
+      "id": 15,
       "type": "barchart",
       "title": "How do people get to screens?",
       "description": "How screens were reached: app start, a link or tab (go), pushed on top, back, replaced, or the same screen again.",

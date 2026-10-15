@@ -173,6 +173,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_tolgee`              | translations from Tolgee or your own server, offline-safe (since 0.10.0)                          | [Translations](docs/i18n-tolgee.md)                                                |
 | `fespalier_push`                | notification taps open typed routes, cold start and warm (since 0.13.0)                           | [Push notifications](docs/push.md)                                                 |
 | `fespalier_analytics`           | screen views by route pattern, sent only with consent (since 0.13.0)                              | [Analytics](docs/analytics.md)                                                     |
+| `fespalier_launch`              | shortcut and home-screen widget taps open typed routes, cold start and warm (since 0.18.0)        | [Shortcuts and widgets](docs/launch.md)                                            |
 | DevTools extension              | routes, guards, data and actions in Flutter DevTools                                              | [DevTools extension](docs/devtools.md)                                             |
 | Editor plugins                  | `fsp` diagnostics in VS Code and IntelliJ                                                         | [Editor plugins](docs/cli.md#editor-plugins)                                       |
 
@@ -244,7 +245,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/tabs`](examples/tabs): a bottom navigation bar built as a tab layout.
 - [`examples/telemetry`](examples/telemetry): the route lifecycle, OpenTelemetry and Sentry.
 - [`examples/auth`](examples/auth): `fespalier_auth` on an in-process demo API, with a Keycloak realm.
-- [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`) through `fespalier: adapters:`.
+- [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`), and home-screen shortcut and widget taps (`fespalier_launch`) through `fespalier: adapters:`.
 - [`examples/downloads`](examples/downloads): `fespalier_download` on a phone or a desktop: a list of downloads with start, pause, resume, retry, cancel and remove, a detail page a notification tap opens, and one button per case a device tester tries.
 - [`examples/cose`](examples/cose): a full stack. A `fespalier_cratestack` app and a Rust CrateStack server that signs both ways: every request a COSE_Sign1 message from a device key, every answer sealed by the server.
 - [`examples/i18n`](examples/i18n): translated routes with `fespalier_tolgee`: a `$lang` segment, bundled catalogs, a language switch, ICU plurals.

@@ -161,7 +161,13 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
     Object? ticket,
   ) {
     if (kFespalierDevTools) traceActionEnd(trace, result: value);
-    if (_telemetry != null) telemetryActionEnd(span, isAsync: isAsync);
+    if (_telemetry != null) {
+      telemetryActionEnd(
+        span,
+        isAsync: isAsync,
+        rolledBack: ticket == null ? null : false,
+      );
+    }
     if (!ref.mounted) return;
     if (run == _runs) state = AsyncData<T?>(value);
     // Before the invalidation: the patch holds over the value the data has now.
@@ -191,6 +197,9 @@ final class ActionNotifier<I, T> extends Notifier<AsyncValue<T?>> {
         failed: true,
         error: error,
         stackTrace: stackTrace,
+        // The rollback below runs only while the notifier is mounted: say what it did.
+        rolledBack: ticket == null ? null : ref.mounted,
+        invalid: error is FieldErrors,
       );
     }
     if (ticket != null && ref.mounted) _optimistic?.rollback(ref, ticket);

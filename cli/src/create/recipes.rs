@@ -640,6 +640,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "needs a Rust core and flutter_rust_bridge, which are the app's own",
     ),
     (
+        "fespalier_launch",
+        "needs quick_actions or home_widget and native setup, compiled recipes in the skills, not a dependency",
+    ),
+    (
         "fespalier_maps",
         "needs a tile source, a style and platform setup, which are the app's own",
     ),

@@ -67,7 +67,6 @@ Flutter 3.32, with the lowest dependencies it allows.
   table. In debug the router could rebuild itself on `reassemble` (go_router's
   `GoRouter.routingConfig`, with a `ValueListenable<RoutingConfig>`); a regeneration would then need
   only a hot reload and keep the app's state.
-- **Flutter 3.47.6.** A `build:` change on its own, with `just devtools-build`.
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
   configurations.
 - **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks

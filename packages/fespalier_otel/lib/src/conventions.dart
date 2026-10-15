@@ -201,10 +201,11 @@ abstract final class FespalierConventions {
 
   // The values of `fespalier.data.source` (since 0.18.0).
 
-  /// The saved copy of a `dataCache` became the state during the load.
+  /// The saved copy of a `dataCache` was on screen before the fetch settled (a retry or a reload
+  /// after an offline start counts, while the copy is still shown).
   static const String dataSourceCache = 'cache';
 
-  /// The value came from the fetch: no saved copy was shown.
+  /// The value came from the fetch: no saved copy was on screen.
   static const String dataSourceFetch = 'fetch';
 
   // Attributes of an `action` span.

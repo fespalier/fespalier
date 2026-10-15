@@ -104,9 +104,13 @@ enter, focus events     fespalier.route
   - `fespalier.data.attempt` is which try a load is. Riverpod runs a failed provider again on its own, so a
     retry is try 2, 3 and so on; fespalier counts the tries from the rebuilds it sees, since Riverpod keeps its
     retry count private. A reload the app asks for (`invalidate`, `refresh`) is try 1. A `Stream` load is always
-    1, and a hot reload's rebuild of a failed load counts as a retry.
+    1, and a hot reload's rebuild of a failed load counts as a retry. Riverpod's default `retry` stops after 10
+    retries, so at most 11; a custom `retry:` with no limit has no top, and as a collector dimension each value is
+    a series of its own.
   - `fespalier.data.source` is `cache` when the saved copy of a `dataCache` was on screen before the fresh data
-    arrived, and `fetch` otherwise (also with no `dataCacheStorage`). Absent for a data.dart with no `dataCache`.
+    arrived, and `fetch` otherwise (also with no `dataCacheStorage`, and for a `data()` that returns its value at
+    once). A retry or a reload that runs while the copy is still shown (an offline start) says `cache` too; once
+    fetched data has replaced the copy, a reload says `fetch`. Absent for a data.dart with no `dataCache`.
   - `fespalier.action.rolled_back` is set when an `optimistic()` patch was shown for the run: `true` when the write
     failed and the patch was taken back, `false` when it was kept. Absent without a shown patch. A form does no
     rollback of its own.

@@ -23,9 +23,9 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:go_router/go_router.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart' show Ref;
+import 'package:hooks_riverpod/hooks_riverpod.dart' show ProviderContainer, Ref;
 
 import 'lifecycle.dart' show RouterWatch;
 
@@ -364,12 +364,14 @@ abstract final class NavigationSource {
 /// Where a data load's content came from (since 0.18.0): the values of [TelemetryEnd.dataSource]
 /// and of `fespalier.data.source`. Telemetry conventions, contract version 1.
 abstract final class TelemetryDataSource {
-  /// The saved copy of a `dataCache` became the state during this load, so it was shown before the
-  /// fetch settled.
+  /// The saved copy of a `dataCache` was on screen before the fetch settled: this load restored it,
+  /// or an earlier load did and fetched data has not replaced it since (a retry or a reload after
+  /// an offline start).
   static const String cache = 'cache';
 
-  /// The value came from the fetch: no saved copy was shown. Also for a data.dart whose
-  /// `dataCache` has no `dataCacheStorage`, where nothing is saved.
+  /// The value came from the fetch: no saved copy was on screen. Also for a data.dart whose
+  /// `dataCache` has no `dataCacheStorage`, where nothing is saved, and for one whose `data()`
+  /// returns its value at once, which replaces the copy before a frame can show it.
   static const String fetch = 'fetch';
 
   /// Every value, in this order.
@@ -978,17 +980,21 @@ final class _DataRun {
 
   /// The load failed: the next build of the provider, when Riverpod runs it again, is the next try.
   bool failed = false;
-
-  /// The provider was invalidated by hand after this load (`invalidate`, `refresh`,
-  /// `invalidateSelf`): the next build is a fresh start, not a retry.
-  bool manual = false;
 }
 
 /// The runs of each container's data providers, by the provider's site and key (since 0.18.0). An
-/// entry stays only while the last load of its provider failed, so it is small.
+/// entry stays only while the last load of its provider failed, and the provider is not disposed,
+/// so it is small: a success removes it, and so does disposing the provider (every generated data
+/// provider is autoDispose, so each family key leaves when its page does).
 final Expando<Map<(String, Object?), _DataRun>> _dataRuns = Expando(
   'fespalier data runs',
 );
+
+/// How many data providers of [container] have a failed load on record (since 0.18.0): the size of
+/// the try counter's table. For tests that pin that a disposed provider leaves nothing behind.
+@visibleForTesting
+int debugDataRunCount(ProviderContainer container) =>
+    _dataRuns[container]?.length ?? 0;
 
 /// The run of each data provider's build, by its [Ref] (since 0.18.0).
 final Expando<_DataRun> _runOf = Expando('fespalier data run');
@@ -1005,11 +1011,7 @@ int? _dataAttempt(Ref ref, String site, Object? key) {
     final id = (site, key);
     final last = runs[id];
     final attempt =
-        last != null &&
-            last.failed &&
-            !last.manual &&
-            !ref.isFirstBuild &&
-            !ref.isReload
+        last != null && last.failed && !ref.isFirstBuild && !ref.isReload
         ? last.attempt + 1
         : 1;
     final run = _DataRun(attempt, runs, id);
@@ -1017,10 +1019,20 @@ int? _dataAttempt(Ref ref, String site, Object? key) {
     _runOf[ref] = run;
     // A life-cycle callback of this build, dropped by Riverpod when the build is replaced. It is
     // experimental in Riverpod 3.3 (present since the floor): the one API that tells a manual
-    // invalidation from a retry.
+    // invalidation (`invalidate`, `refresh`, `invalidateSelf`) from a retry. The run is forgotten
+    // then, so the next build is a fresh start, and a provider that nobody listens to any more
+    // leaves nothing behind either (Riverpod runs its dispose callbacks at the invalidation, while
+    // it is still mounted, and disposes it later without running them again).
     // ignore: experimental_member_use
     ref.onManualInvalidation(() {
-      run.manual = true;
+      if (identical(runs[id], run)) runs.remove(id);
+    });
+    // Disposing the provider forgets its run, a failed one too (a sync throw reaches no other
+    // handler). Riverpod marks the ref unmounted before it runs the callbacks of a real dispose,
+    // and a rebuild (Riverpod's retry, a dependency change) runs them while it is still mounted,
+    // so a retry finds the run and counts on.
+    ref.onDispose(() {
+      if (!ref.mounted && identical(runs[id], run)) runs.remove(id);
     });
     return attempt;
   } catch (e) {
@@ -1054,11 +1066,14 @@ void telemetryDataCache(Ref ref, bool Function() shown) {
 }
 
 /// Where the content of [ref]'s data load came from, read now (since 0.18.0): `cache` or `fetch`
-/// for a provider with a `dataCache`, null for one without.
-String? _dataSource(Ref ref) {
+/// for a provider with a `dataCache`, null for one without. A value that [synchronous] `data()`
+/// returned replaces the saved copy in the same build, before a frame can show it: `fetch`.
+String? _dataSource(Ref ref, {bool synchronous = false}) {
   final shown = _savedCopy[ref];
   if (shown == null) return null;
-  return shown() ? TelemetryDataSource.cache : TelemetryDataSource.fetch;
+  return !synchronous && shown()
+      ? TelemetryDataSource.cache
+      : TelemetryDataSource.fetch;
 }
 
 /// `data()` returned [result]: a value ends the span [token] came from at once, a `Future` ends it
@@ -1099,7 +1114,10 @@ void telemetryDataEnd(Ref ref, Object? token, Object? result) {
       _dataSettled(ref, failed: false);
       telemetryFinish(
         token,
-        TelemetryEnd(TelemetryOutcome.data, dataSource: _dataSource(ref)),
+        TelemetryEnd(
+          TelemetryOutcome.data,
+          dataSource: _dataSource(ref, synchronous: true),
+        ),
       );
     }
   } catch (e) {

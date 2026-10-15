@@ -50,6 +50,8 @@ COMPOSE = STACK / "compose.yaml"
 IMPORTER = STACK / "openobserve/import.py"
 REPORT = STACK / "openobserve/report.py"
 DASHBOARDS_DOC = ROOT / "docs" / "telemetry-dashboards.md"
+# The attributes that are numbers, not lists of values: a query may compare them with any literal.
+NUMBERS = {"fespalier.data.attempt"}
 
 print(
     "telemetry conventions: read from packages/fespalier_otel/lib/src/conventions.dart",
@@ -167,8 +169,10 @@ class Conventions(unittest.TestCase):
         bad = []
         for column, key in self.conventions.columns.items():
             allowed = set(self.conventions.attrs[key])
-            # A free-form attribute (a count, a width, a try) takes any literal.
-            if not allowed:
+            # A try is a number, which a query may compare with (`<> '1'`). Every other attribute
+            # with no list of values (a route, a file, an action name, an error type) is the app's
+            # own text, and a query never hard-codes it.
+            if key in NUMBERS:
                 continue
             literals = []
             for match in re.finditer(
@@ -227,14 +231,24 @@ class Conventions(unittest.TestCase):
                     for name in bd.LABEL.findall(panel["sql"]):
                         self.assertIn(name, fields["traces"], f"{dash['id']}/{panel['id']}")
 
-    def test_a_free_form_column_takes_any_literal(self):
-        # A count, a width or a try is not an enum: any literal compares with it.
+    def test_only_a_try_takes_any_literal(self):
+        # A try is a number: any literal compares with it.
         self.assertEqual([], self.values_wrong("WHERE fespalier_data_attempt <> '1'", "'"))
+        self.assertEqual([], self.values_wrong('x{fespalier_data_attempt!="1"}', '"'))
         # An enum is still checked: a source other than cache or fetch is flagged.
         self.assertEqual(
             [("fespalier_data_source", "disk")],
             self.values_wrong("WHERE fespalier_data_source = 'disk'", "'"),
         )
+        # A route, a file or an action name is the app's text: a literal on its column is flagged.
+        for column in ("fespalier_route", "fespalier_file", "fespalier_action_name"):
+            self.assertIn(column, self.conventions.columns)
+            self.assertEqual(
+                [(column, "/x")], self.values_wrong(f"WHERE {column} = '/x'", "'"), column
+            )
+            self.assertEqual(
+                [(column, "/x")], self.values_wrong(f'x{{{column}="/x"}}', '"'), column
+            )
 
     def test_the_seed_uses_only_the_conventions(self):
         seed = seed_module.Seed(now=1_700_000_000)

@@ -253,8 +253,11 @@ final class CachedData<T> extends AsyncNotifier<T> {
   Object? _decoded;
   bool _encodeFailed = false;
 
-  /// Whether the saved copy became the state during this build (since 0.18.0): the data span's
-  /// `fespalier.data.source` says `cache` then. Reset at each build, set by [_restore].
+  /// Whether the saved copy is the value on screen (since 0.18.0): the data span's
+  /// `fespalier.data.source` says `cache` then. [_restore] sets it, and [_encode] clears it when
+  /// a fetched value replaces the copy. A build does not reset it: a retry or a reload that runs
+  /// while the copy is still shown (an offline start) is a load behind the copy, as the first one
+  /// was.
   bool _shown = false;
 
   bool get _hasFreshValue {
@@ -274,6 +277,9 @@ final class CachedData<T> extends AsyncNotifier<T> {
   }
 
   String _encode(T value) {
+    // Riverpod encodes only an `AsyncData`, which never is the restored copy (that one is a
+    // loading state), so this is where the fetched value replaces it.
+    _shown = false;
     try {
       final saved = _cache.encode(value);
       _encodeFailed = false;
@@ -307,7 +313,6 @@ final class CachedData<T> extends AsyncNotifier<T> {
 
   @override
   FutureOr<T> build() {
-    _shown = false;
     final storage = ref.watch(dataCacheStorage);
     if (storage != null) {
       persist<String, String>(

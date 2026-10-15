@@ -5,6 +5,7 @@
 // typed values a real sink reads.
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/telemetry.dart' show debugDataRunCount;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,10 +81,11 @@ class Server {
 
 Future<ProviderContainer> bootWith(
   WidgetTester tester,
-  MemoryDataStorage storage,
-) async {
+  MemoryDataStorage storage, {
+  Duration? Function(int, Object)? retry,
+}) async {
   final container = ProviderContainer(
-    retry: (_, _) => null,
+    retry: retry ?? (_, _) => null,
     overrides: <Override>[dataCacheStorage.overrideWithValue(storage)],
   );
   addTearDown(container.dispose);
@@ -202,6 +204,106 @@ void main() {
       expect(fields.dataAttempts, [1, 2, 3]);
     });
 
+    test('a disposed provider leaves no count, a retried one keeps it', () async {
+      final flaky = Flaky(1);
+      final p = FutureProvider.autoDispose<int>(
+        (ref) =>
+            traceDataCall(ref, 'd9', null, flaky.call, telemetry: dataSite),
+      );
+      final c = retrying();
+      addTearDown(c.dispose);
+      final subscription = c.listen(p, (_, _) {}, onError: (_, _) {});
+      // Try 1 failed and Riverpod's retry has not run yet: the count waits for it.
+      await Future<void>.delayed(Duration.zero);
+      expect(debugDataRunCount(c), 1);
+      await settle();
+      // Try 2 worked: a success keeps nothing.
+      expect(rec.log.last, '#2 end data data async');
+      expect(rec.log, contains('#2 start data items/\$id/data.dart attempt=2'));
+      expect(debugDataRunCount(c), 0);
+      subscription.close();
+      await settle();
+      expect(debugDataRunCount(c), 0);
+    });
+
+    test(
+      'a family whose loads failed and were disposed leaves no counts',
+      () async {
+        final p = FutureProvider.autoDispose.family<int, int>(
+          (ref, id) => traceDataCall(
+            ref,
+            'd9',
+            id,
+            () async => throw StateError('no $id'),
+            telemetry: dataSite,
+          ),
+        );
+        final c = ProviderContainer(retry: (_, _) => null);
+        addTearDown(c.dispose);
+        final subscriptions = [
+          for (var id = 0; id < 40; id++)
+            c.listen(p(id), (_, _) {}, onError: (_, _) {}),
+        ];
+        await settle();
+        // Each key's last load failed, and the page still shows it: 40 counts.
+        expect(debugDataRunCount(c), 40);
+        for (final subscription in subscriptions) {
+          subscription.close();
+        }
+        await settle();
+        expect(debugDataRunCount(c), 0);
+        // The key comes back later: a load of the page again, try 1.
+        c.listen(p(0), (_, _) {}, onError: (_, _) {});
+        await settle();
+        expect(fields.dataAttempts.last, 1);
+      },
+    );
+
+    test(
+      'a data() that throws at once leaves no count when disposed',
+      () async {
+        final p = Provider.autoDispose<int>(
+          (ref) => traceDataCall(
+            ref,
+            'd9',
+            null,
+            () => throw StateError('no'),
+            telemetry: dataSite,
+          ),
+        );
+        final c = ProviderContainer(retry: (_, _) => null);
+        addTearDown(c.dispose);
+        final subscription = c.listen(p, (_, _) {}, onError: (_, _) {});
+        expect(debugDataRunCount(c), 1);
+        subscription.close();
+        await settle();
+        expect(debugDataRunCount(c), 0);
+      },
+    );
+
+    test('an invalidation of an unwatched failed load leaves no count', () async {
+      final p = FutureProvider.autoDispose<int>(
+        (ref) => traceDataCall(
+          ref,
+          'd9',
+          null,
+          () async => throw StateError('no'),
+          telemetry: dataSite,
+        ),
+      );
+      final c = ProviderContainer(retry: (_, _) => null);
+      addTearDown(c.dispose);
+      final subscription = c.listen(p, (_, _) {}, onError: (_, _) {});
+      await settle();
+      expect(debugDataRunCount(c), 1);
+      // Nobody listens any more, and the provider is invalidated before Riverpod disposes it: its
+      // dispose callbacks run as a rebuild's, while it is still mounted.
+      subscription.close();
+      c.invalidate(p);
+      await settle();
+      expect(debugDataRunCount(c), 0);
+    });
+
     test('a synchronous load is try 1 and ends at once', () {
       final p = Provider.autoDispose<String>(
         (ref) => traceDataCall(ref, 'd9', null, () => 'x', telemetry: dataSite),
@@ -282,6 +384,126 @@ void main() {
         rec.log.last,
         '#2 end data error async source=cache error=Exception: offline',
       );
+      again.close();
+      await frames(tester);
+    });
+
+    testWidgets('an offline start that Riverpod retries still shows the saved '
+        'copy, so the retry says cache', (tester) async {
+      final storage = MemoryDataStorage();
+      final server = Server();
+      final p = cachedData<int>(
+        (ref) =>
+            traceDataCall(ref, 'd9', null, server.call, telemetry: dataSite),
+        cache: DataCache<int>.json(
+          toJson: (v) => v,
+          fromJson: (j) => j! as int,
+        ),
+        name: 'items',
+      );
+      final first = await bootWith(tester, storage);
+      final subscription = first.listen(p, (_, _) {});
+      await frames(tester);
+      subscription.close();
+      await frames(tester);
+      first.dispose();
+
+      server.offline = true;
+      final second = await bootWith(
+        tester,
+        storage,
+        retry: (n, _) => n < 1 ? const Duration(milliseconds: 1) : null,
+      );
+      final again = second.listen(p, (_, _) {}, onError: (_, _) {});
+      await frames(tester);
+      expect(
+        rec.log.last,
+        '#2 end data error async source=cache error=Exception: offline',
+      );
+      // The copy is still what the page shows, behind the error.
+      expect(second.read(p).hasError, isTrue);
+      expect(second.read(p).value, 1);
+
+      server.offline = false;
+      await tester.pump(const Duration(milliseconds: 5));
+      await frames(tester);
+      expect(rec.log.sublist(rec.log.length - 2), [
+        '#3 start data items/\$id/data.dart attempt=2',
+        '#3 end data data async source=cache',
+      ]);
+      // The server counted the failed load too.
+      expect(second.read(p).value, 3);
+
+      // The fetched value replaced the copy: a reload from here is a fetch.
+      second.invalidate(p);
+      await frames(tester);
+      expect(rec.log.last, '#4 end data data async source=fetch');
+      again.close();
+      await frames(tester);
+    });
+
+    testWidgets('after a fetch replaced the saved copy, a reload says fetch', (
+      tester,
+    ) async {
+      final storage = MemoryDataStorage();
+      final server = Server();
+      final p = cachedData<int>(
+        (ref) =>
+            traceDataCall(ref, 'd9', null, server.call, telemetry: dataSite),
+        cache: DataCache<int>.json(
+          toJson: (v) => v,
+          fromJson: (j) => j! as int,
+        ),
+        name: 'items',
+      );
+      final first = await bootWith(tester, storage);
+      final subscription = first.listen(p, (_, _) {});
+      await frames(tester);
+      subscription.close();
+      await frames(tester);
+      first.dispose();
+
+      final second = await bootWith(tester, storage);
+      final again = second.listen(p, (_, _) {});
+      await frames(tester);
+      expect(rec.log.last, '#2 end data data async source=cache');
+      second.invalidate(p);
+      await frames(tester);
+      expect(rec.log.last, '#3 end data data async source=fetch');
+      second.invalidate(p);
+      await frames(tester);
+      expect(rec.log.last, '#4 end data data async source=fetch');
+      again.close();
+      await frames(tester);
+    });
+
+    testWidgets('a data() that returns its value at once says fetch, though '
+        'the storage restored a copy in the same build', (tester) async {
+      final storage = MemoryDataStorage();
+      var loads = 0;
+      final p = cachedData<int>(
+        (ref) =>
+            traceDataCall(ref, 'd9', null, () => ++loads, telemetry: dataSite),
+        cache: DataCache<int>.json(
+          toJson: (v) => v,
+          fromJson: (j) => j! as int,
+        ),
+        name: 'items',
+      );
+      final first = await bootWith(tester, storage);
+      final subscription = first.listen(p, (_, _) {});
+      await frames(tester);
+      expect(rec.log.last, '#1 end data data source=fetch');
+      subscription.close();
+      await frames(tester);
+      first.dispose();
+
+      final second = await bootWith(tester, storage);
+      final again = second.listen(p, (_, _) {});
+      await frames(tester);
+      // The copy was restored and replaced inside one build: no frame showed it.
+      expect(rec.log.last, '#2 end data data source=fetch');
+      expect(second.read(p).value, 2);
       again.close();
       await frames(tester);
     });

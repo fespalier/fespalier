@@ -40,9 +40,9 @@ load and an action (item 1), and the telemetry stack needs one restart to show t
    `fespalier.action.rolled_back` and `fespalier.action.invalid`. They come with `telemetry: true`, like the others.
    A test that compares `RecordingTelemetry` lines whole gains the `attempt=`, `source=`, `rolled_back=` and
    `invalid` tokens. See [`fespalier-observability`](../fespalier-observability/SKILL.md) (its `conventions.md`).
-2. **Restart the telemetry stack once for the new tiles.** Run `fsp telemetry` again, then `fsp telemetry --stop`
-   and `fsp telemetry`, so the collector reads its four new dimensions. An app before 0.18.0 sends none of them,
-   so those tiles read 0.
+2. **Restart the telemetry stack once for the new tiles.** Run `fsp telemetry --stop`, then `fsp telemetry`, which
+   rewrites the files and updates the dashboards, so the collector reads its four new dimensions. An app before
+   0.18.0 sends none of them, so those tiles read 0.
 
 Details: `docs/migration.md`, "0.18.0".
 

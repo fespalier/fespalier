@@ -324,7 +324,7 @@ With a sink installed, fespalier never creates a `Future`, a microtask or a time
 - an async one is reported through a side listener on the very `Future` (which handles its own error, so it cannot make an unhandled one);
 - the wrappers return the very object they were given.
 
-Since 0.18.0, with a sink, each data load also registers one `ref.onManualInvalidation` callback, which Riverpod drops when the provider rebuilds, and keeps one small entry per provider whose last load failed; the next load that succeeds removes it.
+Since 0.18.0, with a sink, each data load also registers one `ref.onManualInvalidation` callback and one `ref.onDispose` callback, which Riverpod drops when the provider rebuilds, and keeps one small entry per provider whose last load failed; the next load that succeeds removes it, and so does disposing the provider (or invalidating it by hand), so a page that is gone leaves nothing behind.
 
 What does schedule microtasks is the OpenTelemetry SDK itself, whose span processors are `async` methods: they run when a span starts or ends, never in the path of a value the app gets. A backgrounded app draws no frames, so a navigation made in the background ends its span at the next frame after the app resumes.
 

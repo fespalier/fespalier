@@ -255,7 +255,7 @@ The key a value is saved under is `fespalier:<folder>` plus the route's keys in 
 
 Don't write an optimistic value with `state =` on this provider's notifier: Riverpod saves every `AsyncData` it sets, so the guess would be saved. Keep optimistic values in a layer above the data provider.
 
-**Telemetry** (since 0.18.0): the data span says whether the saved copy was on screen before the fresh data arrived (`fespalier.data.source` is `cache`), or not (`fetch`). [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
+**Telemetry** (since 0.18.0): the data span says whether the saved copy was on screen before the fresh data arrived (`fespalier.data.source` is `cache`), or not (`fetch`). A retry after an offline start still has the copy on screen, so it says `cache`; once fetched data has replaced the copy, a reload says `fetch`. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
 
 **Testing.** With no `dataCacheStorage` override, nothing is saved. To test the cache, share a `MemoryDataStorage` between two `pumpRouter` calls, which stands in for a restart:
 

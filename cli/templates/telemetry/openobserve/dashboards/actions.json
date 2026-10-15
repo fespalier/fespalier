@@ -307,6 +307,106 @@
           }
         },
         {
+          "id": "panel_rollbacks",
+          "type": "metric",
+          "title": "How many optimistic updates were undone?",
+          "description": "Changes shown on screen before the write, then taken back because the write failed. Only actions with an optimistic() count.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS rollbacks FROM \"default\" WHERE fespalier_operation = 'action' AND fespalier_action_rolled_back = 'true' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "rollbacks",
+                    "alias": "rollbacks",
+                    "column": "rollbacks",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 14,
+            "w": 48,
+            "h": 8,
+            "i": 6
+          }
+        },
+        {
+          "id": "panel_invalid",
+          "type": "metric",
+          "title": "How many runs did validation stop?",
+          "description": "Runs that ended with FieldErrors: validate() refused the input, or the server named wrong fields. A form that stops a submit itself is not counted.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS invalid FROM \"default\" WHERE fespalier_operation = 'action' AND fespalier_action_invalid = 'true' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "invalid",
+                    "alias": "invalid",
+                    "column": "invalid",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 14,
+            "w": 48,
+            "h": 8,
+            "i": 7
+          }
+        },
+        {
           "id": "panel_by_action",
           "type": "table",
           "title": "Which actions are slow or failing?",
@@ -370,6 +470,30 @@
               {
                 "field": {
                   "matchBy": "name",
+                  "value": "undone"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "invalid"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
                   "value": "p50_ms"
                 },
                 "config": [
@@ -425,7 +549,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, 100.0 * SUM(CASE WHEN fespalier_operation = 'action' AND fespalier_action_result = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'action' THEN 1 ELSE 0 END), 0) AS failed_pct, approx_percentile_cont(duration, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'action' AND service_name = '$service' GROUP BY action, file ORDER BY failed_pct DESC, runs DESC",
+              "query": "SELECT fespalier_action_name AS action, fespalier_file AS file, COUNT(*) AS runs, 100.0 * SUM(CASE WHEN fespalier_operation = 'action' AND fespalier_action_result = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'action' THEN 1 ELSE 0 END), 0) AS failed_pct, SUM(CASE WHEN fespalier_action_rolled_back = 'true' THEN 1 ELSE 0 END) AS undone, SUM(CASE WHEN fespalier_action_invalid = 'true' THEN 1 ELSE 0 END) AS invalid, approx_percentile_cont(duration, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(duration, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'action' AND service_name = '$service' GROUP BY action, file ORDER BY failed_pct DESC, runs DESC",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -459,6 +583,18 @@
                     "color": null
                   },
                   {
+                    "label": "Undone",
+                    "alias": "undone",
+                    "column": "undone",
+                    "color": null
+                  },
+                  {
+                    "label": "Stopped by validation",
+                    "alias": "invalid",
+                    "column": "invalid",
+                    "color": null
+                  },
+                  {
                     "label": "Typical",
                     "alias": "p50_ms",
                     "column": "p50_ms",
@@ -486,10 +622,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 14,
+            "y": 22,
             "w": 192,
             "h": 10,
-            "i": 6
+            "i": 8
           }
         },
         {
@@ -550,10 +686,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 24,
+            "y": 32,
             "w": 192,
             "h": 16,
-            "i": 7
+            "i": 9
           }
         },
         {
@@ -614,10 +750,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 40,
+            "y": 48,
             "w": 192,
             "h": 16,
-            "i": 8
+            "i": 10
           }
         }
       ]

@@ -12,6 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show AsyncNotifierProviderFamily;
 
 import 'freshness.dart';
+import 'telemetry.dart' show telemetryDataCache, telemetryOn;
 
 /// How a data.dart's value is saved for the next start (since 0.8.1):
 /// `final dataCache = DataCache<Product>.json(toJson: ..., fromJson: ...);`.
@@ -252,6 +253,13 @@ final class CachedData<T> extends AsyncNotifier<T> {
   Object? _decoded;
   bool _encodeFailed = false;
 
+  /// Whether the saved copy is the value on screen (since 0.18.0): the data span's
+  /// `fespalier.data.source` says `cache` then. [_restore] sets it, and [_encode] clears it when
+  /// a fetched value replaces the copy. A build does not reset it: a retry or a reload that runs
+  /// while the copy is still shown (an offline start) is a load behind the copy, as the first one
+  /// was.
+  bool _shown = false;
+
   bool get _hasFreshValue {
     try {
       return state is AsyncData<T>;
@@ -269,6 +277,9 @@ final class CachedData<T> extends AsyncNotifier<T> {
   }
 
   String _encode(T value) {
+    // Riverpod encodes only an `AsyncData`, which never is the restored copy (that one is a
+    // loading state), so this is where the fetched value replaces it.
+    _shown = false;
     try {
       final saved = _cache.encode(value);
       _encodeFailed = false;
@@ -283,6 +294,7 @@ final class CachedData<T> extends AsyncNotifier<T> {
   T _restore(String _) {
     final value = _decoded as T;
     _decoded = null;
+    _shown = true;
     return value;
   }
 
@@ -314,6 +326,8 @@ final class CachedData<T> extends AsyncNotifier<T> {
         ),
       );
     }
+    // Only with a sink: the probe is read when the load ends (since 0.18.0).
+    if (telemetryOn) telemetryDataCache(ref, () => _shown);
     final value = _fetch(ref);
     final freshness = _freshness;
     return freshness == null ? value : freshData(ref, freshness, value);

@@ -449,6 +449,8 @@
         "docs/data.md#A Rust core's changes: fespalier_frb",
         "packages/fespalier_frb/README.md",
         "packages/fespalier_frb/lib/fespalier_frb.dart",
+        "docs/data.md#Decoding a core's events: `ChangeCodec`",
+        "packages/fespalier_frb/lib/src/codec.dart",
         "docs/data.md#Providers per page instance: fespalier_riverpod",
         "packages/fespalier_riverpod/README.md",
         "packages/fespalier_riverpod/lib/fespalier_riverpod.dart",
@@ -699,8 +701,7 @@
         "docs/migration.md#0.7.0",
         "docs/migration.md#0.5.0",
         "docs/examples.md#adopt",
-        "examples/adopt",
-        "docs/migration.md#0.18.0"
+        "examples/adopt"
       ]
     },
     "fespalier-observability": {

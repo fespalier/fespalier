@@ -29,11 +29,12 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.18.0
 
-0.18.0 breaks nothing: the generated `app.g.dart` is unchanged unless an app lists the new `fespalier_launch` adapter, and an app that does not use telemetry changes nothing.
+0.18.0 breaks nothing: the generated `app.g.dart` is unchanged unless an app lists the new `fespalier_launch` adapter, an app that does not use telemetry changes nothing, and `fespalier_frb`'s `ChangeCodec` is new and opt-in.
 
 - **Four attributes on the data and action spans**: `fespalier.data.attempt` (which try a load is), `fespalier.data.source` (`cache` or `fetch` for a `dataCache`), `fespalier.action.rolled_back` (an optimistic patch was taken back) and `fespalier.action.invalid` (the run ended with `FieldErrors`). They come with `telemetry: true`, like the others; the names are in [Telemetry conventions](telemetry-conventions.md#telemetry-conventions). A `RecordingTelemetry` log gains the `attempt=`, `source=`, `rolled_back=` and `invalid` tokens, so a test that compares whole lines needs them.
 - **The Screens and Actions tiles for them need the stack restarted once**: run `fsp telemetry --stop`, then `fsp telemetry`, which rewrites the files and updates the dashboards, so the collector reads its four new dimensions ([Dashboards on your computer](telemetry-dashboards.md)). An app before 0.18.0 sends none of the four, so those tiles read 0.
 - **`fespalier_launch` is new and opt-in** ([Shortcuts and widgets](launch.md)). It opens a typed route from a home-screen shortcut or a widget tap, cold or while the app runs. An app that does not list it regenerates an identical `app.g.dart`, and nothing else changes. An app that lists it gets one more adapter in `AppAdapters`, calls `FespalierLaunch.configure(sources:, route:)` in `main()` before `AppMain.run()`, and configures it in every widget test that boots `AppMain.root()` (`FespalierLaunch.debugReset()` in `setUp` and `tearDown`, as for fespalier_push). The plugins (quick_actions, home_widget) stay the app's: the recipes are in the `fespalier-routing` skill.
+- **`fespalier_frb` decodes raw core messages: `ChangeCodec`** ([Decoding a core's events](data.md#decoding-a-cores-events-changecodec)). Nothing changes for a feed over typed events, and `ChangeFeed` is unchanged. If your `open` decodes raw messages itself (`rawChanges().map(decode)`), a message that failed to decode was an `AsyncError` in `latest`; with `.transform(ChangeCodec(decode))` it is skipped and counted, `latest` keeps its last change, and a decoder can throw `UnknownChange` for a variant a newer core added.
 
 ### 0.17.0
 

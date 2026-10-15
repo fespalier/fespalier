@@ -288,7 +288,7 @@ void main() {
     });
   });
 
-  group('onScreen (since 0.18.0)', () {
+  group('onScreen (since 0.19.0)', () {
     testWidgets(
       'is told the pattern of a committed navigation, never the location',
       (tester) async {

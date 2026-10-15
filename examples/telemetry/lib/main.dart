@@ -17,7 +17,7 @@
 //     event also carries the OpenTelemetry trace id (`otel.trace_id`), so an error links to its
 //     trace. Screen-load transactions are the opt-in (`FespalierSentry(tracing: true)`, and
 //     `tracing: true` in `FespalierSentry.configure`): this app already has its traces in OTel.
-//     FespalierOtel's `onScreen` names the page for a native crash record (since 0.18.0), so the
+//     FespalierOtel's `onScreen` names the page for a native crash record (since 0.19.0), so the
 //     Errors dashboard says which screen the app was on when it died.
 //
 // Run it against a collector: `flutter run --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://...`.

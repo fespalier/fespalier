@@ -193,7 +193,7 @@ Future<void> guarded(Future<void> Function() body) =>
 
 ### The screen a native crash happened on
 
-Since 0.18.0. A native crash or an ANR that `otel_zone` records can say which screen the app was showing when it died: the record carries `otel_zone.crashed.screen`, and the Errors dashboard has a table of crashes and freezes by screen, "Which screen was the app on when it crashed?". The app does not write the call itself: `FespalierOtel` makes it on every committed navigation when it is given `onScreen`.
+Since 0.19.0. A native crash or an ANR that `otel_zone` records can say which screen the app was showing when it died: the record carries `otel_zone.crashed.screen`, and the Errors dashboard has a table of crashes and freezes by screen, "Which screen was the app on when it crashed?". The app does not write the call itself: `FespalierOtel` makes it on every committed navigation when it is given `onScreen`.
 
 ```dart
 FespalierTelemetry.install(
@@ -558,7 +558,7 @@ testWidgets('a refused refund is an event on its route and its file', (tester) a
 
 ## Crashlytics
 
-There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). A native crash that `otel_zone` records already names the screen it happened on (since 0.18.0): see [The screen a native crash happened on](#the-screen-a-native-crash-happened-on). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
+There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). A native crash that `otel_zone` records already names the screen it happened on (since 0.19.0): see [The screen a native crash happened on](#the-screen-a-native-crash-happened-on). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
 
 - `end` records a non-fatal error;
 - `page` logs the page change;

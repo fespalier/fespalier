@@ -28,7 +28,7 @@ import 'conventions.dart';
 ///
 /// Since 0.9.0 a data span and an action span are the current span while `data()` or the action
 /// runs ([within]), so the spans that `otel_http` and `otel_dio` make inside them, after an
-/// `await` too, are their children. Since 0.18.0 [onScreen] hears each committed navigation's
+/// `await` too, are their children. Since 0.19.0 [onScreen] hears each committed navigation's
 /// page, so a native crash record can name its screen. Next to another sink (Sentry, analytics),
 /// install both with `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
 final class FespalierOtel extends FespalierTelemetry {
@@ -38,7 +38,7 @@ final class FespalierOtel extends FespalierTelemetry {
   /// [recordLocations] adds `url.path`, `url.query` and `fespalier.guard.location`: segment and
   /// query values are app data, so it is off.
   ///
-  /// [onScreen] (since 0.18.0) is called with the route pattern of the page on screen after each
+  /// [onScreen] (since 0.19.0) is called with the route pattern of the page on screen after each
   /// committed navigation this adapter makes a span for: pass `observability.setCrashScreen` with
   /// `otel_zone` (v0.7.0 or later), and a native crash record names its screen.
   FespalierOtel({
@@ -54,7 +54,7 @@ final class FespalierOtel extends FespalierTelemetry {
   final bool recordLocations;
 
   /// Told the route pattern of the page on screen, at the end of every committed navigation that
-  /// this adapter makes a span for, so only while the SDK is up (since 0.18.0). It is called with
+  /// this adapter makes a span for, so only while the SDK is up (since 0.19.0). It is called with
   /// `null` after a navigation that matched no route, and not at all for a superseded one. It never
   /// receives a location, a segment or a query value. A callback that throws costs nothing but
   /// itself.
@@ -295,7 +295,7 @@ final class FespalierOtel extends FespalierTelemetry {
     }
   }
 
-  /// Tells [onScreen] the page a committed navigation ended on (since 0.18.0). It is the `route` of
+  /// Tells [onScreen] the page a committed navigation ended on (since 0.19.0). It is the `route` of
   /// the navigation's end, which is null when no route matched; a superseded navigation tells
   /// nothing, because the one that replaced it will.
   void _screen(TelemetryEnd end) {

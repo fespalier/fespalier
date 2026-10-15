@@ -81,7 +81,7 @@ takes as "telemetry off", so a store build never sends to a developer's computer
 
 An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
 
-### The screen a native crash happened on (since 0.18.0)
+### The screen a native crash happened on (since 0.19.0)
 
 Pass `onScreen` and a native crash record names the page the app was on: `FespalierOtel(isReady: () => observability.isReady, onScreen: observability.setCrashScreen)`.
 It needs `otel_zone` v0.7.0 or later. `onScreen` is told the route pattern (`/orders/:id`, the value of `fespalier.route`)

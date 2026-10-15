@@ -70,7 +70,7 @@ Future<void> guarded(Future<void> Function() body) =>
   resource is fixed when the SDK starts, so they go into `start()`.
 - `FespalierOtel(recordLocations: true)` adds `url.path`, `url.query` and `fespalier.guard.location`.
   It is off because segment and query values are app data.
-- `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.18.0, with `otel_zone` v0.7.0 or later) tells
+- `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.19.0, with `otel_zone` v0.7.0 or later) tells
   `otel_zone` the route **pattern** of each committed navigation, `null` after a navigation that matched no route
   and nothing after a superseded one, only while the SDK is up. A native crash record then carries
   `otel_zone.crashed.screen`, and the Errors dashboard counts crashes by it. Never a location, a segment or a query

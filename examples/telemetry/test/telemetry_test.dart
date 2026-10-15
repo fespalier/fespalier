@@ -58,7 +58,7 @@ void main() {
     expect(nav.spanEvents?.map((e) => e.name), ['fespalier.page.enter']);
   });
 
-  testWidgets('onScreen names each screen by its pattern (since 0.18.0)', (
+  testWidgets('onScreen names each screen by its pattern (since 0.19.0)', (
     tester,
   ) async {
     final screens = <String?>[];

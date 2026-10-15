@@ -480,9 +480,9 @@ final batchCodec = ChangeCodec.batch<String, Object?, CoreEvent>(
 
 **What is reported.**
 
-- `onSkipped(reason, stackTrace)`, if you pass it, runs once per skip, inside the delivery: log it and return. What it throws becomes an `AsyncError` of `changes.latest`.
-- `unknownCount` and `errorCount` count the skips of each codec object, across its feeds and containers.
-- The span `fespalier.frb.decode` ends `skipped` with `fespalier.frb.result` `unknown`, or `error` with `error`, and carries `fespalier.frb.skipped`, the count of that kind so far.
+- `onSkipped(reason, stackTrace)`, if you pass it, runs once per skip, inside the delivery: log it and return. What it throws becomes an `AsyncError` of `changes.latest`, and the rest of that message's events are dropped with it (a batch's items decoded before it, and those after it).
+- `unknownCount` and `errorCount` count the skips of each codec object, across its feeds and containers. Each subscription decodes on its own, so a codec shared by a broadcast source that two containers watch counts one bad message twice, calls `onSkipped` twice and makes the span twice.
+- The span `fespalier.frb.decode` ends `skipped` with `fespalier.frb.result` `unknown`, or `error` with `error`, and carries `fespalier.frb.skipped`, the count of that kind so far. It is a root span: a message is decoded in the zone of whoever first watched the feed, so the span is not made a child of whatever was running there.
 - It is reported at the 1st, 2nd, 4th, 8th... skip of each kind, so a thousand unknown events make ten spans, never a thousand.
 - It never carries the message, the variant's name or the error's text.
 - A decoded event reports nothing, and without a telemetry sink a skip costs a counter.
@@ -507,7 +507,7 @@ ref.watch(coreProvider).subscribe(port.sendPort.nativePort);
 return port.transform(ChangeCodec<Object?, CoreEvent>((raw) => eventFromProto(raw as Uint8List)));
 ```
 
-**Testing.** `FakeChangeSource<String>` (or `<Uint8List>`) is the raw stream. `codec.decode(raw)` is the codec without a stream (empty when the message is skipped), and it is also how an app that owns its subscription feeds an `InvalidationTable`: `for (final e in coreCodec.decode(raw)) table.apply(e, container.invalidate);`. A test can check a skip directly: `expect(coreCodec.decode('{"type":"OrderArchived","id":42}'), isEmpty);` and then `expect(coreCodec.unknownCount, 1);`.
+**Testing.** `FakeChangeSource<String>` (or `<Uint8List>`) is the raw stream. `codec.decode(raw)` is the codec without a stream (empty when the message is skipped), and it is also how an app that owns its subscription feeds an `InvalidationTable`: `for (final e in coreCodec.decode(raw)) table.apply(e, container.invalidate);`. A test can check a skip directly: `final before = coreCodec.unknownCount;`, then `expect(coreCodec.decode('{"type":"OrderArchived","id":42}'), isEmpty);` and `expect(coreCodec.unknownCount, before + 1);`. A top-level codec's counters never reset, so they add up across the tests of a run: compare with a count taken before, or assert on what `decode` returns alone.
 
 ### Providers per page instance: fespalier_riverpod
 

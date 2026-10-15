@@ -302,7 +302,7 @@ abstract final class FespalierConventions {
   static const String customName = 'fespalier.custom.name';
 
   /// How the operation ended: the `TelemetryOutcome` the package finished with, usually `ok` or
-  /// `error` (`cancelled`, `disposed` and `rejected` are possible).
+  /// `error` (`cancelled`, `disposed`, `rejected` and `skipped` are possible).
   static const String customResult = 'fespalier.custom.result';
 
   // Events on the `navigate` span.

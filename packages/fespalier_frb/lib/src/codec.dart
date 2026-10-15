@@ -32,8 +32,9 @@ final class UnknownChange implements Exception {
 /// What a decoder throws never ends the stream: the message (or batch item) is skipped, gets no
 /// `Change.seq`, moves no topic, is counted ([unknownCount] for an [UnknownChange], [errorCount]
 /// for anything else) and passed to [onSkipped]. With a telemetry sink installed, the 1st, 2nd,
-/// 4th, 8th... skip of each kind is a `fespalier.frb.decode` span holding constants and a count,
-/// never the message or the error's text. The source stream's own errors pass through unchanged.
+/// 4th, 8th... skip of each kind is a `fespalier.frb.decode` span (a root span, not under whatever
+/// was running) holding constants and a count, never the message or the error's text. The source
+/// stream's own errors pass through unchanged.
 sealed class ChangeCodec<R, E> extends StreamTransformerBase<R, E> {
   ChangeCodec._({this.onSkipped});
 
@@ -56,13 +57,17 @@ sealed class ChangeCodec<R, E> extends StreamTransformerBase<R, E> {
 
   /// Called once per skipped message or item with what was thrown (an [UnknownChange] or the
   /// decoder's error), inside the stream's delivery: log it and return. What it throws becomes an
-  /// error of the decoded stream (an `AsyncError` in the feed's `latest`).
+  /// error of the decoded stream (an `AsyncError` in the feed's `latest`), and the rest of that
+  /// message's events are dropped with it: the items of a batch decoded before it, and those
+  /// after it.
   final void Function(Object reason, StackTrace stackTrace)? onSkipped;
 
   int _unknownCount = 0;
   int _errorCount = 0;
 
   /// How many messages or items this codec skipped for an [UnknownChange] since it was made.
+  /// Each subscription decodes on its own, so a bad message that two listeners of a broadcast
+  /// source both receive is counted twice.
   int get unknownCount => _unknownCount;
 
   /// How many messages or items this codec skipped because their decoding threw anything else.

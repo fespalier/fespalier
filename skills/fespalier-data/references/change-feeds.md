@@ -308,10 +308,12 @@ whole change; `ChangeCodec.batch(split, decode)` takes a message that carries se
 A message or batch item whose decoder throws is **skipped and never numbered**: no `Change.seq`, no topic moved, and the
 feed goes on, with `latest` keeping its last change. Only an error of the source itself is an `AsyncError`. A decoder throws
 `UnknownChange` for a variant a newer core added: it is skipped and counted apart from failures (`unknownCount` against
-`errorCount`). `onSkipped(reason, stackTrace)` logs each skip, and what it throws becomes an `AsyncError`. With a telemetry
-sink, the 1st, 2nd, 4th, 8th... skip of each kind is one span, `fespalier.frb.decode`, ending `skipped` (`unknown`) or
-`error`, with a count: constants only, never the message, a name from the wire or the error's text. A decoded event reports
-nothing.
+`errorCount`). `onSkipped(reason, stackTrace)` logs each skip, and what it throws becomes an `AsyncError` and drops the rest of
+that message's events (a batch's items decoded before it, and those after it). Each subscription decodes on its own, so a codec
+shared by a broadcast source that two containers watch counts one bad message twice, and calls `onSkipped` and makes the span
+twice. With a telemetry sink, the 1st, 2nd, 4th, 8th... skip of each kind is one span, `fespalier.frb.decode`, a root span
+(not under whatever was running), ending `skipped` (`unknown`) or `error`, with a count: constants only, never the message, a
+name from the wire or the error's text. A decoded event reports nothing.
 
 ```dart
 // lib/core/wire.dart

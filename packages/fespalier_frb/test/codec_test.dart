@@ -61,8 +61,7 @@ Matcher order(int id) => isA<OrderChanged>().having((e) => e.id, 'id', id);
 void main() {
   group('decode', () {
     test('one message is one event', () {
-      final skipped = <Object>[];
-      final codec = lines(onSkipped: (r, _) => skipped.add(r));
+      final codec = ChangeCodec<String, CoreEvent>(decodeLine);
       expect(codec.decode('order:42'), [order(42)]);
       expect(codec.unknownCount, 0);
       expect(codec.errorCount, 0);
@@ -70,7 +69,10 @@ void main() {
 
     test('an unknown variant is skipped and counted, not thrown', () {
       final skipped = <Object>[];
-      final codec = lines(onSkipped: (r, _) => skipped.add(r));
+      final codec = ChangeCodec<String, CoreEvent>(
+        decodeLine,
+        onSkipped: (r, _) => skipped.add(r),
+      );
       expect(codec.decode('archived:1'), isEmpty);
       expect(codec.unknownCount, 1);
       expect(codec.errorCount, 0);
@@ -81,7 +83,10 @@ void main() {
       'a message that does not decode is skipped and counted, not thrown',
       () {
         final skipped = <Object>[];
-        final codec = lines(onSkipped: (r, _) => skipped.add(r));
+        final codec = ChangeCodec<String, CoreEvent>(
+          decodeLine,
+          onSkipped: (r, _) => skipped.add(r),
+        );
         expect(codec.decode('order:x'), isEmpty);
         expect(codec.decode('order'), isEmpty);
         expect(codec.decode('???'), isEmpty);
@@ -129,6 +134,24 @@ void main() {
       expect(codec.decode(''), isEmpty);
       expect(codec.unknownCount, 0);
       expect(codec.errorCount, 0);
+    });
+
+    test('a split that throws part way skips the whole message', () {
+      Iterable<String> torn(String raw) sync* {
+        yield 'order:1';
+        throw const FormatException('torn batch');
+      }
+
+      final skipped = <Object>[];
+      final codec = ChangeCodec.batch<String, String, CoreEvent>(
+        torn,
+        decodeLine,
+        onSkipped: (r, _) => skipped.add(r),
+      );
+      expect(codec.decode('anything'), isEmpty);
+      expect(codec.errorCount, 1);
+      expect(codec.unknownCount, 0);
+      expect(skipped.single, isA<FormatException>());
     });
   });
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 
 /// The operation name of the core's initialisation (`TelemetryOp.custom`, since 0.13.0).
@@ -64,19 +66,26 @@ const String frbSkippedAttribute = 'fespalier.frb.skipped';
 /// Reports one skip as a span that starts and ends at once (since 0.18.0; not exported): ends
 /// `skipped` with result `unknown`, or `error` with result `error`, and the count. Never the
 /// message, a name from the wire or the error. Without a sink, one null check.
+///
+/// The span is a **root span**: the pair runs in the root zone, because a message is decoded in
+/// the zone of whoever first watched the feed (a page's, long gone), and a sink that reads
+/// `Zone.current` (dartastic's `Context.current`) would make the span a child of whatever that
+/// zone was running. It is synchronous: no `Future`, no microtask, no timer.
 void reportDecodeSkipped({required bool unknown, required int count}) {
   if (FespalierTelemetry.current == null) return;
-  final token = FespalierTelemetry.begin(
-    const TelemetryStart(TelemetryOp.custom, name: frbDecodeOp),
-  );
-  FespalierTelemetry.finish(
-    token,
-    TelemetryEnd(
-      unknown ? TelemetryOutcome.skipped : TelemetryOutcome.error,
-      attributes: {
-        frbResultAttribute: unknown ? 'unknown' : 'error',
-        frbSkippedAttribute: count,
-      },
-    ),
-  );
+  Zone.root.run(() {
+    final token = FespalierTelemetry.begin(
+      const TelemetryStart(TelemetryOp.custom, name: frbDecodeOp),
+    );
+    FespalierTelemetry.finish(
+      token,
+      TelemetryEnd(
+        unknown ? TelemetryOutcome.skipped : TelemetryOutcome.error,
+        attributes: {
+          frbResultAttribute: unknown ? 'unknown' : 'error',
+          frbSkippedAttribute: count,
+        },
+      ),
+    );
+  });
 }

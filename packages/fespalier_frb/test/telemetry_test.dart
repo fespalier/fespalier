@@ -1,8 +1,23 @@
 // The package's own telemetry contract: one custom operation, constants only.
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_frb/fespalier_frb.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+/// Remembers what the zone it was started in held under `#probe`: a sink such as `FespalierOtel`
+/// reads its parent span from `Zone.current` in the same way.
+final class ZoneProbeTelemetry extends FespalierTelemetry {
+  /// The `#probe` value seen at each `start`.
+  final List<Object?> seen = [];
+
+  @override
+  Object? start(TelemetryStart start) {
+    seen.add(Zone.current[#probe]);
+    return null;
+  }
+}
 
 void main() {
   late RecordingTelemetry sink;
@@ -109,4 +124,19 @@ void main() {
     expect(sink.log, isEmpty);
     expect(codec.errorCount, 1);
   });
+
+  test(
+    'a skip is a root span, not a child of the zone that watched the feed',
+    () {
+      final probe = ZoneProbeTelemetry();
+      FespalierTelemetry.install(probe);
+      final codec = ChangeCodec<String, int>(int.parse);
+      runZoned(() {
+        expect(Zone.current[#probe], 'page A');
+        expect(codec.decode('x'), isEmpty);
+      }, zoneValues: {#probe: 'page A'});
+      expect(probe.seen, [null]);
+      expect(codec.errorCount, 1);
+    },
+  );
 }

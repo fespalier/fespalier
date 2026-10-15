@@ -1,8 +1,7 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_analytics/fespalier_analytics.dart';
 import 'package:fespalier_push/fespalier_push.dart';
-// Flutter's `Shortcuts` widget is hidden: here `Shortcuts` is the app's shortcut types (launch.dart).
-import 'package:flutter/material.dart' hide Shortcuts;
+import 'package:flutter/material.dart';
 import 'package:plugins/launch.dart';
 import 'package:plugins/push.dart';
 import 'package:plugins/session.dart';
@@ -46,7 +45,7 @@ class HomePage extends ConsumerWidget {
           child: const Text('Simulate a tap: foreign link'),
         ),
         TextButton(
-          onPressed: () => demoShortcuts.shortcut(Shortcuts.lastOrder),
+          onPressed: () => demoShortcuts.shortcut(ShortcutTypes.lastOrder),
           child: const Text('Simulate a shortcut: last order'),
         ),
         TextButton(

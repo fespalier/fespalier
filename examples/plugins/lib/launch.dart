@@ -6,7 +6,7 @@ import 'app.g.dart';
 /// The shortcut types this app gives its home-screen shortcuts. A shortcut is untrusted input (any
 /// app can start the launcher with one), so the app maps these by a `switch` on its own constants
 /// and nothing else.
-abstract final class Shortcuts {
+abstract final class ShortcutTypes {
   /// "Last order": opens order 42.
   static const String lastOrder = 'last_order';
 
@@ -33,10 +33,10 @@ final LaunchRoute _widgetRoute = widgetLinkRoute(
 
 /// Where a shortcut or a widget tap goes: what `FespalierLaunch.configure(route:)` calls.
 LaunchTarget? launchRoute(LaunchAction action) => switch (action) {
-  ShortcutAction(type: Shortcuts.lastOrder) => LaunchTarget.to(
+  ShortcutAction(type: ShortcutTypes.lastOrder) => LaunchTarget.to(
     const OrderRoute(id: 42),
   ),
-  ShortcutAction(type: Shortcuts.account) => LaunchTarget.to(
+  ShortcutAction(type: ShortcutTypes.account) => LaunchTarget.to(
     const AccountRoute(),
   ),
   ShortcutAction() => null,

@@ -14,8 +14,9 @@ import 'chips.dart';
 
 /// What the panel says when no adapter has shown anything.
 const String noAdaptersText =
-    'No adapter has shown anything yet. Packages such as fespalier_flags and '
-    'fespalier_launch list their state here (since 0.16.0).';
+    'No adapter has shown anything yet. An adapter can list its state here '
+    'with DevToolsAdapters.show (since 0.16.0); none of the packages in this '
+    'repository does yet.';
 
 /// The seventh tab.
 class AdaptersPanel extends StatelessWidget {

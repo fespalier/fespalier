@@ -17,6 +17,13 @@ abstract class LaunchSource {
   /// The action that cold-started the app, answered once (a second call answers null). It is a
   /// local read: it runs before the first frame, so a `Future` delays that frame by one channel
   /// round trip. Every source is asked, in the order the app listed them.
+  ///
+  /// **It must complete or fail.** The first frame waits for every source's answer and the package
+  /// sets no timeout (that would be a timer), so a `Future` that never completes blocks the app on
+  /// its first frame for good. The calls of the recipes (quick_actions' `initialize`, home_widget's
+  /// `initiallyLaunchedFromHomeWidget`) are platform-channel calls that do answer; one that waits
+  /// for anything else, such as the network or a user, does not belong here. An error is reported
+  /// and counts as no action.
   FutureOr<LaunchAction?> initialAction();
 
   /// The actions taken while the app runs or sits in the background. Listened to once per

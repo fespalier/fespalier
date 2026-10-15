@@ -42,9 +42,10 @@ typedef LaunchRoute = LaunchTarget? Function(LaunchAction action);
 /// The common mapping for a widget (since 0.18.0): a widget opens the app at a URI whose path is
 /// the in-app location (`myapp:///orders/42`), and the path is kept only when [matches] accepts
 /// it. The URI must be `https` on one of [hosts], or a scheme in [schemes] whose host is empty or
-/// in [hosts]. It must have no credentials, a path that starts with one `/` and is free of control
-/// characters and backslashes once decoded. The host, the port and the fragment are dropped, and
-/// the query is kept. A shortcut is never mapped by this (it answers null).
+/// in [hosts]. It must have no credentials, and a path that is empty (the app's `/`, as
+/// `fespalier_push`'s `linkRoute` reads `https://host`) or starts with one `/` and is free of
+/// control characters and backslashes once decoded. The host, the port and the fragment are
+/// dropped, and the query is kept. A shortcut is never mapped by this (it answers null).
 ///
 /// ```dart
 /// final widgetRoute = widgetLinkRoute(
@@ -78,7 +79,7 @@ Uri? _inApp(Uri uri, Set<String> schemes, Set<String> hosts) {
       ? host.isNotEmpty && hosts.contains(host)
       : schemes.contains(scheme) && (host.isEmpty || hosts.contains(host));
   if (!allowed || uri.userInfo.isNotEmpty) return null;
-  final path = uri.path;
+  final path = uri.path.isEmpty ? '/' : uri.path;
   if (!path.startsWith('/') || path.startsWith('//')) return null;
   final String decoded;
   try {

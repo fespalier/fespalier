@@ -38,7 +38,8 @@ fespalier:
 ```dart
 // lib/main.dart: configure before the adapters run
 Future<void> main() {
-  FespalierLaunch.configure(sources: [QuickActionsLaunchSource(), HomeWidgetLaunchSource()], route: launchRoute);
+  // the app's one source of each kind (the recipes in the fespalier-routing skill build them once)
+  FespalierLaunch.configure(sources: [quickActions, homeWidget], route: launchRoute);
   return AppMain.run();
 }
 

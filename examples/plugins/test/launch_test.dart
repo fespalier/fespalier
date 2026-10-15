@@ -77,7 +77,7 @@ void main() {
   testWidgets('a cold start from a shortcut opens the order, marked shortcut', (
     tester,
   ) async {
-    await boot(tester, initial: const ShortcutAction(Shortcuts.lastOrder));
+    await boot(tester, initial: const ShortcutAction(ShortcutTypes.lastOrder));
     expect(find.text('Order 42'), findsOneWidget);
     expect(currentLocation(tester), '/orders/42');
     expect(
@@ -116,7 +116,7 @@ void main() {
     'a shortcut while the app runs opens the order, marked shortcut',
     (tester) async {
       await boot(tester);
-      shortcuts.shortcut(Shortcuts.lastOrder);
+      shortcuts.shortcut(ShortcutTypes.lastOrder);
       await tester.pumpAndSettle();
       expect(find.text('Order 42'), findsOneWidget);
       expect(
@@ -147,7 +147,7 @@ void main() {
     'a signed-out shortcut to a guarded page lands on login, with from',
     (tester) async {
       await boot(tester);
-      shortcuts.shortcut(Shortcuts.account);
+      shortcuts.shortcut(ShortcutTypes.account);
       await tester.pumpAndSettle();
       expect(find.text('Log in to see /account'), findsOneWidget);
       expect(currentLocation(tester), '/login?from=%2Faccount');
@@ -179,7 +179,7 @@ void main() {
     (tester) async {
       await boot(
         tester,
-        whileStarting: () => shortcuts.shortcut(Shortcuts.lastOrder),
+        whileStarting: () => shortcuts.shortcut(ShortcutTypes.lastOrder),
       );
       expect(find.text('Order 42'), findsOneWidget);
       expect(

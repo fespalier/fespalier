@@ -70,15 +70,16 @@ void main() {
     );
   });
 
-  test('toString never prints a widget path or query', () {
+  test('toString never prints a shortcut type, a widget path or a query', () {
     final action = WidgetAction(Uri.parse('myapp:///orders/42?token=secret'));
     expect(action.toString(), 'WidgetAction(myapp)');
     expect(action.toString(), isNot(contains('orders')));
     expect(action.toString(), isNot(contains('secret')));
-    expect(
-      const ShortcutAction('last_order').toString(),
-      'ShortcutAction(last_order)',
-    );
+    // A shortcut's type can carry an id (`chat_123`): no field is printed.
+    final shortcut = const ShortcutAction('chat_123', raw: 'chat_123');
+    expect(shortcut.toString(), 'ShortcutAction()');
+    expect(shortcut.toString(), isNot(contains('chat')));
+    expect(shortcut.toString(), isNot(contains('123')));
   });
 
   group('widgetLinkRoute accepts', () {
@@ -116,6 +117,23 @@ void main() {
       expect(
         route(WidgetAction(Uri.parse('myapp://shop.example.com/a')))?.location,
         '/a',
+      );
+    });
+
+    test('an empty path is the app\'s root, as fespalier_push reads it', () {
+      expect(_at(Uri.parse('https://shop.example.com')), '/');
+      expect(_at(Uri.parse('https://shop.example.com/')), '/');
+      expect(_at(Uri.parse('https://shop.example.com?tab=2')), '/?tab=2');
+      expect(_any(Uri.parse('myapp://shop.example.com')), '/');
+      expect(_any(Uri.parse('myapp:///')), '/');
+      // The root still goes through `matches`.
+      final noRoot = widgetLinkRoute(
+        hosts: const {'shop.example.com'},
+        matches: (uri) => uri.path.startsWith('/orders/'),
+      );
+      expect(
+        noRoot(WidgetAction(Uri.parse('https://shop.example.com'))),
+        isNull,
       );
     });
 

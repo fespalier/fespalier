@@ -4,7 +4,7 @@ Since 0.18.0. A home-screen shortcut or a widget tap opens a typed route: the ac
 
 ## The three things an app writes
 
-1. One `LaunchSource` per launcher plugin (the recipes: quick_actions for shortcuts, home_widget for widgets). **The package depends on no launcher plugin**; a `LaunchSource` is `initialAction()` (the action that opened the app, answered once) and `actions` (the taps while the app runs).
+1. One `LaunchSource` per launcher plugin (the recipes: quick_actions for shortcuts, home_widget for widgets). **The package depends on no launcher plugin**; a `LaunchSource` is `initialAction()` (the action that opened the app, answered once; **it must complete or fail**, because the first frame waits for it and the package sets no timeout) and `actions` (the taps while the app runs). **Build each source once**, as a top-level `final` (`quickActions`, `homeWidget` in the recipes), and use that same object in `configure` and in `startup()` (`quickActions.setShortcuts()`): a second `QuickActionsLaunchSource()` calls quick_actions' `initialize` again, the plugin keeps a single handler, and the configured source would never hear a warm shortcut.
 2. A `LaunchRoute`, `LaunchTarget? Function(LaunchAction)`: a `switch` over the two kinds of action. A shortcut is matched by its `type` against your own constants, and a widget's URI goes through `widgetLinkRoute(schemes:, hosts:, matches:)`, which accepts an in-app path and refuses anything else.
 3. One call in `main()`, **before `AppMain.run()`**: `FespalierLaunch.configure(sources:, route:)`. `launch()` runs before any `ProviderScope`, so a provider override cannot carry these. With `main: manual`, before `AppAdapters.zone`.
 
@@ -16,7 +16,7 @@ import 'app.main.g.dart';
 
 Future<void> main() {
   FespalierLaunch.configure(
-    sources: [QuickActionsLaunchSource(), HomeWidgetLaunchSource()], // see launch-sources.md
+    sources: [quickActions, homeWidget], // the app's one of each, see launch-sources.md
     route: launchRoute,
   );
   return AppMain.run();
@@ -30,15 +30,16 @@ Future<void> main() {
 - **The startup hold** (since 0.18.0). An action said while the app starts (between `launch()` and `attach`) is kept: the **latest** across all sources (one, never a queue, no timer), and opened once, as a warm action, after the first frame. `attach` subscribes the scope before it ends the hold, so nothing is lost in between.
 - **The cold-start action is not opened twice.** The action that `launch()` opened is dropped once when the stream says it again during startup, by **equality** (a shortcut by its `type`, a widget by its `uri`, never by `raw`). An equal action after `attach` is a new one and opens. A different action during startup opens.
 - **Equality is by type or by URI.** Two `ShortcutAction('a')` are the same action; a `ShortcutAction` and a `WidgetAction` never are.
-- **Untrusted input.** On Android any app can start the launcher activity with an extra or a URI, and any app can start one of your shortcuts by its type. Never navigate to a string an action carries: map it with a `switch` on your constants, and a widget's URI through `widgetLinkRoute`, which refuses an empty URI, a foreign scheme or host, credentials, a path that does not start with one `/`, a control character, a backslash, a decoded `//`, and a path `matches` rejects. The host, port and fragment are dropped, the query is kept.
+- **Untrusted input.** On Android any app can start the launcher activity with an extra or a URI, and any app can start one of your shortcuts by its type. Never navigate to a string an action carries: map it with a `switch` on your constants, and a widget's URI through `widgetLinkRoute`, which refuses an empty URI, a foreign scheme or host, credentials, a path that is not empty and does not start with one `/` (an empty path is `/`, as `fespalier_push`'s `linkRoute` reads it), a control character, a backslash, a decoded `//`, and a path `matches` rejects. The host, port and fragment are dropped, the query is kept.
 - **One subscription per `ProviderScope`.** A second router built on the same container is ignored; the first router gets the actions.
 - **Unconfigured**: one `FlutterError` reports ``fespalier_launch is listed under `fespalier: adapters:` but was never configured: call FespalierLaunch.configure(sources: [...], route: ...) in main() before AppMain.run()``; the adapter then does nothing and never throws. `AppMain.root()` in a widget test runs no `main()`: call `configure` in the test (`sources: const []` opens nothing).
 - **No `onEnter`, no `overrides()`.** The adapter has neither, so `AppAdapters.handlesEnter` stays false and go_router keeps its synchronous parsing. The actions reach the app through private providers, so no provider override is needed.
 - **On the web `launch()` is never asked**, and a shortcut or a widget opens the app as an ordinary URL.
 - **Telemetry**: `fespalier.launch.open` with `fespalier.launch.state` (`cold` | `warm`), `fespalier.launch.kind` (`shortcut` | `widget`) and `fespalier.launch.routed` (bool), plus `fespalier.navigation.source` on the navigation. A shortcut type, a widget URI, a path, a query, an id and the plugin's text are never reported (`FespalierLaunchConventions`, pinned by the package's `telemetry_test.dart`).
+- **On iOS a widget's URL needs a marker.** home_widget reports a URL on iOS only when it has a `homeWidget` query item (`isWidgetUrl` in its `HomeWidgetPlugin.swift`, read at 0.10.0 and 0.9.2+1): the SwiftUI widget sets `.widgetURL(URL(string: "myapp:///orders/42?homeWidget"))`, and `myapp:///orders/42` alone never reaches `initiallyLaunchedFromHomeWidget()` or `widgetClicked` on iOS. The recipe's `HomeWidgetLaunchSource` drops the marker before it builds the `WidgetAction` (`withoutHomeWidgetMarker`), so `widgetLinkRoute` yields `/orders/42`, not `/orders/42?homeWidget`. Android needs no marker.
 - **Widgets and platform links.** With Flutter's deep linking on, a widget's URI can also reach the router as a platform link. A launch wins on a cold start (it sets `overridePlatformDefaultLocation`). Whether the URI also arrives as a link is UNCHECKED (below): so give the widget the in-app location as its path (`myapp:///orders/42`) and map it with `widgetLinkRoute`.
 
-**What no test shows (UNCHECKED), never stated as fact.** No CI job runs a launcher; the fakes prove the wiring only. Each is to be checked on a device before a release:
+**What no test shows (UNCHECKED), never stated as fact.** No CI job runs a launcher; the fakes prove the wiring only. Each is to be checked on a device before a release, and the step-by-step device test is [#202](https://github.com/fespalier/fespalier/issues/202):
 
 1. quick_actions, Android cold start: expected to reach the handler inside `initialize()`, so the initial location.
 2. quick_actions, iOS cold start: either buffered before `initialize` (cold) or sent later through the startup hold (warm, after the first frame, with home shown briefly). Unknown per iOS version and under UIScene.
@@ -47,6 +48,7 @@ Future<void> main() {
 5. home_widget warm taps: expected on `widgetClicked` (on Android possibly through `onNewIntent` only while the EventChannel is listened to).
 6. The widget's URI as a platform link: on a warm tap that could mean two navigations (`link` and `widget`) to the same place, in an unknown order; on iOS a cold start may add a later `link` navigation.
 7. Hot restart: home_widget answers the launch intent again, so the widget's target opens again (development only).
+8. iOS sends the widget's URL a second time: the plugin also takes it from `application(_:open:)` (and `scene(_:openURLContexts:)`), so it may arrive on `widgetClicked` once more after `attach`, as a second warm navigation to the same place.
 
 ## Testing
 
@@ -62,7 +64,7 @@ void main() {
   final route = widgetLinkRoute(
     schemes: {'myapp'},
     hosts: {'shop.example.com'},
-    matches: (uri) => uri.path.startsWith('/orders/'),
+    matches: (uri) => uri.path == '/' || uri.path.startsWith('/orders/'),
   );
   String? at(Uri uri) => route(WidgetAction(uri))?.location;
 
@@ -70,6 +72,7 @@ void main() {
     expect(at(Uri.parse('myapp:///orders/42')), '/orders/42');
     expect(at(Uri.parse('myapp:///orders/42?tab=2#x')), '/orders/42?tab=2');
     expect(at(Uri.parse('https://shop.example.com/orders/42')), '/orders/42');
+    expect(at(Uri.parse('https://shop.example.com')), '/'); // an empty path is the root
   });
 
   test('anything else is refused, never opened', () {

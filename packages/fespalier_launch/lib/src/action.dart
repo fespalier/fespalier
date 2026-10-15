@@ -37,8 +37,9 @@ final class ShortcutAction extends LaunchAction {
   @override
   int get hashCode => Object.hash(ShortcutAction, type);
 
+  /// No field: a shortcut's type can carry an id (`chat_123`), and a log line must never hold one.
   @override
-  String toString() => 'ShortcutAction($type)';
+  String toString() => 'ShortcutAction()';
 }
 
 /// A home-screen widget was tapped (since 0.18.0): the URI the widget opened the app with.

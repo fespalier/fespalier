@@ -560,6 +560,63 @@
           }
         },
         {
+          "id": "panel_crashes_by_screen",
+          "type": "table",
+          "title": "Which screen was the app on when it crashed?",
+          "description": "Native crashes and freezes by the screen the app showed when it died (since 0.19.0, when the app names it; see docs/observability.md). Unknown: it did not say. Open that screen's files first. A crash as a page opens may count under the page before it.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COALESCE(otel_zone_crashed_screen, 'unknown') AS screen, COUNT(*) AS n FROM \"default\" WHERE event_name IN ('device.crash', 'device.anr') AND service_name = '$service' GROUP BY screen ORDER BY n DESC",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "logs",
+                "x": [
+                  {
+                    "label": "Screen",
+                    "alias": "screen",
+                    "column": "screen",
+                    "color": null
+                  }
+                ],
+                "y": [
+                  {
+                    "label": "Times",
+                    "alias": "n",
+                    "column": "n",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 96,
+            "y": 46,
+            "w": 96,
+            "h": 16,
+            "i": 9
+          }
+        },
+        {
           "id": "panel_recent",
           "type": "table",
           "title": "What failed last?",
@@ -689,7 +746,7 @@
             "y": 62,
             "w": 192,
             "h": 16,
-            "i": 9
+            "i": 10
           }
         },
         {
@@ -763,7 +820,7 @@
             "y": 78,
             "w": 192,
             "h": 16,
-            "i": 10
+            "i": 11
           }
         }
       ]

@@ -122,6 +122,13 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   view drawing, a system prompt, a notification tap, a hardware key) is not claimed as verified: file a
   `good first issue` with step-by-step setup, the cases to try, what "works" looks like and what to report
   (device, OS, versions), as #130–#133 do.
+- **Native code is welcome when it makes things faster or sturdier, as long as the app developer notices nothing.**
+  Kotlin, Swift, or Rust or C through FFI, as `otel_zone`'s crash capture and the MapLibre plugin do. The seam must be
+  clean: the same Dart API, no extra setup step, a no-op or pure-Dart fallback where the native side is missing, and
+  fakes so a widget test never reaches a platform channel. It follows fespalier's rules too: no per-frame or
+  per-navigation work on the UI thread that a cheaper path avoids, nothing sensitive persisted or sent, and every
+  behaviour no CI test can show is written as UNCHECKED in the docs and gets the beginner-friendly issue the bullet
+  above describes (labelled `human-test` and `good first issue`).
 - **Actions are pinned to a full commit SHA** with a `# vX.Y.Z` comment, resolved with
   `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` (add `^{}` for an annotated
   tag), preferring the versions the org repositories already pin. Workflows declare

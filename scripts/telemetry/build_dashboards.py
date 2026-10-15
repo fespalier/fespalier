@@ -35,8 +35,18 @@ END = "      # END generated"
 
 # Columns OpenObserve gives every span or log record, or that come from OTLP rather than from
 # fespalier's conventions. The queries may name them; the importer creates the Utf8 ones.
+# otel_zone_crashed_screen is otel_zone's crash attribute, `otel_zone.crashed.screen` (since 0.19.0,
+# when the app names its screen): it is not one of fespalier's conventions, and it is OTLP's name.
 TRACE_COLUMNS = ["service_name", "operation_name", "span_status", "status_message", "trace_id"]
-LOG_COLUMNS = ["service_name", "severity", "exception_type", "exception_message", "event_name", "body"]
+LOG_COLUMNS = [
+    "service_name",
+    "severity",
+    "exception_type",
+    "exception_message",
+    "event_name",
+    "body",
+    "otel_zone_crashed_screen",
+]
 BUILTIN_SQL = {"_timestamp", "duration"} | set(TRACE_COLUMNS) | set(LOG_COLUMNS)
 METRICS = {
     "fespalier_calls",

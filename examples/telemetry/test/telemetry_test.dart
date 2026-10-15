@@ -58,6 +58,18 @@ void main() {
     expect(nav.spanEvents?.map((e) => e.name), ['fespalier.page.enter']);
   });
 
+  testWidgets('onScreen names each screen by its pattern (since 0.19.0)', (
+    tester,
+  ) async {
+    final screens = <String?>[];
+    FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+    final router = AppRoutes.router();
+    await pumpRouter(tester, router);
+    router.go('/orders/1');
+    await tester.pumpAndSettle();
+    expect(screens, ['/', '/orders/:id']);
+  });
+
   testWidgets('an order: its data load is a child of the navigation to it', (
     tester,
   ) async {

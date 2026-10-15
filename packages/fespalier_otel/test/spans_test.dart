@@ -288,6 +288,100 @@ void main() {
     });
   });
 
+  group('onScreen (since 0.19.0)', () {
+    testWidgets(
+      'is told the pattern of a committed navigation, never the location',
+      (tester) async {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        final r = router();
+        await pumpRouter(tester, r);
+        screens.clear();
+        r.go('/items/7?tab=2');
+        await tester.pumpAndSettle();
+        expect(screens, ['/items/:id']);
+        for (final screen in screens) {
+          expect(screen, isNot(contains('7')));
+          expect(screen, isNot(contains('?')));
+        }
+      },
+    );
+
+    testWidgets('a pop tells the page below again', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/other');
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/login'));
+      await tester.pumpAndSettle();
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(screens, ['/other', '/login', '/other']);
+    });
+
+    testWidgets('a navigation that matched no route tells null', (
+      tester,
+    ) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/nowhere');
+      await tester.pumpAndSettle();
+      expect(screens, [null]);
+    });
+
+    testWidgets('a superseded navigation tells nothing', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final answer = Completer<String?>();
+      checkout = () => answer.future;
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/checkout');
+      await tester.pump();
+      r.go('/items/2');
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
+    });
+
+    testWidgets('a throwing onScreen costs nothing', (tester) async {
+      FespalierTelemetry.install(
+        FespalierOtel(onScreen: (_) => throw StateError('x')),
+      );
+      final r = router();
+      await pumpRouter(tester, r);
+      exporter.clear();
+      r.go('/items/7');
+      await tester.pumpAndSettle();
+      expect(
+        only('navigate /items/:id').attributes.getString('fespalier.route'),
+        '/items/:id',
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('without the SDK it is not called', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(
+        FespalierOtel(isReady: () => false, onScreen: screens.add),
+      );
+      final r = router();
+      await pumpRouter(tester, r);
+      r.go('/items/7');
+      await tester.pumpAndSettle();
+      expect(screens, isEmpty);
+    });
+  });
+
   group('where a navigation came from (since 0.9.0)', () {
     testWidgets('a go in navigateFrom has the source, a later one has none', (
       tester,

@@ -247,6 +247,10 @@ class Seed:
             attributes = {"exception.type": rng.choice(ERROR_TYPES), "exception.message": "boom"}
             if event:
                 attributes["event.name"] = event
+            if event == "device.crash":
+                # otel_zone names the screen of a native crash (since 0.19.0); the ANR names none,
+                # so the Errors table shows it as unknown.
+                attributes["otel_zone.crashed.screen"] = "/products/:id"
             record = {
                 "timeUnixNano": str(at),
                 "severityNumber": number,

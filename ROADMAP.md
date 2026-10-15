@@ -9,8 +9,6 @@ it ships.
 
 - **Adapters**, each a small package (the seams they need are in core: `AppRoutes.urlOf`, the DevTools
   _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
-  - `fespalier_crashlytics`: errors from the telemetry sink, named by route pattern and tagged with
-    the file that threw (three calls in a sink of your own until then).
   - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
     `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
   - `fespalier_dio`, the rest: a test of `fespalier_auth`'s `SessionInterceptor` under `dio_smart_retry`
@@ -23,6 +21,11 @@ it ships.
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
+- **Tell telemetry sinks the page at the commit of a navigation, not after its first frame.** A
+  navigation ends in a post-frame callback (`RouterWatch._finishTelemetry`), after the new page's
+  `initState` and first `build`, so `FespalierOtel(onScreen:)` names the page before it when a native
+  crash or ANR hits that first frame. `RouterWatch._committedForTelemetry` already runs at the commit.
+  It touches the core telemetry interface, so the new call must be additive (contract version 1).
 - **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
   changes, because the generated router is built once, so a hot reload would keep the old route
   table. In debug the router could rebuild itself on `reassemble` (go_router's
@@ -46,7 +49,7 @@ it ships.
 ## Waiting on others
 
 - **go_router 18 in `examples/telemetry`.** `otel_go_router` 0.3.0 accepts go_router 18, but
-  `otel_zone` (v0.5.0, which the example pins, and v0.6.0 alike) still asks for
+  `otel_zone` (v0.5.0 to v0.7.0; the example pins v0.7.0) still asks for
   `otel_go_router: ^0.2.0`, which requires `go_router: ^17.0.0`; the fix belongs in
   vaam-apps/flutter-otel-zone. fespalier itself supports 17 and 18.
 - **`runGuarded` on the web.** `otel_zone`'s `runGuarded` never runs its body in a Flutter web app,

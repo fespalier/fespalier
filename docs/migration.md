@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.19.0
+
+0.19.0 breaks nothing: the generated `app.g.dart` is unchanged, and an app that does not name its screen changes nothing.
+
+- **Optional: native crash records can name the screen** ([The screen a native crash happened on](observability.md#the-screen-a-native-crash-happened-on)). Bump `otel_zone` to `7fbdf64092626a66837ce04caa35411ea4f7df70` (v0.7.0) in your pubspec, pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and run `fsp telemetry --stop`, then `fsp telemetry`, so the collector reads the new attribute and the Errors table has its panel. `app.g.dart` is unchanged. An app that does none of this keeps its crash records as they are.
+
 ### 0.18.0
 
 0.18.0 breaks nothing: the generated `app.g.dart` is unchanged unless an app lists the new `fespalier_launch` adapter, an app that does not use telemetry changes nothing, and `fespalier_frb`'s `ChangeCodec` is new and opt-in.

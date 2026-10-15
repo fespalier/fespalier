@@ -81,6 +81,16 @@ takes as "telemetry off", so a store build never sends to a developer's computer
 
 An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
 
+### The screen a native crash happened on (since 0.19.0)
+
+Pass `onScreen` and a native crash record names the page the app was on: `FespalierOtel(isReady: () => observability.isReady, onScreen: observability.setCrashScreen)`.
+It needs `otel_zone` v0.7.0 or later. `onScreen` is told the route pattern (`/orders/:id`, the value of `fespalier.route`)
+after each committed navigation, `null` when no route matched, and nothing for a superseded one. It is told once the new
+page's first frame is built, so a crash during that frame names the page the user came from. It is never told a location,
+a segment or a query value, and a callback that throws costs nothing but itself. Without `onScreen` nothing changes. The
+docs' [The screen a native crash happened on](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#the-screen-a-native-crash-happened-on)
+have the platform limits.
+
 ### Next to another sink, and HTTP spans under `data()` (since 0.9.0)
 
 `install` holds one sink: to send to OpenTelemetry and to Sentry or an analytics SDK, use

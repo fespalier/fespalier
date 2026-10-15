@@ -56,7 +56,8 @@ installed. Read [`references/telemetry.md`](references/telemetry.md) for the ins
 `RecordingTelemetry`.
 
 Since 0.19.0, `FespalierOtel(onScreen: observability.setCrashScreen)` names the page a native crash happened on, as
-`otel_zone.crashed.screen` (otel_zone v0.7.0 or later; the pattern only). See [`references/telemetry.md`](references/telemetry.md), "Wire it".
+`otel_zone.crashed.screen` (otel_zone v0.7.0 or later; the pattern only; it is set once the new page's first frame is
+built, so a crash while a page opens names the page before it). See [`references/telemetry.md`](references/telemetry.md), "Wire it".
 
 Since 0.9.0, three more things, all in that page:
 

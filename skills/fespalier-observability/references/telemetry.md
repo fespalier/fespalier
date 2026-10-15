@@ -72,7 +72,8 @@ Future<void> guarded(Future<void> Function() body) =>
   It is off because segment and query values are app data.
 - `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.19.0, with `otel_zone` v0.7.0 or later) tells
   `otel_zone` the route **pattern** of each committed navigation, `null` after a navigation that matched no route
-  and nothing after a superseded one, only while the SDK is up. A native crash record then carries
+  and nothing after a superseded one, only while the SDK is up. It is told once the new page's first frame is built,
+  so a crash during that frame names the page before it. A native crash record then carries
   `otel_zone.crashed.screen`, and the Errors dashboard counts crashes by it. Never a location, a segment or a query
   value. The platform limits (64 bytes, the Android summary, iOS hangs without one) are in
   [`docs/observability.md`](../../../docs/observability.md#the-screen-a-native-crash-happened-on).

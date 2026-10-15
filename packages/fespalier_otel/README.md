@@ -85,7 +85,8 @@ An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
 
 Pass `onScreen` and a native crash record names the page the app was on: `FespalierOtel(isReady: () => observability.isReady, onScreen: observability.setCrashScreen)`.
 It needs `otel_zone` v0.7.0 or later. `onScreen` is told the route pattern (`/orders/:id`, the value of `fespalier.route`)
-after each committed navigation, `null` when no route matched, and nothing for a superseded one. It is never told a location,
+after each committed navigation, `null` when no route matched, and nothing for a superseded one. It is told once the new
+page's first frame is built, so a crash during that frame names the page the user came from. It is never told a location,
 a segment or a query value, and a callback that throws costs nothing but itself. Without `onScreen` nothing changes. The
 docs' [The screen a native crash happened on](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#the-screen-a-native-crash-happened-on)
 have the platform limits.

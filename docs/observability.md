@@ -170,7 +170,12 @@ Future<void> main() => guarded(() async {
     serviceVersion: '1.4.0',
     resourceAttributes: {...FespalierOtel.resourceAttributes},
   );
-  FespalierTelemetry.install(FespalierOtel(isReady: () => observability.isReady));
+  FespalierTelemetry.install(
+    FespalierOtel(
+      isReady: () => observability.isReady,
+      onScreen: observability.setCrashScreen,
+    ),
+  );
   runApp(ProviderScope(
     observers: [?observability.riverpodObserver()],
     child: MaterialApp.router(
@@ -206,13 +211,13 @@ FespalierTelemetry.install(
 
 It needs `otel_zone` v0.7.0 or later; the pin above is the commit that carries the call.
 
-- **What it is told:** the route **pattern** of the page on screen, `/orders/:id`, the value of `fespalier.route`. It is `null` after a navigation that matched no route, and a superseded navigation tells nothing, because the one that replaced it does. Only navigations that have a span tell it, so it is called only while the SDK is up. It never receives a location, a segment or a query value.
+- **What it is told:** the route **pattern** of the page on screen, `/orders/:id`, the value of `fespalier.route`. It is `null` after a navigation that matched no route, and a superseded navigation tells nothing, because the one that replaced it does. Only navigations that have a span tell it, so it is called only while the SDK is up. It never receives a location, a segment or a query value. It is told once the new page's first frame is built, after its `initState` and first `build`, so a crash during that frame (a plugin call in `initState`, a heavy synchronous first build that blocks the platform thread) is recorded with the page the user came from. In the Errors table, a crash right as a page opens may be listed under the page before it.
 - **What it costs without `onScreen`:** nothing. The call is not made, and nothing is sent to the platform.
 - **What the platform keeps:** a screen is trimmed, and kept only if it is at most 64 UTF-8 bytes with no control character. Anything else is `null`: it clears the previous value and is never cut to fit. On Android the screen is part of the 128-byte process state summary, and it is the first field dropped when the summary is full. `otel_zone`'s `redact` scrubs it at export, as it does every attribute, so a pattern a redactor would mangle reaches the collector mangled.
 - **Where each kind of record gets its screen:** an Android JVM crash from memory; a native crash, an ANR, a signal or a low-memory kill from the process state summary, on Android 11 (API 30) and later, so below API 30 only the JVM crashes carry it; an iOS `NSException` from memory; an iOS MetricKit crash from a small per-run file matched by process id, on iOS 17 and later, and only when exactly one run matches. An iOS hang never carries one, because the process lived on. An Android ANR carries the last screen the platform received, because the frozen main thread cannot navigate, and a kill in the background carries the screen the app was left on.
 - **What it is not:** a recovered crash is not stamped with the screen the app shows now, because it happened in an earlier launch. A crash that names no screen is `unknown` in the table, never a guess.
 
-The platform details are in [`otel_zone`'s README](https://github.com/vaam-apps/flutter-otel-zone#which-screen-it-died-on), which lists the summary's layout and the cost of a change. **UNCHECKED on a device:** no CI test reads a native crash record. Whether each platform above names the screen it should, on a real phone or simulator, is a device run, not something this package has verified.
+The platform details are in [`otel_zone`'s README](https://github.com/vaam-apps/flutter-otel-zone#which-screen-it-died-on), which lists the summary's layout and the cost of a change. **UNCHECKED on a device:** no fespalier test reads a native crash record. `otel_zone`'s own CI checks the screen on Android emulators (a JVM crash, a native crash and an ANR each carry `/home`), but nothing has run on a phone, and the Errors table has not been seen with a real crash. Whether each platform above names the screen it should, on a real phone or simulator, is a device run, not something this package has verified.
 
 ### Several sinks: combine and add
 

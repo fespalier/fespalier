@@ -12,9 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The Flutter the examples and the package are built and tested with (Dart 3.13.4). Exact, so a
+  # The Flutter the examples and the package are built and tested with (Dart 3.13.5). Exact, so a
   # new stable release cannot turn CI red on its own; bump it here, deliberately.
-  FLUTTER_VERSION: 3.47.5
+  FLUTTER_VERSION: 3.47.7
   # The oldest Flutter the package declares (`flutter: ">=3.35.0"` in its pubspec, "Flutter 3.35 or
   # newer" in the READMEs): the `floor` job builds and tests on it, and `just floor` reads its minor
   # from here. Exact, like FLUTTER_VERSION: the last 3.35 patch release (Dart 3.9.2).

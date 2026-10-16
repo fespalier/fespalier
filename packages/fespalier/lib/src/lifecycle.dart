@@ -6,7 +6,8 @@
 /// here that runs: it creates no `Future`, no microtask and no timer, and it schedules no frame
 /// of its own (the delegate's notification already makes the `Router` rebuild, which does).
 /// Telemetry (`telemetry.dart`) reads the same diff, so the two can never disagree about what
-/// a page event is.
+/// a page event is. Since 0.19.0 telemetry also hears each commit as it happens, before the frame
+/// that builds its page.
 library;
 
 import 'package:flutter/foundation.dart' show FlutterError, FlutterErrorDetails;
@@ -237,10 +238,18 @@ final class RouterWatch {
       final (:kind, :now) = classifyNavigation(config, null);
       _snapshot = now;
       if (telemetryOn) {
-        _nav = _Nav(telemetryNavigationStart(null), null)
+        final nav = _Nav(telemetryNavigationStart(null), null)
           ..committed = true
           ..kind = kind
           ..depth = now.depth;
+        _nav = nav;
+        // A throw in the walk, `pathTemplate` or the app's `base` costs the commit, not the
+        // frame callback below.
+        try {
+          _tellCommit(nav, config);
+        } catch (e) {
+          telemetryAttachError(e);
+        }
       }
       _schedule();
     }
@@ -307,6 +316,7 @@ final class RouterWatch {
       if (!nav.committed) nav.kind = kind;
       nav.committed = true;
       nav.depth = now.depth;
+      _tellCommit(nav, config);
     } catch (e) {
       telemetryAttachError(e);
     }
@@ -399,6 +409,23 @@ final class RouterWatch {
   String? _patternOf(_Instance i) =>
       pathTemplate(i.fullPath, _base?.call() ?? '/');
 
+  /// The pattern of the page [config] shows ([visible] is the top of its walk), null when no route
+  /// matched: what a navigation's commit and its end both report, so the two never differ.
+  String? _routeOf(RouteMatchList config, _Instance? visible) =>
+      config.error != null || visible == null ? null : _patternOf(visible);
+
+  /// Tells the sink what [config] puts on screen, for [nav], at the commit (since 0.19.0).
+  void _tellCommit(_Nav nav, RouteMatchList config) {
+    final walk = _Walk()..add(config.matches, config.uri, const []);
+    telemetryNavigationCommit(
+      nav.token,
+      TelemetryCommit(
+        config.error != null ? TelemetryOutcome.notFound : TelemetryOutcome.ok,
+        route: _routeOf(config, walk.instances.lastOrNull),
+      ),
+    );
+  }
+
   /// The first frame after a commit is built: the page events, then the end of the navigation.
   void _finishTelemetry(
     RouteMatchList config,
@@ -420,9 +447,7 @@ final class RouterWatch {
 
   void _endNavigation(_Nav nav, RouteMatchList config, _Instance? visible) {
     final notFound = config.error != null;
-    final route = notFound
-        ? null
-        : (visible == null ? null : _patternOf(visible));
+    final route = _routeOf(config, visible);
     final location = visible?.uri ?? config.uri;
     final requested = nav.requested;
     telemetryNavigationEnd(

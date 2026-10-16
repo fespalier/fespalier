@@ -21,11 +21,6 @@ it ships.
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
 - **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
   generated `main()` installs `FespalierOtel` and its zone itself.
-- **Tell telemetry sinks the page at the commit of a navigation, not after its first frame.** A
-  navigation ends in a post-frame callback (`RouterWatch._finishTelemetry`), after the new page's
-  `initState` and first `build`, so `FespalierOtel(onScreen:)` names the page before it when a native
-  crash or ANR hits that first frame. `RouterWatch._committedForTelemetry` already runs at the commit.
-  It touches the core telemetry interface, so the new call must be additive (contract version 1).
 - **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
   changes, because the generated router is built once, so a hot reload would keep the old route
   table. In debug the router could rebuild itself on `reassemble` (go_router's

@@ -118,6 +118,42 @@ GoRouter router({String initial = '/home'}) {
   return r;
 }
 
+/// A page that calls [read] in its `initState`, the first thing that runs when the page is built.
+class ScreenProbe extends StatefulWidget {
+  const ScreenProbe(this.read, {super.key});
+
+  /// Called once, from `initState`.
+  final void Function() read;
+
+  @override
+  State<ScreenProbe> createState() => _ScreenProbeState();
+}
+
+class _ScreenProbeState extends State<ScreenProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.read();
+  }
+
+  @override
+  Widget build(BuildContext context) => page('probe');
+}
+
+/// A router with `/home` and `/probe` (whose page is a [ScreenProbe] calling [read]), attached to
+/// telemetry.
+GoRouter probeRouter(void Function() read, {String initial = '/home'}) {
+  final r = GoRouter(
+    initialLocation: initial,
+    routes: [
+      GoRoute(path: '/home', builder: (_, _) => page('home')),
+      GoRoute(path: '/probe', builder: (_, _) => ScreenProbe(read)),
+    ],
+  );
+  telemetryAttach(r, base: () => '/');
+  return r;
+}
+
 /// The string attribute [key] of [span].
 String? a(Span span, String key) => span.attributes.getString(key);
 
@@ -354,20 +390,58 @@ void main() {
     });
 
     testWidgets('a throwing onScreen costs nothing', (tester) async {
-      FespalierTelemetry.install(
-        FespalierOtel(onScreen: (_) => throw StateError('x')),
-      );
-      final r = router();
-      await pumpRouter(tester, r);
-      exporter.clear();
-      r.go('/items/7');
-      await tester.pumpAndSettle();
+      // Core prints the first error a sink lets out, once, and then keeps every later diagnostic
+      // quiet: an `onScreen` that throws must stay inside `FespalierOtel.commit`.
+      final printed = <String?>[];
+      final saved = debugPrint;
+      debugPrint = (message, {wrapWidth}) => printed.add(message);
+      try {
+        FespalierTelemetry.install(
+          FespalierOtel(onScreen: (_) => throw StateError('x')),
+        );
+        final r = router();
+        await pumpRouter(tester, r);
+        exporter.clear();
+        r.go('/items/7');
+        await tester.pumpAndSettle();
+      } finally {
+        debugPrint = saved;
+      }
       expect(
         only('navigate /items/:id').attributes.getString('fespalier.route'),
         '/items/:id',
       );
       expect(tester.takeException(), isNull);
+      expect(printed, isEmpty);
     });
+
+    test(
+      'a commit told for another operation than a navigation is not heard',
+      () {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        const commit = TelemetryCommit(TelemetryOutcome.ok, route: '/x');
+        final data = FespalierTelemetry.begin(
+          const TelemetryStart(TelemetryOp.data, site: dataSite),
+        );
+        FespalierTelemetry.current!.commit(data, commit);
+        FespalierTelemetry.finish(
+          data,
+          const TelemetryEnd(TelemetryOutcome.ok),
+        );
+        expect(screens, isEmpty);
+        // The same call for a navigation's token is heard: the check above is the operation's.
+        final navigation = FespalierTelemetry.begin(
+          TelemetryStart(TelemetryOp.navigate, uri: Uri.parse('/x')),
+        );
+        FespalierTelemetry.current!.commit(navigation, commit);
+        FespalierTelemetry.finish(
+          navigation,
+          const TelemetryEnd(TelemetryOutcome.ok, route: '/x'),
+        );
+        expect(screens, ['/x']);
+      },
+    );
 
     testWidgets('without the SDK it is not called', (tester) async {
       final screens = <String?>[];
@@ -379,6 +453,84 @@ void main() {
       r.go('/items/7');
       await tester.pumpAndSettle();
       expect(screens, isEmpty);
+    });
+
+    testWidgets('is told at the commit, inside go(), once', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/items/7');
+      // No pump: the commit of a synchronous location is inside go().
+      expect(screens, ['/items/:id']);
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
+    });
+
+    testWidgets('the new page\'s initState already sees its own screen', (
+      tester,
+    ) async {
+      final screens = <String?>[];
+      final seen = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = probeRouter(() => seen.add(screens.lastOrNull));
+      await pumpRouter(tester, r);
+      r.go('/probe');
+      await tester.pumpAndSettle();
+      expect(seen, ['/probe']);
+    });
+
+    testWidgets('the first page\'s initState sees its own screen too', (
+      tester,
+    ) async {
+      final screens = <String?>[];
+      final seen = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = probeRouter(
+        () => seen.add(screens.lastOrNull),
+        initial: '/probe',
+      );
+      await pumpRouter(tester, r);
+      expect(seen, ['/probe']);
+      expect(screens, ['/probe']);
+    });
+
+    testWidgets(
+      'two commits before one frame tell both, and the span names the last',
+      (tester) async {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        final r = router();
+        await pumpRouter(tester, r);
+        screens.clear();
+        checkout = () => null;
+        r.go('/checkout');
+        checkout = () => '/login';
+        r.refresh();
+        await tester.pumpAndSettle();
+        expect(screens, ['/checkout', '/login']);
+        expect(
+          only('navigate /login').attributes.getString('fespalier.route'),
+          '/login',
+        );
+      },
+    );
+
+    testWidgets('behind a combine it still hears the commit', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(
+        FespalierTelemetry.combine([
+          RecordingTelemetry(),
+          FespalierOtel(onScreen: screens.add),
+        ]),
+      );
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/items/7');
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
     });
   });
 

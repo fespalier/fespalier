@@ -29,9 +29,11 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.19.0
 
-0.19.0 breaks nothing: the generated `app.g.dart` is unchanged, and an app that does not name its screen changes nothing.
+0.19.0 breaks nothing for an app whose telemetry sinks extend `FespalierTelemetry` (every sink fespalier ships does): the generated `app.g.dart` is unchanged, and an app that does not name its screen changes nothing. A telemetry sink that implements `FespalierTelemetry` instead of extending it adds one method (below).
 
 - **Optional: native crash records can name the screen** ([The screen a native crash happened on](observability.md#the-screen-a-native-crash-happened-on)). Bump `otel_zone` to `7fbdf64092626a66837ce04caa35411ea4f7df70` (v0.7.0) in your pubspec, pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and run `fsp telemetry --stop`, then `fsp telemetry`, so the collector reads the new attribute and the Errors table has its panel. `app.g.dart` is unchanged. An app that does none of this keeps its crash records as they are.
+
+- **A telemetry sink of your own** ([Several sinks](observability.md#several-sinks-combine-and-add)). `FespalierTelemetry` has a new member, `commit(navigation, commit)`, with an empty default: the router tells it what each navigation commits, before the page is built. A sink that extends `FespalierTelemetry` changes nothing; one that implements it stops compiling until it adds the method (or extends instead), and one with a member already named `commit` of another signature renames it. `RecordingTelemetry` writes commit lines only with `recordCommits: true`.
 
 ### 0.18.0
 

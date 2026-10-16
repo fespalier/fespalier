@@ -28,10 +28,10 @@ import 'conventions.dart';
 ///
 /// Since 0.9.0 a data span and an action span are the current span while `data()` or the action
 /// runs ([within]), so the spans that `otel_http` and `otel_dio` make inside them, after an
-/// `await` too, are their children. Since 0.19.0 [onScreen] hears each committed navigation's
-/// page once its first frame is built, so a native crash record can name its screen. Next to
-/// another sink (Sentry, analytics), install both with `FespalierTelemetry.combine` or
-/// `FespalierTelemetry.add`.
+/// `await` too, are their children. Since 0.19.0 [onScreen] hears the page of each committed
+/// navigation when it commits, before that page is built, so a native crash record can name its
+/// screen. Next to another sink (Sentry, analytics), install both with
+/// `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
 final class FespalierOtel extends FespalierTelemetry {
   /// [isReady] says whether the SDK is up: pass `() => observability.isReady` with `otel_zone`.
   /// Leave it out when the app initialises the SDK itself before installing this.
@@ -39,8 +39,8 @@ final class FespalierOtel extends FespalierTelemetry {
   /// [recordLocations] adds `url.path`, `url.query` and `fespalier.guard.location`: segment and
   /// query values are app data, so it is off.
   ///
-  /// [onScreen] (since 0.19.0) is called with the route pattern of the page on screen once the
-  /// first frame of each committed navigation this adapter makes a span for is built: pass
+  /// [onScreen] (since 0.19.0) is called with the route pattern of the page each navigation this
+  /// adapter makes a span for commits to, before that page is built: pass
   /// `observability.setCrashScreen` with `otel_zone` (v0.7.0 or later), and a native crash record
   /// names its screen.
   FespalierOtel({
@@ -55,15 +55,18 @@ final class FespalierOtel extends FespalierTelemetry {
   /// redirected to (`fespalier.guard.location`).
   final bool recordLocations;
 
-  /// Told the route pattern of the page on screen, at the end of every committed navigation that
+  /// Told the route pattern of the page on screen when a navigation commits, for every navigation
   /// this adapter makes a span for, so only while the SDK is up (since 0.19.0). It is called with
-  /// `null` after a navigation that matched no route, and not at all for a superseded one. It never
-  /// receives a location, a segment or a query value. A callback that throws costs nothing but
-  /// itself.
+  /// `null` when the location matched no route, and not at all for a superseded navigation, which
+  /// never commits. It never receives a location, a segment or a query value. A callback that
+  /// throws costs nothing but itself.
   ///
-  /// The call comes once the new page's first frame is built, after its `initState` and first
-  /// `build`, so a crash during that frame (a plugin call in `initState`, a heavy synchronous
-  /// first build that blocks the platform thread) names the page the user came from.
+  /// The call comes from the router's commit, before the new page's `initState` and first `build`,
+  /// so a crash while that page opens (a plugin call in `initState`, a heavy synchronous first
+  /// build that blocks the platform thread) names that page. A navigation that commits twice before
+  /// its first frame calls it twice; the last value is the span's `fespalier.route`. The first call
+  /// can come while the `Router` widget is being built: return at once, and never navigate, call
+  /// `setState` or change a provider.
   ///
   /// `otel_zone`'s `setCrashScreen` is the intended callback: `FespalierOtel(onScreen:
   /// observability.setCrashScreen)`. Null by default, which costs nothing.
@@ -260,10 +263,26 @@ final class FespalierOtel extends FespalierTelemetry {
     }
   }
 
+  /// Tells [onScreen] the page a navigation commits to, before it is built (since 0.19.0): its
+  /// pattern, null when no route matched; only for a navigation this adapter made a span for.
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    final hook = onScreen;
+    if (hook == null ||
+        navigation is! _Running ||
+        navigation.op != TelemetryOp.navigate) {
+      return;
+    }
+    try {
+      hook(commit.outcome == TelemetryOutcome.notFound ? null : commit.route);
+    } catch (_) {
+      // The app's callback costs only itself: the span is still described and ended.
+    }
+  }
+
   @override
   void end(Object? token, TelemetryEnd end) {
     if (token is! _Running) return;
-    if (token.op == TelemetryOp.navigate) _screen(end);
     final span = token.span;
     try {
       _describe(token, end);
@@ -298,19 +317,6 @@ final class FespalierOtel extends FespalierTelemetry {
       } catch (_) {
         // Same.
       }
-    }
-  }
-
-  /// Tells [onScreen] the page a committed navigation ended on (since 0.19.0). It is the `route` of
-  /// the navigation's end, which is null when no route matched; a superseded navigation tells
-  /// nothing, because the one that replaced it will.
-  void _screen(TelemetryEnd end) {
-    final hook = onScreen;
-    if (hook == null || end.outcome == TelemetryOutcome.superseded) return;
-    try {
-      hook(end.outcome == TelemetryOutcome.notFound ? null : end.route);
-    } catch (_) {
-      // The app's callback costs only itself: the span is still described and ended.
     }
   }
 

@@ -8,6 +8,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Configuration](configuration.md)                                  | Every `fespalier:` key of `pubspec.yaml`, and `route.dart`                                            |
 | [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, exports and receives                                              |
 | [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed per release                                   |
+| [Coming from RIBs](coming-from-ribs.md)                            | What a RIB's router, interactor, builder and workflows become, and moving a feature over              |
 | [Routing](routing.md)                                              | Segments, enums, catch-alls, query parameters, case, localized paths, groups, not-found, the manifest |
 | [Navigation](navigation.md)                                        | Typed navigation, `of` and `copyWith`, `remount`, `extra`, `RouteLink`, deferred routes               |
 | [Layouts](layouts.md)                                              | Tab layouts, menus, adaptive navigation, transitions, state and scroll restoration                    |

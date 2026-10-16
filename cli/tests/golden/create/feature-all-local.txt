@@ -715,13 +715,11 @@ void main() {
     ]);
   });
 
-  test(
-    'the generated main() names the service after the app, and a test never starts it',
-    () {
-      expect(AppMain.observability.config.serviceName, 'my_app');
-      expect(AppMain.observability.isReady, isFalse);
-    },
-  );
+  test('the generated main() names the service after the app, and a test never starts it', () {
+    const name = 'my_app';
+    expect(AppMain.observability.config.serviceName, name);
+    expect(AppMain.observability.isReady, isFalse);
+  });
 }
 
 === test/sentry_test.dart (new)

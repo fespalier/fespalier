@@ -18,7 +18,8 @@
 /// Since 0.9.0 several sinks share the one slot ([FespalierTelemetry.combine],
 /// [FespalierTelemetry.add]), a sink can make the span of a `data()` or an action current while
 /// it runs ([FespalierTelemetry.within]), and a navigation can say where it came from
-/// ([navigateFrom]).
+/// ([navigateFrom]). Since 0.19.0 a sink hears each navigation's commit, before the page it shows
+/// is built ([FespalierTelemetry.commit]).
 library;
 
 import 'dart:async';
@@ -55,10 +56,10 @@ abstract class FespalierTelemetry {
   /// One sink that tells each of [sinks] everything, in order (since 0.9.0): OpenTelemetry,
   /// Sentry and analytics side by side, though [install] holds one sink.
   ///
-  /// Each sink gets the token it returned itself, at [end], [page] and [within], and as the
-  /// [TelemetryStart.parent] of what runs under one of its navigations: no sink ever sees another
-  /// sink's token. A sink that throws is isolated: the others and the app go on, its error is
-  /// printed once (`fespalier telemetry: <error> in <Sink> (not shown again)`), and it is called
+  /// Each sink gets the token it returned itself, at [end], [page], [commit] and [within], and as
+  /// the [TelemetryStart.parent] of what runs under one of its navigations: no sink ever sees
+  /// another sink's token. A sink that throws is isolated: the others and the app go on, its error
+  /// is printed once (`fespalier telemetry: <error> in <Sink> (not shown again)`), and it is called
   /// again next time. A combined sink in [sinks] is flattened; `combine([])` reports nothing, and
   /// `combine([sink])` is [sink].
   static FespalierTelemetry combine(List<FespalierTelemetry> sinks) {
@@ -140,6 +141,18 @@ abstract class FespalierTelemetry {
   /// A page was entered, focused or left at the end of the navigation [navigation] (the token
   /// [start] returned for it).
   void page(Object? navigation, TelemetryPage page) {}
+
+  /// The navigation [navigation] (the token [start] returned for it) committed (since 0.19.0): the
+  /// router holds a new configuration, and [commit] says which page it puts on screen.
+  ///
+  /// It is called synchronously from the router's notification, before the new page's `initState`
+  /// and first `build`, so before the navigation's [page] events and its [end]. The first location
+  /// commits while the `Router` widget is being built: like every call into a sink, it returns at
+  /// once and never navigates, calls `setState` or changes a provider. A superseded navigation
+  /// never commits. One that commits again before its first frame (a guard that changed its
+  /// answer) is told again, and [end] reports the last [TelemetryCommit.route]. The default ignores
+  /// it.
+  void commit(Object? navigation, TelemetryCommit commit) {}
 
   /// Runs [body] inside the operation [token] came from (since 0.9.0). fespalier calls it around a
   /// `data()` and an action's function, so a sink can make that operation's span current while
@@ -594,7 +607,9 @@ final class TelemetryEnd {
   /// navigate: the committed location; guard and redirect: where it redirected to.
   final String? location;
 
-  /// navigate: the pattern of the page that is on screen (null when not found).
+  /// navigate: the pattern of the page that is on screen (null when not found). For a committed
+  /// navigation it is the [TelemetryCommit.route] of its last [FespalierTelemetry.commit] (since
+  /// 0.19.0).
   final String? route;
 
   /// navigate: the pattern of the page that was on top before (null at the start).
@@ -658,6 +673,21 @@ final class TelemetryPage {
 
   /// On a leave: how long the page was entered, covered time included.
   final Duration? duration;
+}
+
+/// What a navigation committed (since 0.19.0), told to [FespalierTelemetry.commit] before the page
+/// it puts on screen is built. A class, not a bare string, so that a later field needs no new
+/// method.
+final class TelemetryCommit {
+  /// A commit with [outcome] that puts the page [route] on screen.
+  const TelemetryCommit(this.outcome, {this.route});
+
+  /// [TelemetryOutcome.ok], or [TelemetryOutcome.notFound] when the location matched no route.
+  final String outcome;
+
+  /// The pattern of the page on screen after the commit (`/orders/:id`); null when not found. Never
+  /// a location, a segment or a query value.
+  final String? route;
 }
 
 /// Where a generated call site is: `const` in `app.g.dart`, so naming it costs nothing at run
@@ -744,6 +774,18 @@ void telemetryPageEvent(Object? navigation, TelemetryPage page) {
   if (sink == null) return;
   try {
     sink.page(navigation, page);
+  } catch (e) {
+    _report(e);
+  }
+}
+
+/// Tells the installed sink that the navigation [navigation] committed to [commit] (since 0.19.0).
+/// Called from the router's notification, so it creates no `Future` and schedules nothing.
+void telemetryNavigationCommit(Object? navigation, TelemetryCommit commit) {
+  final sink = FespalierTelemetry._current;
+  if (sink == null) return;
+  try {
+    sink.commit(navigation, commit);
   } catch (e) {
     _report(e);
   }
@@ -1305,6 +1347,18 @@ final class _Combined extends FespalierTelemetry {
       final child = _children[i];
       try {
         child.sink.page(_own(navigation, i), page);
+      } catch (e) {
+        child.failed(e);
+      }
+    }
+  }
+
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    for (var i = 0; i < _children.length; i++) {
+      final child = _children[i];
+      try {
+        child.sink.commit(_own(navigation, i), commit);
       } catch (e) {
         child.failed(e);
       }

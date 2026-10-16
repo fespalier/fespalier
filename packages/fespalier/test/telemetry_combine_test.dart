@@ -65,6 +65,10 @@ final class Spy extends FespalierTelemetry {
       log.add('$name page $navigation ${page.kind.name}');
 
   @override
+  void commit(Object? navigation, TelemetryCommit commit) =>
+      log.add('$name commit $navigation ${commit.outcome} ${commit.route}');
+
+  @override
   void within(Object? token, Object? Function() body) {
     log.add('$name within enter $token');
     final result = body();
@@ -166,6 +170,20 @@ final class Boom extends FespalierTelemetry {
   }
 }
 
+/// A sink whose `commit` throws, and which counts the calls (since 0.19.0).
+final class CommitBoom extends FespalierTelemetry {
+  int calls = 0;
+
+  @override
+  Object? start(TelemetryStart start) => 'x';
+
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    calls++;
+    throw StateError('boom');
+  }
+}
+
 /// A sink that has a token, and whose `within` throws.
 final class WithinBoom extends FespalierTelemetry {
   int calls = 0;
@@ -207,6 +225,10 @@ final class Tokenless extends FespalierTelemetry {
   @override
   void page(Object? navigation, TelemetryPage page) =>
       log.add('page $navigation');
+
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) =>
+      log.add('commit $navigation');
 
   @override
   void within(Object? token, Object? Function() body) {
@@ -486,6 +508,67 @@ void main() {
         'fespalier telemetry: Bad state: boom in Boom (not shown again)',
       ]);
     });
+
+    test('commits go to each sink with its own navigation token', () {
+      final log = <String>[];
+      final a = Spy('a', log);
+      final b = Spy('b', log);
+      FespalierTelemetry.install(FespalierTelemetry.combine([a, b]));
+      final nav = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.navigate),
+      );
+      log.clear();
+      FespalierTelemetry.current!.commit(
+        nav,
+        const TelemetryCommit(TelemetryOutcome.ok, route: '/'),
+      );
+      expect(log, ['a commit a:1 ok /', 'b commit b:1 ok /']);
+    });
+
+    test('a sink with no token is told the commit with null', () {
+      final a = Tokenless();
+      final b = Tokenless();
+      FespalierTelemetry.install(FespalierTelemetry.combine([a, b]));
+      final token = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.navigate),
+      );
+      expect(token, isNull);
+      FespalierTelemetry.current!.commit(
+        token,
+        const TelemetryCommit(TelemetryOutcome.notFound),
+      );
+      expect(a.log, ['commit null']);
+      expect(b.log, ['commit null']);
+    });
+
+    test(
+      'a sink whose commit throws is isolated, printed once, and called again',
+      () {
+        final log = <String>[];
+        final boom = CommitBoom();
+        final spy = Spy('s', log);
+        FespalierTelemetry.install(FespalierTelemetry.combine([boom, spy]));
+        final lines = printed(() {
+          for (var i = 0; i < 2; i++) {
+            final nav = FespalierTelemetry.begin(
+              const TelemetryStart(TelemetryOp.navigate),
+            );
+            FespalierTelemetry.current!.commit(
+              nav,
+              const TelemetryCommit(TelemetryOutcome.ok, route: '/'),
+            );
+          }
+        });
+        expect(log.where((l) => l.contains(' commit ')), [
+          's commit s:1 ok /',
+          's commit s:2 ok /',
+        ]);
+        expect(boom.calls, 2);
+        expect(lines, [
+          'fespalier telemetry: Bad state: boom in CommitBoom (not shown again)',
+        ]);
+      },
+    );
   });
 
   group('within', () {

@@ -8,10 +8,16 @@
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart';
-{% if deferred %}
+{% if otel %}
+import 'package:fespalier_otel/fespalier_otel.dart' show FespalierOtel;
+{% endif %}
+{% if deferred or otel_zone %}
 import 'package:flutter/foundation.dart' show kIsWeb;
 {% endif %}
 import 'package:flutter/{{ "material" if material else "widgets" }}.dart';
+{% if otel %}
+import 'package:otel_zone/otel_zone.dart' show OtelZone, OtelZoneConfig;
+{% endif %}
 
 import '{{ output_file }}';
 {% for i in imports %}
@@ -21,6 +27,16 @@ import '{{ i.path }}' as {{ i.alias }};
 /// The app under {{ app_dir }}/, from main() on: startup.dart, splash.dart and app.dart around
 /// [AppRoutes.router].
 abstract final class AppMain {
+{% if otel %}
+  /// The OpenTelemetry SDK that [run] starts (`otel: true` in pubspec.yaml, since 0.19.0): otel_zone,
+  /// exporting to `FespalierOtel.endpoint()`, so a release build without
+  /// `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT` sends nothing. A test that pumps [root] never
+  /// starts it. What the app adds itself: `AppMain.observability.setEndUser(id)`.
+  static final OtelZone observability = OtelZone(
+    OtelZoneConfig(serviceName: '{{ otel }}', endpoint: FespalierOtel.endpoint()),
+  );
+
+{% endif %}
 {% if launch %}
   static InboundLaunch? _launch;
 
@@ -36,6 +52,20 @@ abstract final class AppMain {
 
   static Future<void> _main() async {
     WidgetsFlutterBinding.ensureInitialized();
+{% if otel %}
+    // `otel: true`: the SDK first (start() never throws), then its sink, before the router exists.
+    await observability.start(
+      serviceVersion: FespalierOtel.serviceVersion(),
+      buildId: FespalierOtel.buildId(),
+      resourceAttributes: FespalierOtel.resourceAttributes,
+    );
+    FespalierTelemetry.add(
+      FespalierOtel(
+        isReady: () => observability.isReady,
+        onScreen: observability.setCrashScreen,
+      ),
+    );
+{% endif %}
 {% if deferred %}
     if (!kIsWeb) await AppRoutes.loadDeferred();
 {% endif %}
@@ -48,6 +78,13 @@ abstract final class AppMain {
 {% endif %}
     runApp(root());
   }
+{% if otel_zone %}
+
+  /// otel_zone's guarded zone around all of main() (`otel: true`), off the web, where its
+  /// `runGuarded` never runs its body. A `zone()` in startup.dart replaces it.
+  static Future<void> _otelZone(Future<void> Function() body) =>
+      kIsWeb ? body() : observability.runGuarded(body);
+{% endif %}
 
   /// The widget [run] gives `runApp`: startup() (splash.dart while it runs, and if it fails),
   /// then a `ProviderScope` with the overrides it returned around app.dart, which gets

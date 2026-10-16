@@ -30,7 +30,8 @@ ids=$("$fsp" create --list-features --json | sed -n 's/^{"id":"\([a-z0-9_]*\)".*
 
 all_cases=(base)
 for id in $ids; do all_cases+=("$id"); done
-# `telemetry` is the pair that has to compose (one FespalierTelemetry.combine, one zone): otel and sentry.
+# `telemetry` is the pair that has to compose (Sentry's zone, its sink added next to the generated
+# OpenTelemetry one): otel and sentry.
 if printf '%s\n' "$ids" | grep -qx otel && printf '%s\n' "$ids" | grep -qx sentry; then all_cases+=(telemetry); fi
 if [ "$(printf '%s\n' "$ids" | grep -c .)" -ge 2 ]; then all_cases+=(all); fi
 

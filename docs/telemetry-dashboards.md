@@ -32,6 +32,8 @@ final observability = OtelZone(
 );
 ```
 
+Since 0.19.0, `otel: true` writes that `OtelZone` for you, in the generated `main()` ([OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main)), with the same endpoint.
+
 It returns, in this order:
 
 1. what `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` (or `--dart-define-from-file`) says, when it says anything;

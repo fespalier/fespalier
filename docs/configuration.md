@@ -41,6 +41,7 @@ fespalier:
   scroll_restoration: false # `true` (since 0.8.1): the browser's back and forward bring a page's scroll offsets back
   main: auto # `generated` | `manual` (since 0.8.1): whether `fsp` writes the main() in lib/app.main.g.dart
   telemetry: false # `true` (since 0.8.1): report navigations, guards, data, actions and deferred loads (see "Telemetry")
+  otel: false # `true` (since 0.19.0): the generated main() starts otel_zone and installs FespalierOtel (see "otel")
   # maestro:                      # no default: what `fsp maestro` writes (see below)
   #   url: http://localhost:8080  # the web; or `app_id: com.example.shop` for Android and iOS
   #   link: http://localhost:8080/#
@@ -74,32 +75,33 @@ fespalier:
 
 ## Keys
 
-| Key                  | Default                               | Values                                | Since | What it does                                                        | Read more                                                                            |
-| -------------------- | ------------------------------------- | ------------------------------------- | ----- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `app_dir`            | `lib/app`                             | a path under `lib/`                   |       | the folder `fsp` reads                                              | [The fespalier: section](#the-fespalier-section)                                     |
-| `output`             | `lib/app.g.dart`                      | a `.dart` path under `lib/`           |       | where `fsp gen` writes                                              | [The fespalier: section](#the-fespalier-section)                                     |
-| `format`             | `false`                               | `true`, `false`                       |       | run `dart format` on the generated file                             | [format](#format)                                                                    |
-| `output_manifest`    | none (the manifest lives in `output`) | a `.dart` path                        |       | write the route manifest to a library of its own                    | [meta, meta_unique and output_manifest](#meta-meta_unique-and-output_manifest)       |
-| `meta`               | `optional`                            | `optional`, `required`                |       | whether every route needs a `meta.dart`                             | [meta, meta_unique and output_manifest](#meta-meta_unique-and-output_manifest)       |
-| `meta_unique`        | none                                  | a list of `meta` fields               |       | no two routes may pass the same literal value                       | [meta, meta_unique and output_manifest](#meta-meta_unique-and-output_manifest)       |
-| `case_sensitive`     | `true`                                | `true`, `false`                       |       | whether paths match by case                                         | [case_sensitive](#case_sensitive)                                                    |
-| `remount`            | `never`                               | `never`, `on_segments`, `on_location` | 0.6.0 | when a page gets a fresh state because its URL changed              | [remount](#remount)                                                                  |
-| `deferred`           | `false`                               | `true`, `false`                       | 0.7.0 | each page's code loads on demand                                    | [deferred](#deferred)                                                                |
-| `data_retry`         | `inherit`                             | `inherit`, `none`                     |       | retries of a failed `data.dart`                                     | [data_retry, keep_previous and file_style](#data_retry-keep_previous-and-file_style) |
-| `keep_previous`      | `true`                                | `true`, `false`                       |       | keep the previous value while a reload runs                         | [data_retry, keep_previous and file_style](#data_retry-keep_previous-and-file_style) |
-| `push_updates_url`   | `false`                               | `true`, `false`                       | 0.6.0 | a `push`ed route's URL is in the address bar                        | [push_updates_url](#push_updates_url)                                                |
-| `file_style`         | `snake`                               | `snake`, `kebab`                      |       | how `fsp init` and `fsp new` spell file names                       | [data_retry, keep_previous and file_style](#data_retry-keep_previous-and-file_style) |
-| `links`              | none                                  | a map                                 | 0.5.0 | what `fsp links` writes                                             | [links](#links)                                                                      |
-| `lints`              | `unknown_path: warning`               | `warning`, `error`, `off`             | 0.7.0 | how a string path that matches no route is reported                 | [lints](#lints)                                                                      |
-| `semantics_ids`      | `false`                               | `true`, `false`                       | 0.7.0 | every page wears `Semantics(identifier: 'route:/...')`, for Maestro | [semantics_ids and maestro](#semantics_ids-and-maestro)                              |
-| `scroll_restoration` | `false`                               | `true`, `false`                       | 0.8.1 | the browser's back and forward bring a page's scroll offsets back   | [scroll_restoration](#scroll_restoration)                                            |
-| `telemetry`          | `false`                               | `true`, `false`                       | 0.8.1 | report navigations, guards, data, actions and deferred loads        | [telemetry](#telemetry)                                                              |
-| `maestro`            | none                                  | a map                                 | 0.7.0 | what `fsp maestro` writes                                           | [semantics_ids and maestro](#semantics_ids-and-maestro)                              |
-| `size`               | none                                  | a map                                 | 0.8.1 | what `fsp size` checks the web build against                        | [size](#size)                                                                        |
-| `test`               | none                                  | a map                                 | 0.8.1 | what `fsp test` reads                                               | [test](#test)                                                                        |
-| `main`               | `auto`                                | `auto`, `generated`, `manual`         | 0.8.1 | whether `fsp` writes the `main()` in `lib/app.main.g.dart`          | [main](#main)                                                                        |
-| `tasks`              | none                                  | a map                                 | 0.9.0 | what `fsp dev`, `fsp build` and `fsp run` run                       | [tasks](#tasks)                                                                      |
-| `adapters`           | none                                  | a list of package names               | 0.9.0 | packages that plug into the generated `main()`                      | [adapters](#adapters)                                                                |
+| Key                  | Default                               | Values                                | Since  | What it does                                                             | Read more                                                                            |
+| -------------------- | ------------------------------------- | ------------------------------------- | ------ | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| `app_dir`            | `lib/app`                             | a path under `lib/`                   |        | the folder `fsp` reads                                                   | [The fespalier: section](#the-fespalier-section)                                     |
+| `output`             | `lib/app.g.dart`                      | a `.dart` path under `lib/`           |        | where `fsp gen` writes                                                   | [The fespalier: section](#the-fespalier-section)                                     |
+| `format`             | `false`                               | `true`, `false`                       |        | run `dart format` on the generated file                                  | [format](#format)                                                                    |
+| `output_manifest`    | none (the manifest lives in `output`) | a `.dart` path                        |        | write the route manifest to a library of its own                         | [meta, meta_unique and output_manifest](#meta-meta_unique-and-output_manifest)       |
+| `meta`               | `optional`                            | `optional`, `required`                |        | whether every route needs a `meta.dart`                                  | [meta, meta_unique and output_manifest](#meta-meta_unique-and-output_manifest)       |
+| `meta_unique`        | none                                  | a list of `meta` fields               |        | no two routes may pass the same literal value                            | [meta, meta_unique and output_manifest](#meta-meta_unique-and-output_manifest)       |
+| `case_sensitive`     | `true`                                | `true`, `false`                       |        | whether paths match by case                                              | [case_sensitive](#case_sensitive)                                                    |
+| `remount`            | `never`                               | `never`, `on_segments`, `on_location` | 0.6.0  | when a page gets a fresh state because its URL changed                   | [remount](#remount)                                                                  |
+| `deferred`           | `false`                               | `true`, `false`                       | 0.7.0  | each page's code loads on demand                                         | [deferred](#deferred)                                                                |
+| `data_retry`         | `inherit`                             | `inherit`, `none`                     |        | retries of a failed `data.dart`                                          | [data_retry, keep_previous and file_style](#data_retry-keep_previous-and-file_style) |
+| `keep_previous`      | `true`                                | `true`, `false`                       |        | keep the previous value while a reload runs                              | [data_retry, keep_previous and file_style](#data_retry-keep_previous-and-file_style) |
+| `push_updates_url`   | `false`                               | `true`, `false`                       | 0.6.0  | a `push`ed route's URL is in the address bar                             | [push_updates_url](#push_updates_url)                                                |
+| `file_style`         | `snake`                               | `snake`, `kebab`                      |        | how `fsp init` and `fsp new` spell file names                            | [data_retry, keep_previous and file_style](#data_retry-keep_previous-and-file_style) |
+| `links`              | none                                  | a map                                 | 0.5.0  | what `fsp links` writes                                                  | [links](#links)                                                                      |
+| `lints`              | `unknown_path: warning`               | `warning`, `error`, `off`             | 0.7.0  | how a string path that matches no route is reported                      | [lints](#lints)                                                                      |
+| `semantics_ids`      | `false`                               | `true`, `false`                       | 0.7.0  | every page wears `Semantics(identifier: 'route:/...')`, for Maestro      | [semantics_ids and maestro](#semantics_ids-and-maestro)                              |
+| `scroll_restoration` | `false`                               | `true`, `false`                       | 0.8.1  | the browser's back and forward bring a page's scroll offsets back        | [scroll_restoration](#scroll_restoration)                                            |
+| `telemetry`          | `false`                               | `true`, `false`                       | 0.8.1  | report navigations, guards, data, actions and deferred loads             | [telemetry](#telemetry)                                                              |
+| `otel`               | `false`                               | `true`, `false`                       | 0.19.0 | the generated `main()` starts OpenTelemetry and installs `FespalierOtel` | [otel](#otel)                                                                        |
+| `maestro`            | none                                  | a map                                 | 0.7.0  | what `fsp maestro` writes                                                | [semantics_ids and maestro](#semantics_ids-and-maestro)                              |
+| `size`               | none                                  | a map                                 | 0.8.1  | what `fsp size` checks the web build against                             | [size](#size)                                                                        |
+| `test`               | none                                  | a map                                 | 0.8.1  | what `fsp test` reads                                                    | [test](#test)                                                                        |
+| `main`               | `auto`                                | `auto`, `generated`, `manual`         | 0.8.1  | whether `fsp` writes the `main()` in `lib/app.main.g.dart`               | [main](#main)                                                                        |
+| `tasks`              | none                                  | a map                                 | 0.9.0  | what `fsp dev`, `fsp build` and `fsp run` run                            | [tasks](#tasks)                                                                      |
+| `adapters`           | none                                  | a list of package names               | 0.9.0  | packages that plug into the generated `main()`                           | [adapters](#adapters)                                                                |
 
 ### format
 
@@ -222,6 +224,17 @@ data provider, action and deferred page is, and follows the router's navigations
 
 The router's [`extraCodec`](navigation.md#restoring-extra-on-the-web) has no key: `lib/app/extra_codec.dart` is
 found by its name, like the other files.
+
+### otel
+
+`otel` (since 0.19.0) is `true` or `false`: whether the generated `main()` starts `otel_zone` and installs `FespalierOtel`, so the app writes no OpenTelemetry code ([the generated wiring](observability.md#opentelemetry-from-the-generated-main)). It needs `telemetry: true`, `fespalier_otel` and `otel_zone` under `dependencies:`, and `main` not `manual`. `fsp` checks each one, and a pubspec that breaks one of these is refused with its message (every command that reads the config stops):
+
+- `` `fespalier.otel` starts OpenTelemetry for what `telemetry: true` reports, and `telemetry` is not `true`; set `telemetry: true` too ``
+- `` `fespalier.otel` makes the generated main() start otel_zone, and `main: manual` writes no main(); wire otel_zone in your own main() (docs/observability.md) and remove `otel: true`, or set `main: auto` ``
+- `` `fespalier.otel` needs `fespalier_otel` under `dependencies:` in pubspec.yaml (next to fespalier, at the same git ref): the generated main() imports it ``
+- `` `fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines): the generated main() imports it ``
+
+An app that does not set it keeps its own wiring, as [OpenTelemetry with otel_zone](observability.md#opentelemetry-with-otel_zone) shows.
 
 ## Per-folder settings: route.dart
 

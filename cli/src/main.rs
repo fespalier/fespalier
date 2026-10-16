@@ -24,6 +24,7 @@ mod maestro;
 mod manifest;
 mod menu;
 mod osc8;
+mod otel;
 mod parse_cache;
 mod platform_files;
 mod procs;
@@ -472,7 +473,11 @@ fn analyze_tree(
     manifest::check(&app, cfg, diags);
     forms::check_dependency(&app, cfg, diags);
     let code = emit::emit(&app, cfg, diags);
-    let main = entry::emit(tree, &app, cfg, &adapters::hooks(&cfg.adapters), diags);
+    // The adapters' hooks go after `otel: true`'s; its zone is applied innermost whatever they add
+    // (entry.rs), so the adapters' zones wrap it (since 0.19.0).
+    let mut hooks = otel::hooks(cfg);
+    hooks.extend(adapters::hooks(&cfg.adapters));
+    let main = entry::emit(tree, &app, cfg, &hooks, diags);
     (code, main, app)
 }
 

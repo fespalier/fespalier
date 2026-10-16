@@ -1473,6 +1473,13 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
             .unwrap_or_else(|e| panic!("{features:?}: {e:#}"));
         assert_eq!(outcome.routes, routes, "{features:?}");
         let app = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+        // `otel: true` writes its wiring into the generated main(), and no other feature does.
+        let main = fs::read_to_string(dir.path().join("lib/app.main.g.dart")).unwrap_or_default();
+        assert_eq!(
+            main.contains("static final OtelZone observability"),
+            plan.features.contains(&"otel"),
+            "{features:?}"
+        );
         let tabs = plan.features.contains(&"adaptive");
         assert_eq!(app.contains("TabsLayout"), tabs, "{features:?}");
         assert_eq!(app.contains("AppLayout"), !tabs, "{features:?}");
@@ -1488,11 +1495,12 @@ fn every_real_app_generates_and_gets_route_smoke_tests() {
 
 // --- otel and sentry ----------------------------------------------------------------------------
 
-/// docs/observability.md, "Wiring Sentry": next to each other the two sinks are installed in one
-/// `combine`, and the zone stays Sentry's (`otel_zone`'s `runGuarded` would send an uncaught async
-/// error to Talker only, so a second zone is not an option).
+/// docs/observability.md, "Wiring Sentry": Sentry's zone stays the only one (`otel_zone`'s
+/// `runGuarded` would send an uncaught async error to Talker only), and Sentry's sink is added
+/// beside the one the generated `main()` installed with `otel: true`, not installed over it (since
+/// 0.19.0).
 #[test]
-fn otel_and_sentry_share_one_sink_slot_and_sentrys_zone() {
+fn otel_and_sentry_keep_sentrys_zone_and_add_its_sink() {
     let pair = plan_of(RECIPES, &["sentry", "otel"]);
     assert_eq!(pair.features, ["otel", "sentry"], "the table's order");
     let startup = file(&pair, "lib/app/startup.dart");
@@ -1504,57 +1512,41 @@ fn otel_and_sentry_share_one_sink_slot_and_sentrys_zone() {
     );
     assert!(startup.contains("SentryFlutter.init("), "{startup}");
     assert!(!startup.contains("runGuarded"), "{startup}");
-    assert_eq!(startup.matches("FespalierTelemetry.install(").count(), 1);
+    // The OpenTelemetry wiring is the generated main()'s, not startup.dart's.
+    assert!(!startup.contains("observability"), "{startup}");
     assert!(
-        startup.contains("FespalierTelemetry.combine(["),
+        !startup.contains("FespalierTelemetry.install("),
         "{startup}"
     );
-    assert!(startup.contains("FespalierSentry(),"), "{startup}");
     assert!(
-        startup.contains("FespalierOtel(isReady: () => observability.isReady),"),
+        startup.contains("FespalierTelemetry.add(FespalierSentry());"),
         "{startup}"
     );
-    // The SDK starts with the process, inside Sentry's zone and before the app's body, and
-    // `startup()` (which a test of the app runs) only installs the sinks, with no await.
-    assert!(
-        startup.contains("appRunner: () => startObservability(body),"),
-        "{startup}"
-    );
+    assert!(startup.contains("appRunner: body,"), "{startup}");
     assert!(startup.contains("void startup() {"), "{startup}");
-    assert_eq!(
-        startup.matches("observability.start(").count(),
-        1,
-        "{startup}"
-    );
-    // The observers of both are there.
-    assert!(
-        startup.contains("?observability.routeObserver(),"),
-        "{startup}"
-    );
     assert!(
         startup.contains("FespalierSentry.navigatorObserver()"),
         "{startup}"
     );
-    // `telemetry: true` once, for the generated file to tell the sinks about every site.
+    // `telemetry: true` and `otel: true` are each written once.
     let pubspec = file(&pair, "pubspec.yaml");
     assert_eq!(pubspec.matches("telemetry: true").count(), 1, "{pubspec}");
+    assert_eq!(pubspec.matches("  otel: true\n").count(), 1, "{pubspec}");
     golden("feature-otel-sentry", &pair.describe("<staging>"));
 }
 
+/// `otel: true` alone writes no startup.dart at all (the generated `main()` has the wiring), and
+/// Sentry alone installs its sink, with no OpenTelemetry in it (since 0.19.0).
 #[test]
-fn otel_alone_guards_the_zone_off_the_web_and_sentry_alone_has_no_otel() {
+fn otel_alone_writes_no_startup_and_sentry_alone_installs() {
     let otel = plan_of(RECIPES, &["otel"]);
-    let startup = file(&otel, "lib/app/startup.dart");
-    // docs/observability.md, "OpenTelemetry with otel_zone": runGuarded never runs on the web.
     assert!(
-        startup.contains("kIsWeb ? run() : observability.runGuarded(run)"),
-        "{startup}"
+        otel.files.iter().all(|f| f.path != "lib/app/startup.dart"),
+        "the plan writes no startup.dart"
     );
-    assert!(!startup.contains("Sentry"), "{startup}");
-    assert!(
-        startup.contains("Future<void> run() => startObservability(body);"),
-        "{startup}"
-    );
+    let pubspec = file(&otel, "pubspec.yaml");
+    assert!(pubspec.contains("  telemetry: true\n"), "{pubspec}");
+    assert!(pubspec.contains("  otel: true\n"), "{pubspec}");
     let sentry = plan_of(RECIPES, &["sentry"]);
     let startup = file(&sentry, "lib/app/startup.dart");
     assert!(
@@ -1564,7 +1556,9 @@ fn otel_alone_guards_the_zone_off_the_web_and_sentry_alone_has_no_otel() {
     assert!(!startup.contains("observability"), "{startup}");
     assert!(!startup.contains("combine"), "{startup}");
     assert!(startup.contains("appRunner: body,"), "{startup}");
-    assert!(file(&sentry, "pubspec.yaml").contains("telemetry: true"));
+    let sentry_pubspec = file(&sentry, "pubspec.yaml");
+    assert!(sentry_pubspec.contains("telemetry: true"));
+    assert!(!sentry_pubspec.contains("otel: true"), "{sentry_pubspec}");
 }
 
 /// The third parties are pinned the way `cli/tests/versions.rs` needs: `otel_zone` by a commit (it

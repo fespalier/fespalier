@@ -29,9 +29,10 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.19.0
 
-0.19.0 breaks nothing: the generated `app.g.dart` is unchanged, and an app that does not name its screen changes nothing.
+0.19.0 breaks nothing: the generated `app.g.dart` is unchanged, and an app that does not name its screen or set `otel: true` changes nothing.
 
 - **Optional: native crash records can name the screen** ([The screen a native crash happened on](observability.md#the-screen-a-native-crash-happened-on)). Bump `otel_zone` to `7fbdf64092626a66837ce04caa35411ea4f7df70` (v0.7.0) in your pubspec, pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and run `fsp telemetry --stop`, then `fsp telemetry`, so the collector reads the new attribute and the Errors table has its panel. `app.g.dart` is unchanged. An app that does none of this keeps its crash records as they are.
+- **Optional: OpenTelemetry without wiring** ([OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main)). Add `otel: true` under `fespalier:`, next to `telemetry: true`, and delete the hand wiring: in `lib/main.dart`, `Future<void> main() => AppMain.run();`, and in `lib/app/startup.dart` the `OtelZone`, its `start()`, the `FespalierOtel` sink, the two observers and any `zone()` that runs `runGuarded`. `fsp gen` warns while the `OtelZone` or the `FespalierTelemetry.install` is still in startup.dart. A sink that `startup()` still installs with `FespalierTelemetry.install` must use `FespalierTelemetry.add`, or it replaces the OpenTelemetry sink. The generated `main()` needs `otel_zone` v0.7.0 or later, the pin above. An app with `main: manual` keeps its own `main()`, and `otel: true` is refused there. Only `lib/app.main.g.dart` changes; `app.g.dart` is the same bytes.
 
 ### 0.18.0
 

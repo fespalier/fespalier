@@ -5,6 +5,7 @@ import 'package:fespalier/testing.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/app.main.g.dart';
 
 // The SDK with an in-memory exporter: what a collector would receive, with no network.
 final InMemorySpanExporter exporter = InMemorySpanExporter();
@@ -43,4 +44,12 @@ void main() {
       'fespalier.page.enter',
     ]);
   });
+
+  test(
+    'the generated main() names the service after the app, and a test never starts it',
+    () {
+      expect(AppMain.observability.config.serviceName, '{{ package }}');
+      expect(AppMain.observability.isReady, isFalse);
+    },
+  );
 }

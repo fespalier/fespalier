@@ -343,21 +343,26 @@ struct Written {
 
 /// `FespalierTelemetry.install(...)` for the sinks of the chosen features: one sink as it is,
 /// several in one `combine`, formatted the way `dart format` leaves it (a line when it fits in 80
-/// columns, the arguments one per line when it does not).
-fn install_sinks(sinks: &[&str]) -> Option<String> {
+/// columns, the arguments one per line when it does not). With `add` it is `add(...)`, which keeps
+/// the sink the generated `main()` added with `otel: true` (since 0.19.0).
+fn install_sinks(sinks: &[&str], add: bool) -> Option<String> {
+    let call = if add {
+        "FespalierTelemetry.add"
+    } else {
+        "FespalierTelemetry.install"
+    };
     match sinks {
         [] => None,
         [sink] => {
-            let line = format!("FespalierTelemetry.install({sink});");
+            let line = format!("{call}({sink});");
             Some(if line.len() + 2 <= 80 {
                 line
             } else {
-                format!("FespalierTelemetry.install(\n  {sink},\n);")
+                format!("{call}(\n  {sink},\n);")
             })
         }
         many => {
-            let mut code =
-                String::from("FespalierTelemetry.install(\n  FespalierTelemetry.combine([\n");
+            let mut code = format!("{call}(\n  FespalierTelemetry.combine([\n");
             for sink in many {
                 let _ = writeln!(code, "    {sink},");
             }
@@ -401,9 +406,14 @@ pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> 
     let sinks: Vec<&str> = startups()
         .flat_map(|(_, s)| s.sinks.iter().copied())
         .collect();
+    // `otel: true` has the generated main() install its OpenTelemetry sink first, so a sink here
+    // is added beside it (since 0.19.0).
+    let add = features.iter().any(|r| r.config.contains(&"otel: true"));
     let mut steps: Vec<Written> = vec![];
-    if let Some(code) = install_sinks(&sinks) {
-        let comment = if sinks.len() > 1 {
+    if let Some(code) = install_sinks(&sinks, add) {
+        let comment = if add {
+            "Before the router exists, next to the OpenTelemetry sink of the generated main(): add, not install."
+        } else if sinks.len() > 1 {
             "One slot for every sink, before the router exists so the first navigation is reported."
         } else {
             "Before the router exists, so the first navigation is reported."

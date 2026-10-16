@@ -19,8 +19,6 @@ it ships.
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a
   `flutter_rust_bridge` dependency (the generated bindings own it) and a rebuild budget for a core that
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
-- **Instrumentation the app doesn't have to write.** With `telemetry: true` and an `app.dart`, the
-  generated `main()` installs `FespalierOtel` and its zone itself.
 - **Tell telemetry sinks the page at the commit of a navigation, not after its first frame.** A
   navigation ends in a post-frame callback (`RouterWatch._finishTelemetry`), after the new page's
   `initState` and first `build`, so `FespalierOtel(onScreen:)` names the page before it when a native

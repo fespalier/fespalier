@@ -43,6 +43,33 @@ pub struct MainHooks {
     /// `AppMain` asks `AppAdapters.launch()` once, before the router, and gives it to
     /// `AppRoutes.router(launch:)` (since 0.11.0).
     pub launch: bool,
+    /// A wrapper used only when startup.dart exports no `zone()` (since 0.19.0), innermost of
+    /// the wrappers: `otel_zone`'s guarded zone, which an app's own zone (Sentry's) replaces.
+    pub weak_wrapper: Option<String>,
+    /// `otel: true` (since 0.19.0): the `service.name` of `AppMain.observability`. The template
+    /// then declares it, starts it first in `_main()` and adds its `FespalierOtel` sink (`otel.rs`).
+    pub otel: Option<String>,
+}
+
+impl MainHooks {
+    /// Adds `other`'s hooks after these, so `other`'s wrappers are inside these (since 0.19.0).
+    /// The first `weak_wrapper` and `otel` wins.
+    pub fn extend(&mut self, other: MainHooks) {
+        self.wrappers.extend(other.wrappers);
+        self.before_run.extend(other.before_run);
+        self.provider_observers.extend(other.provider_observers);
+        self.overrides.extend(other.overrides);
+        self.router_observers.extend(other.router_observers);
+        self.root_wrappers.extend(other.root_wrappers);
+        self.attach |= other.attach;
+        self.launch |= other.launch;
+        if self.weak_wrapper.is_none() {
+            self.weak_wrapper = other.weak_wrapper;
+        }
+        if self.otel.is_none() {
+            self.otel = other.otel;
+        }
+    }
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
@@ -55,7 +82,9 @@ pub fn wanted(root: &Node, cfg: &Config) -> bool {
         MainMode::Generated => true,
         MainMode::Manual => false,
         MainMode::Auto => {
-            !cfg.adapters.is_empty() || ROOT_FILES.iter().any(|k| root.files.contains_key(k))
+            cfg.otel
+                || !cfg.adapters.is_empty()
+                || ROOT_FILES.iter().any(|k| root.files.contains_key(k))
         }
     }
 }
@@ -119,7 +148,11 @@ pub fn emit(
         && let Some(text) = src.get(f.extent.clone())
     {
         if !hooks.router_observers.is_empty() && !text.contains("routerObservers") {
-            let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
+            let msg = if cfg.adapters.is_empty() {
+                "app.dart's router() builds the router itself, so OpenTelemetry's route observer (`otel: true`) is not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"
+            } else {
+                "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"
+            };
             diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
         }
         if hooks.launch && !text.contains("launch") {
@@ -135,6 +168,20 @@ pub fn emit(
         (Some(m), Some(_)) => read_startup(root, m, own_router, diags),
         _ => StartupExports::default(),
     };
+    // `otel: true` has the generated main() start the SDK and install its sink: a startup.dart
+    // that does either again would run a second SDK, or replace the sink (since 0.19.0).
+    if hooks.otel.is_some()
+        && let Some(src) = root.files.get(&Kind::Startup)
+    {
+        if src.contains("OtelZone(") {
+            let msg = "`otel: true` makes the generated main() start otel_zone (`AppMain.observability`), and startup.dart builds an `OtelZone` of its own: remove that wiring (the OtelZone, its start(), the FespalierOtel sink and the two observers), or remove `otel: true`";
+            diags.warn(&root.rel(Kind::Startup), None, msg);
+        }
+        if src.contains("FespalierTelemetry.install(") {
+            let msg = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): call `FespalierTelemetry.add` there";
+            diags.warn(&root.rel(Kind::Startup), None, msg);
+        }
+    }
 
     // splash.dart: shown while an async startup() runs, and when it fails.
     let splash_file = module(Kind::Splash);
@@ -166,7 +213,15 @@ pub fn emit(
         Some(Zone::Or) => format!("Future<void>.sync(() => {sx}.zone(_main))"),
         None => "_main()".to_string(),
     };
-    let run = hooks.wrappers.iter().rev().fold(zone_call, |inner, wrap| {
+    // otel_zone's guarded zone (`otel: true`) is the innermost wrapper, and only when startup.dart
+    // has no zone(): an app's own zone (Sentry's) wins, as the docs say (since 0.19.0).
+    let otel_zone = startup.zone.is_none() && hooks.weak_wrapper.is_some();
+    let wrappers: Vec<&String> = hooks
+        .wrappers
+        .iter()
+        .chain(hooks.weak_wrapper.iter().filter(|_| otel_zone))
+        .collect();
+    let run = wrappers.iter().rev().fold(zone_call, |inner, wrap| {
         if inner == "_main()" {
             format!("{wrap}(_main)")
         } else {
@@ -225,11 +280,17 @@ pub fn emit(
         let parts: Vec<String> = hooks.overrides.iter().map(|o| format!("...{o}")).collect();
         format!("[{}]", parts.join(", "))
     });
-    let zone_note = match (hooks.wrappers.is_empty(), startup.zone.is_some()) {
-        (true, true) => "everything runs inside startup.dart's `zone()`: ",
-        (true, false) => "",
-        (false, true) => "everything runs inside the adapters' zones and startup.dart's `zone()`: ",
-        (false, false) => "everything runs inside the adapters' zones: ",
+    let zone_note = match (hooks.wrappers.is_empty(), startup.zone.is_some(), otel_zone) {
+        (true, true, _) => "everything runs inside startup.dart's `zone()`: ",
+        (true, false, false) => "",
+        (false, true, _) => {
+            "everything runs inside the adapters' zones and startup.dart's `zone()`: "
+        }
+        (false, false, false) => "everything runs inside the adapters' zones: ",
+        (true, false, true) => "everything runs inside otel_zone's guarded zone (not on the web): ",
+        (false, false, true) => {
+            "everything runs inside the adapters' zones and otel_zone's guarded zone (not on the web): "
+        }
     };
     let cx = FileCx {
         app_dir: &cfg.app_dir,
@@ -245,6 +306,8 @@ pub fn emit(
                 .iter()
                 .any(|r| r.page.is_some() && !r.observers.is_empty()),
         launch: hooks.launch,
+        otel: hooks.otel.as_deref(),
+        otel_zone,
         imports: &imports,
         zone_note,
         run,
@@ -291,6 +354,10 @@ struct FileCx<'a> {
     attach: bool,
     /// `AppMain.launch`: the adapters' answer, asked before the router is built.
     launch: bool,
+    /// `otel: true`: the service name of `AppMain.observability`, and the SDK's start and sink.
+    otel: Option<&'a str>,
+    /// `otel_zone`'s guarded zone wraps `_main` (`_otelZone`), off the web.
+    otel_zone: bool,
     imports: &'a [ImportCx],
     /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and
     /// the adapters', or nothing.

@@ -1137,15 +1137,6 @@ fn a_bad_adapters_list_says_what_it_wants() {
 }
 
 #[test]
-fn the_unknown_key_list_ends_with_adapters() {
-    let err = refused("fespalier:\n  nope: 1\n");
-    assert!(
-        err.contains("`main`, `tasks`, `adapters` at line 3 column 3"),
-        "{err}"
-    );
-}
-
-#[test]
 fn adapters_write_a_main_with_no_root_file() {
     let yaml = with_adapters("[fespalier_sentry]", "");
     let g = run_yaml(&yaml, &[("page.dart", HOME)]);
@@ -1508,4 +1499,259 @@ fn an_async_attach_is_an_error_and_a_nullable_container_is_fine() {
         ),
     ]);
     has(&main, &["ready: _i0.ready,"]);
+}
+
+// --- otel: true (since 0.19.0) ------------------------------------------------
+
+/// A pubspec with `otel: true` and both packages listed, plus `extra` lines under `fespalier:`.
+fn with_otel(extra: &str) -> String {
+    format!(
+        "dependencies:\n  fespalier_otel: ^1.0.0\n  otel_zone: ^1.0.0\nfespalier:\n  telemetry: true\n  otel: true\n{extra}"
+    )
+}
+
+#[test]
+fn otel_is_off_by_default_and_needs_telemetry() {
+    assert!(!Config::default().otel);
+    assert!(!cfg("").unwrap().otel);
+    assert!(!cfg("fespalier:\n  otel: false\n").unwrap().otel);
+    assert_eq!(
+        refused("fespalier:\n  otel: true\n"),
+        "`fespalier.otel` starts OpenTelemetry for what `telemetry: true` reports, and `telemetry` is not `true`; set `telemetry: true` too"
+    );
+    assert!(cfg(&with_otel("")).unwrap().otel);
+}
+
+#[test]
+fn otel_needs_both_packages_under_dependencies() {
+    assert_eq!(
+        refused(
+            "dependencies:\n  otel_zone: ^1.0.0\nfespalier:\n  telemetry: true\n  otel: true\n"
+        ),
+        "`fespalier.otel` needs `fespalier_otel` under `dependencies:` in pubspec.yaml (next to fespalier, at the same git ref): the generated main() imports it"
+    );
+    let no_zone = "`fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines): the generated main() imports it";
+    assert_eq!(
+        refused(
+            "dependencies:\n  fespalier_otel: ^1.0.0\nfespalier:\n  telemetry: true\n  otel: true\n"
+        ),
+        no_zone
+    );
+    // Under `dev_dependencies:` it is not a dependency of the app.
+    assert_eq!(
+        refused(
+            "dependencies:\n  fespalier_otel: ^1.0.0\ndev_dependencies:\n  otel_zone: ^1.0.0\nfespalier:\n  telemetry: true\n  otel: true\n"
+        ),
+        no_zone
+    );
+}
+
+#[test]
+fn otel_refuses_main_manual() {
+    assert_eq!(
+        refused(&with_otel("  main: manual\n")),
+        "`fespalier.otel` makes the generated main() start otel_zone, and `main: manual` writes no main(); wire otel_zone in your own main() (docs/observability.md) and remove `otel: true`, or set `main: auto`"
+    );
+    assert!(cfg(&with_otel("  main: generated\n")).is_ok());
+}
+
+#[test]
+fn the_unknown_key_list_ends_with_otel() {
+    let err = refused("fespalier:\n  nope: 1\n");
+    assert!(
+        err.contains("`tasks`, `adapters`, `otel` at line 3 column 3"),
+        "{err}"
+    );
+}
+
+#[test]
+fn otel_writes_a_main_with_no_root_file() {
+    let g = run_yaml(&with_otel(""), &[("page.dart", HOME)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.expect("otel: true wants a generated main()");
+    has(&main, &["static Future<void> run() => _otelZone(_main);"]);
+    // Without the key the same app writes no main at all.
+    assert!(run_gen(&[("page.dart", HOME)]).main.is_none());
+}
+
+#[test]
+fn otel_starts_the_sdk_first_and_adds_its_sink() {
+    let g = run_yaml(&with_otel(""), &[("page.dart", HOME)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.unwrap();
+    has(
+        &main,
+        &[
+            "import 'package:fespalier_otel/fespalier_otel.dart' show FespalierOtel;",
+            "import 'package:otel_zone/otel_zone.dart' show OtelZone, OtelZoneConfig;",
+            "  static final OtelZone observability = OtelZone(\n    OtelZoneConfig(serviceName: 'demo', endpoint: FespalierOtel.endpoint()),\n  );",
+            "    WidgetsFlutterBinding.ensureInitialized();\n    // `otel: true`: the SDK first (start() never throws), then its sink, before the router exists.\n    await observability.start(",
+            "      serviceVersion: FespalierOtel.serviceVersion(),\n      buildId: FespalierOtel.buildId(),\n      resourceAttributes: FespalierOtel.resourceAttributes,\n    );",
+            "    FespalierTelemetry.add(\n      FespalierOtel(\n        isReady: () => observability.isReady,\n        onScreen: observability.setCrashScreen,\n      ),\n    );\n    runApp(root());",
+        ],
+    );
+    // The start comes before the router is built, and the sink is added, never installed.
+    assert!(main.find("observability.start(").unwrap() < main.find("runApp(root());").unwrap());
+    has_not(&main, &["FespalierTelemetry.install"]);
+}
+
+#[test]
+fn otel_guards_its_zone_off_the_web() {
+    let g = run_yaml(&with_otel(""), &[("page.dart", HOME)]);
+    let main = g.main.unwrap();
+    has(
+        &main,
+        &[
+            "import 'package:flutter/foundation.dart' show kIsWeb;",
+            "static Future<void> run() => _otelZone(_main);",
+            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      kIsWeb ? body() : observability.runGuarded(body);",
+            "everything runs inside otel_zone's guarded zone (not on the web): the binding,",
+        ],
+    );
+}
+
+#[test]
+fn a_zone_in_startup_dart_replaces_otels() {
+    let g = run_yaml(
+        &with_otel(""),
+        &[
+            ("page.dart", HOME),
+            (
+                "startup.dart",
+                "Future<void> zone(Future<void> Function() body) => body();",
+            ),
+        ],
+    );
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.unwrap();
+    has(
+        &main,
+        &[
+            "static Future<void> run() => _i0.zone(_main);",
+            "    await observability.start(",
+        ],
+    );
+    has_not(&main, &["_otelZone", "runGuarded"]);
+}
+
+#[test]
+fn otel_observers_join_the_app_and_the_router() {
+    let main = run_yaml(&with_otel(""), &[("page.dart", HOME)])
+        .main
+        .unwrap();
+    has(
+        &main,
+        &[
+            "List<ProviderObserver> _providerObservers() => [...[if (AppMain.observability.riverpodObserver() case final o?) o]];",
+            "static List<NavigatorObserver> routerObservers() => [...[if (AppMain.observability.routeObserver() case final o?) o]];",
+            "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
+            "    observers: _providerObservers,",
+        ],
+    );
+    // startup.dart's observers come after OpenTelemetry's, in both lists.
+    let observers = "List<ProviderObserver> get providerObservers => [];\nList<NavigatorObserver> get routerObservers => [];";
+    let main = run_yaml(
+        &with_otel(""),
+        &[("page.dart", HOME), ("startup.dart", observers)],
+    )
+    .main
+    .unwrap();
+    has(
+        &main,
+        &[
+            "List<ProviderObserver> _providerObservers() => [...[if (AppMain.observability.riverpodObserver() case final o?) o], ..._i0.providerObservers];",
+            "static List<NavigatorObserver> routerObservers() => [...[if (AppMain.observability.routeObserver() case final o?) o], ..._i0.routerObservers];",
+        ],
+    );
+}
+
+#[test]
+fn otel_inside_the_adapters() {
+    let yaml = with_otel("  adapters: [fespalier_sentry]\n").replace(
+        "  otel_zone: ^1.0.0\n",
+        "  otel_zone: ^1.0.0\n  fespalier_sentry: ^1.0.0\n",
+    );
+    let g = run_yaml(&yaml, &[("page.dart", HOME)]);
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.unwrap();
+    has(
+        &main,
+        &["static Future<void> run() => AppAdapters.zone(() => _otelZone(_main));"],
+    );
+    // The SDK starts before the adapters' beforeRun, which may await the first.
+    let start = main.find("observability.start(").unwrap();
+    let before = main.find("AppAdapters.beforeRun()").unwrap();
+    assert!(start < before, "{main}");
+}
+
+#[test]
+fn otel_leaves_app_g_dart_and_other_mains_alone() {
+    let files = [
+        ("page.dart", HOME),
+        ("startup.dart", "Future<void> startup() async {}"),
+    ];
+    let plain = run_yaml("fespalier:\n  telemetry: true\n", &files);
+    let with = run_yaml(&with_otel(""), &files);
+    assert!(with.diags.is_empty(), "{:?}", with.diags);
+    assert_eq!(plain.app_g, with.app_g, "app.g.dart is the same with otel");
+    // Listing the packages without the key writes nothing of the SDK.
+    let listed = run_yaml(
+        "dependencies:\n  fespalier_otel: ^1.0.0\n  otel_zone: ^1.0.0\nfespalier:\n  telemetry: true\n",
+        &files,
+    );
+    let main = listed.main.unwrap();
+    has_not(
+        &main,
+        &["otel_zone", "observability", "FespalierTelemetry.add"],
+    );
+    assert_eq!(main, plain.main.unwrap());
+}
+
+#[test]
+fn otel_warns_about_hand_wiring() {
+    let hand = "Future<void> startup() async {\n  final sdk = OtelZone(OtelZoneConfig(serviceName: 'demo', endpoint: ''));\n  FespalierTelemetry.install(FespalierOtel(isReady: () => sdk.isReady));\n}\n";
+    let g = run_yaml(
+        &with_otel(""),
+        &[("page.dart", HOME), ("startup.dart", hand)],
+    );
+    let w1 = "`otel: true` makes the generated main() start otel_zone (`AppMain.observability`), and startup.dart builds an `OtelZone` of its own: remove that wiring (the OtelZone, its start(), the FespalierOtel sink and the two observers), or remove `otel: true`";
+    let w2 = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): call `FespalierTelemetry.add` there";
+    assert_eq!(g.diags.len(), 2, "{:?}", g.diags);
+    assert!(
+        g.diags[0].starts_with("! ") && g.diags[0].ends_with(w1),
+        "{:?}",
+        g.diags
+    );
+    assert!(
+        g.diags[1].starts_with("! ") && g.diags[1].ends_with(w2),
+        "{:?}",
+        g.diags
+    );
+    // It is a warning: the main is still written.
+    assert!(g.main.is_some());
+    // Without the key the same startup.dart is not a warning.
+    let plain = run_gen(&[("page.dart", HOME), ("startup.dart", hand)]);
+    assert!(plain.diags.is_empty(), "{:?}", plain.diags);
+}
+
+#[test]
+fn an_app_dart_router_is_told_to_pass_otels_observer() {
+    let own = format!("{APP}\nGoRouter router() => AppRoutes.router(restorationScopeId: 'r');");
+    let g = run_yaml(&with_otel(""), &[("page.dart", HOME), ("app.dart", &own)]);
+    assert_eq!(g.diags.len(), 1, "{:?}", g.diags);
+    assert!(
+        g.diags[0].starts_with("! app.dart:")
+            && g.diags[0].ends_with("app.dart's router() builds the router itself, so OpenTelemetry's route observer (`otel: true`) is not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"),
+        "{:?}",
+        g.diags
+    );
+    // A router() that passes them on has nothing to be told.
+    let passes = format!(
+        "import '../app.main.g.dart';\n{APP}\nGoRouter router() => AppRoutes.router(observers: AppMain.routerObservers());"
+    );
+    let g = run_yaml(
+        &with_otel(""),
+        &[("page.dart", HOME), ("app.dart", &passes)],
+    );
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
 }

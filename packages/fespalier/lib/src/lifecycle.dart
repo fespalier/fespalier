@@ -243,7 +243,13 @@ final class RouterWatch {
           ..kind = kind
           ..depth = now.depth;
         _nav = nav;
-        _tellCommit(nav, config);
+        // A throw in the walk, `pathTemplate` or the app's `base` costs the commit, not the
+        // frame callback below.
+        try {
+          _tellCommit(nav, config);
+        } catch (e) {
+          telemetryAttachError(e);
+        }
       }
       _schedule();
     }

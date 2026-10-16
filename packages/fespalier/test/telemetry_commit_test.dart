@@ -111,6 +111,30 @@ Future<GoRouter> boot(WidgetTester tester, {String initial = '/home'}) async {
   return r;
 }
 
+/// How many microtasks and timers [body] schedules in its own zone (each is passed on to the parent).
+({int microtasks, int timers}) countAsync(void Function() body) {
+  var microtasks = 0;
+  var timers = 0;
+  runZoned(
+    body,
+    zoneSpecification: ZoneSpecification(
+      scheduleMicrotask: (self, parent, zone, f) {
+        microtasks++;
+        parent.scheduleMicrotask(zone, f);
+      },
+      createTimer: (self, parent, zone, d, f) {
+        timers++;
+        return parent.createTimer(zone, d, f);
+      },
+      createPeriodicTimer: (self, parent, zone, d, f) {
+        timers++;
+        return parent.createPeriodicTimer(zone, d, f);
+      },
+    ),
+  );
+  return (microtasks: microtasks, timers: timers);
+}
+
 /// For every `#n end navigate ok|not_found [route=P]` line of [log], the last `#n commit` line of
 /// that navigation says the same outcome and route: a committed navigation ends on its last commit.
 void expectCommitsMatchEnds(List<String> log) {
@@ -333,6 +357,34 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets(
+      'attached late, a throwing base loses the commit, not the frame callback',
+      (tester) async {
+        final r = buildRouter();
+        await pumpRouter(tester, r);
+        rec.log.clear();
+        var calls = 0;
+        // The binding checks, before any tearDown runs, that debugPrint is back as it was.
+        final saved = debugPrint;
+        debugPrint = (message, {wrapWidth}) {};
+        try {
+          telemetryAttach(
+            r,
+            base: () {
+              if (calls++ == 0) throw StateError('base');
+              return '/';
+            },
+          );
+        } finally {
+          debugPrint = saved;
+        }
+        expect(rec.log, ['#1 start navigate (commit)']);
+        tester.binding.scheduleFrame();
+        await tester.pump();
+        expect(rec.log.last, startsWith('#1 end navigate ok route=/home'));
+      },
+    );
+
     testWidgets('a router telemetry does not follow tells no commit', (
       tester,
     ) async {
@@ -359,23 +411,54 @@ void main() {
       );
     });
 
-    test('a commit through a combine schedules no microtask and no timer', () {
-      fakeAsync((async) {
+    testWidgets(
+      'a router commit adds no microtask and no timer to a go, through a combine',
+      (tester) async {
+        // The unfollowed router is the baseline: its `go` is what a `go` costs with no telemetry
+        // in the way. A commit the sink hears must not add to it, so `_tellCommit` and the
+        // dispatcher around it stay synchronous (no microtask, no timer, not even an empty one).
+        final plain = buildRouter();
+        observeAttach(plain, (_) => const []);
+        await pumpRouter(tester, plain);
+        final baseline = countAsync(() => plain.go('/items/7'));
+        await tester.pumpAndSettle();
+
         final a = RecordingTelemetry(recordCommits: true);
         final b = RecordingTelemetry(recordCommits: true);
         FespalierTelemetry.install(FespalierTelemetry.combine([a, b]));
-        final nav = FespalierTelemetry.begin(
-          const TelemetryStart(TelemetryOp.navigate),
-        );
-        FespalierTelemetry.current!.commit(
-          nav,
-          const TelemetryCommit(TelemetryOutcome.ok, route: '/a'),
-        );
-        expect(a.log.last, '#1 commit ok route=/a');
-        expect(b.log.last, '#1 commit ok route=/a');
-        expect(async.microtaskCount, 0);
-        expect(async.pendingTimers, isEmpty);
-      });
-    });
+        final r = await boot(tester);
+        a.log.clear();
+        b.log.clear();
+        final followed = countAsync(() => r.go('/items/7'));
+        expect(a.log, contains('#2 commit ok route=/items/:id'));
+        expect(b.log, contains('#2 commit ok route=/items/:id'));
+        expect(followed.microtasks, baseline.microtasks);
+        expect(followed.timers, baseline.timers);
+        await tester.pumpAndSettle();
+        expectCommitsMatchEnds(a.log);
+      },
+    );
+
+    test(
+      'combine forwards a commit to every child with no microtask or timer',
+      () {
+        fakeAsync((async) {
+          final a = RecordingTelemetry(recordCommits: true);
+          final b = RecordingTelemetry(recordCommits: true);
+          FespalierTelemetry.install(FespalierTelemetry.combine([a, b]));
+          final nav = FespalierTelemetry.begin(
+            const TelemetryStart(TelemetryOp.navigate),
+          );
+          FespalierTelemetry.current!.commit(
+            nav,
+            const TelemetryCommit(TelemetryOutcome.ok, route: '/a'),
+          );
+          expect(a.log.last, '#1 commit ok route=/a');
+          expect(b.log.last, '#1 commit ok route=/a');
+          expect(async.microtaskCount, 0);
+          expect(async.pendingTimers, isEmpty);
+        });
+      },
+    );
   });
 }

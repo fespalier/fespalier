@@ -150,8 +150,8 @@ abstract class FespalierTelemetry {
   /// commits while the `Router` widget is being built: like every call into a sink, it returns at
   /// once and never navigates, calls `setState` or changes a provider. A superseded navigation
   /// never commits. One that commits again before its first frame (a guard that changed its
-  /// answer) is told again, and [end] reports the last [TelemetryCommit.route]. The default ignores
-  /// it.
+  /// answer) is told again, and, while the same sink stays installed, [end] reports the last
+  /// [TelemetryCommit.route]. The default ignores it.
   void commit(Object? navigation, TelemetryCommit commit) {}
 
   /// Runs [body] inside the operation [token] came from (since 0.9.0). fespalier calls it around a
@@ -608,8 +608,8 @@ final class TelemetryEnd {
   final String? location;
 
   /// navigate: the pattern of the page that is on screen (null when not found). For a committed
-  /// navigation it is the [TelemetryCommit.route] of its last [FespalierTelemetry.commit] (since
-  /// 0.19.0).
+  /// navigation, while the same sink stays installed, it is the [TelemetryCommit.route] of its last
+  /// [FespalierTelemetry.commit] (since 0.19.0).
   final String? route;
 
   /// navigate: the pattern of the page that was on top before (null at the start).

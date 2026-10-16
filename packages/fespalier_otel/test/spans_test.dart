@@ -390,20 +390,58 @@ void main() {
     });
 
     testWidgets('a throwing onScreen costs nothing', (tester) async {
-      FespalierTelemetry.install(
-        FespalierOtel(onScreen: (_) => throw StateError('x')),
-      );
-      final r = router();
-      await pumpRouter(tester, r);
-      exporter.clear();
-      r.go('/items/7');
-      await tester.pumpAndSettle();
+      // Core prints the first error a sink lets out, once, and then keeps every later diagnostic
+      // quiet: an `onScreen` that throws must stay inside `FespalierOtel.commit`.
+      final printed = <String?>[];
+      final saved = debugPrint;
+      debugPrint = (message, {wrapWidth}) => printed.add(message);
+      try {
+        FespalierTelemetry.install(
+          FespalierOtel(onScreen: (_) => throw StateError('x')),
+        );
+        final r = router();
+        await pumpRouter(tester, r);
+        exporter.clear();
+        r.go('/items/7');
+        await tester.pumpAndSettle();
+      } finally {
+        debugPrint = saved;
+      }
       expect(
         only('navigate /items/:id').attributes.getString('fespalier.route'),
         '/items/:id',
       );
       expect(tester.takeException(), isNull);
+      expect(printed, isEmpty);
     });
+
+    test(
+      'a commit told for another operation than a navigation is not heard',
+      () {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        const commit = TelemetryCommit(TelemetryOutcome.ok, route: '/x');
+        final data = FespalierTelemetry.begin(
+          const TelemetryStart(TelemetryOp.data, site: dataSite),
+        );
+        FespalierTelemetry.current!.commit(data, commit);
+        FespalierTelemetry.finish(
+          data,
+          const TelemetryEnd(TelemetryOutcome.ok),
+        );
+        expect(screens, isEmpty);
+        // The same call for a navigation's token is heard: the check above is the operation's.
+        final navigation = FespalierTelemetry.begin(
+          TelemetryStart(TelemetryOp.navigate, uri: Uri.parse('/x')),
+        );
+        FespalierTelemetry.current!.commit(navigation, commit);
+        FespalierTelemetry.finish(
+          navigation,
+          const TelemetryEnd(TelemetryOutcome.ok, route: '/x'),
+        );
+        expect(screens, ['/x']);
+      },
+    );
 
     testWidgets('without the SDK it is not called', (tester) async {
       final screens = <String?>[];

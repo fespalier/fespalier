@@ -29,7 +29,7 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.19.0
 
-0.19.0 breaks nothing: the generated `app.g.dart` is unchanged, and an app that does not name its screen changes nothing. A telemetry sink that implements `FespalierTelemetry` instead of extending it adds one method (below).
+0.19.0 breaks nothing for an app whose telemetry sinks extend `FespalierTelemetry` (every sink fespalier ships does): the generated `app.g.dart` is unchanged, and an app that does not name its screen changes nothing. A telemetry sink that implements `FespalierTelemetry` instead of extending it adds one method (below).
 
 - **Optional: native crash records can name the screen** ([The screen a native crash happened on](observability.md#the-screen-a-native-crash-happened-on)). Bump `otel_zone` to `7fbdf64092626a66837ce04caa35411ea4f7df70` (v0.7.0) in your pubspec, pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and run `fsp telemetry --stop`, then `fsp telemetry`, so the collector reads the new attribute and the Errors table has its panel. `app.g.dart` is unchanged. An app that does none of this keeps its crash records as they are.
 

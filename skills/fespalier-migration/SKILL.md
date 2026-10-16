@@ -673,6 +673,15 @@ in an `app.dart` `router()` under `main: auto`, the old URLs redirected to the t
 `ready()` and `attach()` in `startup.dart`, the pre-adoption version kept compiled in `lib/before/`,
 and `test/parity_test.dart`, which opens the same URLs in both. Read it next to the guide.
 
+## Coming from RIBs
+
+A team that knows Uber's RIBs maps each part onto a file kind or a provider, never onto classes of the same names:
+a router's attach decision is a `guard.dart`, an interactor is `data.dart`, `action.dart` and `observe.dart`, the
+builder and component are the generated `lib/app.g.dart` and Riverpod providers, a viewless RIB is a `(group)`
+folder, and a workflow is a URL with guards in front. The difference that matters: the location, not business logic,
+decides what is on screen. The table, the tutorial app as folders and the traps are in
+[`references/from-ribs.md`](references/from-ribs.md); the user documentation is `docs/coming-from-ribs.md`.
+
 ## Also
 
 - `fsp init` in an existing project **never overwrites** a file: it prints `skip  ... (exists)`.

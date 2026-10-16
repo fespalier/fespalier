@@ -704,7 +704,16 @@
         "docs/migration.md#0.7.0",
         "docs/migration.md#0.5.0",
         "docs/examples.md#adopt",
-        "examples/adopt"
+        "examples/adopt",
+        "README.md#Coming from RIBs",
+        "docs/coming-from-ribs.md",
+        "docs/coming-from-ribs.md#The short version",
+        "docs/coming-from-ribs.md#Part by part",
+        "docs/coming-from-ribs.md#Signed in or out: the tutorial, as folders",
+        "docs/coming-from-ribs.md#Deep links instead of workflows",
+        "docs/coming-from-ribs.md#State that outlives a page",
+        "docs/coming-from-ribs.md#Where the two differ",
+        "docs/coming-from-ribs.md#Moving a feature over"
       ]
     },
     "fespalier-observability": {

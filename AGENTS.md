@@ -232,7 +232,7 @@ test dev_tui_tests::`). While the full-screen view is up **nothing may print to 
   caller's error zone (a sink's own error handler is refused and printed once), and returns the very object,
   so a sync `data()` stays sync. Only an app made with `telemetry: true` calls `traceDataCall(..., () =>
 data(...))`; the others keep `traceData`. A `fespalier_otel` convention is contract version 1: add a
-  key, never rename one.
+  key, never rename one. Since 0.19.0 a sink also hears `commit(navigation, TelemetryCommit)` from `RouterWatch._committedForTelemetry` (and from a late `enableTelemetry`), synchronously in the delegate's notification and before the page is built (the first one while the `Router` builds). While the same sink stays installed, a committed navigation's `TelemetryEnd.route` is its last commit's `route`, because both come from `_routeOf` (a sink uninstalled between two commits of one navigation is not told the second); `FespalierOtel(onScreen:)` is told there, never at `end`.
 - **Adapters and page names (since 0.9.0).** `fespalier: adapters:` imports
   `package:<name>/fespalier_adapter.dart` (a top-level `adapter`, a `FespalierAdapter`) for each entry and
   calls its members from the generated `main()`; the output depends on the pubspec alone, never on

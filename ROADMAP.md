@@ -19,11 +19,6 @@ it ships.
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a
   `flutter_rust_bridge` dependency (the generated bindings own it) and a rebuild budget for a core that
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
-- **Tell telemetry sinks the page at the commit of a navigation, not after its first frame.** A
-  navigation ends in a post-frame callback (`RouterWatch._finishTelemetry`), after the new page's
-  `initState` and first `build`, so `FespalierOtel(onScreen:)` names the page before it when a native
-  crash or ANR hits that first frame. `RouterWatch._committedForTelemetry` already runs at the commit.
-  It touches the core telemetry interface, so the new call must be additive (contract version 1).
 - **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
   changes, because the generated router is built once, so a hot reload would keep the old route
   table. In debug the router could rebuild itself on `reassemble` (go_router's

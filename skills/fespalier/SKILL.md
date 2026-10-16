@@ -201,6 +201,7 @@ and the reserved names.
 | An `fsp` error, a stale `app.g.dart`, a route that does not show                                                                                                                                                | `fespalier-troubleshooting`                     |
 | Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                                                                                                                                 | `fespalier-troubleshooting` (its DevTools page) |
 | Upgrading from any release since 0.2 (the notes run 0.2 to 0.3 up to 0.12 to 0.13), or adopting fespalier in a go_router app                                                                                    | `fespalier-migration`                           |
+| Coming from Uber's RIBs: what a router, an interactor, a builder, a viewless RIB or a workflow becomes                                                                                                          | `fespalier-migration`                           |
 
 ## Where the truth is
 

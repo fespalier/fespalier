@@ -187,6 +187,7 @@ String currentLocation(WidgetTester tester) {
 /// #n start image CDN w=WIDTH [preload]
 /// #n end OP OUTCOME [async] [-> LOCATION] [status=N] [source=S] [rolled_back=B] [invalid] [error=TEXT]
 /// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
+/// #n commit OUTCOME [route=P]
 /// #n page enter|focus|leave PATTERN
 /// #n within enter|exit
 /// ```
@@ -210,12 +211,21 @@ String currentLocation(WidgetTester tester) {
 /// around what runs inside a `data()` or an action ([FespalierTelemetry.within]), so a test can
 /// see that a call ran within its operation: add a line to [log] from the code under test, and
 /// the order says it. It is off by default, so a log written before 0.9.0 reads the same.
+///
+/// With [recordCommits] (since 0.19.0) the recorder writes `#n commit ok route=P` (or
+/// `#n commit not_found`) when a navigation commits, before its `page` lines and its end: the
+/// page the router puts on screen, before that page is built. The end's `route` is the last
+/// commit's. It is off by default, so a log written before 0.19.0 reads the same.
 final class RecordingTelemetry extends FespalierTelemetry {
-  /// Creates a recorder with an empty [log]. [recordWithin] adds the `within` lines.
-  RecordingTelemetry({this.recordWithin = false});
+  /// Creates a recorder with an empty [log]. [recordWithin] adds the `within` lines and
+  /// [recordCommits] the `commit` lines.
+  RecordingTelemetry({this.recordWithin = false, this.recordCommits = false});
 
   /// Whether `within enter` and `within exit` lines are written (since 0.9.0).
   final bool recordWithin;
+
+  /// Whether `commit` lines are written, one for each commit of a navigation (since 0.19.0).
+  final bool recordCommits;
 
   /// What happened, in order.
   final List<String> log = [];
@@ -282,6 +292,16 @@ final class RecordingTelemetry extends FespalierTelemetry {
   @override
   void page(Object? navigation, TelemetryPage page) {
     log.add('#$navigation page ${page.kind.name} ${page.route}');
+  }
+
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    if (!recordCommits) return;
+    final route = commit.route;
+    log.add(
+      '#$navigation commit ${commit.outcome}'
+      '${route == null ? '' : ' route=$route'}',
+    );
   }
 
   @override

@@ -103,8 +103,8 @@ Future<void> guarded(Future<void> Function() body) =>
   It is off because segment and query values are app data.
 - `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.19.0, with `otel_zone` v0.7.0 or later) tells
   `otel_zone` the route **pattern** of each committed navigation, `null` after a navigation that matched no route
-  and nothing after a superseded one, only while the SDK is up. It is told once the new page's first frame is built,
-  so a crash during that frame names the page before it. A native crash record then carries
+  and nothing after a superseded one, only while the SDK is up. It is told when the navigation commits, before the
+  new page's `initState` and first `build`, so a crash while that page opens names that page. A native crash record then carries
   `otel_zone.crashed.screen`, and the Errors dashboard counts crashes by it. Never a location, a segment or a query
   value. The platform limits (64 bytes, the Android summary, iOS hangs without one) are in
   [`docs/observability.md`](../../../docs/observability.md#the-screen-a-native-crash-happened-on).
@@ -144,7 +144,7 @@ a sink (a package's setup and the app's `startup()`) so neither replaces the oth
 everything and `install(null)` removes everything.
 
 - **Each sink has its own tokens.** What a sink returned from `start` is what it, and only it, gets back at
-  `end`, `page` and `within`, and as the `TelemetryStart.parent` of what runs under one of its
+  `end`, `page`, `commit` (since 0.19.0) and `within`, and as the `TelemetryStart.parent` of what runs under one of its
   navigations. One sink's spans therefore cannot become another sink's parents, and `FespalierOtel` behind
   a `combine` still parents its guard, data and deferred spans under its own navigation span.
 - **Each sink is isolated.** One that throws costs only its own report: the others and the app go on, and
@@ -160,6 +160,14 @@ token)` to say which trace an operation is in (`FespalierOtel` does: the trace a
   ([sentry.md](sentry.md)). The order of the list does not matter; a sink that throws from either is
   isolated like from any call. A sink of your own that has a member named `traceOf` or `linkTrace` with
   another signature must rename it.
+- **Commits** (since 0.19.0). `commit(navigation, TelemetryCommit commit)` tells a sink, with its own token, that a
+  navigation committed: `outcome` is `ok` or `not_found`, and `route` is the pattern of the page it puts on screen
+  (null when not found). It is synchronous, from the router's notification, before the new page's `initState` and
+  first `build`, so before that navigation's `page` events and `end`; the first one comes while the `Router` is
+  built, so never navigate, call `setState` or change a provider in it. A superseded navigation never commits, and
+  one that commits twice before its first frame is told twice, with `end` naming the last `route` while the same sink stays installed. The default does
+  nothing. A sink that `implements FespalierTelemetry` (rather than extending it) adds the method, and renames a
+  member already named `commit` with another signature.
 
 ## `within`: the data and action span is current (since 0.9.0)
 
@@ -268,6 +276,10 @@ operation. An `image` operation (since 0.9.0, `fespalier_image`) is `#4 start im
 Image spans follow the installed sink and need no `telemetry: true`, like `auth` spans.
 A `custom` operation (since 0.11.0) is `#6 start custom fespalier.push.open fespalier.push.kind=alert`, then
 `#6 end custom ok fespalier.push.fresh=true`: the attributes sorted by key.
+Since 0.19.0 `RecordingTelemetry(recordCommits: true)` also writes `#n commit ok route=/orders/:id` (or
+`#n commit not_found`) when a navigation commits, before its `page` lines and its end. It is off by default, so a log
+written before 0.19.0 reads the same.
+
 Two sinks next to each other, and a sink of your own that makes its operation current:
 
 ```dart

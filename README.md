@@ -55,24 +55,6 @@ side is in [Navigation](docs/navigation.md#typed-navigation-at-a-glance).
 - An error points at the parameter at fault, and `app.g.dart` is left untouched while there is one.
 - Commit `lib/app.g.dart`, or generate it in CI: [Keeping app.g.dart](docs/getting-started.md#keeping-appgdart).
 
-## Coming from RIBs
-
-If your team knows Uber's [RIBs](https://github.com/uber/RIBs), most of a RIB has a counterpart here, usually a file
-instead of a class:
-
-| RIBs                             | fespalier                                                                             |
-| -------------------------------- | ------------------------------------------------------------------------------------- |
-| Router (attach, detach children) | `guard.dart` and `redirect.dart`, which run again when the state they watch changes   |
-| Interactor                       | `data.dart` (loads), `action.dart` (writes) and `observe.dart` (`onEnter`, `onLeave`) |
-| Builder and Component            | the generated `lib/app.g.dart`, and Riverpod providers                                |
-| View                             | `page.dart`, a plain widget                                                           |
-| Viewless RIB                     | a `(group)` folder that holds a guard, a layout or section data                       |
-| Workflow (a deep link)           | a URL: one navigation builds the whole stack, and guards gate it                      |
-
-The difference is what drives the tree. In RIBs it is business logic; here it is the location, and state reaches it
-through guards. [Coming from RIBs](docs/coming-from-ribs.md) has the full mapping, the RIBs tutorial's signed-in and
-signed-out app as folders, and how to move a feature over.
-
 ## Getting started
 
 You need Flutter 3.35 or newer (Dart 3.9) for the package (since 0.16.0; 0.15 and earlier took
@@ -159,6 +141,24 @@ Next: [Installation and setup](docs/getting-started.md) (CI, committing `app.g.d
 [Configuration](docs/configuration.md), and [Migration](docs/migration.md) if you already have a `GoRouter`.
 
 ![fsp dev: a header with the app, the device and the DevTools link; a tab per process; the flutter log; a status line with the route count, the last generation and the last hot restart; the keys.](docs/images/fsp-dev.svg)
+
+## Coming from RIBs
+
+If your team knows Uber's [RIBs](https://github.com/uber/RIBs), most of a RIB has a counterpart here, usually a file
+instead of a class:
+
+| RIBs                             | fespalier                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| Router (attach, detach children) | `guard.dart`, which runs again when the state it watches changes                      |
+| Interactor                       | `data.dart` (loads), `action.dart` (writes) and `observe.dart` (`onEnter`, `onLeave`) |
+| Builder and Component            | the generated `lib/app.g.dart`, and Riverpod providers                                |
+| View                             | `page.dart`, a plain widget                                                           |
+| Viewless RIB                     | a `(group)` folder that holds a guard, a layout or section data                       |
+| Workflow (a deep link)           | a URL: one navigation builds the whole stack, and guards gate it                      |
+
+The difference is what drives the tree. In RIBs it is business logic; here it is the location, and state reaches it
+through guards. [Coming from RIBs](docs/coming-from-ribs.md) has the full mapping, the RIBs tutorial's signed-in and
+signed-out app as folders, and how to move a feature over.
 
 ## Packages
 

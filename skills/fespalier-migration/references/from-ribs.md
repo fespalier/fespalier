@@ -11,25 +11,25 @@ the **location** decides what is on screen, and state reaches the tree through g
 
 ## The mapping
 
-| A RIBs part or habit                                            | Write in fespalier                                                                                                                                              |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A RIB with a view                                               | A folder with a `page.dart` at the URL the screen should have                                                                                                   |
-| A viewless RIB (`LoggedIn` in the tutorial)                     | A `(group)` folder (no URL segment) with a `guard.dart`, a `layout.dart` or a section `data.dart`                                                               |
-| Router: attach one child or another from the interactor's state | `guard.dart`: `ref.watch` the state, return the other location or `null`; it runs again when the watched state changes                                          |
-| Interactor: loading                                             | `data.dart`                                                                                                                                                     |
-| Interactor: writes                                              | `action.dart` (`XRoute.submit`, with pending and error state)                                                                                                   |
-| Interactor: `didBecomeActive` / `willResignActive` side effects | `observe.dart` `onEnter` / `onLeave` (and `onFocus`)                                                                                                            |
-| Builder                                                         | Nothing: `fsp` reads the constructors and writes `lib/app.g.dart`                                                                                               |
-| Component (dependencies)                                        | Riverpod providers; app overrides from `startup()`; test overrides                                                                                              |
-| Presenter                                                       | Usually nothing: the page takes typed data; reshape in `data.dart` or a provider                                                                                |
-| Parent to child: `build()` argument or Rx stream                | Segments and query parameters (typed constructor parameters), section data, providers                                                                           |
-| Child to parent: a listener                                     | An action, a provider the parent watches, or a typed navigation                                                                                                 |
-| Workflow / ActionableItem (a deep link in steps)                | The location of the last screen; guards gate it; `from` plus `returnTo(from)` after sign-in; `fespalier_push` and `fespalier_launch` for taps                   |
-| A scope that outlives one screen (a trip in progress)           | Section data (`data.dart` beside a `layout.dart` in a folder with no `page.dart`), or a keep-alive provider for state with no folder                            |
-| State per screen instance                                       | `fespalier_riverpod` (`pageProvider`, `pageNotifierProvider`, since 0.13.0)                                                                                     |
-| A multi-step flow on one screen (one RIB per step)              | A `Notifier` in that page; separate routes only if each step should have a URL                                                                                  |
-| Interactor unit tests                                           | A `ProviderContainer` with overrides (`container.read(XRoute.action(1).notifier).call(input)`), `pumpRouter` for widget tests, `fsp test` for route smoke tests |
-| Xcode templates, the IntelliJ RIB plugin                        | `fsp new '<path>' --data --action --guard …`                                                                                                                    |
+| A RIBs part or habit                                            | Write in fespalier                                                                                                                                                                                                                       |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A RIB with a view                                               | A folder with a `page.dart` at the URL the screen should have                                                                                                                                                                            |
+| A viewless RIB (`LoggedIn` in the tutorial)                     | A `(group)` folder (no URL segment) with a `guard.dart` or a `layout.dart`, and a section `data.dart` when it has no `page.dart`                                                                                                         |
+| Router: attach one child or another from the interactor's state | `guard.dart`: `ref.watch` the state, return the other location or `null`; it runs again when the watched state changes                                                                                                                   |
+| Interactor: loading                                             | `data.dart`                                                                                                                                                                                                                              |
+| Interactor: writes                                              | `action.dart` (`XRoute.submit`, with pending and error state)                                                                                                                                                                            |
+| Interactor: `didBecomeActive` / `willResignActive` side effects | `observe.dart` `onEnter` / `onLeave` (and `onFocus`) for a RIB with a view; a hook runs per page and a layout or section has none, so a viewless RIB's setup goes in its section `data.dart` or a provider (teardown in `ref.onDispose`) |
+| Builder                                                         | Nothing: `fsp` reads the constructors and writes `lib/app.g.dart`                                                                                                                                                                        |
+| Component (dependencies)                                        | Riverpod providers; app overrides from `startup()`; test overrides                                                                                                                                                                       |
+| Presenter                                                       | Usually nothing: the page takes typed data; reshape in `data.dart` or a provider                                                                                                                                                         |
+| Parent to child: `build()` argument or Rx stream                | Segments and query parameters (typed constructor parameters), section data, providers                                                                                                                                                    |
+| Child to parent: a listener                                     | An action, a provider the parent watches, or a typed navigation                                                                                                                                                                          |
+| Workflow / ActionableItem (a deep link in steps)                | The location of the last screen; guards gate it; `from` plus `returnTo(from)` after sign-in; `fespalier_push` and `fespalier_launch` for taps                                                                                            |
+| A scope that outlives one screen (a trip in progress)           | Section data (`data.dart` beside a `layout.dart` in a folder with no `page.dart`), or a keep-alive provider for state with no folder                                                                                                     |
+| State per screen instance                                       | `fespalier_riverpod` (`pageProvider`, `pageNotifierProvider`, since 0.13.0)                                                                                                                                                              |
+| A multi-step flow on one screen (one RIB per step)              | A `Notifier` in that page; separate routes only if each step should have a URL                                                                                                                                                           |
+| Interactor unit tests                                           | A `ProviderContainer` with overrides (`container.read(XRoute.action(1).notifier).call(input)`), `pumpRouter` for widget tests, `fsp test` for route smoke tests                                                                          |
+| Xcode templates, the IntelliJ RIB plugin                        | `fsp new '<path>' --data --action --guard …`                                                                                                                                                                                             |
 
 ## The tutorial app, as folders
 
@@ -39,10 +39,11 @@ between `OffGame` and `TicTacToe`. In fespalier:
 ```text
 lib/app/
   login/page.dart            LoggedOut (takes `String? from`)
-  (signed-in)/               LoggedIn: a group, nothing added to the URLs
+  (signed-in)/               LoggedIn: a group with no page.dart, nothing added to the URLs
     guard.dart               ref.watch(session) ? null : LoginRoute(from: uri.toString()).location
     layout.dart              what the signed-in screens share
-    page.dart                → /       OffGame
+    data.dart                optional section data: what LoggedIn held (players, scores), loaded once
+    (lobby)/page.dart        → /       OffGame
     game/page.dart           → /game   TicTacToe
 ```
 
@@ -52,7 +53,7 @@ guards, `returnTo` and the session are in [`fespalier-guards`](../../fespalier-g
 
 ## Traps for someone used to RIBs
 
-- **A state with no URL is not a folder.** Don't invent routes for scopes the user cannot link to; use section data
+- **A state with no URL is not a route.** Don't invent routes for scopes the user cannot link to; use section data
   or a provider. Do give a URL to every screen a user can reach with back, a link or a reload.
 - **Don't navigate from a provider or an `observe.dart` hook to switch scopes.** Switching scopes on a state change
   is a guard's job: it watches the state, and the router redirects.

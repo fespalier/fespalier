@@ -126,7 +126,7 @@ abstract final class AppMain {
   static Widget app(GoRouter router) => {{ app_body }};
 {% if router_observers %}
 
-  /// The router's observers: the adapters', then startup.dart's `routerObservers` (since 0.9.0).
+  /// The router's observers: {% if otel %}OpenTelemetry's (`otel: true`, since 0.19.0), then {% endif %}the adapters', then startup.dart's `routerObservers` (since 0.9.0).
   /// An app.dart `router()` passes them to `AppRoutes.router(observers: ...)`.
   static List<NavigatorObserver> routerObservers() => {{ router_observers }};
 {% endif %}

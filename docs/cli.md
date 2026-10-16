@@ -113,7 +113,7 @@ If a step before the move fails, the app is not made. If a later one fails, the 
 
 The pages of `forms`, `flags`, `i18n`, `image`, `auth`, `http` and `download` have a `Scaffold` of their own, so they look the same under the base layout and the tabs; open them by their URL (`/contact`, `/labs`, `/translations`, `/photo`, `/account`, `/headlines`, `/downloads`).
 
-`otel` and `sentry` together are the wiring of [Wiring Sentry](observability.md#wiring-sentry): **one** `zone()`, Sentry's, and `startup()` adds Sentry's sink with `FespalierTelemetry.add`, next to the OpenTelemetry sink that the generated `main()` installs (since 0.19.0; `install` would replace it). `otel_zone`'s `runGuarded` is not used then: it would send an uncaught async error to Talker only, and Sentry would never see it.
+`otel` and `sentry` together are the wiring of [Wiring Sentry](observability.md#wiring-sentry): **one** `zone()`, Sentry's, and `startup()` adds Sentry's sink with `FespalierTelemetry.add`, once (a top-level `final _sentry` and `if (!FespalierTelemetry.contains(_sentry)) ...`, because Retry runs `startup()` again and `add` appends a sink each time), next to the OpenTelemetry sink that the generated `main()` installs (since 0.19.0; `install` would replace it). `otel_zone`'s `runGuarded` is not used then: it would send an uncaught async error to Talker only, and Sentry would never see it.
 
 `lib/app/startup.dart` is written once for all of them: its imports are sorted, its steps run in a fixed order (telemetry sinks first, then the session, then the rest) and it is `async` only when a step awaits.
 

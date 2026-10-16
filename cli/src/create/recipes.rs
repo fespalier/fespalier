@@ -87,8 +87,13 @@ pub struct Startup {
     /// another feature passes `{body}` through it. A library that has to start with the process
     /// and not with the app (a test that builds the app does not start it) is wrapped this way.
     pub body_wrapper: Option<&'static str>,
-    /// Dart expressions of telemetry sinks. The composer installs them all in one slot, first
-    /// thing in `startup()`: `FespalierTelemetry.install(sink)`, and `combine([...])` for several.
+    /// Dart expressions of telemetry sinks, each starting with its class name (`FespalierSentry()`).
+    /// The composer installs them all in one slot, first thing in `startup()`:
+    /// `FespalierTelemetry.install(sink)`, and `combine([...])` for several. When the generated
+    /// `main()` has installed a sink already (`otel: true`, since 0.19.0) it adds each one instead,
+    /// once: a top-level `final _sentry = FespalierSentry();` and
+    /// `if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);`, because
+    /// Retry runs `startup()` again and `add` appends a sink every time.
     pub sinks: &'static [&'static str],
     /// Elements of the `providerObservers` list (each with its trailing comma).
     pub provider_observers: &'static [&'static str],

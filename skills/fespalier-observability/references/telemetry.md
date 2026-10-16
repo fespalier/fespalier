@@ -59,7 +59,9 @@ fespalier:
 - In `_main()`, right after `WidgetsFlutterBinding.ensureInitialized()` and before the adapters' `beforeRun` and `runApp`:
   `observability.start(serviceVersion: FespalierOtel.serviceVersion(), buildId: FespalierOtel.buildId(), resourceAttributes: ...)`,
   then `FespalierTelemetry.add(FespalierOtel(isReady: ..., onScreen: observability.setCrashScreen))`. It is `add`, not
-  `install`, so a sink of your own added in `startup()` (or by an adapter) stays.
+  `install`, so a sink of your own added in `startup()` (or by an adapter) stays. Add it once: `startup()` runs again on
+  Retry and `add` appends each time, so keep the sink in a top-level `final` and guard the add with
+  `if (!FespalierTelemetry.contains(sink)) FespalierTelemetry.add(sink);`.
 - The Riverpod and route observers, null until the SDK is up, through `ProviderScope(observers:)` and `AppRoutes.router(observers:)`.
 - The zone: `observability.runGuarded` around `main()`, off the web, the innermost zone (inside the adapters' zones). A
   `zone()` in startup.dart replaces it, so Sentry's zone wins. On the web the body runs as it is.
@@ -68,7 +70,9 @@ The version is the build name, `FLUTTER_BUILD_NAME` (Flutter 3.47 and later; `un
 and the build is `FLUTTER_BUILD_NUMBER` (or none). A test that pumps `AppMain.root()` never starts the SDK, and
 `AppMain.observability.isReady` is false there. The errors are in `fespalier-troubleshooting` (`diagnostics-app-main.md`,
 `otel:`). The options `OtelZoneConfig` takes beyond the service name and the endpoint are not reachable this way: an app
-that needs them writes the wiring below by hand, with `main: manual`.
+that needs them writes the wiring below by hand and leaves `otel: true` out. That works under `main: auto`, with no
+need for `main: manual`: in startup.dart (the `OtelZone`, `start()`, the sink, the observers and a `zone()` for
+`runGuarded`) or in a `lib/main.dart` of its own that does not call `AppMain.run()`, as `examples/telemetry` does.
 
 ## Wire it
 

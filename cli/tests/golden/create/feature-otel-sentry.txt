@@ -165,6 +165,9 @@ import 'package:fespalier_sentry/fespalier_sentry.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+/// Made once: startup() runs again on Retry, and `add` would append a second sink.
+final _sentry = FespalierSentry();
+
 /// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
 /// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
 /// --dart-define=SENTRY_DSN=https://... sends events to your project.
@@ -179,8 +182,8 @@ Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
 /// overridden in the app's ProviderScope, so the first frame already has them.
 void startup() {
-  // Before the router exists, next to the OpenTelemetry sink of the generated main(): add, not install.
-  FespalierTelemetry.add(FespalierSentry());
+  // Before the router exists, beside the generated main()'s OpenTelemetry sink; once (Retry runs this again).
+  if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);
 }
 
 List<NavigatorObserver> get routerObservers => [
@@ -244,7 +247,7 @@ void main() {
     ]);
   });
 
-  test('the generated main() names the service after the app, and a test never starts it', () {
+  test('AppMain.observability: named after the app, never started', () {
     const name = 'my_app';
     expect(AppMain.observability.config.serviceName, name);
     expect(AppMain.observability.isReady, isFalse);

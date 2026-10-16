@@ -1646,6 +1646,7 @@ fn otel_observers_join_the_app_and_the_router() {
             "static List<NavigatorObserver> routerObservers() => [...[if (AppMain.observability.routeObserver() case final o?) o]];",
             "GoRouter _router() => AppRoutes.router(observers: AppMain.routerObservers());",
             "    observers: _providerObservers,",
+            "/// The router's observers: OpenTelemetry's (`otel: true`, since 0.19.0), then the adapters', then startup.dart's `routerObservers` (since 0.9.0).",
         ],
     );
     // startup.dart's observers come after OpenTelemetry's, in both lists.
@@ -1715,7 +1716,7 @@ fn otel_warns_about_hand_wiring() {
         &[("page.dart", HOME), ("startup.dart", hand)],
     );
     let w1 = "`otel: true` makes the generated main() start otel_zone (`AppMain.observability`), and startup.dart builds an `OtelZone` of its own: remove that wiring (the OtelZone, its start(), the FespalierOtel sink and the two observers), or remove `otel: true`";
-    let w2 = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): call `FespalierTelemetry.add` there";
+    let w2 = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): add the sink once instead, with `if (!FespalierTelemetry.contains(sink)) FespalierTelemetry.add(sink);` (Retry runs startup() again)";
     assert_eq!(g.diags.len(), 2, "{:?}", g.diags);
     assert!(
         g.diags[0].starts_with("! ") && g.diags[0].ends_with(w1),
@@ -1732,6 +1733,59 @@ fn otel_warns_about_hand_wiring() {
     // Without the key the same startup.dart is not a warning.
     let plain = run_gen(&[("page.dart", HOME), ("startup.dart", hand)]);
     assert!(plain.diags.is_empty(), "{:?}", plain.diags);
+}
+
+/// A note about the old wiring is not the old wiring: the two warnings read the code, not the
+/// comments (since 0.19.0).
+#[test]
+fn otel_warnings_ignore_comments() {
+    let noted = "// Before otel: true this built an OtelZone( ... ) and called FespalierTelemetry.install(sink).\n/// The sink: FespalierTelemetry.install(FespalierOtel()) is gone.\n/* OtelZone(OtelZoneConfig(serviceName: 'demo')) /* nested */ FespalierTelemetry.install(x) */\nvoid startup() {\n  // FespalierTelemetry.install(FespalierSentry());\n}\n";
+    let g = run_yaml(
+        &with_otel(""),
+        &[("page.dart", HOME), ("startup.dart", noted)],
+    );
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    assert!(g.main.is_some());
+    // The same calls outside a comment still warn, comments around them or not.
+    let both = format!(
+        "{noted}Future<void> more() async {{\n  FespalierTelemetry.install(FespalierSentry()); // not a note\n  OtelZone(OtelZoneConfig(serviceName: 'demo'));\n}}\n"
+    );
+    let g = run_yaml(
+        &with_otel(""),
+        &[("page.dart", HOME), ("startup.dart", &both)],
+    );
+    assert_eq!(g.diags.len(), 2, "{:?}", g.diags);
+}
+
+#[test]
+fn comments_are_taken_out_and_strings_are_not() {
+    let strip = entry::without_comments;
+    // Line, doc and block comments (which nest) go; the code around them stays apart.
+    assert_eq!(strip("a // b\nc"), "a  \nc");
+    assert_eq!(strip("a /// b\nc"), "a  \nc");
+    assert_eq!(strip("a /* b /* c */ d */ e"), "a   e");
+    assert_eq!(strip("a /* never closed"), "a  ");
+    assert_eq!(strip("x/**/y"), "x y");
+    // A `//` in a string is text.
+    assert_eq!(
+        strip("final u = 'https://x.dev'; // c\n"),
+        "final u = 'https://x.dev';  \n"
+    );
+    assert_eq!(strip("\"/* not */\" /* is */"), "\"/* not */\"  ");
+    // Triple-quoted strings span lines, and an escaped quote does not end a string.
+    assert_eq!(strip("'''\n// no\n''' // yes"), "'''\n// no\n'''  ");
+    assert_eq!(strip("'it\\'s // fine' // c"), "'it\\'s // fine'  ");
+    // A raw string has no escapes: `r'\'` is one backslash, and the comment after it is a comment.
+    assert_eq!(strip("r'\\' // c"), "r'\\'  ");
+    // A word that ends in `r` is not a raw prefix.
+    assert_eq!(strip("var'a\\'// x'"), "var'a\\'// x'");
+    // An interpolation is code: it holds strings and comments of its own.
+    assert_eq!(strip("'${a['//']} // text' // c"), "'${a['//']} // text'  ");
+    assert_eq!(strip("'${a /* c */ + b}' // c"), "'${a   + b}'  ");
+    // A single-line string that is not closed ends with its line.
+    assert_eq!(strip("'open\n// c\nx"), "'open\n \nx");
+    // Nothing to take out: the very text.
+    assert_eq!(strip("void main() {}\n"), "void main() {}\n");
 }
 
 #[test]

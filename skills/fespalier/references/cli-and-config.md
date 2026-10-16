@@ -446,8 +446,10 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   before) and `sentry`
   (`fespalier_sentry` and `sentry_flutter` `>=9.26.0 <10.0.0`, `telemetry: true`; `zone()` is `SentryFlutter.init`
   with `FespalierSentry.configure` and `SENTRY_DSN`, empty meaning off; the test uses `RecordingSentry`). With both,
-  the composer keeps Sentry's `zone()`, and `startup()` adds Sentry's sink with `FespalierTelemetry.add`, next to the
-  OpenTelemetry one the generated `main()` installs (since 0.19.0; before, one `install` of a `combine`). The generated
+  the composer keeps Sentry's `zone()`, and `startup()` adds Sentry's sink with `FespalierTelemetry.add`, once (a
+  top-level `final _sentry = FespalierSentry();` and `if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);`,
+  because Retry runs `startup()` again and `add` appends a sink each time), next to the OpenTelemetry one the generated
+  `main()` installs (since 0.19.0; before, one `install` of a `combine`). The generated
   zone is a fallback used only when no other feature has one (docs/observability.md "Wiring
   Sentry" says why). Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
   `lib/app/app.dart`, `lib/main.dart`) are never written by one feature but composed from all of them

@@ -46,8 +46,8 @@ Native crash records can name their screen, which takes otel_zone v0.7.0 and one
    the hand wiring: in `lib/main.dart`, `Future<void> main() => AppMain.run();` (a root file makes `fsp` write the generated
    `main()`), and in `lib/app/startup.dart` the `OtelZone`, its `start()`, the `FespalierOtel` sink, the two observers and
    a `zone()` that runs `runGuarded`. `fsp gen` warns about the `OtelZone` and the `FespalierTelemetry.install` that are
-   still there. A sink that `startup()` installs with `FespalierTelemetry.install` must use `FespalierTelemetry.add`, or it
-   replaces the OpenTelemetry sink. `otel: true` needs `telemetry: true`, `fespalier_otel` and `otel_zone` (v0.7.0 or later, item 1's
+   still there. A sink that `startup()` installs with `FespalierTelemetry.install` must use `FespalierTelemetry.add`, once
+   (guarded by `FespalierTelemetry.contains`, because Retry runs `startup()` again), or it replaces the OpenTelemetry sink. `otel: true` needs `telemetry: true`, `fespalier_otel` and `otel_zone` (v0.7.0 or later, item 1's
    pin) under `dependencies:`, and not `main: manual`; `fsp` says which one is missing. Only `lib/app.main.g.dart`
    changes. See [`fespalier-observability`](../fespalier-observability/SKILL.md) (its telemetry section).
 

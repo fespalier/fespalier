@@ -17,7 +17,9 @@ use crate::scan::{Kind, Node};
 use crate::templates;
 
 /// What other features add to the generated `main()`. `fespalier: adapters:` fills it (since
-/// 0.9.0, see `adapters.rs`); with every field empty the output is what the root files alone say.
+/// 0.9.0, see `adapters.rs`) and so does `fespalier: otel: true` (since 0.19.0, see `otel.rs`: the
+/// SDK, its sink, its zone and its two observers); with every field empty the output is what the
+/// root files alone say.
 #[derive(Debug, Default)]
 pub struct MainHooks {
     /// Calls that wrap `main()`, outermost first, each a `Future<void> Function(Future<void> Function())`
@@ -73,6 +75,135 @@ impl MainHooks {
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
+
+/// Where the lexer of [`without_comments`] is: in code (inside an interpolation, `braces` counts
+/// the `{` opened since its `${`) or in a string literal.
+#[derive(Clone, Copy)]
+enum Lex {
+    Code {
+        braces: usize,
+    },
+    Str {
+        quote: char,
+        triple: bool,
+        raw: bool,
+    },
+}
+
+/// `src` with its Dart comments taken out (since 0.19.0): `// ...` to the end of the line and
+/// `/* ... */`, which nest in Dart, each replaced by one space so the code around it does not
+/// join. String literals are kept whole, so the `//` of `'https://x'` is not a comment: single,
+/// triple and raw strings, escapes, and an interpolation (`'${a['b']}'`) that holds strings and
+/// comments of its own. It is for looking for a call in a file without being fooled by a note
+/// about it; it does not parse Dart.
+pub(crate) fn without_comments(src: &str) -> String {
+    let c: Vec<char> = src.chars().collect();
+    let mut out = String::with_capacity(src.len());
+    let mut stack = vec![Lex::Code { braces: 0 }];
+    let mut i = 0;
+    while i < c.len() {
+        let top = stack.last().copied().unwrap_or(Lex::Code { braces: 0 });
+        match top {
+            Lex::Code { braces } => match (c[i], c.get(i + 1).copied()) {
+                ('/', Some('/')) => {
+                    while i < c.len() && c[i] != '\n' {
+                        i += 1;
+                    }
+                    out.push(' ');
+                }
+                ('/', Some('*')) => {
+                    let mut depth = 0;
+                    while i < c.len() {
+                        match (c[i], c.get(i + 1).copied()) {
+                            ('/', Some('*')) => {
+                                depth += 1;
+                                i += 2;
+                            }
+                            ('*', Some('/')) => {
+                                depth -= 1;
+                                i += 2;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => i += 1,
+                        }
+                    }
+                    out.push(' ');
+                }
+                (quote @ ('\'' | '"'), _) => {
+                    // `r'...'` is a raw string, unless the `r` ends a longer word.
+                    let raw = out.strip_suffix('r').is_some_and(|before| {
+                        !before
+                            .chars()
+                            .next_back()
+                            .is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '$')
+                    });
+                    let triple = c.get(i + 1) == Some(&quote) && c.get(i + 2) == Some(&quote);
+                    let width = if triple { 3 } else { 1 };
+                    out.extend(std::iter::repeat_n(quote, width));
+                    i += width;
+                    stack.push(Lex::Str { quote, triple, raw });
+                }
+                ('{', _) => {
+                    if let Some(Lex::Code { braces }) = stack.last_mut() {
+                        *braces += 1;
+                    }
+                    out.push('{');
+                    i += 1;
+                }
+                ('}', _) => {
+                    if braces > 0 {
+                        if let Some(Lex::Code { braces }) = stack.last_mut() {
+                            *braces -= 1;
+                        }
+                    } else if stack.len() > 1 {
+                        // The `}` that ends an interpolation: back in the string.
+                        stack.pop();
+                    }
+                    out.push('}');
+                    i += 1;
+                }
+                (ch, _) => {
+                    out.push(ch);
+                    i += 1;
+                }
+            },
+            Lex::Str { quote, triple, raw } => match c[i] {
+                '\\' if !raw => {
+                    out.push('\\');
+                    if let Some(&escaped) = c.get(i + 1) {
+                        out.push(escaped);
+                    }
+                    i += 2;
+                }
+                '$' if !raw && c.get(i + 1) == Some(&'{') => {
+                    out.push_str("${");
+                    i += 2;
+                    stack.push(Lex::Code { braces: 0 });
+                }
+                // A single-line string that is not closed ends with its line.
+                '\n' if !triple => {
+                    stack.pop();
+                }
+                ch if ch == quote
+                    && (!triple
+                        || (c.get(i + 1) == Some(&quote) && c.get(i + 2) == Some(&quote))) =>
+                {
+                    let width = if triple { 3 } else { 1 };
+                    out.extend(std::iter::repeat_n(quote, width));
+                    i += width;
+                    stack.pop();
+                }
+                ch => {
+                    out.push(ch);
+                    i += 1;
+                }
+            },
+        }
+    }
+    out
+}
 
 /// Whether `lib/app.main.g.dart` is written: always with `main: generated`, never with
 /// `main: manual`, and with `main: auto` when the app folder's root has one of the three files or
@@ -170,15 +301,17 @@ pub fn emit(
     };
     // `otel: true` has the generated main() start the SDK and install its sink: a startup.dart
     // that does either again would run a second SDK, or replace the sink (since 0.19.0).
+    // A comment that mentions either (a note about the old wiring) is not a call.
     if hooks.otel.is_some()
         && let Some(src) = root.files.get(&Kind::Startup)
     {
-        if src.contains("OtelZone(") {
+        let code = without_comments(src);
+        if code.contains("OtelZone(") {
             let msg = "`otel: true` makes the generated main() start otel_zone (`AppMain.observability`), and startup.dart builds an `OtelZone` of its own: remove that wiring (the OtelZone, its start(), the FespalierOtel sink and the two observers), or remove `otel: true`";
             diags.warn(&root.rel(Kind::Startup), None, msg);
         }
-        if src.contains("FespalierTelemetry.install(") {
-            let msg = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): call `FespalierTelemetry.add` there";
+        if code.contains("FespalierTelemetry.install(") {
+            let msg = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): add the sink once instead, with `if (!FespalierTelemetry.contains(sink)) FespalierTelemetry.add(sink);` (Retry runs startup() again)";
             diags.warn(&root.rel(Kind::Startup), None, msg);
         }
     }

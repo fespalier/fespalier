@@ -535,13 +535,18 @@ fn created_files_are_dart_format_clean() {
         req.features = features;
         let plan = ok(&req, table);
         write_plan(dir.path(), &plan);
+        // The app is formatted at the language its own pubspec asks for (`sdk: ^3.9.0`), not at
+        // the newest one the `dart` here knows: the layout of a long call changed in Dart 3.13,
+        // and a file that is clean at 3.13 only fails in the app's own `dart format` check.
+        let language = language_version(file(&plan, "pubspec.yaml"));
         for file in plan.files.iter().filter(|f| f.path.ends_with(".dart")) {
             // The same text is formatted once: most files do not change from one case to the next.
-            if !seen.insert(file.content.clone()) {
+            if !seen.insert((language.clone(), file.content.clone())) {
                 continue;
             }
             let path = dir.path().join(&file.path);
-            let (formatted, warning) = crate::format::format_dart(&file.content, &path);
+            let (formatted, warning) =
+                crate::format::format_dart_at(&file.content, &path, &language);
             if warning.is_some() {
                 return;
             }
@@ -554,6 +559,28 @@ fn created_files_are_dart_format_clean() {
         }
     }
     assert!(checked >= 20, "{checked}");
+}
+
+/// The language version of the app a pubspec makes: the lower bound of `environment: sdk: ^X.Y.Z`,
+/// as `X.Y` (what a package config would tell `dart format`).
+fn language_version(pubspec: &str) -> String {
+    let bound = pubspec
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("sdk: ^"))
+        .unwrap_or_else(|| panic!("no `sdk: ^X.Y.Z` in the pubspec:\n{pubspec}"));
+    let mut parts = bound.trim().split('.');
+    let (major, minor) = (parts.next().unwrap(), parts.next().unwrap());
+    format!("{major}.{minor}")
+}
+
+#[test]
+fn the_language_version_is_the_pubspecs_lower_bound() {
+    let plan = ok(&request("my_app"), RECIPES);
+    assert_eq!(language_version(file(&plan, "pubspec.yaml")), "3.9");
+    assert_eq!(
+        language_version("environment:\n  sdk: ^3.13.2\n  flutter: \">=3.47.0\"\n"),
+        "3.13"
+    );
 }
 
 // --- the table ----------------------------------------------------------------------------------
@@ -1518,9 +1545,22 @@ fn otel_and_sentry_keep_sentrys_zone_and_add_its_sink() {
         !startup.contains("FespalierTelemetry.install("),
         "{startup}"
     );
+    // Retry runs startup() again after a failed async step, and `add` appends a sink every time: the
+    // sink is made once, at the top level, and added only when it is not in the slot already.
     assert!(
-        startup.contains("FespalierTelemetry.add(FespalierSentry());"),
+        startup.contains("final _sentry = FespalierSentry();\n"),
         "{startup}"
+    );
+    assert!(
+        startup.contains(
+            "  if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);\n"
+        ),
+        "{startup}"
+    );
+    assert_eq!(
+        startup.matches("FespalierSentry()").count(),
+        1,
+        "the sink is constructed once, not in startup(): {startup}"
     );
     assert!(startup.contains("appRunner: body,"), "{startup}");
     assert!(startup.contains("void startup() {"), "{startup}");
@@ -1533,6 +1573,74 @@ fn otel_and_sentry_keep_sentrys_zone_and_add_its_sink() {
     assert_eq!(pubspec.matches("telemetry: true").count(), 1, "{pubspec}");
     assert_eq!(pubspec.matches("  otel: true\n").count(), 1, "{pubspec}");
     golden("feature-otel-sentry", &pair.describe("<staging>"));
+}
+
+/// With `otel: true` in the config every sink of the features is held in a top-level `final` and
+/// added once, as many as there are and however long the guard is; without it the composer still
+/// installs (since 0.19.0).
+#[test]
+fn sinks_beside_the_generated_main_are_added_once() {
+    let sinks = |config: &'static [&'static str], sinks: &'static [&'static str]| Recipe {
+        id: "sinks",
+        config,
+        startup: Startup {
+            sinks,
+            ..Startup::NONE
+        },
+        ..SYNTHETIC[2]
+    };
+    let add = sinks(
+        &["otel: true"],
+        &[
+            "FespalierSentry()",
+            "FespalierAVeryLongSinkNameForTheTest(0)",
+        ],
+    );
+    let startup = compose::startup_dart("app", &[&add]).unwrap().unwrap();
+    assert!(
+        startup.contains("final _sentry = FespalierSentry();\n"),
+        "{startup}"
+    );
+    assert!(
+        startup.contains(
+            "final _aVeryLongSinkNameForTheTest = FespalierAVeryLongSinkNameForTheTest(0);\n"
+        ),
+        "{startup}"
+    );
+    assert!(
+        startup.contains(
+            "  if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);\n"
+        ),
+        "{startup}"
+    );
+    // Too long for a line: braces, which `dart format` leaves as they are.
+    assert!(
+        startup.contains(
+            "  if (!FespalierTelemetry.contains(_aVeryLongSinkNameForTheTest)) {\n    FespalierTelemetry.add(_aVeryLongSinkNameForTheTest);\n  }\n"
+        ),
+        "{startup}"
+    );
+    assert!(!startup.contains("install("), "{startup}");
+    assert!(!startup.contains("combine"), "{startup}");
+    // Without `otel: true` nothing changes: one slot, installed.
+    let install = sinks(&[], &["FespalierSentry()"]);
+    let startup = compose::startup_dart("app", &[&install]).unwrap().unwrap();
+    assert!(
+        startup.contains("  FespalierTelemetry.install(FespalierSentry());\n"),
+        "{startup}"
+    );
+    assert!(!startup.contains("contains("), "{startup}");
+    assert!(!startup.contains("final _"), "{startup}");
+    // The composer names a sink after its class: every sink of the table starts with one.
+    for recipe in RECIPES {
+        for sink in recipe.startup.sinks {
+            assert!(
+                sink.starts_with(|c: char| c.is_ascii_uppercase()),
+                "`{}`: sink `{sink}` does not start with a class name",
+                recipe.id
+            );
+        }
+    }
 }
 
 /// `otel: true` alone writes no startup.dart at all (the generated `main()` has the wiring), and

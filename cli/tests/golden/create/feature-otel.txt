@@ -209,7 +209,7 @@ void main() {
     ]);
   });
 
-  test('the generated main() names the service after the app, and a test never starts it', () {
+  test('AppMain.observability: named after the app, never started', () {
     const name = 'my_app';
     expect(AppMain.observability.config.serviceName, name);
     expect(AppMain.observability.isReady, isFalse);

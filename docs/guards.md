@@ -253,10 +253,65 @@ FilledButton(
 )
 ```
 
+Since 0.19.0 that button is also ready-made: [A ready-made unlock page](#a-ready-made-unlock-page).
+
 - **`unlock(reason)` is single-flight and never throws.** While a sheet is up, a second call (a double tap, two buttons) gets the same `Future`. A prompt that throws is `BiometricOutcome.failed`. Anything but a success leaves the state as it was before the call.
 - **The guard watches only whether the app is unlocked.** A prompt coming and going (`Unlocking`) and a second `Unlocked` stamp do not run it again, so a re-run is never a re-prompt; a `lock()` or a relock does run it, and the router leaves the page. A prompt over an unlocked page (an action's) does not send the page away: `Unlocking` carries whether the app was unlocked, and the guard keeps its answer.
 - **`maxAge:`** also requires the unlock to be younger than that by `package:clock`. It is evaluated when the guard runs or when `isFresh(maxAge:)` is asked, that is at the next navigation (or any re-run of the guard), never by itself: there is no timer, so a page left open stays open.
 - **`biometricAvailable`** is a `FutureProvider<bool>` for the unlock page, which can offer "Use your passcode" instead of a button that cannot work. It asks the prompt once: one that throws is an `AsyncError`, and since 0.16.0 nothing retries it (Riverpod's default re-asked the plugin up to ten times over about 50 seconds, with a `Timer`); `ref.invalidate(biometricAvailable)` asks again.
+
+### A ready-made unlock page
+
+Since 0.19.0, `package:fespalier_biometrics/material.dart` has `BiometricLockScreen`, the body of the unlock page above with the button, the words and the "cannot ask" case written once. It is the only library of the package that imports Material: `fespalier_biometrics.dart` stays free of it, so an app that draws its own page takes no Material widget with it.
+
+```dart
+// lib/app/unlock/page.dart
+BiometricLockScreen(
+  reason: 'Unlock your vault', // what the platform's sheet says
+  onUnlocked: () => context.go(returnTo(from)),
+  title: const Text('Vault'), // optional
+  unavailable: (context) => const Text('Use your passcode'), // optional: shown instead of the button
+  messages: const BiometricLockScreenMessages(unlock: 'Deverrouiller'), // optional: another language
+)
+```
+
+- **It prompts when the button is tapped and never otherwise.** Not in `build`, because a rebuild is never a prompt, and not after the first frame either: the package schedules no frame and starts no timer. A double tap is one sheet (`unlock()` is single-flight) and one `onUnlocked`.
+- **The button is disabled while a sheet is up.** A `failed` try shows `messages.failed` ("Not recognised. Try again."), a `lockedOut` one `messages.lockedOut`, and a `cancelled` one nothing, because the person chose it; the button stays for another try.
+- **`unavailable`** replaces the button when `biometricAvailable` answers `false`, or when a tap ends `unavailable`; without a builder it shows `messages.unavailable` as a `Text`. While the answer is still pending, or if the plugin threw, the button stays and a tap reports what happened.
+- **It opens no dialog, route, menu, sheet or snack bar.** The platform's own sheet is the prompt.
+- **Rejected on purpose: a `BiometricGate` that overlays the whole app when it is locked.** It would be a second way to say "locked" beside the guard, and a subtree parked under an overlay keeps its state, and so its secrets, in memory.
+
+**To ask as soon as the page opens**, use the unlock folder's own [`observe.dart`](observability.md#route-lifecycle-observedart) `onEnter`, which fespalier runs after the frame and never in `build`; the button is then the way to try again. A hook has no `BuildContext`, so the page leaves when the app is unlocked, whoever asked:
+
+```dart
+// lib/app/lock/observe.dart
+void onEnter(Ref ref) {
+  if (ref.read(biometricUnlock) is Locked) {
+    ref.read(biometricUnlock.notifier).unlock('Unlock your vault');
+  }
+}
+```
+
+```dart
+// lib/app/lock/page.dart
+class LockPage extends ConsumerWidget {
+  const LockPage({super.key, this.from});
+
+  final String? from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(biometricUnlock, (_, next) {
+      if (next is Unlocked) context.go(returnTo(from));
+    });
+    return const BiometricLockScreen(reason: 'Unlock your vault', onUnlocked: _stay);
+  }
+}
+
+void _stay() {} // the listener above leaves the page
+```
+
+Unchecked on a device: an `onEnter` prompt on a cold start (iOS may refuse a prompt while the app is not yet active), the grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
 
 ### Actions that ask again
 

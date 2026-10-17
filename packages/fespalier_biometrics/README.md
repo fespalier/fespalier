@@ -55,6 +55,20 @@ Future<String> action(Ref ref, {required String input}) =>
 The `local_auth` 3.x recipe is the fespalier-guards skill's `biometric-prompts.md` and the 2.x one
 `biometric-prompts-local-auth-2.md` (2.x for Flutter before 3.38: the two majors cannot share one source).
 
+## A ready-made unlock page (since 0.19.0)
+
+`package:fespalier_biometrics/material.dart` (the only library here that imports Material) has `BiometricLockScreen`, the
+body of the unlock page: a button that prompts **when tapped and never otherwise**, the words for a failed or locked-out
+try (`BiometricLockScreenMessages`, for another language), and an `unavailable:` builder for a device that cannot ask. It
+opens no dialog, route or snack bar. To ask as the page opens, use the unlock folder's `observe.dart` `onEnter`.
+
+```dart
+BiometricLockScreen(
+  reason: 'Unlock your vault',
+  onUnlocked: () => context.go(returnTo(from)),
+)
+```
+
 ## Idle lock (since 0.19.0)
 
 `BiometricPolicy(idleTimeout:)` locks after that long without a touch or a hardware key. Soft-keyboard typing is not activity: a text field calls

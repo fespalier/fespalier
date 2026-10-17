@@ -90,12 +90,12 @@ dependencies:
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
-      ref: 7fbdf64092626a66837ce04caa35411ea4f7df70
+      ref: 8a72fc4162f6426951176d40c490389f77385647
   path_provider: "^2.1.0"
   sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
-  dartastic_opentelemetry: "^1.1.0-beta.15"
+  dartastic_opentelemetry: "^1.1.0-beta.17"
   flutter_secure_storage: ">=10.0.0 <12.0.0"
   flutter_lints: ^6.0.0
   flutter_test:

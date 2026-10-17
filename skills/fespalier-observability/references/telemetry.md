@@ -39,9 +39,12 @@ dependencies:
 ```
 
 Use the **same `url` spelling (no `.git`) and the same `ref`** (the tag your app pins; `v0.13.0` here) for both, or pub fails with `Because ...
-depends on fespalier from git ... is forbidden`. `otel_zone` pulls `otel_go_router`, which declares
-`go_router: ^17.0.0`: the app resolves go_router 17.5.0 (fespalier accepts 17 and 18), and an app that
-needs 18 adds `dependency_overrides: go_router: ^18.0.0`.
+depends on fespalier from git ... is forbidden`. Since 0.19.0 `fespalier_otel` is on the dartastic rc.4 line (SDK 1.1.0-beta.17), which is
+`otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647` (0.8.0 to be); that `otel_zone`'s
+`otel_go_router` accepts go_router 17 and 18, so the app resolves 18 with no override. An older
+`otel_zone` (up to v0.7.0) pulls `otel_go_router` ^0.2.0, which declares `go_router: ^17.0.0` (the app
+resolves 17.5.0 and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18), and it cannot resolve
+beside `fespalier_otel` since 0.19.0: move it to the commit.
 
 ## Wire it with `otel: true` (since 0.19.0)
 

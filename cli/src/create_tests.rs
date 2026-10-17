@@ -1670,7 +1670,7 @@ fn otel_alone_writes_no_startup_and_sentry_alone_installs() {
 }
 
 /// The third parties are pinned the way `cli/tests/versions.rs` needs: `otel_zone` by a commit (it
-/// forces `go_router` 17, which fespalier accepts), Sentry by a range, neither as a `ref: v…`.
+/// is on the dartastic rc.4 line), Sentry by a range, neither as a `ref: v…`.
 #[test]
 fn otel_and_sentry_third_parties_are_never_tags() {
     let plan = plan_of(RECIPES, &["otel", "sentry"]);
@@ -1679,7 +1679,7 @@ fn otel_and_sentry_third_parties_are_never_tags() {
         pubspec.contains(concat!(
             "  otel_zone:\n    git:\n",
             "      url: https://github.com/vaam-apps/flutter-otel-zone\n",
-            "      ref: 7fbdf64092626a66837ce04caa35411ea4f7df70\n"
+            "      ref: 8a72fc4162f6426951176d40c490389f77385647\n"
         )),
         "{pubspec}"
     );
@@ -1696,7 +1696,7 @@ fn otel_and_sentry_third_parties_are_never_tags() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/telemetry/pubspec.yaml"),
     )
     .unwrap();
-    assert!(example.contains("ref: 7fbdf64092626a66837ce04caa35411ea4f7df70"));
+    assert!(example.contains("ref: 8a72fc4162f6426951176d40c490389f77385647"));
     assert!(example.contains("sentry_flutter: \">=9.26.0 <10.0.0\""));
 }
 

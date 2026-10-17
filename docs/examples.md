@@ -146,8 +146,8 @@ tab's stack and a page's state after a simulated restart.
 
 - three tabs, an order page with a `data.dart`, an `action.dart` and an `observe.dart`, and a guarded
   and deferred settings page;
-- `telemetry: true`, and a `main.dart` that wires `otel_zone` (on go_router 17, which `otel_zone`
-  requires);
+- `telemetry: true`, and a `main.dart` that wires `otel_zone` (`otel_zone` from the rc.4
+  commit, so the example resolves go_router 18 like the others since 0.19.0);
 - tests that read the hooks' log and the spans from an in-memory exporter.
 
 Since 0.9.0 that `main.dart` also starts Sentry (`SENTRY_DSN` is empty, so nothing is sent), an order

@@ -244,9 +244,13 @@ final class FespalierOtel extends FespalierTelemetry {
       final parent = start.parent;
       final span = tracer.startSpan(
         name,
-        // A navigation is a root span, whatever is current.
-        context: start.op == TelemetryOp.navigate ? Context.root : null,
-        parentSpan: parent is _Running ? parent.span : null,
+        // A navigation is a root span, whatever is current; anything else is a child of the
+        // start's parent when it has one (beta.17 takes the parent through the context alone).
+        context: start.op == TelemetryOp.navigate
+            ? Context.root
+            : parent is _Running
+            ? Context.current.withSpan(parent.span)
+            : null,
         attributes: OTel.attributesFromMap(attributes),
       );
       return _Running(span, start.op, prefix: _customPrefix(start));

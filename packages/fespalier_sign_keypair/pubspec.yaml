@@ -35,6 +35,16 @@ dependencies:
   pointycastle: ^4.0.0
 
 dev_dependencies:
+  # test/dio_retry_test.dart reads a ProviderContainer from it.
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.18.0 # x-release-please-version
+  # For fespalier_auth's SessionInterceptor in test/dio_retry_test.dart; fespalier_dio's constraint.
+  dio: ^5.7.0
+  # The retrier that test runs the real proof under; fespalier_dio's constraint.
+  dio_smart_retry: ^7.0.1
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

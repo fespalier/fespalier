@@ -44,6 +44,14 @@ key:
 | `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                |
 | `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
 
+`custom(key, child, {transitionsBuilder, duration, reverseDuration, heroes, opaque, fullscreenDialog, barrier..., motion})`
+(since 0.20.0) is a `CustomTransitionPage` named by `Transitions.pageName`, with the restoration id of
+`Transitions.restorationIdOf(key)` (the key's value for a `ValueKey<String>`, else null) and `heroes:` like
+the presets. Use it, or `restorationIdOf` on a `Page` of your own, instead of building the name and id by hand.
+Every `Transitions.*` page carries a `PageMotion` tag (`fade`, `slide`, `none`, `material`, `cupertino`,
+`dialog`, `sheet`, `fullscreenDialog`, `custom`; `PageMotion.of(page)`), which changes nothing on screen and
+which `motionOf` reads in a test (`fespalier-testing`).
+
 `heroes:` (0.8.1) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
 
 Routes with **no** `transition.dart` above them keep go_router's default for your

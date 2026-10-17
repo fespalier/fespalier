@@ -105,6 +105,7 @@ export 'src/telemetry.dart'
         navigateFrom,
         telemetryAttach,
         telemetryFollows;
+export 'src/page_motion.dart' show PageMotion;
 export 'src/transitions.dart';
 export 'src/url_state.dart';
 export 'src/version.dart';

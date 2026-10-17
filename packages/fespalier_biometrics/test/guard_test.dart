@@ -254,4 +254,42 @@ void main() {
       expect(prompt.prompts, 1);
     },
   );
+
+  testWidgets(
+    'requireUnlocked redirects an idle unlock at the next navigation, with no tick',
+    (tester) async {
+      var now = DateTime(2026, 10, 7, 9);
+      await withClock(Clock(() => now), () async {
+        final prompt = FakeBiometricPrompt();
+        final router = routerAt('/secret');
+        await pumpRouter(
+          tester,
+          router,
+          overrides: biometricTestOverrides(
+            prompt,
+            policy: const BiometricPolicy(idleTimeout: Duration(minutes: 1)),
+          ),
+        );
+        await tester.tap(find.text('Unlock'));
+        await tester.pumpAndSettle();
+        expect(find.text('Secret'), findsOneWidget);
+
+        now = now.add(const Duration(seconds: 30));
+        router.go('/');
+        await tester.pumpAndSettle();
+        router.go('/secret');
+        await tester.pumpAndSettle();
+        expect(find.text('Secret'), findsOneWidget);
+
+        // Past the limit, and no tick was fired: the next navigation still lands on the unlock page.
+        now = now.add(const Duration(minutes: 1));
+        router.go('/');
+        await tester.pumpAndSettle();
+        router.go('/secret');
+        await tester.pumpAndSettle();
+        expect(currentLocation(tester), startsWith('/unlock'));
+        expect(prompt.prompts, 1);
+      });
+    },
+  );
 }

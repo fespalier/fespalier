@@ -11,7 +11,7 @@ up gets the same `Future`).
 The package has no platform code and no `local_auth` dependency: the platform check is a `BiometricPrompt` the app writes
 once, a recipe of about 25 lines in [`biometric-prompts.md`](biometric-prompts.md) (`local_auth` 3.x) or
 [`biometric-prompts-local-auth-2.md`](biometric-prompts-local-auth-2.md) (2.x, for Flutter before 3.38), because the two
-`local_auth` majors cannot share one source. It depends on `clock` and fespalier, starts no timer and adds no listener.
+`local_auth` majors cannot share one source. It depends on `clock` and fespalier, starts no timer and adds no listener (the idle lock's ticker is the app's).
 
 ```yaml
 # pubspec.yaml: the same url and the same ref as fespalier, or pub refuses to resolve
@@ -32,15 +32,16 @@ dependencies:
 
 ## What it is made of
 
-| Piece                                              | What it does                                                                                                                                                                                                     |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BiometricPrompt`, `biometricPrompt`               | The platform check: `isAvailable()` and `authenticate(reason)` returning a `BiometricOutcome` (`success`, `cancelled`, `failed`, `unavailable`, `lockedOut`). The provider throws until `startup()` overrides it |
-| `biometricUnlock`, `BiometricUnlock`               | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                              |
-| `requireUnlocked(ref, uri, unlock:, maxAge:)`      | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
-| `withBiometrics(ref, reason, action, maxAge:)`     | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
-| `biometricPolicy`, `BiometricPolicy(resumeGrace:)` | When the app relocks on a return from the background. Default: 10 seconds or more after the unlock; `Duration.zero` is every return                                                                              |
-| `biometricAvailable`                               | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                     |
-| `FakeBiometricPrompt`, `biometricTestOverrides`    | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
+| Piece                                                            | What it does                                                                                                                                                                                                     |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BiometricPrompt`, `biometricPrompt`                             | The platform check: `isAvailable()` and `authenticate(reason)` returning a `BiometricOutcome` (`success`, `cancelled`, `failed`, `unavailable`, `lockedOut`). The provider throws until `startup()` overrides it |
+| `biometricUnlock`, `BiometricUnlock`                             | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                              |
+| `requireUnlocked(ref, uri, unlock:, maxAge:)`                    | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
+| `withBiometrics(ref, reason, action, maxAge:)`                   | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
+| `biometricPolicy`, `BiometricPolicy(resumeGrace:, idleTimeout:)` | When the app relocks: on a return from the background 10 seconds or more after the unlock (`Duration.zero` is every return), and, since 0.19.0, after `idleTimeout` without a touch (null, off, by default)      |
+| `biometricIdleTicker`, `BiometricActivity` (since 0.19.0)        | The idle lock: a signal the app fires from its own timer, and the widget that records touches and absorbs the first one after the limit. `BiometricUnlock.touch()` and `isIdle()`                                |
+| `biometricAvailable`                                             | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                     |
+| `FakeBiometricPrompt`, `biometricTestOverrides`                  | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
 
 ## The starter
 
@@ -239,6 +240,155 @@ Future<List<Override>> startup() async => [
 ];
 ```
 
+## Idle lock (since 0.19.0)
+
+`BiometricPolicy(idleTimeout: Duration(minutes: 2))` locks an unlocked app that nobody touched for that long. Off by
+default, so an app that does not set it changes nothing. **The package starts no timer** (`test/no_timers_test.dart` has
+no exception for it): the app fires `biometricIdleTicker` from its own `Timer.periodic`, and the package measures time
+with `clock`. Three pieces:
+
+- **`BiometricActivity`** in `MaterialApp.router(builder:)`: a `Listener` (pointer down and signal) and a
+  `Focus(canRequestFocus: false, skipTraversal: true, onKeyEvent:)` that answers `ignored` call `touch()`, which writes a
+  field and not state (no rebuild per touch). A key is seen only when a widget below holds the focus; trackpad pan/zoom starts count too; **soft-keyboard typing does not**.
+- **The ticker**: on a tick, `BiometricUnlock` locks when `now - max(unlock, last touch) >= idleTimeout` (a negative age,
+  a clock set back, counts as idle). Fire it at most `idleTimeout / 4` apart and **not while the app is hidden**; an
+  `idleTimeout` shorter than the period locks late by up to one period. A tick that keeps the unlock tells no listener.
+- **The first touch after the limit is absorbed.** Once the limit has passed (by the clock, so right even when the ticker
+  is late or the app has none), `BiometricActivity` hit-tests the touch to a box above the page and not to the page, and
+  locks on it: the button under the finger is not pressed. Pointer routes are fixed at hit-test time, so a lock from
+  `onPointerDown` alone would let that touch through. The box has `hitTest` and `handleEvent` and nothing else.
+
+`requireUnlocked` and `isFresh` treat an idle unlock as locked synchronously, so the next navigation lands on the unlock
+page with no tick. `touch()` after the limit does not bring an expired unlock back; a tick during a prompt keeps the
+prompt, and a lock that was due applies when it ends without a success. A new `unlock()` starts the idle clock afresh.
+
+The ticker recipe, compiled: a widget for the `builder:` that owns the periodic timer, pauses it while the app is hidden
+and fires one tick when it comes back (the age is the clock's, so the lock is prompt). Soft-keyboard typing is not activity: a text field calls `ref.read(biometricUnlock.notifier).touch()` from `onChanged`.
+
+```dart
+// lib/idle/idle_lock.dart
+import 'dart:async';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_biometrics/fespalier_biometrics.dart';
+import 'package:flutter/widgets.dart';
+
+/// The app's idle limit, and the ticker's period: at most a quarter of it.
+const idleTimeout = Duration(minutes: 2);
+const idlePeriod = Duration(seconds: 30);
+
+/// Use in `MaterialApp.router(builder: (context, child) => IdleLock(child: child!))`, and give
+/// `biometricPolicy` `BiometricPolicy(idleTimeout: idleTimeout)` in `startup()`.
+class IdleLock extends ConsumerStatefulWidget {
+  const IdleLock({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  ConsumerState<IdleLock> createState() => _IdleLockState();
+}
+
+class _IdleLockState extends ConsumerState<IdleLock> with WidgetsBindingObserver {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _start();
+  }
+
+  void _start() {
+    _timer ??= Timer.periodic(idlePeriod, (_) => _tick());
+  }
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  void _tick() => ref.read(biometricIdleTicker.notifier).fire();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+      case AppLifecycleState.inactive:
+        // Back from the background Flutter reports hidden, inactive, resumed: the first of these that
+        // finds the timer stopped starts it and ticks once. The age is the clock's, so a due lock is prompt.
+        final wasStopped = _timer == null;
+        _start();
+        if (wasStopped) _tick();
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stop();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => BiometricActivity(child: widget.child);
+}
+```
+
+```dart
+// test/idle_lock_test.dart
+import 'package:clock/clock.dart';
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_biometrics/fespalier_biometrics.dart';
+import 'package:fespalier_biometrics/testing.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/idle/idle_lock.dart';
+
+void main() {
+  testWidgets('the app\'s timer ticks, and a tick after the limit locks', (tester) async {
+    var now = DateTime(2026, 10, 7, 9);
+    await withClock(Clock(() => now), () async {
+      final container = ProviderContainer(
+        overrides: biometricTestOverrides(
+          FakeBiometricPrompt(),
+          policy: const BiometricPolicy(idleTimeout: idleTimeout),
+        ),
+      );
+      addTearDown(container.dispose);
+      container.listen(biometricUnlock, (_, _) {});
+      await container.read(biometricUnlock.notifier).unlock('Unlock');
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const Directionality(
+            textDirection: TextDirection.ltr,
+            child: IdleLock(child: Text('App')),
+          ),
+        ),
+      );
+      // A period before the limit: the timer ticks and the unlock stays.
+      now = now.add(idlePeriod);
+      await tester.pump(idlePeriod);
+      expect(container.read(biometricUnlock), isA<Unlocked>());
+      // Nobody touched the screen for the whole limit: the next tick locks.
+      now = now.add(idleTimeout);
+      await tester.pump(idlePeriod);
+      expect(container.read(biometricUnlock), isA<Locked>());
+      // Dispose the widget: the timer goes with it.
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+}
+```
+
+Test the ticker with `container.read(biometricIdleTicker.notifier).fire()` in a `ProviderContainer`, and the page-level
+behaviour (a touch before and after the limit) with a widget test around `BiometricActivity` and a mutable clock, as the
+package's own `test/idle_test.dart` does.
+
 ## Behaviour to rely on
 
 - **A guard never prompts, and a guard that runs again never re-prompts.** The guard watches only whether the app is
@@ -263,6 +413,9 @@ Future<List<Override>> startup() async => [
   hide the app and show it just after the answer: with `Duration.zero` the sheet could undo its own unlock. The price is
   a 10-second window after each unlock in which leaving the app and coming back asks nothing. Guard something worth
   more with a shorter grace or zero, and check on a device.
+- **The idle lock is evaluated too.** Without the app's ticker an idle unlock still ends at the next navigation
+  (`requireUnlocked`, `isFresh`) and at the first touch after the limit (`BiometricActivity`); the ticker is what locks a
+  screen nobody touches. Never put a `Timer` in the package or in core for it.
 - **An expiry is evaluated, not scheduled.** `maxAge` is compared with `clock.now()` when a guard runs or `isFresh` is
   asked, that is at the next navigation (or a re-run of the guard), never by itself. A page left open stays open past
   its `maxAge`. A clock set back counts as expired for both `maxAge` and the grace.

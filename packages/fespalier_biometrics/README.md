@@ -57,7 +57,8 @@ The `local_auth` 3.x recipe is the fespalier-guards skill's `biometric-prompts.m
 
 ## Idle lock (since 0.19.0)
 
-`BiometricPolicy(idleTimeout:)` locks after that long without a touch or a key. Off by default. The app puts
+`BiometricPolicy(idleTimeout:)` locks after that long without a touch or a hardware key. Soft-keyboard typing is not activity: a text field calls
+`ref.read(biometricUnlock.notifier).touch()` from `onChanged`. Off by default. The app puts
 `BiometricActivity` in `MaterialApp.router(builder:)` and fires `biometricIdleTicker` from its own `Timer.periodic`
 (at most `idleTimeout / 4` apart, stopped while hidden); the first touch after the limit is absorbed, so it never
 reaches the page under it, and locks. `requireUnlocked` and `isFresh` treat an idle unlock as locked at once. The

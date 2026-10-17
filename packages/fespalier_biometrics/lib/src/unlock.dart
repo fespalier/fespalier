@@ -59,12 +59,19 @@ class BiometricUnlock extends Notifier<UnlockState> {
   Unlocked? _unlocked;
   int _shows = 0;
   int? _ticks;
+  // The policy's idleTimeout as `build` last saw it, so a touch or a hover never reads a provider.
+  Duration? _idleTimeout;
 
   @override
   UnlockState build() {
     final shows = ref.watch(appShowSignal);
     final policy = ref.watch(biometricPolicy);
     final grace = policy.resumeGrace;
+    _idleTimeout = policy.idleTimeout;
+    assert(
+      _idleTimeout == null || _idleTimeout! > Duration.zero,
+      'fespalier_biometrics: BiometricPolicy.idleTimeout must be positive; zero would absorb and lock on every touch',
+    );
     final ticks = ref.watch(biometricIdleTicker);
     // Only a return from hidden applies the grace: a policy change rebuilds this too, and must not relock.
     if (shows != _shows) {
@@ -161,8 +168,7 @@ class BiometricUnlock extends Notifier<UnlockState> {
   /// without an `idleTimeout`, or once the idle limit has passed: a late touch does not bring an
   /// expired unlock back.
   void touch() {
-    if (_at == null || ref.read(biometricPolicy).idleTimeout == null) return;
-    if (isIdle()) return;
+    if (_at == null || _idleTimeout == null || isIdle()) return;
     _activityAt = clock.now();
   }
 
@@ -172,7 +178,7 @@ class BiometricUnlock extends Notifier<UnlockState> {
   /// that unlock.
   bool isIdle() {
     final at = _at;
-    final limit = ref.read(biometricPolicy).idleTimeout;
+    final limit = _idleTimeout;
     if (at == null || limit == null) return false;
     final activity = _activityAt;
     final last = activity != null && activity.isAfter(at) ? activity : at;

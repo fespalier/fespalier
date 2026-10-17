@@ -4,6 +4,7 @@ import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_biometrics/fespalier_biometrics.dart';
 import 'package:fespalier_biometrics/testing.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,6 +61,7 @@ void main() {
         await withClock(hands.clock, () async {
           final h = open(FakeBiometricPrompt());
           await h.unlock.unlock('r');
+          h.seen.clear();
           hands.advance(limit - const Duration(seconds: 1));
           tick(h.container);
           expect(h.container.read(biometricUnlock), isA<Unlocked>());
@@ -67,6 +69,9 @@ void main() {
           tick(h.container);
           expect(h.container.read(biometricUnlock), isA<Locked>());
           expect(h.unlock.isFresh(), isFalse);
+          // The tick that locks tells exactly once; the one before it told nobody.
+          expect(h.seen, hasLength(1));
+          expect(h.seen.single, isA<Locked>());
         });
       },
     );
@@ -166,6 +171,7 @@ void main() {
         final h = open(FakeBiometricPrompt());
         tick(h.container);
         tick(h.container);
+        // Riverpod rebuilds lazily: read, or build() never runs before the expect.
         expect(h.container.read(biometricUnlock), isA<Locked>());
         expect(h.seen, isEmpty);
       });
@@ -179,6 +185,7 @@ void main() {
         h.seen.clear();
         hands.advance(const Duration(seconds: 1));
         tick(h.container);
+        h.container.read(biometricUnlock);
         expect(h.seen, isEmpty);
       });
     });
@@ -292,6 +299,37 @@ void main() {
         await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
         hands.advance(const Duration(seconds: 30));
         expect(app.unlock.isIdle(), isFalse);
+      });
+    });
+
+    testWidgets('a trackpad pan or zoom start records activity', (
+      tester,
+    ) async {
+      final hands = Hands();
+      await withClock(hands.clock, () async {
+        final app = await pumpApp(tester, hands);
+        final trackpad = TestPointer(1, PointerDeviceKind.trackpad);
+        hands.advance(limit - const Duration(seconds: 1));
+        final at = tester.getCenter(find.text('Press'));
+        await tester.sendEventToBinding(trackpad.panZoomStart(at));
+        await tester.sendEventToBinding(trackpad.panZoomEnd());
+        hands.advance(const Duration(seconds: 30));
+        expect(app.unlock.isIdle(), isFalse);
+      });
+    });
+
+    testWidgets('a trackpad pan or zoom start after the limit locks', (
+      tester,
+    ) async {
+      final hands = Hands();
+      await withClock(hands.clock, () async {
+        final app = await pumpApp(tester, hands);
+        final trackpad = TestPointer(1, PointerDeviceKind.trackpad);
+        hands.advance(limit);
+        final at = tester.getCenter(find.text('Press'));
+        await tester.sendEventToBinding(trackpad.panZoomStart(at));
+        await tester.sendEventToBinding(trackpad.panZoomEnd());
+        expect(app.container.read(biometricUnlock), isA<Locked>());
       });
     });
 

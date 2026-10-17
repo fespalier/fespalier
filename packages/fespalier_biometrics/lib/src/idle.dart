@@ -17,9 +17,11 @@ final biometricIdleTicker = NotifierProvider.autoDispose<RefetchSignal, int>(
 /// Records activity for the idle lock and swallows the first touch after the limit (since 0.19.0).
 ///
 /// Put it above the navigator, in `MaterialApp.router(builder: (context, child) => BiometricActivity(child: child!))`.
-/// Every pointer down, pointer signal (a wheel) and key event that reaches it calls
+/// Every pointer down, pointer signal (a wheel), trackpad pan or zoom start and hardware key event that reaches it calls
 /// `BiometricUnlock.touch`, which writes a field: no rebuild per touch. Key events are only seen when
-/// a widget below has the focus, and they are not handled here.
+/// a widget below has the focus, and they are not handled here. **Typing on a soft keyboard is not a key
+/// event** (it reaches Flutter through `TextInput`), so it is not activity: a text field calls
+/// `ref.read(biometricUnlock.notifier).touch()` from its `onChanged`.
 ///
 /// When the idle limit has already passed (by the clock, so it is right even if the ticker is late or
 /// absent) the first touch is **absorbed**: it is hit-tested to this widget and not to the page, so the
@@ -47,6 +49,8 @@ class BiometricActivity extends ConsumerWidget {
         behavior: HitTestBehavior.translucent,
         onPointerDown: (_) => unlock.touch(),
         onPointerSignal: (_) => unlock.touch(),
+        // A trackpad scroll or pinch starts with this, not with a pointer down.
+        onPointerPanZoomStart: (_) => unlock.touch(),
         child: _IdleGate(unlock: unlock, child: child),
       ),
     );
@@ -87,7 +91,9 @@ class _RenderIdleGate extends RenderProxyBox {
   void handleEvent(PointerEvent event, HitTestEntry entry) {
     // A box that is hit through its child is a target too, so this runs for every touch: only the
     // ones that came after the limit (the ones `hitTest` took) lock.
-    if ((event is PointerDownEvent || event is PointerSignalEvent) &&
+    if ((event is PointerDownEvent ||
+            event is PointerSignalEvent ||
+            event is PointerPanZoomStartEvent) &&
         unlock.isIdle()) {
       unlock.lock();
     }

@@ -249,7 +249,7 @@ with `clock`. Three pieces:
 
 - **`BiometricActivity`** in `MaterialApp.router(builder:)`: a `Listener` (pointer down and signal) and a
   `Focus(canRequestFocus: false, skipTraversal: true, onKeyEvent:)` that answers `ignored` call `touch()`, which writes a
-  field and not state (no rebuild per touch). A key is seen only when a widget below holds the focus.
+  field and not state (no rebuild per touch). A key is seen only when a widget below holds the focus; trackpad pan/zoom starts count too; **soft-keyboard typing does not**.
 - **The ticker**: on a tick, `BiometricUnlock` locks when `now - max(unlock, last touch) >= idleTimeout` (a negative age,
   a clock set back, counts as idle). Fire it at most `idleTimeout / 4` apart and **not while the app is hidden**; an
   `idleTimeout` shorter than the period locks late by up to one period. A tick that keeps the unlock tells no listener.
@@ -263,7 +263,7 @@ page with no tick. `touch()` after the limit does not bring an expired unlock ba
 prompt, and a lock that was due applies when it ends without a success. A new `unlock()` starts the idle clock afresh.
 
 The ticker recipe, compiled: a widget for the `builder:` that owns the periodic timer, pauses it while the app is hidden
-and fires one tick when it comes back (the age is the clock's, so the lock is prompt).
+and fires one tick when it comes back (the age is the clock's, so the lock is prompt). Soft-keyboard typing is not activity: a text field calls `ref.read(biometricUnlock.notifier).touch()` from `onChanged`.
 
 ```dart
 // lib/idle/idle_lock.dart
@@ -313,12 +313,12 @@ class _IdleLockState extends ConsumerState<IdleLock> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
       case AppLifecycleState.resumed:
-        // Back from the background: the age is the clock's, so one tick locks at once if it is due.
+      case AppLifecycleState.inactive:
+        // Back from the background Flutter reports hidden, inactive, resumed: the first of these that
+        // finds the timer stopped starts it and ticks once. The age is the clock's, so a due lock is prompt.
         final wasStopped = _timer == null;
         _start();
         if (wasStopped) _tick();
-      case AppLifecycleState.inactive:
-        _start();
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:

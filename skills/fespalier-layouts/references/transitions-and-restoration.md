@@ -45,7 +45,7 @@ key:
 | `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
 
 `custom(key, child, {transitionsBuilder, duration, reverseDuration, heroes, opaque, fullscreenDialog, barrier..., motion})`
-(since 0.20.0) is a `CustomTransitionPage` named by `Transitions.pageName`, with the restoration id of
+(since 0.19.0) is a `CustomTransitionPage` named by `Transitions.pageName`, with the restoration id of
 `Transitions.restorationIdOf(key)` (the key's value for a `ValueKey<String>`, else null) and `heroes:` like
 the presets. Use it, or `restorationIdOf` on a `Page` of your own, instead of building the name and id by hand.
 Every `Transitions.*` page carries a `PageMotion` tag (`fade`, `slide`, `none`, `material`, `cupertino`,
@@ -391,14 +391,18 @@ routes deep in a stack), and so does everything below:
   form field or a scroll offset) comes back if the page has a `restorationId`.
   go_router's own pages have one; the ones `Transitions.*` build take it from the
   page key; **a `Page` you build in a `transition.dart` must pass
-  `restorationId: key.value` too**, or its state is not restored:
+  `restorationId: Transitions.restorationIdOf(key)` too**, or its state is not restored:
 
   ```dart
   // lib/app/custom/transition.dart
+  import 'package:fespalier/fespalier.dart';
   import 'package:flutter/material.dart';
 
-  Page<void> transition(ValueKey<String> key, Widget child) =>
-      MaterialPage<void>(key: key, restorationId: key.value, child: child);
+  Page<void> transition(LocalKey key, Widget child) => MaterialPage<void>(
+    key: key,
+    restorationId: Transitions.restorationIdOf(key),
+    child: child,
+  );
   ```
 
 - **`extra`** passed with `context.go(..., extra: ...)` is saved with the location if

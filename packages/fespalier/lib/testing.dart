@@ -171,8 +171,19 @@ String currentLocation(WidgetTester tester) {
 /// public way to read the top of a navigator. A route that is already popping is not the top.
 Route<dynamic> _route(WidgetTester tester, Finder? of) {
   if (of != null) {
-    final route = ModalRoute.of(tester.element(of.first));
-    if (route == null) throw StateError('$of is not inside a route');
+    final found = of.evaluate().toList();
+    if (found.length != 1) {
+      throw StateError(
+        'motionOf and pumpTransition need `of` to find exactly one widget, '
+        '${of.describeMatch(Plurality.many)} found ${found.length}',
+      );
+    }
+    final route = ModalRoute.of(found.single);
+    if (route == null) {
+      throw StateError(
+        '${of.describeMatch(Plurality.many)} is not inside a route',
+      );
+    }
     return route;
   }
   late Route<dynamic> top;
@@ -183,7 +194,7 @@ Route<dynamic> _route(WidgetTester tester, Finder? of) {
   return top;
 }
 
-/// Which motion the top page plays (since 0.20.0): the [PageMotion] its `Transitions.*` call
+/// Which motion the top page plays (since 0.19.0): the [PageMotion] its `Transitions.*` call
 /// tagged it with, or null for a page `Transitions` did not build (go_router's own, a
 /// `MaterialPage` of the app's) and for a route with no page (`showDialog`).
 ///
@@ -201,7 +212,7 @@ PageMotion? motionOf(WidgetTester tester, {Finder? of}) {
 }
 
 /// Runs the transition the last navigation started to its end, or to a fraction of it (since
-/// 0.20.0), with no `pumpAndSettle`: [at] is how far into the transition to stop, `1` (the
+/// 0.19.0), with no `pumpAndSettle`: [at] is how far into the transition to stop, `1` (the
 /// default) for the end and `0.5` for the middle, of the route's `transitionDuration` (its
 /// `reverseTransitionDuration` while it is popping).
 ///
@@ -229,12 +240,20 @@ Future<void> pumpTransition(
 }) async {
   assert(at >= 0 && at <= 1, 'at is a fraction of the transition: 0 to 1');
   await tester.pump();
+  // go_router before 17.4 builds the page of a `go` a frame late: look once more before
+  // reporting that `of` finds nothing.
+  if (of != null && of.evaluate().isEmpty) await tester.pump();
   final route = _route(tester, of);
   if (route is! TransitionRoute<dynamic>) return;
   final reversing = route.animation?.status == AnimationStatus.reverse;
   final duration = reversing
       ? route.reverseTransitionDuration
       : route.transitionDuration;
+  assert(
+    duration == Duration.zero || (route.animation?.isAnimating ?? false),
+    'the route pumpTransition found is not animating: a page inside a layout '
+    'or a tab is on a nested navigator, so pass `of:` a finder for a widget on it',
+  );
   await tester.pump(
     at == 1 ? duration + const Duration(milliseconds: 1) : duration * at,
   );

@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-/// Which motion a page of `Transitions` plays (since 0.20.0).
+/// Which motion a page of `Transitions` plays (since 0.19.0).
 ///
 /// Every `Transitions.*` page carries one, and a page from [Transitions.custom] carries the
 /// one it was given (`custom` by default). It is a plain tag on the `Page` object, with no

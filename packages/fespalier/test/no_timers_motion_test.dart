@@ -27,7 +27,11 @@ const forbidden = <String, String>{
 };
 
 /// The motion files under lib/.
-const motionFiles = ['lib/src/page_motion.dart'];
+const motionFiles = [
+  'lib/src/page_motion.dart',
+  'lib/src/transitions.dart',
+  'lib/src/heroes.dart',
+];
 
 /// The problems in [lines], one per forbidden construct on a line of code (comments are not code).
 List<String> violations(String path, List<String> lines) {
@@ -45,13 +49,16 @@ List<String> violations(String path, List<String> lines) {
 }
 
 void main() {
-  test('no motion file starts a timer, a delay, a listener or a frame', () {
-    final problems = [
-      for (final path in motionFiles)
-        ...violations(path, File(path).readAsLinesSync()),
-    ];
-    expect(problems, isEmpty, reason: problems.join('\n'));
-  });
+  test(
+    'no motion file (the tag, the transitions, the heroes) starts a timer, a delay, a listener or a frame',
+    () {
+      final problems = [
+        for (final path in motionFiles)
+          ...violations(path, File(path).readAsLinesSync()),
+      ];
+      expect(problems, isEmpty, reason: problems.join('\n'));
+    },
+  );
 
   test('the check catches each construct, and ignores comments', () {
     for (final line in forbidden.keys.map((k) => 'x = $k;')) {

@@ -43,9 +43,9 @@ Widget _withHeroes(Heroes? heroes, Widget child) =>
 ///
 /// Every page gets a `restorationId` from its key, which is what lets what a
 /// page keeps in a `RestorationMixin` survive state restoration. A `Page` you
-/// build yourself should pass `restorationId: key.value` too.
+/// build yourself should pass `restorationId: Transitions.restorationIdOf(key)` too.
 ///
-/// Every page carries a [PageMotion] tag (since 0.20.0), which `motionOf` reads in a test.
+/// Every page carries a [PageMotion] tag (since 0.19.0), which `motionOf` reads in a test.
 /// [custom] builds a page of your own with the same name, restoration id and heroes.
 ///
 /// Every page is named by its route's pattern (since 0.9.0), `/products/:id`, which is what a
@@ -63,13 +63,13 @@ abstract final class Transitions {
   /// itself, say).
   static String? get pageName => _pageName;
 
-  /// The restoration id of the page built for [key] (since 0.20.0): the key's value for the
+  /// The restoration id of the page built for [key] (since 0.19.0): the key's value for the
   /// `ValueKey<String>`s go_router makes, null for any other key. It is the rule every
   /// `Transitions.*` page follows, public for a `Page` of your own that does not go through
   /// [custom]: `MaterialPage(key: key, restorationId: Transitions.restorationIdOf(key), child: child)`.
   static String? restorationIdOf(LocalKey key) => _restorationId(key);
 
-  /// A page of your own with fespalier's conventions (since 0.20.0): the route's pattern as its
+  /// A page of your own with fespalier's conventions (since 0.19.0): the route's pattern as its
   /// name ([pageName]), the restoration id of [restorationIdOf], and [heroes] as the presets
   /// take them. [transitionsBuilder] is what animates it; it is a `CustomTransitionPage`.
   ///

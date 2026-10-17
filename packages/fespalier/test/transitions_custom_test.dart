@@ -1,4 +1,4 @@
-// Transitions.custom, Transitions.restorationIdOf and the PageMotion tag (since 0.20.0), and
+// Transitions.custom, Transitions.restorationIdOf and the PageMotion tag (since 0.19.0), and
 // the two helpers that read them: motionOf and pumpTransition.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
@@ -289,7 +289,67 @@ void main() {
     });
   });
 
+  group('of', () {
+    testWidgets('a finder that matches nothing or several is an error', (
+      tester,
+    ) async {
+      await pumpRouter(tester, _router(_Names()));
+      expect(
+        () => motionOf(tester, of: find.text('nope')),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('found 0'),
+          ),
+        ),
+      );
+      expect(
+        () => motionOf(tester, of: find.byType(Directionality)),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
   group('pumpTransition', () {
+    testWidgets('inside a layout it asks for of:, which finds the page', (
+      tester,
+    ) async {
+      final router = GoRouter(
+        routes: [
+          ShellRoute(
+            pageBuilder: (context, state, child) =>
+                Transitions.fade(state.pageKey, child),
+            routes: [
+              for (final name in ['a', 'b'])
+                GoRoute(
+                  path: '/$name',
+                  pageBuilder: (context, state) => Transitions.custom(
+                    state.pageKey,
+                    Text(name),
+                    transitionsBuilder: _scale,
+                    duration: const Duration(seconds: 1),
+                  ),
+                ),
+            ],
+          ),
+        ],
+        initialLocation: '/a',
+      );
+      await pumpRouter(tester, router);
+      router.go('/b');
+      await pumpTransition(tester, of: find.text('b'));
+      expect(motionOf(tester, of: find.text('b')), PageMotion.custom);
+      router.go('/a');
+      Object? error;
+      try {
+        await pumpTransition(tester);
+      } on AssertionError catch (e) {
+        error = e;
+      }
+      expect(error.toString(), contains('pass `of:`'));
+    });
+
     double progress(WidgetTester tester) =>
         ModalRoute.of(tester.element(find.text('custom')))!.animation!.value;
 

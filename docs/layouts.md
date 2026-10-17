@@ -288,7 +288,7 @@ Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child
 
 `transition.dart` says how a route animates in. It applies to its folder's route and every route below it, and the nearest one wins. A `transition.dart` at the root is the app-wide default; any folder or `(group)` folder can override it for its own routes.
 
-The function returns a `Page`, and takes the page's key as `LocalKey key`, the page itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet` and `fullscreenDialog` (below), and `custom` for a motion of your own (since 0.20.0, after Page names). Every one but `dialog` and `sheet` takes `heroes:` ([shared elements](#shared-elements-heroes), since 0.8.1).
+The function returns a `Page`, and takes the page's key as `LocalKey key`, the page itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet` and `fullscreenDialog` (below), and `custom` for a motion of your own (since 0.19.0, see "A transition of your own" below). Every one but `dialog` and `sheet` takes `heroes:` ([shared elements](#shared-elements-heroes), since 0.8.1).
 
 The `key` is go_router's `state.pageKey` (the path template) for a route's page, unless the route [remounts](navigation.md#remounting-a-page-remount) (since 0.6.0): then it is a key that changes with the URL, and a change makes the page a new one, which this transition plays for.
 
@@ -307,7 +307,7 @@ A `transition()` that needs to tell a shell from a route (to wrap a route's page
 - A `Page` of your own in a `transition.dart` reads the name from `Transitions.pageName` (null outside the generated page builders): `MaterialPage(key: key, name: Transitions.pageName, child: child)`.
 - Keys, restoration ids, transitions and heroes are the same. `namedPage` runs its builder once, synchronously, and brings the previous name back when it returns or throws.
 
-**A transition of your own** (since 0.20.0). `Transitions.custom(key, child, transitionsBuilder: ...)` builds a `CustomTransitionPage` the way the presets do: named by the route's pattern (`Transitions.pageName`), with the restoration id of the key, and `heroes:` if you give them. So a page with a motion of your own is a first-class one: an observer sees its name, its state is restored, its heroes fly.
+**A transition of your own** (since 0.19.0). `Transitions.custom(key, child, transitionsBuilder: ...)` builds a `CustomTransitionPage` the way the presets do: named by the route's pattern (`Transitions.pageName`), with the restoration id of the key, and `heroes:` if you give them. So a page with a motion of your own is a first-class one: an observer sees its name, its state is restored, its heroes fly.
 
 ```dart
 Page<void> transition(LocalKey key, Widget child) => Transitions.custom(
@@ -421,7 +421,7 @@ Without the ids nothing changes. With them, the location comes back (also for ro
 - **Layouts.** A plain layout's Navigator gets one too (`layout:(account)/`).
 - **Pages.** What a page keeps in a `RestorationMixin` (a `RestorableInt` for a form field or a scroll offset) comes back if the page has a `restorationId`.
   - go_router's own pages have one; the ones `Transitions.*` build take it from the page key.
-  - A `Page` you build in a `transition.dart` should pass `restorationId: key.value` too, or its state won't be restored.
+  - A `Page` you build in a `transition.dart` should pass `restorationId: Transitions.restorationIdOf(key)` too (since 0.19.0; the key's value for go_router's `ValueKey<String>`), or its state won't be restored.
   - A page that [remounts](navigation.md#remounting-a-page-remount) has the segments or the location in its key, so each URL it starts again at restores its own state.
 - **`extra`.** An object passed with `context.go(…, extra: …)` is saved with the location if the router has an [`extraCodec`](navigation.md#restoring-extra-on-the-web) that knows its type (the same one the browser's history uses on the web).
 

@@ -97,7 +97,7 @@ a page** or it opens over an empty screen. Restoration needs
 build yourself must pass `restorationId: Transitions.restorationIdOf(key)` (since 0.19.0). Since 0.8.1 a shared element is
 `Route(...).hero('name', child: ...)` on each side (a `RouteHero`, which stays out of
 flights in a hidden tab), and `heroes: const Heroes(onBackGesture: true)` on a `Transitions.*`
-call sets how they fly; nothing flies into a dialog or sheet. Since 0.19.0 every page and `RouteHero` honours the system's reduced motion by default (`slide` cross-fades, `dialog` and `sheet` open unanimated, heroes stop flying; `custom`'s builder is yours to guard; no opt-out). A hero that holds a network image uses
+call sets how they fly; nothing flies into a dialog or sheet. `Transitions.sharedAxis` and `Transitions.fadeThrough` (since 0.19.0) are Material 3's motion over widgets alone, with a `fill:` or a `MotionFill` behind the pages. Since 0.19.0 every page and `RouteHero` honours the system's reduced motion by default (`slide` cross-fades, `dialog` and `sheet` open unanimated, heroes stop flying; `custom`'s builder is yours to guard; no opt-out). A hero that holds a network image uses
 `route.imageHero(...)` (since 0.9.0, `fespalier_image`: [`fespalier-images`](../fespalier-images/SKILL.md)). All in
 [`references/transitions-and-restoration.md`](references/transitions-and-restoration.md).
 

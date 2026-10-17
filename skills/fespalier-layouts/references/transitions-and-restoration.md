@@ -33,24 +33,39 @@ is never remounted.
 `Transitions` has ready-made ones; each gives the page a `restorationId` from its
 key:
 
-| Helper                                        | What it does                                                                                             |
-| --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `fade(key, child, {duration, heroes})`        | cross-fades (250 ms by default)                                                                          |
-| `slide(key, child, {from, duration, heroes})` | slides in from an `AxisDirection` edge (default `right`, 300 ms); a cross-fade under reduced motion      |
-| `none(key, child, {heroes})`                  | swaps instantly                                                                                          |
-| `material(key, child, {heroes})`              | the platform-default Material transition; fades in place under reduced motion                            |
-| `cupertino(key, child, {heroes})`             | the iOS slide plus edge-swipe back; fades in place under reduced motion                                  |
-| `dialog(key, child, {...})`                   | opens as a Material dialog over the previous page                                                        |
-| `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                                                     |
-| `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar`; fades in place under reduced motion |
+| Helper                                                   | What it does                                                                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fade(key, child, {duration, heroes})`                   | cross-fades (250 ms by default)                                                                                                               |
+| `slide(key, child, {from, duration, heroes})`            | slides in from an `AxisDirection` edge (default `right`, 300 ms); a cross-fade under reduced motion                                           |
+| `none(key, child, {heroes})`                             | swaps instantly                                                                                                                               |
+| `material(key, child, {heroes})`                         | the platform-default Material transition; fades in place under reduced motion                                                                 |
+| `cupertino(key, child, {heroes})`                        | the iOS slide plus edge-swipe back; fades in place under reduced motion                                                                       |
+| `sharedAxis(key, child, {axis, duration, fill, heroes})` | Material 3 shared axis (since 0.19.0): 30 dp slide on `SharedAxis.x`/`y`, scale on `z`, with fades; 300 ms; a cross-fade under reduced motion |
+| `fadeThrough(key, child, {duration, fill, heroes})`      | Material 3 fade through (since 0.19.0): out, then in with a 0.92 scale; 300 ms; a cross-fade under reduced motion                             |
+| `dialog(key, child, {...})`                              | opens as a Material dialog over the previous page                                                                                             |
+| `sheet(key, child, {...})`                               | opens as a modal bottom sheet over the previous page                                                                                          |
+| `fullscreenDialog(key, child, {heroes})`                 | a Material page that slides up, with a close button in its `AppBar`; fades in place under reduced motion                                      |
 
 `custom(key, child, {transitionsBuilder, duration, reverseDuration, heroes, opaque, fullscreenDialog, barrier..., motion})`
 (since 0.19.0) is a `CustomTransitionPage` named by `Transitions.pageName`, with the restoration id of
 `Transitions.restorationIdOf(key)` (the key's value for a `ValueKey<String>`, else null) and `heroes:` like
 the presets. Use it, or `restorationIdOf` on a `Page` of your own, instead of building the name and id by hand.
 Every `Transitions.*` page carries a `PageMotion` tag (`fade`, `slide`, `none`, `material`, `cupertino`,
-`dialog`, `sheet`, `fullscreenDialog`, `custom`; `PageMotion.of(page)`), which changes nothing on screen and
+`dialog`, `sheet`, `fullscreenDialog`, `custom`, `sharedAxis`, `fadeThrough`; `PageMotion.of(page)`), which changes nothing on screen and
 which `motionOf` reads in a test (`fespalier-testing`).
+
+**Shared axis and fade through (since 0.19.0)** are written over widgets alone (`lib/src/motion.dart`: no Material, no
+`animations` package). The outgoing half is driven by the covered page's `secondaryAnimation`, so the page below fades
+and moves only when it is itself a `sharedAxis`/`fadeThrough` page (a dialog or sheet over it does not move it). The fill
+behind the pages is the preset's `fill:`, else a `MotionFill` set once in `MaterialApp.router(builder:)`, else
+transparent (a `Scaffold` paints its own background). `SharedAxis.x` mirrors in RTL; reduced motion makes both a
+cross-fade. `SharedAxisPageTransition` and `FadeThroughPageTransition` are the public widgets for a `Transitions.custom`.
+
+**Predictive back (since 0.19.0, UNCHECKED per Android version).** `Transitions.material` gets Android's peek from the
+theme (default on Flutter 3.38+; on 3.35 to 3.37 add `PredictiveBackPageTransitionsBuilder` to `pageTransitionsTheme`; the
+manifest needs `android:enableOnBackInvokedCallback="true"`). Every `CustomTransitionPage` preset pops on release with its
+reverse transition, no peek. `Heroes(onBackGesture: true)` covers heroes. Do not wrap presets in
+`PredictiveBackPageTransitionsBuilder`: it replaces them with Material's peek.
 
 **Reduced motion (since 0.19.0), on by default and with no opt-out switch.** When `MediaQuery.disableAnimations`
 is true (read from the route's own context, never a provider; `accessibleNavigation` is ignored): `slide` becomes a

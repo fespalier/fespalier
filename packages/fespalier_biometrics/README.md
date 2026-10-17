@@ -2,7 +2,7 @@
 
 Biometric unlock for [fespalier](https://github.com/fespalier/fespalier) (since 0.13.0): a guard that **never prompts**
 (`requireUnlocked` reads the unlock state and redirects to the app's unlock page), one single-flight `unlock()` that the
-unlock page calls, `withBiometrics` for an action that must ask again, a relock when the app comes back from the background, and (since 0.19.0) an idle lock. The platform check
+unlock page calls, `withBiometrics` for an action that must ask again, a relock when the app comes back from the background, and (since 0.19.0) an idle lock and secrets kept behind the biometric. The platform check
 (`local_auth`) is a recipe, not a dependency: the package has no platform code, starts no timer and adds no listener.
 
 The docs cover all of it: [Biometric unlock](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#biometric-unlock-fespalier_biometrics)
@@ -104,3 +104,13 @@ expect(prompt.prompts, 0); // and nothing was prompted
   Never the reason text.
 - Not built: a lock screen widget, a passcode of the app's own, storing a secret behind the biometric (that is a
   keystore's job), a timer-based idle lock.
+
+## Secrets behind the biometric (since 0.19.0)
+
+`ref.read(biometricUnlock.notifier).readSecret(key, reason)` reads a value the **keystore** gates (it asks for the
+biometric as part of decrypting the item), and answers `SecretFound(value)`, `SecretMissing()` or `SecretRefused(outcome)`;
+`writeSecret` and `deleteSecret` are its pair. You write a `BiometricSecrets` once and override `biometricSecrets` in
+`startup()`; the package depends on no plugin, and the `flutter_secure_storage` recipe is the fespalier-guards skill's
+`biometric-secrets.md`. One sheet at a time (a read waits for an `unlock()` sheet, two reads of one key share one), **a read
+does not unlock the app**, the value goes to the caller only, and telemetry carries constants only. `FakeBiometricSecrets` is
+in `testing.dart`. The docs' [Secrets behind the biometric](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#secrets-behind-the-biometric) has the rest.

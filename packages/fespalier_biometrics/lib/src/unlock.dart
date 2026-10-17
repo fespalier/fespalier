@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 
 import 'idle.dart';
 import 'policy.dart';
 import 'prompt.dart';
+import 'secrets.dart';
 import 'telemetry.dart';
 
 /// Whether the app is unlocked (since 0.13.0).
@@ -54,6 +57,10 @@ final biometricUnlock = NotifierProvider<BiometricUnlock, UnlockState>(
 /// keep an unlock alive.
 class BiometricUnlock extends Notifier<UnlockState> {
   Future<BiometricOutcome>? _flight;
+  // The end of the line of sheets: an unlock, a secret read and a secret write each wait for the one
+  // before, so the person never sees two at once.
+  Future<void>? _sheets;
+  final Map<String, Future<SecretRead>> _reads = {};
   DateTime? _at;
   DateTime? _activityAt;
   Unlocked? _unlocked;
@@ -123,17 +130,37 @@ class BiometricUnlock extends Notifier<UnlockState> {
     return _flight = _run(prompt, reason);
   }
 
-  Future<BiometricOutcome> _run(BiometricPrompt prompt, String reason) async {
-    final span = promptSpan();
-    var outcome = BiometricOutcome.failed;
+  /// Runs [job] after every sheet asked for before it has ended, and holds the line until it ends.
+  /// With nobody ahead, [job] starts in the same call (an `unlock` shows its sheet at once).
+  /// Completers and futures only: no timer.
+  Future<T> _inLine<T>(Future<T> Function() job) async {
+    final before = _sheets;
+    final done = Completer<void>();
+    final mine = _sheets = done.future;
     try {
-      // `await` always yields, even on a prompt that throws at once, so `unlock` has set `_flight`
-      // before the line that clears it runs.
-      outcome = await Future.sync(() => prompt.authenticate(reason));
-      promptSpanEnd(span, outcome);
-    } catch (error, stackTrace) {
-      promptSpanEnd(span, outcome, error: error, stackTrace: stackTrace);
+      if (before != null) await before;
+      return await job();
+    } finally {
+      if (identical(_sheets, mine)) _sheets = null;
+      done.complete();
     }
+  }
+
+  Future<BiometricOutcome> _run(BiometricPrompt prompt, String reason) async {
+    // A secret's sheet may be up: this one waits for it, and `_flight` stays set meanwhile.
+    final outcome = await _inLine(() async {
+      final span = promptSpan();
+      var outcome = BiometricOutcome.failed;
+      try {
+        // `await` always yields, even on a prompt that throws at once, so `unlock` has set `_flight`
+        // before the line that clears it runs.
+        outcome = await Future.sync(() => prompt.authenticate(reason));
+        promptSpanEnd(span, outcome);
+      } catch (error, stackTrace) {
+        promptSpanEnd(span, outcome, error: error, stackTrace: stackTrace);
+      }
+      return outcome;
+    });
     _flight = null;
     if (!ref.mounted) return outcome;
     if (outcome == BiometricOutcome.success) {
@@ -184,6 +211,102 @@ class BiometricUnlock extends Notifier<UnlockState> {
     final last = activity != null && activity.isAfter(at) ? activity : at;
     return _expired(last, limit);
   }
+
+  /// Reads the secret kept under [key] behind the keystore's biometric (since 0.19.0), and returns it
+  /// to the caller alone.
+  ///
+  /// One sheet at a time: it waits for an `unlock` sheet or another secret's that is up, and two reads
+  /// of one [key] share one `Future` (and one sheet). **It does not unlock the app**: a platform
+  /// may accept the device passcode for it, and a read is consent to one value, so the state stays what
+  /// it was and no provider holds the value. A refusal is `SecretRefused`, never a throw, and a store that
+  /// throws is `SecretRefused(failed)`. It throws only when `biometricSecrets` was never overridden.
+  /// [reason] is what the person reads. Telemetry carries constants only, never [key], the value or [reason].
+  Future<SecretRead> readSecret(String key, String reason) {
+    final running = _reads[key];
+    if (running != null) return running;
+    final secrets = ref.read(biometricSecrets);
+    final read = _inLine(() => _read(secrets, key, reason));
+    _reads[key] = read;
+    // `read` never fails (every error is a `SecretRefused`), so this only clears the slot.
+    unawaited(read.then<void>((_) => _reads.remove(key)));
+    return read;
+  }
+
+  Future<SecretRead> _read(
+    BiometricSecrets secrets,
+    String key,
+    String reason,
+  ) async {
+    final span = secretSpan('read');
+    try {
+      final result = await Future.sync(() => secrets.read(key, reason: reason));
+      switch (result) {
+        case SecretFound():
+          secretSpanEnd(span, 'found', TelemetryOutcome.ok);
+        case SecretMissing():
+          secretSpanEnd(span, 'missing', TelemetryOutcome.skipped);
+        case SecretRefused(:final outcome):
+          secretSpanEnd(span, outcome.name, _outcomeOf(outcome));
+      }
+      return result;
+    } catch (_) {
+      // The error is dropped on purpose: a platform exception's text can name the key.
+      secretSpanEnd(span, BiometricOutcome.failed.name, TelemetryOutcome.error);
+      return const SecretRefused(BiometricOutcome.failed);
+    }
+  }
+
+  /// Stores [value] under [key] so that reading it needs the biometric (since 0.19.0).
+  ///
+  /// The same one-sheet line as [readSecret]; no state change; a store that throws is
+  /// [BiometricOutcome.failed]. Nothing is kept here: the value goes to the store and no further.
+  Future<BiometricOutcome> writeSecret(
+    String key,
+    String value,
+    String reason,
+  ) {
+    final secrets = ref.read(biometricSecrets);
+    return _inLine(() async {
+      final span = secretSpan('write');
+      try {
+        final outcome = await Future.sync(
+          () => secrets.write(key, value, reason: reason),
+        );
+        secretSpanEnd(span, outcome.name, _outcomeOf(outcome));
+        return outcome;
+      } catch (_) {
+        secretSpanEnd(
+          span,
+          BiometricOutcome.failed.name,
+          TelemetryOutcome.error,
+        );
+        return BiometricOutcome.failed;
+      }
+    });
+  }
+
+  /// Removes the secret under [key] (since 0.19.0). It needs no sheet, so it does not wait for one.
+  /// [lock] leaves stored secrets alone; this is the only thing here that removes one. A store that
+  /// throws makes the `Future` fail, after the span ended without the error.
+  Future<void> deleteSecret(String key) async {
+    final secrets = ref.read(biometricSecrets);
+    final span = secretSpan('delete');
+    try {
+      await Future.sync(() => secrets.delete(key));
+      secretSpanEnd(span, BiometricOutcome.success.name, TelemetryOutcome.ok);
+    } catch (_) {
+      secretSpanEnd(span, BiometricOutcome.failed.name, TelemetryOutcome.error);
+      rethrow;
+    }
+  }
+
+  static String _outcomeOf(BiometricOutcome outcome) => switch (outcome) {
+    BiometricOutcome.success => TelemetryOutcome.ok,
+    BiometricOutcome.cancelled => TelemetryOutcome.cancelled,
+    BiometricOutcome.unavailable => TelemetryOutcome.skipped,
+    BiometricOutcome.failed ||
+    BiometricOutcome.lockedOut => TelemetryOutcome.rejected,
+  };
 }
 
 /// The policy for relocking (since 0.13.0); the default relocks on a return from the background 10 seconds or more after the unlock.

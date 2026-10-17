@@ -45,3 +45,38 @@ void promptSpanEnd(
     ),
   );
 }
+
+/// The operation name of a secret read, write or delete (`TelemetryOp.custom`, since 0.19.0).
+const String biometricSecretOp = 'fespalier.biometrics.secret';
+
+/// Which secret operation it was: `read`, `write` or `delete`.
+const String biometricSecretOpAttribute = 'fespalier.biometrics.secret_op';
+
+/// Starts a span for [op] (`read`, `write` or `delete`) on the installed sink, if there is one.
+///
+/// Never the key, the value or the reason.
+Object? secretSpan(String op) {
+  if (FespalierTelemetry.current == null) return null;
+  return FespalierTelemetry.begin(
+    TelemetryStart(
+      TelemetryOp.custom,
+      name: biometricSecretOp,
+      attributes: {biometricSecretOpAttribute: op},
+    ),
+  );
+}
+
+/// Ends a [secretSpan] with [result] (a constant: `found`, `missing`, `success` or a [BiometricOutcome]'s
+/// name). A store that threw ends in [TelemetryOutcome.error] **without** the error, whose text can name
+/// the key.
+void secretSpanEnd(Object? token, String result, String outcome) {
+  if (FespalierTelemetry.current == null) return;
+  FespalierTelemetry.finish(
+    token,
+    TelemetryEnd(
+      outcome,
+      isAsync: true,
+      attributes: {biometricResultAttribute: result},
+    ),
+  );
+}

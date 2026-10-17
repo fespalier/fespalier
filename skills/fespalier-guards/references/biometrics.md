@@ -32,17 +32,18 @@ dependencies:
 
 ## What it is made of
 
-| Piece                                                               | What it does                                                                                                                                                                                                     |
-| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BiometricPrompt`, `biometricPrompt`                                | The platform check: `isAvailable()` and `authenticate(reason)` returning a `BiometricOutcome` (`success`, `cancelled`, `failed`, `unavailable`, `lockedOut`). The provider throws until `startup()` overrides it |
-| `biometricUnlock`, `BiometricUnlock`                                | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                              |
-| `requireUnlocked(ref, uri, unlock:, maxAge:)`                       | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
-| `withBiometrics(ref, reason, action, maxAge:)`                      | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
-| `biometricPolicy`, `BiometricPolicy(resumeGrace:, idleTimeout:)`    | When the app relocks: on a return from the background 10 seconds or more after the unlock (`Duration.zero` is every return), and, since 0.19.0, after `idleTimeout` without a touch (null, off, by default)      |
-| `biometricIdleTicker`, `BiometricActivity` (since 0.19.0)           | The idle lock: a signal the app fires from its own timer, and the widget that records touches and absorbs the first one after the limit. `BiometricUnlock.touch()` and `isIdle()`                                |
-| `biometricAvailable`                                                | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                     |
-| `BiometricLockScreen`, `BiometricLockScreenMessages` (since 0.19.0) | `package:fespalier_biometrics/material.dart`, the one Material library: an unlock page body whose button prompts on a tap and never otherwise; the `unavailable` builder; replaceable words                      |
-| `FakeBiometricPrompt`, `biometricTestOverrides`                     | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
+| Piece                                                                                              | What it does                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BiometricPrompt`, `biometricPrompt`                                                               | The platform check: `isAvailable()` and `authenticate(reason)` returning a `BiometricOutcome` (`success`, `cancelled`, `failed`, `unavailable`, `lockedOut`). The provider throws until `startup()` overrides it     |
+| `biometricUnlock`, `BiometricUnlock`                                                               | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                                  |
+| `requireUnlocked(ref, uri, unlock:, maxAge:)`                                                      | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                            |
+| `withBiometrics(ref, reason, action, maxAge:)`                                                     | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                       |
+| `biometricPolicy`, `BiometricPolicy(resumeGrace:, idleTimeout:)`                                   | When the app relocks: on a return from the background 10 seconds or more after the unlock (`Duration.zero` is every return), and, since 0.19.0, after `idleTimeout` without a touch (null, off, by default)          |
+| `biometricIdleTicker`, `BiometricActivity` (since 0.19.0)                                          | The idle lock: a signal the app fires from its own timer, and the widget that records touches and absorbs the first one after the limit. `BiometricUnlock.touch()` and `isIdle()`                                    |
+| `biometricAvailable`                                                                               | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                         |
+| `BiometricLockScreen`, `BiometricLockScreenMessages` (since 0.19.0)                                | `package:fespalier_biometrics/material.dart`, the one Material library: an unlock page body whose button prompts on a tap and never otherwise; the `unavailable` builder; replaceable words                          |
+| `BiometricSecrets`, `biometricSecrets`, `readSecret`, `writeSecret`, `deleteSecret` (since 0.19.0) | A secret behind the biometric, gated by the keystore ([`biometric-secrets.md`](biometric-secrets.md)): `SecretFound`, `SecretMissing`, `SecretRefused(outcome)`; one sheet at a time; a read does not unlock the app |
+| `FakeBiometricPrompt`, `FakeBiometricSecrets`, `biometricTestOverrides`                            | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                       |
 
 ## The starter
 
@@ -456,10 +457,22 @@ package's own `test/idle_test.dart` does.
   its `maxAge`. A clock set back counts as expired for both `maxAge` and the grace.
 - **Telemetry** (`fespalier.biometrics.prompt`, with `fespalier.biometrics.result` set to the outcome's name) is reported
   to an installed sink and nothing else: never the reason text. Outcomes map to `ok`, `cancelled`, `rejected` (failed,
-  locked out), `skipped` (unavailable) and `error` (a prompt that threw).
+  locked out), `skipped` (unavailable) and `error` (a prompt that threw). A secret read, write or delete (since 0.19.0) is
+  `fespalier.biometrics.secret` with `fespalier.biometrics.secret_op` (`read`, `write`, `delete`) and the same
+  `fespalier.biometrics.result` (`found`, `missing`, `success`, or an outcome's name): never the key, the value, the reason
+  or the store's error, and a store that threw ends `error` with no error object.
 - `appShowSignal` is core's, and an `autoDispose` provider: the unlock state keeps it alive for the app's life, which
   is one `AppLifecycleListener` core owns. A `ProviderContainer` test has no `WidgetsBinding`, which is what
   `biometricTestOverrides` replaces it for.
+
+## Secrets (since 0.19.0)
+
+[`biometric-secrets.md`](biometric-secrets.md) is the `flutter_secure_storage` recipe. `readSecret(key, reason)` goes
+through one line of sheets with `unlock()`: it waits for an `unlock()` sheet that is up, two reads of one key share one
+`Future`, and **it does not unlock the app** (no state change, no listener told), because a device-credential fallback
+accepts a PIN and a read is consent to one value. The value is returned to the caller and held by no provider;
+`SecretFound.toString()` hides it. A refusal is `SecretRefused(outcome)`, a store that throws is `SecretRefused(failed)`,
+and `lock()` leaves stored secrets alone (delete them at sign-out with `deleteSecret`).
 
 ## Traps
 
@@ -477,5 +490,6 @@ package's own `test/idle_test.dart` does.
 `FakeBiometricPrompt` answers from a queue (`outcomes:`, then `fallback`, default `success`), counts `prompts` and records
 `reasons`; `hold()` keeps the next sheet "up" until `release([outcome])`, so a test can call `unlock` twice. In a
 `pumpRouter` test pass `biometricTestOverrides(prompt, policy: ...)`; with a `ProviderContainer`, the same list, and fire
-the resume yourself: `container.read(appShowSignal.notifier).fire()` inside `withClock(Clock.fixed(...))` (`appShowSignal`, not `appResumeSignal`). Without
+the resume yourself: `container.read(appShowSignal.notifier).fire()` inside `withClock(Clock.fixed(...))` (`appShowSignal`, not `appResumeSignal`). `FakeBiometricSecrets` (a `stored` map, `outcomes`, `reads`/`writes`/`deletes`, `hold()`/`release()`, `throws`) goes in with
+`biometricTestOverrides(prompt, secrets: fake)`. Without
 overriding `biometricPrompt`, reading it throws `fespalier_biometrics: override biometricPrompt in startup()`.

@@ -33,7 +33,7 @@ Object? attr(SentrySpanV2 span, String key) => span.attributes[key]?.value;
 
 String op(SentrySpanV2 span) => '${attr(span, 'sentry.op')}';
 
-/// The spans that ended after the first `boot`, once the SDK has handed them over.
+/// Every span that ended so far (the first screen's too), once the SDK has handed them over.
 Future<List<SentrySpanV2>> spansOf(Rig rig, WidgetTester tester) async {
   await tester.pump();
   return rig.sentry.spans;
@@ -468,8 +468,8 @@ void main() {
 
   testWidgets('what is true of the trace: every segment of a session is in '
       'the same trace', (tester) async {
-    // The SDK takes a root span's trace from the scope's propagation context, which only
-    // `generateNewTrace` (@internal) renews: a screen is a segment, not a trace of its own.
+    // As with `static`, a root span's trace is the scope's propagation context's, which only
+    // `enableNewTraceOnNavigation` of Sentry's observer (or a stay in the background) renews.
     final rig = streamRig();
     final r = await rig.boot(tester);
     r.go('/other');

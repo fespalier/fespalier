@@ -146,8 +146,10 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   navigation **cannot be dropped**: it is sent with `fespalier.navigation.outcome` `superseded`, named `navigate`.
   An error is linked to its span through `contexts.trace`. **The sink never uses an idle span** (a timer) and ends
   every span itself; a span that ends before the route is known waits for it, so it carries the segment's name.
-  Not the same as `static`: every segment of a session is in **one trace** (the SDK renews it only through an
-  internal call; whether Sentry's views are right with that is UNCHECKED), and HTTP spans (`SentryHttpClient`,
+  Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s
+  transactions are; `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews it on each
+  navigation, and the SDK does after a stay in the background when no navigator observer exists (whether Sentry's
+  views are right with one trace for many screens is UNCHECKED). Not the same as `static`: HTTP spans (`SentryHttpClient`,
   `sentry_dio`) parent to the active span of the zone, and `data()` does not run in one yet, so they make **no
   span under the screen** in this mode. `configure` installs `beforeSendSpan` (the app's first) that takes
   `http.query`, `http.fragment` and the query of `url` off (`FespalierSentry.spanWithoutQueries`).

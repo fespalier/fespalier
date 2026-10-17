@@ -566,7 +566,9 @@ FespalierTelemetry.install(FespalierSentry(tracing: true));
 - The sink never uses an idle span (it starts a timer) and ends every span itself, when the screen's data arrives or the next navigation starts. A span that ends before the route is known waits for it, so each carries the segment's name (`sentry.segment.name`); Sentry's span buffer and its flush are the SDK's.
 - `FespalierSentry.configure` also installs `beforeSendSpan` (the app's first), which takes `http.query`, `http.fragment` and the query of `url` off a span (`recordQueries: true` keeps them). `FespalierSentry.spanWithoutQueries` is the same function.
 
-What is not the same as with `static`. Every segment of a session is in **one trace**: the SDK takes a root span's trace id from the scope, and only an internal call renews it (UNCHECKED: whether Sentry's Screen Loads and trace views are right with that). HTTP spans (`SentryHttpClient`, `sentry_dio`) parent to the _active_ span of the running zone, and `data()` does not run inside one yet: in this mode they make no span under the screen. The `static` lifecycle is unchanged.
+Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s transactions are: a screen is not a trace of its own. `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews the trace on each navigation, and so does the SDK after the app has been in the background, when no navigator observer exists. UNCHECKED: whether Sentry's Screen Loads and trace views are right with one trace for many screens.
+
+What is not the same as with `static`. HTTP spans (`SentryHttpClient`, `sentry_dio`) parent to the _active_ span of the running zone, and `data()` does not run inside one yet: in this mode they make no span under the screen. The `static` lifecycle is unchanged.
 
 ### Sentry defaults and privacy
 

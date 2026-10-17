@@ -1,5 +1,7 @@
 // `FespalierSentry.configure`: fespalier's defaults on Sentry's options, row by row, and what
 // its callbacks do to what Sentry puts on breadcrumbs, events and transactions.
+import 'dart:async';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_sentry/fespalier_sentry.dart';
 import 'package:fespalier_sentry/testing.dart';
@@ -422,6 +424,42 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
       expect(sentry.spans, [same(root)]);
     });
+
+    test(
+      'a throwing app beforeSendSpan still gets the queries scrubbed',
+      () async {
+        final sentry = RecordingSentry(configure: stream);
+        for (final fails in <FutureOr<void> Function(SentrySpanV2)>[
+          (span) => throw StateError('sync'),
+          (span) => Future<void>.error(StateError('async')),
+        ]) {
+          final options = configured(
+            before: (o) => o.beforeSendSpan = fails,
+            tracing: true,
+          );
+          final span = sentry.hub.startInactiveSpan(
+            'GET /items',
+            parentSpan: null,
+            attributes: {
+              'url': SentryAttribute.string(
+                'https://api.example.com/items?token=abc',
+              ),
+              'http.query': SentryAttribute.string('token=abc'),
+            },
+          );
+          // The error still reaches the SDK, which sends the span all the same.
+          await expectLater(
+            Future<void>.sync(() => options.beforeSendSpan!(span)),
+            throwsStateError,
+          );
+          expect(
+            span.attributes['url']!.value,
+            'https://api.example.com/items',
+          );
+          expect(span.attributes.containsKey('http.query'), isFalse);
+        }
+      },
+    );
 
     test('recordQueries: true keeps them', () async {
       final sentry = RecordingSentry(

@@ -215,14 +215,21 @@ final class FespalierSentry extends FespalierTelemetry {
         );
     final beforeSendSpan = options.beforeSendSpan;
     options.beforeSendSpan = (span) {
-      final earlier = beforeSendSpan?.call(span);
       void scrubbed() {
         if (!recordQueries) scrub.spanWithoutQueries(span);
       }
 
-      // A sync callback stays sync, like the three above.
+      // The SDK sends the span even when the app's callback fails, so the scrub runs whatever it
+      // does, and its error still reaches the SDK. A sync callback stays sync.
+      final FutureOr<void> earlier;
+      try {
+        earlier = beforeSendSpan?.call(span);
+      } catch (_) {
+        scrubbed();
+        rethrow;
+      }
       return earlier is Future<void>
-          ? earlier.then((_) => scrubbed())
+          ? earlier.whenComplete(scrubbed)
           : scrubbed();
     };
   }

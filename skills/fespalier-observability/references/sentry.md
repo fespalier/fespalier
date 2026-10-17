@@ -154,8 +154,8 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   views are right with one trace for many screens is UNCHECKED). **HTTP spans are under the data span** (since 0.19.0): the sink's `within` makes the
   span of a `data()` or an action with `Hub.startSpan` around the code it runs, so `SentryHttpClient` and `sentry_dio`
   (which parent to the zone's active span) make children of it, after an `await` too, and two loads at once keep
-  their own. The span still ends with fespalier's outcome and attributes, when `data()` settles or the load is
-  disposed (the body's `Future` is never what ends it). An action with no screen open is a segment, and its requests
+  their own. The span still ends with fespalier's outcome and attributes, when `data()` settles, the load is
+  disposed or the next navigation starts first (status `error`); the body's `Future` is never what ends it. An action with no screen open is a segment, and its requests
   are its children. A request that ends before the navigation commits carries `sentry.segment.name` `navigate`
   (Sentry's own spans cannot be held for the route's name, the sink's can). `configure` installs `beforeSendSpan` (the app's first) that takes
   `http.query`, `http.fragment` and the query of `url` off (`FespalierSentry.spanWithoutQueries`).

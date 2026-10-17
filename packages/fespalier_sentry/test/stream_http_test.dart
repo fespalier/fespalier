@@ -297,6 +297,38 @@ void main() {
     expect(data.parentSpan!.name, '/items/:id');
   });
 
+  testWidgets('a sync data() that throws reaches the caller unchanged, and '
+      'its span is an error', (tester) async {
+    final rig = streamRig();
+    final boom = StateError('boom');
+    Object? caught;
+    final fails = Provider.autoDispose<String>((ref) {
+      try {
+        return traceDataCall<String>(
+          ref,
+          'd6',
+          null,
+          () => throw boom,
+          telemetry: dataSite,
+        );
+      } catch (e) {
+        // The very object, thrown synchronously from the call: no Future in between.
+        caught = e;
+        return 'caught';
+      }
+    });
+    final r = itemsRouter(
+      () => Consumer(builder: (_, ref, _) => page(ref.watch(fails))),
+    );
+    await pumpRouter(tester, r);
+    r.go('/two');
+    await tester.pumpAndSettle();
+    expect(caught, same(boom));
+    final data = ofOp(await spansOf(rig, tester), 'fespalier.data').single;
+    expect(data.status, SentrySpanStatusV2.error);
+    expect(attr(data, 'fespalier.data.state'), 'error');
+  });
+
   testWidgets('a load disposed before it settles ends its span once, ok, '
       'state=disposed', (tester) async {
     final rig = streamRig();

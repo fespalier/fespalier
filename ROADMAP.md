@@ -7,8 +7,6 @@ it ships.
 
 ## Next
 
-- **`fespalier_biometrics`, the rest.** The unlock guard ships in 0.13.0 (docs/guards.md). Not built: a lock
-  screen widget, an idle lock on a timer, and a secret kept behind the biometric (a keystore's job).
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a
   `flutter_rust_bridge` dependency (the generated bindings own it) and a rebuild budget for a core that
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).

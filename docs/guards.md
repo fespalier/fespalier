@@ -368,6 +368,34 @@ Use a positive `idleTimeout`; `BiometricUnlock` asserts it in debug builds.
 
 Unchecked on a device: the app's periodic timer while the app is hidden, the first touch absorbed on a real screen, and a hardware keyboard.
 
+### Secrets behind the biometric
+
+Since 0.19.0 a value the person must unlock to read (a card number, a recovery phrase, a token) can be kept behind the biometric. **The gate is the keystore's**, not Dart's: a value merely hidden behind `unlock()` is plain data in memory or on disk, readable by any code that skips the guard. An item written with the OS's access control cannot be decrypted without the check: iOS asks as part of the keychain read, and Android's key is created to require the person's presence. So the package depends on no plugin: you write a `BiometricSecrets` once (the `flutter_secure_storage` recipe in the fespalier-guards skill is about 60 lines), and `biometricSecrets.overrideWithValue(...)` in `startup()` gives it to the app. Unconfigured, reading `biometricSecrets` throws a `StateError` that says so.
+
+```dart
+// in an event handler (never in build or a guard)
+final secret = await ref.read(biometricUnlock.notifier).readSecret('card', 'Show the card number');
+switch (secret) {
+  case SecretFound(:final value):
+    showCard(value);
+  case SecretMissing():
+    askForTheCardAgain();
+  case SecretRefused(:final outcome):
+    showWhy(outcome);
+}
+```
+
+- `readSecret(key, reason)` answers `SecretFound(value)`, `SecretMissing()` (nothing stored, or the keystore made the item unreadable, such as an iOS item bound to `biometryCurrentSet` after a new finger was enrolled) or `SecretRefused(outcome)` with the same `BiometricOutcome` as a prompt. It never throws for a refusal, and a store that throws is `SecretRefused(failed)`. `writeSecret(key, value, reason)` answers a `BiometricOutcome`, and `deleteSecret(key)` removes one (it needs no sheet). A store that fails makes `deleteSecret`'s `Future` fail (the secret may still be there): a failed delete at sign-out must not be silent. `SecretFound.toString()` hides the value.
+- **One sheet at a time.** A read that comes while `unlock()`'s sheet is up waits for it (and the other way round), two reads of one key share one `Future` and one sheet, and reads of two keys are two sheets in order. No timer is involved: the package keeps a line of `Future`s. An `unlock()` that queues behind a read's sheet is `Unlocking` from the call, so a lock screen's button is disabled for the whole read sheet. **A store must always answer**: one that never does blocks every later `unlock()` and secret operation until the app restarts, because the package may not time it out.
+- **A read does not unlock the app.** The state stays `Locked` (or whatever it was) and tells no listener: Android's `biometricOrDeviceCredential` accepts a PIN, and a read is consent to one value, not proof that the owner is holding the phone. Unlock first (`unlock()`) when the page needs it.
+- **The value goes to the caller only.** No provider holds it, and telemetry never sees it. `lock()` leaves stored secrets alone, so delete an account's secrets at sign-out.
+
+Each operation is one `fespalier.biometrics.secret` operation with `fespalier.biometrics.secret_op` (`read`, `write` or `delete`) and `fespalier.biometrics.result` (`found`, `missing`, `success`, `cancelled`, `failed`, `lockedOut` or `unavailable`) to an installed [telemetry](observability.md#telemetry) sink: constants only, never the key, the value, the reason or the store's error (its text can name the key). A store that threw ends as `error` without the error object.
+
+In tests, `FakeBiometricSecrets` (a stored map, an outcomes queue, `reads`, `writes` and `deletes` counts, `hold()` and `release()`) goes in with `biometricTestOverrides(prompt, secrets: fake)`.
+
+Unchecked on a device: Face ID, Touch ID and fingerprint reads, cancel and lockout, a newly enrolled finger with `biometryCurrentSet`, and Android `strongBiometricOnly` against `biometricOrDeviceCredential`.
+
 ### Testing an unlock
 
 `package:fespalier_biometrics/testing.dart` has `FakeBiometricPrompt` (outcomes from a queue, a `prompts` count, `reasons`, `hold()` and `release()` for a sheet that is up) and `biometricTestOverrides(prompt, policy:)`, the overrides for `pumpRouter` or a `ProviderContainer`:

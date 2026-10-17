@@ -6,6 +6,7 @@ import 'authorizer.dart';
 import 'errors.dart';
 
 const String _attemptKey = 'fespalier_auth.attempt';
+const String _wantedByKey = 'fespalier_auth.wanted_by';
 
 /// Adds the session to a Dio's requests to `AuthConfig.apiOrigins`, and sends a request once more
 /// after a proof challenge or a 401 (a refresh), like `SessionClient` (since 0.9.0).
@@ -21,6 +22,11 @@ const String _attemptKey = 'fespalier_auth.attempt';
 /// attempt works. A body of bytes (`Uint8List`, a `String`, a map, and what `DioHttpClient` makes
 /// of an `http.Request`) is sent again whole. Every response goes through the authorizer, so a
 /// DPoP nonce on a success is remembered too, and a request is sent at most three times.
+///
+/// A request whose session was refused or ended is not sent again without it (since 0.19.0), whoever
+/// sends it again: a retrier calls `dio.fetch` with the same options, and the retry is rejected with
+/// the `AuthRejected` ([authRefusedKey]), when the user signed out or another signed in between
+/// two sends. A send never keeps the headers of the one before.
 final class SessionInterceptor extends Interceptor {
   /// An interceptor over [authorizer], sending a request again through [dio].
   SessionInterceptor(this.authorizer, this.dio);
@@ -38,19 +44,54 @@ final class SessionInterceptor extends Interceptor {
   ) async {
     final uri = options.uri;
     if (!authorizer.covers(uri)) return handler.next(options);
+    // A session that was refused stays refused for this request: a retrier sends the very same
+    // options again, and the authorizer would now answer "nobody is signed in".
+    final refused = options.extra[authRefusedKey];
+    if (refused is AuthRejected) {
+      return handler.reject(
+        DioException(requestOptions: options, error: refused),
+        true,
+      );
+    }
     try {
       final previous = options.extra[_attemptKey];
+      final prior = previous is AuthAttempt ? previous : null;
       final attempt = await authorizer.authorize(
         options.method,
         uri,
-        previous: previous is AuthAttempt ? previous : null,
+        previous: prior,
       );
+      final hadSession =
+          (prior != null && prior.headers.isNotEmpty) ||
+          options.extra[authWantedKey] == true;
+      if (hadSession && attempt.headers.isEmpty) {
+        // The session ended between two sends of one request: it is not sent without it.
+        throw const AuthRejected();
+      }
+      final wantedBy = options.extra[_wantedByKey];
+      if (wantedBy != null && attemptUserId(attempt) != wantedBy) {
+        // The authorizer failed for another user's session than the one signed in now.
+        throw const AuthRejected();
+      }
+      if (prior != null) {
+        // The headers of the send before are stale: a new proof, a new token.
+        for (final name in prior.headers.keys.toList()) {
+          options.headers.remove(name);
+        }
+      }
       options.headers.addAll(attempt.headers);
       options.extra[_attemptKey] = attempt;
       handler.next(options);
     } on Object catch (error) {
       // AuthRejected and AuthUnavailable (the refresh before the request), or a proof that could
-      // not be made: the request is not sent.
+      // not be made: the request is not sent, and it wanted the session, so a later send of the
+      // same options does not go out without it.
+      options.extra[authWantedKey] = true;
+      // Who wanted it, so a retry is not sent as somebody else (kept under a key of its own: the
+      // value of authWantedKey stays true). The first failure's user stands.
+      final who = authorizerUserId(authorizer);
+      if (who != null) options.extra.putIfAbsent(_wantedByKey, () => who);
+      if (error is AuthRejected) options.extra[authRefusedKey] = error;
       handler.reject(DioException(requestOptions: options, error: error), true);
     }
   }

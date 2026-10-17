@@ -19,10 +19,11 @@ final class AuthAttempt implements HttpAuthorization {
     required this.uri,
     this.headers = const <String, String>{},
     this.accessToken,
+    String? userId,
     this.proofUsed = false,
     this.proofRetried = false,
     this.refreshRetried = false,
-  });
+  }) : _userId = userId;
 
   /// The HTTP method this send is for.
   @override
@@ -38,6 +39,8 @@ final class AuthAttempt implements HttpAuthorization {
 
   /// The access token the headers carry; null when none was attached.
   final String? accessToken;
+
+  final String? _userId;
 
   /// Whether this send carried a proof of possession.
   final bool proofUsed;
@@ -62,6 +65,26 @@ final class AuthAttempt implements HttpAuthorization {
 /// after a proof challenge or a 401 (since 0.9.0): `fespalier.auth.replay`. A write guard that
 /// refuses re-sends lets this one through. Never sent to a server.
 const String authReplayKey = 'fespalier.auth.replay';
+
+/// The id of the user signed in to [authorizer] now, or null. Package-private: `SessionInterceptor`
+/// records it when the authorizer fails for a request.
+String? authorizerUserId(Authorizer authorizer) =>
+    authorizer._notifier.session?.user.id;
+
+/// The id of the user [attempt] was made for, or null when it carried no session. Package-private.
+String? attemptUserId(AuthAttempt attempt) => attempt._userId;
+
+/// The `RequestOptions.extra` key `SessionInterceptor` sets to the `AuthRejected` that stopped a
+/// request before its send (since 0.19.0): `fespalier_auth.refused`. A request that finds it is
+/// refused again with the same error, with no refresh and no send, whoever sends it again (a
+/// retrier calls `dio.fetch` with the very same options). An `AuthUnavailable` is never stored
+/// here: the network may come back. Never sent to a server.
+const String authRefusedKey = 'fespalier_auth.refused';
+
+/// The `RequestOptions.extra` key `SessionInterceptor` sets to `true` when a request asked for the
+/// session and the authorizer failed (since 0.19.0): `fespalier_auth.wanted`. A later send of the
+/// same options that would go out without the session is refused instead. Never sent to a server.
+const String authWantedKey = 'fespalier_auth.wanted';
 
 /// What an HTTP client needs from the session (since 0.9.0): the headers for a request, and the
 /// answer to "send it once more?". One per container: `ref.watch(authorizer)`.
@@ -98,7 +121,8 @@ final class Authorizer implements HttpCredentials {
   /// otherwise the session's, after a refresh when the access token has expired (shared with every
   /// request that finds it expired at the same time).
   ///
-  /// Throws `AuthRejected` when that refresh was refused (the session is over), and
+  /// Throws `AuthRejected` when that refresh was refused (the session is over), or when [previous]
+  /// was made for another user than the one signed in now (since 0.19.0), and
   /// `AuthUnavailable` when it could not run. Pass the [previous] attempt of the same request
   /// when sending it again, so the retries are counted; an `ArgumentError` when it is not an
   /// attempt this package made. The result is an [AuthAttempt].
@@ -133,12 +157,19 @@ final class Authorizer implements HttpCredentials {
     } on NotSignedIn {
       return unauthenticated();
     }
+    final userId = _notifier.session?.user.id;
+    final priorUser = prior?._userId;
+    if (priorUser != null && userId != priorUser) {
+      // A request made for one user is never sent again as another.
+      throw const AuthRejected();
+    }
     if (!tokens.isDpop) {
       return AuthAttempt._(
         method: method,
         uri: uri,
         headers: {'Authorization': 'Bearer ${tokens.accessToken}'},
         accessToken: tokens.accessToken,
+        userId: userId,
         proofRetried: proofRetried,
         refreshRetried: refreshRetried,
       );
@@ -161,6 +192,7 @@ final class Authorizer implements HttpCredentials {
       uri: uri,
       headers: {'Authorization': 'DPoP ${tokens.accessToken}', ...proofHeaders},
       accessToken: tokens.accessToken,
+      userId: userId,
       proofUsed: true,
       proofRetried: proofRetried,
       refreshRetried: refreshRetried,

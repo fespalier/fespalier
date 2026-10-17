@@ -4,6 +4,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:http/http.dart' as http;
 
 import 'authorizer.dart';
+import 'errors.dart';
 import 'util.dart';
 
 /// A `package:http` client whose requests to `AuthConfig.apiOrigins` carry the session (since
@@ -58,6 +59,9 @@ final class SessionClient extends http.BaseClient {
         request.url,
         previous: attempt,
       );
+      // The previous attempt carried a token (retry() says yes only then): the user signed out
+      // while the answer was read. The replay is not sent without the session.
+      if (attempt.headers.isEmpty) throw const AuthRejected();
     }
   }
 

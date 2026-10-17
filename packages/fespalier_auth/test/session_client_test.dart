@@ -238,6 +238,39 @@ void main() {
     });
 
     test(
+      'a sign-out while the 401 is drained: the replay is not sent without the session',
+      () async {
+        // retry() has refreshed by the time the 401's body is drained; the user signs out in the
+        // body. The replay would carry no Authorization (authorize finds nobody signed in).
+        late final ProviderContainer box;
+        final sent = <String?>[];
+        final custom = MockClient.streaming((request, body) async {
+          sent.add(request.headers['Authorization']);
+          final first = sent.length == 1;
+          return http.StreamedResponse(
+            Stream<List<int>>.fromFuture(
+              Future(() async {
+                if (first) await box.read(authSession.notifier).signOut();
+                return <int>[1];
+              }),
+            ),
+            first ? 401 : 200,
+            request: request,
+          );
+        });
+        backend = FakeAuthBackend();
+        box = container = containerFor(
+          signedInAs: ada,
+          backend: backend,
+          apiOrigins: [api],
+          client: custom,
+        );
+        await expectLater(client().get(orders), throwsA(isA<AuthRejected>()));
+        expect(sent, ['Bearer fake-access-0']);
+      },
+    );
+
+    test(
       'a request that cannot be sent again gets its 401 after the refresh',
       () async {
         setUpClient();

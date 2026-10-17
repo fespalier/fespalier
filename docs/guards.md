@@ -281,6 +281,25 @@ biometricPolicy.overrideWithValue(const BiometricPolicy(resumeGrace: Duration.ze
 
 Each prompt is reported as one `fespalier.biometrics.prompt` operation with `fespalier.biometrics.result` set to the outcome's name, to an installed [telemetry](observability.md#telemetry) sink. Never the reason text.
 
+### Idle lock
+
+Since 0.19.0 an app can lock itself after a stretch without a touch, so a phone left unlocked on a table does not keep the vault on screen. It is off by default (`idleTimeout` is null), and the package still starts no timer: **the app fires a ticker, and the package measures time**.
+
+```dart
+// lib/app/startup.dart: lock after two minutes without a touch or a key
+biometricPolicy.overrideWithValue(const BiometricPolicy(idleTimeout: Duration(minutes: 2))),
+```
+
+Three things do the work, and each reads `clock.now()`:
+
+- **Activity.** Put `BiometricActivity` in `MaterialApp.router(builder: (context, child) => BiometricActivity(child: child!))`. Every pointer down, every pointer signal (a mouse wheel) and every key event that reaches it calls `BiometricUnlock.touch()`, which writes a field and not state, so a touch rebuilds nothing. Key events are seen only when a widget below holds the focus, and they are never handled here. The idle age counts from the later of the unlock and the last touch; a clock set back counts as idle, like the grace.
+- **The ticker.** `biometricIdleTicker` is a signal that never fires by itself, the shape of `fespalier_cratestack`'s `syncTicker`. The app fires it from its own `Timer.periodic`, `ref.read(biometricIdleTicker.notifier).fire()`, at most `idleTimeout / 4` apart and **stopped while the app is hidden**; on a tick `BiometricUnlock` goes to `Locked` when the unlock has been idle for `idleTimeout`, and the guard sends the person to the unlock page. The period, the pause and the test (`fire()`) are the app's, which is why core and this package stay timer-free. An `idleTimeout` shorter than the period locks late by up to one period. The fespalier-guards skill has the ticker as a compiled recipe.
+- **The first touch after the limit.** When the limit has already passed, `BiometricActivity` **absorbs** the next touch: it is hit-tested to a box above the page and not to the page, so the button under the finger is not pressed, and it locks. This is time-based, so it is right even when the ticker is late or the app has none (the idle lock then locks on the first touch). Pointer routes are fixed when a touch is hit-tested, so locking from a pointer-down callback alone would let that touch through.
+
+`requireUnlocked` and `isFresh` also treat an unlock that has been idle for `idleTimeout` as locked, so the next navigation lands on the unlock page with no tick at all. `isIdle()` answers the same question for your own code. A touch that comes after the limit never brings the unlock back, and a tick during a prompt keeps the prompt; a lock that was due applies when the prompt ends without a success.
+
+Unchecked on a device: the app's periodic timer while the app is hidden, the first touch absorbed on a real screen, a hardware keyboard, and a text field that holds the focus during the idle time.
+
 ### Testing an unlock
 
 `package:fespalier_biometrics/testing.dart` has `FakeBiometricPrompt` (outcomes from a queue, a `prompts` count, `reasons`, `hold()` and `release()` for a sheet that is up) and `biometricTestOverrides(prompt, policy:)`, the overrides for `pumpRouter` or a `ProviderContainer`:

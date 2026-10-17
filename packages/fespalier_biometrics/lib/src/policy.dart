@@ -1,7 +1,10 @@
 /// When the unlock is given back (since 0.13.0). Set once with `biometricPolicy.overrideWithValue`.
 final class BiometricPolicy {
   /// Relocks when the app comes back from the background at least [resumeGrace] after the unlock.
-  const BiometricPolicy({this.resumeGrace = const Duration(seconds: 10)});
+  const BiometricPolicy({
+    this.resumeGrace = const Duration(seconds: 10),
+    this.idleTimeout,
+  });
 
   /// How long after the unlock the app may go to the background and come back with the unlock kept.
   /// A return from hidden (core's `appShowSignal`: `AppLifecycleListener.onShow`) at least this long
@@ -16,4 +19,16 @@ final class BiometricPolicy {
   /// app in the background and bringing it back does not ask again. An app that guards something
   /// worth more than that window sets a shorter grace (or [Duration.zero]) and tests it on a device.
   final Duration resumeGrace;
+
+  /// Locks after this long without a touch or a key (since 0.19.0); null, the default, is no idle lock.
+  ///
+  /// The age is counted from the later of the unlock and the last activity that `BiometricActivity`
+  /// recorded, by `package:clock`; a negative age (the clock was set back) counts as idle, like the
+  /// grace. It takes effect in three places, none of them a timer of this package: a tick of
+  /// `biometricIdleTicker` (the app fires it from its own timer), the first touch after the limit
+  /// (`BiometricActivity` swallows it and locks), and the next navigation (`requireUnlocked` and
+  /// `isFresh` read the age). Use a positive duration: zero locks on every tick and touch. An
+  /// `idleTimeout` shorter than the ticker's period locks late by up to one period, unless a touch or
+  /// a navigation gets there first.
+  final Duration? idleTimeout;
 }

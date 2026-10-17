@@ -1,6 +1,7 @@
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 
+import 'idle.dart';
 import 'policy.dart';
 import 'prompt.dart';
 import 'telemetry.dart';
@@ -54,23 +55,44 @@ final biometricUnlock = NotifierProvider<BiometricUnlock, UnlockState>(
 class BiometricUnlock extends Notifier<UnlockState> {
   Future<BiometricOutcome>? _flight;
   DateTime? _at;
+  DateTime? _activityAt;
+  Unlocked? _unlocked;
   int _shows = 0;
+  int? _ticks;
 
   @override
   UnlockState build() {
     final shows = ref.watch(appShowSignal);
-    final grace = ref.watch(biometricPolicy).resumeGrace;
+    final policy = ref.watch(biometricPolicy);
+    final grace = policy.resumeGrace;
+    final ticks = ref.watch(biometricIdleTicker);
     // Only a return from hidden applies the grace: a policy change rebuilds this too, and must not relock.
     if (shows != _shows) {
       _shows = shows;
       final at = _at;
       if (at != null && _expired(at, grace)) _at = null;
     }
+    // A tick of the app's ticker is the only thing here that ends an idle unlock; the first one is
+    // the provider's own start, and a policy change rebuilds this too, which is not a tick.
+    if (ticks != _ticks) {
+      final first = _ticks == null;
+      _ticks = ticks;
+      if (!first && _at != null && isIdle()) _at = null;
+    }
     final at = _at;
     // A show during a prompt (the platform's sheet can background the app) keeps the prompt, and
     // the relock that was due is not lost: the state under the prompt is whatever `_at` is now.
     if (_flight != null) return Unlocking(wasUnlocked: at != null);
-    return at == null ? const Locked() : Unlocked(at);
+    return _stateOf(at);
+  }
+
+  /// The unlocked state for [at], the same object while it is the same unlock: a tick that keeps the
+  /// unlock tells no listener.
+  UnlockState _stateOf(DateTime? at) {
+    if (at == null) return const Locked();
+    final known = _unlocked;
+    if (known != null && known.at == at) return known;
+    return _unlocked = Unlocked(at);
   }
 
   /// Whether [at] is [limit] old or older by `clock.now()`; a negative age (the clock was set back) is expired.
@@ -109,10 +131,10 @@ class BiometricUnlock extends Notifier<UnlockState> {
     if (!ref.mounted) return outcome;
     if (outcome == BiometricOutcome.success) {
       final at = _at = clock.now();
-      state = Unlocked(at);
+      _activityAt = null;
+      state = _stateOf(at);
     } else {
-      final at = _at;
-      state = at == null ? const Locked() : Unlocked(at);
+      state = _stateOf(_at);
     }
     return outcome;
   }
@@ -121,6 +143,7 @@ class BiometricUnlock extends Notifier<UnlockState> {
   /// a success then unlocks again.
   void lock() {
     _at = null;
+    _activityAt = null;
     state = _flight == null ? const Locked() : const Unlocking();
   }
 
@@ -129,8 +152,31 @@ class BiometricUnlock extends Notifier<UnlockState> {
   /// it answers for that unlock, so a guard that runs again during a [withBiometrics] sheet keeps its answer.
   bool isFresh({Duration? maxAge}) {
     final at = _at;
-    if (at == null) return false;
+    if (at == null || isIdle()) return false;
     return maxAge == null || !_expired(at, maxAge);
+  }
+
+  /// Records activity now, by `clock.now()` (since 0.19.0); `BiometricActivity` calls it on every touch and
+  /// key. It writes a field and not state, so a touch rebuilds nothing. It does nothing while locked,
+  /// without an `idleTimeout`, or once the idle limit has passed: a late touch does not bring an
+  /// expired unlock back.
+  void touch() {
+    if (_at == null || ref.read(biometricPolicy).idleTimeout == null) return;
+    if (isIdle()) return;
+    _activityAt = clock.now();
+  }
+
+  /// Whether the app is unlocked, the policy has an `idleTimeout`, and the time since the later of the
+  /// unlock and the last [touch] is at least that long by `clock.now()` (since 0.19.0). A negative
+  /// age (the clock was set back) is idle. Under a prompt that started over an unlock it answers for
+  /// that unlock.
+  bool isIdle() {
+    final at = _at;
+    final limit = ref.read(biometricPolicy).idleTimeout;
+    if (at == null || limit == null) return false;
+    final activity = _activityAt;
+    final last = activity != null && activity.isAfter(at) ? activity : at;
+    return _expired(last, limit);
   }
 }
 

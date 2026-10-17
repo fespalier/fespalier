@@ -32,16 +32,17 @@ dependencies:
 
 ## What it is made of
 
-| Piece                                                            | What it does                                                                                                                                                                                                     |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BiometricPrompt`, `biometricPrompt`                             | The platform check: `isAvailable()` and `authenticate(reason)` returning a `BiometricOutcome` (`success`, `cancelled`, `failed`, `unavailable`, `lockedOut`). The provider throws until `startup()` overrides it |
-| `biometricUnlock`, `BiometricUnlock`                             | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                              |
-| `requireUnlocked(ref, uri, unlock:, maxAge:)`                    | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
-| `withBiometrics(ref, reason, action, maxAge:)`                   | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
-| `biometricPolicy`, `BiometricPolicy(resumeGrace:, idleTimeout:)` | When the app relocks: on a return from the background 10 seconds or more after the unlock (`Duration.zero` is every return), and, since 0.19.0, after `idleTimeout` without a touch (null, off, by default)      |
-| `biometricIdleTicker`, `BiometricActivity` (since 0.19.0)        | The idle lock: a signal the app fires from its own timer, and the widget that records touches and absorbs the first one after the limit. `BiometricUnlock.touch()` and `isIdle()`                                |
-| `biometricAvailable`                                             | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                     |
-| `FakeBiometricPrompt`, `biometricTestOverrides`                  | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
+| Piece                                                               | What it does                                                                                                                                                                                                     |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BiometricPrompt`, `biometricPrompt`                                | The platform check: `isAvailable()` and `authenticate(reason)` returning a `BiometricOutcome` (`success`, `cancelled`, `failed`, `unavailable`, `lockedOut`). The provider throws until `startup()` overrides it |
+| `biometricUnlock`, `BiometricUnlock`                                | The state (`Locked`, `Unlocking`, `Unlocked(at)`) and its notifier: `unlock(reason)`, `lock()`, `isFresh({maxAge})`                                                                                              |
+| `requireUnlocked(ref, uri, unlock:, maxAge:)`                       | The guard: `null` while unlocked, else the unlock page's location with `from`. Synchronous, never prompts                                                                                                        |
+| `withBiometrics(ref, reason, action, maxAge:)`                      | For an action: prompts unless the unlock is younger than `maxAge` (default: always), throws `BiometricDeclined(outcome)` when it does not pass                                                                   |
+| `biometricPolicy`, `BiometricPolicy(resumeGrace:, idleTimeout:)`    | When the app relocks: on a return from the background 10 seconds or more after the unlock (`Duration.zero` is every return), and, since 0.19.0, after `idleTimeout` without a touch (null, off, by default)      |
+| `biometricIdleTicker`, `BiometricActivity` (since 0.19.0)           | The idle lock: a signal the app fires from its own timer, and the widget that records touches and absorbs the first one after the limit. `BiometricUnlock.touch()` and `isIdle()`                                |
+| `biometricAvailable`                                                | `FutureProvider<bool>` for the unlock page ("Use your passcode" instead of a button that cannot work); a prompt that throws is an `AsyncError`, never retried (since 0.16.0)                                     |
+| `BiometricLockScreen`, `BiometricLockScreenMessages` (since 0.19.0) | `package:fespalier_biometrics/material.dart`, the one Material library: an unlock page body whose button prompts on a tap and never otherwise; the `unavailable` builder; replaceable words                      |
+| `FakeBiometricPrompt`, `biometricTestOverrides`                     | `package:fespalier_biometrics/testing.dart`: queued outcomes, `prompts` count, `hold()` and `release()` for a sheet that is up                                                                                   |
 
 ## The starter
 
@@ -81,25 +82,23 @@ GuardResult guard(Ref ref, {required Uri uri}) => requireUnlocked(
 ```dart
 // lib/app/unlock/page.dart
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_biometrics/fespalier_biometrics.dart';
+import 'package:fespalier_biometrics/material.dart';
 import 'package:flutter/material.dart';
 
-class UnlockPage extends ConsumerWidget {
+/// The body is `BiometricLockScreen` (since 0.19.0): the button, the words for a failed or locked-out try, the
+/// "cannot ask" case. It prompts on a tap and never otherwise. Without Material, call
+/// `ref.read(biometricUnlock.notifier).unlock(reason)` from your own button.
+class UnlockPage extends StatelessWidget {
   const UnlockPage({super.key, this.from});
 
   /// Where the guard that sent us here was going.
   final String? from;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => FilledButton(
-    onPressed: () async {
-      final outcome = await ref.read(biometricUnlock.notifier).unlock('Unlock your vault');
-      // The page navigates: nothing watches the unlock for it. returnTo ignores a `from` that leaves the app.
-      if (outcome == BiometricOutcome.success && context.mounted) {
-        context.go(returnTo(from));
-      }
-    },
-    child: const Text('Unlock'),
+  Widget build(BuildContext context) => BiometricLockScreen(
+    reason: 'Unlock your vault',
+    // The page navigates: nothing watches the unlock for it. returnTo ignores a `from` that leaves the app.
+    onUnlocked: () => context.go(returnTo(from)),
   );
 }
 ```
@@ -239,6 +238,42 @@ Future<List<Override>> startup() async => [
   biometricPrompt.overrideWithValue(const LocalAuthPrompt()),
 ];
 ```
+
+## A ready-made unlock page (since 0.19.0)
+
+`BiometricLockScreen` (`import 'package:fespalier_biometrics/material.dart'`, the only library of the package that imports
+Material; the main one stays free of it) is the body of the unlock page, as the starter above uses it:
+
+```dart
+BiometricLockScreen(
+  reason: 'Unlock your vault',          // what the platform's sheet says
+  onUnlocked: () => context.go(returnTo(from)),
+  title: const Text('Vault'),           // optional
+  unavailable: (context) => const Text('Use your passcode'), // optional: instead of the button
+  messages: const BiometricLockScreenMessages(unlock: 'Deverrouiller'), // optional: another language
+)
+```
+
+- **It prompts on a tap and never otherwise.** Not in `build` (a rebuild is never a prompt), and not after the first frame:
+  the package schedules no frame (`addPostFrameCallback` is forbidden by `test/no_timers_test.dart`).
+- The button is disabled while a sheet is up. `failed` and `lockedOut` show `messages.failed` and `messages.lockedOut`; a
+  `cancelled` shows nothing. When `biometricAvailable` answers `false` (or a tap ends `unavailable`) the button gives way
+  to `unavailable` (default: `messages.unavailable` as a `Text`); while the answer is pending, or if the plugin threw, the
+  button stays and a tap reports what happened.
+- It opens no dialog, route, menu, sheet or snack bar: the platform's own sheet is the prompt.
+- Rejected on purpose: a `BiometricGate` that overlays the whole app when locked. It is a second way to say "locked"
+  beside the guard, and a subtree parked under an overlay keeps its secrets in memory.
+
+**Asking as soon as the page opens** is the unlock folder's own `observe.dart` `onEnter` (fespalier runs it after the
+frame, never in `build`), and the page leaves with a `ref.listen` on `biometricUnlock` because a hook has no
+`BuildContext`. It prompts on every entry, so it is a separate compiled app, not part of the starter above:
+[`biometric-lock-screen.md`](biometric-lock-screen.md) has the hook, the page that replaces the starter's, and the test.
+The screen shows the outcome of a prompt **it** started: a prompt the hook started that ends `failed`, `lockedOut` or
+`unavailable` shows no message, and a tap during the hook's sheet joins it (single flight), so it is still one sheet.
+Built already unlocked, the screen shows the button and a tap prompts again.
+
+Unchecked on a device: an `onEnter` prompt on a cold start and right after a relock on resume (iOS may refuse a prompt
+while the app is not yet active), the grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
 
 ## Idle lock (since 0.19.0)
 
@@ -401,7 +436,7 @@ package's own `test/idle_test.dart` does.
   unlocked.
 - **A prompt over an unlocked page does not move the page.** `Unlocking` carries `wasUnlocked`, and the guard treats it
   as unlocked, so `withBiometrics` on `/vault` does not send the person to the unlock page while the sheet is showing.
-- **The unlock page navigates.** Nothing watches the unlock for it; it calls `context.go(returnTo(from))` after a
+- **The unlock page navigates.** Nothing in the package watches the unlock for it; it calls `context.go(returnTo(from))` after a
   success. `returnTo` ignores a `from` that is not a path in the app.
 - **Relock when the app comes back, with no timer and no listener.** `BiometricUnlock` watches core's `appShowSignal`
   (since 0.13.0: `onShow`, visible again **after being hidden**), so a return from the background runs its `build`
@@ -428,10 +463,10 @@ package's own `test/idle_test.dart` does.
 
 ## Traps
 
-- **A guard on the unlock page.** `unlock/` sits beside the guarded folder, not in it, or the guard redirects to the
+- **A `requireUnlocked` on the unlock page.** `unlock/` sits beside the guarded folder, not in it, or the guard redirects to the
   page that redirects.
 - **Calling `unlock()` from `build` or from a guard.** That is the prompt-on-rerun bug this package exists to prevent.
-  Call it from an event handler. A guard that must stay `FutureOr<String?>` never awaits a prompt.
+  Call it from an event handler (`BiometricLockScreen`'s button is one) or an `observe.dart` `onEnter`. A guard that must stay `FutureOr<String?>` never awaits a prompt.
 - **A secret kept after a lock.** Locking does not clear data providers: a `data.dart` that loaded the vault stays in
   memory, and the app decides whether to invalidate it (`ref.invalidate`) when `biometricUnlock` goes to `Locked`.
 - **A biometric check is not authentication to a server.** It proves a person is at the phone; it signs nothing. Use

@@ -555,9 +555,11 @@
         "docs/guards.md#The unlock page",
         "docs/guards.md#Actions that ask again",
         "docs/guards.md#Relock when the app comes back",
+        "docs/guards.md#A ready-made unlock page",
         "docs/guards.md#Idle lock",
         "docs/guards.md#Testing an unlock",
         "packages/fespalier_biometrics/lib/testing.dart",
+        "packages/fespalier_biometrics/lib/material.dart",
         "packages/fespalier_biometrics/README.md",
         "packages/fespalier_biometrics/lib/fespalier_biometrics.dart"
       ]

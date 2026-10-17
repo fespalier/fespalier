@@ -16,9 +16,11 @@ const _shuttle = ValueKey<String>('shuttle');
 Widget _body(String name) =>
     Align(alignment: Alignment.topLeft, child: Text(name));
 
+Page<void> _noneHome(LocalKey k) => Transitions.none(k, _body('home'));
+
 /// `/` and, below it, one route per preset. Each page is built inside `namedPage`, as the
 /// generated file does.
-GoRouter _router() {
+GoRouter _router({Page<void> Function(LocalKey key) home = _noneHome}) {
   GoRoute entry(String path, Page<void> Function(LocalKey key) make) => GoRoute(
     path: path,
     pageBuilder: (context, state) =>
@@ -28,10 +30,8 @@ GoRouter _router() {
     routes: [
       GoRoute(
         path: '/',
-        pageBuilder: (context, state) => namedPage(
-          '/',
-          () => Transitions.none(state.pageKey, _body('home')),
-        ),
+        pageBuilder: (context, state) =>
+            namedPage('/', () => home(state.pageKey)),
         routes: [
           entry('fade', (k) => Transitions.fade(k, _body('fade'))),
           entry('slide', (k) => Transitions.slide(k, _body('slide'))),
@@ -79,8 +79,13 @@ void _reduced(WidgetTester tester, bool on) {
 }
 
 /// Boots [_router] at `/` and goes to [path], leaving the transition at [at].
-Future<GoRouter> _open(WidgetTester tester, String path, {double? at}) async {
-  final router = _router();
+Future<GoRouter> _open(
+  WidgetTester tester,
+  String path, {
+  double? at,
+  GoRouter? using,
+}) async {
+  final router = using ?? _router();
   await pumpRouter(tester, router);
   unawaited(router.push<void>('/$path'));
   await pumpTransition(tester, at: at ?? _middle);
@@ -236,12 +241,73 @@ void main() {
         tester,
       ) async {
         _reduced(tester, reduced);
-        await _open(tester, 'cupertino');
+        await _open(
+          tester,
+          'cupertino',
+          using: _router(home: (k) => Transitions.cupertino(k, _body('home'))),
+        );
         final mid = tester.getTopLeft(find.text('home', skipOffstage: false));
         await tester.pumpAndSettle();
         final end = tester.getTopLeft(find.text('home', skipOffstage: false));
-        if (reduced) expect(mid, end);
+        if (reduced) {
+          expect(mid, end);
+        } else {
+          expect(mid, isNot(end));
+        }
       }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+      for (final plain in [false, true]) {
+        testWidgets('material: the page below stays put under it when reduced '
+            '(${plain ? 'a plain MaterialPage' : 'Transitions.none'} below)', (
+          tester,
+        ) async {
+          _reduced(tester, reduced);
+          final router = GoRouter(
+            routes: [
+              GoRoute(
+                path: '/',
+                pageBuilder: (context, state) => plain
+                    ? MaterialPage<void>(
+                        key: state.pageKey,
+                        child: _body('home'),
+                      )
+                    : Transitions.none(state.pageKey, _body('home')),
+                routes: [
+                  GoRoute(
+                    path: 'material',
+                    pageBuilder: (context, state) =>
+                        Transitions.material(state.pageKey, _body('material')),
+                  ),
+                ],
+              ),
+            ],
+          );
+          await tester.pumpWidget(
+            MaterialApp.router(
+              routerConfig: router,
+              theme: ThemeData(
+                pageTransitionsTheme: const PageTransitionsTheme(
+                  builders: {
+                    TargetPlatform.android:
+                        FadeForwardsPageTransitionsBuilder(),
+                  },
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          unawaited(router.push<void>('/material'));
+          await pumpTransition(tester, at: _middle);
+          final mid = tester.getTopLeft(find.text('home', skipOffstage: false));
+          await tester.pumpAndSettle();
+          final end = tester.getTopLeft(find.text('home', skipOffstage: false));
+          if (reduced) {
+            expect(mid, end);
+          } else {
+            expect(mid, isNot(end));
+          }
+        }, variant: TargetPlatformVariant.only(TargetPlatform.android));
+      }
 
       testWidgets('cupertino: the back swipe from the left edge still pops', (
         tester,
@@ -324,7 +390,7 @@ void main() {
         await pumpRouter(tester, router);
         unawaited(router.push<void>('/detail'));
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+        await tester.pump(Duration(milliseconds: reduced ? 6 : 50));
         expect(find.byKey(_shuttle), reduced ? findsNothing : findsOneWidget);
         await tester.pumpAndSettle();
         expect(find.byKey(_shuttle), findsNothing);

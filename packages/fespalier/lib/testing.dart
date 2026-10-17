@@ -231,6 +231,10 @@ PageMotion? motionOf(WidgetTester tester, {Finder? of}) {
 /// expect(find.byType(FadeTransition), findsWidgets);
 /// ```
 ///
+/// Under `FakeAccessibilityFeatures(disableAnimations: true)` Flutter plays a transition at a
+/// twentieth of its duration, so `at: 0.5` lands after the end: use a small fraction such as
+/// `at: 0.02`.
+///
 /// Call it right after the navigation, once per transition: it starts from the transition's
 /// first frame. To finish a transition it stopped halfway, `pumpAndSettle`.
 Future<void> pumpTransition(

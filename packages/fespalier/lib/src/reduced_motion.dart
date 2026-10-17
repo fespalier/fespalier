@@ -11,7 +11,8 @@ bool reducedMotion(BuildContext context) =>
     MediaQuery.maybeDisableAnimationsOf(context) == true;
 
 /// The transition of a page route that keeps [build]'s widget tree and its gestures and
-/// replaces its motion with a fade of the same duration (since 0.19.0).
+/// replaces its motion with a fade of the same `transitionDuration`, which Flutter itself plays
+/// at a twentieth while animations are disabled (since 0.19.0).
 ///
 /// [build] is the route's own `buildTransitions` (`super.buildTransitions`), called with an
 /// animation that is already complete and a secondary one that is not started, so the page
@@ -62,6 +63,23 @@ class _MaterialRoute extends PageRoute<void>
 
   @override
   String get debugLabel => '${super.debugLabel}(${_page.name})';
+
+  // The page below keeps still under a reduced route. Not a closure when motion is on: the
+  // inherited builder (possibly null) is returned unchanged.
+  @override
+  DelegatedTransitionBuilder? get delegatedTransition {
+    final context = navigator?.context;
+    if (context != null && reducedMotion(context)) {
+      return (
+        context,
+        animation,
+        secondaryAnimation,
+        allowSnapshotting,
+        child,
+      ) => child;
+    }
+    return super.delegatedTransition;
+  }
 
   @override
   Widget buildTransitions(

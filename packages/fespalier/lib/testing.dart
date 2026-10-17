@@ -22,6 +22,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
 import 'src/deferred.dart';
+import 'src/page_motion.dart';
 import 'src/telemetry.dart';
 
 /// Riverpod's `Override`, the type of the list `overrides` and `pumpRouter(overrides:)` take
@@ -162,6 +163,100 @@ String currentLocation(WidgetTester tester) {
   final top = matches.lastOrNull;
   if (top is ImperativeRouteMatch) return top.matches.uri.toString();
   return router.routeInformationProvider.value.uri.toString();
+}
+
+/// The route around the widget [of] finds, or the root navigator's top route without [of].
+///
+/// `popUntil` with a predicate that accepts the first route it is shown pops nothing: it is the
+/// public way to read the top of a navigator. A route that is already popping is not the top.
+Route<dynamic> _route(WidgetTester tester, Finder? of) {
+  if (of != null) {
+    final found = of.evaluate().toList();
+    if (found.length != 1) {
+      throw StateError(
+        'motionOf and pumpTransition need `of` to find exactly one widget, '
+        '${of.describeMatch(Plurality.many)} found ${found.length}',
+      );
+    }
+    final route = ModalRoute.of(found.single);
+    if (route == null) {
+      throw StateError(
+        '${of.describeMatch(Plurality.many)} is not inside a route',
+      );
+    }
+    return route;
+  }
+  late Route<dynamic> top;
+  tester.state<NavigatorState>(find.byType(Navigator).first).popUntil((route) {
+    top = route;
+    return true;
+  });
+  return top;
+}
+
+/// Which motion the top page plays (since 0.19.0): the [PageMotion] its `Transitions.*` call
+/// tagged it with, or null for a page `Transitions` did not build (go_router's own, a
+/// `MaterialPage` of the app's) and for a route with no page (`showDialog`).
+///
+/// It reads the top route of the app's root navigator. Pass [of], a finder for a widget on the
+/// page you mean, to read that page's route instead (a page inside a tab or a layout, which a
+/// nested navigator holds).
+///
+/// ```dart
+/// await pumpRouter(tester, AppRoutes.router(initialLocation: '/photo/1'));
+/// expect(motionOf(tester), PageMotion.dialog);
+/// ```
+PageMotion? motionOf(WidgetTester tester, {Finder? of}) {
+  final settings = _route(tester, of).settings;
+  return settings is Page<dynamic> ? PageMotion.of(settings) : null;
+}
+
+/// Runs the transition the last navigation started to its end, or to a fraction of it (since
+/// 0.19.0), with no `pumpAndSettle`: [at] is how far into the transition to stop, `1` (the
+/// default) for the end and `0.5` for the middle, of the route's `transitionDuration` (its
+/// `reverseTransitionDuration` while it is popping).
+///
+/// It pumps once, so that the route exists and its animation starts, then pumps `at` times the
+/// duration, so the clock is the test's and the frame it ends on is exact (the end is one
+/// millisecond past the duration, where Flutter's controller reports `completed`). Anything else
+/// the page schedules is left alone, which is the point of a mid-flight assertion.
+///
+/// The route is the root navigator's top route, or the one around the widget [of] finds. A
+/// route that is popping is no longer the top: pass [of] for the page that is leaving. A route
+/// that does not animate (a plain `Route`) only gets the first pump.
+///
+/// ```dart
+/// router.go('/products/2');
+/// await pumpTransition(tester, at: 0.5); // halfway: the route is still animating
+/// expect(find.byType(FadeTransition), findsWidgets);
+/// ```
+///
+/// Call it right after the navigation, once per transition: it starts from the transition's
+/// first frame. To finish a transition it stopped halfway, `pumpAndSettle`.
+Future<void> pumpTransition(
+  WidgetTester tester, {
+  double at = 1,
+  Finder? of,
+}) async {
+  assert(at >= 0 && at <= 1, 'at is a fraction of the transition: 0 to 1');
+  await tester.pump();
+  // go_router before 17.4 builds the page of a `go` a frame late: look once more before
+  // reporting that `of` finds nothing.
+  if (of != null && of.evaluate().isEmpty) await tester.pump();
+  final route = _route(tester, of);
+  if (route is! TransitionRoute<dynamic>) return;
+  final reversing = route.animation?.status == AnimationStatus.reverse;
+  final duration = reversing
+      ? route.reverseTransitionDuration
+      : route.transitionDuration;
+  assert(
+    duration == Duration.zero || (route.animation?.isAnimating ?? false),
+    'the route pumpTransition found is not animating: a page inside a layout '
+    'or a tab is on a nested navigator, so pass `of:` a finder for a widget on it',
+  );
+  await tester.pump(
+    at == 1 ? duration + const Duration(milliseconds: 1) : duration * at,
+  );
 }
 
 /// A [FespalierTelemetry] that keeps what it is told, as lines a test can compare (since 0.8.1).

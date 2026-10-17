@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'heroes.dart';
+import 'page_motion.dart';
 
 /// The restoration id of the page built for [key]: go_router's page keys are
 /// `ValueKey<String>`s, and its own pages use the key's value, so these do too.
@@ -42,7 +43,10 @@ Widget _withHeroes(Heroes? heroes, Widget child) =>
 ///
 /// Every page gets a `restorationId` from its key, which is what lets what a
 /// page keeps in a `RestorationMixin` survive state restoration. A `Page` you
-/// build yourself should pass `restorationId: key.value` too.
+/// build yourself should pass `restorationId: Transitions.restorationIdOf(key)` too.
+///
+/// Every page carries a [PageMotion] tag (since 0.19.0), which `motionOf` reads in a test.
+/// [custom] builds a page of your own with the same name, restoration id and heroes.
 ///
 /// Every page is named by its route's pattern (since 0.9.0), `/products/:id`, which is what a
 /// `NavigatorObserver` reads as `RouteSettings.name`; a `Page` you build yourself passes
@@ -59,24 +63,82 @@ abstract final class Transitions {
   /// itself, say).
   static String? get pageName => _pageName;
 
+  /// The restoration id of the page built for [key] (since 0.19.0): the key's value for the
+  /// `ValueKey<String>`s go_router makes, null for any other key. It is the rule every
+  /// `Transitions.*` page follows, public for a `Page` of your own that does not go through
+  /// [custom]: `MaterialPage(key: key, restorationId: Transitions.restorationIdOf(key), child: child)`.
+  static String? restorationIdOf(LocalKey key) => _restorationId(key);
+
+  /// A page of your own with fespalier's conventions (since 0.19.0): the route's pattern as its
+  /// name ([pageName]), the restoration id of [restorationIdOf], and [heroes] as the presets
+  /// take them. [transitionsBuilder] is what animates it; it is a `CustomTransitionPage`.
+  ///
+  /// [duration] is how long it plays in, [reverseDuration] (the same by default) how long it
+  /// plays out. [motion] is the tag `motionOf` reads in a test, `PageMotion.custom` unless a
+  /// package names its own. The rest are `CustomTransitionPage`'s: [opaque] false lets the
+  /// page below stay visible, [fullscreenDialog] marks the route as one, and the barrier
+  /// options apply to a non-opaque page.
+  ///
+  /// ```dart
+  /// Page<void> transition(LocalKey key, Widget child) => Transitions.custom(
+  ///   key,
+  ///   child,
+  ///   transitionsBuilder: (context, animation, secondary, child) =>
+  ///       ScaleTransition(scale: animation, child: child),
+  /// );
+  /// ```
+  static Page<void> custom(
+    LocalKey key,
+    Widget child, {
+    required RouteTransitionsBuilder transitionsBuilder,
+    Duration duration = const Duration(milliseconds: 300),
+    Duration? reverseDuration,
+    Heroes? heroes,
+    bool opaque = true,
+    bool fullscreenDialog = false,
+    Color? barrierColor,
+    bool barrierDismissible = false,
+    String? barrierLabel,
+    PageMotion motion = PageMotion.custom,
+  }) => tagMotion(
+    CustomTransitionPage<void>(
+      key: key,
+      name: _pageName,
+      restorationId: _restorationId(key),
+      child: _withHeroes(heroes, child),
+      transitionDuration: duration,
+      reverseTransitionDuration: reverseDuration ?? duration,
+      transitionsBuilder: transitionsBuilder,
+      opaque: opaque,
+      fullscreenDialog: fullscreenDialog,
+      barrierColor: barrierColor,
+      barrierDismissible: barrierDismissible,
+      barrierLabel: barrierLabel,
+    ),
+    motion,
+  );
+
   /// Cross-fades the page in and out.
   static Page<void> fade(
     LocalKey key,
     Widget child, {
     Duration duration = const Duration(milliseconds: 250),
     Heroes? heroes,
-  }) => CustomTransitionPage<void>(
-    key: key,
-    name: _pageName,
-    restorationId: _restorationId(key),
-    child: _withHeroes(heroes, child),
-    transitionDuration: duration,
-    reverseTransitionDuration: duration,
-    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-        FadeTransition(
-          opacity: CurveTween(curve: Curves.easeOut).animate(animation),
-          child: child,
-        ),
+  }) => tagMotion(
+    CustomTransitionPage<void>(
+      key: key,
+      name: _pageName,
+      restorationId: _restorationId(key),
+      child: _withHeroes(heroes, child),
+      transitionDuration: duration,
+      reverseTransitionDuration: duration,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(
+            opacity: CurveTween(curve: Curves.easeOut).animate(animation),
+            child: child,
+          ),
+    ),
+    PageMotion.fade,
   );
 
   /// Slides the page in from the [from] edge of the screen (`right` enters
@@ -94,49 +156,60 @@ abstract final class Transitions {
       AxisDirection.down => const Offset(0, 1),
       AxisDirection.up => const Offset(0, -1),
     };
-    return CustomTransitionPage<void>(
-      key: key,
-      name: _pageName,
-      restorationId: _restorationId(key),
-      child: _withHeroes(heroes, child),
-      transitionDuration: duration,
-      reverseTransitionDuration: duration,
-      transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-          SlideTransition(
-            position: Tween(
-              begin: begin,
-              end: Offset.zero,
-            ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(animation),
-            child: child,
-          ),
+    return tagMotion(
+      CustomTransitionPage<void>(
+        key: key,
+        name: _pageName,
+        restorationId: _restorationId(key),
+        child: _withHeroes(heroes, child),
+        transitionDuration: duration,
+        reverseTransitionDuration: duration,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+            SlideTransition(
+              position: Tween(begin: begin, end: Offset.zero)
+                  .chain(CurveTween(curve: Curves.easeOutCubic))
+                  .animate(animation),
+              child: child,
+            ),
+      ),
+      PageMotion.slide,
     );
   }
 
   /// Swaps pages instantly, without any animation.
   static Page<void> none(LocalKey key, Widget child, {Heroes? heroes}) =>
-      NoTransitionPage<void>(
-        key: key,
-        name: _pageName,
-        restorationId: _restorationId(key),
-        child: _withHeroes(heroes, child),
+      tagMotion(
+        NoTransitionPage<void>(
+          key: key,
+          name: _pageName,
+          restorationId: _restorationId(key),
+          child: _withHeroes(heroes, child),
+        ),
+        PageMotion.none,
       );
 
   /// The platform-default Material page transition.
   static Page<void> material(LocalKey key, Widget child, {Heroes? heroes}) =>
-      MaterialPage<void>(
-        key: key,
-        name: _pageName,
-        restorationId: _restorationId(key),
-        child: _withHeroes(heroes, child),
+      tagMotion(
+        MaterialPage<void>(
+          key: key,
+          name: _pageName,
+          restorationId: _restorationId(key),
+          child: _withHeroes(heroes, child),
+        ),
+        PageMotion.material,
       );
 
   /// The iOS-style Cupertino page transition (slide plus edge-swipe back).
   static Page<void> cupertino(LocalKey key, Widget child, {Heroes? heroes}) =>
-      CupertinoPage<void>(
-        key: key,
-        name: _pageName,
-        restorationId: _restorationId(key),
-        child: _withHeroes(heroes, child),
+      tagMotion(
+        CupertinoPage<void>(
+          key: key,
+          name: _pageName,
+          restorationId: _restorationId(key),
+          child: _withHeroes(heroes, child),
+        ),
+        PageMotion.cupertino,
       );
 
   /// A route that opens as a Material dialog over the previous page.
@@ -160,16 +233,19 @@ abstract final class Transitions {
     String? barrierLabel,
     bool useSafeArea = true,
     AnimationStyle? animationStyle,
-  }) => _DialogPage(
-    key: key,
-    name: _pageName,
-    restorationId: _restorationId(key),
-    child: child,
-    barrierDismissible: barrierDismissible,
-    barrierColor: barrierColor,
-    barrierLabel: barrierLabel,
-    useSafeArea: useSafeArea,
-    animationStyle: animationStyle,
+  }) => tagMotion(
+    _DialogPage(
+      key: key,
+      name: _pageName,
+      restorationId: _restorationId(key),
+      child: child,
+      barrierDismissible: barrierDismissible,
+      barrierColor: barrierColor,
+      barrierLabel: barrierLabel,
+      useSafeArea: useSafeArea,
+      animationStyle: animationStyle,
+    ),
+    PageMotion.dialog,
   );
 
   /// A route that opens as a Material modal bottom sheet over the previous
@@ -191,20 +267,23 @@ abstract final class Transitions {
     Color? barrierColor,
     String? barrierLabel,
     AnimationStyle? animationStyle,
-  }) => _SheetPage(
-    key: key,
-    name: _pageName,
-    restorationId: _restorationId(key),
-    child: child,
-    isScrollControlled: isScrollControlled,
-    showDragHandle: showDragHandle,
-    enableDrag: enableDrag,
-    isDismissible: isDismissible,
-    useSafeArea: useSafeArea,
-    backgroundColor: backgroundColor,
-    barrierColor: barrierColor,
-    barrierLabel: barrierLabel,
-    animationStyle: animationStyle,
+  }) => tagMotion(
+    _SheetPage(
+      key: key,
+      name: _pageName,
+      restorationId: _restorationId(key),
+      child: child,
+      isScrollControlled: isScrollControlled,
+      showDragHandle: showDragHandle,
+      enableDrag: enableDrag,
+      isDismissible: isDismissible,
+      useSafeArea: useSafeArea,
+      backgroundColor: backgroundColor,
+      barrierColor: barrierColor,
+      barrierLabel: barrierLabel,
+      animationStyle: animationStyle,
+    ),
+    PageMotion.sheet,
   );
 
   /// A full-screen page that slides up from the bottom, with a close button
@@ -213,12 +292,15 @@ abstract final class Transitions {
     LocalKey key,
     Widget child, {
     Heroes? heroes,
-  }) => MaterialPage<void>(
-    key: key,
-    name: _pageName,
-    restorationId: _restorationId(key),
-    child: _withHeroes(heroes, child),
-    fullscreenDialog: true,
+  }) => tagMotion(
+    MaterialPage<void>(
+      key: key,
+      name: _pageName,
+      restorationId: _restorationId(key),
+      child: _withHeroes(heroes, child),
+      fullscreenDialog: true,
+    ),
+    PageMotion.fullscreenDialog,
   );
 }
 

@@ -11,7 +11,7 @@ description: "Testing an app built with fespalier — package:fespalier/testing.
 > your app pins another fespalier, trust that release's code over this page. See
 > [Versions](https://github.com/fespalier/fespalier/blob/main/skills/README.md#versions).
 
-`package:fespalier/testing.dart` has two helpers, `pumpRouter` and `currentLocation`, and, around them, `sendPlatformLink(tester, Uri)` (since 0.12.0: a warm platform link, as the engine sends it, pumped until idle; see the platform links section of the `fespalier-routing` skill), `RecordingTelemetry`, `TestRouteScope` (since 0.11.0, for an `observe.dart` hook that takes a `RouteScope`) and the `fsp test` pieces `smokeTestRoute` and `findRoutePage`. It is a **separate library**, so
+`package:fespalier/testing.dart` has `pumpRouter` and `currentLocation`, `motionOf` and `pumpTransition` (since 0.19.0), and, around them, `sendPlatformLink(tester, Uri)` (since 0.12.0: a warm platform link, as the engine sends it, pumped until idle; see the platform links section of the `fespalier-routing` skill), `RecordingTelemetry`, `TestRouteScope` (since 0.11.0, for an `observe.dart` hook that takes a `RouteScope`) and the `fsp test` pieces `smokeTestRoute` and `findRoutePage`. It is a **separate library**, so
 `package:fespalier/fespalier.dart` never imports `flutter_test`; the package lists
 `flutter_test` (an SDK package) as a dependency, which your app already has as a dev
 dependency.
@@ -118,6 +118,13 @@ FakeTranslations.strict())` (from `package:fespalier_tolgee/testing.dart`) **and
     `DeferredView`.
   - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
     costs a frame, so a cold deep link shows a blank first frame before the page.
+- **`motionOf(tester, {of})` (since 0.19.0)** is the `PageMotion` (`fade`, `slide`, `none`, `material`, `cupertino`,
+  `dialog`, `sheet`, `fullscreenDialog`, `custom`) the root navigator's top page was tagged with by `Transitions.*`,
+  or null for a page of the app's own. `of:` is a finder for a widget on the page you mean (a page inside a tab).
+- **`pumpTransition(tester, {at = 1, of})` (since 0.19.0)** runs the transition a navigation just started: one pump, then
+  `at` times the route's duration (its reverse duration while popping, and a popping route is no longer the top, so pass
+  `of:` for the leaving page). `at: 1` ends it (one millisecond past, where the controller says `completed`), `at: 0.5`
+  leaves it animating for a mid-flight assertion. Call it right after `router.go(...)`, once per transition; no `pumpAndSettle`. A page inside a layout or a tab needs `of:` (the root navigator's top route is the layout's, already complete: a debug assertion says so); an `of:` that finds no widget, or several, is a `StateError`.
 - **`currentLocation(tester)`** is where the router is, as a string
   (`/products/2?tab=info`). It follows `go`, `pop` and, since 0.4.0, **`push`** (the
   pushed location, the top of the stack). On 0.3.0 and earlier it did not follow a

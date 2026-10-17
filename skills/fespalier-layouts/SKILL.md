@@ -94,7 +94,7 @@ animates it). `Transitions` has `fade`, `slide`, `none`, `material`, `cupertino`
 `dialog`, `sheet` and `fullscreenDialog`. A dialog or sheet route must sit **below
 a page** or it opens over an empty screen. Restoration needs
 `restorationScopeId` on both `MaterialApp` and `AppRoutes.router(...)`; a `Page` you
-build yourself must pass `restorationId: key.value`. Since 0.8.1 a shared element is
+build yourself must pass `restorationId: Transitions.restorationIdOf(key)` (since 0.19.0). Since 0.8.1 a shared element is
 `Route(...).hero('name', child: ...)` on each side (a `RouteHero`, which stays out of
 flights in a hidden tab), and `heroes: const Heroes(onBackGesture: true)` on a `Transitions.*`
 call sets how they fly; nothing flies into a dialog or sheet. A hero that holds a network image uses
@@ -167,7 +167,7 @@ The `fespalier` skill lists every example.
 | Dialog opens over a blank screen on a deep link   | The dialog route has no parent page above it in the tree                                       |
 | A menu entry is missing                           | Its folder needs segments the location lacks, `inMenu: false`, or a guard refuses it           |
 | No bottom bar on a phone, a rail in a test        | No menu entry is the current tab, or the test window is 800 wide (0.9.0, `fespalier_adaptive`) |
-| Restored app forgets a page's local state         | Custom `Page` without `restorationId: key.value`, or renamed folders                           |
+| Restored app forgets a page's local state         | Custom `Page` without `restorationId: Transitions.restorationIdOf(key)`, or renamed folders    |
 | A list starts at the top after the browser's back | `scroll_restoration` is off, or the scrollable has no `PageStorageKey` (since 0.8.1)           |
 
 For an `fsp` error message, see

@@ -20,11 +20,19 @@ testWidgets('shows a product', (tester) async {
 });
 ```
 
-`package:fespalier/testing.dart` has two helpers for widget tests, plus `RecordingTelemetry` (see [Testing
+`package:fespalier/testing.dart` has four helpers for widget tests, plus `RecordingTelemetry` (see [Testing
 telemetry](observability.md#testing-telemetry)):
 
 - `pumpRouter` boots the app at a location.
 - `currentLocation` reads where it is. It follows `go`, `pop` and `push`: after a push it is the pushed location, the top of the stack.
+- `motionOf(tester, {of})` (since 0.19.0) reads which `PageMotion` the top page plays (`PageMotion.fade`, `dialog`, `custom`...), or null for a page `Transitions` did not build. It reads the root navigator's top route; `of:` is a finder for a widget on the page you mean (a page inside a tab).
+- `pumpTransition(tester, {at, of})` (since 0.19.0) runs the transition a navigation just started: one pump so that the route exists, then `at` times its duration (`1`, the default, is the end; `0.5` leaves it half way, still animating, for an assertion on a mid-flight frame). It uses the route's reverse duration while it pops, and then the route is no longer the top, so pass `of:` for the leaving page. Call it right after `router.go(...)`, once per transition. A page inside a layout or a tab needs `of:` (the root navigator's top route is the layout's, already complete: a debug assertion says so); an `of:` that finds no widget, or several, is a `StateError`.
+
+```dart
+router.go('/photo/1');
+await pumpTransition(tester, at: 0.5);
+expect(motionOf(tester), PageMotion.fade);
+```
 
 `observe.dart` hooks run after the frame, so `await tester.pump()` before looking at what they did.
 

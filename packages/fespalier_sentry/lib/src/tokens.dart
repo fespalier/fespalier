@@ -1,6 +1,8 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import 'spans.dart';
+
 /// What a navigation makes in Sentry.
 enum NavKind {
   /// Nothing but the scope's route name and tag, and a breadcrumb: every navigation without
@@ -27,7 +29,7 @@ final class NavToken {
   final NavKind kind;
 
   /// Its transaction, for [NavKind.transaction].
-  final ISentrySpan? tx;
+  final ScreenSpan? tx;
 
   /// The OpenTelemetry span of this navigation, when `fespalier_otel` runs next to this sink.
   TelemetryTrace? trace;
@@ -61,7 +63,7 @@ final class OpToken {
   final TelemetryStart start;
 
   /// The span (or, for an action, the transaction) it made, with `tracing: true`.
-  final ISentrySpan? span;
+  final SpanHandle? span;
 
   /// The navigation a data load belongs to.
   final NavToken? screen;

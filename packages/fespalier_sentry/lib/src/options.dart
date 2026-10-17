@@ -12,8 +12,8 @@ final class HubReads {
     required this.appStartOwnsFirstScreen,
   });
 
-  /// `traceLifecycle` is `stream`: `startTransaction` does nothing in that mode, so this version
-  /// makes no spans (errors and breadcrumbs are unaffected).
+  /// `traceLifecycle` is `stream`: `startTransaction` does nothing in that mode, so the spans are
+  /// made with the streaming API.
   final bool stream;
 
   /// Whether the SDK samples transactions at all (`tracesSampleRate` or `tracesSampler` is set).

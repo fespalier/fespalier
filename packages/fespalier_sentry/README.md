@@ -102,6 +102,12 @@ Each navigation is then a `ui.load` transaction named by its route pattern, with
 redirects, data loads, deferred loads and actions, and time to initial and to full display. Use this
 **or** a plain `SentryNavigatorObserver()` for transactions, never both.
 
+With Sentry's `options.traceLifecycle = SentryTraceLifecycle.stream` (since 0.19.0) the same tree is
+streamed as spans: each screen is a root span (a segment), with the same children, and time to initial and to
+full display are attributes of their spans. A superseded navigation cannot be discarded, so it is sent with
+`fespalier.navigation.outcome` `superseded`. HTTP spans under the data span are not made yet in that mode. See
+the docs' [Span streaming](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#span-streaming).
+
 ## Tests
 
 `package:fespalier_sentry/testing.dart` has `RecordingSentry`: a real Sentry hub whose transport keeps what

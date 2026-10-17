@@ -543,7 +543,30 @@ Each navigation is then a `ui.load` transaction named by the route pattern, star
 
 **The first screen.** On Android and iOS it has a transaction already: with tracing on and Sentry's defaults, its own app start is the first screen's `ui.load` (from the process start to the first frame, with the native spans). The sink opens none for that screen, and tells it when the screen's data is in (`SentryFlutter.currentDisplay()?.reportFullyDisplayed()`); that screen's guard and data spans are not recorded. With `enableStandaloneAppStartTracing: true` (Sentry 9.26.0, experimental) app start is a trace of its own, and the first screen is an ordinary one with all its spans: **recommended** with `tracing: true`. On the web and on the desktop the first screen is an ordinary one.
 
-An HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it parents them to the data span.)
+With `traceLifecycle: static`, an HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it parents them to the data span.)
+
+### Span streaming
+
+Since 0.19.0. Sentry's `traceLifecycle` is `static` by default: a screen is a _transaction_ and the SDK sends it when it finishes. Set `options.traceLifecycle = SentryTraceLifecycle.stream` (Sentry 9.26.0 has it) and the SDK sends _spans_ one by one, as each ends, with no transaction. `FespalierSentry(tracing: true)` follows the setting: it reads it at the first navigation and makes the same tree through Sentry's streaming API.
+
+```dart
+await SentryFlutter.init((options) {
+  FespalierSentry.configure(options, dsn: dsn, tracing: true);
+  options.traceLifecycle = SentryTraceLifecycle.stream;
+}, appRunner: () => runApp(...));
+FespalierTelemetry.install(FespalierSentry(tracing: true));
+```
+
+- Each navigation is a **segment** (a root span, `sentry.op` `ui.load`, named by the route pattern, started as `navigate`). Guards, redirects, data loads, deferred loads, images, auth steps and actions are its children, with the parent given: two screens that overlap stay apart.
+- Initial and full display are child spans (`ui.load.initial_display`, `ui.load.full_display`) with the attributes `app.vitals.ttid.value` and `app.vitals.ttfd.value` (milliseconds), where a transaction has measurements.
+- A span's status is `ok` or `error`, the only two a streamed span has. `error` is a failure (a validation answer, a `FieldErrors`, is `ok`: the span's `fespalier.action.result` says `error`), and a screen whose data had not arrived when the next navigation started: its data span and its full display are `error`, the full display with no value. What a static span says with another status (`cancelled`, `unauthenticated`) is in the span's `fespalier.*` attributes.
+- A navigation that a newer one superseded **cannot be dropped**: Sentry has no way to discard a streamed span. It is sent, named `navigate`, with `fespalier.navigation.outcome` `superseded`; filter on it in Sentry.
+- An error in a streamed `data()` or action is an event whose `contexts.trace` is that span's, so Sentry links the two. An action with no screen open is a segment of its own, and an auth step with no span open makes none.
+- On Android and iOS the first screen is still Sentry's app start (see above).
+- The sink never uses an idle span (it starts a timer) and ends every span itself, when the screen's data arrives or the next navigation starts. A span that ends before the route is known waits for it, so each carries the segment's name (`sentry.segment.name`); Sentry's span buffer and its flush are the SDK's.
+- `FespalierSentry.configure` also installs `beforeSendSpan` (the app's first), which takes `http.query`, `http.fragment` and the query of `url` off a span (`recordQueries: true` keeps them). `FespalierSentry.spanWithoutQueries` is the same function.
+
+What is not the same as with `static`. Every segment of a session is in **one trace**: the SDK takes a root span's trace id from the scope, and only an internal call renews it (UNCHECKED: whether Sentry's Screen Loads and trace views are right with that). HTTP spans (`SentryHttpClient`, `sentry_dio`) parent to the _active_ span of the running zone, and `data()` does not run inside one yet: in this mode they make no span under the screen. The `static` lifecycle is unchanged.
 
 ### Sentry defaults and privacy
 
@@ -561,10 +584,11 @@ An HTTP span made inside `data()` is a child of the screen's transaction, beside
 | `beforeBreadcrumb`                        | the app's, then the query and fragment taken off HTTP breadcrumbs (`recordQueries: true` keeps them), then `SentryNavigatorObserver`'s own breadcrumbs dropped (`observerBreadcrumbs: true` keeps them) | none              | `sentry_dio` and `SentryHttpClient` breadcrumbs carry `http.query`; this sink's page breadcrumbs say the same with the pattern |
 | `beforeSend`                              | the app's, then the query and fragment taken off the event's request                                                                                                                                    | none              | a request carries `queryString`                                                                                                |
 | `beforeSendTransaction`                   | the app's, then the query taken off span data (`recordQueries: true` keeps it), and a superseded navigation dropped                                                                                     | none              | HTTP spans carry `http.query`; a superseded navigation never showed a screen                                                   |
+| `beforeSendSpan` (since 0.19.0)           | the app's, then the query and fragment taken off the streamed span's attributes (`recordQueries: true` keeps them)                                                                                      | none              | the same HTTP spans with `traceLifecycle: stream`, which cannot drop a superseded navigation: it is sent, marked               |
 
 Not touched: `environment`, `release`, `dist` (Sentry derives `name@version+build`), `captureFailedRequests` and session replay (off by default).
 
-Two lines are printed in a debug build, once: with `tracing: true` on an SDK whose `traceLifecycle` is `stream` (this version makes no spans for it; the events and breadcrumbs are still sent), and with `tracing: true` on an SDK that samples nothing (no transaction is sent). A `tracesSampleRate` outside 0 to 1 throws an `ArgumentError`.
+One line is printed in a debug build, once: with `tracing: true` on an SDK that samples nothing (no transaction is sent). Before 0.19.0 a second one said that `traceLifecycle: stream` made no spans. A `tracesSampleRate` outside 0 to 1 throws an `ArgumentError`.
 
 **What it costs.** Installed, every call is synchronous and returns at once, a sync guard or `data()` stays sync, it starts no timer and no listener (the SDK's own timers belong to the SDK, and `tracing: true` never asks for one), and every SDK call is inside a `try`, so a failing SDK costs an event, never a feature.
 
@@ -588,7 +612,7 @@ testWidgets('a refused refund is an event on its route and its file', (tester) a
 });
 ```
 
-`lines()` is one line per transaction, span and event without timestamps or ids (`transaction ui.load /orders/:id status=ok ttid ttfd`, then one indented `span fespalier.data ...` line for each of its spans, and `event StateError operation=data ...`).
+`lines()` is one line per transaction, span and event without timestamps or ids (`transaction ui.load /orders/:id status=ok ttid ttfd`, then one indented `span fespalier.data ...` line for each of its spans, and `event StateError operation=data ...`). With `traceLifecycle: stream` (since 0.19.0) a streamed screen reads the same way after them, as `segment ui.load /orders/:id status=ok ttid ttfd` and its children, and `spans` holds the `SentrySpanV2`s themselves, in the order they ended (each is recorded in `beforeSendSpan`: no flush and no timer; pump a frame first).
 
 - `sent()` is the JSON the SDK built, for the tags, the fingerprint and the contexts.
 - `breadcrumbs`, `tags` and `transactionName` read the scope.

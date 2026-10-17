@@ -129,6 +129,21 @@ abstract final class SentryKeys {
   /// The measurement `SentryMeasurement.timeToFullDisplay` writes.
   static const String ttfdMeasurement = 'time_to_full_display';
 
+  /// The attribute that names what a streamed span is for: the `op` of a transaction.
+  static const String spanOp = 'sentry.op';
+
+  /// The attribute that names what made a streamed span.
+  static const String spanOrigin = 'sentry.origin';
+
+  /// The attribute that says where a streamed segment's name comes from (`route`, `component`).
+  static const String segmentNameSource = 'sentry.segment.name.source';
+
+  /// Time to initial display, in milliseconds, on the span that measures it.
+  static const String ttidValue = 'app.vitals.ttid.value';
+
+  /// Time to full display, in milliseconds, on the span that measures it.
+  static const String ttfdValue = 'app.vitals.ttfd.value';
+
   /// The trace origin of a transaction this sink makes.
   static const String navigationOrigin = 'auto.navigation.fespalier';
 

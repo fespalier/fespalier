@@ -23,13 +23,8 @@ import 'options.dart';
 import 'scrub.dart' as scrub;
 import 'spans.dart';
 import 'static_spans.dart';
+import 'stream_spans.dart';
 import 'tokens.dart';
-
-/// Printed once when `tracing: true` meets `traceLifecycle: stream` (M-S2).
-const String streamLifecycleMessage =
-    "fespalier_sentry: Sentry's traceLifecycle is stream, which this version "
-    'makes no spans for. Errors and breadcrumbs are still sent; use '
-    'SentryTraceLifecycle.static for screen transactions.';
 
 /// Printed once when `tracing: true` meets an SDK that samples nothing (M-S3).
 const String tracingOffMessage =
@@ -54,7 +49,8 @@ const String tracingOffMessage =
 /// Performance is opt-in, for Sentry-only teams: `FespalierSentry(tracing: true)` turns each
 /// navigation into a `ui.load` transaction named by the route pattern, with spans for guards,
 /// redirects, data loads, deferred loads and actions, and time to initial and to full display. Pass
-/// `tracing: true` to [configure] too, so the SDK samples.
+/// `tracing: true` to [configure] too, so the SDK samples. With Sentry's `traceLifecycle` set to
+/// `stream` (since 0.19.0) the same tree is streamed as spans: one segment per screen.
 ///
 /// Install it after `SentryFlutter.init` (in `startup()`, or in `zone()`'s `appRunner`) and before
 /// the router is built. It returns at once, never throws, starts no timer and reads no provider; a
@@ -82,14 +78,17 @@ final class FespalierSentry extends FespalierTelemetry {
   final Hub _hub;
   final SentryDisplay? Function(Hub hub) _currentDisplay;
   final TargetPlatform? _platform;
-  late final Spans _backend = StaticSpans(_hub);
+
+  /// Where the spans are made: the static API, until [_spansOn] finds that the SDK streams.
+  late Spans _backend = StaticSpans(_hub);
 
   static SentryDisplay? _sentryDisplay(Hub hub) =>
       SentryFlutter.currentDisplay(hub: hub);
 
-  /// Whether each navigation becomes a `ui.load` transaction named by the route pattern, with
-  /// child spans for the guards, redirects, data loads, deferred loads and actions that ran in it,
-  /// and time to initial and to full display. Off by default: errors, breadcrumbs and release
+  /// Whether each navigation becomes a `ui.load` transaction (a segment, when Sentry's
+  /// `traceLifecycle` is `stream`) named by the route pattern, with child spans for the guards,
+  /// redirects, data loads, deferred loads and actions that ran in it, and time to initial and to
+  /// full display. Off by default: errors, breadcrumbs and release
   /// health need none of it. For a team that has only Sentry (with `fespalier_otel` the traces are
   /// there already). Needs the SDK to sample: pass `tracing: true` to [configure] too.
   final bool tracing;
@@ -143,11 +142,12 @@ final class FespalierSentry extends FespalierTelemetry {
   /// to false (a screenshot or a widget tree can show user data); `enableAutoSessionTracking` to
   /// true (release health); `tracePropagationTargets` to [propagateTraceTo] (empty: no trace header
   /// leaves the app, where Sentry's default sends `baggage`, with the release and the environment,
-  /// to every host); and `beforeBreadcrumb`, `beforeSend` and `beforeSendTransaction` to drop query
-  /// and fragment values from Sentry's own HTTP breadcrumbs, events and spans ([recordQueries]
-  /// keeps them) and navigations that a newer one superseded. `SentryNavigatorObserver`'s own
-  /// breadcrumbs are dropped, since this sink's say the same with the route pattern
-  /// ([observerBreadcrumbs] keeps them).
+  /// to every host); and `beforeBreadcrumb`, `beforeSend`, `beforeSendTransaction` and, since
+  /// 0.19.0, `beforeSendSpan` to drop query and fragment values from Sentry's own HTTP
+  /// breadcrumbs, events and spans ([recordQueries] keeps them) and navigations that a newer one
+  /// superseded (a streamed segment cannot be dropped: it is sent, marked superseded).
+  /// `SentryNavigatorObserver`'s own breadcrumbs are dropped, since this sink's say the same with
+  /// the route pattern ([observerBreadcrumbs] keeps them).
   ///
   /// Tracing is off unless asked for: [tracesSampleRate] sets it, and [tracing] without a rate
   /// samples 1.0 in debug and profile builds and 0.1 in release (an `options.tracesSampleRate` set
@@ -213,6 +213,18 @@ final class FespalierSentry extends FespalierTelemetry {
               ? (scrub.isSuperseded(kept) ? null : kept)
               : scrub.transactionWithoutQueries(kept, hint),
         );
+    final beforeSendSpan = options.beforeSendSpan;
+    options.beforeSendSpan = (span) {
+      final earlier = beforeSendSpan?.call(span);
+      void scrubbed() {
+        if (!recordQueries) scrub.spanWithoutQueries(span);
+      }
+
+      // A sync callback stays sync, like the three above.
+      return earlier is Future<void>
+          ? earlier.then((_) => scrubbed())
+          : scrubbed();
+    };
   }
 
   /// [then] on what an earlier callback returned, which may be a `Future`: a sync callback stays
@@ -245,6 +257,12 @@ final class FespalierSentry extends FespalierTelemetry {
   static SentryEvent? eventWithoutQueries(SentryEvent event, Hint hint) =>
       scrub.eventWithoutQueries(event, hint);
 
+  /// [span], a streamed one, without the query and fragment values Sentry's HTTP integrations put
+  /// on it (`http.query`, `http.fragment`, and the query of `url`), in place (since 0.19.0); what
+  /// [configure] installs.
+  static void spanWithoutQueries(SentrySpanV2 span) =>
+      scrub.spanWithoutQueries(span);
+
   /// [transaction] without query and fragment values on the data of its spans, or null for a
   /// navigation that a newer one superseded (it never showed a screen); what [configure] installs.
   static SentryTransaction? transactionWithoutQueries(
@@ -271,33 +289,25 @@ final class FespalierSentry extends FespalierTelemetry {
   final Map<String, DateTime> _lastCapture = {};
 
   bool _sawNavigation = false;
-  bool _saidStream = false;
   bool _saidNoTracing = false;
 
-  /// Whether this sink makes spans: [tracing], on an SDK that samples and is not streaming.
+  /// Whether this sink makes spans: [tracing], on an SDK that samples.
   bool _spansOn() {
     final known = _spans;
     if (known != null) return known;
     if (!tracing) return _spans = false;
     final reads = _reads = readHub(_hub, platform: _platform);
-    if (reads.stream) {
-      _say(streamLifecycleMessage, stream: true);
-      return _spans = false;
-    }
     if (!reads.tracingOn) {
-      _say(tracingOffMessage, stream: false);
+      _say(tracingOffMessage);
       return _spans = false;
     }
+    if (reads.stream) _backend = StreamSpans(_hub);
     return _spans = true;
   }
 
-  void _say(String message, {required bool stream}) {
-    if (stream ? _saidStream : _saidNoTracing) return;
-    if (stream) {
-      _saidStream = true;
-    } else {
-      _saidNoTracing = true;
-    }
+  void _say(String message) {
+    if (_saidNoTracing) return;
+    _saidNoTracing = true;
     if (kDebugMode) debugPrint(message);
   }
 
@@ -519,6 +529,7 @@ final class FespalierSentry extends FespalierTelemetry {
     final notFound = e.outcome == TelemetryOutcome.notFound;
     final route = notFound ? null : e.route;
     nav.name = notFound ? 'navigate (not found)' : (route ?? 'navigate');
+    tx?.named(nav.name);
     _nameScope(nav, route);
     switch (nav.kind) {
       case NavKind.transaction:
@@ -636,7 +647,7 @@ final class FespalierSentry extends FespalierTelemetry {
       op.done = true;
       final span = op.span;
       if (span != null) {
-        span.finish(const SpanStatus.deadlineExceeded());
+        span.finish(const SpanStatus.deadlineExceeded(), failed: true);
       }
     }
     screen.open.clear();
@@ -663,7 +674,7 @@ final class FespalierSentry extends FespalierTelemetry {
     final span = t.span;
     if (span != null) {
       _describeEnd(span, s, e);
-      span.finish(_status(s, e));
+      span.finish(_status(s, e), failed: _failed(e));
     }
     if (e.outcome == TelemetryOutcome.error) _error(t, e);
     if (breadcrumbs) _opCrumb(t, e);
@@ -702,6 +713,11 @@ final class FespalierSentry extends FespalierTelemetry {
     final status = e.imageStatus;
     if (status != null) span.set(SentryKeys.imageStatus, status);
   }
+
+  /// Whether an operation's end is a failure, which is all a streamed span says: a [FieldErrors]
+  /// is a validation answer, not a failure.
+  static bool _failed(TelemetryEnd e) =>
+      e.outcome == TelemetryOutcome.error && e.error is! FieldErrors;
 
   /// The span status an operation's end maps to.
   static SpanStatus _status(TelemetryStart s, TelemetryEnd e) {

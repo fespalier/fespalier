@@ -363,6 +363,87 @@ void main() {
     });
   });
 
+  group('beforeSendSpan', () {
+    /// A streamed span that went through a real hub, with the attributes an HTTP integration puts
+    /// on it, and what the recorder saw after the callbacks ran.
+    Future<SentrySpanV2> http(RecordingSentry sentry) async {
+      final root = sentry.hub.startInactiveSpan('/items/:id', parentSpan: null);
+      sentry.hub
+          .startInactiveSpan(
+            'GET /items',
+            parentSpan: root,
+            attributes: {
+              'url': SentryAttribute.string(
+                'https://api.example.com/items?token=abc',
+              ),
+              'http.query': SentryAttribute.string('token=abc'),
+              'http.fragment': SentryAttribute.string('frag'),
+              'http.response.status_code': SentryAttribute.int(200),
+            },
+          )
+          .end();
+      root.end();
+      await Future<void>.delayed(Duration.zero);
+      return sentry.spans.first;
+    }
+
+    void stream(SentryFlutterOptions o) =>
+        o.traceLifecycle = SentryTraceLifecycle.stream;
+
+    test('is installed after the app\'s own, and it drops http.query, '
+        'http.fragment and the url\'s query', () async {
+      final seen = <String>[];
+      final sentry = RecordingSentry(
+        configure: (o) {
+          stream(o);
+          o.beforeSendSpan = (span) => seen.add(span.name);
+          FespalierSentry.configure(o, dsn: dsn, tracing: true);
+        },
+      );
+      final span = await http(sentry);
+      expect(seen, ['GET /items', '/items/:id']);
+      expect(span.attributes['url']!.value, 'https://api.example.com/items');
+      expect(span.attributes['http.response.status_code']!.value, 200);
+      expect(span.attributes.containsKey('http.query'), isFalse);
+      expect(span.attributes.containsKey('http.fragment'), isFalse);
+    });
+
+    test('waits for an async callback of the app\'s', () async {
+      final sentry = RecordingSentry(
+        configure: (o) {
+          stream(o);
+          o.beforeSendSpan = (span) async {
+            await Future<void>.delayed(Duration.zero);
+          };
+          FespalierSentry.configure(o, dsn: dsn, tracing: true);
+        },
+      );
+      final root = sentry.hub.startInactiveSpan('a', parentSpan: null)..end();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(sentry.spans, [same(root)]);
+    });
+
+    test('recordQueries: true keeps them', () async {
+      final sentry = RecordingSentry(
+        configure: (o) {
+          stream(o);
+          FespalierSentry.configure(
+            o,
+            dsn: dsn,
+            tracing: true,
+            recordQueries: true,
+          );
+        },
+      );
+      final span = await http(sentry);
+      expect(span.attributes['http.query']!.value, 'token=abc');
+      expect(
+        span.attributes['url']!.value,
+        'https://api.example.com/items?token=abc',
+      );
+    });
+  });
+
   test('configure first, and the SDK still starts with Sentry\'s defaults '
       'for the rest', () {
     final options = configured();

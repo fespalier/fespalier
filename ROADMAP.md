@@ -9,8 +9,8 @@ it ships.
 
 - **Adapters**, each a small package (the seams they need are in core: `AppRoutes.urlOf`, the DevTools
   _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
-  - `fespalier_sentry`, the rest: Sentry's span streaming (`traceLifecycle: stream`, for which
-    `tracing: true` makes no spans yet) and HTTP spans under the data span in Sentry's own tracing.
+  - `fespalier_sentry`, the rest: HTTP spans under the data span with Sentry's `traceLifecycle: stream`
+    (`tracing: true` streams the screens' spans since 0.19.0; the HTTP integrations find no active span yet).
   - `fespalier_dio`, the rest: a test of `fespalier_auth`'s `SessionInterceptor` under `dio_smart_retry`
     (a DPoP proof per retry, one replay after a refresh); trace headers stay `otel_dio`'s
     (docs/http.md).

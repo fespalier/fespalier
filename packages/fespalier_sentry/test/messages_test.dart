@@ -1,17 +1,12 @@
-// The two lines `fespalier_sentry` prints, word for word (the troubleshooting skill quotes them),
-// and when. Both are about `tracing: true`: the default, errors first, asks nothing of the SDK's
-// tracing and so has nothing to complain about.
+// The line `fespalier_sentry` prints, word for word (the troubleshooting skill quotes it), and
+// when. It is about `tracing: true`: the default, errors first, asks nothing of the SDK's tracing
+// and so has nothing to complain about. A streaming SDK is no reason to print (since 0.19.0).
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'support.dart';
-
-const String streamMessage =
-    "fespalier_sentry: Sentry's traceLifecycle is stream, which this version "
-    'makes no spans for. Errors and breadcrumbs are still sent; use '
-    'SentryTraceLifecycle.static for screen transactions.';
 
 const String noSamplingMessage =
     'fespalier_sentry: tracing: true needs Sentry to sample transactions, and '
@@ -60,7 +55,7 @@ void main() {
     expect(rig.sentry.tags['fespalier.route'], '/items/:id');
   });
 
-  testWidgets('tracing: true on a streaming SDK says so, once, and sends the '
+  testWidgets('tracing: true on a streaming SDK prints nothing, and sends the '
       'errors and breadcrumbs all the same', (tester) async {
     load = (_) => Future<String>.error(StateError('no such item'));
     final rig = Rig(
@@ -74,10 +69,13 @@ void main() {
       r.go('/other');
       await tester.pumpAndSettle();
     });
-    expect(printed, [streamMessage]);
-    expect(await rig.lines(tester), [
-      r'event StateError operation=data route=/items/:id file=items/$id/data.dart',
-    ]);
+    expect(printed, isEmpty);
+    expect(
+      await rig.lines(tester),
+      contains(
+        r'event StateError operation=data route=/items/:id file=items/$id/data.dart',
+      ),
+    );
     expect(rig.sentry.breadcrumbs, contains('navigation enter /other'));
   });
 

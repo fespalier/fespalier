@@ -84,3 +84,16 @@ SentryTransaction? transactionWithoutQueries(
   }
   return transaction;
 }
+
+/// [span] without the query and the fragment of the request it measures, in place: the attributes
+/// `SentryHttpClient` and `sentry_dio` write on a streamed span.
+void spanWithoutQueries(SentrySpanV2 span) {
+  for (final key in _queryKeys) {
+    span.removeAttribute(key);
+  }
+  final url = span.attributes['url']?.value;
+  if (url is String) {
+    final clean = withoutQuery(url);
+    if (clean != url) span.setAttribute('url', SentryAttribute.string(clean));
+  }
+}

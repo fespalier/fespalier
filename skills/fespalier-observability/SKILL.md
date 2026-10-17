@@ -111,7 +111,7 @@ breadcrumb per page change**, and leaves release health to the SDK. **Next to `f
 `FespalierTelemetry.combine`, each event carries `otel.trace_id` and `otel.span_id`, so an error links to its
 trace. **No transaction is sent by default**: screen-load transactions, spans and TTID/TTFD are the opt-in,
 `FespalierSentry(tracing: true)` plus `tracing: true` in `FespalierSentry.configure`, for a team that has only
-Sentry.
+Sentry. With Sentry's `traceLifecycle: stream` the same opt-in streams the spans instead (since 0.19.0).
 
 ```dart
 FespalierTelemetry.add(FespalierSentry()); // in startup(), before the router; add keeps an adapter's sink (analytics); Sentry starts in zone()

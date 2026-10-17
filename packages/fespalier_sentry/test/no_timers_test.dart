@@ -25,6 +25,7 @@ const forbidden = <String, String>{
   'autoFinishAfter':
       'Sentry starts a timer for it: end the transaction ourselves',
   'waitForChildren': 'Sentry waits with a timer: end the transaction ourselves',
+  'startIdleSpan': 'an idle span starts a timer: end the span ourselves',
 };
 
 /// The problems in [lines], one per forbidden construct on a line of code (comments are not code).
@@ -73,6 +74,7 @@ void main() {
       'notifier.addListener(f);',
       'hub.startTransaction(a, b, autoFinishAfter: d);',
       'hub.startTransaction(a, b, waitForChildren: true);',
+      'hub.startIdleSpan(a);',
     ]) {
       expect(violations('f.dart', [line]), hasLength(1), reason: line);
     }

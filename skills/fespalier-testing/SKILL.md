@@ -119,7 +119,7 @@ FakeTranslations.strict())` (from `package:fespalier_tolgee/testing.dart`) **and
   - **Guards: return synchronously when you can.** Any `Future`, even `Future.value(...)`,
     costs a frame, so a cold deep link shows a blank first frame before the page.
 - **`motionOf(tester, {of})` (since 0.19.0)** is the `PageMotion` (`fade`, `slide`, `none`, `material`, `cupertino`,
-  `dialog`, `sheet`, `fullscreenDialog`, `custom`) the root navigator's top page was tagged with by `Transitions.*`,
+  `dialog`, `sheet`, `fullscreenDialog`, `custom`, `sharedAxis`, `fadeThrough`) the root navigator's top page was tagged with by `Transitions.*`,
   or null for a page of the app's own. `of:` is a finder for a widget on the page you mean (a page inside a tab).
 - **`pumpTransition(tester, {at = 1, of})` (since 0.19.0)** runs the transition a navigation just started: one pump, then
   `at` times the route's duration (its reverse duration while popping, and a popping route is no longer the top, so pass

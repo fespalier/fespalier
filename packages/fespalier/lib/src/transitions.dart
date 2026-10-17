@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'heroes.dart';
+import 'motion.dart';
 import 'page_motion.dart';
 import 'reduced_motion.dart';
 
@@ -38,6 +39,94 @@ T namedPage<T>(String name, T Function() build) {
 /// page that doesn't opt in builds the tree it always did.
 Widget _withHeroes(Heroes? heroes, Widget child) =>
     heroes == null ? child : RouteHeroScope(heroes: heroes, child: child);
+
+Page<void> _motionPage(
+  LocalKey key,
+  Widget child, {
+  required Duration duration,
+  required Heroes? heroes,
+  required PageMotion motion,
+  required RouteTransitionsBuilder transitionsBuilder,
+}) => tagMotion(
+  _MotionPage(
+    key: key,
+    name: _pageName,
+    restorationId: _restorationId(key),
+    child: _withHeroes(heroes, child),
+    duration: duration,
+    transitionsBuilder: transitionsBuilder,
+  ),
+  motion,
+);
+
+/// The page of `sharedAxis` and `fadeThrough`: an opaque page route like `custom`'s, except that
+/// the page below plays its outgoing half only under an opaque page. A route's secondary
+/// animation is driven by any `PageRoute` above it, a see-through one included, which would
+/// leave the page below invisible behind it.
+class _MotionPage extends Page<void> {
+  const _MotionPage({
+    super.key,
+    super.name,
+    super.restorationId,
+    required this.child,
+    required this.duration,
+    required this.transitionsBuilder,
+  });
+
+  final Widget child;
+  final Duration duration;
+  final RouteTransitionsBuilder transitionsBuilder;
+
+  @override
+  Route<void> createRoute(BuildContext context) => _MotionRoute(this);
+}
+
+class _MotionRoute extends PageRoute<void> {
+  _MotionRoute(_MotionPage page) : super(settings: page);
+
+  _MotionPage get _page => settings as _MotionPage;
+
+  @override
+  Duration get transitionDuration => _page.duration;
+
+  @override
+  Duration get reverseTransitionDuration => _page.duration;
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  String? get barrierLabel => null;
+
+  @override
+  bool canTransitionTo(TransitionRoute<dynamic> nextRoute) =>
+      nextRoute is PageRoute && nextRoute.opaque;
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) => Semantics(
+    scopesRoute: true,
+    explicitChildNodes: true,
+    child: _page.child,
+  );
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => _page.transitionsBuilder(context, animation, secondaryAnimation, child);
+
+  @override
+  String get debugLabel => '${super.debugLabel}(${_page.name})';
+}
 
 /// Ready-made pages for `transition.dart`.
 ///
@@ -124,6 +213,61 @@ abstract final class Transitions {
       barrierLabel: barrierLabel,
     ),
     motion,
+  );
+
+  /// The Material 3 shared axis transition (since 0.19.0): the page slides 30 dp along [axis]
+  /// (or scales, on [SharedAxis.z]) while it fades in, and the page below fades out and slides
+  /// away. Built over widgets alone, see [SharedAxisPageTransition].
+  ///
+  /// The page below plays its half only when it is itself a [sharedAxis] page: each page
+  /// animates itself, from the animation of the route above it. [fill] (else the [MotionFill]
+  /// above the router, else nothing) paints behind the page while it moves. Under the system's
+  /// reduced motion it is a cross-fade.
+  static Page<void> sharedAxis(
+    LocalKey key,
+    Widget child, {
+    SharedAxis axis = SharedAxis.x,
+    Duration duration = const Duration(milliseconds: 300),
+    Color? fill,
+    Heroes? heroes,
+  }) => _motionPage(
+    key,
+    child,
+    duration: duration,
+    heroes: heroes,
+    motion: PageMotion.sharedAxis,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        SharedAxisPageTransition(
+          animation: animation,
+          secondaryAnimation: secondaryAnimation,
+          axis: axis,
+          fill: fill,
+          child: child,
+        ),
+  );
+
+  /// The Material 3 fade through transition (since 0.19.0): the page below fades out, then the
+  /// page fades in and scales from 0.92 to 1. See [FadeThroughPageTransition]; [fill], the
+  /// outgoing half and reduced motion work as for [sharedAxis].
+  static Page<void> fadeThrough(
+    LocalKey key,
+    Widget child, {
+    Duration duration = const Duration(milliseconds: 300),
+    Color? fill,
+    Heroes? heroes,
+  }) => _motionPage(
+    key,
+    child,
+    duration: duration,
+    heroes: heroes,
+    motion: PageMotion.fadeThrough,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        FadeThroughPageTransition(
+          animation: animation,
+          secondaryAnimation: secondaryAnimation,
+          fill: fill,
+          child: child,
+        ),
   );
 
   /// Cross-fades the page in and out.

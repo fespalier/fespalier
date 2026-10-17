@@ -288,7 +288,7 @@ Page<void> transition(LocalKey key, Widget child) => Transitions.fade(key, child
 
 `transition.dart` says how a route animates in. It applies to its folder's route and every route below it, and the nearest one wins. A `transition.dart` at the root is the app-wide default; any folder or `(group)` folder can override it for its own routes.
 
-The function returns a `Page`, and takes the page's key as `LocalKey key`, the page itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, and `dialog`, `sheet` and `fullscreenDialog` (below), and `custom` for a motion of your own (since 0.19.0, see "A transition of your own" below). Every one but `dialog` and `sheet` takes `heroes:` ([shared elements](#shared-elements-heroes), since 0.8.1).
+The function returns a `Page`, and takes the page's key as `LocalKey key`, the page itself as `Widget child`, and optionally `GoRouterState state`. `Transitions` has ready-made ones: `fade`, `slide`, `none`, `material`, `cupertino`, `sharedAxis` and `fadeThrough` (since 0.19.0, below), and `dialog`, `sheet` and `fullscreenDialog` (below), and `custom` for a motion of your own (since 0.19.0, see "A transition of your own" below). Every one but `dialog` and `sheet` takes `heroes:` ([shared elements](#shared-elements-heroes), since 0.8.1).
 
 The `key` is go_router's `state.pageKey` (the path template) for a route's page, unless the route [remounts](navigation.md#remounting-a-page-remount) (since 0.6.0): then it is a key that changes with the URL, and a change makes the page a new one, which this transition plays for.
 
@@ -320,7 +320,35 @@ Page<void> transition(LocalKey key, Widget child) => Transitions.custom(
 
 - `duration` (300 ms) and `reverseDuration` (the same by default), `heroes`, `opaque`, `fullscreenDialog` and the barrier options are the ones of `CustomTransitionPage`. Like the presets, the page's `transitionsBuilder` is the latest page's, so keep it free of state of its own.
 - A `Page` that does not go through `custom` (a `MaterialPage` of yours) gets the same restoration id from `Transitions.restorationIdOf(key)`: the key's value for go_router's `ValueKey<String>`, null for any other key. Together with `name: Transitions.pageName` that is all `custom` adds.
-- Every page `Transitions` builds carries a `PageMotion` (`fade`, `slide`, `none`, `material`, `cupertino`, `dialog`, `sheet`, `fullscreenDialog`; `custom` for `Transitions.custom` unless you pass `motion:`). It changes nothing on screen: it is what a [test reads](testing.md) with `motionOf`, and `PageMotion.of(page)` reads it from a `Page`. Values are only ever added.
+- Every page `Transitions` builds carries a `PageMotion` (`fade`, `slide`, `none`, `material`, `cupertino`, `dialog`, `sheet`, `fullscreenDialog`, `sharedAxis`, `fadeThrough`; `custom` for `Transitions.custom` unless you pass `motion:`). It changes nothing on screen: it is what a [test reads](testing.md) with `motionOf`, and `PageMotion.of(page)` reads it from a `Page`. Values are only ever added.
+
+**Material motion: shared axis and fade through** (since 0.19.0). The two transitions of Material 3's motion spec, written over `package:flutter/widgets.dart` alone (no Material or Cupertino import, no `animations` package, which reads a Material theme and would tie core to one kit).
+
+```dart
+// lib/app/transition.dart: pages slide 30 dp sideways while they fade
+Page<void> transition(LocalKey key, Widget child) => Transitions.sharedAxis(key, child);
+
+// lib/app/settings/transition.dart: unrelated destinations fade through each other
+Page<void> transition(LocalKey key, Widget child) => Transitions.fadeThrough(key, child);
+```
+
+- `Transitions.sharedAxis(key, child, {axis, duration, fill, heroes})`: `SharedAxis.x` (the default, horizontal), `.y` (vertical) or `.z` (depth). The outgoing page fades out over the first 35% and moves 30 dp away; the incoming page fades in from 30% and moves in from 30 dp. On `z` the incoming page scales from 0.8 to 1 and the outgoing one from 1 to 1.1. On a pop the roles mirror. `x` is mirrored in a right-to-left `Directionality`.
+- `Transitions.fadeThrough(key, child, {duration, fill, heroes})`: the outgoing page fades out over the first 35%, then the incoming page fades in and scales from 0.92 to 1. Both last 300 ms by default; the movement uses M3's emphasized easing.
+- **The outgoing half belongs to the page below, and plays under an opaque page only.** A route's page is animated by the route's own `animation` and, for the page it covers, by the `secondaryAnimation` that route drives. So the page below fades out and moves only when it is itself a `sharedAxis` (or `fadeThrough`) page, and only while the page above is an opaque page route. A `sharedAxis` page pushed over a `none` or `material` page still enters correctly; that page keeps doing whatever its own transition does when covered. A see-through page (`Transitions.custom(opaque: false)`), a dialog or a sheet over it leaves it exactly as it was.
+- **The fill.** Both pages fade, so in the middle of the transition nothing opaque is left: without a fill you see what is under the Navigator (often black), a `Scaffold` included, because it fades with its page. The colour behind the pages is, in order: the preset's `fill:`; a `MotionFill` above the router; otherwise transparent. Set `MotionFill` once in `MaterialApp.router(builder:)`, or pass `fill:`. The fill fades only with the page's own animation, so the covered page's content fades out over its fill and the fill never slides or scales:
+
+```dart
+MaterialApp.router(
+  routerConfig: router,
+  builder: (context, child) =>
+      MotionFill(color: Theme.of(context).colorScheme.surface, child: child!),
+);
+```
+
+- Under the system's reduced motion both become a plain cross-fade of the same duration: no slide, no scale, and the page below keeps still.
+- The widgets are public for a `Transitions.custom` of your own: `SharedAxisPageTransition(animation:, secondaryAnimation:, axis:, fill:, child:)` and `FadeThroughPageTransition(...)`. They start no timer or ticker and add no listener of their own.
+
+**Predictive back** (since 0.19.0; what each part does on a device is UNCHECKED per Android version). `Transitions.material` gets Android's predictive back peek from the theme: it is the default on Flutter 3.38 and later; on 3.35 to 3.37 set `pageTransitionsTheme` with `PredictiveBackPageTransitionsBuilder` for Android, and the manifest needs `android:enableOnBackInvokedCallback="true"` (Android 14 requires it, later Android versions may default to it). Every `CustomTransitionPage` preset (`fade`, `slide`, `sharedAxis`, `fadeThrough`, `custom`) pops when the gesture is released, with its own reverse transition: there is no peek, the page leaves as a button back would (UNCHECKED on a device, #228). `Heroes(onBackGesture: true)` covers heroes during the gesture of `material` and `cupertino`; a `CustomTransitionPage` preset has no gesture in progress. fespalier does not wrap the presets in `PredictiveBackPageTransitionsBuilder`: that would replace them with Material's own peek.
 
 **Reduced motion** (since 0.19.0). When the system asks for reduced motion (`MediaQuery.disableAnimations`: "remove animations" on Android, "reduce motion" on iOS), every `Transitions` page and `RouteHero` honours it, with nothing to configure. **This changes every app that upgrades**: a `slide` that used to move now fades. `accessibleNavigation` is not motion and is ignored. The flag is read from the route's own context when the route is built or plays, so a page follows the setting while the app runs (`dialog` and `sheet`, below, do not).
 
@@ -328,6 +356,7 @@ Page<void> transition(LocalKey key, Widget child) => Transitions.custom(
 - `material`, `cupertino` and `fullscreenDialog` keep their page types (`MaterialPage`, `CupertinoPage`), so the Cupertino edge swipe back keeps working (the predictive back gesture should too, because the route keeps its Material mixin; UNCHECKED on a device, #226), and fade in place instead of sliding, zooming or moving the page below.
 - `dialog` and `sheet` open with `AnimationStyle.noAnimation`, unless you pass an `animationStyle:`, which wins. They read the flag once, when they open: an open dialog or sheet keeps its style, and one opened under reduced motion also closes at once (a sheet still drags to dismiss, and the barrier appears at once).
 - A `RouteHero` stops flying: the page appears and the element is simply there.
+- `sharedAxis` and `fadeThrough` are a cross-fade too, and the page below keeps still.
 - `fade` and `none` are unchanged, and the `PageMotion` tag stays the preset's own.
 - `Transitions.custom`'s `transitionsBuilder` is yours, so fespalier does not change it: read the flag in it, for example `final reduced = MediaQuery.maybeDisableAnimationsOf(context) == true;`, and return a `FadeTransition` for it.
 - There is no app-wide opt-out. A page that wants motion anyway is a `Page` of your own, such as `MaterialPage(...)` or `CustomTransitionPage(...)` in your `transition.dart`.
@@ -376,7 +405,7 @@ ProductRoute(id: product.id).hero('avatar', child: CircleAvatar(radius: 40, chil
 
 `hero` builds a `RouteHero`, which is Flutter's `Hero` with one difference: it stays out of flights while its tab is not shown (`TickerMode` is off for it, as go_router's tab container and `examples/tabs`' set it on the tabs they hide). Two tabs can then show the same tag, and a route on the [root navigator](navigation.md#the-root-navigator-navigatordart) that opens over the tab bar flies from the tab that is shown. With a plain `Hero`, that is Flutter's "There are multiple heroes that share the same tag within a subtree" assertion in debug.
 
-**The flight style** is declared in `transition.dart`: `Transitions.fade`, `slide`, `none`, `material`, `cupertino` and `fullscreenDialog` take `heroes:`, a `Heroes` with three options.
+**The flight style** is declared in `transition.dart`: `Transitions.fade`, `slide`, `none`, `material`, `cupertino`, `fullscreenDialog`, `sharedAxis`, `fadeThrough` and `custom` take `heroes:`, a `Heroes` with three options.
 
 ```dart
 // lib/app/transition.dart: iOS-style pages, and heroes that follow the back swipe

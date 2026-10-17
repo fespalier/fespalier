@@ -754,6 +754,8 @@
         "packages/fespalier_sentry/lib/src/keys.dart",
         "packages/fespalier_sentry/lib/src/options.dart",
         "packages/fespalier_sentry/lib/src/scrub.dart",
+        "packages/fespalier_sentry/lib/src/spans.dart",
+        "packages/fespalier_sentry/lib/src/static_spans.dart",
         "packages/fespalier_sentry/lib/src/tokens.dart",
         "docs/observability.md",
         "docs/telemetry-conventions.md",

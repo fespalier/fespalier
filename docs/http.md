@@ -256,7 +256,7 @@ ref.abortable(RetryClient(WriteGuardClient(SessionClient(ref.watch(authorizer), 
 
 With it a 401 comes back to the caller after the refresh (the next request works, and a `data.dart` that retries reloads it). The test pins both orders, so neither changes silently.
 
-For Dio the same promises are interceptors and nothing to order by hand: `WriteGuard.install(dio)` goes **last** (it runs first), after the retrier and `SessionInterceptor`.
+For Dio the same promises are interceptors and nothing to order by hand: `WriteGuard.install(dio)` goes **last** (it runs first), after the retrier and `SessionInterceptor`. `packages/fespalier_dio/test/session_retry_test.dart` runs the real `SessionInterceptor` under `dio_smart_retry` in both orders of the two: every send made while the session lasts makes a new proof, and a 401 is replayed once.
 
 ## Credentials for clients that are not an http.Client
 

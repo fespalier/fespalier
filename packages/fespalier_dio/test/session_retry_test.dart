@@ -55,7 +55,8 @@ final class Sent {
 }
 
 /// A server that answers from a queue, one [Step] per send, and records every send. A send with
-/// no step left fails the test loudly instead of inventing an answer.
+/// no step left throws, which Dio turns into a retryable error, so a surplus send is caught by each
+/// case's send-count or header-list assertion.
 final class ScriptedAdapter implements HttpClientAdapter {
   ScriptedAdapter(Iterable<Step> steps) : _steps = [...steps];
 
@@ -108,6 +109,7 @@ final class Rig {
     List<Step> steps, {
     bool signedIn = true,
     Duration? tokenLifetime,
+    bool guardNeeded = false,
   }) : proof = FakeProof() {
     backend = FakeAuthBackend(proof: proof, tokenLifetime: tokenLifetime);
     container = ProviderContainer(
@@ -126,9 +128,12 @@ final class Rig {
       dio: dio,
       retries: 3,
       retryDelays: const [Duration.zero, Duration.zero, Duration.zero],
-      retryEvaluator: WriteGuard.readsOnly(
-        DefaultRetryEvaluator(defaultRetryableStatuses).evaluate,
-      ),
+      // guardNeeded: the plain evaluator also retries a write, so only WriteGuard stops it.
+      retryEvaluator: guardNeeded
+          ? DefaultRetryEvaluator(defaultRetryableStatuses).evaluate
+          : WriteGuard.readsOnly(
+              DefaultRetryEvaluator(defaultRetryableStatuses).evaluate,
+            ),
     );
     final session = SessionInterceptor(container.read(authorizer), dio);
     dio.interceptors.addAll(switch (order) {
@@ -254,8 +259,33 @@ void main() {
           ]);
           final response = await rig.dio.get<String>(orders);
           expect(response.statusCode, 200);
-          expect(rig.adapter.sent, hasLength(3));
+          expect(rig.adapter.authorizations, [
+            'DPoP fake-access-0',
+            'DPoP fake-access-0',
+            'DPoP fake-access-1',
+          ]);
+          expect(rig.adapter.replays, [false, false, true]);
           expect(rig.backend.refreshes, 1);
+          rig.expectNewProofPerSend();
+        },
+      );
+
+      test(
+        'a DPoP-Nonce header on a 200 is remembered: the next proof carries it',
+        () async {
+          final rig = Rig(order, [
+            const Step(
+              200,
+              headers: {
+                'DPoP-Nonce': ['srv-1'],
+              },
+            ),
+            const Step(200),
+          ]);
+          await rig.dio.get<String>(orders);
+          await rig.dio.get<String>(orders);
+          expect(rig.proof.proofs[0], isNot(contains('nonce=')));
+          expect(rig.proof.proofs[1], contains('nonce=srv-1'));
           rig.expectNewProofPerSend();
         },
       );
@@ -358,6 +388,12 @@ void main() {
           ]);
           expect(both.map((r) => r.statusCode), [200, 200]);
           expect(rig.adapter.sent, hasLength(4));
+          expect(rig.adapter.authorizations.toList()..sort(), [
+            'DPoP fake-access-0',
+            'DPoP fake-access-0',
+            'DPoP fake-access-1',
+            'DPoP fake-access-1',
+          ]);
           expect(rig.adapter.replays.where((r) => r), hasLength(2));
           expect(rig.backend.refreshes, 1);
         },
@@ -376,10 +412,24 @@ void main() {
           expect(error.error, isA<AuthUnavailable>());
           // Every send that reaches the API carries the session; with the refresh failing every
           // time, none reaches it.
-          expect(rig.adapter.authorizations.where((a) => a == null), isEmpty);
           expect(rig.adapter.sent, isEmpty);
           // The first attempt and the three retries each ask for a refresh.
           expect(rig.backend.refreshes, 4);
+        },
+      );
+
+      test(
+        'WriteGuard is what stops a PUT after the session replayed it: a plain evaluator would retry the 503',
+        () async {
+          final rig = Rig(order, [
+            const Step(401),
+            const Step(503),
+            const Step(200),
+          ], guardNeeded: true);
+          final error = await failure(rig.dio.put<String>(orders, data: 'x'));
+          expect(error.response?.statusCode, 503);
+          expect(rig.adapter.sent, hasLength(2));
+          expect(rig.backend.refreshes, 1);
         },
       );
 

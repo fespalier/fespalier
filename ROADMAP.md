@@ -41,10 +41,6 @@ it ships.
 
 ## Waiting on others
 
-- **go_router 18 in `examples/telemetry`.** `otel_go_router` 0.3.0 accepts go_router 18, but
-  `otel_zone` (v0.5.0 to v0.7.0; the example pins v0.7.0) still asks for
-  `otel_go_router: ^0.2.0`, which requires `go_router: ^17.0.0`; the fix belongs in
-  vaam-apps/flutter-otel-zone. fespalier itself supports 17 and 18.
 - **`runGuarded` on the web.** `otel_zone`'s `runGuarded` never runs its body in a Flutter web app,
   so the docs use `kIsWeb ? body() : observability.runGuarded(body)` until it is fixed in
   vaam-apps/flutter-otel-zone.

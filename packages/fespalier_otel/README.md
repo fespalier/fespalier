@@ -141,9 +141,12 @@ forwards them itself.
 
 ## go_router
 
-`otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`. fespalier accepts 17
-and 18, so an app with `otel_zone` resolves go_router 17. An app that needs 18 adds
-`dependency_overrides: go_router: ^18.0.0`, as `otel_zone`'s README says.
+Since 0.19.0 this package follows the dartastic rc.4 line (`dartastic_opentelemetry` 1.1.0-beta.17,
+API 1.0.0-rc.4), the one `otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647` (0.8.0 to
+be) starts, and that `otel_zone`'s `otel_go_router` accepts go_router 17 and 18: pub resolves 18 where
+Flutter has it, with no override. An `otel_zone` before that commit (up to v0.7.0) is on the rc.3 line
+and cannot resolve beside this package at all; it also pins `go_router: ^17.0.0`, so move it to the
+commit first.
 
 ## Startup failures
 

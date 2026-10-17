@@ -38,7 +38,7 @@ Native crash records can name their screen, which takes otel_zone v0.7.0 and one
 `fespalier` and every companion to the 0.19.0 tag, regenerate, read the diff, then:
 
 1. **Optional: native crash records can name the screen.** Bump `otel_zone` to v0.7.0 (the pin is the commit
-   `7fbdf64092626a66837ce04caa35411ea4f7df70`), pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and
+   `8a72fc4162f6426951176d40c490389f77385647`, 0.8.0 to be, which fespalier_otel needs from 0.19.0 anyway), pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and
    run `fsp telemetry --stop`, then `fsp telemetry`, so the collector reads the attribute and the Errors table has its panel. `app.g.dart`
    is unchanged, and an app that does none of this keeps its crash records as they are. See
    [`fespalier-observability`](../fespalier-observability/SKILL.md) (its telemetry section).
@@ -557,8 +557,11 @@ Bump to `v0.8.1`, regenerate, and look at these:
 9. **A new tag on `fsp routes`**: a page with an `observe.dart` at or above it is tagged `observe` (and
    `--json` `tags` and the route tree's `markers` gain the value); consumers that match tags
    exactly should accept it.
-10. **`otel_zone` pins go_router 17** (through `otel_go_router`). fespalier accepts 17 and 18; add
-    `dependency_overrides: go_router: ^18.0.0` to stay on 18.
+10. **`otel_zone` and the dartastic rc.4 line** (since 0.19.0). `fespalier_otel` needs `dartastic_opentelemetry`
+    ^1.1.0-beta.17 and API rc.4, which is `otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647`
+    (0.8.0 to be): bump that `ref`. It accepts go_router 17 and 18, so the `go_router: ^18.0.0` override is
+    gone; an `otel_zone` up to v0.7.0 pins go_router 17 (through `otel_go_router` ^0.2.0) and cannot resolve
+    beside this package.
 11. **`DeferredLibrary` has an optional `route`** (the generator sets it with `telemetry: true`), and
     `traceGuard` and `traceData` take an optional `telemetry:`; nothing to do unless you call them yourself.
     An app with no `observe.dart` and no `telemetry: true` gets none of items 7 to 11 in `app.g.dart`:

@@ -46,5 +46,5 @@ samples are in). `fsp telemetry --report` prints the same answers in the termina
 
 _Sample data from `scripts/telemetry/seed.py --showcase`._
 
-This is the one example on go_router 17: `otel_zone` depends on `otel_go_router`, which declares
-`go_router: ^17.0.0`.
+It resolves go_router 18 like the other examples: since `otel_zone` moved to the dartastic rc.4 line,
+its `otel_go_router` accepts go_router 17 and 18 (the pin in `pubspec.yaml` is that commit).

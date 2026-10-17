@@ -4,7 +4,7 @@
 //! ```yaml
 //! dependencies:
 //!   fespalier_otel: ...   # next to fespalier, at the same git ref
-//!   otel_zone: ...        # a git dependency pinned to a commit, v0.7.0 or later
+//!   otel_zone: ...        # a git dependency pinned to a commit, 8a72fc4 (the rc.4 line) or later
 //! fespalier:
 //!   telemetry: true
 //!   otel: true

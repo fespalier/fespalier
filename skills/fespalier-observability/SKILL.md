@@ -62,7 +62,7 @@ By hand, without `otel: true`, in `main.dart`, **before the router is built**: `
 `otel_zone`, the sink is `FespalierOtel(isReady: () => observability.isReady)` from `package:fespalier_otel`
 (a git dependency next to fespalier, **same `url`, same `ref`**). Nothing is reported until a sink is
 installed. Read [`references/telemetry.md`](references/telemetry.md) for the install and wiring,
-`FespalierOtel.endpoint()`, **the web limitation of `OtelZone.runGuarded`**, go_router 17, and testing with
+`FespalierOtel.endpoint()`, **the web limitation of `OtelZone.runGuarded`**, go_router 17 and 18, and testing with
 `RecordingTelemetry`.
 
 Since 0.19.0, `FespalierOtel(onScreen: observability.setCrashScreen)` names the page a native crash happened on, as
@@ -165,8 +165,9 @@ Read [`references/analytics.md`](references/analytics.md) for the wiring, consen
 zoneValues: {...})`.
 - **`fespalier` and `fespalier_otel` must be the same git dependency** (same `url`, same `ref`), or pub
   refuses to resolve; see [fespalier-troubleshooting](../fespalier-troubleshooting/SKILL.md) (its observe.dart and telemetry page).
-- **`otel_zone` forces go_router 17** in an app that uses it (`otel_go_router` caps it); fespalier accepts
-  17 and 18.
+- **`otel_zone` before commit `8a72fc4` (up to v0.7.0) forces go_router 17** in an app that uses it
+  (`otel_go_router` ^0.2.0 caps it) and is on the rc.3 dartastic line, which `fespalier_otel` no longer
+  resolves with since 0.19.0. From `8a72fc4` (0.8.0 to be) it accepts go_router 17 and 18; fespalier accepts both.
 - **`OtelZone.runGuarded` leaves a Flutter web app blank.** Run the body as it is on the web
   (`kIsWeb ? body() : observability.runGuarded(body)`). Since 0.8.1, known limitation.
 
@@ -183,4 +184,4 @@ zoneValues: {...})`.
   (`traceOf` and `linkTrace` in `telemetry.dart` are how the two share a trace).
 - Analytics (since 0.13.0): `packages/fespalier_analytics/` (`lib/src/sink.dart` the sink and `FespalierAnalytics`, `lib/fespalier_adapter.dart`, `lib/testing.dart`).
 - Scaffold: `fsp new 'orders/[id]' --observe` writes `observe.dart`.
-- The example is `examples/telemetry`: lifecycle tests and span tests, on go_router 17.
+- The example is `examples/telemetry`: lifecycle tests and span tests, on go_router 18 since 0.19.0.

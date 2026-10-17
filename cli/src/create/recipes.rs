@@ -338,12 +338,12 @@ pub const RECIPES: &[Recipe] = &[
             name: "otel_zone",
             source: Source::Git {
                 url: "https://github.com/vaam-apps/flutter-otel-zone",
-                commit: "7fbdf64092626a66837ce04caa35411ea4f7df70",
+                commit: "8a72fc4162f6426951176d40c490389f77385647",
             },
         }],
         dev_third_party: &[ThirdParty {
             name: "dartastic_opentelemetry",
-            source: Source::Range("^1.1.0-beta.15"),
+            source: Source::Range("^1.1.0-beta.17"),
         }],
         // otel_zone needs Dart 3.9 (it depends on talker_riverpod_logger), which is Flutter 3.35,
         // the base floor since 0.16.0.

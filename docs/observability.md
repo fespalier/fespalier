@@ -179,10 +179,10 @@ dependencies:
 otel_zone:
   git:
     url: https://github.com/vaam-apps/flutter-otel-zone
-    ref: 7fbdf64092626a66837ce04caa35411ea4f7df70 # a commit, not a tag
+    ref: 8a72fc4162f6426951176d40c490389f77385647 # a commit, not a tag
 ```
 
-`otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`, so an app with it resolves go_router 17 (fespalier accepts 17 and 18). An app that needs 18 adds `dependency_overrides: go_router: ^18.0.0`, as `otel_zone`'s README says. `examples/telemetry` is on go_router 17.
+Since 0.19.0, `otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647` (0.8.0 to be) is on the dartastic rc.4 line, and its `otel_go_router` accepts go_router 17 and 18, so pub resolves go_router 18 on a Flutter that has it and no override is needed; `fespalier_otel` follows the same line (`dartastic_opentelemetry` 1.1.0-beta.17, API 1.0.0-rc.4). An app that stays on an `otel_zone` before that commit (up to v0.7.0) still gets `otel_go_router: ^0.2.0`, which asks for `go_router: ^17.0.0`: it resolves go_router 17, and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18, as `otel_zone`'s README says. `examples/telemetry` is on go_router 18.
 
 The wiring, in `main.dart` (`examples/telemetry` is this, inside Sentry's zone):
 

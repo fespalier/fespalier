@@ -105,6 +105,12 @@ export 'src/telemetry.dart'
         navigateFrom,
         telemetryAttach,
         telemetryFollows;
+export 'src/motion.dart'
+    show
+        FadeThroughPageTransition,
+        MotionFill,
+        SharedAxis,
+        SharedAxisPageTransition;
 export 'src/page_motion.dart' show PageMotion;
 export 'src/transitions.dart';
 export 'src/url_state.dart';

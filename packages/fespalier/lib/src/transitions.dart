@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'heroes.dart';
+import 'motion.dart';
 import 'page_motion.dart';
 import 'reduced_motion.dart';
 
@@ -124,6 +125,61 @@ abstract final class Transitions {
       barrierLabel: barrierLabel,
     ),
     motion,
+  );
+
+  /// The Material 3 shared axis transition (since 0.19.0): the page slides 30 dp along [axis]
+  /// (or scales, on [SharedAxis.z]) while it fades in, and the page below fades out and slides
+  /// away. Built over widgets alone, see [SharedAxisPageTransition].
+  ///
+  /// The page below plays its half only when it is itself a [sharedAxis] page: each page
+  /// animates itself, from the animation of the route above it. [fill] (else the [MotionFill]
+  /// above the router, else nothing) paints behind the page while it moves. Under the system's
+  /// reduced motion it is a cross-fade.
+  static Page<void> sharedAxis(
+    LocalKey key,
+    Widget child, {
+    SharedAxis axis = SharedAxis.x,
+    Duration duration = const Duration(milliseconds: 300),
+    Color? fill,
+    Heroes? heroes,
+  }) => custom(
+    key,
+    child,
+    duration: duration,
+    heroes: heroes,
+    motion: PageMotion.sharedAxis,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        SharedAxisPageTransition(
+          animation: animation,
+          secondaryAnimation: secondaryAnimation,
+          axis: axis,
+          fill: fill,
+          child: child,
+        ),
+  );
+
+  /// The Material 3 fade through transition (since 0.19.0): the page below fades out, then the
+  /// page fades in and scales from 0.92 to 1. See [FadeThroughPageTransition]; [fill], the
+  /// outgoing half and reduced motion work as for [sharedAxis].
+  static Page<void> fadeThrough(
+    LocalKey key,
+    Widget child, {
+    Duration duration = const Duration(milliseconds: 300),
+    Color? fill,
+    Heroes? heroes,
+  }) => custom(
+    key,
+    child,
+    duration: duration,
+    heroes: heroes,
+    motion: PageMotion.fadeThrough,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) =>
+        FadeThroughPageTransition(
+          animation: animation,
+          secondaryAnimation: secondaryAnimation,
+          fill: fill,
+          child: child,
+        ),
   );
 
   /// Cross-fades the page in and out.

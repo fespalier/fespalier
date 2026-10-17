@@ -35,7 +35,13 @@ enum PageMotion {
   fullscreenDialog,
 
   /// `Transitions.custom`, unless the caller named another motion.
-  custom;
+  custom,
+
+  /// `Transitions.sharedAxis`: the Material 3 shared axis (since 0.19.0).
+  sharedAxis,
+
+  /// `Transitions.fadeThrough`: the Material 3 fade through (since 0.19.0).
+  fadeThrough;
 
   /// The motion [page] was tagged with, or null for a page that `Transitions` did not build.
   ///

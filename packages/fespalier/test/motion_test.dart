@@ -192,6 +192,17 @@ void main() {
       expect(_width(tester, 'b'), 100);
     });
 
+    testWidgets('z: the incoming scale follows the deceleration curve', (
+      tester,
+    ) async {
+      final router = await _boot(tester, _router(_shared(SharedAxis.z)));
+      await _push(tester, router, 0.35);
+      expect(
+        _width(tester, 'b'),
+        closeTo(80 + 20 * _decelerate.transform(0.35), 0.5),
+      );
+    });
+
     testWidgets('z: the page below grows to 1.1 and the leaving page shrinks', (
       tester,
     ) async {
@@ -319,6 +330,114 @@ void main() {
       expect(tester.state<_CounterState>(find.byType(_Counter)), same(state));
       await tester.pumpAndSettle();
       expect(tester.state<_CounterState>(find.byType(_Counter)), same(state));
+    });
+  });
+
+  group('what is under a see-through page', () {
+    for (final fade in [false, true]) {
+      testWidgets(
+        'a non-opaque page over a ${fade ? 'fade through' : 'shared axis'} page '
+        'leaves it as it was',
+        (tester) async {
+          final router = await _boot(
+            tester,
+            _router(
+              (k) => Transitions.custom(
+                k,
+                _body('b'),
+                opaque: false,
+                transitionsBuilder: (context, animation, secondary, child) =>
+                    FadeTransition(opacity: animation, child: child),
+              ),
+              home: (k) => fade
+                  ? Transitions.fadeThrough(k, _body('a'))
+                  : Transitions.sharedAxis(k, _body('a')),
+            ),
+          );
+          final rest = _topLeft(tester, 'a');
+          unawaited(router.push<void>('/b'));
+          await tester.pumpAndSettle();
+          expect(_opacity(tester, 'a'), 1);
+          expect(_topLeft(tester, 'a'), rest);
+        },
+      );
+    }
+
+    test('the route is opaque, keeps state and takes the duration', () {
+      final page = Transitions.sharedAxis(
+        const ValueKey<String>('k'),
+        const SizedBox(),
+        duration: const Duration(milliseconds: 123),
+      );
+      final route =
+          page.createRoute(
+                // createRoute only reads the page.
+                _FakeContext(),
+              )
+              as PageRoute<void>;
+      expect(route.opaque, isTrue);
+      expect(route.maintainState, isTrue);
+      expect(route.transitionDuration, const Duration(milliseconds: 123));
+      expect(
+        route.reverseTransitionDuration,
+        const Duration(milliseconds: 123),
+      );
+    });
+  });
+
+  group('the fill stays under the covered page', () {
+    testWidgets('fade through: the covered fill is opaque mid-transition', (
+      tester,
+    ) async {
+      const color = Color(0xFF00AA00);
+      final router = await _boot(
+        tester,
+        _router(
+          (k) => Transitions.fadeThrough(k, _body('b'), fill: color),
+          home: (k) => Transitions.fadeThrough(k, _body('a'), fill: color),
+        ),
+      );
+      unawaited(router.push<void>('/b'));
+      await pumpTransition(tester, at: 0.4);
+      final fills = find.ancestor(
+        of: find.byKey(const Key('a')),
+        matching: find.byWidgetPredicate(
+          (w) => w is ColoredBox && w.color == color,
+        ),
+      );
+      expect(fills, findsOneWidget);
+      // Every Opacity above the covered page's fill is the page's own, which is 1 here.
+      final above = find.ancestor(of: fills, matching: find.byType(Opacity));
+      expect(
+        tester.widgetList<Opacity>(above).fold(1.0, (a, o) => a * o.opacity),
+        1,
+      );
+      expect(_opacity(tester, 'a'), 0);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('shared axis: the covered fill does not move', (tester) async {
+      const color = Color(0xFF00AA00);
+      final router = await _boot(
+        tester,
+        _router(
+          (k) => Transitions.sharedAxis(k, _body('b'), fill: color),
+          home: (k) => Transitions.sharedAxis(k, _body('a'), fill: color),
+        ),
+      );
+      unawaited(router.push<void>('/b'));
+      await pumpTransition(tester, at: 0.2);
+      final fill = find
+          .ancestor(
+            of: find.byKey(const Key('a')),
+            matching: find.byWidgetPredicate(
+              (w) => w is ColoredBox && w.color == color,
+            ),
+          )
+          .first;
+      expect(tester.getTopLeft(fill).dx, 0);
+      expect(_topLeft(tester, 'a').dx, lessThan(0));
+      await tester.pumpAndSettle();
     });
   });
 
@@ -483,3 +602,5 @@ class _CounterState extends State<_Counter> {
   @override
   Widget build(BuildContext context) => const Text('counter');
 }
+
+class _FakeContext extends Fake implements BuildContext {}

@@ -91,7 +91,7 @@ optional `GoRouterState state` and `bool shell`); it covers its folder and below
 nearest wins, **layout shells included** since 0.3.0 (the shell's key is
 `ValueKey<String>('layout:<folder>/')`, so only entering or leaving the shell
 animates it). `Transitions` has `fade`, `slide`, `none`, `material`, `cupertino`,
-`dialog`, `sheet` and `fullscreenDialog`. A dialog or sheet route must sit **below
+`sharedAxis`, `fadeThrough` (since 0.19.0), `dialog`, `sheet` and `fullscreenDialog`. A dialog or sheet route must sit **below
 a page** or it opens over an empty screen. Restoration needs
 `restorationScopeId` on both `MaterialApp` and `AppRoutes.router(...)`; a `Page` you
 build yourself must pass `restorationId: Transitions.restorationIdOf(key)` (since 0.19.0). Since 0.8.1 a shared element is

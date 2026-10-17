@@ -40,6 +40,94 @@ T namedPage<T>(String name, T Function() build) {
 Widget _withHeroes(Heroes? heroes, Widget child) =>
     heroes == null ? child : RouteHeroScope(heroes: heroes, child: child);
 
+Page<void> _motionPage(
+  LocalKey key,
+  Widget child, {
+  required Duration duration,
+  required Heroes? heroes,
+  required PageMotion motion,
+  required RouteTransitionsBuilder transitionsBuilder,
+}) => tagMotion(
+  _MotionPage(
+    key: key,
+    name: _pageName,
+    restorationId: _restorationId(key),
+    child: _withHeroes(heroes, child),
+    duration: duration,
+    transitionsBuilder: transitionsBuilder,
+  ),
+  motion,
+);
+
+/// The page of `sharedAxis` and `fadeThrough`: an opaque page route like `custom`'s, except that
+/// the page below plays its outgoing half only under an opaque page. A route's secondary
+/// animation is driven by any `PageRoute` above it, a see-through one included, which would
+/// leave the page below invisible behind it.
+class _MotionPage extends Page<void> {
+  const _MotionPage({
+    super.key,
+    super.name,
+    super.restorationId,
+    required this.child,
+    required this.duration,
+    required this.transitionsBuilder,
+  });
+
+  final Widget child;
+  final Duration duration;
+  final RouteTransitionsBuilder transitionsBuilder;
+
+  @override
+  Route<void> createRoute(BuildContext context) => _MotionRoute(this);
+}
+
+class _MotionRoute extends PageRoute<void> {
+  _MotionRoute(_MotionPage page) : super(settings: page);
+
+  _MotionPage get _page => settings as _MotionPage;
+
+  @override
+  Duration get transitionDuration => _page.duration;
+
+  @override
+  Duration get reverseTransitionDuration => _page.duration;
+
+  @override
+  bool get maintainState => true;
+
+  @override
+  Color? get barrierColor => null;
+
+  @override
+  String? get barrierLabel => null;
+
+  @override
+  bool canTransitionTo(TransitionRoute<dynamic> nextRoute) =>
+      nextRoute is PageRoute && nextRoute.opaque;
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) => Semantics(
+    scopesRoute: true,
+    explicitChildNodes: true,
+    child: _page.child,
+  );
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => _page.transitionsBuilder(context, animation, secondaryAnimation, child);
+
+  @override
+  String get debugLabel => '${super.debugLabel}(${_page.name})';
+}
+
 /// Ready-made pages for `transition.dart`.
 ///
 /// Every page gets a `restorationId` from its key, which is what lets what a
@@ -142,7 +230,7 @@ abstract final class Transitions {
     Duration duration = const Duration(milliseconds: 300),
     Color? fill,
     Heroes? heroes,
-  }) => custom(
+  }) => _motionPage(
     key,
     child,
     duration: duration,
@@ -167,7 +255,7 @@ abstract final class Transitions {
     Duration duration = const Duration(milliseconds: 300),
     Color? fill,
     Heroes? heroes,
-  }) => custom(
+  }) => _motionPage(
     key,
     child,
     duration: duration,

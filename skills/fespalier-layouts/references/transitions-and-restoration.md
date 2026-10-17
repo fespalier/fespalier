@@ -56,15 +56,16 @@ which `motionOf` reads in a test (`fespalier-testing`).
 
 **Shared axis and fade through (since 0.19.0)** are written over widgets alone (`lib/src/motion.dart`: no Material, no
 `animations` package). The outgoing half is driven by the covered page's `secondaryAnimation`, so the page below fades
-and moves only when it is itself a `sharedAxis`/`fadeThrough` page (a dialog or sheet over it does not move it). The fill
-behind the pages is the preset's `fill:`, else a `MotionFill` set once in `MaterialApp.router(builder:)`, else
-transparent (a `Scaffold` paints its own background). `SharedAxis.x` mirrors in RTL; reduced motion makes both a
+and moves only when it is itself a `sharedAxis`/`fadeThrough` page and the page above is an opaque page route (a
+see-through `custom(opaque: false)`, a dialog or a sheet leaves it as it was). The fill behind the pages is the
+preset's `fill:`, else a `MotionFill` set once in `MaterialApp.router(builder:)`, else transparent; without one the
+middle of the transition shows what is under the Navigator (a `Scaffold` fades with its page), so set `MotionFill`. `SharedAxis.x` mirrors in RTL; reduced motion makes both a
 cross-fade. `SharedAxisPageTransition` and `FadeThroughPageTransition` are the public widgets for a `Transitions.custom`.
 
 **Predictive back (since 0.19.0, UNCHECKED per Android version).** `Transitions.material` gets Android's peek from the
 theme (default on Flutter 3.38+; on 3.35 to 3.37 add `PredictiveBackPageTransitionsBuilder` to `pageTransitionsTheme`; the
 manifest needs `android:enableOnBackInvokedCallback="true"`). Every `CustomTransitionPage` preset pops on release with its
-reverse transition, no peek. `Heroes(onBackGesture: true)` covers heroes. Do not wrap presets in
+reverse transition, no peek. `Heroes(onBackGesture: true)` covers heroes for `material`/`cupertino` (a custom preset has no gesture in progress); #228. Do not wrap presets in
 `PredictiveBackPageTransitionsBuilder`: it replaces them with Material's peek.
 
 **Reduced motion (since 0.19.0), on by default and with no opt-out switch.** When `MediaQuery.disableAnimations`

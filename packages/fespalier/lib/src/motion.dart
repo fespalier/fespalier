@@ -38,8 +38,9 @@ enum SharedAxis {
 /// );
 /// ```
 ///
-/// A preset's own `fill:` wins over it. With neither the fill is transparent: your page paints
-/// its own background, as a `Scaffold` does.
+/// A preset's own `fill:` wins over it. With neither the fill is transparent, and the
+/// middle of a transition shows what is under the Navigator (a page's own background fades
+/// with it): set a [MotionFill] once.
 class MotionFill extends InheritedWidget {
   /// Provides [color] as the fill of the transitions below [child].
   const MotionFill({super.key, required this.color, required super.child});
@@ -179,16 +180,25 @@ Widget _page({
   final rtl = Directionality.maybeOf(context) == TextDirection.rtl;
   return AnimatedBuilder(
     animation: Listenable.merge([animation, secondaryAnimation]),
-    child: color == null ? child : ColoredBox(color: color, child: child),
+    child: child,
     builder: (context, child) {
       if (reduced) {
-        return _wear(_Look(Curves.easeOut.transform(animation.value)), child!);
+        final filled = color == null
+            ? child!
+            : ColoredBox(color: color, child: child);
+        return _wear(_Look(Curves.easeOut.transform(animation.value)), filled);
       }
+      // The covered page's content fades over its own fill, and only the page's own animation
+      // fades the fill: mid-transition the fill is still there, so what is under the Navigator
+      // does not show through, and the fill does not slide or scale with the content.
       final covered = _wear(
         look(_Phase.secondary(secondaryAnimation), rtl),
         child!,
       );
-      return _wear(look(_Phase.primary(animation), rtl), covered);
+      final filled = color == null
+          ? covered
+          : ColoredBox(color: color, child: covered);
+      return _wear(look(_Phase.primary(animation), rtl), filled);
     },
   );
 }
@@ -207,7 +217,8 @@ Widget _page({
 /// plain cross-fade.
 ///
 /// Both pages fade, so [fill] (else the [MotionFill] above, else nothing) paints behind the
-/// page. `Transitions.sharedAxis` is this inside a `CustomTransitionPage`.
+/// page. `Transitions.sharedAxis` is this inside a page route that only plays the outgoing half
+/// under an opaque page.
 class SharedAxisPageTransition extends StatelessWidget {
   /// A shared axis transition of [child] along [axis].
   const SharedAxisPageTransition({
@@ -252,8 +263,8 @@ class SharedAxisPageTransition extends StatelessWidget {
 /// The outgoing half is driven by [secondaryAnimation], like [SharedAxisPageTransition]'s, so a
 /// page below plays it only when it is itself built with a transition that reads it. With the
 /// system's reduced motion on it is a plain cross-fade. [fill] (else the [MotionFill] above,
-/// else nothing) paints behind the page. `Transitions.fadeThrough` is this inside a
-/// `CustomTransitionPage`.
+/// else nothing) paints behind the page. `Transitions.fadeThrough` is this inside a page route
+/// that only plays the outgoing half under an opaque page.
 class FadeThroughPageTransition extends StatelessWidget {
   /// A fade through transition of [child].
   const FadeThroughPageTransition({

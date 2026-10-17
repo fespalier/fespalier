@@ -506,6 +506,41 @@ void main() {
     );
 
     test(
+      'after AuthUnavailable, a sign-out and another user is not sent as the new user',
+      () async {
+        // Pins the user recorded when the authorizer failed (the private wanted_by key).
+        setUpDio(tokenLifetime: const Duration(seconds: -1));
+        backend.refreshError = AuthUnavailable(StateError('offline'));
+        final options = RequestOptions(path: 'https://api.example.com/orders');
+        await expectLater(
+          dio.fetch<String>(options),
+          throwsA(isA<DioException>()),
+        );
+        final notifier = container.read(authSession.notifier);
+        await notifier.signOut();
+        backend
+          ..user = bob
+          ..refreshError = null
+          ..tokenLifetime = null;
+        await notifier.signIn(
+          const PasswordSignIn(username: 'bob', password: 'bob'),
+        );
+        adapter.good = 'fake-access-2';
+        await expectLater(
+          dio.fetch<String>(options),
+          throwsA(
+            isA<DioException>().having(
+              (e) => e.error,
+              'error',
+              isA<AuthRejected>(),
+            ),
+          ),
+        );
+        expect(adapter.seen, isEmpty);
+      },
+    );
+
+    test(
       'after AuthUnavailable is not marked refused: the next send may work',
       () async {
         setUpDio(tokenLifetime: const Duration(seconds: -1));

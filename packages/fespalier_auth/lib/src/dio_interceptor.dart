@@ -6,6 +6,7 @@ import 'authorizer.dart';
 import 'errors.dart';
 
 const String _attemptKey = 'fespalier_auth.attempt';
+const String _wantedByKey = 'fespalier_auth.wanted_by';
 
 /// Adds the session to a Dio's requests to `AuthConfig.apiOrigins`, and sends a request once more
 /// after a proof challenge or a 401 (a refresh), like `SessionClient` (since 0.9.0).
@@ -67,6 +68,11 @@ final class SessionInterceptor extends Interceptor {
         // The session ended between two sends of one request: it is not sent without it.
         throw const AuthRejected();
       }
+      final wantedBy = options.extra[_wantedByKey];
+      if (wantedBy != null && attemptUserId(attempt) != wantedBy) {
+        // The authorizer failed for another user's session than the one signed in now.
+        throw const AuthRejected();
+      }
       if (prior != null) {
         // The headers of the send before are stale: a new proof, a new token.
         for (final name in prior.headers.keys.toList()) {
@@ -81,6 +87,10 @@ final class SessionInterceptor extends Interceptor {
       // not be made: the request is not sent, and it wanted the session, so a later send of the
       // same options does not go out without it.
       options.extra[authWantedKey] = true;
+      // Who wanted it, so a retry is not sent as somebody else (kept under a key of its own: the
+      // value of authWantedKey stays true). The first failure's user stands.
+      final who = authorizerUserId(authorizer);
+      if (who != null) options.extra.putIfAbsent(_wantedByKey, () => who);
       if (error is AuthRejected) options.extra[authRefusedKey] = error;
       handler.reject(DioException(requestOptions: options, error: error), true);
     }

@@ -129,7 +129,9 @@ final class Rig {
       dio: dio,
       retries: 3,
       retryDelays: const [Duration.zero, Duration.zero, Duration.zero],
-      // Called when a retry is decided, before it is sent: a test changes the session here.
+      // dio_smart_retry 7.0.1 calls logPrint once per retry, after the retry is decided and before
+      // the delay and the dio.fetch (retry_interceptor.dart:119): that is what makes it a hook a
+      // test can change the session in, between two sends of one request.
       logPrint: (_) {
         final once = beforeRetry;
         beforeRetry = null;
@@ -451,8 +453,9 @@ void main() {
           rig.backend.refreshError = const AuthRejected();
           final error = await failure(rig.dio.get<String>(orders));
           expect(error.error, isA<AuthRejected>());
-          // Without the refused mark the retry finds nobody signed in and goes out with no
-          // Authorization.
+          // The wanted mark alone stops the retry (nobody is signed in, and the request had
+          // wanted the session); the refused mark is pinned by fespalier_auth's dio_test.dart
+          // ("still refused after a sign-in").
           expect(rig.adapter.sent, isEmpty);
           expect(rig.backend.refreshes, 1);
           expect(
@@ -477,6 +480,32 @@ void main() {
           expect(error.error, isA<AuthRejected>());
           expect(rig.adapter.sent, isEmpty);
           expect(rig.backend.refreshes, 1);
+        },
+      );
+
+      test(
+        'a refresh that could not run, a sign-out, another user signs in: the retry is not sent as the new user',
+        () async {
+          late final Rig rig;
+          rig = Rig(
+            order,
+            const [],
+            tokenLifetime: const Duration(seconds: -1),
+            beforeRetry: () async {
+              await rig.notifier.signOut();
+              rig.backend
+                ..user = const AuthUser(id: 'bob-id')
+                ..tokenLifetime = null;
+              await rig.notifier.signIn(
+                const PasswordSignIn(username: 'bob', password: 'bob'),
+              );
+            },
+          );
+          rig.backend.refreshError = AuthUnavailable(StateError('offline'));
+          final error = await failure(rig.dio.get<String>(orders));
+          expect(error.error, isA<AuthRejected>());
+          expect(rig.adapter.sent, isEmpty);
+          expect(rig.container.read(authUserId), 'bob-id');
         },
       );
 

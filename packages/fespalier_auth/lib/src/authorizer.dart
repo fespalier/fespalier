@@ -19,11 +19,11 @@ final class AuthAttempt implements HttpAuthorization {
     required this.uri,
     this.headers = const <String, String>{},
     this.accessToken,
-    this.userId,
+    String? userId,
     this.proofUsed = false,
     this.proofRetried = false,
     this.refreshRetried = false,
-  });
+  }) : _userId = userId;
 
   /// The HTTP method this send is for.
   @override
@@ -40,9 +40,7 @@ final class AuthAttempt implements HttpAuthorization {
   /// The access token the headers carry; null when none was attached.
   final String? accessToken;
 
-  /// The id of the user the session belonged to when this send was made; null when none was
-  /// attached. A request sent again for another user is refused (since 0.19.0).
-  final String? userId;
+  final String? _userId;
 
   /// Whether this send carried a proof of possession.
   final bool proofUsed;
@@ -67,6 +65,14 @@ final class AuthAttempt implements HttpAuthorization {
 /// after a proof challenge or a 401 (since 0.9.0): `fespalier.auth.replay`. A write guard that
 /// refuses re-sends lets this one through. Never sent to a server.
 const String authReplayKey = 'fespalier.auth.replay';
+
+/// The id of the user signed in to [authorizer] now, or null. Package-private: `SessionInterceptor`
+/// records it when the authorizer fails for a request.
+String? authorizerUserId(Authorizer authorizer) =>
+    authorizer._notifier.session?.user.id;
+
+/// The id of the user [attempt] was made for, or null when it carried no session. Package-private.
+String? attemptUserId(AuthAttempt attempt) => attempt._userId;
 
 /// The `RequestOptions.extra` key `SessionInterceptor` sets to the `AuthRejected` that stopped a
 /// request before its send (since 0.19.0): `fespalier_auth.refused`. A request that finds it is
@@ -152,7 +158,7 @@ final class Authorizer implements HttpCredentials {
       return unauthenticated();
     }
     final userId = _notifier.session?.user.id;
-    final priorUser = prior?.userId;
+    final priorUser = prior?._userId;
     if (priorUser != null && userId != priorUser) {
       // A request made for one user is never sent again as another.
       throw const AuthRejected();

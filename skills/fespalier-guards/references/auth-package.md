@@ -430,7 +430,9 @@ void main() {
   would now go out without it (a sign-out between a 503 and its retry), or as another user (a sign-in
   between), is refused with an `AuthRejected`, and the previous send's `Authorization` and `DPoP` headers
   never stay on the next one. `SessionClient` cannot do this: a `RetryClient` outside it makes a new request
-  for each attempt.
+  for each attempt, and one inside it re-sends a stale Bearer token after a sign-out; `ref.abortable(...)`
+  outermost with a `data.dart` that watches `authUserId` stops both. Its own replay after a 401 is refused
+  once the user signed out.
 - **`RetryClient` goes over the session, never under it.** `RetryClient(ref.watch(authHttpClient))` asks the
   authorizer again for each attempt. `authBaseClient` wrapped in a `RetryClient` re-sends the same
   `Authorization` and `DPoP` headers, the same proof, and a DPoP server refuses a reused `jti` (Keycloak:

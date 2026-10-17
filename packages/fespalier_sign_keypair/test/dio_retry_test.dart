@@ -10,8 +10,6 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:dio_smart_retry/dio_smart_retry.dart';
-// fespalier arrives through fespalier_auth; the container is the only thing taken from it.
-// ignore: depend_on_referenced_packages
 import 'package:fespalier/fespalier.dart' show ProviderContainer;
 import 'package:fespalier_auth/dio.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
@@ -100,7 +98,10 @@ final class VerifyingAdapter implements HttpClientAdapter {
       );
       throw StateError(refused.last);
     }
-    expect(authorization, startsWith('DPoP '));
+    if (!authorization.startsWith('DPoP ')) {
+      refused.add('send ${sent.length + 1}: Authorization is not DPoP');
+      throw StateError(refused.last);
+    }
     final DecodedDpopProof decoded;
     try {
       decoded = verifyDpopProof(
@@ -290,7 +291,7 @@ void main() {
       });
 
       test(
-        'a sign-out between a 503 and its retry: the retry is not sent, and the proof is not reused',
+        'a sign-out between a 503 and its retry: the retry is not sent',
         () async {
           late final Rig rig;
           rig = await Rig.create(order, [

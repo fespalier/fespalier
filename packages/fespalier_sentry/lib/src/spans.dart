@@ -25,8 +25,9 @@ abstract interface class SpanHandle {
   /// A child of this span, for the operation [op] and described by [description].
   SpanHandle child(String op, String description);
 
-  /// Ends it with [status].
-  void finish(SpanStatus status);
+  /// Ends it with [status]. A span of the streaming API has only ok and error, so it reads [failed]
+  /// alone: whether the operation failed, or its deadline passed.
+  void finish(SpanStatus status, {bool failed = false});
 
   /// Whether [scope] holds this very span as its current one.
   bool boundTo(Scope scope);
@@ -37,6 +38,11 @@ abstract interface class SpanHandle {
 
 /// The span of a screen: a `ui.load` transaction, with its time to initial and to full display.
 abstract interface class ScreenSpan implements SpanHandle {
+  /// Tells the screen its name, the route pattern, once the navigation knows it. A transaction is
+  /// named through the scope; a streamed segment is named here, and spans of it that ended before
+  /// the name was known end now, so that each carries the segment's name.
+  void named(String name);
+
   /// Reports time to initial display: a child span from the start of the screen to now, and its
   /// measurement. [name] is the screen's.
   void initialDisplay(String name);

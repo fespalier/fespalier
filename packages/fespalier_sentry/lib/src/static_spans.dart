@@ -69,7 +69,8 @@ class _StaticSpan implements SpanHandle {
       _StaticSpan(_span.startChild(op, description: description));
 
   @override
-  void finish(SpanStatus status) => fire(_span.finish(status: status));
+  void finish(SpanStatus status, {bool failed = false}) =>
+      fire(_span.finish(status: status));
 
   @override
   bool boundTo(Scope scope) => identical(scope.span, _span);
@@ -80,6 +81,9 @@ class _StaticSpan implements SpanHandle {
 
 final class _StaticScreen extends _StaticSpan implements ScreenSpan {
   _StaticScreen(super.span);
+
+  @override
+  void named(String name) {}
 
   @override
   void initialDisplay(String name) {

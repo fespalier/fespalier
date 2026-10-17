@@ -137,10 +137,22 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   one: recommended. Web and desktop: ordinary.
 - **An HTTP span made in `data()`** is a child of the screen's transaction (Sentry's integrations parent to the
   scope's span), beside the data span, not under it. Under `fespalier_otel` it is under the data span.
-- **`traceLifecycle: stream`** is not supported in this version: the sink prints once (in a debug build)
-  `fespalier_sentry: Sentry's traceLifecycle is stream, which this version makes no spans for. Errors and
-breadcrumbs are still sent; use SentryTraceLifecycle.static for screen transactions.` and makes no spans.
-  Errors and breadcrumbs are unaffected.
+- **`traceLifecycle: stream`** (since 0.19.0; Sentry 9.26.0 has it): the same tree is streamed through
+  `Hub.startInactiveSpan`. A screen is a root span (a segment, `sentry.op` `ui.load`, named at the commit) and its
+  guards, redirects, data, deferred loads, images, auth steps and actions are children with an explicit parent;
+  `ui.load.initial_display` and `.full_display` carry `app.vitals.ttid.value` and `app.vitals.ttfd.value`
+  instead of measurements. A streamed span's status is `ok` or `error` only (`error`: a failure that is not a
+  `FieldErrors`, and a screen's data and full display when the next navigation starts first). A superseded
+  navigation **cannot be dropped**: it is sent with `fespalier.navigation.outcome` `superseded`, named `navigate`.
+  An error is linked to its span through `contexts.trace`. **The sink never uses an idle span** (a timer) and ends
+  every span itself; a span that ends before the route is known waits for it, so it carries the segment's name.
+  Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s
+  transactions are; `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews it on each
+  navigation, and the SDK does after a stay in the background when no navigator observer exists (whether Sentry's
+  views are right with one trace for many screens is UNCHECKED). Not the same as `static`: HTTP spans (`SentryHttpClient`,
+  `sentry_dio`) parent to the active span of the zone, and `data()` does not run in one yet, so they make **no
+  span under the screen** in this mode. `configure` installs `beforeSendSpan` (the app's first) that takes
+  `http.query`, `http.fragment` and the query of `url` off (`FespalierSentry.spanWithoutQueries`).
 - `tracing: true` on an SDK that samples nothing prints once (debug) `fespalier_sentry: tracing: true needs
 Sentry to sample transactions, and tracesSampleRate is not set, so no transaction is sent. Pass tracing: true
   to FespalierSentry.configure, or set options.tracesSampleRate.`
@@ -171,9 +183,12 @@ await tester.pump(); // the SDK hands an event to its transport a few microtasks
 expect(await sentry.lines(), ['event StateError operation=data route=/items/:id file=items/$id/data.dart']);
 ```
 
-`lines()` is one line per transaction, span and event, without timestamps or ids; `sent()` is the JSON the SDK
-built (tags, fingerprint, contexts, measurements); `breadcrumbs`, `rawBreadcrumbs`, `tags` and
-`transactionName` read the scope. Traps:
+`lines()` is one line per transaction, span and event, without timestamps or ids, then (since 0.19.0, with
+`traceLifecycle: stream`) `segment <op> <name> status=<ok|error>[ ttid][ ttfd]` and its indented `span` lines;
+`spans` is the streamed `SentrySpanV2`s in the order they ended (recorded in `beforeSendSpan`, after `configure`'s);
+`sent()` is the JSON the SDK built (tags, fingerprint, contexts, measurements); `breadcrumbs`, `rawBreadcrumbs`,
+`tags` and `transactionName` read the scope. A test of streaming sets `options.traceLifecycle =
+SentryTraceLifecycle.stream` in `RecordingSentry(configure:)`. Traps:
 
 - **Pump before reading** (`await tester.pump()`), or use a plain `test()` and a real zero delay.
 - **A `ProviderContainer` read inside `testWidgets` leaves a Riverpod timer pending**: use `test()` for a

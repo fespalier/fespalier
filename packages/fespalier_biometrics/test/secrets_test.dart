@@ -171,6 +171,7 @@ void main() {
     final unlocking = notifier.unlock('Unlock');
     await Future<void>.delayed(Duration.zero);
     expect(prompt.prompts, 0);
+    expect(container.read(biometricUnlock), isA<Unlocking>());
     secrets.release();
     await reading;
     expect(await unlocking, BiometricOutcome.success);
@@ -190,6 +191,9 @@ void main() {
     expect(result, isA<SecretFound>());
     expect(container.read(biometricUnlock), isA<Locked>());
     expect(states, isEmpty, reason: 'a read tells no listener');
+    final notifier = container.read(biometricUnlock.notifier);
+    expect(notifier.isFresh(), isFalse);
+    expect(notifier.isIdle(), isFalse);
   });
 
   test(
@@ -245,4 +249,36 @@ void main() {
       ),
     );
   });
+
+  test(
+    'a store that throws on delete fails the Future, with no error in telemetry',
+    () async {
+      final seen = <TelemetryEnd>[];
+      FespalierTelemetry.install(_Ends(seen));
+      addTearDown(() => FespalierTelemetry.install(null));
+      final secrets = FakeBiometricSecrets(stored: {'k': _secret})
+        ..throws = StateError('names the key');
+      final container = containerOf(FakeBiometricPrompt(), secrets);
+      await expectLater(
+        container.read(biometricUnlock.notifier).deleteSecret('k'),
+        throwsA(isA<StateError>()),
+      );
+      expect(seen, hasLength(1));
+      expect(seen.single.outcome, TelemetryOutcome.error);
+      expect(seen.single.error, isNull);
+      expect(seen.single.stackTrace, isNull);
+    },
+  );
+}
+
+final class _Ends extends FespalierTelemetry {
+  _Ends(this.ends);
+
+  final List<TelemetryEnd> ends;
+
+  @override
+  Object? start(TelemetryStart start) => Object();
+
+  @override
+  void end(Object? token, TelemetryEnd end) => ends.add(end);
 }

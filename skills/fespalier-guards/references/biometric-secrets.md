@@ -54,7 +54,7 @@ final class SecureStorageSecrets extends BiometricSecrets {
       biometricType: strongBiometricOnly
           ? AndroidBiometricType.strongBiometricOnly
           : AndroidBiometricType.biometricOrDeviceCredential,
-      // The plugin's default is true: any unexpected error then ERASES every stored secret.
+      // The plugin's default is true: any unexpected error then DELETES the item (or, on some paths, every item).
       resetOnError: false,
       biometricPromptTitle: 'Confirm it is you',
       // Required with strongBiometricOnly, and on Android 10 and lower.
@@ -164,6 +164,22 @@ void main() {
     expect(outcomeOf(android('anything else')), BiometricOutcome.failed);
   });
 
+  test('the statement switch of the docs is exhaustive over SecretRead', () {
+    String show(SecretRead secret) {
+      switch (secret) {
+        case SecretFound(:final value):
+          return 'card $value';
+        case SecretMissing():
+          return 'ask again';
+        case SecretRefused(:final outcome):
+          return 'refused ${outcome.name}';
+      }
+    }
+
+    expect(show(const SecretMissing()), 'ask again');
+    expect(show(const SecretRefused(BiometricOutcome.cancelled)), 'refused cancelled');
+  });
+
   test('the app uses the fake in tests, wired as biometricSecrets', () async {
     final secrets = FakeBiometricSecrets(stored: {'token': 'abc'});
     final container = ProviderContainer(
@@ -195,9 +211,12 @@ Read and write from an event handler, never from `build` or a guard:
 ```dart
 final secret = await ref.read(biometricUnlock.notifier).readSecret('card', 'Show the card number');
 switch (secret) {
-  SecretFound(:final value) => showCard(value),
-  SecretMissing() => askForTheCardAgain(),   // never saved, or a new finger was enrolled
-  SecretRefused(:final outcome) => showWhy(outcome),
+  case SecretFound(:final value):
+    showCard(value);
+  case SecretMissing(): // never saved, or a new finger was enrolled
+    askForTheCardAgain();
+  case SecretRefused(:final outcome):
+    showWhy(outcome);
 }
 ```
 
@@ -219,7 +238,7 @@ The plugin's README per platform is the source; the parts that bite:
   again. (`biometryAny` would survive a new enrolment: weaker.) UNCHECKED on a device.
 - `biometricOrDeviceCredential` (the default) lets a person who knows the PIN read the secret: that is the Android
   setting for "any way the phone itself accepts". `strongBiometricOnly` is the stricter one. UNCHECKED on a device.
-- The recipe keeps the plugin's `resetOnError` off: the default (true) deletes every stored secret after an unexpected
+- The recipe keeps the plugin's `resetOnError` off: the default (true) deletes the item (or, on some paths, all items) after an unexpected
   Android error, which an app would rather decide itself (`deleteSecret` per key).
 - Version 10.x of the plugin: `AndroidOptions.biometric(enforceBiometrics: true)` and `IOSOptions(accessControlFlags:)`
   are the same; `biometricType` exists from 10.3.0, and `requireBiometricsPerOperation` is **11.2.0 and newer**. Without

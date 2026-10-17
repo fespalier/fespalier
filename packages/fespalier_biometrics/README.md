@@ -102,8 +102,7 @@ expect(prompt.prompts, 0); // and nothing was prompted
   just inactive); an expiry (`maxAge`) is evaluated when a guard next runs, never by itself. `test/no_timers_test.dart` greps `lib/` for it.
 - **Telemetry is constants only:** `fespalier.biometrics.prompt` with `fespalier.biometrics.result` (the outcome's name).
   Never the reason text.
-- Not built: a lock screen widget, a passcode of the app's own, storing a secret behind the biometric (that is a
-  keystore's job), a timer-based idle lock.
+- Not built: a passcode of the app's own.
 
 ## Secrets behind the biometric (since 0.19.0)
 

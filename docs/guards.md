@@ -376,14 +376,17 @@ Since 0.19.0 a value the person must unlock to read (a card number, a recovery p
 // in an event handler (never in build or a guard)
 final secret = await ref.read(biometricUnlock.notifier).readSecret('card', 'Show the card number');
 switch (secret) {
-  SecretFound(:final value) => showCard(value),
-  SecretMissing() => askForTheCardAgain(),
-  SecretRefused(:final outcome) => showWhy(outcome),
+  case SecretFound(:final value):
+    showCard(value);
+  case SecretMissing():
+    askForTheCardAgain();
+  case SecretRefused(:final outcome):
+    showWhy(outcome);
 }
 ```
 
-- `readSecret(key, reason)` answers `SecretFound(value)`, `SecretMissing()` (nothing stored, or the keystore made the item unreadable, such as an iOS item bound to `biometryCurrentSet` after a new finger was enrolled) or `SecretRefused(outcome)` with the same `BiometricOutcome` as a prompt. It never throws for a refusal, and a store that throws is `SecretRefused(failed)`. `writeSecret(key, value, reason)` answers a `BiometricOutcome`, and `deleteSecret(key)` removes one (it needs no sheet). `SecretFound.toString()` hides the value.
-- **One sheet at a time.** A read that comes while `unlock()`'s sheet is up waits for it (and the other way round), two reads of one key share one `Future` and one sheet, and reads of two keys are two sheets in order. No timer is involved: the package keeps a line of `Future`s.
+- `readSecret(key, reason)` answers `SecretFound(value)`, `SecretMissing()` (nothing stored, or the keystore made the item unreadable, such as an iOS item bound to `biometryCurrentSet` after a new finger was enrolled) or `SecretRefused(outcome)` with the same `BiometricOutcome` as a prompt. It never throws for a refusal, and a store that throws is `SecretRefused(failed)`. `writeSecret(key, value, reason)` answers a `BiometricOutcome`, and `deleteSecret(key)` removes one (it needs no sheet). A store that fails makes `deleteSecret`'s `Future` fail (the secret may still be there): a failed delete at sign-out must not be silent. `SecretFound.toString()` hides the value.
+- **One sheet at a time.** A read that comes while `unlock()`'s sheet is up waits for it (and the other way round), two reads of one key share one `Future` and one sheet, and reads of two keys are two sheets in order. No timer is involved: the package keeps a line of `Future`s. An `unlock()` that queues behind a read's sheet is `Unlocking` from the call, so a lock screen's button is disabled for the whole read sheet. **A store must always answer**: one that never does blocks every later `unlock()` and secret operation until the app restarts, because the package may not time it out.
 - **A read does not unlock the app.** The state stays `Locked` (or whatever it was) and tells no listener: Android's `biometricOrDeviceCredential` accepts a PIN, and a read is consent to one value, not proof that the owner is holding the phone. Unlock first (`unlock()`) when the page needs it.
 - **The value goes to the caller only.** No provider holds it, and telemetry never sees it. `lock()` leaves stored secrets alone, so delete an account's secrets at sign-out.
 

@@ -50,6 +50,9 @@ final class SecretRefused extends SecretRead {
 ///
 /// An implementation shows the platform's own sheet and nothing of Flutter's. It does not throw for
 /// the outcomes of [BiometricOutcome]; one that throws is reported as `BiometricOutcome.failed`.
+///
+/// An implementation must always answer: the package starts no timer, so a store that never answers
+/// blocks the unlock sheet (and every later secret operation) until the app restarts.
 abstract class BiometricSecrets {
   /// Const so an app can write `const SecureStorageSecrets()`.
   const BiometricSecrets();

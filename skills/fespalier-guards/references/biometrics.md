@@ -472,7 +472,7 @@ through one line of sheets with `unlock()`: it waits for an `unlock()` sheet tha
 `Future`, and **it does not unlock the app** (no state change, no listener told), because a device-credential fallback
 accepts a PIN and a read is consent to one value. The value is returned to the caller and held by no provider;
 `SecretFound.toString()` hides it. A refusal is `SecretRefused(outcome)`, a store that throws is `SecretRefused(failed)`,
-and `lock()` leaves stored secrets alone (delete them at sign-out with `deleteSecret`).
+and `lock()` leaves stored secrets alone (delete them at sign-out with `deleteSecret`). A store that fails makes `deleteSecret`'s `Future` fail (the secret may still be there). An `unlock()` queued behind a read's sheet is `Unlocking` at once, and a store that never answers blocks every later `unlock()` (no timer is allowed to cut it).
 
 ## Traps
 

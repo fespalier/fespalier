@@ -280,7 +280,9 @@
         "docs/troubleshooting.md#Things to know",
         "docs/troubleshooting.md#Known limitations",
         "docs/troubleshooting.md#Symptoms",
-        "kind:leave.dart"
+        "kind:leave.dart",
+        "docs/configuration.md#otel",
+        "cli/src/otel.rs"
       ]
     },
     "fespalier-routing": {
@@ -766,7 +768,9 @@
         "packages/fespalier_analytics/lib/fespalier_analytics.dart",
         "packages/fespalier_analytics/lib/fespalier_adapter.dart",
         "packages/fespalier_analytics/lib/testing.dart",
-        "packages/fespalier_analytics/lib/src/sink.dart"
+        "packages/fespalier_analytics/lib/src/sink.dart",
+        "config:otel",
+        "docs/observability.md#OpenTelemetry from the generated main()"
       ]
     },
     "fespalier-images": {

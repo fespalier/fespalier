@@ -87,8 +87,13 @@ pub struct Startup {
     /// another feature passes `{body}` through it. A library that has to start with the process
     /// and not with the app (a test that builds the app does not start it) is wrapped this way.
     pub body_wrapper: Option<&'static str>,
-    /// Dart expressions of telemetry sinks. The composer installs them all in one slot, first
-    /// thing in `startup()`: `FespalierTelemetry.install(sink)`, and `combine([...])` for several.
+    /// Dart expressions of telemetry sinks, each starting with its class name (`FespalierSentry()`).
+    /// The composer installs them all in one slot, first thing in `startup()`:
+    /// `FespalierTelemetry.install(sink)`, and `combine([...])` for several. When the generated
+    /// `main()` has installed a sink already (`otel: true`, since 0.19.0) it adds each one instead,
+    /// once: a top-level `final _sentry = FespalierSentry();` and
+    /// `if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);`, because
+    /// Retry runs `startup()` again and `add` appends a sink every time.
     pub sinks: &'static [&'static str],
     /// Elements of the `providerObservers` list (each with its trailing comma).
     pub provider_observers: &'static [&'static str],
@@ -343,35 +348,13 @@ pub const RECIPES: &[Recipe] = &[
         // otel_zone needs Dart 3.9 (it depends on talker_riverpod_logger), which is Flutter 3.35,
         // the base floor since 0.16.0.
         flutter_floor: "3.35",
-        config: &["telemetry: true"],
+        config: &["telemetry: true", "otel: true"],
         files: &[("create/otel_test.dart", "test/otel_test.dart")],
         replaces: &[],
         requires: &[],
         conflicts: &[],
-        startup: Startup {
-            imports: &[
-                "package:fespalier/fespalier.dart",
-                "package:fespalier_otel/fespalier_otel.dart",
-                "package:flutter/foundation.dart show kIsWeb",
-                "package:flutter/widgets.dart show WidgetsFlutterBinding",
-                "package:otel_zone/otel_zone.dart",
-            ],
-            decls: &[
-                "/// The name spans carry as `service.name`.\nconst String serviceName = '{name}';",
-                "/// The OpenTelemetry SDK. A release build without an endpoint exports nothing: pass\n/// --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://... to send spans to a collector.\nfinal OtelZone observability = OtelZone(\n  OtelZoneConfig(serviceName: serviceName, endpoint: FespalierOtel.endpoint()),\n);",
-                "/// Brings the SDK up (it never throws), then runs [body]. This is the start of the process, not\n/// of the app: a test that builds the app does not start the SDK, and the sink that startup()\n/// installs reports once it is up.\nFuture<void> startObservability(Future<void> Function() body) async {\n  WidgetsFlutterBinding.ensureInitialized();\n  await observability.start(\n    serviceVersion: '0.1.0',\n    resourceAttributes: {...FespalierOtel.resourceAttributes},\n  );\n  await body();\n}",
-            ],
-            body_wrapper: Some("startObservability"),
-            // Sentry's zone wins when both are chosen: it is the outermost, and a second zone
-            // would send uncaught async errors to Talker only (docs/observability.md).
-            weak_zone: Some(
-                "/// otel_zone's guarded zone. It never runs its body on the web (docs/observability.md),\n/// so the web runs the body as it is.\nFuture<void> zone(Future<void> Function() body) {\n  Future<void> run() => startObservability(body);\n  return kIsWeb ? run() : observability.runGuarded(run);\n}",
-            ),
-            sinks: &["FespalierOtel(isReady: () => observability.isReady)"],
-            provider_observers: &["?observability.riverpodObserver(),"],
-            router_observers: &["?observability.routeObserver(),"],
-            ..Startup::NONE
-        },
+        // `otel: true` writes the wiring into lib/app.main.g.dart (since 0.19.0): no startup.dart.
+        startup: Startup::NONE,
     },
     Recipe {
         id: "sentry",

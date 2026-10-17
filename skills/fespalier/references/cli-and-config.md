@@ -437,17 +437,20 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   an `action()` and a page on `ContactRoute.useForm`; the test uses `isFieldErrors`) and `flags`
   (`fespalier_flags`; `lib/flags.dart`, a `flagGuard` in `lib/app/labs/guard.dart`, `flagSource` from
   `--dart-define=LABS=true` in `startup()`; the test uses `FakeFlags`). The `forms` and `flags` pages have a
-  `Scaffold` of their own and are opened by URL. Also since 0.15.0: `otel` (`fespalier_otel` and `otel_zone` by
-  commit, `telemetry: true`; `startup()` installs `FespalierOtel(isReady:)` (sync), the `zone()` starts the SDK first
-  (`startObservability(body)`, inside `runGuarded` except on the web), so a test that builds the app does not
-  start it, plus `providerObservers` and `routerObservers`;
+  `Scaffold` of their own and are opened by URL. Also since 0.15.0, and since 0.19.0 with no `startup.dart` of its own:
+  `otel` (`fespalier_otel` and `otel_zone` by commit, `telemetry: true` and `otel: true`; the generated `main()` starts
+  the SDK and adds `FespalierOtel`, inside `runGuarded` except on the web, so a test that builds the app does not start
+  it, plus the Riverpod and route observers in `app.main.g.dart`;
   the test reads spans from `dartastic_opentelemetry`'s in-memory exporter; Flutter 3.35 or newer,
   because `otel_zone` needs Dart 3.9: the floor since 0.16.0, so `all` on 3.32 left it out and naming it was refused
   before) and `sentry`
   (`fespalier_sentry` and `sentry_flutter` `>=9.26.0 <10.0.0`, `telemetry: true`; `zone()` is `SentryFlutter.init`
   with `FespalierSentry.configure` and `SENTRY_DSN`, empty meaning off; the test uses `RecordingSentry`). With both,
-  the composer makes one `FespalierTelemetry.install(FespalierTelemetry.combine([...]))` and keeps Sentry's
-  `zone()`: `otel`'s is a fallback used only when no other feature has one (docs/observability.md "Wiring
+  the composer keeps Sentry's `zone()`, and `startup()` adds Sentry's sink with `FespalierTelemetry.add`, once (a
+  top-level `final _sentry = FespalierSentry();` and `if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);`,
+  because Retry runs `startup()` again and `add` appends a sink each time), next to the OpenTelemetry one the generated
+  `main()` installs (since 0.19.0; before, one `install` of a `combine`). The generated
+  zone is a fallback used only when no other feature has one (docs/observability.md "Wiring
   Sentry" says why). Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
   `lib/app/app.dart`, `lib/main.dart`) are never written by one feature but composed from all of them
   (`cli/src/create/compose.rs`): imports sorted and deduplicated, startup steps in a fixed order (telemetry
@@ -653,6 +656,7 @@ fespalier:
   semantics_ids: false      # since 0.7.0
   scroll_restoration: false # since 0.8.1
   telemetry: false          # since 0.8.1
+  otel: false               # since 0.19.0; `true` needs telemetry, fespalier_otel and otel_zone under dependencies, and not `main: manual`
   main: auto                # since 0.8.1; `generated` | `manual`
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
@@ -683,6 +687,7 @@ fespalier:
 | `links`              | a map (keys above)                               | What `fsp links` writes; only that command checks the values, though `fsp gen` reads the first of `domains` for `AppRoutes.urlOf` (since 0.5.0; `urlOf` since 0.16.0)                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `lints`              | a map: `unknown_path: off` / `warning` / `error` | Since 0.7.0. How a **string path that matches no route** is reported (default `warning`; `off` skips the check). `error` makes `check` exit 1 with ``1 error(s) in string paths (`lints: unknown_path: error`)`` and `gen` and `watch` too, after writing the output (`...; lib/app.g.dart is up to date`). A bad value: ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` ``; a key of its own: ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` ``. See `fespalier-routing` |
 | `semantics_ids`      | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `otel`               | `true` / `false`                                 | Since 0.19.0. `true` has the generated `main()` start otel_zone (`AppMain.observability`, the version from `FLUTTER_BUILD_NAME`) and add `FespalierOtel` as a sink, with the Riverpod and route observers, so `startup.dart` writes none of it. Needs `telemetry: true`, `fespalier_otel` and `otel_zone` under `dependencies:`, and not `main: manual`; see `fespalier-observability`                                                                                                                                                                                                    |
 | `telemetry`          | `true` / `false`                                 | Since 0.8.1. `true` makes `app.g.dart` pass a `const TelemetrySite` to each guard, data provider, action and deferred page and follow the router (`telemetryAttach`); nothing is reported until the app installs a sink. A value that is not a bool is an error. See `fespalier-observability`                                                                                                                                                                                                                                                                                            |
 | `scroll_restoration` | `true` / `false`                                 | Since 0.8.1. `true` wraps each page's view in `RouteScrollMemory`, a `PageStorage` per history entry that the browser's back and forward hand back: a scrollable under a `PageStorageKey` returns to its offset, a `go` starts at the top. Off, `app.g.dart` is unchanged. See `fespalier-layouts`. Not a bool: `invalid pubspec.yaml: fespalier.scroll_restoration: invalid type: string "sometimes", expected a boolean at line 3 column 23`                                                                                                                                            |
 | `maestro`            | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

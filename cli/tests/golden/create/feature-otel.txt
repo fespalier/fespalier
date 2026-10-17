@@ -45,6 +45,7 @@ flutter:
 # Read by the `fsp` generator; docs/configuration.md lists every key.
 fespalier:
   telemetry: true
+  otel: true
 
 === lib/main.dart (overwrite)
 import 'package:my_app/app.main.g.dart';
@@ -151,57 +152,6 @@ class HomePage extends StatelessWidget {
   );
 }
 
-=== lib/app/startup.dart (new)
-import 'package:fespalier/fespalier.dart';
-import 'package:fespalier/startup.dart';
-import 'package:fespalier_otel/fespalier_otel.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
-import 'package:otel_zone/otel_zone.dart';
-
-/// The name spans carry as `service.name`.
-const String serviceName = 'my_app';
-
-/// The OpenTelemetry SDK. A release build without an endpoint exports nothing: pass
-/// --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://... to send spans to a collector.
-final OtelZone observability = OtelZone(
-  OtelZoneConfig(serviceName: serviceName, endpoint: FespalierOtel.endpoint()),
-);
-
-/// Brings the SDK up (it never throws), then runs [body]. This is the start of the process, not
-/// of the app: a test that builds the app does not start the SDK, and the sink that startup()
-/// installs reports once it is up.
-Future<void> startObservability(Future<void> Function() body) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await observability.start(
-    serviceVersion: '0.1.0',
-    resourceAttributes: {...FespalierOtel.resourceAttributes},
-  );
-  await body();
-}
-
-/// otel_zone's guarded zone. It never runs its body on the web (docs/observability.md),
-/// so the web runs the body as it is.
-Future<void> zone(Future<void> Function() body) {
-  Future<void> run() => startObservability(body);
-  return kIsWeb ? run() : observability.runGuarded(run);
-}
-
-/// Runs once before the app (docs/app-startup.md); the providers it returns are
-/// overridden in the app's ProviderScope, so the first frame already has them.
-void startup() {
-  // Before the router exists, so the first navigation is reported.
-  FespalierTelemetry.install(
-    FespalierOtel(isReady: () => observability.isReady),
-  );
-}
-
-List<ProviderObserver> get providerObservers => [
-  ?observability.riverpodObserver(),
-];
-
-List<NavigatorObserver> get routerObservers => [?observability.routeObserver()];
-
 === lib/app/transition.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
@@ -219,6 +169,7 @@ import 'package:fespalier/testing.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/app.g.dart';
+import 'package:my_app/app.main.g.dart';
 
 // The SDK with an in-memory exporter: what a collector would receive, with no network.
 final InMemorySpanExporter exporter = InMemorySpanExporter();
@@ -256,5 +207,11 @@ void main() {
     expect(spans.single.spanEvents?.map((e) => e.name), [
       'fespalier.page.enter',
     ]);
+  });
+
+  test('AppMain.observability: named after the app, never started', () {
+    const name = 'my_app';
+    expect(AppMain.observability.config.serviceName, name);
+    expect(AppMain.observability.isReady, isFalse);
   });
 }

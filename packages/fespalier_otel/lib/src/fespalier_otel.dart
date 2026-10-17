@@ -112,6 +112,34 @@ final class FespalierOtel extends FespalierTelemetry {
     return 'http://localhost:4318';
   }
 
+  /// The app's version for `start(serviceVersion:)` (since 0.19.0): the build name Flutter compiles
+  /// in, the pubspec's `version:` before the `+` or `--build-name`. Flutter 3.47 and later pass it
+  /// (`FLUTTER_BUILD_NAME`); an older Flutter does not, and then it is `'unknown'` (otel_zone refuses
+  /// an empty version) unless the build passes `--dart-define=FLUTTER_BUILD_NAME=...`.
+  static String serviceVersion() => resolveServiceVersion(
+    const bool.hasEnvironment('FLUTTER_BUILD_NAME')
+        ? const String.fromEnvironment('FLUTTER_BUILD_NAME')
+        : null,
+  );
+
+  /// The build number for `start(buildId:)`, `app.build_id` (since 0.19.0): `FLUTTER_BUILD_NUMBER`,
+  /// the pubspec's `version:` after the `+` or `--build-number` (Flutter 3.47 and later); null without.
+  static String? buildId() => resolveBuildId(
+    const bool.hasEnvironment('FLUTTER_BUILD_NUMBER')
+        ? const String.fromEnvironment('FLUTTER_BUILD_NUMBER')
+        : null,
+  );
+
+  /// [serviceVersion]'s rule with its input given, for tests.
+  @visibleForTesting
+  static String resolveServiceVersion(String? defined) =>
+      (defined == null || defined.isEmpty) ? 'unknown' : defined;
+
+  /// [buildId]'s rule with its input given, for tests.
+  @visibleForTesting
+  static String? resolveBuildId(String? defined) =>
+      (defined == null || defined.isEmpty) ? null : defined;
+
   /// The tracer, once the SDK is up; null before. Resolved on the first use and kept.
   Tracer? _resolve() {
     final cached = _tracer;

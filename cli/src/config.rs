@@ -19,6 +19,7 @@
 //!   scroll_restoration: false # default; true keeps a page's scroll positions for the browser's back and forward
 //!   main: auto              # default; `generated` always writes lib/app.main.g.dart, `manual` never (see `entry.rs`)
 //!   telemetry: false        # default; true reports navigations, guards, data, actions and deferred loads to FespalierTelemetry
+//!   otel: false             # default; true (since 0.19.0) makes the generated main() start otel_zone and install FespalierOtel (see `otel.rs`)
 //!   links:                  # default: none; what `fsp links` writes (see `links.rs`)
 //!     domains: [shop.example.com]
 //!     scheme: myshop
@@ -248,6 +249,10 @@ pub struct Config {
     /// library a `const TelemetrySite`, and `AppRoutes.attach` follows the router's navigations.
     /// Off, the file is exactly what it was without the key.
     pub telemetry: bool,
+    /// `otel: true` (since 0.19.0): the generated `main()` declares `AppMain.observability`
+    /// (`otel_zone`), starts it first and adds `FespalierOtel` as a sink, inside the adapters' zones
+    /// (see `otel.rs`). It needs `telemetry: true` and both packages under `dependencies:`.
+    pub otel: bool,
     /// How `fsp init` and `fsp new` spell a multi-word file kind. Reading takes both.
     pub file_style: FileStyle,
     /// The `links:` section, as written. `fsp links` checks the values
@@ -304,6 +309,7 @@ impl Default for Config {
             semantics_ids: false,
             scroll_restoration: false,
             telemetry: false,
+            otel: false,
             file_style: FileStyle::Snake,
             links: None,
             lints: Lints::default(),
@@ -366,6 +372,7 @@ struct RawConfig {
     main: Option<MainMode>,
     tasks: Option<Value>,
     adapters: Option<Vec<String>>,
+    otel: Option<bool>,
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -1584,6 +1591,7 @@ impl Pubspec {
             config.tasks = c.tasks;
             config.main = c.main.unwrap_or_default();
             config.adapters = adapters(c.adapters.unwrap_or_default(), &raw.dependencies)?;
+            config.otel = otel(c.otel.unwrap_or(false), &config, &raw.dependencies)?;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
             }
@@ -1691,6 +1699,39 @@ fn adapters(names: Vec<String>, dependencies: &Option<Value>) -> Result<Vec<Stri
         out.push(name);
     }
     Ok(out)
+}
+
+/// `otel: true` (since 0.19.0), checked: the generated `main()` imports `fespalier_otel` and
+/// `otel_zone` and starts the SDK for what `telemetry: true` reports, so both must be written.
+fn otel(on: bool, cfg: &Config, dependencies: &Option<Value>) -> Result<bool> {
+    if !on {
+        return Ok(false);
+    }
+    if !cfg.telemetry {
+        bail!(
+            "`fespalier.otel` starts OpenTelemetry for what `telemetry: true` reports, and `telemetry` is not `true`; set `telemetry: true` too"
+        );
+    }
+    if cfg.main == MainMode::Manual {
+        bail!(
+            "`fespalier.otel` makes the generated main() start otel_zone, and `main: manual` writes no main(); wire otel_zone in your own main() (docs/observability.md) and remove `otel: true`, or set `main: auto`"
+        );
+    }
+    for (name, why) in [
+        ("fespalier_otel", "next to fespalier, at the same git ref"),
+        (
+            "otel_zone",
+            "a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines",
+        ),
+    ] {
+        let declared = matches!(dependencies, Some(Value::Mapping(m)) if m.contains_key(name));
+        if !declared {
+            bail!(
+                "`fespalier.otel` needs `{name}` under `dependencies:` in pubspec.yaml ({why}): the generated main() imports it"
+            );
+        }
+    }
+    Ok(true)
 }
 
 /// Normalizes a project-relative path that must sit under `lib/`.

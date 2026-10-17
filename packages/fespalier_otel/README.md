@@ -40,6 +40,19 @@ fespalier:
 
 ## Wire it
 
+### With the generated main(): `otel: true` (since 0.19.0)
+
+Add `telemetry: true` and `otel: true` under `fespalier:` in pubspec.yaml, with `fespalier_otel` and
+`otel_zone` under `dependencies:` as below. `fsp gen` then writes the wiring into
+`lib/app.main.g.dart`, and `lib/main.dart` is `Future<void> main() => AppMain.run();`.
+[`docs/observability.md`](../../docs/observability.md) ("OpenTelemetry from the generated main()")
+has the rest: the zone, the service's name and version, and what is not configured this way.
+
+`FespalierOtel.serviceVersion()` is the build name (`FLUTTER_BUILD_NAME`, Flutter 3.47 and later,
+else `unknown`) and `FespalierOtel.buildId()` the build number (`FLUTTER_BUILD_NUMBER`, or null).
+
+### By hand, in your own main()
+
 With `otel_zone` (a git dependency, pinned to a commit: it is not on pub.dev), in `main.dart`:
 
 ```dart

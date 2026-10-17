@@ -13,7 +13,28 @@ use std::process::{Command, Stdio};
 /// The formatted code, or the code unchanged plus a warning when `dart` is
 /// missing or refuses the input.
 pub fn format_dart(code: &str, output: &Path) -> (String, Option<String>) {
-    match run(code, output) {
+    format_with(code, output, None)
+}
+
+/// [`format_dart`] at a stated language version (`"3.9"`), for code that is not in a package yet:
+/// a file written to a temporary folder has no package config, so the formatter would take the
+/// newest language its `dart` knows, and a layout that changed since (Dart 3.13 hugs a long string
+/// argument in a trailing closure) would pass here and fail in the app that is made with `sdk: ^3.9.0`.
+#[cfg(test)]
+pub fn format_dart_at(
+    code: &str,
+    output: &Path,
+    language_version: &str,
+) -> (String, Option<String>) {
+    format_with(code, output, Some(language_version))
+}
+
+fn format_with(
+    code: &str,
+    output: &Path,
+    language_version: Option<&str>,
+) -> (String, Option<String>) {
+    match run(code, output, language_version) {
         Ok(formatted) => (formatted, None),
         Err(why) => (
             code.to_string(),
@@ -25,10 +46,15 @@ pub fn format_dart(code: &str, output: &Path) -> (String, Option<String>) {
     }
 }
 
-fn run(code: &str, output: &Path) -> Result<String, String> {
-    let mut child = Command::new(dart_program())
+fn run(code: &str, output: &Path, language_version: Option<&str>) -> Result<String, String> {
+    let mut command = Command::new(dart_program());
+    command
         .arg("format")
-        .arg(format!("--stdin-name={}", output.display()))
+        .arg(format!("--stdin-name={}", output.display()));
+    if let Some(version) = language_version {
+        command.arg(format!("--language-version={version}"));
+    }
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

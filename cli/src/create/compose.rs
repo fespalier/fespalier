@@ -367,6 +367,50 @@ fn install_sinks(sinks: &[&str]) -> Option<String> {
     }
 }
 
+/// The sinks of the chosen features when the generated `main()` has already installed one
+/// (`otel: true`, since 0.19.0): `install` would replace it, so each sink is added beside it,
+/// **once**. `startup()` runs again on Retry after a failed async step, and `add` appends a sink
+/// every time, so each is a top-level `final` (`FespalierSentry()` is `_sentry`) and the add is
+/// guarded by `FespalierTelemetry.contains`. Returns the declarations and the statements, each
+/// formatted the way `dart format` leaves it.
+fn add_sinks(sinks: &[&str]) -> Option<(Vec<String>, String)> {
+    if sinks.is_empty() {
+        return None;
+    }
+    let mut decls = vec![];
+    let mut statements = vec![];
+    for sink in sinks {
+        let var = sink_variable(sink);
+        decls.push(format!(
+            "/// Made once: startup() runs again on Retry, and `add` would append a second sink.\nfinal {var} = {sink};"
+        ));
+        let line =
+            format!("if (!FespalierTelemetry.contains({var})) FespalierTelemetry.add({var});");
+        statements.push(if line.len() + 2 <= 80 {
+            line
+        } else {
+            format!(
+                "if (!FespalierTelemetry.contains({var})) {{\n  FespalierTelemetry.add({var});\n}}"
+            )
+        });
+    }
+    Some((decls, statements.join("\n")))
+}
+
+/// The private top-level name of a sink: its class without the `Fespalier` prefix, lower camel
+/// case (`FespalierSentry()` is `_sentry`). A table test pins that every sink expression starts
+/// with a class name.
+fn sink_variable(sink: &str) -> String {
+    let class: String = sink
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    let class = class.strip_prefix("Fespalier").unwrap_or(&class);
+    let mut chars = class.chars();
+    let head = chars.next().map(|c| c.to_ascii_lowercase());
+    format!("_{}{}", head.unwrap_or('s'), chars.as_str())
+}
+
 /// `lib/app/startup.dart`, or `None` when no feature adds anything to it. `name` is the app's
 /// package name.
 pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> {
@@ -401,13 +445,30 @@ pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> 
     let sinks: Vec<&str> = startups()
         .flat_map(|(_, s)| s.sinks.iter().copied())
         .collect();
-    let mut steps: Vec<Written> = vec![];
-    if let Some(code) = install_sinks(&sinks) {
+    // `otel: true` has the generated main() install its OpenTelemetry sink first, so a sink here
+    // is added beside it, once (since 0.19.0).
+    let add = features.iter().any(|r| r.config.contains(&"otel: true"));
+    let (sink_decls, sink_statements) = if add {
+        match add_sinks(&sinks) {
+            Some((decls, code)) => (
+                decls,
+                Some((
+                    "Before the router exists, beside the generated main()'s OpenTelemetry sink; once (Retry runs this again).",
+                    code,
+                )),
+            ),
+            None => (vec![], None),
+        }
+    } else {
         let comment = if sinks.len() > 1 {
             "One slot for every sink, before the router exists so the first navigation is reported."
         } else {
             "Before the router exists, so the first navigation is reported."
         };
+        (vec![], install_sinks(&sinks).map(|code| (comment, code)))
+    };
+    let mut steps: Vec<Written> = vec![];
+    if let Some((comment, code)) = sink_statements {
         steps.push(Written {
             kind: StepKind::Statement,
             phase: Phase::Telemetry,
@@ -433,6 +494,7 @@ pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> 
     let decls: Vec<String> = startups()
         .flat_map(|(_, s)| s.decls.iter())
         .map(|d| wrap_const(&d.replace("{name}", name)))
+        .chain(sink_decls)
         .collect();
     let provider_observers: Vec<&str> = startups()
         .flat_map(|(_, s)| s.provider_observers.iter().copied())

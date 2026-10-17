@@ -48,7 +48,17 @@ fespalier:
   telemetry: true # since 0.8.1; run `fsp gen` after
 ```
 
-Then, in `main.dart`, **before the router is built**: `FespalierTelemetry.install(sink)`. With
+Since 0.19.0, `otel: true` under the same key has the generated `main()` start otel_zone and install `FespalierOtel`
+for you, in `app.main.g.dart`, so `lib/main.dart` is `AppMain.run()` and there is no hand wiring to write. It needs
+`fespalier_otel` and `otel_zone` under `dependencies:`, and it is refused with `main: manual`:
+
+```yaml
+fespalier:
+  telemetry: true
+  otel: true
+```
+
+By hand, without `otel: true`, in `main.dart`, **before the router is built**: `FespalierTelemetry.install(sink)`. With
 `otel_zone`, the sink is `FespalierOtel(isReady: () => observability.isReady)` from `package:fespalier_otel`
 (a git dependency next to fespalier, **same `url`, same `ref`**). Nothing is reported until a sink is
 installed. Read [`references/telemetry.md`](references/telemetry.md) for the install and wiring,

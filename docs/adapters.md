@@ -49,6 +49,8 @@ adds nothing, so an adapter overrides what it needs:
 Write adapters with `extends FespalierAdapter`, never `implements`: a member added later (`attach` is
 one, since 0.11.0) has a default for a subclass and breaks a class that implements all of them.
 
+**`otel: true` is not an adapter (since 0.19.0).** It is a key in the pubspec, and `fsp` writes the OpenTelemetry wiring into the generated `main()` ([OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main)). Its zone is the innermost of the generated zones, inside the adapters' `zone`, and its `start` and its sink come before their `beforeRun`, so an adapter's `beforeRun` finds the SDK up.
+
 **`onEnter` is a getter that answers a function (since 0.16.0).** An adapter that has something to say about a
 navigation overrides the `onEnter` getter and returns a `FespalierEnter`, a function of the `InboundNavigation`; every
 other adapter keeps the default, `null`:

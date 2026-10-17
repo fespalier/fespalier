@@ -5,6 +5,7 @@ import 'package:fespalier/testing.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:{{ package }}/app.g.dart';
+import 'package:{{ package }}/app.main.g.dart';
 
 // The SDK with an in-memory exporter: what a collector would receive, with no network.
 final InMemorySpanExporter exporter = InMemorySpanExporter();
@@ -42,5 +43,11 @@ void main() {
     expect(spans.single.spanEvents?.map((e) => e.name), [
       'fespalier.page.enter',
     ]);
+  });
+
+  test('AppMain.observability: named after the app, never started', () {
+    const name = '{{ package }}';
+    expect(AppMain.observability.config.serviceName, name);
+    expect(AppMain.observability.isReady, isFalse);
   });
 }

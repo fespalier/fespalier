@@ -19,11 +19,11 @@ the same** whether or not these files exist.
 
 `fespalier: main:` in `pubspec.yaml`:
 
-| Value       | `lib/app.main.g.dart`                                                                                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package; otherwise nothing is written |
-| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                            |
-| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                          |
+| Value       | `lib/app.main.g.dart`                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package, or, since 0.19.0, when `otel: true` is set; otherwise nothing is written |
+| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                                                                        |
+| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                                                                      |
 
 The path is `output` with `.main.g.dart` in place of `.g.dart`, in the same folder
 (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`); there is no key for it.
@@ -168,6 +168,7 @@ class Splash extends StatelessWidget {
   startup.dart's `routerObservers`. An app.dart `router()` passes it on (below).
 - `AppMain.launch` (since 0.11.0, only with `adapters:`): the `InboundLaunch?` the adapters answered, asked once in `run()`
   (null on the web); an app.dart `router()` passes it on as `launch:` (below).
+- `AppMain.observability` (since 0.19.0, only with `otel: true`): the `OtelZone` that `run()` starts, see the section below.
 
 ## Adapters: `fespalier: adapters:` (since 0.9.0)
 
@@ -269,6 +270,19 @@ the generated one, all inside `AppAdapters.zone(() async { ... })`:
 
 Forgetting `AppRoutes.attach(router, container)` means no adapter's `attach` runs (calling it twice is safe).
 Full example: `docs/adapters.md`, "With main: manual: AppAdapters".
+
+## OpenTelemetry: `otel: true` (since 0.19.0)
+
+With `fespalier: otel: true` in pubspec.yaml, and `telemetry: true`, `fespalier_otel` and `otel_zone` under `dependencies:`,
+`app.main.g.dart` declares `AppMain.observability` (an `OtelZone` named after the pubspec's `name`, exporting to
+`FespalierOtel.endpoint()`) and starts it first in `_main()`, with `FespalierOtel.serviceVersion()` and
+`FespalierOtel.buildId()`. It adds `FespalierOtel` as a sink with `FespalierTelemetry.add` (so a sink an adapter or
+`startup()` adds stays), passes the Riverpod and route observers, and wraps `main()` in `runGuarded` off the web: the
+innermost zone, inside the adapters' zones, and not used when startup.dart has a `zone()`. `lib/main.dart` is
+`Future<void> main() => AppMain.run();`, and `app.g.dart` is unchanged. It is not an adapter, and `main: manual` refuses it.
+The version is the build name (`FLUTTER_BUILD_NAME`, Flutter 3.47 and later; `unknown` before), and no version is
+written into the file. Details and the errors: `fespalier-observability` (`references/telemetry.md`, "Wire it with
+`otel: true`").
 
 ## Gotchas
 

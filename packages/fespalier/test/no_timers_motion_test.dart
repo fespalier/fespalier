@@ -31,6 +31,7 @@ const motionFiles = [
   'lib/src/page_motion.dart',
   'lib/src/transitions.dart',
   'lib/src/heroes.dart',
+  'lib/src/reduced_motion.dart',
 ];
 
 /// The problems in [lines], one per forbidden construct on a line of code (comments are not code).

@@ -512,6 +512,7 @@
         "packages/fespalier/lib/src/platform_page.dart",
         "packages/fespalier/lib/src/tab_options.dart",
         "packages/fespalier/lib/src/page_motion.dart",
+        "packages/fespalier/lib/src/reduced_motion.dart",
         "packages/fespalier/lib/src/transitions.dart",
         "packages/fespalier/lib/src/scroll_memory.dart",
         "docs/layouts.md#A bar, a rail or a drawer: fespalier_adaptive",

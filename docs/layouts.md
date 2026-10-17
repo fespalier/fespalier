@@ -322,6 +322,16 @@ Page<void> transition(LocalKey key, Widget child) => Transitions.custom(
 - A `Page` that does not go through `custom` (a `MaterialPage` of yours) gets the same restoration id from `Transitions.restorationIdOf(key)`: the key's value for go_router's `ValueKey<String>`, null for any other key. Together with `name: Transitions.pageName` that is all `custom` adds.
 - Every page `Transitions` builds carries a `PageMotion` (`fade`, `slide`, `none`, `material`, `cupertino`, `dialog`, `sheet`, `fullscreenDialog`; `custom` for `Transitions.custom` unless you pass `motion:`). It changes nothing on screen: it is what a [test reads](testing.md) with `motionOf`, and `PageMotion.of(page)` reads it from a `Page`. Values are only ever added.
 
+**Reduced motion** (since 0.19.0). When the system asks for reduced motion (`MediaQuery.disableAnimations`: "remove animations" on Android, "reduce motion" on iOS), every `Transitions` page and `RouteHero` honours it, with nothing to configure. **This changes every app that upgrades**: a `slide` that used to move now fades. `accessibleNavigation` is not motion and is ignored. The flag is read from the route's own context when the route is built or plays, so it follows the setting while the app runs.
+
+- `slide` is a cross-fade of the same duration: no offset, the opacity animates.
+- `material`, `cupertino` and `fullscreenDialog` keep their page types (`MaterialPage`, `CupertinoPage`), so the edge swipe back and Android's predictive back still work, and fade in place instead of sliding, zooming or moving the page below.
+- `dialog` and `sheet` open with `AnimationStyle.noAnimation`, unless you pass an `animationStyle:`, which wins.
+- A `RouteHero` stops flying: the page appears and the element is simply there.
+- `fade` and `none` are unchanged, and the `PageMotion` tag stays the preset's own.
+- `Transitions.custom`'s `transitionsBuilder` is yours, so fespalier does not change it: read the flag in it, for example `final reduced = MediaQuery.maybeDisableAnimationsOf(context) == true;`, and return a `FadeTransition` for it.
+- There is no app-wide opt-out. A page that wants motion anyway is a `Page` of your own, such as `MaterialPage(...)` or `CustomTransitionPage(...)` in your `transition.dart`.
+
 **Dialogs and sheets.** `Transitions.dialog`, `Transitions.sheet` and `Transitions.fullscreenDialog` make a route open over the previous page instead of replacing it. The page's widget is what shows up:
 
 - `dialog`: the dialog itself (an `AlertDialog`, a `Dialog` or your own card, as in `showDialog`'s builder).

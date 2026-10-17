@@ -1,9 +1,9 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'heroes.dart';
 import 'page_motion.dart';
+import 'reduced_motion.dart';
 
 /// The restoration id of the page built for [key]: go_router's page keys are
 /// `ValueKey<String>`s, and its own pages use the key's value, so these do too.
@@ -47,6 +47,14 @@ Widget _withHeroes(Heroes? heroes, Widget child) =>
 ///
 /// Every page carries a [PageMotion] tag (since 0.19.0), which `motionOf` reads in a test.
 /// [custom] builds a page of your own with the same name, restoration id and heroes.
+///
+/// Every page honours the system's reduced motion (since 0.19.0), read from the route's own
+/// context when it is built: [slide] cross-fades, [material], [cupertino] and
+/// [fullscreenDialog] fade in place (the back swipe stays), [dialog] and [sheet] open with
+/// `AnimationStyle.noAnimation` unless given an `animationStyle`, and `RouteHero` stops flying.
+/// [fade] and [none] are unchanged, and so is the [PageMotion] tag. The builder of [custom] is
+/// yours: read `MediaQuery.maybeDisableAnimationsOf(context)` in it. There is no app-wide
+/// opt-out: a page that wants motion anyway is a `Page` of your own.
 ///
 /// Every page is named by its route's pattern (since 0.9.0), `/products/:id`, which is what a
 /// `NavigatorObserver` reads as `RouteSettings.name`; a `Page` you build yourself passes
@@ -165,12 +173,17 @@ abstract final class Transitions {
         transitionDuration: duration,
         reverseTransitionDuration: duration,
         transitionsBuilder: (context, animation, secondaryAnimation, child) =>
-            SlideTransition(
-              position: Tween(begin: begin, end: Offset.zero)
-                  .chain(CurveTween(curve: Curves.easeOutCubic))
-                  .animate(animation),
-              child: child,
-            ),
+            reducedMotion(context)
+            ? FadeTransition(
+                opacity: CurveTween(curve: Curves.easeOut).animate(animation),
+                child: child,
+              )
+            : SlideTransition(
+                position: Tween(begin: begin, end: Offset.zero)
+                    .chain(CurveTween(curve: Curves.easeOutCubic))
+                    .animate(animation),
+                child: child,
+              ),
       ),
       PageMotion.slide,
     );
@@ -191,7 +204,7 @@ abstract final class Transitions {
   /// The platform-default Material page transition.
   static Page<void> material(LocalKey key, Widget child, {Heroes? heroes}) =>
       tagMotion(
-        MaterialPage<void>(
+        ReducedMotionMaterialPage(
           key: key,
           name: _pageName,
           restorationId: _restorationId(key),
@@ -203,7 +216,7 @@ abstract final class Transitions {
   /// The iOS-style Cupertino page transition (slide plus edge-swipe back).
   static Page<void> cupertino(LocalKey key, Widget child, {Heroes? heroes}) =>
       tagMotion(
-        CupertinoPage<void>(
+        ReducedMotionCupertinoPage(
           key: key,
           name: _pageName,
           restorationId: _restorationId(key),
@@ -293,7 +306,7 @@ abstract final class Transitions {
     Widget child, {
     Heroes? heroes,
   }) => tagMotion(
-    MaterialPage<void>(
+    ReducedMotionMaterialPage(
       key: key,
       name: _pageName,
       restorationId: _restorationId(key),
@@ -341,7 +354,9 @@ class _DialogPage extends Page<void> {
         )?.modalBarrierDismissLabel ??
         'Dismiss',
     useSafeArea: useSafeArea,
-    animationStyle: animationStyle,
+    animationStyle: reducedMotion(context)
+        ? (animationStyle ?? AnimationStyle.noAnimation)
+        : animationStyle,
   );
 }
 
@@ -391,6 +406,8 @@ class _SheetPage extends Page<void> {
           MaterialLocalizations,
         )?.scrimLabel ??
         'Dismiss',
-    sheetAnimationStyle: animationStyle,
+    sheetAnimationStyle: reducedMotion(context)
+        ? (animationStyle ?? AnimationStyle.noAnimation)
+        : animationStyle,
   );
 }

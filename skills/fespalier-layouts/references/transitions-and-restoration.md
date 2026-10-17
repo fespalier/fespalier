@@ -33,16 +33,16 @@ is never remounted.
 `Transitions` has ready-made ones; each gives the page a `restorationId` from its
 key:
 
-| Helper                                        | What it does                                                        |
-| --------------------------------------------- | ------------------------------------------------------------------- |
-| `fade(key, child, {duration, heroes})`        | cross-fades (250 ms by default)                                     |
-| `slide(key, child, {from, duration, heroes})` | slides in from an `AxisDirection` edge (default `right`, 300 ms)    |
-| `none(key, child, {heroes})`                  | swaps instantly                                                     |
-| `material(key, child, {heroes})`              | the platform-default Material transition                            |
-| `cupertino(key, child, {heroes})`             | the iOS slide plus edge-swipe back                                  |
-| `dialog(key, child, {...})`                   | opens as a Material dialog over the previous page                   |
-| `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                |
-| `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
+| Helper                                        | What it does                                                                                        |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `fade(key, child, {duration, heroes})`        | cross-fades (250 ms by default)                                                                     |
+| `slide(key, child, {from, duration, heroes})` | slides in from an `AxisDirection` edge (default `right`, 300 ms); a cross-fade under reduced motion |
+| `none(key, child, {heroes})`                  | swaps instantly                                                                                     |
+| `material(key, child, {heroes})`              | the platform-default Material transition                                                            |
+| `cupertino(key, child, {heroes})`             | the iOS slide plus edge-swipe back                                                                  |
+| `dialog(key, child, {...})`                   | opens as a Material dialog over the previous page                                                   |
+| `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                                                |
+| `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar`                                 |
 
 `custom(key, child, {transitionsBuilder, duration, reverseDuration, heroes, opaque, fullscreenDialog, barrier..., motion})`
 (since 0.19.0) is a `CustomTransitionPage` named by `Transitions.pageName`, with the restoration id of
@@ -51,6 +51,15 @@ the presets. Use it, or `restorationIdOf` on a `Page` of your own, instead of bu
 Every `Transitions.*` page carries a `PageMotion` tag (`fade`, `slide`, `none`, `material`, `cupertino`,
 `dialog`, `sheet`, `fullscreenDialog`, `custom`; `PageMotion.of(page)`), which changes nothing on screen and
 which `motionOf` reads in a test (`fespalier-testing`).
+
+**Reduced motion (since 0.19.0), on by default and with no opt-out switch.** When `MediaQuery.disableAnimations`
+is true (read from the route's own context, never a provider; `accessibleNavigation` is ignored): `slide` becomes a
+cross-fade of the same duration; `material`, `cupertino` and `fullscreenDialog` stay `MaterialPage<void>` and
+`CupertinoPage<void>` (so the back swipe and predictive back stay) and fade in place; `dialog` and `sheet` open with
+`AnimationStyle.noAnimation` unless an `animationStyle:` is given; a `RouteHero` stops flying. `fade`, `none` and the
+`PageMotion` tag do not change. `Transitions.custom`'s builder is the caller's own: it reads
+`MediaQuery.maybeDisableAnimationsOf(context) == true` itself. A page that wants motion anyway builds its own `Page`.
+This changed every app's `slide` on upgrading to 0.19.0.
 
 `heroes:` (0.8.1) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
 

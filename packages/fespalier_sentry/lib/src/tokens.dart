@@ -57,13 +57,25 @@ final class NavToken {
 /// The token of an operation other than a navigation.
 final class OpToken {
   /// An operation that started as [start]; [span] is what it made in Sentry, if anything.
-  OpToken(this.start, {this.span, this.screen, this.ownsTransaction = false});
+  OpToken(
+    this.start, {
+    this.span,
+    this.screen,
+    this.ownsTransaction = false,
+    this.runs,
+  });
 
   /// What started.
   final TelemetryStart start;
 
-  /// The span (or, for an action, the transaction) it made, with `tracing: true`.
-  final SpanHandle? span;
+  /// The span (or, for an action, the transaction) it made, with `tracing: true`. For an
+  /// operation with [runs], it is there once the sink's `within` (or its end) made it.
+  SpanHandle? span;
+
+  /// Makes the span around the code the operation runs (`traceLifecycle: stream`): calls its
+  /// argument, once and synchronously, with the span current. Null once the span exists, and for
+  /// every operation that made its span at its start.
+  void Function(void Function(SpanHandle span) inside)? runs;
 
   /// The navigation a data load belongs to.
   final NavToken? screen;

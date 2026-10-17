@@ -105,7 +105,9 @@ redirects, data loads, deferred loads and actions, and time to initial and to fu
 With Sentry's `options.traceLifecycle = SentryTraceLifecycle.stream` (since 0.19.0) the same tree is
 streamed as spans: each screen is a root span (a segment), with the same children, and time to initial and to
 full display are attributes of their spans. A superseded navigation cannot be discarded, so it is sent with
-`fespalier.navigation.outcome` `superseded`. HTTP spans under the data span are not made yet in that mode. See
+`fespalier.navigation.outcome` `superseded`. In that mode the HTTP spans Sentry's own integrations make
+(`SentryHttpClient`, `sentry_dio`) inside a `data()` or an action are children of its span (since 0.19.0); one that
+ends before the navigation commits carries the segment name `navigate`. See
 the docs' [Span streaming](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#span-streaming).
 
 ## Tests
@@ -113,3 +115,7 @@ the docs' [Span streaming](https://github.com/fespalier/fespalier/blob/main/docs
 `package:fespalier_sentry/testing.dart` has `RecordingSentry`: a real Sentry hub whose transport keeps what
 it would send, so a test reads the events, breadcrumbs and transactions the SDK built, with no
 `SentryFlutter.init`, no native SDK, no timer and no network.
+
+With `traceLifecycle` set to `stream` in `RecordingSentry(configure:)` (since 0.19.0) it also installs the SDK's
+streaming span factory, so a `SentryHttpClient(hub: sentry.hub)` over an `http` `MockClient` makes the HTTP spans a
+real app gets (`sentry.spans`).

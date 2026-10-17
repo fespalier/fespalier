@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'keys.dart';
@@ -17,6 +19,9 @@ final class StreamSpans implements Spans {
   /// The newest segment this sink started: what an operation that no span is active for belongs
   /// to, as a transaction bound to the scope is in `traceLifecycle: static`.
   _StreamSpan? _latest;
+
+  @override
+  DateTime now() => _now();
 
   /// The time on the SDK's own clock, which a span without an end time reads too.
   DateTime _now() =>
@@ -71,6 +76,47 @@ final class StreamSpans implements Spans {
     );
     return _latest = _StreamSpan(this, span);
   }
+
+  @override
+  bool get runsInside => true;
+
+  @override
+  void runIn({
+    required SpanHandle? parent,
+    required String op,
+    required String description,
+    required DateTime? startedAt,
+    required void Function(SpanHandle span) inside,
+  }) {
+    final under = parent is _StreamSpan ? parent : null;
+    final done = Completer<void>();
+    // `startSpan` runs the callback synchronously, in a zone whose active span is the new one, and
+    // ends the span when the callback's `Future` completes. That is `done`, which only
+    // `_StreamRun._end` completes, after the sink's own end: a span the SDK ended first would
+    // carry its default status and none of the outcome. Nothing is awaited here; the SDK's errors
+    // are dropped.
+    fire(
+      _hub.startSpan<void>(
+        description,
+        (span) {
+          final run = _StreamRun(this, span, under?._holder, done);
+          if (under == null) _latest = run;
+          inside(run);
+          return done.future;
+        },
+        parentSpan: under?._span,
+        startTimestamp: startedAt,
+        attributes: {
+          SentryKeys.spanOp: SentryAttribute.string(op),
+          SentryKeys.spanOrigin: SentryAttribute.string(
+            SentryKeys.navigationOrigin,
+          ),
+          if (under == null)
+            SentryKeys.segmentNameSource: SentryAttribute.string('component'),
+        },
+      ),
+    );
+  }
 }
 
 /// The attribute for [value]: the sink writes strings, booleans and numbers, never anything else.
@@ -96,7 +142,7 @@ class _StreamSpan implements SpanHandle {
   _StreamScreen? get _holder => _screen;
 
   @override
-  bool get finished => _finished;
+  bool get finished => _finished || _span.isEnded;
 
   @override
   void set(String key, Object value) =>
@@ -162,6 +208,23 @@ class _StreamSpan implements SpanHandle {
         ),
       ),
     );
+  }
+}
+
+/// A span made by `startSpan` around the code of an operation: the SDK ends it when [_done]
+/// completes, which is when the sink does.
+final class _StreamRun extends _StreamSpan {
+  _StreamRun(super.spans, super.span, super._screen, this._done);
+
+  final Completer<void> _done;
+
+  @override
+  void _end(bool failed, DateTime end) {
+    try {
+      super._end(failed, end);
+    } finally {
+      if (!_done.isCompleted) _done.complete();
+    }
   }
 }
 

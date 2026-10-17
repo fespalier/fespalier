@@ -191,28 +191,44 @@ final class FespalierSentry extends FespalierTelemetry {
 
     final beforeBreadcrumb = options.beforeBreadcrumb;
     options.beforeBreadcrumb = (breadcrumb, hint) {
-      final kept = beforeBreadcrumb == null
-          ? breadcrumb
-          : beforeBreadcrumb(breadcrumb, hint);
+      final Breadcrumb? kept;
+      try {
+        kept = beforeBreadcrumb == null
+            ? breadcrumb
+            : beforeBreadcrumb(breadcrumb, hint);
+      } catch (_) {
+        // The SDK keeps the breadcrumb it gave the callback when the callback fails: scrub that.
+        if (!recordQueries && breadcrumb != null) {
+          scrub.breadcrumbScrubbedInPlace(breadcrumb);
+        }
+        rethrow;
+      }
       if (kept == null) return null;
       if (!observerBreadcrumbs && scrub.isObserverBreadcrumb(kept)) return null;
       return recordQueries ? kept : scrub.breadcrumbWithoutQueries(kept, hint);
     };
     final beforeSend = options.beforeSend;
     options.beforeSend = (event, hint) => _after<SentryEvent>(
-      beforeSend == null ? event : beforeSend(event, hint),
+      event,
+      () => beforeSend == null ? event : beforeSend(event, hint),
       (kept) => recordQueries ? kept : scrub.eventWithoutQueries(kept, hint),
+      () {
+        if (!recordQueries) scrub.eventWithoutQueries(event, hint);
+      },
     );
     final beforeSendTransaction = options.beforeSendTransaction;
-    options.beforeSendTransaction = (transaction, hint) =>
-        _after<SentryTransaction>(
-          beforeSendTransaction == null
-              ? transaction
-              : beforeSendTransaction(transaction, hint),
-          (kept) => recordQueries
-              ? (scrub.isSuperseded(kept) ? null : kept)
-              : scrub.transactionWithoutQueries(kept, hint),
-        );
+    options.beforeSendTransaction = (t, hint) => _after<SentryTransaction>(
+      t,
+      () => beforeSendTransaction == null ? t : beforeSendTransaction(t, hint),
+      (kept) => recordQueries
+          ? (scrub.isSuperseded(kept) ? null : kept)
+          : scrub.transactionWithoutQueries(kept, hint),
+      // A superseded one cannot be dropped from here: the callback failed, so it is sent,
+      // scrubbed.
+      () {
+        if (!recordQueries) scrub.transactionWithoutQueries(t, hint);
+      },
+    );
     final beforeSendSpan = options.beforeSendSpan;
     options.beforeSendSpan = (span) {
       void scrubbed() {
@@ -234,16 +250,32 @@ final class FespalierSentry extends FespalierTelemetry {
     };
   }
 
-  /// [then] on what an earlier callback returned, which may be a `Future`: a sync callback stays
-  /// sync, and one that dropped the event (null) stays dropped.
+  /// [then] on what [earlier] returns, which may be a `Future`: a sync callback stays sync, and one
+  /// that dropped the event (null) stays dropped. The SDK sends [original] when the callback fails,
+  /// so [scrubOriginal] runs whatever [earlier] does, and its error still reaches the SDK.
   static FutureOr<T?> _after<T extends SentryEvent>(
-    FutureOr<T?> earlier,
+    T original,
+    FutureOr<T?> Function() earlier,
     T? Function(T kept) then,
+    void Function() scrubOriginal,
   ) {
-    if (earlier is Future<T?>) {
-      return earlier.then((kept) => kept == null ? null : then(kept));
+    final FutureOr<T?> result;
+    try {
+      result = earlier();
+    } catch (_) {
+      scrubOriginal();
+      rethrow;
     }
-    return earlier == null ? null : then(earlier);
+    if (result is Future<T?>) {
+      return result.then(
+        (kept) => kept == null ? null : then(kept),
+        onError: (Object error, StackTrace stackTrace) {
+          scrubOriginal();
+          Error.throwWithStackTrace(error, stackTrace);
+        },
+      );
+    }
+    return result == null ? null : then(result);
   }
 
   /// A `SentryNavigatorObserver` that makes no transaction (`enableAutoTransactions: false`): it
@@ -396,11 +428,9 @@ final class FespalierSentry extends FespalierTelemetry {
         NavKind.appStart || NavKind.light => null,
       };
     }
-    final token = OpToken(
-      s,
-      screen: screen,
-      span: _child(parent, 'fespalier.data', s),
-    );
+    final token = _backend.runsInside
+        ? OpToken(s, screen: screen, runs: _runs(parent, 'fespalier.data', s))
+        : OpToken(s, screen: screen, span: _child(parent, 'fespalier.data', s));
     if (screen != null && screen.kind != NavKind.light && fullDisplay) {
       screen.openData++;
       token.counted = true;
@@ -412,9 +442,15 @@ final class FespalierSentry extends FespalierTelemetry {
   OpToken _startAction(TelemetryStart s, bool spans) {
     if (!spans) return OpToken(s);
     final bound = _backend.active();
-    if (bound != null && !bound.finished) {
-      return OpToken(s, span: _child(bound, 'fespalier.action', s));
+    final open = bound != null && !bound.finished;
+    if (_backend.runsInside) {
+      // Made around the action's function, a segment of its own when no screen is open.
+      return OpToken(
+        s,
+        runs: _runs(open ? bound : null, 'fespalier.action', s, always: true),
+      );
     }
+    if (open) return OpToken(s, span: _child(bound, 'fespalier.action', s));
     // No screen is open: the action is a transaction of its own, so the HTTP calls it makes
     // have a parent.
     final site = s.site;
@@ -428,6 +464,29 @@ final class FespalierSentry extends FespalierTelemetry {
     final bound = _backend.active();
     final parent = bound == null || bound.finished ? null : bound;
     return OpToken(s, span: _child(parent, 'fespalier.auth', s));
+  }
+
+  /// How the span of [s] is made around the code it runs, as a child of [parent]; null when it has
+  /// no parent and [always] is false (a data load outside any screen makes no span). With
+  /// [always], no parent makes a segment of its own.
+  void Function(void Function(SpanHandle span))? _runs(
+    SpanHandle? parent,
+    String operation,
+    TelemetryStart s, {
+    bool always = false,
+  }) {
+    if (parent == null && !always) return null;
+    final startedAt = _backend.now();
+    return (inside) => _backend.runIn(
+      parent: parent,
+      op: operation,
+      description: _describe(s),
+      startedAt: startedAt,
+      inside: (span) {
+        _describeStart(span, s);
+        inside(span);
+      },
+    );
   }
 
   /// A child of [parent] for [s], with what the start says; null when there is no parent.
@@ -503,6 +562,33 @@ final class FespalierSentry extends FespalierTelemetry {
       token.trace = trace;
     } else if (token is OpToken) {
       token.trace = trace;
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // within
+
+  /// With `traceLifecycle: stream` (since 0.19.0), makes the span of a data load or an action here
+  /// and runs [body] inside it, so that the HTTP spans Sentry's own integrations make while it runs,
+  /// after an `await` too, are its children. It stays open until [end], which is the span's own
+  /// outcome and attributes; nothing here awaits [body]'s result. Anything else runs [body] as it
+  /// is.
+  @override
+  void within(Object? token, Object? Function() body) {
+    final runs = token is OpToken ? token.runs : null;
+    if (runs == null) {
+      body();
+      return;
+    }
+    try {
+      runs((span) {
+        (token as OpToken)
+          ..span = span
+          ..runs = null;
+        body();
+      });
+    } catch (_) {
+      // A failing SDK costs the span: core runs the body after this returns if it did not.
     }
   }
 
@@ -678,6 +764,10 @@ final class FespalierSentry extends FespalierTelemetry {
     if (t.done) return;
     t.done = true;
     final s = t.start;
+    // An operation that ended without `within` (an adapter's `begin` and `finish`): its span is
+    // made now, from its start to this end.
+    t.runs?.call((span) => t.span = span);
+    t.runs = null;
     final span = t.span;
     if (span != null) {
       _describeEnd(span, s, e);

@@ -53,6 +53,15 @@ Breadcrumb? breadcrumbWithoutQueries(Breadcrumb? breadcrumb, Hint hint) {
   );
 }
 
+/// [breadcrumb] without the query and fragment values of an HTTP request, in place: what the SDK
+/// keeps when a callback before this one fails.
+void breadcrumbScrubbedInPlace(Breadcrumb breadcrumb) {
+  final data = breadcrumb.data;
+  if (data == null) return;
+  final copy = Map<String, dynamic>.of(data);
+  if (_scrub(copy)) breadcrumb.data = copy;
+}
+
 /// [event] without the query and fragment of its request.
 SentryEvent? eventWithoutQueries(SentryEvent event, Hint hint) {
   final request = event.request;

@@ -67,4 +67,28 @@ abstract interface class Spans {
   /// Starts a transaction called [name] for an action no screen was open for, and binds it to the
   /// scope.
   SpanHandle startAction(String name);
+
+  /// Whether the span of a data load or an action is made around the code it runs ([runIn]), so
+  /// that the spans the SDK's own integrations make there (an HTTP client's) are its children:
+  /// `traceLifecycle: stream` only (since 0.19.0). A transaction cannot be made current for a
+  /// body without binding it to the one global scope, which two loads at once would share.
+  bool get runsInside;
+
+  /// The time on the SDK's own clock.
+  DateTime now();
+
+  /// Makes a span described by [op] and [description], a child of [parent] or, with none, a
+  /// segment of its own, and calls [inside] with it, once and synchronously, with the span current
+  /// for the zone [inside] runs in. It starts at [startedAt] when given.
+  ///
+  /// The span stays open until the handle's `finish`: the SDK's own end, when [inside] returns,
+  /// is held back until then, so that the sink's outcome, attributes and end time are the span's.
+  /// Only called when [runsInside] is true.
+  void runIn({
+    required SpanHandle? parent,
+    required String op,
+    required String description,
+    required DateTime? startedAt,
+    required void Function(SpanHandle span) inside,
+  });
 }

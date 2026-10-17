@@ -264,91 +264,16 @@ BiometricLockScreen(
 - Rejected on purpose: a `BiometricGate` that overlays the whole app when locked. It is a second way to say "locked"
   beside the guard, and a subtree parked under an overlay keeps its secrets in memory.
 
-**Asking as soon as the page opens** is the unlock folder's own `observe.dart` `onEnter`, which fespalier runs after the
-frame (never in `build`), once per page instance. The button stays for the try again. The hook has no `BuildContext`, so the
-page leaves when the app is unlocked, whoever asked (a tap or the hook):
+**Asking as soon as the page opens** is the unlock folder's own `observe.dart` `onEnter` (fespalier runs it after the
+frame, never in `build`), and the page leaves with a `ref.listen` on `biometricUnlock` because a hook has no
+`BuildContext`. It prompts on every entry, so it is a separate compiled app, not part of the starter above:
+[`biometric-lock-screen.md`](biometric-lock-screen.md) has the hook, the page that replaces the starter's, and the test.
+The screen shows the outcome of a prompt **it** started: a prompt the hook started that ends `failed`, `lockedOut` or
+`unavailable` shows no message, and a tap during the hook's sheet joins it (single flight), so it is still one sheet.
+Built already unlocked, the screen shows the button and a tap prompts again.
 
-```dart
-// lib/app/lock/observe.dart
-import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_biometrics/fespalier_biometrics.dart';
-
-/// Asks when the page opens, unless the app is already unlocked or a sheet is up. `unlock()` never throws.
-void onEnter(Ref ref) {
-  if (ref.read(biometricUnlock) is Locked) {
-    ref.read(biometricUnlock.notifier).unlock('Unlock your vault');
-  }
-}
-```
-
-```dart
-// lib/app/lock/page.dart
-import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_biometrics/fespalier_biometrics.dart';
-import 'package:fespalier_biometrics/material.dart';
-import 'package:flutter/material.dart';
-
-class LockPage extends ConsumerWidget {
-  const LockPage({super.key, this.from});
-
-  final String? from;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Whoever prompted, a hook or the button, the page leaves when the app is unlocked.
-    ref.listen(biometricUnlock, (_, next) {
-      if (next is Unlocked) context.go(returnTo(from));
-    });
-    return const BiometricLockScreen(
-      reason: 'Unlock your vault',
-      onUnlocked: _stay,
-    );
-  }
-}
-
-void _stay() {} // the listener above leaves the page
-```
-
-```dart
-// test/lock_page_test.dart
-import 'package:fespalier/testing.dart';
-import 'package:fespalier_biometrics/testing.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:my_app/app.g.dart';
-
-void main() {
-  testWidgets('opening the page asks once, and success goes back', (tester) async {
-    final prompt = FakeBiometricPrompt();
-    await pumpRouter(
-      tester,
-      AppRoutes.router(initialLocation: '/lock?from=%2Fvault'),
-      overrides: biometricTestOverrides(prompt),
-    );
-    await tester.pumpAndSettle();
-    expect(prompt.prompts, 1);
-    expect(currentLocation(tester), '/vault');
-  });
-
-  testWidgets('a cancelled prompt leaves the button, and a tap asks again', (tester) async {
-    final prompt = FakeBiometricPrompt(outcomes: [BiometricOutcome.cancelled]);
-    await pumpRouter(
-      tester,
-      AppRoutes.router(initialLocation: '/lock?from=%2Fvault'),
-      overrides: biometricTestOverrides(prompt),
-    );
-    await tester.pumpAndSettle();
-    expect(prompt.prompts, 1);
-    expect(currentLocation(tester), startsWith('/lock'));
-    await tester.tap(find.text('Unlock'));
-    await tester.pumpAndSettle();
-    expect(prompt.prompts, 2);
-    expect(currentLocation(tester), '/vault');
-  });
-}
-```
-
-Unchecked on a device: an `onEnter` prompt on a cold start (iOS may refuse a prompt while the app is not yet active), the
-grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
+Unchecked on a device: an `onEnter` prompt on a cold start and right after a relock on resume (iOS may refuse a prompt
+while the app is not yet active), the grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
 
 ## Idle lock (since 0.19.0)
 

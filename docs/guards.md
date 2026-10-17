@@ -262,7 +262,7 @@ Since 0.19.0 that button is also ready-made: [A ready-made unlock page](#a-ready
 
 ### A ready-made unlock page
 
-Since 0.19.0, `package:fespalier_biometrics/material.dart` has `BiometricLockScreen`, the body of the unlock page above with the button, the words and the "cannot ask" case written once. It is the only library of the package that imports Material: `fespalier_biometrics.dart` stays free of it, so an app that draws its own page takes no Material widget with it.
+Since 0.19.0, `package:fespalier_biometrics/material.dart` has `BiometricLockScreen`, the body of the unlock page above with the button, the words and the "cannot ask" case written once. It is the only library of the package that imports Material, a library-boundary rule as in `fespalier_adaptive`: `fespalier_biometrics.dart` and `lib/src/` import none, so an app that draws its own page builds on a model with no widget set in it.
 
 ```dart
 // lib/app/unlock/page.dart
@@ -281,10 +281,10 @@ BiometricLockScreen(
 - **It opens no dialog, route, menu, sheet or snack bar.** The platform's own sheet is the prompt.
 - **Rejected on purpose: a `BiometricGate` that overlays the whole app when it is locked.** It would be a second way to say "locked" beside the guard, and a subtree parked under an overlay keeps its state, and so its secrets, in memory.
 
-**To ask as soon as the page opens**, use the unlock folder's own [`observe.dart`](observability.md#route-lifecycle-observedart) `onEnter`, which fespalier runs after the frame and never in `build`; the button is then the way to try again. A hook has no `BuildContext`, so the page leaves when the app is unlocked, whoever asked:
+**To ask as soon as the page opens**, use the unlock folder's own [`observe.dart`](observability.md#route-lifecycle-observedart) `onEnter`, which fespalier runs after the frame and never in `build`. It sits in the same `lib/app/unlock/` folder as the page the guard redirects to, and it **replaces** the tap-only page above: the hook prompts on every entry, so a redirect to the unlock page asks. A hook has no `BuildContext`, so the page leaves when the app is unlocked, whoever asked:
 
 ```dart
-// lib/app/lock/observe.dart
+// lib/app/unlock/observe.dart
 void onEnter(Ref ref) {
   if (ref.read(biometricUnlock) is Locked) {
     ref.read(biometricUnlock.notifier).unlock('Unlock your vault');
@@ -293,9 +293,9 @@ void onEnter(Ref ref) {
 ```
 
 ```dart
-// lib/app/lock/page.dart
-class LockPage extends ConsumerWidget {
-  const LockPage({super.key, this.from});
+// lib/app/unlock/page.dart
+class UnlockPage extends ConsumerWidget {
+  const UnlockPage({super.key, this.from});
 
   final String? from;
 
@@ -311,7 +311,11 @@ class LockPage extends ConsumerWidget {
 void _stay() {} // the listener above leaves the page
 ```
 
-Unchecked on a device: an `onEnter` prompt on a cold start (iOS may refuse a prompt while the app is not yet active), the grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
+- **The screen shows the outcome of a prompt it started.** A prompt the hook started that ends `failed`, `lockedOut` or `unavailable` shows no message and does not switch to the `unavailable` builder; the button is the way to try again, and a tap during the hook's sheet joins it (`unlock()` is single-flight), so it is still one sheet.
+- **Built already unlocked** (a URL visit), the screen shows the button and a tap prompts again (`Unlocking(wasUnlocked: true)`); the hook above skips an unlocked app.
+- **After a relock** the guard sends the person to the unlock page and the hook prompts right then; whether iOS accepts a prompt at that moment is unchecked, like the cold start.
+
+Unchecked on a device: an `onEnter` prompt on a cold start and right after a relock on resume (iOS may refuse a prompt while the app is not yet active), the grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
 
 ### Actions that ask again
 

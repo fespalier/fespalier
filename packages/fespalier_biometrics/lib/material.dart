@@ -1,13 +1,16 @@
 /// A ready-made unlock page body in Material (since 0.19.0): [BiometricLockScreen].
 ///
-/// This is the only library of the package that imports Material. `fespalier_biometrics.dart` and
-/// everything under `lib/src/` stay free of it (`test/lock_screen_test.dart` reads them), so an app
-/// that draws its own unlock page, or uses another widget set, takes no Material widget with it.
+/// This is the only library of the package that imports Material. It is a library-boundary rule, as in
+/// `fespalier_adaptive`: `fespalier_biometrics.dart` and everything under `lib/src/` import no Material
+/// (`test/lock_screen_test.dart` reads them), so an app that draws its own unlock page builds on a
+/// model with no widget set in it. (fespalier's core imports Material elsewhere, so this does not
+/// keep Material out of the app.)
 library;
 
 import 'package:fespalier/fespalier.dart';
-import 'fespalier_biometrics.dart';
 import 'package:flutter/material.dart';
+
+import 'fespalier_biometrics.dart';
 
 /// The words [BiometricLockScreen] shows (since 0.19.0), replaceable for another language.
 final class BiometricLockScreenMessages {
@@ -54,6 +57,11 @@ final class BiometricLockScreenMessages {
 ///   button gives way to [unavailable] (or the message of the same name): "Use your passcode" is the
 ///   app's.
 /// - It opens no dialog, route, menu, sheet or snack bar; the platform's own sheet is the prompt.
+/// - It shows the outcome of a prompt **it** started. A prompt started elsewhere (an `onEnter`
+///   hook) that ends `failed` or `lockedOut` shows no message here; a tap during that hook's sheet
+///   joins it (`unlock()` is single-flight), so it is still one sheet.
+/// - Built when the app is already unlocked (a URL visit), it shows the button, and a tap prompts
+///   again (`Unlocking(wasUnlocked: true)`); the `onEnter` recipe skips an unlocked app.
 ///
 /// Rejected on purpose: a `BiometricGate` that overlays the whole app when it is locked. It would be
 /// a second way to say "locked" beside the guard, and a subtree parked under an overlay keeps its
@@ -112,6 +120,11 @@ class _BiometricLockScreenState extends ConsumerState<BiometricLockScreen> {
       widget.onUnlocked();
     } else {
       setState(() => _last = outcome);
+      // The platform says it cannot ask: let biometricAvailable find out too, so a later
+      // ref.invalidate(biometricAvailable) that answers true brings the button back.
+      if (outcome == BiometricOutcome.unavailable) {
+        ref.invalidate(biometricAvailable);
+      }
     }
   }
 
@@ -119,10 +132,13 @@ class _BiometricLockScreenState extends ConsumerState<BiometricLockScreen> {
   Widget build(BuildContext context) {
     final messages = widget.messages;
     final unlocking = ref.watch(biometricUnlock) is Unlocking;
-    // Only a plain "no" replaces the button: while the answer is pending, or if the plugin threw,
-    // the button stays and a tap reports what happened.
-    final available = ref.watch(biometricAvailable).value ?? true;
-    final cannotAsk = !available || _last == BiometricOutcome.unavailable;
+    // Only a plain "no" replaces the button: while the first answer is pending, or if the plugin
+    // threw, the button stays and a tap reports what happened.
+    final answer = ref.watch(biometricAvailable).value;
+    // A tap that ended unavailable hides the button until the availability answers true again.
+    final cannotAsk =
+        answer == false ||
+        (_last == BiometricOutcome.unavailable && answer != true);
     final message = switch (_last) {
       BiometricOutcome.failed => messages.failed,
       BiometricOutcome.lockedOut => messages.lockedOut,

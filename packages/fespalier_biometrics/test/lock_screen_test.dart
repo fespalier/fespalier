@@ -4,6 +4,7 @@
 import 'dart:io';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_biometrics/fespalier_biometrics.dart';
 import 'package:fespalier_biometrics/material.dart';
 import 'package:fespalier_biometrics/testing.dart';
 import 'package:flutter/material.dart';
@@ -175,21 +176,35 @@ void main() {
     expect(find.byType(FilledButton), findsNothing);
   });
 
-  testWidgets('a tap that ends unavailable gives way to the same message', (
-    tester,
-  ) async {
-    final rig = _Rig(
-      prompt: FakeBiometricPrompt(outcomes: [BiometricOutcome.unavailable]),
-    );
-    await rig.pump(tester);
-    await tester.tap(find.text('Unlock'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('This device cannot check a fingerprint or a face.'),
-      findsOneWidget,
-    );
-    expect(find.byType(FilledButton), findsNothing);
-  });
+  testWidgets(
+    'a tap that ends unavailable gives way to the message, and a true answer brings the button back',
+    (tester) async {
+      final rig = _Rig(
+        prompt: FakeBiometricPrompt(outcomes: [BiometricOutcome.unavailable]),
+      );
+      await rig.pump(tester);
+      await tester.pumpAndSettle();
+      rig.prompt.available = false;
+      await tester.tap(find.text('Unlock'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('This device cannot check a fingerprint or a face.'),
+        findsOneWidget,
+      );
+      expect(find.byType(FilledButton), findsNothing);
+
+      rig.prompt.available = true;
+      ProviderScope.containerOf(
+        tester.element(find.byType(BiometricLockScreen)),
+      ).invalidate(biometricAvailable);
+      await tester.pumpAndSettle();
+      expect(find.byType(FilledButton), findsOneWidget);
+      expect(
+        find.text('This device cannot check a fingerprint or a face.'),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('it opens no dialog, route, menu, sheet or snack bar', (
     tester,
@@ -246,7 +261,7 @@ void main() {
     ];
     expect(files.length, greaterThan(5));
     final material = RegExp(
-      r'''import\s+['"]package:flutter/(material|cupertino)\.dart['"]''',
+      r'''(import|export)\s+['"]package:flutter/(material|cupertino)\.dart['"]''',
     );
     for (final file in files) {
       expect(

@@ -244,6 +244,7 @@ folder's `observe.dart` `onEnter` (after the frame), never `build`. Never call `
 from `build` or a guard; never put `requireUnlocked` on the unlock page.
 
 [`references/biometrics.md`](references/biometrics.md) has the package in full and a compiled starter;
+[`references/biometric-lock-screen.md`](references/biometric-lock-screen.md) the lock screen with the `onEnter` auto-prompt;
 [`references/biometric-prompts.md`](references/biometric-prompts.md) (`local_auth` 3.x) and
 [`references/biometric-prompts-local-auth-2.md`](references/biometric-prompts-local-auth-2.md) (2.x, with
 `useErrorDialogs: false`) are the prompt recipes. The tests use `FakeBiometricPrompt` from
@@ -261,6 +262,7 @@ from `build` or a guard; never put `requireUnlocked` on the unlock page.
 | Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags`                                                                     | [`references/feature-flags.md`](references/feature-flags.md)                                                                                                         |
 | Flag sources (since 0.9.0): Remote Config, LaunchDarkly, PostHog, GrowthBook                                                              | [`references/flag-sources.md`](references/flag-sources.md)                                                                                                           |
 | Biometric unlock (since 0.13.0): `requireUnlocked`, `unlock()`, `withBiometrics`, relock, idle lock, `BiometricLockScreen` (since 0.19.0) | [`references/biometrics.md`](references/biometrics.md)                                                                                                               |
+| `BiometricLockScreen` with an `onEnter` auto-prompt (since 0.19.0)                                                                        | [`references/biometric-lock-screen.md`](references/biometric-lock-screen.md)                                                                                         |
 | `local_auth` as a `BiometricPrompt` (3.x, and 2.x for Flutter before 3.38)                                                                | [`references/biometric-prompts.md`](references/biometric-prompts.md), [`references/biometric-prompts-local-auth-2.md`](references/biometric-prompts-local-auth-2.md) |
 | Testing a guarded route                                                                                                                   | `fespalier-testing`                                                                                                                                                  |
 | An `fsp` error on a guard or redirect                                                                                                     | `fespalier-troubleshooting`                                                                                                                                          |

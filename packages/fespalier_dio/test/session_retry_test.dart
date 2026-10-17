@@ -110,6 +110,7 @@ final class Rig {
     bool signedIn = true,
     Duration? tokenLifetime,
     bool guardNeeded = false,
+    void Function()? beforeRetry,
   }) : proof = FakeProof() {
     backend = FakeAuthBackend(proof: proof, tokenLifetime: tokenLifetime);
     container = ProviderContainer(
@@ -128,6 +129,12 @@ final class Rig {
       dio: dio,
       retries: 3,
       retryDelays: const [Duration.zero, Duration.zero, Duration.zero],
+      // Called when a retry is decided, before it is sent: a test changes the session here.
+      logPrint: (_) {
+        final once = beforeRetry;
+        beforeRetry = null;
+        once?.call();
+      },
       // guardNeeded: the plain evaluator also retries a write, so only WriteGuard stops it.
       retryEvaluator: guardNeeded
           ? DefaultRetryEvaluator(defaultRetryableStatuses).evaluate
@@ -433,9 +440,84 @@ void main() {
         },
       );
 
-      // The plan's cases 14 (a refused refresh before the send) and 15 (a sign-out between a 503
-      // and its retry) are not here: they fail today. The retry is sent without the session, or with
-      // the first send's stale headers; they land with their fix.
+      test(
+        'a refresh refused before the send: nothing reaches the API, and the retry is refused too',
+        () async {
+          final rig = Rig(
+            order,
+            const [],
+            tokenLifetime: const Duration(seconds: -1),
+          );
+          rig.backend.refreshError = const AuthRejected();
+          final error = await failure(rig.dio.get<String>(orders));
+          expect(error.error, isA<AuthRejected>());
+          // Without the refused mark the retry finds nobody signed in and goes out with no
+          // Authorization.
+          expect(rig.adapter.sent, isEmpty);
+          expect(rig.backend.refreshes, 1);
+          expect(
+            rig.container.read(authSession),
+            const SignedOut(reason: SignOutReason.expired),
+          );
+        },
+      );
+
+      test(
+        'a refresh that could not run, then a sign-out: the retry is not sent without the session',
+        () async {
+          late final Rig rig;
+          rig = Rig(
+            order,
+            const [],
+            tokenLifetime: const Duration(seconds: -1),
+            beforeRetry: () => rig.notifier.signOut(),
+          );
+          rig.backend.refreshError = AuthUnavailable(StateError('offline'));
+          final error = await failure(rig.dio.get<String>(orders));
+          expect(error.error, isA<AuthRejected>());
+          expect(rig.adapter.sent, isEmpty);
+          expect(rig.backend.refreshes, 1);
+        },
+      );
+
+      test(
+        'a sign-out between a 503 and its retry: the retry is not sent with the stale token and proof',
+        () async {
+          late final Rig rig;
+          rig = Rig(order, [
+            Step(503, onSend: () => rig.notifier.signOut()),
+            const Step(200),
+          ]);
+          final error = await failure(rig.dio.get<String>(orders));
+          expect(error.error, isA<AuthRejected>());
+          expect(rig.adapter.sent, hasLength(1));
+          expect(rig.adapter.authorizations, ['DPoP fake-access-0']);
+        },
+      );
+
+      test(
+        'a sign-out and a sign-in as another user between a 503 and its retry: not sent as the new user',
+        () async {
+          late final Rig rig;
+          rig = Rig(order, [
+            Step(
+              503,
+              onSend: () async {
+                await rig.notifier.signOut();
+                rig.backend.user = const AuthUser(id: 'bob-id');
+                await rig.notifier.signIn(
+                  const PasswordSignIn(username: 'bob', password: 'bob'),
+                );
+              },
+            ),
+            const Step(200),
+          ]);
+          final error = await failure(rig.dio.get<String>(orders));
+          expect(error.error, isA<AuthRejected>());
+          expect(rig.adapter.sent, hasLength(1));
+          expect(rig.container.read(authUserId), 'bob-id');
+        },
+      );
 
       test(
         'through DioHttpClient, a POST body is sent again whole after a 401, under the retrier',

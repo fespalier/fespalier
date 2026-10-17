@@ -75,19 +75,51 @@ final class FakeAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// A proof that can stop making headers, like a signer that failed.
+final class _SwitchableProof implements ProofOfPossession {
+  bool on = true;
+
+  @override
+  Future<String?> thumbprint() async => 'thumb';
+
+  @override
+  Future<Map<String, String>> headers({
+    required String method,
+    required Uri uri,
+    String? accessToken,
+  }) async => on ? {'DPoP': 'proof'} : {};
+
+  @override
+  bool onResponse({
+    required Uri uri,
+    required int statusCode,
+    required Map<String, String> headers,
+    String? body,
+    required bool retried,
+  }) => false;
+
+  @override
+  Future<void> reset() async {}
+}
+
 void main() {
   late FakeAuthBackend backend;
   late FakeAdapter adapter;
   late ProviderContainer container;
   late Dio dio;
 
-  void setUpDio({FakeAuthBackend? use, AuthUser? signedInAs = ada}) {
-    backend = use ?? FakeAuthBackend();
+  void setUpDio({
+    FakeAuthBackend? use,
+    AuthUser? signedInAs = ada,
+    Duration? tokenLifetime,
+  }) {
+    backend = use ?? FakeAuthBackend(tokenLifetime: tokenLifetime);
     adapter = FakeAdapter();
     container = containerFor(
       signedInAs: signedInAs,
       backend: backend,
       apiOrigins: [api],
+      tokenLifetime: tokenLifetime,
     );
     dio = Dio()..httpClientAdapter = adapter;
     dio.interceptors.add(SessionInterceptor(container.read(authorizer), dio));
@@ -355,6 +387,141 @@ void main() {
       await dio.get<String>('https://api.example.com/orders');
       expect(adapter.seen.last.header('DPoP'), endsWith('nonce=abc'));
     });
+  });
+
+  // The same RequestOptions fetched twice is what a retrier does (dio_smart_retry calls
+  // dio.fetch(requestOptions)): these two pin that the second send is not a fresh request.
+  group('a request sent again with the same options', () {
+    test('whose refresh was refused is refused again, without a send', () async {
+      // Pins (a): the refused mark in options.extra[authRefusedKey]. Without it a sign-in after the
+      // refusal lets the next fetch go out as the new user, and, with neither mark, the
+      // second fetch finds nobody signed in and goes out with no Authorization.
+      setUpDio(tokenLifetime: const Duration(seconds: -1));
+      backend.refreshError = const AuthRejected();
+      final options = RequestOptions(path: 'https://api.example.com/orders');
+      for (var i = 0; i < 2; i++) {
+        await expectLater(
+          dio.fetch<String>(options),
+          throwsA(
+            isA<DioException>().having(
+              (e) => e.error,
+              'error',
+              isA<AuthRejected>(),
+            ),
+          ),
+        );
+      }
+      expect(adapter.seen, isEmpty);
+      expect(backend.refreshes, 1);
+      expect(options.extra[authRefusedKey], isA<AuthRejected>());
+      // Signing in again does not undo it for this request: it stays refused, and is not sent as
+      // whoever signed in since (no earlier attempt carried a user to compare with).
+      backend
+        ..refreshError = null
+        ..tokenLifetime = null;
+      await container
+          .read(authSession.notifier)
+          .signIn(const PasswordSignIn(username: 'ada', password: 'ada'));
+      adapter.good = 'fake-access-1';
+      await expectLater(
+        dio.fetch<String>(options),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.error,
+            'error',
+            isA<AuthRejected>(),
+          ),
+        ),
+      );
+      expect(adapter.seen, isEmpty);
+    });
+
+    test('is not sent without the session it had (a sign-out)', () async {
+      // Pins (b): a request that had the session is not sent without it.
+      setUpDio();
+      adapter.good = 'fake-access-0';
+      final options = RequestOptions(path: 'https://api.example.com/orders');
+      expect((await dio.fetch<String>(options)).statusCode, 200);
+      await container.read(authSession.notifier).signOut();
+      await expectLater(
+        dio.fetch<String>(options),
+        throwsA(
+          isA<DioException>().having(
+            (e) => e.error,
+            'error',
+            isA<AuthRejected>(),
+          ),
+        ),
+      );
+      expect(adapter.seen, hasLength(1));
+    });
+
+    test('drops the previous send\'s headers', () async {
+      // Pins (c): the DPoP header of the first send must not stay when the second attempt has no
+      // proof (a proof that could not be made). Without the removal it travels beside the new
+      // Authorization.
+      final proof = _SwitchableProof();
+      // Signed in through the backend: only that makes a DPoP-bound session for this proof.
+      setUpDio(use: FakeAuthBackend(proof: proof), signedInAs: null);
+      await container
+          .read(authSession.notifier)
+          .signIn(const PasswordSignIn(username: 'ada', password: 'ada'));
+      adapter.good = 'fake-access-1';
+      final options = RequestOptions(path: 'https://api.example.com/orders');
+      await dio.fetch<String>(options);
+      proof.on = false;
+      await dio.fetch<String>(options);
+      expect(adapter.seen[0].header('DPoP'), 'proof');
+      expect(adapter.seen[1].header('Authorization'), 'DPoP fake-access-1');
+      expect(adapter.seen[1].header('DPoP'), isNull);
+    });
+
+    test(
+      'is not sent as another user (a sign-out, then bob signs in)',
+      () async {
+        // Pins (d): the attempt remembers its user.
+        setUpDio();
+        final options = RequestOptions(path: 'https://api.example.com/orders');
+        adapter.good = 'fake-access-0';
+        await dio.fetch<String>(options);
+        final notifier = container.read(authSession.notifier);
+        await notifier.signOut();
+        backend.user = bob;
+        await notifier.signIn(
+          const PasswordSignIn(username: 'bob', password: 'bob'),
+        );
+        adapter.good = 'fake-access-1';
+        await expectLater(
+          dio.fetch<String>(options),
+          throwsA(
+            isA<DioException>().having(
+              (e) => e.error,
+              'error',
+              isA<AuthRejected>(),
+            ),
+          ),
+        );
+        expect(adapter.seen, hasLength(1));
+      },
+    );
+
+    test(
+      'after AuthUnavailable is not marked refused: the next send may work',
+      () async {
+        setUpDio(tokenLifetime: const Duration(seconds: -1));
+        backend.refreshError = AuthUnavailable(StateError('offline'));
+        final options = RequestOptions(path: 'https://api.example.com/orders');
+        await expectLater(
+          dio.fetch<String>(options),
+          throwsA(isA<DioException>()),
+        );
+        expect(options.extra[authRefusedKey], isNull);
+        expect(options.extra[authWantedKey], isTrue);
+        backend.refreshError = null;
+        adapter.good = 'fake-access-1';
+        expect((await dio.fetch<String>(options)).statusCode, 200);
+      },
+    );
   });
 
   test('the replay mark is a constant the guard can read', () {

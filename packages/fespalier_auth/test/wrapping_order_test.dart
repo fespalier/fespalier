@@ -32,10 +32,13 @@ void main() {
   late FakeAuthBackend backend;
   late Provider<http.Client> composed;
 
-  http_retry.RetryClient retrier(http.Client inner) => http_retry.RetryClient(
+  http_retry.RetryClient retrier(
+    http.Client inner, {
+    bool Function(Object, StackTrace)? retryError,
+  }) => http_retry.RetryClient(
     WriteGuardClient(inner),
     when: WriteGuardClient.readsOnly(),
-    whenError: WriteGuardClient.readErrorsOnly((e, s) => false),
+    whenError: WriteGuardClient.readErrorsOnly(retryError ?? (e, s) => false),
     delay: (_) => Duration.zero,
   );
 
@@ -45,6 +48,8 @@ void main() {
     FutureOr<http.Response> Function(int n, http.BaseRequest request) answer, {
     bool retrierOutside = false,
     FakeAuthBackend? use,
+    Duration? tokenLifetime,
+    bool Function(Object, StackTrace)? retryError,
   }) {
     var n = 0;
     server = FakeHttpClient((request, body) => answer(++n, request));
@@ -53,12 +58,16 @@ void main() {
       signedInAs: ada,
       apiOrigins: [api],
       backend: backend,
+      tokenLifetime: tokenLifetime,
     );
     composed = Provider<http.Client>((ref) {
       final authorizerOf = ref.watch(authorizer);
       return ref.abortable(
         retrierOutside
-            ? retrier(SessionClient(authorizerOf, inner: server))
+            ? retrier(
+                SessionClient(authorizerOf, inner: server),
+                retryError: retryError,
+              )
             : SessionClient(authorizerOf, inner: retrier(server)),
       );
     });
@@ -188,6 +197,45 @@ void main() {
       expect(server.requests, hasLength(1));
       expect(backend.refreshes, 1, reason: 'so that the next request works');
       expect((await client().get(orders)).statusCode, 200);
+    });
+
+    // The package:http half of the Dio rule (docs/http.md, "The wrapping order"). Here the retrier
+    // is a RetryClient outside the session that retries a network error (a ClientException). A
+    // refused refresh is an AuthRejected, which is not one, so it is never retried; an unavailable
+    // one is an AuthUnavailable, which is, and each attempt asks again. Nothing reaches the API
+    // without the session in either case.
+    bool networkErrors(Object error, StackTrace _) =>
+        error is http.ClientException;
+
+    test('a refused refresh is not retried, and nothing is sent', () async {
+      serve(
+        (n, _) => http.Response('x', 200),
+        retrierOutside: true,
+        tokenLifetime: const Duration(seconds: -1),
+        retryError: networkErrors,
+      );
+      backend.refreshError = const AuthRejected();
+      await expectLater(client().get(orders), throwsA(isA<AuthRejected>()));
+      expect(server.requests, isEmpty);
+      expect(backend.refreshes, 1);
+    });
+
+    test('an unavailable refresh is retried, and nothing is sent without '
+        'the session', () async {
+      serve(
+        (n, _) => http.Response('x', 200),
+        retrierOutside: true,
+        tokenLifetime: const Duration(seconds: -1),
+        retryError: networkErrors,
+      );
+      backend.refreshError = AuthUnavailable(StateError('offline'));
+      await expectLater(client().get(orders), throwsA(isA<AuthUnavailable>()));
+      expect(server.requests, isEmpty);
+      expect(
+        backend.refreshes,
+        4,
+        reason: 'the first attempt and three retries',
+      );
     });
   });
 }

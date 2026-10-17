@@ -28,20 +28,20 @@ dependencies the same `url` (no `.git`) and the same `ref`.
 
 ## What it is made of
 
-| Piece                                           | What it does                                                                                                                                                                                             |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authSession`                                   | The session: a `NotifierProvider<AuthSessionNotifier, SessionState>`. `SessionState` is sealed: `SessionRestoring`, `SignedOut(reason)`, `SignedIn(session)`                                             |
-| `isSignedIn`, `authUser`, `authUserId`          | Derived providers. Riverpod filters updates with `==`, so none of them notifies on a token refresh                                                                                                       |
-| `restoreAuth(config)`                           | For `startup()`: reads the stored session and returns the overrides. Synchronous with a synchronous store, and **never** touches the network                                                             |
-| `AuthConfig`                                    | `backend`, `store` (`SecureTokenStore` by default, `MemoryTokenStore`), `apiOrigins` and `leeway` (30 s)                                                                                                 |
-| `AuthBackend`                                   | `signIn`, `refresh`, `signOut`, and `name`; `proof` for DPoP and `keepsOwnSession` for Firebase and Supabase. Sign-in requests are typed (`BrowserSignIn`, `PasswordSignIn`, or your own subclass)       |
-| `requireSignedIn`, `requireRole`, `requireUser` | For a `guard.dart`: null, or the sign-in location with the requested one as `from`                                                                                                                       |
-| `redirectIfSignedIn`                            | For the **sign-in route's own** `guard.dart`: signing in sends the user back by itself                                                                                                                   |
-| `authHttpClient`, `SessionClient`, `Authorizer` | A `package:http` client whose requests to `apiOrigins` carry the session, refresh once on expiry, and are sent again once after a 401                                                                    |
-| `package:fespalier_auth/oidc.dart`              | `OidcBackend`: the authorization code flow with PKCE for a public client, Keycloak's endpoints and roles, refresh-token rotation, DPoP on the token endpoint. See [`auth-backends.md`](auth-backends.md) |
-| `package:fespalier_auth/dio.dart`               | `SessionInterceptor(authorizer, dio)`: the policy of `authHttpClient` on dio's types (since 0.9.0)                                                                                                       |
-| `package:fespalier_sign_keypair`                | `DpopProof`: DPoP proofs signed by a device key, for `OidcBackend(proof: ...)`. A separate package; see [`auth-dpop.md`](auth-dpop.md)                                                                   |
-| `package:fespalier_auth/testing.dart`           | `FakeAuthBackend`, `FakeProof`, `fakeSession`, `fakeAuth`                                                                                                                                                |
+| Piece                                           | What it does                                                                                                                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authSession`                                   | The session: a `NotifierProvider<AuthSessionNotifier, SessionState>`. `SessionState` is sealed: `SessionRestoring`, `SignedOut(reason)`, `SignedIn(session)`                                                  |
+| `isSignedIn`, `authUser`, `authUserId`          | Derived providers. Riverpod filters updates with `==`, so none of them notifies on a token refresh                                                                                                            |
+| `restoreAuth(config)`                           | For `startup()`: reads the stored session and returns the overrides. Synchronous with a synchronous store, and **never** touches the network                                                                  |
+| `AuthConfig`                                    | `backend`, `store` (`SecureTokenStore` by default, `MemoryTokenStore`), `apiOrigins` and `leeway` (30 s)                                                                                                      |
+| `AuthBackend`                                   | `signIn`, `refresh`, `signOut`, and `name`; `proof` for DPoP and `keepsOwnSession` for Firebase and Supabase. Sign-in requests are typed (`BrowserSignIn`, `PasswordSignIn`, or your own subclass)            |
+| `requireSignedIn`, `requireRole`, `requireUser` | For a `guard.dart`: null, or the sign-in location with the requested one as `from`                                                                                                                            |
+| `redirectIfSignedIn`                            | For the **sign-in route's own** `guard.dart`: signing in sends the user back by itself                                                                                                                        |
+| `authHttpClient`, `SessionClient`, `Authorizer` | A `package:http` client whose requests to `apiOrigins` carry the session, refresh once on expiry, and are sent again once after a 401                                                                         |
+| `package:fespalier_auth/oidc.dart`              | `OidcBackend`: the authorization code flow with PKCE for a public client, Keycloak's endpoints and roles, refresh-token rotation, DPoP on the token endpoint. See [`auth-backends.md`](auth-backends.md)      |
+| `package:fespalier_auth/dio.dart`               | `SessionInterceptor(authorizer, dio)`: the policy of `authHttpClient` on dio's types (since 0.9.0); a request whose session was refused or ended is not sent again without it, under a retrier (since 0.19.0) |
+| `package:fespalier_sign_keypair`                | `DpopProof`: DPoP proofs signed by a device key, for `OidcBackend(proof: ...)`. A separate package; see [`auth-dpop.md`](auth-dpop.md)                                                                        |
+| `package:fespalier_auth/testing.dart`           | `FakeAuthBackend`, `FakeProof`, `fakeSession`, `fakeAuth`                                                                                                                                                     |
 
 Signing in with **OpenID Connect or Keycloak, Firebase, Supabase, or your own API** is
 [`auth-backends.md`](auth-backends.md), binding the tokens to the device (DPoP) is [`auth-dpop.md`](auth-dpop.md); this page is the package and a starter over a JSON API.
@@ -421,6 +421,16 @@ void main() {
   own) lets that one through. A request made with `http.AbortableRequest(..., abortTrigger: future)`
   (`package:http` 1.5.0 and later) is copied with the same trigger, so aborting a page's request also cancels
   its replay.
+- **A request is never sent again without the session it had (`SessionInterceptor`, since 0.19.0).** A
+  retrier (`dio_smart_retry`) calls `dio.fetch` with the very same `RequestOptions`, so the interceptor keeps
+  marks in `options.extra`: `authRefusedKey` (`'fespalier_auth.refused'`) holds the `AuthRejected` that
+  stopped the request, and the request is refused again with it, with no refresh and no send;
+  `authWantedKey` (`'fespalier_auth.wanted'`) is `true` once the authorizer failed for it (an
+  `AuthUnavailable` is not stored as refused: the retrier may ask again). A request that had the session and
+  would now go out without it (a sign-out between a 503 and its retry), or as another user (a sign-in
+  between), is refused with an `AuthRejected`, and the previous send's `Authorization` and `DPoP` headers
+  never stay on the next one. `SessionClient` cannot do this: a `RetryClient` outside it makes a new request
+  for each attempt.
 - **`RetryClient` goes over the session, never under it.** `RetryClient(ref.watch(authHttpClient))` asks the
   authorizer again for each attempt. `authBaseClient` wrapped in a `RetryClient` re-sends the same
   `Authorization` and `DPoP` headers, the same proof, and a DPoP server refuses a reused `jti` (Keycloak:

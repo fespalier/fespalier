@@ -256,7 +256,7 @@ ref.abortable(RetryClient(WriteGuardClient(SessionClient(ref.watch(authorizer), 
 
 With it a 401 comes back to the caller after the refresh (the next request works, and a `data.dart` that retries reloads it). The test pins both orders, so neither changes silently.
 
-For Dio the same promises are interceptors and nothing to order by hand: `WriteGuard.install(dio)` goes **last** (it runs first), after the retrier and `SessionInterceptor`. `packages/fespalier_dio/test/session_retry_test.dart` runs the real `SessionInterceptor` under `dio_smart_retry` in both orders of the two: every send made while the session lasts makes a new proof, and a 401 is replayed once.
+For Dio the same promises are interceptors and nothing to order by hand: `WriteGuard.install(dio)` goes **last** (it runs first), after the retrier and `SessionInterceptor`. `packages/fespalier_dio/test/session_retry_test.dart` runs the real `SessionInterceptor` under `dio_smart_retry` in both orders of the two: every send makes a new proof, a 401 is replayed once, and a request is never sent without the session it was made with (since 0.19.0): when the refresh was refused, or the user signed out or in as someone else between two sends, the retry is not sent and the caller gets a `DioException` whose `error` is an `AuthRejected`. The same cannot hold for `package:http`: a `RetryClient` outside `SessionClient` makes a new request for each attempt, so the session has nothing to recognise it by. A refused refresh is not retried there (an `AuthRejected` is not a `ClientException`), an unavailable one is, and each attempt asks again.
 
 ## Credentials for clients that are not an http.Client
 

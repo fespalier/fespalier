@@ -7,11 +7,6 @@ it ships.
 
 ## Next
 
-- **Adapters**, each a small package (the seams they need are in core: `AppRoutes.urlOf`, the DevTools
-  _Adapters_ tab and `test: a11y: true` ship in 0.16.0):
-  - `fespalier_dio`, the rest: a test of `fespalier_auth`'s `SessionInterceptor` under `dio_smart_retry`
-    (a DPoP proof per retry, one replay after a refresh); trace headers stay `otel_dio`'s
-    (docs/http.md).
 - **`fespalier_biometrics`, the rest.** The unlock guard ships in 0.13.0 (docs/guards.md). Not built: a lock
   screen widget, an idle lock on a timer, and a secret kept behind the biometric (a keystore's job).
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a

@@ -215,6 +215,29 @@ void main() {
         isNotNull,
       );
     });
+    test('a throwing app callback still gets the breadcrumb scrubbed', () {
+      // The SDK keeps the breadcrumb it gave the callback when the callback fails.
+      for (final record in [false, true]) {
+        final crumb = http();
+        final options = configured(
+          recordQueries: record,
+          before: (o) =>
+              o.beforeBreadcrumb = (crumb, hint) => throw StateError('app'),
+        );
+        expect(
+          () => options.beforeBreadcrumb!(crumb, Hint()),
+          throwsStateError,
+        );
+        expect(crumb.data!.containsKey('http.query'), record);
+        expect(crumb.data!.containsKey('http.fragment'), record);
+        expect(
+          crumb.data!['url'],
+          record
+              ? 'https://api.example.com/items?token=abc#frag'
+              : 'https://api.example.com/items',
+        );
+      }
+    });
   });
 
   group('beforeSend', () {
@@ -281,6 +304,28 @@ void main() {
       expect(FespalierSentry.eventWithoutQueries(e, Hint()), same(e));
       expect(e.request!.queryString, isNull);
       expect(FespalierSentry.withoutQueries(null, Hint()), isNull);
+    });
+
+    test('a throwing app callback still gets the event scrubbed, sync or '
+        'async', () async {
+      for (final fails in <FutureOr<SentryEvent?> Function(SentryEvent)>[
+        (e) => throw StateError('sync'),
+        (e) => Future<SentryEvent?>.error(StateError('async')),
+      ]) {
+        final original = event();
+        final options = configured(
+          before: (o) => o.beforeSend = (e, hint) => fails(e),
+        );
+        await expectLater(
+          Future<SentryEvent?>.sync(
+            () => options.beforeSend!(original, Hint()),
+          ),
+          throwsStateError,
+        );
+        expect(original.request!.url, 'https://api.example.com/items');
+        expect(original.request!.queryString, isNull);
+        expect(original.request!.fragment, isNull);
+      }
     });
   });
 
@@ -362,6 +407,28 @@ void main() {
       );
       await transaction(sentry);
       expect(seen, ['/items/:id']);
+    });
+
+    test('a throwing app callback still gets the transaction scrubbed, sync '
+        'or async', () async {
+      // The SDK logs the failure and sends the transaction it gave the callback.
+      for (final fails
+          in <FutureOr<SentryTransaction?> Function(SentryTransaction)>[
+            (t) => throw StateError('sync'),
+            (t) => Future<SentryTransaction?>.error(StateError('async')),
+          ]) {
+        final sentry = RecordingSentry(
+          configure: (o) {
+            o.beforeSendTransaction = (t, hint) => fails(t);
+            FespalierSentry.configure(o, dsn: dsn, tracing: true);
+          },
+        );
+        final sent = await transaction(sentry);
+        final data = map(map((sent['spans']! as List).single)['data']);
+        expect(data['url'], 'https://api.example.com/items');
+        expect(data.containsKey('http.query'), isFalse);
+        expect(data.containsKey('http.fragment'), isFalse);
+      }
     });
   });
 

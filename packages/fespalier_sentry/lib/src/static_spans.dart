@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'keys.dart';
@@ -48,6 +49,21 @@ final class StaticSpans implements Spans {
     );
     return _StaticSpan(tx);
   }
+
+  @override
+  bool get runsInside => false;
+
+  @override
+  DateTime now() => clock.now();
+
+  @override
+  void runIn({
+    required SpanHandle? parent,
+    required String op,
+    required String description,
+    required DateTime? startedAt,
+    required void Function(SpanHandle span) inside,
+  }) {}
 }
 
 class _StaticSpan implements SpanHandle {

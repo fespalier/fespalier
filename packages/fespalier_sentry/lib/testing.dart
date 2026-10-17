@@ -39,6 +39,14 @@ final class RecordingSentry {
           : _spans.add(span);
     };
     hub = Hub(options);
+    if (options.traceLifecycle == SentryTraceLifecycle.stream) {
+      // What `Sentry.init` installs in a streaming SDK (its setup integration is not exported), and
+      // a plain `Hub` never runs integrations: without it `SentryHttpClient` and `sentry_dio`
+      // make no span in a test (since 0.19.0). `StreamingInstrumentationSpanFactory` and
+      // `SentryOptions.spanFactory` are `@internal`, and exist unchanged from 9.26.0.
+      // ignore: invalid_use_of_internal_member
+      options.spanFactory = StreamingInstrumentationSpanFactory(hub);
+    }
   }
 
   /// The options the hub was built with.
@@ -47,8 +55,9 @@ final class RecordingSentry {
   /// The transport: it keeps every envelope.
   final RecordingTransport transport;
 
-  /// The hub to give `FespalierSentry(hub:)`, `FespalierSentry.navigatorObserver(hub:)` or
-  /// `dio.addSentry(hub:)`.
+  /// The hub to give `FespalierSentry(hub:)`, `FespalierSentry.navigatorObserver(hub:)`,
+  /// `SentryHttpClient(hub:)` or `dio.addSentry(hub:)`. With `traceLifecycle` set to `stream` in
+  /// [RecordingSentry.new]'s `configure`, the HTTP clients make streamed spans (since 0.19.0).
   late final Hub hub;
 
   final List<SentrySpanV2> _spans = [];

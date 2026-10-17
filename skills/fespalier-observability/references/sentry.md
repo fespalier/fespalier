@@ -135,8 +135,10 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   `SentryFlutter.currentDisplay()?.reportFullyDisplayed()` when its data is in. Its guard and data spans are not
   recorded. `enableStandaloneAppStartTracing: true` (9.26.0, experimental) makes the first screen an ordinary
   one: recommended. Web and desktop: ordinary.
-- **An HTTP span made in `data()`** is a child of the screen's transaction (Sentry's integrations parent to the
-  scope's span), beside the data span, not under it. Under `fespalier_otel` it is under the data span.
+- **An HTTP span made in `data()`** is, with `traceLifecycle: static`, a child of the screen's transaction (Sentry's
+  integrations parent to the scope's span), beside the data span, not under it (a transaction cannot be made
+  current without binding it to the one global scope, which two loads at once share). Under `fespalier_otel` it is
+  under the data span, and with `traceLifecycle: stream` it is too (below).
 - **`traceLifecycle: stream`** (since 0.19.0; Sentry 9.26.0 has it): the same tree is streamed through
   `Hub.startInactiveSpan`. A screen is a root span (a segment, `sentry.op` `ui.load`, named at the commit) and its
   guards, redirects, data, deferred loads, images, auth steps and actions are children with an explicit parent;
@@ -149,9 +151,13 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s
   transactions are; `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews it on each
   navigation, and the SDK does after a stay in the background when no navigator observer exists (whether Sentry's
-  views are right with one trace for many screens is UNCHECKED). Not the same as `static`: HTTP spans (`SentryHttpClient`,
-  `sentry_dio`) parent to the active span of the zone, and `data()` does not run in one yet, so they make **no
-  span under the screen** in this mode. `configure` installs `beforeSendSpan` (the app's first) that takes
+  views are right with one trace for many screens is UNCHECKED). **HTTP spans are under the data span** (since 0.19.0): the sink's `within` makes the
+  span of a `data()` or an action with `Hub.startSpan` around the code it runs, so `SentryHttpClient` and `sentry_dio`
+  (which parent to the zone's active span) make children of it, after an `await` too, and two loads at once keep
+  their own. The span still ends with fespalier's outcome and attributes, when `data()` settles or the load is
+  disposed (the body's `Future` is never what ends it). An action with no screen open is a segment, and its requests
+  are its children. A request that ends before the navigation commits carries `sentry.segment.name` `navigate`
+  (Sentry's own spans cannot be held for the route's name, the sink's can). `configure` installs `beforeSendSpan` (the app's first) that takes
   `http.query`, `http.fragment` and the query of `url` off (`FespalierSentry.spanWithoutQueries`).
 - `tracing: true` on an SDK that samples nothing prints once (debug) `fespalier_sentry: tracing: true needs
 Sentry to sample transactions, and tracesSampleRate is not set, so no transaction is sent. Pass tracing: true

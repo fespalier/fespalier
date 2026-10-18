@@ -2,8 +2,9 @@
 //!
 //! It generates, runs the `before` steps of `tasks: dev:`, starts the `with` commands and
 //! `flutter run --machine`, and keeps `lib/app.g.dart` current while it runs: a regeneration that
-//! wrote hot restarts the app (the router is built once), any other save hot reloads it. All the
-//! decisions are in [`crate::dev_state`]; this file is the I/O around it: threads that turn what
+//! wrote hot reloads the app when it can swap its routes and hot restarts it otherwise (since
+//! 0.19.0), and any other save hot reloads it. All the decisions are in [`crate::dev_state`]; this
+//! file is the I/O around it: threads that turn what
 //! happens (flutter's output, a regeneration, a key, a signal, an exit) into [`Input`]s for one
 //! loop, and the effects the state asks for.
 //!
@@ -69,7 +70,7 @@ pub fn run_args(args: &[String], device: Option<&Device>) -> Vec<String> {
 pub fn dry_run(project: &Path, cfg: &Config, plan: &Plan, args: &[String]) -> String {
     let hot = if plan.hot_reload {
         format!(
-            "hot reload after a save; hot restart when {} changes",
+            "hot reload after a save; when {} changes, a hot reload if the app can swap its routes, else a hot restart",
             cfg.output
         )
     } else {
@@ -461,6 +462,11 @@ fn run_loop(
         plain: !tui,
         output: cfg.output.clone(),
         device: device.clone(),
+        // The file as the first pass left it: flutter compiles what is on disk when it starts.
+        stamp: std::fs::read_to_string(project.join(&cfg.output))
+            .ok()
+            .as_deref()
+            .and_then(crate::reload::read_stamp),
     });
     if let Some(w) = warning {
         state.say(&w, Kind::Warn);

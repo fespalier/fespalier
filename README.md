@@ -133,7 +133,7 @@ Future<void> main() => AppMain.run();
 **4. Day to day.**
 
 ```sh
-fsp dev                                   # the app, regenerated and hot restarted on every save
+fsp dev                                   # the app, regenerated and hot reloaded on every save
 fsp new 'orders/[id]' --data --loading    # the folder orders/$id: page, data.dart, loading.dart
 ```
 

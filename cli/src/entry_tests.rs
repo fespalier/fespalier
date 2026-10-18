@@ -1809,3 +1809,48 @@ fn an_app_dart_router_is_told_to_pass_otels_observer() {
     );
     assert!(g.diags.is_empty(), "{:?}", g.diags);
 }
+
+// --- whether a hot reload can swap the routes (since 0.19.0) -----------------------------------
+
+/// What `gen` asks of a project with `yaml` and `files`: whether `entry::swaps` says a hot reload
+/// can swap the routes the app holds.
+fn swaps(yaml: &str, files: &[(&str, &str)]) -> bool {
+    let dir = project(yaml, files);
+    let cfg = Config::load(dir.path()).unwrap();
+    let mut diags = crate::diag::Diags::default();
+    let tree = scan::scan(&dir.path().join("lib/app"), &mut diags).unwrap();
+    entry::swaps(&tree, &cfg)
+}
+
+#[test]
+fn a_hot_reload_swaps_the_routes_only_when_the_main_and_the_router_are_the_generated_ones() {
+    // A page alone: no main is written, so nothing holds the router to swap it.
+    assert!(!swaps("", &[("page.dart", HOME)]));
+    // `main: generated` writes the main whatever the folder holds.
+    assert!(swaps(
+        "fespalier:\n  main: generated\n",
+        &[("page.dart", HOME)]
+    ));
+    // An app.dart that leaves the router to the generated one.
+    assert!(swaps("", &[("page.dart", HOME), ("app.dart", APP)]));
+    // A router() that passes its options to the generated router.
+    let passes = format!("{APP}\nGoRouter router() => AppRoutes.router(observers: []);");
+    assert!(swaps("", &[("page.dart", HOME), ("app.dart", &passes)]));
+    // A router() that builds the router another way.
+    let builds = format!("{APP}\nGoRouter router() => buildRouter();");
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &builds)]));
+    // A router() that mounts the generated routes into a router of its own.
+    let mounts =
+        format!("{APP}\nGoRouter router() => GoRouter(routes: AppRoutes.mount(at: '/x'));");
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &mounts)]));
+    // A comment that names the generated router is not a call to it.
+    let commented = format!(
+        "{APP}\nGoRouter router() {{ // AppRoutes.router() is not called here\n  return buildRouter(); }}"
+    );
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &commented)]));
+    // `main: manual`: the generator writes no main, so the app's own main() decides.
+    assert!(!swaps(
+        "fespalier:\n  main: manual\n",
+        &[("page.dart", HOME), ("app.dart", APP)]
+    ));
+}

@@ -175,7 +175,7 @@ A plain `flutter create` (not `--empty`) also wrote `test/widget_test.dart`, whi
 ## Day to day
 
 ```sh
-fsp dev                                   # the app, regenerated and hot restarted on every save (since 0.9.0)
+fsp dev                                   # the app, regenerated and hot reloaded on every save (since 0.9.0)
 fsp watch                                 # or next to your own `flutter run`: regenerates when the routing changes
 fsp new 'orders/[id]' --data --loading    # scaffold a route, then regenerate app.g.dart
 fsp new 'orders/[id]/refund' --action     # a write beside the page (action.dart)

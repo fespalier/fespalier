@@ -25,7 +25,7 @@ fsp telemetry --grafana # ...and Grafana, with the same dashboards
 fsp upgrade             # upgrade fsp the way it was installed (since 0.15.0)
 fsp upgrade --check     # exit 0 up to date, 3 an update is available, 1 error
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
-fsp dev                 # fsp watch and flutter run in one terminal, hot restarting when the routes change (since 0.9.0)
+fsp dev                 # fsp watch and flutter run in one terminal, hot reloading the app as you save (since 0.9.0)
 fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
 fsp run codegen         # a task of your own from `tasks:` in pubspec.yaml; `fsp run` lists them (since 0.9.0)
 fsp check               # CI: non-zero exit on errors, writes nothing
@@ -259,7 +259,7 @@ Two editor plugins show the JSON diagnostics. Neither is on a marketplace yet, s
 
 ## Running your app: `fsp dev`
 
-Since 0.9.0. `fsp dev` is `fsp watch` and `flutter run` in one terminal, with no configuration. It writes `lib/app.g.dart`, starts the app, and **hot restarts** it whenever the routes change (a new route needs a restart). Any other save of a Dart file under `lib/` gets a **hot reload**.
+Since 0.9.0. `fsp dev` is `fsp watch` and `flutter run` in one terminal, with no configuration. It writes `lib/app.g.dart`, starts the app, and **hot reloads** it on every save. When the routes change, the reload swaps them in when the app can (see [A hot reload after a regeneration](#a-hot-reload-after-a-regeneration)), and `fsp dev` **hot restarts** the app otherwise.
 
 ```sh
 fsp dev                  # pick a device, run the app, keep app.g.dart current
@@ -285,12 +285,26 @@ fsp dev -- -d chrome     # anything after -- goes to flutter run
 
 ### A hot reload after a regeneration
 
-Since 0.19.0. In a debug build of an app that uses the generated `main()` (an `app.dart` `router()` that returns `AppRoutes.router()` is fine), a hot reload after `lib/app.g.dart` was regenerated swaps in the new route table, and the app keeps its state, for the edits that swap (below). Press `r` in `flutter run`, in your IDE, or in `fsp dev`. A page you were on keeps its state (a count, a form's text), a removed route shows the not-found page, and a new page opens at its URL with `AboutRoute().go(context)`.
+Since 0.19.0. In a debug build of an app that uses the generated `main()` (an `app.dart` `router()` that returns `AppRoutes.router()` is fine), a hot reload after `lib/app.g.dart` was regenerated swaps in the new route table, and the app keeps its state, for the edits that swap (below). `fsp dev` does it by itself (below); next to `flutter run` or in your IDE, press `r`. A page you were on keeps its state (a count, a form's text), a removed route shows the not-found page, and a new page opens at its URL with `AboutRoute().go(context)`.
 
 - **What swaps, and when.** The router takes the regenerated routes when the generated file changed, and nothing the table keeps changed (below). An edit to a page's own file does not change `app.g.dart`, so a hot reload of it swaps nothing and costs nothing. A profile or release build never swaps: it keeps the routes it started with.
 - **Which edits swap.** Adding, removing, renaming or moving a route swaps when no route that comes after it, in the order `fsp routes` lists them, has a `data.dart` that declares a `data()` function (a `data` provider does not count), an action file or `const deferred = true`. The generated names of those routes (`_data6`, `_lib2`, `_action3_0`) are numbered by the route's position, so a route put before one renames it, and a renamed name is a changed one: the swap is refused (next bullet). A route that sorts after all of them swaps, and in an app with none of them every such edit does. In the shop example, a new `zz/page.dart` swaps and a new `about/page.dart` is refused; a restart (`R`) brings in what a swap refuses. Stable names made from the folders will lift this limit in a later release.
 - **What is kept.** The state of the pages on screen, of the layouts and their navigators, and of a page a `push` put on top of the root navigator. The tab on screen keeps its stack.
-- **`fsp dev` still restarts** the app after a regeneration in this release, as before. A hot reload you press yourself, in `fsp dev` or in `flutter run`, uses the swap.
+- **What `fsp dev` does.** After a regeneration that writes `lib/app.g.dart`, `fsp dev` reloads the app when it can swap the routes, and restarts it when it cannot. Its `fsp` lines say which:
+
+  ```text
+  hot reload: lib/app.g.dart changed
+  hot restart: lib/app.g.dart changed
+  hot restart: lib/app.g.dart changed and the hot reload failed
+  hot restart: the app kept its old routes
+  ```
+
+  Plain output puts `[fsp]` and a space in front of each. The second is the line of 0.9.0, unchanged. The third follows a reload of a regeneration that flutter refused (its `✗ hot reload failed` line comes first): one restart runs the file on disk. The fourth is the refusal above, answered with a restart, once for each version.
+
+  `fsp dev` reloads when `lib/app.main.g.dart` was not rewritten (a reload never runs `main()` again), the app's `router()` is the generated one, and the new routes swap in from the ones the app holds: `fsp dev` reads `_version` and `_kept` back from the file on disk, and applies the rule the app applies, so that no name both keep has another hash. It restarts otherwise: when the main was rewritten, when `router()` builds its own router, when the file has no stamp, when the app has not started yet (the restart waits for `app.start`), when the app holds no routes to compare with, when the routes do not swap in, when the last hot reload failed, and when a restart is under way. A save that does not regenerate the routes reloads, as before. `hot_reload: false` in `tasks: dev:` turns the automatic ones off: a regeneration sends nothing, and `r` and `R` still work.
+
+  The swap relies on `lib/main.dart` calling `AppMain.run()`, which every scaffold and example does. `fsp` reads the app folder, not `lib/main.dart`, so an app that does not call it keeps its routes until a restart, and `fsp dev` cannot tell.
+
 - **A refused swap.** The table keeps some fields a hot reload does not re-run: each top-level and static `final` (a provider, a deferred library, a `data.dart`'s providers) and the router's settings (the `fespalier:` keys that shape `router()`, and the adapters). A name present both before and after with another value refuses the swap: the app keeps its old routes, and the debug console prints this once for that version:
 
   ```text
@@ -305,7 +319,7 @@ Since 0.19.0. In a debug build of an app that uses the generated `main()` (an `a
   - The swap is a navigation to where the user is: the guards, the `redirect`s and the adapters' `onEnter` run again, as they do for `refresh()`.
   - With `telemetry: true`, a swap that keeps the location starts no navigation. A guard that moves the user is a navigation like any other. The DevTools history gets one entry for each commit, the swap's included.
   - An app with `main: manual` does not swap, even when it builds `AppRoutes.router()` in its own `main()`: the swap starts in the `reassemble` of `StartupGate`, which only the generated `main()` puts around the router. Nor does one that builds its own `GoRouter` around `AppRoutes.mount(at:)`. Both keep the routes they started with until a restart.
-- **UNCHECKED.** The tests run the swap in Flutter's test binding, on go_router 17 and 18. A real `flutter run` on Android, iOS and Chrome, with the tab, the refused swap and a profile build, is not verified yet: it is a `human-test` issue. Its steps add a page that sorts last (`zz/page.dart`) to see a swap, and one that sorts first (`about/page.dart`) in an app with a `data()` function, an action or a deferred page to see a refusal.
+- **UNCHECKED.** The tests run the swap in Flutter's test binding, on go_router 17 and 18. `just dev-e2e` runs `fsp dev`'s reload and restart against a real flutter in headless Chrome (CI's `scaffold` job). A real `flutter run` on Android and iOS, with the tab, the refused swap and a profile build, is not verified yet: it is a `human-test` issue. Its steps add a page that sorts last (`zz/page.dart`) to see a swap, and one that sorts first (`about/page.dart`) in an app with a `data()` function, an action or a deferred page to see a refusal.
 
 ### Tasks: commands around `flutter run`
 

@@ -4,10 +4,14 @@
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::path::Path;
 
 use crate::config::Config;
-use crate::reload::{kept_fields, stamp};
-use crate::{analyze, manifest};
+use crate::reload::{Stamp, kept_fields, read_stamp, stamp};
+use crate::session::Session;
+use crate::{analyze, gen_core, manifest};
+
+const APP: &str = "class App extends StatelessWidget { const App({super.key, required this.router}); final GoRouter router; }";
 
 const HOME: &str = "class HomePage extends StatelessWidget { const HomePage({super.key}); }";
 
@@ -481,4 +485,204 @@ fn the_reload_registers_the_deferred_libraries_again() {
     for (name, hash) in &old {
         assert_eq!(new.get(name), Some(hash), "{name}");
     }
+}
+
+// --- the stamp `fsp dev` reads back (since 0.19.0) ---------------------------------------------
+
+/// A stamp with these kept names and hashes.
+fn st(kept: &[(&str, &str)]) -> Stamp {
+    Stamp {
+        version: "0123456789abcdef".into(),
+        kept: kept
+            .iter()
+            .map(|(name, hash)| ((*name).to_string(), (*hash).to_string()))
+            .collect(),
+    }
+}
+
+/// One regeneration of the project at `dir`, as `fsp dev`'s watch runs it: `session` keeps what
+/// the last one left. Returns whether it wrote the output.
+fn regenerate(dir: &Path, session: &mut Session) -> bool {
+    let cfg = Config::load(dir).unwrap();
+    gen_core(dir, &cfg, true, session, |_, _| {}).unwrap().wrote
+}
+
+#[test]
+fn read_stamp_reads_what_stamp_wrote() {
+    let (code, _) = generated(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("items/$id/data.dart", &data("int")),
+            ("items/$id/page.dart", &item()),
+        ],
+    );
+    let read = read_stamp(&code).expect("a stamp");
+    assert_eq!(read.version, version_of(&code));
+    assert_eq!(read.kept, kept_of(&code));
+}
+
+#[test]
+fn read_stamp_reads_a_formatted_file() {
+    // What `dart format` leaves: the version on the line after its `=`, a one-line map, and a name
+    // with a `$` that `dart_str` escaped.
+    let formatted = "  static const String _version =\n      '0123456789abcdef';\n  static const Map<String, String> _kept = {'(router)': '0123abcd', 'A.\\$b': 'fedcba98'};\n";
+    let read = read_stamp(formatted).expect("a stamp");
+    assert_eq!(read.version, "0123456789abcdef");
+    assert_eq!(
+        read.kept.get("(router)").map(String::as_str),
+        Some("0123abcd")
+    );
+    assert_eq!(read.kept.get("A.$b").map(String::as_str), Some("fedcba98"));
+}
+
+#[test]
+fn read_stamp_reads_every_example() {
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples");
+    let mut read = 0;
+    for entry in fs::read_dir(&examples).unwrap() {
+        let file = entry.unwrap().path().join("lib/app.g.dart");
+        let Ok(text) = fs::read_to_string(&file) else {
+            continue;
+        };
+        let stamp = read_stamp(&text).unwrap_or_else(|| panic!("no stamp in {}", file.display()));
+        assert!(stamp.kept.contains_key("(router)"), "{}", file.display());
+        read += 1;
+    }
+    assert!(read >= 10, "only {read} examples were read");
+}
+
+#[test]
+fn read_stamp_is_none_without_a_stamp() {
+    assert_eq!(read_stamp(""), None);
+    // The template's own slots, which `stamp` fills.
+    assert_eq!(
+        read_stamp(
+            "static const String _version = '/*version*/';\nstatic const Map<String, String> _kept = {/*kept*/};"
+        ),
+        None
+    );
+    // A version of 15 digits.
+    assert_eq!(
+        read_stamp(
+            "static const String _version = '0123456789abcde';\nstatic const Map<String, String> _kept = {'(router)': '0123abcd'};"
+        ),
+        None
+    );
+    // A hash that is not hex.
+    assert_eq!(
+        read_stamp(
+            "static const String _version = '0123456789abcdef';\nstatic const Map<String, String> _kept = {'(router)': '0123abcg'};"
+        ),
+        None
+    );
+    // An odd number of literals: a name with no hash.
+    assert_eq!(
+        read_stamp(
+            "static const String _version = '0123456789abcdef';\nstatic const Map<String, String> _kept = {'(router)': '0123abcd', 'a.b'};"
+        ),
+        None
+    );
+    // A version and no kept field at all: never what `stamp` writes, which always keeps `(router)`.
+    assert_eq!(
+        read_stamp(
+            "static const String _version = '0123456789abcdef';\nstatic const Map<String, String> _kept = {/*kept*/};"
+        ),
+        None
+    );
+}
+
+#[test]
+fn swaps_to_is_the_rule_of_routes_reload() {
+    let old = st(&[("a", "11111111"), ("b", "22222222")]);
+    assert!(old.swaps_to(&old), "the same routes swap");
+    assert!(
+        old.swaps_to(&st(&[
+            ("a", "11111111"),
+            ("b", "22222222"),
+            ("c", "33333333")
+        ])),
+        "an added name swaps"
+    );
+    assert!(
+        old.swaps_to(&st(&[("a", "11111111")])),
+        "a removed name swaps"
+    );
+    assert!(
+        !old.swaps_to(&st(&[("a", "11111111"), ("b", "99999999")])),
+        "a changed hash does not swap"
+    );
+    assert!(st(&[]).swaps_to(&old), "an empty baseline swaps");
+}
+
+#[test]
+fn a_pass_says_what_fsp_dev_needs() {
+    let dir = project(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("app.dart", APP),
+            ("items/$id/data.dart", &data("int")),
+            ("items/$id/page.dart", &item()),
+        ],
+    );
+    let mut session = Session::default();
+    // The first pass writes the output and the main, and the main is what `fsp dev` restarts for.
+    assert!(regenerate(dir.path(), &mut session));
+    assert!(session.wrote && session.main_changed && session.swaps);
+    let disk = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    let first = session.stamp.clone().expect("a stamp");
+    assert_eq!(Some(first.clone()), read_stamp(&disk));
+    // Nothing changed: nothing is written, and the stamp is the same.
+    assert!(!regenerate(dir.path(), &mut session));
+    assert!(!session.wrote && !session.main_changed);
+    assert_eq!(session.stamp.as_ref(), Some(&first));
+    // A page that sorts last adds names and changes none: the routes swap.
+    fs::create_dir_all(dir.path().join("lib/app/zzz")).unwrap();
+    fs::write(dir.path().join("lib/app/zzz/page.dart"), page("Zzz")).unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    assert!(session.wrote && !session.main_changed);
+    let second = session.stamp.clone().expect("a stamp");
+    assert_ne!(second.version, first.version);
+    assert!(first.swaps_to(&second));
+    // A page that sorts first renumbers the data route after it, so a kept name changes.
+    fs::create_dir_all(dir.path().join("lib/app/aaa")).unwrap();
+    fs::write(dir.path().join("lib/app/aaa/page.dart"), page("Aaa")).unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    let third = session.stamp.clone().expect("a stamp");
+    assert!(!second.swaps_to(&third));
+    // startup.dart is read by the generated main, so the main is written again.
+    fs::write(dir.path().join("lib/app/startup.dart"), "void startup() {}").unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    assert!(session.main_changed);
+}
+
+#[test]
+fn a_pass_that_stops_on_an_error_reports_nothing_written() {
+    let dir = project(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("app.dart", APP),
+            ("items/$id/data.dart", &data("int")),
+            ("items/$id/page.dart", &item()),
+        ],
+    );
+    let mut session = Session::default();
+    assert!(
+        regenerate(dir.path(), &mut session),
+        "the first pass writes"
+    );
+    // Two public widgets in one file: the generator stops on it, and writes nothing.
+    fs::create_dir_all(dir.path().join("lib/app/bad")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/bad/page.dart"),
+        format!("{}\n{}", page("One"), page("Two")),
+    )
+    .unwrap();
+    let cfg = Config::load(dir.path()).unwrap();
+    assert!(gen_core(dir.path(), &cfg, true, &mut session, |_, _| {}).is_err());
+    assert!(!session.wrote, "the failed pass wrote nothing");
+    assert!(!session.main_changed);
+    assert!(session.stamp.is_none());
 }

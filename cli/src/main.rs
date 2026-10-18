@@ -122,7 +122,7 @@ enum Cmd {
     },
     /// Regenerate on every change under the app folder
     Watch,
-    /// Run the app: `fsp watch` and `flutter run` in one terminal, hot restarting when the routes change (`tasks: dev:` in pubspec.yaml)
+    /// Run the app: `fsp watch` and `flutter run` in one terminal, hot reloading on every save and hot restarting when the routes cannot swap (`tasks: dev:` in pubspec.yaml)
     Dev(dev::DevCmd),
     /// `fsp gen`, then `flutter build <TARGET>`, with the hooks of `tasks: build:` in pubspec.yaml
     Build(tasks::BuildCmd),
@@ -310,6 +310,12 @@ fn gen_core(
     session: &mut Session,
     show: impl FnOnce(&Path, &diag::Diags),
 ) -> Result<Outcome> {
+    // Every per-pass field is reset here, before anything can bail: a pass that stops on errors
+    // must not report what the pass before it wrote (`fsp dev` restarts on `wrote`, since 0.19.0).
+    session.wrote = false;
+    session.main_changed = false;
+    session.stamp = None;
+    session.swaps = false;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
         bail!(
@@ -321,6 +327,7 @@ fn gen_core(
     let tree = scan::scan(&app_dir, &mut diags)?;
     let scan_diags = format!("{diags:?}");
     let writes_main = entry::wanted(&tree, cfg);
+    session.swaps = entry::swaps(&tree, cfg);
     let libs = enums::Libs::for_app(&app_dir, cfg);
     let (run, reads) = if let Some(kept) = session.last.reuse(&tree, &scan_diags, &libs) {
         kept
@@ -377,7 +384,7 @@ fn gen_core(
         );
     }
     let mut wrote = false;
-    session.wrote = false;
+    let main_path = cfg.output_main();
     for (path, code) in &run.files {
         let out = project.join(path);
         // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
@@ -390,6 +397,9 @@ fn gen_core(
         } else {
             code.clone()
         };
+        if *path == cfg.output {
+            session.stamp = reload::read_stamp(&code);
+        }
         if write && fs::read_to_string(&out).ok().as_deref() != Some(code.as_str()) {
             if let Some(dir) = out.parent() {
                 fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
@@ -397,6 +407,9 @@ fn gen_core(
             fs::write(&out, &code).with_context(|| format!("writing {}", out.display()))?;
             wrote = true;
             session.wrote = true;
+            if *path == main_path {
+                session.main_changed = true;
+            }
         }
     }
     let output = outputs(cfg, writes_main).join(", ");

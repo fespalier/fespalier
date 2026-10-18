@@ -1,14 +1,17 @@
 //! What `fsp dev` decides, driven with `now` values and no I/O: the hot reload rules, the
 //! shutdown, the device choice, the panes.
 
+use std::fs;
+use std::path::Path;
 use std::time::Duration;
 
 use crate::daemon::{self, Line};
 use crate::dev_state::{
-    DevState, Device, Effect, FLUTTER, FSP, Input, Key, Kind, Opts, Phase, Pick, Proc, RING,
-    names_a_device, pick_device, strip_ansi,
+    DevState, Device, Effect, FLUTTER, FSP, Input, KEPT_CHANGED, Key, Kind, Opts, Phase, Pick,
+    Proc, RING, names_a_device, pick_device, strip_ansi,
 };
 use crate::procs::Status;
+use crate::reload::Stamp;
 use crate::watch::{FirstError, GenReport};
 
 fn ms(n: u64) -> Duration {
@@ -27,6 +30,7 @@ fn state_with(plain: bool, hot_reload: bool, with: &[&str]) -> DevState {
             name: "Fake".into(),
             platform: "android-arm64".into(),
         }),
+        stamp: None,
     });
     s.started(FLUTTER);
     s
@@ -82,6 +86,10 @@ fn report(wrote: bool, ok: bool, first: bool) -> GenReport {
         first,
         ok,
         wrote,
+        // No stamp: a write restarts, as before 0.19.0.
+        main_changed: false,
+        stamp: None,
+        swaps: false,
         routes: ok.then_some(3),
         errors: usize::from(!ok),
         first_error: (!ok).then(|| FirstError {
@@ -118,13 +126,13 @@ fn requests(fx: &[Effect]) -> Vec<(u64, bool)> {
         .collect()
 }
 
-fn respond(s: &mut DevState, now: u64, id: u64, message: &str) {
+fn respond(s: &mut DevState, now: u64, id: u64, message: &str) -> Vec<Effect> {
     s.update(
         ms(now),
         daemon(&format!(
             r#"[{{"id":{id},"result":{{"code":0,"message":"{message}"}}}}]"#
         )),
-    );
+    )
 }
 
 fn lines(s: &mut DevState) -> Vec<String> {
@@ -887,4 +895,335 @@ fn a_banner_before_the_json_is_ignored() {
         listing(&[("chrome", "Chrome", "web-javascript", true)])
     );
     assert!(matches!(pick_device(&l, &[], false), Pick::Device(_)));
+}
+
+// --- a reload after a regeneration (since 0.19.0) ---------------------------------------------
+
+/// A stamp with this `_version` and these `_kept` names and hashes.
+fn stamp(version: &str, kept: &[(&str, &str)]) -> Stamp {
+    Stamp {
+        version: version.into(),
+        kept: kept
+            .iter()
+            .map(|(name, hash)| ((*name).to_string(), (*hash).to_string()))
+            .collect(),
+    }
+}
+
+/// A state that flutter started on a file holding `stamp`, not yet connected.
+fn started_from(stamp: Option<Stamp>, plain: bool) -> DevState {
+    let mut s = DevState::new(Opts {
+        name: "shop".into(),
+        with: vec![],
+        hot_reload: true,
+        plain,
+        output: "lib/app.g.dart".into(),
+        device: Some(Device {
+            id: "fake-1".into(),
+            name: "Fake".into(),
+            platform: "android-arm64".into(),
+        }),
+        stamp,
+    });
+    s.started(FLUTTER);
+    s
+}
+
+/// A running app, plain, whose routes are `stamp`.
+fn running_from(stamp: Option<Stamp>) -> DevState {
+    let mut s = started_from(stamp, true);
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    s
+}
+
+/// The report of a pass that wrote a file holding `stamp`, whose routes can be swapped in.
+fn wrote(stamp: Stamp) -> GenReport {
+    GenReport {
+        stamp: Some(stamp),
+        swaps: true,
+        ..report(true, true, false)
+    }
+}
+
+/// The app's log with `line` in it, as flutter sends it (a refusal of a swap is one of these).
+fn refusal(line: &str) -> Input {
+    daemon(&format!(
+        r#"[{{"event":"app.log","params":{{"appId":"a1","log":"{line}"}}}}]"#
+    ))
+}
+
+#[test]
+fn a_regeneration_the_app_can_swap_is_a_hot_reload() {
+    let v0 = stamp(
+        "0123456789abcdef",
+        &[("(router)", "aaaaaaaa"), ("AppRoutes._data3", "dddddddd")],
+    );
+    // A new route adds a name and changes none that is kept.
+    let v1 = stamp(
+        "fedcba9876543210",
+        &[
+            ("(router)", "aaaaaaaa"),
+            ("AppRoutes._data3", "dddddddd"),
+            ("ZzRoute.x", "eeeeeeee"),
+        ],
+    );
+    let mut s = running_from(Some(v0));
+    let fx = pass(&mut s, 100, wrote(v1));
+    assert_eq!(requests(&fx), [(1, false)]);
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✓ 3 routes → lib/app.g.dart (3.0ms)",
+            "hot reload: lib/app.g.dart changed"
+        ]
+    );
+    respond(&mut s, 220, 1, "Reloaded 2 of 9 libraries");
+    assert_eq!(
+        lines(&mut s),
+        ["✓ hot reload in 120 ms (Reloaded 2 of 9 libraries)"]
+    );
+}
+
+#[test]
+fn a_kept_name_with_another_hash_restarts() {
+    let v0 = stamp(
+        "0123456789abcdef",
+        &[("(router)", "aaaaaaaa"), ("AppRoutes._data3", "dddddddd")],
+    );
+    // The same route, with another hash for `_data3`: the app would keep its old value.
+    let v1 = stamp(
+        "fedcba9876543210",
+        &[("(router)", "aaaaaaaa"), ("AppRoutes._data3", "eeeeeeee")],
+    );
+    let mut s = running_from(Some(v0));
+    let fx = pass(&mut s, 100, wrote(v1));
+    assert_eq!(requests(&fx), [(1, true)]);
+    let shown = lines(&mut s);
+    assert_eq!(shown[1], "hot restart: lib/app.g.dart changed");
+}
+
+#[test]
+fn added_and_removed_names_still_reload() {
+    let v0 = stamp("0123456789abcdef", &[("a", "11111111"), ("b", "22222222")]);
+    let v1 = stamp("fedcba9876543210", &[("b", "22222222"), ("c", "33333333")]);
+    let mut s = running_from(Some(v0));
+    let fx = pass(&mut s, 100, wrote(v1));
+    assert_eq!(requests(&fx), [(1, false)]);
+}
+
+#[test]
+fn each_reason_to_restart() {
+    let v0 = stamp("0123456789abcdef", &[("a", "11111111")]);
+    let v1 = stamp("fedcba9876543210", &[("a", "11111111")]);
+    let restarts = |reason: &str, r: GenReport, mut s: DevState| {
+        assert_eq!(requests(&pass(&mut s, 100, r)), [(1, true)], "{reason}");
+    };
+    // The generated main was written: a reload never runs `main()` again.
+    restarts(
+        "main_changed",
+        GenReport {
+            main_changed: true,
+            ..wrote(v1.clone())
+        },
+        running_from(Some(v0.clone())),
+    );
+    // app.dart builds its own router, so the generated routes are not the ones in use.
+    restarts(
+        "swaps: false",
+        GenReport {
+            swaps: false,
+            ..wrote(v1.clone())
+        },
+        running_from(Some(v0.clone())),
+    );
+    // The file has no stamp (it was edited by hand, or is not generated by this version).
+    restarts(
+        "stamp: None",
+        GenReport {
+            stamp: None,
+            ..wrote(v1.clone())
+        },
+        running_from(Some(v0.clone())),
+    );
+    // The app holds no baseline: flutter started on a file with no stamp.
+    restarts("running: None", wrote(v1), running_from(None));
+}
+
+#[test]
+fn a_restart_runs_the_file_it_compiled() {
+    let v1 = stamp("fedcba9876543210", &[("a", "11111111")]);
+    let mut s = running_from(None);
+    assert_eq!(requests(&pass(&mut s, 100, wrote(v1))), [(1, true)]);
+    respond(&mut s, 200, 1, "");
+    // The restart compiled v1, so v1 is the baseline now: a compatible v2 reloads.
+    let v2 = stamp("0f0f0f0f0f0f0f0f", &[("a", "11111111"), ("b", "22222222")]);
+    assert_eq!(requests(&pass(&mut s, 300, wrote(v2))), [(2, false)]);
+}
+
+#[test]
+fn the_baseline_follows_a_reload_that_swapped() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    let v2 = stamp("2222222222222222", &[("b", "33333333")]);
+    // v0 swaps to v2 (a is removed, b is added), but the app holds v1 once v1's reload was
+    // answered, and v1 does not swap to v2 (b changed): so v2 restarts.
+    assert!(v0.swaps_to(&v2));
+    let mut s = running_from(Some(v0));
+    assert_eq!(requests(&pass(&mut s, 100, wrote(v1))), [(1, false)]);
+    respond(&mut s, 120, 1, "Reloaded 1 of 9 libraries");
+    assert_eq!(requests(&pass(&mut s, 200, wrote(v2))), [(2, true)]);
+}
+
+#[test]
+fn a_reload_in_flight_counts() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    let v2 = stamp("2222222222222222", &[("a", "11111111"), ("b", "33333333")]);
+    let mut s = running_from(Some(v0));
+    assert_eq!(requests(&pass(&mut s, 100, wrote(v1))), [(1, false)]);
+    // Reload 1 is unanswered and its routes do not swap to v2: the reload would go past it.
+    assert_eq!(requests(&pass(&mut s, 110, wrote(v2))), [(2, true)]);
+}
+
+#[test]
+fn a_failed_request_makes_the_next_regeneration_restart() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0));
+    // A save reload is refused by flutter: nothing follows it, and the app keeps what it had.
+    assert_eq!(
+        requests(&pass(&mut s, 100, report(false, true, false))),
+        [(1, false)]
+    );
+    let fx = s.update(
+        ms(110),
+        daemon(r#"[{"id":1,"result":{"code":1,"message":"Hot reload was rejected"}}]"#),
+    );
+    assert!(requests(&fx).is_empty());
+    // A compatible regeneration restarts, since the last hot result is a failure.
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    assert_eq!(requests(&pass(&mut s, 200, wrote(v1))), [(2, true)]);
+}
+
+#[test]
+fn a_restart_under_way_makes_a_regeneration_restart() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0));
+    assert_eq!(
+        requests(&s.update(ms(100), Input::Key(Key::Char('R')))),
+        [(1, true)]
+    );
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    assert_eq!(requests(&pass(&mut s, 110, wrote(v1))), [(2, true)]);
+}
+
+#[test]
+fn a_failed_reload_of_a_regeneration_is_followed_by_a_restart() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    let mut s = running_from(Some(v0));
+    assert_eq!(requests(&pass(&mut s, 100, wrote(v1))), [(1, false)]);
+    s.drain_plain();
+    let fx = s.update(
+        ms(110),
+        daemon(r#"[{"id":1,"result":{"code":1,"message":"Hot reload was rejected"}}]"#),
+    );
+    assert_eq!(requests(&fx), [(2, true)]);
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✗ hot reload failed: Hot reload was rejected",
+            "hot restart: lib/app.g.dart changed and the hot reload failed"
+        ]
+    );
+    respond(&mut s, 200, 2, "");
+    // The restart compiled v1: a compatible v2 reloads again.
+    let v2 = stamp(
+        "2222222222222222",
+        &[("a", "11111111"), ("b", "22222222"), ("c", "33333333")],
+    );
+    assert_eq!(requests(&pass(&mut s, 300, wrote(v2))), [(3, false)]);
+}
+
+#[test]
+fn the_app_keeping_its_old_routes_is_restarted() {
+    let mut s = running_from(Some(stamp("0000000000000000", &[("a", "11111111")])));
+    let line = format!("I/flutter ( 4242): {KEPT_CHANGED}");
+    let fx = s.update(ms(100), refusal(&line));
+    assert_eq!(requests(&fx), [(1, true)]);
+    assert_eq!(
+        lines(&mut s).last().unwrap(),
+        "hot restart: the app kept its old routes"
+    );
+    // The app says it once per version; the same line while the restart is under way sends nothing.
+    let fx = s.update(ms(110), refusal(&line));
+    assert!(requests(&fx).is_empty());
+}
+
+#[test]
+fn with_hot_reload_off_the_refusal_is_only_shown() {
+    let mut s = state_with(true, false, &[]);
+    connect(&mut s);
+    app_start(&mut s, 1, true);
+    app_started(&mut s, 2);
+    s.drain_plain();
+    let fx = s.update(ms(10), refusal(KEPT_CHANGED));
+    assert!(requests(&fx).is_empty());
+    assert_eq!(lines(&mut s).last().unwrap(), KEPT_CHANGED);
+}
+
+#[test]
+fn kept_changed_is_the_runtime_message() {
+    let dart = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../packages/fespalier/lib/src/routes_reload.dart"),
+    )
+    .unwrap();
+    assert!(
+        dart.contains(&format!("'{KEPT_CHANGED}'")),
+        "routes_reload.dart prints another message"
+    );
+}
+
+#[test]
+fn a_flutter_run_again_starts_from_the_file_on_disk() {
+    // Not plain: a flutter that stops by itself leaves the view open for `R`.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = started_from(Some(v0), false);
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    // v1 changes a kept name: the restart compiles it.
+    let v1 = stamp("1111111111111111", &[("a", "22222222")]);
+    assert_eq!(requests(&pass(&mut s, 100, wrote(v1.clone()))), [(1, true)]);
+    s.update(
+        ms(110),
+        Input::Exited {
+            pane: FLUTTER,
+            status: exit(1),
+        },
+    );
+    let fx = s.update(ms(120), Input::Key(Key::Char('R')));
+    assert!(fx.contains(&Effect::Respawn), "{fx:?}");
+    // The new flutter compiles the file on disk, which is v1.
+    s.started(FLUTTER);
+    app_start(&mut s, 130, true);
+    app_started(&mut s, 140);
+    let v2 = stamp("2222222222222222", &[("a", "22222222"), ("b", "33333333")]);
+    assert_eq!(requests(&pass(&mut s, 200, wrote(v2))), [(2, false)]);
+}
+
+#[test]
+fn a_regeneration_before_app_start_restarts() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = started_from(Some(v0), true);
+    connect(&mut s);
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    // No app id yet: the request is held, not sent.
+    assert!(requests(&pass(&mut s, 10, wrote(v1))).is_empty());
+    // app.start sends it, as the restart it was.
+    assert_eq!(requests(&app_start(&mut s, 20, true)), [(1, true)]);
 }

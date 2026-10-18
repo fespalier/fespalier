@@ -104,7 +104,7 @@ pub fn run(project: &Path) -> Result<()> {
         );
     }
     next(
-        "Run `fsp dev` to start the app: it regenerates on every save and hot restarts (or `fsp watch` next to `flutter run`).",
+        "Run `fsp dev` to start the app: it regenerates on every save, and hot reloads or hot restarts the app (or `fsp watch` next to `flutter run`).",
     );
     Ok(())
 }

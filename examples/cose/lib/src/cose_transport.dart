@@ -45,17 +45,48 @@ final class CoseConfig {
   }
 
   /// From the server's public key as the JSON text of a JWK.
+  ///
+  /// The server prints one hello line on startup,
+  /// `{"addr":…,"audience":…,"server_public_jwk":{…}}`, and that whole line is what a reader
+  /// naturally copies into `--dart-define=COSE_SERVER_JWK`. Both are accepted: a hello line is
+  /// unwrapped to its `server_public_jwk`, and a bare JWK is taken as itself. Anything else is
+  /// refused here, naming what it found, rather than left to fail deeper as "not a P-256 key".
   factory CoseConfig.fromJwk({
     required Uri baseUrl,
     required String audience,
     required String jwk,
   }) {
-    final map = (jsonDecode(jwk) as Map<String, Object?>)
-        .cast<String, String>();
+    final decoded = jsonDecode(jwk);
+    if (decoded is! Map<String, Object?>) {
+      throw StateError(
+        'COSE_SERVER_JWK must be a JSON object, either the JWK itself '
+        '({"kty":"EC","crv":"P-256","x":…,"y":…}) or the whole hello line the server prints '
+        '({"addr":…,"audience":…,"server_public_jwk":{…}}); it decoded to a '
+        '${decoded.runtimeType}.',
+      );
+    }
+
+    // A hello line wraps the key; take it. A bare JWK is the key itself.
+    final Object? inner = decoded['server_public_jwk'];
+    final Object key = inner ?? decoded;
+    if (key is! Map<String, Object?>) {
+      throw StateError(
+        'COSE_SERVER_JWK has a "server_public_jwk" that is not an object '
+        '(it is a ${key.runtimeType}).',
+      );
+    }
+    if (!key.containsKey('kty') && !key.containsKey('crv')) {
+      throw StateError(
+        'COSE_SERVER_JWK is neither a JWK nor a hello line: the object has no "kty" or "crv" '
+        'and no "server_public_jwk", so it holds no key. Its keys are '
+        '${key.keys.toList()..sort()}.',
+      );
+    }
+
     return CoseConfig(
       baseUrl: baseUrl,
       audience: audience,
-      serverKey: Esp256VerifyKey.jwk(map),
+      serverKey: Esp256VerifyKey.jwk(key.cast<String, String>()),
     );
   }
 

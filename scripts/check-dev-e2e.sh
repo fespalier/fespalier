@@ -2,7 +2,7 @@
 # `fsp dev` against the real flutter (`just dev-e2e`): a fresh web app with `fsp init`, run in headless
 # Chrome with `fsp dev --no-tui`. It waits for the app to run, then adds a route that a hot reload
 # swaps in (the home page opens it and keeps its state), adds a route that sorts before a data route
-# (a hot reload too, since 0.20.0: the names follow the folders), changes a data() into a stream (fsp
+# (a hot reload too, since 0.20.0: the names follow the folders), opens a deferred page after two routes were put before it and reloads a second deferred route in beside it while that page is on screen (its code stays loaded, since 0.20.0), changes a data() into a stream (fsp
 # dev sees that a reload would keep a provider it changes: a hot restart, and startup() runs again),
 # then changes it back behind fsp dev's back (the app refuses the swap and prints so, and fsp dev
 # restarts it on that line), and quits with `q` (since 0.19.0). This is the one check of fsp against
@@ -94,6 +94,25 @@ class ItemPage extends StatelessWidget {
   Widget build(BuildContext context) => Text('item $data');
 }
 DART
+# A deferred page from the start: its import is named after its folder (since 0.20.0).
+mkdir -p lib/app/big
+cat > lib/app/big/route.dart << 'DART'
+const deferred = true;
+DART
+cat > lib/app/big/page.dart << 'DART'
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+class BigPage extends StatelessWidget {
+  const BigPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('e2e big built');
+    return const Text('big');
+  }
+}
+DART
 
 log="$work/dev.log"
 keys="$work/keys"
@@ -102,7 +121,7 @@ mkfifo "$keys"
 exec 3<> "$keys"
 # `--no-web-resources-cdn`: flutter serves CanvasKit and its other web resources from the app itself,
 # not from gstatic.com, which a runner with no route to it cannot reach.
-timeout 420 "$fsp" dev --no-tui -- -d chrome --no-web-resources-cdn \
+timeout 600 "$fsp" dev --no-tui -- -d chrome --no-web-resources-cdn \
   --web-browser-flag=--headless=new --web-browser-flag=--no-sandbox \
   <&3 > "$log" 2>&1 &
 dev_pid=$!
@@ -251,6 +270,80 @@ expect_count 'e2e startup' 1
 expect_count '[fsp] hot restart:' 0
 expect_count '✓ hot restart in' 0
 
+# big/ was there before two reloads put routes before it: its code loads now, through the library the
+# app kept. The about page, which is on screen, opens it: a page edit, so one hot reload.
+reloads=$(count '✓ hot reload in')
+cat > lib/app/about/page.dart << 'DART'
+import 'package:e2e_app/app.g.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+class AboutPage extends StatelessWidget {
+  const AboutPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('e2e about built');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) const BigRoute().go(context);
+    });
+    return const Text('about');
+  }
+}
+DART
+wait_for 'e2e big built' 120
+wait_count '✓ hot reload in' $((reloads + 1)) 120
+
+# A second deferred route, put before big/ while big/ is on screen: one pass, one hot reload, and big/
+# keeps its code (since 0.20.0). aaa/ is staged and moved in, so it appears as one new folder.
+built=$(count 'e2e big built')
+mkdir -p "$work/stage/aaa"
+cat > "$work/stage/aaa/route.dart" << 'DART'
+const deferred = true;
+DART
+cat > "$work/stage/aaa/page.dart" << 'DART'
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+class AaaPage extends StatelessWidget {
+  const AaaPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('e2e aaa built');
+    return const Text('aaa');
+  }
+}
+DART
+mv "$work/stage/aaa" lib/app/aaa
+wait_count '[fsp] hot reload: lib/app.g.dart changed' 3 120
+wait_count '✓ hot reload in' $((reloads + 2)) 120
+wait_count 'e2e big built' $((built + 1)) 120
+expect_count '[fsp] hot restart:' 0
+
+# big/ opens the new route, whose code is loaded on the first visit: one page edit, one hot reload.
+cat > lib/app/big/page.dart << 'DART'
+import 'package:e2e_app/app.g.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+
+class BigPage extends StatelessWidget {
+  const BigPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    debugPrint('e2e big built');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (context.mounted) const AaaRoute().go(context);
+    });
+    return const Text('big');
+  }
+}
+DART
+wait_for 'e2e aaa built' 120
+wait_count '✓ hot reload in' $((reloads + 3)) 120
+expect_count 'was not loaded' 0
+
 # A data() that becomes a stream changes a provider a reload keeps: fsp dev sees that, and restarts
 # the app, and startup() runs again.
 cat > "lib/app/items/\$id/data.dart" << 'DART'
@@ -263,7 +356,7 @@ DART
 wait_for '[fsp] hot restart: lib/app.g.dart changed' 120
 wait_for '✓ hot restart in' 120
 wait_count 'e2e startup' 2 120
-expect_count '[fsp] hot reload: lib/app.g.dart changed' 2
+expect_count '[fsp] hot reload: lib/app.g.dart changed' 3
 
 # The app refuses a swap that fsp dev did not predict. Its pass finds nothing to write, because the
 # regenerated file is already on disk: a copy of the app generates it, and it is put in place before
@@ -296,5 +389,7 @@ expect_count '[fsp] hot restart: the app kept its old routes' 1
 expect_count '[fsp] hot restart: lib/app.g.dart changed' 1
 expect_count '[fsp] hot restart:' 2
 expect_count '✓ hot restart in' 2
-expect_count '[fsp] hot reload: lib/app.g.dart changed' 2
-echo "fsp dev: an inserted route hot reloaded in and opened, a route put before a data route did too, a data() that became a stream restarted the app, an app that refused a swap was restarted on its own line, and q stopped it"
+expect_count '[fsp] hot reload: lib/app.g.dart changed' 3
+expect_count 'was not loaded' 0
+echo "fsp dev: an inserted route hot reloaded in and opened, a route put before a data route did too, a deferred page opened after two routes were put before it, a second deferred route reloaded in beside it while it was on screen, a data() that became a stream restarted the app, an app that refused a swap was restarted on its own line, and q stopped it"
+echo "EXCEPTION CAUGHT lines in the log (reported, not asserted): $(count 'EXCEPTION CAUGHT')"

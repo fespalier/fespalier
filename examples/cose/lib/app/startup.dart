@@ -9,10 +9,35 @@ import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
 /// `--dart-define`s. Neither touches the network: the device is registered by the first signed
 /// call, and an unreachable server is an offline app, not a failed start.
 ///
-/// The web, Windows and Linux have no `SignKeypairSigner`; a build for them passes a
-/// `SoftwareDpopSigner` here, whose key lives in memory and is lost at reload.
+/// **Where the hardware key is unavailable** the software key is used instead, so the example runs
+/// on every platform a person may try it on:
+///
+/// - the web, Windows and Linux have no keystore at all;
+/// - macOS is sandboxed, and a sandboxed app cannot write a keychain item without a
+///   `keychain-access-groups` entitlement — which in turn needs a real development certificate, so
+///   an ad-hoc signed build (`CODE_SIGN_IDENTITY = "-"`, what `flutter create` makes) cannot have
+///   one. It fails with OSStatus -34018 at the first key write;
+/// - an iOS simulator's keychain is not a secure element.
+///
+/// The fallback is honest about what it loses: a software key is not hardware-backed and does not
+/// survive a reload, which is why `isHardwareBacked()` exists and the page can say which kind of
+/// key this is. A build that must *require* hardware passes `requireHardware: true` and takes the
+/// failure instead.
 Future<List<Override>> startup() async {
-  final signer = SignKeypairSigner(keyId: deviceKeyId);
+  Future<DpopSigner> openSigner() async {
+    try {
+      // `requireHardware: false`: use the keystore when there is one, else a software key.
+      final hardware = SignKeypairSigner(keyId: deviceKeyId);
+      await hardware.publicJwk();
+      return hardware;
+    } on Object {
+      // No keystore (the web, Windows, Linux), a sandbox that refuses the keychain (macOS without
+      // a signing certificate), or a simulator keychain: fall back rather than fail to start.
+      return SoftwareDpopSigner(keyId: deviceKeyId);
+    }
+  }
+
+  final signer = await openSigner();
   final identity = await CoseSealer(signer).identity();
   return [
     coseConfig.overrideWithValue(CoseConfig.fromEnvironment()),

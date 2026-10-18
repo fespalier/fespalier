@@ -43,7 +43,8 @@ final class NavToken {
   /// Whether it ended with a page on screen (outcome `ok`).
   bool shown = false;
 
-  /// What the screen is called once it is known: the pattern, or `navigate (not found)`.
+  /// What the screen is called once its navigation commits (since 0.19.0): the pattern, or
+  /// `navigate (not found)`.
   String name = 'navigate';
 
   /// The display to report time to full display to, for [NavKind.appStart] and

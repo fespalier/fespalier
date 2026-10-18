@@ -181,4 +181,17 @@ void main() {
     expect(map(tx['tags'])['otel.trace_id'], navigation.traceId);
     expect(map(tx['tags'])['otel.span_id'], navigation.spanId);
   });
+
+  testWidgets('the trace of a navigation is on the scope from its commit', (
+    tester,
+  ) async {
+    final tracer = FakeTracer();
+    final rig = combined(tracer);
+    final r = await rig.boot(tester);
+    r.go('/items/7');
+    // Before any frame: the commit has named the scope, with the trace the navigation started in.
+    final navigation = tracer.traces[2]!;
+    expect(rig.sentry.tags['otel.trace_id'], navigation.traceId);
+    expect(rig.sentry.tags['otel.span_id'], navigation.spanId);
+  });
 }

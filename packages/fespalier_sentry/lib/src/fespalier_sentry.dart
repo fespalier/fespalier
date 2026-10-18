@@ -44,7 +44,9 @@ const String tracingOffMessage =
 /// per page change**; and, because the SDK owns them, release health and the crash itself. When
 /// `fespalier_otel` runs next to it (`FespalierTelemetry.combine`), each event also carries the
 /// OpenTelemetry trace id and span id of the screen or the call it came from (`otel.trace_id`,
-/// `otel.span_id`), so an error links to its trace.
+/// `otel.span_id`), so an error links to its trace. Since 0.19.0 the scope names a page when the
+/// navigation to it commits, before the page's `initState` and first `build`, so an error while it
+/// opens is tagged with that page, not the one before.
 ///
 /// Performance is opt-in, for Sentry-only teams: `FespalierSentry(tracing: true)` turns each
 /// navigation into a `ui.load` transaction named by the route pattern, with spans for guards,
@@ -107,9 +109,11 @@ final class FespalierSentry extends FespalierTelemetry {
   /// and a repeated error become breadcrumbs.
   final bool breadcrumbs;
 
-  /// Whether each committed navigation names the scope after its screen: the scope's transaction
-  /// (the name events are grouped and searched by in Sentry) and the tag `fespalier.route`, so that
-  /// every later event, a crash included, says which screen it happened on.
+  /// Whether each navigation names the scope after its screen when it commits (since 0.19.0: before
+  /// the new page's `initState` and first `build`; before, once that frame was built): the scope's
+  /// transaction (the name events are grouped and searched by in Sentry) and the tag
+  /// `fespalier.route`, so that every later event, a crash and the new page's first frame included,
+  /// says which screen it happened on.
   final bool routeTag;
 
   /// Whether a transaction carries the committed path (`url.path`) and a guard span the path it
@@ -593,6 +597,38 @@ final class FespalierSentry extends FespalierTelemetry {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // commit
+
+  /// Names the scope after the page [navigation] commits to (since 0.19.0), before that page's
+  /// `initState` and first `build`, so that an event from them says that page ([_name]). Nothing
+  /// else happens here: the page's breadcrumb comes with its first frame ([page]; a commit is not
+  /// yet a page the user saw, and a second commit before the frame replaces it), and what a
+  /// transaction measures, and its end, stay at [end]. The first commit comes while the `Router`
+  /// builds: this only sets the SDK's scope, synchronously, and fires and forgets what it returns.
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    if (navigation is! NavToken) return;
+    try {
+      final notFound = commit.outcome == TelemetryOutcome.notFound;
+      _name(navigation, notFound ? null : commit.route, notFound: notFound);
+    } catch (_) {
+      // A failing SDK costs the names, never the navigation.
+    }
+  }
+
+  /// Names [nav] after the page it shows, [route] (`navigate (not found)` when [notFound]): its
+  /// screen's transaction or segment ([ScreenSpan.named]) and the scope ([_nameScope]). It runs at
+  /// each commit (a second one before the frame renames: the last wins) and again at the end, with
+  /// the same route, which writes nothing new. With `traceLifecycle: stream`, a commit made inside
+  /// a data load's or an action's span finds that span active, so the scope's transaction is set
+  /// at the end, as before 0.19.0, and its tag at the commit.
+  void _name(NavToken nav, String? route, {required bool notFound}) {
+    nav.name = notFound ? 'navigate (not found)' : (route ?? 'navigate');
+    nav.tx?.named(nav.name);
+    _nameScope(nav, route);
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // end
 
   @override
@@ -621,9 +657,9 @@ final class FespalierSentry extends FespalierTelemetry {
     }
     final notFound = e.outcome == TelemetryOutcome.notFound;
     final route = notFound ? null : e.route;
-    nav.name = notFound ? 'navigate (not found)' : (route ?? 'navigate');
-    tx?.named(nav.name);
-    _nameScope(nav, route);
+    // Named at its commit already (since 0.19.0); again here, with the same route, which writes
+    // nothing new.
+    _name(nav, route, notFound: notFound);
     switch (nav.kind) {
       case NavKind.transaction:
         _endTransaction(nav, e);
@@ -650,8 +686,9 @@ final class FespalierSentry extends FespalierTelemetry {
   }
 
   /// Names the scope after the screen: its transaction, the tag `fespalier.route`, and the
-  /// OpenTelemetry trace of the navigation, so that every later event, a crash included, says
-  /// which screen it happened on and links to the trace that opened it.
+  /// OpenTelemetry trace of the navigation, so that every event from its commit on (since 0.19.0),
+  /// a crash and the new page's first frame included, says which screen it happened on and links
+  /// to the trace that opened it.
   void _nameScope(NavToken nav, String? route) {
     final trace = nav.trace;
     fire(

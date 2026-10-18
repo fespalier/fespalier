@@ -181,6 +181,21 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('failed'), findsOneWidget);
     });
+
+    test(
+      'a commit on a hub that throws, or with no token, returns at once',
+      () {
+        const commit = TelemetryCommit(TelemetryOutcome.ok, route: '/a');
+        final sink = FespalierSentry(hub: BrokenHub());
+        final nav = sink.start(
+          TelemetryStart(TelemetryOp.navigate, uri: Uri.parse('/a')),
+        );
+        expect(nav, isNotNull);
+        expect(() => sink.commit(nav, commit), returnsNormally);
+        expect(() => sink.commit(null, commit), returnsNormally);
+        expect(() => FespalierSentry().commit(null, commit), returnsNormally);
+      },
+    );
   });
 
   testWidgets('no timer, no frame and no microtask is left behind', (

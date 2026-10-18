@@ -105,7 +105,7 @@ or removing is version 2.
 
 `package:fespalier_sentry` is the sink for Sentry, and it is **errors first**. By default it sends every error and
 crash tagged with the route pattern, the app file and the action (`fespalier.route`, `.file`, `.operation`,
-`.action`; fingerprint = default + the file), names the scope after the screen (its transaction and the tag
+`.action`; fingerprint = default + the file), names the scope after the screen (as soon as a navigation commits, before the page is built, since 0.19.0; its transaction and the tag
 `fespalier.route`, so a crash caught by Sentry's own integrations says which screen it was on), makes **one
 breadcrumb per page change**, and leaves release health to the SDK. **Next to `fespalier_otel`** in a
 `FespalierTelemetry.combine`, each event carries `otel.trace_id` and `otel.span_id`, so an error links to its

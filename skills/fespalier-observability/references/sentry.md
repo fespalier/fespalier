@@ -13,11 +13,13 @@ no transaction. Performance (`tracing: true`) is the opt-in, for a team that has
   action, `fespalier.action`; the fingerprint is `['{{ default }}', file]` (grouped by the file, not by the
   Riverpod frames on top of the stack); the context `fespalier` repeats them, with `fespalier.async` and, for
   data, `fespalier.data.keyed`.
-- **The screen names the scope.** At each committed navigation the scope's transaction name is the route
-  pattern (`navigate (not found)` for a location that matched no route) and the tag `fespalier.route` is set,
-  so a crash that no fespalier operation reported, caught by Sentry's own integrations, says which screen it
-  happened on. A transaction that is Sentry's own (its app start, its navigator observer) is never renamed:
-  the tag is still set.
+- **The screen names the scope.** When each navigation commits (since 0.19.0, before the new page's `initState`
+  and first `build`, through `FespalierTelemetry.commit`; before, once that frame was built) the scope's
+  transaction name is the route pattern (`navigate (not found)` for a location that matched no route) and the
+  tag `fespalier.route` is set, so a crash that no fespalier operation reported, caught by Sentry's own
+  integrations, says which screen it happened on. A navigation that commits twice before its first frame is
+  named twice, and the last stays; the page's breadcrumb still comes with its first frame. A transaction that
+  is Sentry's own (its app start, its navigator observer) is never renamed: the tag is still set.
 - **One breadcrumb per page change**: type `navigation`, `from` and `to` patterns. A page being left makes
   none, so a go is one. A guard redirect, an action's result (never its input), an auth step and an image
   failure are breadcrumbs too.
@@ -194,7 +196,8 @@ expect(await sentry.lines(), ['event StateError operation=data route=/items/:id 
 `spans` is the streamed `SentrySpanV2`s in the order they ended (recorded in `beforeSendSpan`, after `configure`'s);
 `sent()` is the JSON the SDK built (tags, fingerprint, contexts, measurements); `breadcrumbs`, `rawBreadcrumbs`,
 `tags` and `transactionName` read the scope. A test of streaming sets `options.traceLifecycle =
-SentryTraceLifecycle.stream` in `RecordingSentry(configure:)`. Traps:
+SentryTraceLifecycle.stream` in `RecordingSentry(configure:)`. `tags` and `transactionName` name a page from its commit (since 0.19.0): read
+them right after `router.go(...)` or in a page's `initState`. Traps:
 
 - **Pump before reading** (`await tester.pump()`), or use a plain `test()` and a real zero delay.
 - **A `ProviderContainer` read inside `testWidgets` leaves a Riverpod timer pending**: use `test()` for a

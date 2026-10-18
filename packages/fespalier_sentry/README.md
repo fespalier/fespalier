@@ -8,6 +8,8 @@ trace id of the screen or the call each event came from, so an error links to it
 transactions, spans for guards, data loads and actions, and time to full display are opt-in
 (`FespalierSentry(tracing: true)`), for a team that has only Sentry.
 
+Since 0.19.0 the scope names a page when the navigation to it commits, before the page's `initState` and first `build`, so an error while it opens is tagged with that page, not the one before.
+
 fespalier itself has no Sentry dependency: it tells a `FespalierTelemetry` sink what happened, and this
 package is the sink that turns it into Sentry's events, breadcrumbs and, on request, transactions.
 `SentryFlutter.init` still starts the SDK, which owns crash capture, sessions, native integrations and the

@@ -594,32 +594,57 @@ fn a_pages_own_type_is_the_typed_routes() {
 }
 
 #[test]
-fn types_named_by_a_guard_and_a_page_do_not_share_aliases() {
-    let g = "import '../a.dart' as m;\nGuardResult guard(ProviderContainer c, {m.Thing? extra}) => null;";
-    let p = "import 'package:flutter/widgets.dart';\nimport '../../b.dart' as m;\nclass OtherPage extends StatelessWidget { const OtherPage({super.key, this.extra}); final m.Thing? extra; }";
+fn an_alias_is_shared_only_by_files_that_import_the_same_library() {
+    let guard = "import '../a.dart' as m;\nGuardResult guard(ProviderContainer c, {m.Thing? extra}) => null;";
+    let page = |lib: &str| {
+        format!(
+            "import 'package:flutter/widgets.dart';\nimport '../../{lib}' as m;\nclass OtherPage extends StatelessWidget {{ const OtherPage({{super.key, this.extra}}); final m.Thing? extra; }}"
+        )
+    };
+    // One prefix, two libraries: the page's own type is spelled under the alias of `b.dart`; the
+    // guard's, which types the home page that has none, under the alias of `a.dart`.
     let c = code(&[
         ("page.dart", HOME),
-        ("guard.dart", g),
-        ("other/page.dart", p),
+        ("guard.dart", guard),
+        ("other/page.dart", &page("b.dart")),
     ]);
-    // The page's own type is spelled under its own alias; the guard's, which types the home
-    // page that has none, under an alias of its own: one prefix, two libraries.
     has(
         &c,
         &[
-            "as _ec5960e13_m;",
-            "{_ec5960e13_m.Thing? extra, String? locale}",
-            "import 'a.dart' as _e1fdd8cf5_m;",
-            "{_e1fdd8cf5_m.Thing? extra, String? locale}",
+            "import 'b.dart' as _ef6d1df43_m;",
+            "{_ef6d1df43_m.Thing? extra, String? locale}",
+            "import 'a.dart' as _ea788772c_m;",
+            "{_ea788772c_m.Thing? extra, String? locale}",
         ],
     );
     lacks(
         &c,
         &[
-            "import 'a.dart' as _ec5960e13_m;",
-            "import 'b.dart' as _e1fdd8cf5_m;",
+            "import 'a.dart' as _ef6d1df43_m;",
+            "import 'b.dart' as _ea788772c_m;",
         ],
     );
+    // One prefix, one library, spelled from two folders: one alias and one import, the very type.
+    let c = code(&[
+        ("page.dart", HOME),
+        ("guard.dart", guard),
+        ("other/page.dart", &page("a.dart")),
+    ]);
+    has(
+        &c,
+        &[
+            "import 'a.dart' as _ea788772c_m;",
+            "{_ea788772c_m.Thing? extra, String? locale}",
+        ],
+    );
+    assert_eq!(c.matches("a.dart' as _e").count(), 1, "{c}");
+    // The guard's type and the page's are spelled through it, and no other alias is there.
+    let aliases: std::collections::BTreeSet<&str> = c
+        .match_indices("_m.Thing")
+        .map(|(at, _)| &c[at - 10..at + 2])
+        .collect();
+    assert_eq!(aliases.len(), 1, "{aliases:?}");
+    lacks(&c, &["b.dart"]);
 }
 
 // ---- extra_codec.dart ----

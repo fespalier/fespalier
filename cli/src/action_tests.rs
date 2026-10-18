@@ -135,8 +135,8 @@ fn the_input_type_is_named_through_the_imports_of_the_file() {
     has(
         &c,
         &[
-            "import 'package:m/m.dart' as _ebd97d79c_m;",
-            "List<_ebd97d79c_m.Item> input",
+            "import 'package:m/m.dart' as _e19a273a4_m;",
+            "List<_e19a273a4_m.Item> input",
         ],
     );
 }

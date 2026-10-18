@@ -453,8 +453,8 @@ fn the_names_a_reload_keeps_follow_the_folders() {
             "traceData(ref, 'dItemsId', id, ",
             "site: 'aItemsId_action',",
             "site: 'aTeamsTeamId_addMember',",
-            "import 'package:m/m.dart' as _eecf47b01_m;",
-            "_eecf47b01_m.Item input",
+            "import 'package:m/m.dart' as _e19a273a4_m;",
+            "_e19a273a4_m.Item input",
         ],
     );
     for (name, decl) in declarations(&c) {
@@ -465,31 +465,19 @@ fn the_names_a_reload_keeps_follow_the_folders() {
     }
 }
 
-#[test]
-fn a_route_added_anywhere_leaves_every_other_kept_declaration_as_it_was() {
-    let before = built(RICH);
+/// Builds [base], then [base] with each of [cases] added (a name for the message, and the files),
+/// and asserts that every declaration a reload keeps, and every hash in `_kept`, is as it was.
+fn adding_files_keeps_every_kept_declaration(
+    base: &[(&str, &str)],
+    cases: &[(&str, Vec<(&str, &str)>)],
+) {
+    let before = built(base);
     let old = declarations(&before);
     let old_hashes = kept_of(&before);
     assert!(!old.is_empty() && !old_hashes.is_empty());
-    let cases: Vec<(&str, Vec<(&str, &str)>)> = vec![
-        ("aaa/page.dart", vec![("aaa/page.dart", AAA)]),
-        ("(g)/mid/page.dart", vec![("(g)/mid/page.dart", MID)]),
-        (
-            "items/$id/aaa/page.dart",
-            vec![("items/$id/aaa/page.dart", AAA)],
-        ),
-        (
-            "teams/$teamId/aaa/page.dart",
-            vec![("teams/$teamId/aaa/page.dart", AAA)],
-        ),
-        (
-            "aab/page.dart",
-            vec![("aab/page.dart", AAB), ("aab/data.dart", AAB_DATA)],
-        ),
-    ];
     for (file, extra) in cases {
-        let mut files = RICH.to_vec();
-        files.extend(extra);
+        let mut files = base.to_vec();
+        files.extend(extra.iter().copied());
         let after = built(&files);
         let new = declarations(&after);
         for (name, decl) in &old {
@@ -508,6 +496,106 @@ fn a_route_added_anywhere_leaves_every_other_kept_declaration_as_it_was() {
             );
         }
     }
+}
+
+#[test]
+fn a_route_added_anywhere_leaves_every_other_kept_declaration_as_it_was() {
+    adding_files_keeps_every_kept_declaration(
+        RICH,
+        &[
+            ("aaa/page.dart", vec![("aaa/page.dart", AAA)]),
+            ("(g)/mid/page.dart", vec![("(g)/mid/page.dart", MID)]),
+            (
+                "items/$id/aaa/page.dart",
+                vec![("items/$id/aaa/page.dart", AAA)],
+            ),
+            (
+                "teams/$teamId/aaa/page.dart",
+                vec![("teams/$teamId/aaa/page.dart", AAA)],
+            ),
+            (
+                "aab/page.dart",
+                vec![("aab/page.dart", AAB), ("aab/data.dart", AAB_DATA)],
+            ),
+        ],
+    );
+}
+
+/// An enum in a library outside the app folder, which a segment names through a prefixed import.
+const CATEGORY_ENUM: (&str, &str) = ("../models/category.dart", "enum Category { shoes, hats }\n");
+
+/// `shop/$category/b/` has a page and a data.dart that both type the segment `m.Category`.
+const B_PAGE: &str = "import '../../../../models/category.dart' as m;\nclass BPage extends StatelessWidget { const BPage({super.key, required this.category, required this.data}); final m.Category category; final int data; }";
+
+const B_DATA: &str = "import '../../../../models/category.dart' as m;\nFuture<int> data(Ref ref, {required m.Category category}) async => 0;";
+
+/// A sibling page that types the same segment through the same import.
+const A_PAGE: &str = "import '../../../../models/category.dart' as m;\nclass APage extends StatelessWidget { const APage({super.key, required this.category}); final m.Category category; }";
+
+/// A guard of the segment, one folder up, that names the library through its own relative path.
+const CATEGORY_GUARD: &str = "import '../../../models/category.dart' as m;\nString? guard(Ref ref, {required m.Category category}) => null;\n";
+
+/// The project of the two tests below: a data route under a segment that names an enum.
+const CATEGORY_BASE: [(&str, &str); 4] = [
+    ("page.dart", HOME),
+    ("shop/$category/b/page.dart", B_PAGE),
+    ("shop/$category/b/data.dart", B_DATA),
+    CATEGORY_ENUM,
+];
+
+// The first file that types a segment names its type for every route below it. An alias made of
+// that file's path changed when another file became the first: a sibling page that sorts earlier,
+// or a guard of the segment's folder. The alias is made of the library, so it does not.
+
+#[test]
+fn a_sibling_that_types_a_segment_first_leaves_the_alias_of_a_kept_type() {
+    let c = built(&CATEGORY_BASE);
+    assert!(c.contains("final _dataShopCategoryB = "), "{c}");
+    adding_files_keeps_every_kept_declaration(
+        &CATEGORY_BASE,
+        &[(
+            "shop/$category/a/page.dart",
+            vec![("shop/$category/a/page.dart", A_PAGE)],
+        )],
+    );
+}
+
+#[test]
+fn a_guard_that_types_a_segment_first_leaves_the_alias_of_a_kept_type() {
+    adding_files_keeps_every_kept_declaration(
+        &CATEGORY_BASE,
+        &[(
+            "shop/$category/guard.dart",
+            vec![("shop/$category/guard.dart", CATEGORY_GUARD)],
+        )],
+    );
+}
+
+#[test]
+fn an_import_repointed_at_another_library_changes_what_a_reload_keeps() {
+    // The action's input is `m.Item` in both, but from another library: the app that holds the old
+    // one must restart, and the hash says so. (Before 0.20.0 no kept hash saw the library.)
+    let notes = |lib: &str| {
+        format!(
+            "import 'package:demo/{lib}' as m;\nFuture<void> rename(Ref ref, {{required m.Item input}}) async {{}}\n"
+        )
+    };
+    let build = |lib: &str| {
+        let action = notes(lib);
+        built(&[
+            ("page.dart", HOME),
+            ("notes/page.dart", &page("Notes")),
+            ("notes/action.dart", &action),
+        ])
+    };
+    let (a, b, again) = (build("a.dart"), build("b.dart"), build("a.dart"));
+    assert_eq!(kept_of(&a), kept_of(&again));
+    let (old, new) = (kept_of(&a), kept_of(&b));
+    assert!(old.contains_key("_actionNotes_rename"), "{old:?}");
+    for name in ["_actionNotes_rename", "NotesRoute.rename"] {
+        assert_ne!(old.get(name), new.get(name), "{name}");
+    }
+    assert_ne!(version_of(&a), version_of(&b));
 }
 
 #[test]

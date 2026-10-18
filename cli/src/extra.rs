@@ -242,20 +242,45 @@ pub fn unprefixed(ty: &str) -> String {
     out
 }
 
-/// The tag of the import aliases of the types `file` names (since 0.20.0): 8 hex digits of a hash
-/// of its path relative to the app folder, so an alias depends on that file alone. One file has
-/// one library per prefix, so its uses share an alias.
-pub fn alias_tag(file: &str) -> String {
-    crate::reload::short_hash(file)
+/// The library an import names, the same wherever it is spelled (since 0.20.0). A `dart:` or
+/// `package:` URI is as written; a relative one is resolved against the folder of `file` (the file
+/// that wrote it, relative to the app folder) and normalized, so `../m.dart` in `a/page.dart` and
+/// `../../m.dart` in `a/b/page.dart` are both `m.dart`, and a library outside the app folder keeps
+/// its leading `..` (`../models/category.dart`). It is resolved the way `Config::import_from_file`
+/// resolves it, without a config: the app folder is the root.
+pub fn library_of(file: &str, uri: &str) -> String {
+    if uri.contains(':') {
+        return uri.to_string();
+    }
+    let mut parts: Vec<&str> = vec![];
+    let folder = file.rsplit_once('/').map_or("", |(dir, _)| dir);
+    for seg in folder.split('/').chain(uri.split('/')) {
+        match seg {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            s => parts.push(s),
+        }
+    }
+    parts.join("/")
+}
+
+/// The tag of the import alias of a prefixed type from [library] (see [`library_of`]), since
+/// 0.20.0: 8 hex digits of a hash of the library. The alias follows the library the prefix names,
+/// never the file that happened to spell the type (the first file that constrains a segment, say,
+/// which another file can become), so it is the same for every file that imports that library
+/// under that prefix, and differs for another library under the same prefix.
+pub fn alias_tag(library: &str) -> String {
+    crate::reload::short_hash(library)
 }
 
 /// Works out the generated spelling of `ty`, the type of `extra` in `src` (the
 /// source of the page, layout, guard or redirect at `file`, whose import in the generated
-/// file is `_i{import}`). A prefixed type's alias is `_e<alias_tag(file)>_<prefix>` (since
-/// 0.20.0: it names the file, not the route's position).
+/// file is `_i{import}`). A prefixed type's alias is `_e<alias_tag(library)>_<prefix>` (since
+/// 0.20.0: it names the library the prefix imports, not the file or the route's position).
 pub fn extra_type(ty: &str, src: &str, file: &str, import: usize) -> ExtraType {
     let all = imports(src);
-    let tag = alias_tag(file);
     let mut spelled = String::new();
     let mut last = 0;
     let (mut shown, mut aliased): (Vec<String>, Vec<(String, String, String)>) = (vec![], vec![]);
@@ -265,7 +290,7 @@ pub fn extra_type(ty: &str, src: &str, file: &str, import: usize) -> ExtraType {
         match &r.prefix {
             Some(p) => match all.iter().find(|i| i.prefix.as_deref() == Some(p)) {
                 Some(i) => {
-                    let alias = format!("_e{tag}_{p}");
+                    let alias = format!("_e{}_{p}", alias_tag(&library_of(file, &i.uri)));
                     if !aliased.iter().any(|(q, ..)| q == p) {
                         aliased.push((p.clone(), i.uri.clone(), alias.clone()));
                     }
@@ -348,13 +373,14 @@ mod tests {
         assert_eq!(t.ty, "_i4.Local?");
         assert!(t.shown.is_empty());
         let t = extra_type("List<m.Thing>?", SRC, "a/page.dart", 4);
-        assert_eq!(t.ty, "List<_e2f5f6d82_m.Thing>?");
+        // `x.dart` next to `a/page.dart` is the library `a/x.dart`.
+        assert_eq!(t.ty, "List<_e6bc4e6b5_m.Thing>?");
         assert_eq!(
             t.aliased,
             [(
                 "m".to_string(),
                 "x.dart".to_string(),
-                "_e2f5f6d82_m".to_string()
+                "_e6bc4e6b5_m".to_string()
             )]
         );
         let t = extra_type("({int id, Product p})?", SRC, "a/page.dart", 4);
@@ -365,11 +391,50 @@ mod tests {
     }
 
     #[test]
-    fn an_alias_names_its_file() {
-        assert_eq!(alias_tag("a/page.dart"), "2f5f6d82");
-        // Another file, the same prefix: another alias, so two imports of `m` never clash.
-        let t = extra_type("m.Thing", SRC, "b/page.dart", 4);
-        assert_eq!(t.ty, format!("_e{}_m.Thing", alias_tag("b/page.dart")));
-        assert_ne!(alias_tag("a/page.dart"), alias_tag("b/page.dart"));
+    fn a_library_is_the_same_wherever_it_is_spelled() {
+        // Relative to the app folder, `..` resolved against the folder of the file that wrote it.
+        assert_eq!(library_of("a/page.dart", "x.dart"), "a/x.dart");
+        assert_eq!(library_of("a/page.dart", "./x.dart"), "a/x.dart");
+        assert_eq!(library_of("a/b/page.dart", "../x.dart"), "a/x.dart");
+        assert_eq!(library_of("a/b/page.dart", "../../m.dart"), "m.dart");
+        assert_eq!(library_of("page.dart", "m.dart"), "m.dart");
+        assert_eq!(library_of("a/page.dart", "../m.dart"), "m.dart");
+        // A library outside the app folder keeps its `..`, from any depth.
+        assert_eq!(
+            library_of("shop/page.dart", "../../models/category.dart"),
+            "../models/category.dart"
+        );
+        assert_eq!(
+            library_of("shop/$c/b/page.dart", "../../../../models/category.dart"),
+            "../models/category.dart"
+        );
+        // `dart:` and `package:` are as written.
+        assert_eq!(
+            library_of("a/b/page.dart", "package:x/y.dart"),
+            "package:x/y.dart"
+        );
+        assert_eq!(library_of("a/page.dart", "dart:async"), "dart:async");
+    }
+
+    #[test]
+    fn an_alias_names_the_library_not_the_file() {
+        assert_eq!(alias_tag("a/x.dart"), "6bc4e6b5");
+        let alias = |file: &str, src: &str| extra_type("m.Thing", src, file, 4).ty;
+        let same = alias("a/page.dart", "import '../x.dart' as m;");
+        // Another file, another folder, the same library under the same prefix: one alias.
+        assert_eq!(same, alias("x/page.dart", "import '../x.dart' as m;"));
+        assert_eq!(same, alias("a/b/page.dart", "import '../../x.dart' as m;"));
+        assert_eq!(same, alias("page.dart", "import 'x.dart' as m;"));
+        assert_eq!(same, format!("_e{}_m.Thing", alias_tag("x.dart")));
+        // Another library under the same prefix: another alias, so two imports of `m` never clash.
+        assert_ne!(same, alias("a/page.dart", "import '../y.dart' as m;"));
+        assert_ne!(same, alias("a/page.dart", "import 'x.dart' as m;"));
+        assert_ne!(
+            alias("a/page.dart", "import 'package:p/x.dart' as m;"),
+            alias("a/page.dart", "import 'package:q/x.dart' as m;")
+        );
+        // The same library under another prefix: another alias too.
+        let other = extra_type("n.Thing", "import '../x.dart' as n;", "a/page.dart", 4).ty;
+        assert_eq!(other, format!("_e{}_n.Thing", alias_tag("x.dart")));
     }
 }

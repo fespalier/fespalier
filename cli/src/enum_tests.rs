@@ -193,10 +193,10 @@ fn a_prefixed_enum_keeps_its_import_under_a_prefix_of_its_own() {
     has(
         &c,
         &[
-            "import 'models/category.dart' as _e0a596e48_m;",
-            "({_e0a596e48_m.Category category}) _params2",
-            "Segment.asEnum(s, 'category', _e0a596e48_m.Category.values)",
-            "final _e0a596e48_m.Category category;",
+            "import 'models/category.dart' as _eeb5c8a86_m;",
+            "({_eeb5c8a86_m.Category category}) _params2",
+            "Segment.asEnum(s, 'category', _eeb5c8a86_m.Category.values)",
+            "final _eeb5c8a86_m.Category category;",
             // The manifest names the type as the app does.
             "RouteParam('category', 'Category')",
         ],

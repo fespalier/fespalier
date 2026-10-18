@@ -633,8 +633,8 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
     has(
         &c,
         &[
-            "import 'app/models.dart' as _ee0d2d7f4_m;",
-            "{List<_ee0d2d7f4_m.Item>? extra, String? locale}",
+            "import 'app/models.dart' as _e3f492192_m;",
+            "{List<_e3f492192_m.Item>? extra, String? locale}",
         ],
     );
     // Built-in types need nothing.

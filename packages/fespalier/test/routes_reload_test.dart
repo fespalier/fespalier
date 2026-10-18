@@ -32,6 +32,10 @@ final class _Reload extends RoutesReload {
   List<RouteBase> table;
   int rebuilds = 0;
 
+  /// What the generated `_reload` does beside the rebuild: it makes its deferred list again and
+  /// registers it (since 0.20.0). A test sets it.
+  VoidCallback? onRebuild;
+
   /// The app's top-level redirect, which a rebuild keeps.
   final GoRouterRedirect? redirect;
 
@@ -52,6 +56,7 @@ final class _Reload extends RoutesReload {
       failOnce = null;
       throw failure;
     }
+    onRebuild?.call();
     return RoutingConfig(routes: table, redirect: redirect ?? _noRedirect);
   }
 
@@ -521,4 +526,76 @@ void main() {
       'fespalier: the regenerated routes change a provider, a deferred library or a router setting that a hot reload keeps, so the app keeps its old routes: hot restart (R) to use the new ones',
     );
   });
+
+  testWidgets(
+    'a swap that adds a deferred route registers it, and a loaded one stays loaded',
+    (tester) async {
+      final calls = <String>[];
+      DeferredLibrary lib(String f) =>
+          DeferredLibrary(() async => calls.add(f), f, loadsInFakeAsync: true);
+      final big = lib('big/page.dart');
+      final zoo = lib('zoo/page.dart');
+      var deferred = [big];
+      DeferredLibrary.register(deferred);
+      await tester.runAsync(() => DeferredLibrary.loadAll(deferred));
+
+      final reload = _Reload([_a()], kept: {'_libBig': 'b1'})
+        ..onRebuild = () => DeferredLibrary.register(deferred);
+      final router = _routerOf(reload, initialLocation: '/a');
+      await tester.pumpWidget(StartupGate(router: () => router, app: app));
+
+      reload.fileVersion = 'v2';
+      reload.fileKept = {'_libBig': 'b1', '_libZoo': 'z1'};
+      reload.table = [_a(), _b()];
+      deferred = [big, zoo];
+      await hotReload(tester);
+
+      expect(reload.rebuilds, 1);
+      expect(big.isLoaded, isTrue);
+      expect(zoo.isLoaded, isFalse);
+      expect(DeferredLibrary.anyPending, isTrue);
+
+      await tester.runAsync(() => DeferredLibrary.loadAll(deferred));
+      expect(calls, ['big/page.dart', 'zoo/page.dart']);
+      expect(DeferredLibrary.anyPending, isFalse);
+    },
+  );
+
+  testWidgets(
+    'a swap that removes a deferred route leaves its library registered until a restart',
+    (tester) async {
+      final calls = <String>[];
+      DeferredLibrary lib(String f) =>
+          DeferredLibrary(() async => calls.add(f), f, loadsInFakeAsync: true);
+      final yak = lib('yak/page.dart');
+      final big2 = lib('big/page.dart');
+      var deferred = [yak];
+      DeferredLibrary.register(deferred);
+
+      final reload = _Reload([_a()], kept: {'_libYak': 'y1'})
+        ..onRebuild = () => DeferredLibrary.register(deferred);
+      final router = _routerOf(reload, initialLocation: '/a');
+      await tester.pumpWidget(StartupGate(router: () => router, app: app));
+      expect(DeferredLibrary.anyPending, isTrue);
+
+      reload.fileVersion = 'v2';
+      reload.fileKept = {};
+      deferred = [big2];
+      await hotReload(tester);
+      expect(reload.rebuilds, 1);
+
+      // The list is the new one: only its library loads. `yak` is still registered (the limit).
+      await tester.runAsync(() => DeferredLibrary.loadAll(deferred));
+      expect(calls, ['big/page.dart']);
+      expect(
+        DeferredLibrary.anyPending,
+        isTrue,
+        reason: 'a removed route stays registered',
+      );
+
+      await tester.runAsync(() => DeferredLibrary.loadAll());
+      expect(calls, ['big/page.dart', 'yak/page.dart']);
+      expect(DeferredLibrary.anyPending, isFalse);
+    },
+  );
 }

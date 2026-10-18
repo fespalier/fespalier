@@ -4,9 +4,10 @@
 //! about it as [`Effect`]s; nothing in this file reads a clock, a file or a terminal, so a test
 //! drives it with whatever `now` it likes (since 0.9.0).
 //!
-//! The rules that matter live here: a regeneration that wrote restarts the app and any other save
-//! reloads it (see [`DevState::request`]); requests are coalesced; flutter is stopped first, then
-//! the `with` processes, and a second quit kills everything.
+//! The rules that matter live here: a save reloads the app; a regeneration that wrote reloads it
+//! when the app can swap its routes, and restarts it otherwise (see [`DevState::reloads`]); requests
+//! are coalesced; flutter is stopped first, then the `with` processes, and a second quit kills
+//! everything.
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -15,6 +16,7 @@ use serde_json::Value;
 
 use crate::daemon::{self, Event, Msg, Response};
 use crate::procs::Status;
+use crate::reload::Stamp;
 use crate::watch::{FirstError, GenReport};
 
 /// The pane of `flutter run`.
@@ -28,6 +30,10 @@ pub const RING: usize = 10_000;
 const FLUTTER_GRACE: Duration = Duration::from_secs(10);
 /// How long a group gets after SIGTERM before SIGKILL.
 const TERM_GRACE: Duration = Duration::from_secs(5);
+
+/// What the app prints when its rule refuses a swap (since 0.19.0): `keptChangedMessage` in
+/// `packages/fespalier/lib/src/routes_reload.dart` (a test compares them).
+pub const KEPT_CHANGED: &str = "fespalier: the regenerated routes change a provider, a deferred library or a router setting that a hot reload keeps, so the app keeps its old routes: hot restart (R) to use the new ones";
 
 /// What a line is, for colour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -367,6 +373,10 @@ pub struct HotResult {
 struct Inflight {
     id: u64,
     full: bool,
+    ask: Ask,
+    /// The stamp of the file on disk when the request was sent (since 0.19.0): the routes a
+    /// reload brings the app to. `None` when the app could not swap its routes then.
+    stamp: Option<Stamp>,
     sent: Duration,
 }
 
@@ -384,6 +394,16 @@ enum Stage {
     With,
 }
 
+/// Who asked for a request (since 0.19.0): a key, a save, or a regeneration. A key is sent at
+/// once with the reason `manual`; a save and a regeneration are debounced and have the reason
+/// `save`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Ask {
+    Key,
+    Save,
+    Regen,
+}
+
 /// What the state is made from.
 pub struct Opts {
     /// The app's name, from the pubspec.
@@ -394,10 +414,14 @@ pub struct Opts {
     pub hot_reload: bool,
     /// Plain output: keys are typed lines, and `d` and `o` print instead of opening.
     pub plain: bool,
-    /// The generated file as the user spells it, for the `hot restart: … changed` line.
+    /// The generated file as the user spells it, for the `hot reload: … changed` and
+    /// `hot restart: … changed` lines.
     pub output: String,
     /// The device fsp chose, when it did.
     pub device: Option<Device>,
+    /// The stamp of the generated file when flutter starts (since 0.19.0). `None` (no file, or one
+    /// that holds no stamp) makes a regeneration restart the app, as before 0.19.0.
+    pub stamp: Option<Stamp>,
 }
 
 /// Everything `fsp dev` knows. See the module docs.
@@ -415,6 +439,20 @@ pub struct DevState {
     plain_out: VecDeque<PlainLine>,
     hot_reload: bool,
     output: String,
+    /// The stamp of the generated file as the last pass left it, or as it was when flutter started
+    /// (since 0.19.0): what a request is sent for.
+    disk: Option<Stamp>,
+    /// The stamp of the routes the running app holds (since 0.19.0): the `_version` and `_kept` its
+    /// `RoutesReload` read. A regeneration reloads only when they swap to the file's.
+    running: Option<Stamp>,
+    /// Whether the app takes its routes from the generated table, as the last pass found (since
+    /// 0.19.0). While it does not, no baseline is kept: a restart does not set one, and the
+    /// next regeneration that can swap restarts once to set it.
+    swappable: bool,
+    /// Whether a reload has been sent since the last restart was (since 0.19.0): only then can
+    /// the app have printed that it kept its old routes, so a refusal line is acted on only then.
+    /// A late or repeated line after the restart is the same refusal said again.
+    reloaded: bool,
     pub app: App,
     pub generation: Generation,
     phase: Phase,
@@ -447,6 +485,10 @@ impl DevState {
             plain_out: VecDeque::new(),
             hot_reload: opts.hot_reload,
             output: opts.output,
+            disk: opts.stamp,
+            running: None,
+            swappable: true,
+            reloaded: false,
             app: App {
                 device: opts.device,
                 supports_restart: true,
@@ -547,6 +589,9 @@ impl DevState {
         self.panes[pane].proc = Proc::Running;
         if pane == FLUTTER {
             self.phase = Phase::Starting;
+            // A new flutter compiles the files on disk, and its app has had no reload yet.
+            self.running = self.disk.clone().filter(|_| self.swappable);
+            self.reloaded = false;
         }
     }
 
@@ -619,6 +664,10 @@ impl DevState {
             Input::Line { pane, text, err } => {
                 let kind = if err { Kind::Error } else { Kind::Normal };
                 self.push(pane, &text, kind);
+                // A web app's prints are plain lines on flutter's stdout, not `app.log` events.
+                if pane == FLUTTER && text.contains(KEPT_CHANGED) {
+                    self.refused(now, &mut fx);
+                }
             }
             Input::Gen(report) => self.on_gen(now, &report, &mut fx),
             Input::Key(key) => self.on_key(now, key, &mut fx),
@@ -641,7 +690,7 @@ impl DevState {
 
     fn on_msg(&mut self, now: Duration, msg: Msg, fx: &mut Vec<Effect>) {
         match msg {
-            Msg::Response(r) => self.on_response(now, &r),
+            Msg::Response(r) => self.on_response(now, &r, fx),
             Msg::Event(e) => self.on_event(now, e, fx),
         }
     }
@@ -659,6 +708,10 @@ impl DevState {
                         Kind::Normal
                     };
                     self.push(FLUTTER, &message, kind);
+                }
+                // The tool's own log can carry the app's output too, where no `app.log` does.
+                if message.contains(KEPT_CHANGED) {
+                    self.refused(now, fx);
                 }
             }
             Event::AppStart {
@@ -683,7 +736,7 @@ impl DevState {
                     self.phase = Phase::Building;
                 }
                 if let Some(full) = self.pending.take() {
-                    self.send_request(now, full, false, fx);
+                    self.send_request(now, full, Ask::Save, fx);
                 }
             }
             Event::DebugPort { ws_uri, .. } => self.app.ws_uri = ws_uri,
@@ -713,6 +766,9 @@ impl DevState {
             Event::Log { log, error, .. } => {
                 let kind = if error { Kind::Error } else { Kind::Normal };
                 self.push(FLUTTER, &log, kind);
+                if log.contains(KEPT_CHANGED) {
+                    self.refused(now, fx);
+                }
             }
             Event::Progress { message, finished } => {
                 if !finished && let Some(m) = message {
@@ -735,44 +791,46 @@ impl DevState {
 
     // --- hot reload and restart ---------------------------------------------------------------
 
-    /// A request for a reload, or for a restart when `full`. `manual` is a key.
+    /// A request for a reload, or for a restart when `full`, that `ask` made. It answers whether
+    /// the request was sent or is held for `app.start`, and not dropped.
     ///
     /// - Before `app.start` there is no app id: the strongest request is kept (a restart beats a
     ///   reload) and sent on `app.start`.
     /// - A restart in flight covers a new reload, which is dropped; a new restart is sent, because
     ///   the file changed after the first compile began (flutter queues it).
     /// - Otherwise it is sent; a reload is sent debounced, so flutter merges neighbours.
-    fn request(&mut self, now: Duration, full: bool, manual: bool, fx: &mut Vec<Effect>) {
+    fn request(&mut self, now: Duration, full: bool, ask: Ask, fx: &mut Vec<Effect>) -> bool {
         if self.quit.is_some() || !self.flutter_running() {
-            return;
+            return false;
         }
         if self.app.id.is_none() {
-            if manual && !self.app.connected {
+            if ask == Ask::Key && !self.app.connected {
                 self.say(
                     "the `run` command has not connected over flutter's --machine protocol yet; hot reload needs `flutter run`",
                     Kind::Warn,
                 );
-                return;
+                return false;
             }
             self.pending = Some(self.pending.unwrap_or(false) || full);
-            return;
+            return true;
         }
         if !self.app.supports_restart {
-            if manual {
+            if ask == Ask::Key {
                 self.say(
                     "hot reload is off: flutter run started without it (--no-hot, --profile or --release)",
                     Kind::Warn,
                 );
             }
-            return;
+            return false;
         }
         if !full && self.inflight.iter().any(|i| i.full) {
-            return;
+            return false;
         }
-        self.send_request(now, full, manual, fx);
+        self.send_request(now, full, ask, fx);
+        true
     }
 
-    fn send_request(&mut self, now: Duration, full: bool, manual: bool, fx: &mut Vec<Effect>) {
+    fn send_request(&mut self, now: Duration, full: bool, ask: Ask, fx: &mut Vec<Effect>) {
         let Some(app_id) = self.app.id.clone() else {
             return;
         };
@@ -781,6 +839,8 @@ impl DevState {
         self.inflight.push(Inflight {
             id,
             full,
+            ask,
+            stamp: self.disk.clone().filter(|_| self.swappable),
             sent: now,
         });
         // A reload does not end a restart that is still going.
@@ -789,19 +849,29 @@ impl DevState {
         } else {
             Phase::Reloading
         };
-        let reason = if manual { "manual" } else { "save" };
+        // A restart gives the app its routes anew; a reload is what a refusal can come from.
+        self.reloaded = !full;
+        let reason = if ask == Ask::Key { "manual" } else { "save" };
         fx.push(Effect::SendFlutter(daemon::restart(
-            id, &app_id, full, reason, !manual,
+            id,
+            &app_id,
+            full,
+            reason,
+            ask != Ask::Key,
         )));
     }
 
-    fn on_response(&mut self, now: Duration, r: &Response) {
+    fn on_response(&mut self, now: Duration, r: &Response, fx: &mut Vec<Effect>) {
         let Some(at) = self.inflight.iter().position(|i| i.id == r.id) else {
             return;
         };
         let sent = self.inflight.remove(at);
         let ms = now.saturating_sub(sent.sent).as_millis();
         let what = if sent.full { "restart" } else { "reload" };
+        let ok = r.failure().is_none();
+        if ok {
+            self.took(&sent);
+        }
         let result = match r.failure() {
             None => {
                 let message = r
@@ -846,6 +916,22 @@ impl DevState {
                 Phase::Reloading
             };
         }
+        // A reload that a regeneration asked for and that failed: the routes it wanted are not in
+        // the app, so one restart brings them in (a failed save reload is only said).
+        if !ok
+            && !sent.full
+            && sent.ask == Ask::Regen
+            && !self.inflight.iter().any(|i| i.full)
+            && self.request(now, true, Ask::Regen, fx)
+        {
+            self.say(
+                &format!(
+                    "hot restart: {} changed and the hot reload failed",
+                    self.output
+                ),
+                Kind::Normal,
+            );
+        }
     }
 
     // --- a regeneration -----------------------------------------------------------------------
@@ -862,15 +948,91 @@ impl DevState {
             let kind = if r.ok { Kind::Normal } else { Kind::Error };
             self.push(FSP, line, kind);
         }
+        if r.stamp.is_some() || r.wrote {
+            self.disk = r.stamp.clone();
+        }
+        // An app cannot swap routes it does not take from the table (a hand-built router, or
+        // `main: manual`), and the router can change under a running app: what it holds is then
+        // unknown. No baseline is kept until a pass can swap, and the first regeneration after it
+        // restarts once to set one. A pass that stopped on errors says nothing about it.
+        if r.ok {
+            self.swappable = r.swaps;
+            if !r.swaps {
+                self.running = None;
+            }
+        }
         if !self.hot_reload {
             return;
         }
         if r.wrote {
-            let line = format!("hot restart: {} changed", self.output);
-            self.say(&line, Kind::Normal);
-            self.request(now, true, false, fx);
+            if self.reloads(r) {
+                let line = format!("hot reload: {} changed", self.output);
+                self.say(&line, Kind::Normal);
+                self.request(now, false, Ask::Regen, fx);
+            } else {
+                let line = format!("hot restart: {} changed", self.output);
+                self.say(&line, Kind::Normal);
+                self.request(now, true, Ask::Regen, fx);
+            }
         } else if r.ok && !r.first {
-            self.request(now, false, false, fx);
+            self.request(now, false, Ask::Save, fx);
+        }
+    }
+
+    /// Whether a regeneration that wrote is a hot reload, not a restart (since 0.19.0). It is when
+    /// all of these hold, and a restart otherwise:
+    ///
+    /// - the pass did not write the generated `main()`: a reload never runs `main()` again;
+    /// - the pass can swap its routes (`r.swaps`, see `entry::swaps`);
+    /// - the pass has a stamp, and the app has one to compare it with (`running`, the baseline);
+    /// - the app has an id, so a request can be sent to it now;
+    /// - the running routes swap to the new ones, and every reload still in flight is for routes
+    ///   that swap to them too: a debounced or unanswered reload must not go past them;
+    /// - the last hot result was not a failure, and no restart is in flight.
+    fn reloads(&self, r: &GenReport) -> bool {
+        let (Some(next), Some(running)) = (&r.stamp, &self.running) else {
+            return false;
+        };
+        r.swaps
+            && !r.main_changed
+            && self.app.id.is_some()
+            && running.swaps_to(next)
+            && self
+                .inflight
+                .iter()
+                .all(|i| !i.full && i.stamp.as_ref().is_some_and(|stamp| stamp.swaps_to(next)))
+            && self.last_hot.as_ref().is_none_or(|hot| hot.ok)
+    }
+
+    /// Records what a request that succeeded brought the app to (since 0.19.0). A restart compiled
+    /// the file on disk when it was sent, so the app holds those routes. A reload brings the app to
+    /// them only when they swap in: `RoutesReload` refuses a swap that changes a kept field and then
+    /// keeps the old routes. A failed request changes nothing.
+    fn took(&mut self, sent: &Inflight) {
+        if sent.full {
+            self.running = sent.stamp.clone();
+        } else if let (Some(running), Some(next)) = (&self.running, &sent.stamp)
+            && running.swaps_to(next)
+        {
+            self.running = Some(next.clone());
+        }
+    }
+
+    /// The app printed that it kept its old routes (since 0.19.0), which it does once per version.
+    /// A hot restart gives it the new ones. Nothing is sent, and nothing said, when hot reload is
+    /// off, when a restart is in flight or waits for `app.start` (that restart already brings them),
+    /// or when no reload has been sent since the last restart: the line is the same refusal said
+    /// again, late or twice, and the restart that answered it has run.
+    fn refused(&mut self, now: Duration, fx: &mut Vec<Effect>) {
+        if !self.hot_reload
+            || !self.reloaded
+            || self.pending == Some(true)
+            || self.inflight.iter().any(|i| i.full)
+        {
+            return;
+        }
+        if self.request(now, true, Ask::Regen, fx) {
+            self.say("hot restart: the app kept its old routes", Kind::Normal);
         }
     }
 
@@ -922,11 +1084,15 @@ impl DevState {
             }
             Key::Char('G') => self.scroll(Key::End),
             _ if self.quit.is_some() => {}
-            Key::Char('r') => self.request(now, false, true, fx),
+            Key::Char('r') => {
+                self.request(now, false, Ask::Key, fx);
+            }
             Key::Char('R') | Key::Enter if matches!(self.phase, Phase::Stopped(_)) => {
                 self.respawn(fx);
             }
-            Key::Char('R') => self.request(now, true, true, fx),
+            Key::Char('R') => {
+                self.request(now, true, Ask::Key, fx);
+            }
             Key::Char('d') => match self.app.devtools.clone() {
                 Some(uri) => fx.push(Effect::Open(uri)),
                 None => self.notice = Some(("no DevTools URL yet".into(), now)),
@@ -957,8 +1123,12 @@ impl DevState {
         match key {
             Key::Char('q') => self.shut_down(now, false, fx),
             _ if self.quit.is_some() => {}
-            Key::Char('r') => self.request(now, false, true, fx),
-            Key::Char('R') => self.request(now, true, true, fx),
+            Key::Char('r') => {
+                self.request(now, false, Ask::Key, fx);
+            }
+            Key::Char('R') => {
+                self.request(now, true, Ask::Key, fx);
+            }
             Key::Char('d') => {
                 let line = match &self.app.devtools {
                     Some(uri) => format!("DevTools: {uri}"),

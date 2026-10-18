@@ -10,11 +10,9 @@ it ships.
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a
   `flutter_rust_bridge` dependency (the generated bindings own it) and a rebuild budget for a core that
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
-- **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
-  changes, because the generated router is built once, so a hot reload would keep the old route
-  table. In debug the router could rebuild itself on `reassemble` (go_router's
-  `GoRouter.routingConfig`, with a `ValueListenable<RoutingConfig>`); a regeneration would then need
-  only a hot reload and keep the app's state.
+- **A hot reload after a route is inserted.** `_dataN`/`_libN`/`_actionN_i` and their DevTools sites are
+  numbered by position, so inserting a route before one refuses the swap and `fsp dev` restarts;
+  folder-derived names would reload.
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
   configurations.
 - **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks

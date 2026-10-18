@@ -230,10 +230,10 @@ web-routes:
     cd ci/web-routes && npm ci && npx --no-install playwright install chromium
     scripts/check-web-routes.sh examples/shop
 
-# `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. It waits for the
-# app, adds a route (a hot restart), edits a page (a hot reload) and quits with `q`: the one check of fsp
-# against flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
-# names one that is not on the path); about a minute, and not part of `just ci`
+# `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. fsp dev runs the
+# app, reloads a new route in, restarts when it must and quits with `q`: the one check of fsp against
+# flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
+# names one that is not on the path); a few minutes, and not part of `just ci`
 dev-e2e:
     scripts/check-dev-e2e.sh
 

@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use crate::diag::Diags;
 use crate::enums::{Libs, Reads};
 use crate::lint::{Sites, Table};
+use crate::reload::Stamp;
 use crate::scan::Node;
 
 /// What one scan → resolve → emit produced, before formatting.
@@ -61,6 +62,15 @@ struct Last {
 pub struct Session {
     /// Whether the last run wrote an output file, even one that then failed on a lint.
     pub wrote: bool,
+    /// Whether the last run wrote the generated `main()` (since 0.19.0). A hot reload never runs
+    /// `main()` again, so such a run is a hot restart for `fsp dev`.
+    pub main_changed: bool,
+    /// The output's stamp as the last run left it, when the run got to writing (since 0.19.0): its
+    /// `_version` and `_kept`, read back from the text that was written. `None` otherwise.
+    pub stamp: Option<Stamp>,
+    /// Whether a hot reload can swap the routes the last run generated (since 0.19.0; see
+    /// `entry::swaps`).
+    pub swaps: bool,
     pub last: LastRun,
     pub formats: Formats,
     pub sites: Sites,

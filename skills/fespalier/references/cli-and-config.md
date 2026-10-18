@@ -15,7 +15,7 @@ above; pass --project`).
 | `fsp gen [--format] [--json]`                                | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
 | `fsp check [--json]`                                         | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
 | `fsp watch`                                                  | `gen` once, then again on every relevant change; keep it next to `flutter run`, or use `fsp dev`                                                                                                                                                                                                               |
-| `fsp dev [-- <args>] [--no-tui] [--dry-run]`                 | `fsp watch` and `flutter run --machine` in one terminal, in a full-screen view: hot restart when `lib/app.g.dart` changed, hot reload on any other save, the `tasks: dev:` hooks (since 0.9.0); see below                                                                                                      |
+| `fsp dev [-- <args>] [--no-tui] [--dry-run]`                 | `fsp watch` and `flutter run --machine` in one terminal, in a full-screen view: hot reload when `lib/app.g.dart` changed and the app can swap its routes, hot restart when it cannot, hot reload on any other save, the `tasks: dev:` hooks (since 0.9.0); see below                                           |
 | `fsp build <target> [-- <args>] [--dry-run]`                 | `fsp gen`, then `flutter build <target>` with the hooks of `tasks: build:` (since 0.9.0)                                                                                                                                                                                                                       |
 | `fsp run [task] [-- <args>] [--dry-run]`                     | Runs a task of `tasks:` in pubspec.yaml; with no name, lists them on stdout (since 0.9.0)                                                                                                                                                                                                                      |
 | `fsp routes [--json]`                                        | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                                  |
@@ -533,16 +533,25 @@ prints a message and keeps the old routes until `R`. A route added, removed, ren
 the order of `fsp routes` has a `data()` function (a `data` provider does not count), an action or a deferred page: the generated
 names of those (`_dataN`, `_libN`, `_actionN_i`) are numbered by position, so a route put before one is refused (in the shop
 example `zz/page.dart` swaps and `about/page.dart` does not; stable names made from the folders will lift it). Only the generated
-`main()` swaps (`StartupGate`): `main: manual` apps, even with `AppRoutes.router()`, keep their routes. `fsp dev` still restarts
-the app on a regeneration in this release, so the swap is the hot reload you press yourself. Profile and release builds never
+`main()` swaps (`StartupGate`): `main: manual` apps, even with `AppRoutes.router()`, keep their routes. `fsp dev` uses it (next paragraph). Profile and release builds never
 swap. See
 [the CLI reference](https://github.com/fespalier/fespalier/blob/main/docs/cli.md#a-hot-reload-after-a-regeneration).
 
-**The rule an agent needs: a regeneration restarts, a save reloads.** The router is built once, so a hot
-reload keeps the old route table: a pass of the generator that **wrote** an output (a new, removed or edited
-route, a new `data.dart`) sends `app.restart` with `fullRestart: true`; any other save under `lib/` sends a
-hot reload; a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R` do it by hand;
-`hot_reload: false` turns the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
+**The rule an agent needs: a save reloads; a regeneration reloads when the app can swap its routes, and restarts
+otherwise.** A hot reload swaps the route table only when the generated main was written and not rewritten, the app's
+`router()` is the generated one, and the file's `_version` and `_kept` (read back from `lib/app.g.dart`) swap in: no name
+both keep has another hash (`Stamp::swaps_to`, the rule of `RoutesReload`). A pass of the generator that **wrote** an
+output sends `app.restart` with `fullRestart: false` when it can swap, and with `fullRestart: true` otherwise: when
+`lib/app.main.g.dart` was rewritten, when the routes do not swap in, when the file has no stamp, before `app.start`, with
+no baseline (also after a save found a `router()` of your own), when the last hot result failed, when a reload still in flight
+does not swap to the new routes either, or when a restart is under way. A reload that a regeneration asked for and
+that flutter refuses is followed by one restart; the app printing its refusal of a swap is answered with one too (heard as an
+`app.log` event or, where flutter prints the app's output as plain lines, on the web, as one, and only after a reload went out
+since the last restart). The
+lines are `hot reload: lib/app.g.dart changed`, `hot restart: lib/app.g.dart changed`, `hot restart: lib/app.g.dart changed
+and the hot reload failed` and `hot restart: the app kept its old routes`. Any other save under `lib/` sends a hot reload;
+a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R` do it by hand; `hot_reload: false` turns
+the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
 
 ```yaml
 # pubspec.yaml

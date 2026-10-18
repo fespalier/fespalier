@@ -220,6 +220,42 @@ pub fn wanted(root: &Node, cfg: &Config) -> bool {
     }
 }
 
+/// Whether a hot reload can swap the routes the running app holds (since 0.19.0). It can when the
+/// generated main is written, so that `StartupGate` holds the router and calls `reloadRoutes` on
+/// reassemble (`packages/fespalier/lib/src/startup.dart`), and when `app.dart` leaves the router to
+/// the generated `AppRoutes.router()`: a `router()` that builds it another way (`buildRouter()`),
+/// or that mounts the routes into its own router (`AppRoutes.mount(...)`), is not swapped, and
+/// neither is `main: manual`, whose `main()` the generator does not write. This reads the text
+/// only, so it cannot see whether `lib/main.dart` calls `AppMain.run()`: every scaffold and every
+/// example does, and the docs say that the swap needs it.
+#[must_use]
+pub fn swaps(root: &Node, cfg: &Config) -> bool {
+    if !wanted(root, cfg) {
+        return false;
+    }
+    let Some(src) = root.files.get(&Kind::App) else {
+        return true;
+    };
+    let module = crate::parse_cache::parse(src);
+    let Some(f) = function(&module, "router") else {
+        return true;
+    };
+    let code = without_comments(src.get(f.extent.clone()).unwrap_or_default());
+    code.contains("AppRoutes.router(") && !calls(&code, "mount(")
+}
+
+/// Whether `code` holds `call` (a name and its opening parenthesis) as a whole identifier: not as the
+/// end of a longer one, so `mount(` is found in `AppRoutes.mount(` and `mount(at: '/x')` but not in
+/// `amount(` or `unmount(`.
+fn calls(code: &str, call: &str) -> bool {
+    code.match_indices(call).any(|(at, _)| {
+        !code[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    })
+}
+
 /// The generated main for the app, or `None` when none is wanted (see [`wanted`]). Reads the
 /// three root files and reports what is wrong with them (`diags`); with errors the text is
 /// still returned, and not written (`gen` stops on any error).

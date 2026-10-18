@@ -139,7 +139,7 @@ fsp create my_app                          # a new app with fespalier in it, gen
 fsp init                                   # starter layout/page/not_found/transition, then gen
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
-fsp dev [-- <flutter run args>]            # the app, regenerated and hot restarted on every save (0.9.0)
+fsp dev [-- <flutter run args>]            # the app, regenerated and hot reloaded on every save (0.9.0)
 fsp build <target> [-- <args>]             # fsp gen, then flutter build <target>, with the hooks of `tasks: build:` (0.9.0)
 fsp run [task]                             # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0)
 fsp check                                  # CI: non-zero on errors, writes nothing

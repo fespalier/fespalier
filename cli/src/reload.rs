@@ -13,6 +13,9 @@
 //!
 //! The fields are read from the raw template output, line by line, so the file is never parsed as
 //! Dart (a `dart format` of it would not change a hash: nothing here is formatted).
+//!
+//! `fsp dev` reads the two slots back from the file (`read_stamp`) and asks whether a hot reload
+//! would swap the routes (`Stamp::swaps_to`), which is `RoutesReload`'s rule (since 0.19.0).
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -233,4 +236,91 @@ fn hex(text: &str) -> String {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
+}
+
+/// The two slots of a generated file, as the file holds them (since 0.19.0): `fsp dev` keeps one
+/// for the routes the running app holds and one for the file on disk, and asks
+/// [`Stamp::swaps_to`] whether a hot reload would swap them in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stamp {
+    /// The file's `_version`: 16 hex digits, a hash of the whole file.
+    pub version: String,
+    /// The file's `_kept`: each kept name with its 8 hex digits.
+    pub kept: BTreeMap<String, String>,
+}
+
+impl Stamp {
+    /// Whether a hot reload from the routes of `self` to those of `next` swaps them in: no name
+    /// both keep has another hash, and added or removed names do not count. This is the rule of
+    /// `RoutesReload._reassembled` in `routes_reload.dart`, so the two must stay equal.
+    #[must_use]
+    pub fn swaps_to(&self, next: &Stamp) -> bool {
+        self.kept
+            .iter()
+            .all(|(name, hash)| next.kept.get(name).is_none_or(|other| other == hash))
+    }
+}
+
+/// The stamp of a generated file's text, formatted or not, as [`stamp`] wrote it (since 0.19.0):
+/// the literal of `_version`, and the name and hash pairs of `_kept`. `None` unless the version is
+/// 16 hex digits and every hash is 8, and `_kept` has at least one pair, so that a file that was
+/// never stamped, or that was edited by hand, makes `fsp dev` restart.
+#[must_use]
+pub fn read_stamp(text: &str) -> Option<Stamp> {
+    let declaration = &text[text.find("String _version =")?..];
+    let declaration = &declaration[..declaration.find(';')?];
+    let versions = string_literals(declaration);
+    let [version] = versions.as_slice() else {
+        return None;
+    };
+    if !is_hex(version, 16) {
+        return None;
+    }
+    let map = &text[text.find("Map<String, String> _kept =")?..];
+    let open = map.find('{')?;
+    let close = open + map[open..].find('}')?;
+    let literals = string_literals(&map[open + 1..close]);
+    if !literals.len().is_multiple_of(2) {
+        return None;
+    }
+    let mut kept = BTreeMap::new();
+    for pair in literals.chunks(2) {
+        let [name, hash] = pair else {
+            return None;
+        };
+        if !is_hex(hash, 8) || kept.insert(name.clone(), hash.clone()).is_some() {
+            return None;
+        }
+    }
+    (!kept.is_empty()).then(|| Stamp {
+        version: version.clone(),
+        kept,
+    })
+}
+
+/// Whether [text] is exactly [digits] lowercase hex digits (`'0'..='9'` and `'a'..='f'`).
+fn is_hex(text: &str, digits: usize) -> bool {
+    text.len() == digits && text.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// The single-quoted literals of [text], in order, without their quotes. A backslash makes the
+/// character after it stand for itself, which undoes `emit::dart_str`'s escapes (`\'`, `\\`, `\$`).
+fn string_literals(text: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c != '\'' {
+            continue;
+        }
+        let mut literal = String::new();
+        while let Some(c) = chars.next() {
+            match c {
+                '\'' => break,
+                '\\' => literal.extend(chars.next()),
+                _ => literal.push(c),
+            }
+        }
+        out.push(literal);
+    }
+    out
 }

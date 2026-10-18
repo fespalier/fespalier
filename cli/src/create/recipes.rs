@@ -338,7 +338,7 @@ pub const RECIPES: &[Recipe] = &[
             name: "otel_zone",
             source: Source::Git {
                 url: "https://github.com/vaam-apps/flutter-otel-zone",
-                commit: "8a72fc4162f6426951176d40c490389f77385647",
+                commit: "64c4661ac6cd09718141864d528892916677cc38",
             },
         }],
         dev_third_party: &[ThirdParty {

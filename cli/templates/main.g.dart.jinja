@@ -11,7 +11,7 @@ import 'package:fespalier/startup.dart';
 {% if otel %}
 import 'package:fespalier_otel/fespalier_otel.dart' show FespalierOtel;
 {% endif %}
-{% if deferred or otel_zone %}
+{% if deferred %}
 import 'package:flutter/foundation.dart' show kIsWeb;
 {% endif %}
 import 'package:flutter/{{ "material" if material else "widgets" }}.dart';
@@ -80,10 +80,10 @@ abstract final class AppMain {
   }
 {% if otel_zone %}
 
-  /// otel_zone's guarded zone around all of main() (`otel: true`), off the web, where its
-  /// `runGuarded` never runs its body. A `zone()` in startup.dart replaces it.
+  /// otel_zone's guarded zone around all of main() (`otel: true`, since 0.19.0), on every platform:
+  /// otel_zone runs its body on the web too (v0.8.1 or later). A `zone()` in startup.dart replaces it.
   static Future<void> _otelZone(Future<void> Function() body) =>
-      kIsWeb ? body() : observability.runGuarded(body);
+      observability.runGuarded(body);
 {% endif %}
 
   /// The widget [run] gives `runApp`: startup() (splash.dart while it runs, and if it fails),

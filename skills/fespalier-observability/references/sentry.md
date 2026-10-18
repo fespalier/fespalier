@@ -114,7 +114,7 @@ The order rules:
    `runZonedGuarded`, so uncaught errors go to that zone. Nothing calls
    `WidgetsFlutterBinding.ensureInitialized()` before it.
 2. **No `OtelZone.runGuarded` next to Sentry**: its zone sends an uncaught async error to Talker only, and Sentry
-   would never see it (it is also blank on the web). Pass Sentry's `body` and start the SDK with
+   would never see it. Pass Sentry's `body` and start the SDK with
    `observability.start()`.
 3. **Install the sink before the router exists**, in `startup()` or `appRunner`; with `fespalier_auth`'s
    `restoreAuth`, install first so the restore is reported.

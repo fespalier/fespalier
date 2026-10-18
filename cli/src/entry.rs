@@ -420,9 +420,9 @@ pub fn emit(
             "everything runs inside the adapters' zones and startup.dart's `zone()`: "
         }
         (false, false, false) => "everything runs inside the adapters' zones: ",
-        (true, false, true) => "everything runs inside otel_zone's guarded zone (not on the web): ",
+        (true, false, true) => "everything runs inside otel_zone's guarded zone: ",
         (false, false, true) => {
-            "everything runs inside the adapters' zones and otel_zone's guarded zone (not on the web): "
+            "everything runs inside the adapters' zones and otel_zone's guarded zone: "
         }
     };
     let cx = FileCx {
@@ -489,7 +489,7 @@ struct FileCx<'a> {
     launch: bool,
     /// `otel: true`: the service name of `AppMain.observability`, and the SDK's start and sink.
     otel: Option<&'a str>,
-    /// `otel_zone`'s guarded zone wraps `_main` (`_otelZone`), off the web.
+    /// `otel_zone`'s guarded zone wraps `_main` (`_otelZone`), on every platform.
     otel_zone: bool,
     imports: &'a [ImportCx],
     /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and

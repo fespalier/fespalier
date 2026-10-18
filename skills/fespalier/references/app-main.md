@@ -278,7 +278,7 @@ With `fespalier: otel: true` in pubspec.yaml, and `telemetry: true`, `fespalier_
 `app.main.g.dart` declares `AppMain.observability` (an `OtelZone` named after the pubspec's `name`, exporting to
 `FespalierOtel.endpoint()`) and starts it first in `_main()`, with `FespalierOtel.serviceVersion()` and
 `FespalierOtel.buildId()`. It adds `FespalierOtel` as a sink with `FespalierTelemetry.add` (so a sink an adapter or
-`startup()` adds stays), passes the Riverpod and route observers, and wraps `main()` in `runGuarded` off the web: the
+`startup()` adds stays), passes the Riverpod and route observers, and wraps `main()` in `runGuarded` on every platform (the web too, since 0.19.0, with otel_zone v0.8.1 or later): the
 innermost zone, inside the adapters' zones, and not used when startup.dart has a `zone()`. `lib/main.dart` is
 `Future<void> main() => AppMain.run();`, and `app.g.dart` is unchanged. It is not an adapter, and `main: manual` refuses it.
 The version is the build name (`FLUTTER_BUILD_NAME`, Flutter 3.47 and later; `unknown` before), and no version is
@@ -290,8 +290,8 @@ written into the file. Details and the errors: `fespalier-observability` (`refer
 - **`usePathUrlStrategy()` goes in `startup()`.** The router is built after it, which is in time
   (checked in a release web build, with an async `startup()`). It needs `flutter_web_plugins` in `pubspec.yaml`.
 - **`zone()` runs on the web.** A zone that needs `dart:io` or an isolate must behave there:
-  `otel_zone`'s `runGuarded` never runs its body in a browser and leaves the app blank, so write
-  `kIsWeb ? body() : observability.runGuarded(body)`.
+  `otel_zone` before v0.8.1 never ran its `runGuarded` body in a browser and left the app blank: there, call
+  the body directly when `kIsWeb` is true. From v0.8.1 the zone runs on the web.
 - **Adapters do nothing unless `lib/main.dart` is `Future<void> main() => AppMain.run();` (or calls `AppAdapters`).** `fsp` does not
   read `lib/main.dart`: an app whose own `main()` still calls `runApp` by hand ignores them, without a message.
 - **An app.dart `router()` must pass `observers: AppMain.routerObservers()` and `launch: AppMain.launch`** to

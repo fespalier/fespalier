@@ -1530,7 +1530,7 @@ fn otel_needs_both_packages_under_dependencies() {
         ),
         "`fespalier.otel` needs `fespalier_otel` under `dependencies:` in pubspec.yaml (next to fespalier, at the same git ref): the generated main() imports it"
     );
-    let no_zone = "`fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines): the generated main() imports it";
+    let no_zone = "`fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.8.1 or later: docs/observability.md has the lines): the generated main() imports it";
     assert_eq!(
         refused(
             "dependencies:\n  fespalier_otel: ^1.0.0\nfespalier:\n  telemetry: true\n  otel: true\n"
@@ -1596,18 +1596,19 @@ fn otel_starts_the_sdk_first_and_adds_its_sink() {
 }
 
 #[test]
-fn otel_guards_its_zone_off_the_web() {
+fn otel_runs_main_in_its_zone_on_every_platform() {
     let g = run_yaml(&with_otel(""), &[("page.dart", HOME)]);
     let main = g.main.unwrap();
     has(
         &main,
         &[
-            "import 'package:flutter/foundation.dart' show kIsWeb;",
             "static Future<void> run() => _otelZone(_main);",
-            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      kIsWeb ? body() : observability.runGuarded(body);",
-            "everything runs inside otel_zone's guarded zone (not on the web): the binding,",
+            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      observability.runGuarded(body);",
+            "everything runs inside otel_zone's guarded zone: the binding,",
         ],
     );
+    // No deferred route here, so no `kIsWeb` is left: the zone runs on the web too (v0.8.1).
+    has_not(&main, &["kIsWeb"]);
 }
 
 #[test]

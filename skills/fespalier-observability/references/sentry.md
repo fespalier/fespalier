@@ -17,9 +17,20 @@ no transaction. Performance (`tracing: true`) is the opt-in, for a team that has
   and first `build`, through `FespalierTelemetry.commit`; before, once that frame was built) the scope's
   transaction name is the route pattern (`navigate (not found)` for a location that matched no route) and the
   tag `fespalier.route` is set, so a crash that no fespalier operation reported, caught by Sentry's own
-  integrations, says which screen it happened on. A navigation that commits twice before its first frame is
-  named twice, and the last stays; the page's breadcrumb still comes with its first frame. A transaction that
-  is Sentry's own (its app start, its navigator observer) is never renamed: the tag is still set.
+  integrations, says which screen it happened on. What the commit changes is what reads the scope during the
+  first frame: an event captured on a copy of it (`withScope`: the app's own, and fespalier's own, whose
+  transaction name moves; their `fespalier.route` and `otel.*` only for an operation with no route or trace of
+  its own, such as a `custom` one) and a page's `initState` that reads `scope.transaction` or the tags. Sentry's
+  own capture of an exception reads the live scope after the frame, so it already named the new page, and a
+  guard, `data()` or action error takes its `fespalier.route` from its call site. The reverse holds from the
+  commit until the first frame: an event from the page being left names the destination (a `captureException`
+  right after `router.go(...)` in the same handler, an action that navigates and then fails: its transaction
+  name, not its `fespalier.route`). A navigation that commits twice before its first frame is named twice, and
+  the last stays; the page's breadcrumb still comes with its first frame. With `traceLifecycle: stream`, a
+  commit made while a span is active (a `go()` inside a data load's or an action's span, or an idle span of
+  Sentry's own: a traced tap, the app start) sets the tag at the commit and the transaction name at the end.
+  A transaction that is Sentry's own (its app start, its navigator observer) is never renamed: the tag is still
+  set. UNCHECKED: a native crash or an ANR in `initState` carrying the tag on Android and iOS.
 - **One breadcrumb per page change**: type `navigation`, `from` and `to` patterns. A page being left makes
   none, so a go is one. A guard redirect, an action's result (never its input), an auth step and an image
   failure are breadcrumbs too.

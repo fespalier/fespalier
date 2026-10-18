@@ -44,9 +44,10 @@ const String tracingOffMessage =
 /// per page change**; and, because the SDK owns them, release health and the crash itself. When
 /// `fespalier_otel` runs next to it (`FespalierTelemetry.combine`), each event also carries the
 /// OpenTelemetry trace id and span id of the screen or the call it came from (`otel.trace_id`,
-/// `otel.span_id`), so an error links to its trace. Since 0.19.0 the scope names a page when the
-/// navigation to it commits, before the page's `initState` and first `build`, so an error while it
-/// opens is tagged with that page, not the one before.
+/// `otel.span_id`), so an error links to its trace. Since 0.19.0 the scope is named when a
+/// navigation commits, before the page's `initState` and first `build` and not after that frame, so
+/// what reads the scope in that frame (an event captured with `withScope`, the page's own code)
+/// finds the page's names.
 ///
 /// Performance is opt-in, for Sentry-only teams: `FespalierSentry(tracing: true)` turns each
 /// navigation into a `ui.load` transaction named by the route pattern, with spans for guards,
@@ -619,8 +620,9 @@ final class FespalierSentry extends FespalierTelemetry {
   /// Names [nav] after the page it shows, [route] (`navigate (not found)` when [notFound]): its
   /// screen's transaction or segment ([ScreenSpan.named]) and the scope ([_nameScope]). It runs at
   /// each commit (a second one before the frame renames: the last wins) and again at the end, with
-  /// the same route, which writes nothing new. With `traceLifecycle: stream`, a commit made inside
-  /// a data load's or an action's span finds that span active, so the scope's transaction is set
+  /// the same route, which writes nothing new. With `traceLifecycle: stream`, a commit made while
+  /// any span is active (the span of a data load or an action around a `go()`, or an idle span of
+  /// Sentry's own: a traced tap, the app start) finds it active, so the scope's transaction is set
   /// at the end, as before 0.19.0, and its tag at the commit.
   void _name(NavToken nav, String? route, {required bool notFound}) {
     nav.name = notFound ? 'navigate (not found)' : (route ?? 'navigate');

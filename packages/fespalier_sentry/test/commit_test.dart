@@ -126,6 +126,29 @@ void main() {
   });
 
   testWidgets(
+    'an event right after go() in the same handler names the destination',
+    (tester) async {
+      // The other side of the commit: until the destination's first frame the page being left is
+      // still on screen, but the scope already names the page being opened, for a copy of it and
+      // for the live one alike.
+      final rig = Rig();
+      final r = await rig.boot(tester);
+      r.go('/other');
+      unawaited(
+        rig.sentry.hub.captureException(
+          StateError('on a copy'),
+          withScope: (_) {},
+        ),
+      );
+      unawaited(rig.sentry.hub.captureException(ArgumentError('on the scope')));
+      await tester.pumpAndSettle();
+      final sent = events(await rig.sent(tester));
+      expect(sent, hasLength(2));
+      expect(sent.map((e) => e['transaction']), everyElement('/other'));
+    },
+  );
+
+  testWidgets(
     'two commits before one frame: the last names the scope, and only the '
     'page shown has a breadcrumb',
     (tester) async {

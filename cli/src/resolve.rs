@@ -727,8 +727,10 @@ pub fn section_name(dir: &str) -> String {
 /// another such folder has takes `_` and [`crate::reload::short_hash`] of its path, so that
 /// `order-history/` and `order_history/` keep apart. Every other folder keeps the bare stem. A
 /// name depends on its own folder and on the folders that share its stem, never on the rest of
-/// the tree: a folder added elsewhere renames nothing.
-fn assign_stems(routes: &mut [Route]) {
+/// the tree: a folder added elsewhere renames nothing. Two folders that still end with one stem
+/// (their hashes agree on all 8 digits, about one pair in four billion) are an error: the
+/// generated file would declare one name twice.
+fn assign_stems(routes: &mut [Route], diags: &mut Diags) {
     let stems: Vec<String> = routes.iter().map(|r| folder_stem(&r.dir)).collect();
     let mut owners: HashMap<&str, usize> = HashMap::new();
     for (r, stem) in routes.iter().zip(&stems) {
@@ -747,6 +749,31 @@ fn assign_stems(routes: &mut [Route]) {
         } else {
             stem
         };
+    }
+    let mut seen: HashMap<&str, &str> = HashMap::new();
+    for r in routes.iter().filter(|r| r.owns_names()) {
+        if let Some(first) = seen.insert(r.stem.as_str(), r.dir.as_str()) {
+            let file = if r.data.is_some() {
+                "data.dart"
+            } else if r.actions.is_empty() {
+                "route.dart"
+            } else {
+                "action.dart"
+            };
+            let at = if r.dir.is_empty() {
+                file.to_string()
+            } else {
+                format!("{}/{file}", r.dir)
+            };
+            diags.error(
+                &at,
+                None,
+                format!(
+                    "the folders `{first}` and `{}` would both be called `{}` in the generated file (the hashes of their paths agree): rename one of them",
+                    r.dir, r.stem
+                ),
+            );
+        }
     }
 }
 
@@ -1052,7 +1079,7 @@ pub fn resolve(
     r.settle_actions();
     r.settle_flows();
     r.unused_freshness();
-    assign_stems(&mut r.app.routes);
+    assign_stems(&mut r.app.routes, r.diags);
     r.app
 }
 

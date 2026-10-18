@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use crate::action_tests::code as built;
+use crate::action_tests::{code as built, errors};
 use crate::config::Config;
-use crate::reload::{Stamp, kept_fields, read_stamp, stamp};
+use crate::reload::{Stamp, kept_fields, read_stamp, short_hash, stamp};
 use crate::resolve::{folder_stem, section_name};
 use crate::session::Session;
 use crate::{analyze, gen_core, manifest};
@@ -642,6 +642,44 @@ fn folders_whose_stems_meet_each_take_a_hash_of_their_own_path() {
     let c = built(&alone);
     has(&c, &["final _dataOrderHistory = "]);
     assert!(!c.contains("_dataOrderHistory_a6adc020"), "{c}");
+}
+
+#[test]
+fn two_folders_whose_hashes_agree_are_an_error_and_not_a_name_declared_twice() {
+    // Found by searching: two spellings of one stem whose paths agree on all 8 digits of the hash.
+    const ONE: &str = "a_b-c.d.e_f-g-h.i.j.k-l-m-n";
+    const TWO: &str = "a_b_c_d-e-f.g-h-i-j_k_l-m-n";
+    assert_eq!(folder_stem(ONE), folder_stem(TWO));
+    assert_eq!(short_hash(ONE), short_hash(TWO));
+    let page = |name: &str| {
+        format!(
+            "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.data}}); final int data; }}"
+        )
+    };
+    let (one_page, two_page) = (page("One"), page("Two"));
+    let (one, one_data) = (format!("{ONE}/page.dart"), format!("{ONE}/data.dart"));
+    let (two, two_data) = (format!("{TWO}/page.dart"), format!("{TWO}/data.dart"));
+    let files = |with_both: bool| {
+        let mut files = vec![
+            ("page.dart", HOME),
+            (one.as_str(), one_page.as_str()),
+            (one_data.as_str(), "Future<int> data(Ref ref) async => 0;"),
+        ];
+        if with_both {
+            files.push((two.as_str(), two_page.as_str()));
+            files.push((two_data.as_str(), "Future<int> data(Ref ref) async => 0;"));
+        }
+        errors(&files)
+    };
+    assert_eq!(files(false), "");
+    let e = files(true);
+    assert!(
+        e.contains(&format!("✗ {TWO}/data.dart"))
+            && e.contains(&format!(
+                "the folders `{ONE}` and `{TWO}` would both be called `ABCDEFGHIJKLMN_ff92c64a`"
+            )),
+        "{e}"
+    );
 }
 
 #[test]

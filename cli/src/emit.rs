@@ -404,7 +404,7 @@ struct ActionCx {
     run_params: String,
     /// `_i5.action(ref, id: id, input: input)`.
     call: String,
-    /// The function's key in the DevTools tree (`a37_0`), for the provider's `site:`.
+    /// The function's key in the DevTools tree (`aNotesId_edit`), for the provider's `site:`.
     site: String,
     /// The action's file and the pattern of its route or section, as Dart string literals:
     /// what `telemetry:` names.
@@ -609,7 +609,7 @@ struct ProviderCx {
     call: String,
     /// `data_retry: none`: the provider opts out of Riverpod's retry.
     no_retry: bool,
-    /// `data.dart` selects a provider: `_dataN` returns it (or is it, with no keys),
+    /// `data.dart` selects a provider: `_dataProductsId` returns it (or is it, with no keys),
     /// and nothing is wrapped.
     selector: bool,
     /// The file's key in the DevTools tree (`dProductsId`), for `traceData`.

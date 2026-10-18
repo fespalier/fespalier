@@ -2396,6 +2396,8 @@ fn telemetry_stop_and_reset_run_down_with_the_grafana_profile() {
 /// and answered, `app.stop` is logged and ends it. With `$FAKE_RUN_EXIT` set it exits at once.
 /// A hot reload (not a restart) first makes the app log `$FAKE_REFUSE` when that is set, as an app
 /// that kept its routes does, and fails with `$FAKE_RELOAD_FAIL` as its message when that is set.
+/// `$FAKE_REFUSE_PLAIN` is `$FAKE_REFUSE` as a plain line on stdout, which is how flutter on the web
+/// sends the app's prints.
 #[cfg(unix)]
 fn fake_flutter(root: &Path) -> std::path::PathBuf {
     let bin = root.join("bin");
@@ -2428,6 +2430,9 @@ while IFS= read -r line; do
       echo "app.restart fullRestart=$full" >> "$FAKE_LOG"
       if [ "$full" = false ] && [ -n "$FAKE_REFUSE" ]; then
         echo "[{\"event\":\"app.log\",\"params\":{\"appId\":\"a1\",\"log\":\"$FAKE_REFUSE\"}}]"
+      fi
+      if [ "$full" = false ] && [ -n "$FAKE_REFUSE_PLAIN" ]; then
+        printf '%s\n' "$FAKE_REFUSE_PLAIN"
       fi
       if [ "$full" = false ] && [ -n "$FAKE_RELOAD_FAIL" ]; then
         echo "[{\"id\":$id,\"result\":{\"code\":1,\"message\":\"$FAKE_RELOAD_FAIL\"}}]"
@@ -2741,6 +2746,42 @@ fn dev_restarts_an_app_that_kept_its_old_routes() {
     d.wait_err("[fsp] hot restart: the app kept its old routes");
     d.wait_log("app.restart fullRestart=true");
     d.wait_err("[fsp] ✓ hot restart in");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_restarts_an_app_that_kept_its_old_routes_when_it_says_so_in_a_plain_line() {
+    // Flutter on the web sends the app's prints as plain lines, not as `app.log` events.
+    let dir = swap_project();
+    let mut d = Dev::start_with(
+        dir.path(),
+        &[],
+        &[("FAKE_REFUSE_PLAIN", KEPT_CHANGED)],
+        true,
+    );
+    d.wait_ready();
+    fs::create_dir_all(dir.path().join("lib/app/zz")).unwrap();
+    fs::write(dir.path().join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    d.wait_err("[fsp] hot restart: the app kept its old routes");
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] ✓ hot restart in");
+    // One refusal is one restart: the line said once is not answered twice.
+    let err = d.err();
+    assert_eq!(
+        err.matches("[fsp] hot restart: the app kept its old routes")
+            .count(),
+        1,
+        "{err}"
+    );
+    assert_eq!(
+        log_calls(&d.flog(), "app.restart fullRestart=true").len(),
+        1,
+        "{}",
+        d.flog()
+    );
     d.send("q");
     d.wait_log("app.stop");
     assert_eq!(d.wait_exit(), Some(0), "{}", d.err());

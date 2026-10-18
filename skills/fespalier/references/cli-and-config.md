@@ -543,8 +543,11 @@ otherwise.** A hot reload swaps the route table only when the generated main was
 both keep has another hash (`Stamp::swaps_to`, the rule of `RoutesReload`). A pass of the generator that **wrote** an
 output sends `app.restart` with `fullRestart: false` when it can swap, and with `fullRestart: true` otherwise: when
 `lib/app.main.g.dart` was rewritten, when the routes do not swap in, when the file has no stamp, before `app.start`, with
-no baseline, when the last hot result failed, or when a restart is under way. A reload that a regeneration asked for and
-that flutter refuses is followed by one restart; the app printing its refusal of a swap is answered with one too. The
+no baseline (also after a save found a `router()` of your own), when the last hot result failed, when a reload still in flight
+does not swap to the new routes either, or when a restart is under way. A reload that a regeneration asked for and
+that flutter refuses is followed by one restart; the app printing its refusal of a swap is answered with one too (heard as an
+`app.log` event or, where flutter prints the app's output as plain lines, on the web, as one, and only after a reload went out
+since the last restart). The
 lines are `hot reload: lib/app.g.dart changed`, `hot restart: lib/app.g.dart changed`, `hot restart: lib/app.g.dart changed
 and the hot reload failed` and `hot restart: the app kept its old routes`. Any other save under `lib/` sends a hot reload;
 a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R` do it by hand; `hot_reload: false` turns

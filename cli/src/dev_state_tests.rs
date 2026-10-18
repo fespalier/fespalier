@@ -948,6 +948,16 @@ fn wrote(stamp: Stamp) -> GenReport {
     }
 }
 
+/// The report of a pass that wrote nothing (a save) over a file holding `stamp`, whose routes can
+/// be swapped in: it makes a hot reload.
+fn saved(stamp: Stamp) -> GenReport {
+    GenReport {
+        stamp: Some(stamp),
+        swaps: true,
+        ..report(false, true, false)
+    }
+}
+
 /// The app's log with `line` in it, as flutter sends it (a refusal of a swap is one of these).
 fn refusal(line: &str) -> Input {
     daemon(&format!(
@@ -1149,10 +1159,14 @@ fn a_failed_reload_of_a_regeneration_is_followed_by_a_restart() {
 
 #[test]
 fn the_app_keeping_its_old_routes_is_restarted() {
-    let mut s = running_from(Some(stamp("0000000000000000", &[("a", "11111111")])));
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    // Only a reload can be refused: one goes out first (a save), and the app refuses it.
+    assert_eq!(requests(&pass(&mut s, 50, saved(v0))), [(1, false)]);
+    s.drain_plain();
     let line = format!("I/flutter ( 4242): {KEPT_CHANGED}");
     let fx = s.update(ms(100), refusal(&line));
-    assert_eq!(requests(&fx), [(1, true)]);
+    assert_eq!(requests(&fx), [(2, true)]);
     assert_eq!(
         lines(&mut s).last().unwrap(),
         "hot restart: the app kept its old routes"
@@ -1160,6 +1174,199 @@ fn the_app_keeping_its_old_routes_is_restarted() {
     // The app says it once per version; the same line while the restart is under way sends nothing.
     let fx = s.update(ms(110), refusal(&line));
     assert!(requests(&fx).is_empty());
+}
+
+/// A reload that went out and was answered, and then a restart for a refusal that was answered
+/// too: a state in which the app's refusal has been dealt with.
+fn refused_and_restarted() -> DevState {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    assert_eq!(requests(&pass(&mut s, 50, saved(v0))), [(1, false)]);
+    assert_eq!(
+        requests(&s.update(ms(100), refusal(KEPT_CHANGED))),
+        [(2, true)]
+    );
+    respond(&mut s, 120, 1, "Reloaded 1 of 9 libraries");
+    respond(&mut s, 400, 2, "");
+    s.drain_plain();
+    s
+}
+
+#[test]
+fn a_web_app_prints_the_refusal_as_a_plain_line() {
+    // Flutter on the web sends the app's prints as plain lines on stdout, not as `app.log` events.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    for (text, err) in [
+        (KEPT_CHANGED.to_string(), false),
+        (KEPT_CHANGED.to_string(), true),
+        (format!("I/flutter ( 4242): {KEPT_CHANGED}"), false),
+    ] {
+        let mut s = running_from(Some(v0.clone()));
+        assert_eq!(requests(&pass(&mut s, 50, saved(v0.clone()))), [(1, false)]);
+        s.drain_plain();
+        let fx = s.update(
+            ms(100),
+            Input::Line {
+                pane: FLUTTER,
+                text: text.clone(),
+                err,
+            },
+        );
+        assert_eq!(requests(&fx), [(2, true)], "{text}");
+        let said = lines(&mut s);
+        assert_eq!(
+            said.last().unwrap(),
+            "hot restart: the app kept its old routes"
+        );
+        // The line itself is in the pane, once, and only the restart line is added to it.
+        assert_eq!(
+            said,
+            [text.as_str(), "hot restart: the app kept its old routes"]
+        );
+    }
+}
+
+#[test]
+fn only_flutters_lines_are_a_refusal() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = state_with(true, true, &["web"]);
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    assert_eq!(requests(&pass(&mut s, 50, saved(v0))), [(1, false)]);
+    // A line of fsp's own pane, or of a `with` process, is not the app speaking.
+    for pane in [FSP, FSP + 1] {
+        let fx = s.update(
+            ms(100),
+            Input::Line {
+                pane,
+                text: KEPT_CHANGED.into(),
+                err: false,
+            },
+        );
+        assert!(requests(&fx).is_empty());
+    }
+}
+
+#[test]
+fn the_tools_log_can_carry_the_refusal_too() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    assert_eq!(requests(&pass(&mut s, 50, saved(v0))), [(1, false)]);
+    let fx = s.update(
+        ms(100),
+        daemon(&format!(
+            r#"[{{"event":"daemon.logMessage","params":{{"level":"status","message":"{KEPT_CHANGED}"}}}}]"#
+        )),
+    );
+    assert_eq!(requests(&fx), [(2, true)]);
+}
+
+#[test]
+fn the_refusal_said_again_after_its_restart_is_not_another_restart() {
+    let mut s = refused_and_restarted();
+    // A late or repeated line, as an event or as a plain line: no reload has gone out since the
+    // restart, so it is the same refusal.
+    let fx = s.update(ms(500), refusal(KEPT_CHANGED));
+    assert!(requests(&fx).is_empty());
+    let fx = s.update(
+        ms(510),
+        Input::Line {
+            pane: FLUTTER,
+            text: KEPT_CHANGED.into(),
+            err: false,
+        },
+    );
+    assert!(requests(&fx).is_empty());
+    assert!(
+        !lines(&mut s)
+            .iter()
+            .any(|l| l == "hot restart: the app kept its old routes")
+    );
+    // A reload that goes out afterwards can be refused again, and is restarted once more.
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    assert_eq!(requests(&pass(&mut s, 600, wrote(v1))), [(3, false)]);
+    assert_eq!(
+        requests(&s.update(ms(650), refusal(KEPT_CHANGED))),
+        [(4, true)]
+    );
+}
+
+#[test]
+fn a_refusal_before_any_reload_is_not_acted_on() {
+    // The app has not been reloaded since it started: the line cannot be a refusal of ours.
+    let mut s = running_from(Some(stamp("0000000000000000", &[("a", "11111111")])));
+    let fx = s.update(ms(100), refusal(KEPT_CHANGED));
+    assert!(requests(&fx).is_empty());
+    assert!(
+        !lines(&mut s)
+            .iter()
+            .any(|l| l == "hot restart: the app kept its old routes")
+    );
+}
+
+#[test]
+fn a_refusal_while_quitting_says_nothing() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    assert_eq!(requests(&pass(&mut s, 50, saved(v0))), [(1, false)]);
+    s.update(ms(60), Input::Key(Key::Char('q')));
+    s.drain_plain();
+    // The restart cannot be sent while flutter is stopping, so the line must not claim one.
+    let fx = s.update(ms(100), refusal(KEPT_CHANGED));
+    assert!(requests(&fx).is_empty());
+    assert!(
+        !lines(&mut s)
+            .iter()
+            .any(|l| l == "hot restart: the app kept its old routes")
+    );
+}
+
+#[test]
+fn a_router_that_stops_following_the_table_leaves_no_baseline() {
+    // The app started with a router of its own: the table is not what it routes with.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    let own_router = GenReport {
+        stamp: Some(v0.clone()),
+        swaps: false,
+        ..report(false, true, false)
+    };
+    assert_eq!(requests(&pass(&mut s, 50, own_router)), [(1, false)]);
+    respond(&mut s, 60, 1, "Reloaded 1 of 9 libraries");
+    // A regeneration that wrote, with the router of its own: a restart, which compiles v1.
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    let own_router_wrote = GenReport {
+        swaps: false,
+        ..wrote(v1.clone())
+    };
+    assert_eq!(requests(&pass(&mut s, 100, own_router_wrote)), [(2, true)]);
+    respond(&mut s, 200, 2, "");
+    // The user then lets `AppRoutes.router()` build it: this pass writes nothing, so it only
+    // reloads, and the running app keeps its hand-built router.
+    assert_eq!(
+        requests(&pass(&mut s, 300, saved(v1.clone()))),
+        [(3, false)]
+    );
+    respond(&mut s, 320, 3, "Reloaded 1 of 9 libraries");
+    // The next regeneration restarts once, because nothing says the app follows the table ...
+    let v2 = stamp(
+        "2222222222222222",
+        &[("a", "11111111"), ("b", "22222222"), ("c", "33333333")],
+    );
+    assert_eq!(requests(&pass(&mut s, 400, wrote(v2.clone()))), [(4, true)]);
+    respond(&mut s, 500, 4, "");
+    // ... and that restart sets the baseline: the one after it reloads.
+    let v3 = stamp(
+        "3333333333333333",
+        &[
+            ("a", "11111111"),
+            ("b", "22222222"),
+            ("c", "33333333"),
+            ("d", "44444444"),
+        ],
+    );
+    assert_eq!(requests(&pass(&mut s, 600, wrote(v3))), [(5, false)]);
 }
 
 #[test]

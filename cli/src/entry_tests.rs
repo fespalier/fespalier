@@ -1843,6 +1843,15 @@ fn a_hot_reload_swaps_the_routes_only_when_the_main_and_the_router_are_the_gener
     let mounts =
         format!("{APP}\nGoRouter router() => GoRouter(routes: AppRoutes.mount(at: '/x'));");
     assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &mounts)]));
+    // `mount` is a whole identifier: `amount(` and `unmount(` are not a mount.
+    let unrelated = format!(
+        "{APP}\nGoRouter router() {{ final n = amount(1) + unmount(2); return AppRoutes.router(observers: []); }}"
+    );
+    assert!(swaps("", &[("page.dart", HOME), ("app.dart", &unrelated)]));
+    // ... and a bare `mount(` still is one.
+    let bare =
+        format!("{APP}\nGoRouter router() {{ mount(1); return AppRoutes.router(observers: []); }}");
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &bare)]));
     // A comment that names the generated router is not a call to it.
     let commented = format!(
         "{APP}\nGoRouter router() {{ // AppRoutes.router() is not called here\n  return buildRouter(); }}"

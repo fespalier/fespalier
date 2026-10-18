@@ -2,9 +2,10 @@
 # `fsp dev` against the real flutter (`just dev-e2e`): a fresh web app with `fsp init`, run in headless
 # Chrome with `fsp dev --no-tui`. It waits for the app to run, then adds a route that a hot reload
 # swaps in (the home page opens it and keeps its state), then adds a route that sorts before a data
-# route (the app keeps its old routes: a hot restart, and startup() runs again), and quits with `q`
-# (since 0.19.0). This is the one check of fsp against flutter's real `--machine` protocol; every
-# other test speaks it through a fake.
+# route (fsp dev sees the swap would be refused: a hot restart, and startup() runs again), then adds
+# another one behind fsp dev's back (the app refuses the swap and prints so, and fsp dev restarts it
+# on that line), and quits with `q` (since 0.19.0). This is the one check of fsp against flutter's
+# real `--machine` protocol; every other test speaks it through a fake.
 #
 # Needs Flutter with web support, Chrome (`CHROME_EXECUTABLE` names one that is not on the path) and
 # network for `flutter pub get`. FSP_BIN is the fsp to run (default: cli/target/debug/fsp, built here).
@@ -204,8 +205,8 @@ expect_count 'e2e home init' 1
 expect_count '✓ hot restart in' 0
 expect_count '[fsp] hot restart:' 0
 
-# A route that sorts before items renumbers the data route: the app keeps its old routes, so a hot
-# restart, and startup() runs again.
+# A route that sorts before items renumbers the data route: fsp dev sees that the app would keep its
+# old routes, so it restarts the app, and startup() runs again.
 mkdir -p lib/app/about
 cat > lib/app/about/page.dart << 'DART'
 import 'package:flutter/widgets.dart';
@@ -222,8 +223,42 @@ wait_for '✓ hot restart in' 120
 wait_count 'e2e startup' 2 120
 expect_count '[fsp] hot reload: lib/app.g.dart changed' 1
 
+# The app refuses a swap that fsp dev did not predict. Its pass finds nothing to write, because the
+# regenerated file is already on disk: a copy of the app generates it, and it is put in place before
+# the page appears (fsp watches lib/app/, not the generated file, so that starts no pass). That makes
+# a save reload, which the app refuses by printing so: flutter on the web sends that as a plain line
+# of its output, not as an `app.log` event, and fsp dev must restart the app on it.
+copy="$work/regenerated"
+mkdir -p "$copy"
+cp pubspec.yaml "$copy/"
+cp -R lib "$copy/lib"
+mkdir -p "$copy/lib/app/account"
+cat > "$copy/lib/app/account/page.dart" << 'DART'
+import 'package:flutter/widgets.dart';
+
+class AccountPage extends StatelessWidget {
+  const AccountPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Text('account');
+}
+DART
+(cd "$copy" && "$fsp" gen > /dev/null 2>&1) || fail "fsp gen failed in the copy of the app"
+cp "$copy/lib/app.g.dart" lib/app.g.dart
+mkdir -p lib/app/account
+cp "$copy/lib/app/account/page.dart" lib/app/account/page.dart
+wait_for '[fsp] hot restart: the app kept its old routes' 120
+wait_count '✓ hot restart in' 2 120
+wait_count 'e2e startup' 3 120
+
 echo q >&3
 wait "$dev_pid" || fail "fsp dev exited with $? after q"
 dev_pid=""
 grep -qF 'stopping flutter' "$log" || fail "no 'stopping flutter…' line after q"
-echo "fsp dev: a new route swapped in by a hot reload (the home page kept its state), a route that renumbered one restarted the app, and q stopped it"
+# One refusal is one restart, and the regeneration before it was one too, and nothing else restarted.
+expect_count '[fsp] hot restart: the app kept its old routes' 1
+expect_count '[fsp] hot restart: lib/app.g.dart changed' 1
+expect_count '[fsp] hot restart:' 2
+expect_count '✓ hot restart in' 2
+expect_count '[fsp] hot reload: lib/app.g.dart changed' 1
+echo "fsp dev: a new route swapped in by a hot reload (the home page kept its state), a route that renumbered one restarted the app, an app that refused a swap was restarted on its own line, and q stopped it"

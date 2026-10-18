@@ -241,7 +241,19 @@ pub fn swaps(root: &Node, cfg: &Config) -> bool {
         return true;
     };
     let code = without_comments(src.get(f.extent.clone()).unwrap_or_default());
-    code.contains("AppRoutes.router(") && !code.contains("mount(")
+    code.contains("AppRoutes.router(") && !calls(&code, "mount(")
+}
+
+/// Whether `code` holds `call` (a name and its opening parenthesis) as a whole identifier: not as the
+/// end of a longer one, so `mount(` is found in `AppRoutes.mount(` and `mount(at: '/x')` but not in
+/// `amount(` or `unmount(`.
+fn calls(code: &str, call: &str) -> bool {
+    code.match_indices(call).any(|(at, _)| {
+        !code[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    })
 }
 
 /// The generated main for the app, or `None` when none is wanted (see [`wanted`]). Reads the

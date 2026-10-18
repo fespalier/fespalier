@@ -99,16 +99,17 @@ pub struct Widget {
 impl Widget {
     /// Constructor call, given how to spell each binding.
     pub fn call(&self, value: impl Fn(&Bind) -> String) -> String {
-        self.call_with(value, true)
+        self.call_with(value, None)
     }
 
-    /// [`call`](Self::call) that is never `const`: a deferred page's class can't be named in
-    /// a constant expression (`const_deferred_class`).
-    pub fn call_non_const(&self, value: impl Fn(&Bind) -> String) -> String {
-        self.call_with(value, false)
+    /// [`call`](Self::call) through a deferred import, whose prefix is `prefix` (since 0.20.0,
+    /// `emit::deferred_prefix`), and never `const`: a deferred page's class can't be named in a
+    /// constant expression (`const_deferred_class`).
+    pub fn call_deferred(&self, prefix: &str, value: impl Fn(&Bind) -> String) -> String {
+        self.call_with(value, Some(prefix))
     }
 
-    fn call_with(&self, value: impl Fn(&Bind) -> String, allow_const: bool) -> String {
+    fn call_with(&self, value: impl Fn(&Bind) -> String, deferred: Option<&str>) -> String {
         let args: Vec<String> = self
             .args
             .iter()
@@ -120,17 +121,13 @@ impl Widget {
                 }
             })
             .collect();
-        let konst = if allow_const && self.is_const && args.is_empty() {
+        let konst = if deferred.is_none() && self.is_const && args.is_empty() {
             "const "
         } else {
             ""
         };
-        format!(
-            "{konst}_i{}.{}({})",
-            self.import,
-            self.class,
-            args.join(", ")
-        )
+        let prefix = deferred.map_or_else(|| format!("_i{}", self.import), str::to_string);
+        format!("{konst}{prefix}.{}({})", self.class, args.join(", "))
     }
 }
 

@@ -72,7 +72,7 @@ fn example_app_generates_cleanly() {
             "pageBuilder: (context, state, child) => namedPage('/', () => _i3.transition(\n          const ValueKey<String>('layout:/'),\n          _i4.AppLayout(child: child),",
             "({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));",
             "_i9.GreetPage(name: v.name)",
-            "data: (d) => _i14.ProductPage(product: d),",
+            "data: (d) => _pageProductsId.ProductPage(product: d),",
             "error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),",
             // products/data.dart exports its own provider; it's used as-is.
             "watch: (ref) => watchData(ref, 'dProducts', _i10.data),",

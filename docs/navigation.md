@@ -166,7 +166,7 @@ A layout or a guard sees the extra of _every_ route it covers, so its type has t
 
 go_router keeps a navigation's `extra` for the browser's history and for state restoration, but can only save JSON. Without help, an object with a `toJson()` comes back as the `Map` that `jsonEncode` made of it, and any other object is dropped (go_router logs a warning). Neither is your type, so a page that asks for a `Note?` gets `null` in release builds and, for the `Map`, an assertion in debug builds. To get the object back, give the router an `extraCodec`.
 
-Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a `const`, a `final` or a getter; `fsp` only looks for the name). The generated `AppRoutes.router()` passes it as `GoRouter(extraCodec: …)`:
+Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a `const`, a `final` or a getter; `fsp` only looks for the name). The generated `AppRoutes.router()` passes it as `GoRouter.routingConfig(extraCodec: …)` (since 0.19.0; `GoRouter(extraCodec: …)` before):
 
 ```dart
 // lib/app/extra_codec.dart

@@ -501,13 +501,14 @@ fn the_generated_file_registers_and_attaches_only_under_the_const() {
             )),
             "{name}"
         );
+        // The mount, the reload that registers again (since 0.19.0), and the function itself.
         assert_eq!(
             code.matches("_devToolsProviders").count(),
-            if providers.is_empty() { 0 } else { 2 },
+            if providers.is_empty() { 0 } else { 3 },
             "{name}"
         );
         assert!(
-            code.contains("      final router = GoRouter(\n")
+            code.contains("      final router = GoRouter.routingConfig(\n")
                 && code.contains(
                     "      if (kFespalierDevTools) devToolsAttach(router);\n      return router;\n"
                 ),
@@ -515,8 +516,10 @@ fn the_generated_file_registers_and_attaches_only_under_the_const() {
         );
         // Nothing else of DevTools is reachable but through that constant: the tree function is
         // only a tear-off passed to `devToolsRegister`.
-        assert_eq!(code.matches("_devToolsTree").count(), 2, "{name}");
-        assert_eq!(code.matches("devToolsRegister(").count(), 1, "{name}");
+        // Registered by `mount` and again by the hot reload's `_reload` (since 0.19.0), each under
+        // the same constant.
+        assert_eq!(code.matches("_devToolsTree").count(), 3, "{name}");
+        assert_eq!(code.matches("devToolsRegister(").count(), 2, "{name}");
         assert_eq!(code.matches("devToolsAttach(").count(), 1, "{name}");
         assert!(code.ends_with(";\n"), "{name}");
         let tail = code.lines().last().unwrap();

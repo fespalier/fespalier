@@ -22,6 +22,7 @@ use crate::enums;
 use crate::locale::{self, Localized};
 use crate::manifest::{self, ManifestCx};
 use crate::menu::{self, MenuCx};
+use crate::reload;
 use crate::resolve::{
     self, Action, ActionNames, App, Bind, Branch, Data, Flow, Guard, HookFirst, Route, Transition,
 };
@@ -749,7 +750,24 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         menu: menu::build(app, diags),
         scroll_restoration: cfg.scroll_restoration,
     };
-    templates::render("app.g.dart", &cx)
+    // What a hot reload compares (since 0.19.0): see reload.rs. The router's settings are the
+    // ones its `GoRouter.routingConfig(...)` takes from the pubspec and the files.
+    let imports: Vec<String> = cx.imports.iter().map(|i| i.path.clone()).collect();
+    let router = format!(
+        "extraCodec={} observe={} attach={} links={} push_updates_url={} semantics_ids={} telemetry={} adapters={}",
+        app.extra_codec.as_ref().map_or_else(
+            || "none".to_string(),
+            |c| app.imports.get(c.import).cloned().unwrap_or_default(),
+        ),
+        cx.observe,
+        cx.attach,
+        cx.links.unwrap_or("none"),
+        cx.push_updates_url,
+        cx.semantics_ids,
+        cx.telemetry,
+        cfg.adapters.join(","),
+    );
+    reload::stamp(&templates::render("app.g.dart", &cx), &imports, &router)
 }
 
 /// The host `AppRoutes.urlOf` puts in its URLs (since 0.16.0): the first of `links: domains:`.

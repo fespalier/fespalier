@@ -220,3 +220,25 @@ RouteInfo<Object?>? lookupRoute(
   }
   return null;
 }
+
+/// The two lookups of a route list, `AppManifest.byType` and `AppManifest.byPath` (since 0.19.0).
+/// Built once for each list by [routeIndex].
+final class RouteIndex {
+  RouteIndex._(List<RouteInfo<Object?>> all)
+    : byType = Map.unmodifiable({for (final r in all) r.type: r}),
+      byPath = Map.unmodifiable({for (final r in all) r.path: r});
+
+  /// Each route by its typed-route class.
+  final Map<Type, RouteInfo<Object?>> byType;
+
+  /// Each route by its path template.
+  final Map<String, RouteInfo<Object?>> byPath;
+}
+
+final Expando<RouteIndex> _indexes = Expando<RouteIndex>('fespalier routes');
+
+/// The [RouteIndex] of [all], the generated `AppManifest.all` (since 0.19.0). The generated
+/// manifest reads its two maps through it, so the maps are built once for each list, not on each
+/// read.
+RouteIndex routeIndex(List<RouteInfo<Object?>> all) =>
+    _indexes[all] ??= RouteIndex._(all);

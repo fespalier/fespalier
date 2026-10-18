@@ -45,6 +45,14 @@ fn code(files: &[(&str, &str)]) -> String {
     code
 }
 
+/// [code] with the value of its `_version` (a hot reload's hash of the file, since 0.19.0) taken
+/// out, so two files that differ only in what the version hashes compare equal.
+fn unversioned(code: &str) -> String {
+    const OPEN: &str = "static const String _version = '";
+    let at = code.find(OPEN).expect("a _version") + OPEN.len();
+    format!("{}{}", &code[..at], &code[at + 16..])
+}
+
 fn has(code: &str, needles: &[&str]) {
     for n in needles {
         assert!(code.contains(n), "missing `{n}` in:\n{code}");
@@ -592,8 +600,12 @@ fn not_found_is_read_in_either_spelling() {
         ("shop/page.dart", &class("ShopPage")),
         ("shop/not-found.dart", NF),
     ]);
-    // Identical, apart from the import of the file as it is spelled on disk.
-    assert_eq!(snake.replace("/not_found.dart'", "/not-found.dart'"), kebab);
+    // Identical, apart from the import of the file as it is spelled on disk, and the version a hot
+    // reload compares: a hash of the whole file, which names that import (since 0.19.0).
+    assert_eq!(
+        unversioned(&snake.replace("/not_found.dart'", "/not-found.dart'")),
+        unversioned(&kebab),
+    );
     has(
         &kebab,
         &[

@@ -127,6 +127,10 @@ skips the leaf's `leave()` (fixed in 17.4.0).
    the user. A segment that does not parse lets the page go (it shows not-found).
 5. A synchronous answer stays synchronous: no `Future`, no microtask of fespalier's.
 
+A swap never asks `leave()` for a page that stays (since 0.19.0, debug builds only): after a hot reload regenerates the route
+table, go_router's restore runs `onExit` for every page, and `leaveExit` answers `true` for a page the restore still holds at
+the same place. A page that leaves for real is asked as usual.
+
 ## The back gestures
 
 `leaveScope` wraps the page in a `PopScope`. On a page whose route can pop, `canPop` is true only when the page has at

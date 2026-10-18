@@ -88,7 +88,7 @@ List<NavigatorObserver> get routerObservers => [];
 Duration? retry(int retryCount, Object error) => null;
 ```
 
-`startup.dart` needs at least one of these exports. `startup()` runs **before the router exists**: the router is built once, after `startup()`, and disposed with the app. That is also why `usePathUrlStrategy()` belongs in `startup()`.
+`startup.dart` needs at least one of these exports. `startup()` runs **before the router exists**: the router is built once, after `startup()`, and disposed with the app (a hot reload in a debug build may swap its route table: [CLI reference](cli.md#a-hot-reload-after-a-regeneration), since 0.19.0). That is also why `usePathUrlStrategy()` belongs in `startup()`.
 
 **`ready()` and `attach()` (since 0.12.0): work on the app's own container.** `startup()` runs before any `ProviderContainer` exists, so it can only return overrides. An app that must `await container.read(storeProvider.future)` before the first route (a native init, a store to open, a session to restore), read providers eagerly, or install a `container.listen` that lives as long as the app, exports `ready()`; one that needs the router as well (a notification tap, a post-frame step) exports `attach()`. Each is optional and independent of the other, and of `startup()`:
 

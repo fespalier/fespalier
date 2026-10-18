@@ -81,6 +81,7 @@ export 'src/route_link.dart';
 export 'src/route_match.dart';
 export 'src/route_navigator.dart';
 export 'src/route_data.dart';
+export 'src/routes_reload.dart' show RoutesReload, ShellKeys;
 export 'src/scroll_memory.dart';
 export 'src/segments.dart';
 export 'src/selected_data.dart';

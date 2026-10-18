@@ -87,7 +87,7 @@ fn the_router_owns_a_root_navigator_key_that_mount_can_take() {
             "static GlobalKey<NavigatorState> _newRootNavigatorKey() =>\n      GlobalKey<NavigatorState>(debugLabel: 'root');",
             "static GlobalKey<NavigatorState> get rootNavigatorKey => _rootNavigatorKey;",
             "    GlobalKey<NavigatorState>? navigatorKey,\n  }) {\n    final routes = mount(navigatorKey: navigatorKey);",
-            "navigatorKey: rootNavigatorKey,\n      routes: routes,",
+            "navigatorKey: rootNavigatorKey,\n      errorBuilder: (context, state) => routing.notFound(state.uri),",
             "static List<RouteBase> mount({\n    String at = '/',\n    GlobalKey<NavigatorState>? navigatorKey,\n  }) {\n    _base = at;\n    _rootNavigatorKey = navigatorKey ?? _newRootNavigatorKey();",
         ],
     );

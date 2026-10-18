@@ -12,6 +12,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter/widgets.dart';
@@ -290,6 +291,8 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
 ///
 /// In order:
 ///
+/// 0. A debug hot reload swapped the route table (since 0.19.0): the restore go_router applies
+///    still holds this page at the same place, so the page is not leaving. A swap never asks.
 /// 1. A navigation started inside [leaveWithoutAsking] goes through without asking.
 /// 2. A tab switch goes through: fespalier parks the page, it is not gone. Leaving the tab
 ///    layout asks the active tab's pages only. A switch to a tab with a route that has a
@@ -325,6 +328,7 @@ LeaveResult leaveExit(
   try {
     router = GoRouter.maybeOf(context);
     if (router != null) {
+      if (kDebugMode && _isRouteSwap(router, state)) return true;
       if (_bypass[router]?.allows(router) ?? false) return true;
       if (_isTabSwitch(router, state)) return true;
       if (_isQueryOnlyReplace(router, state)) return true;
@@ -783,6 +787,20 @@ bool _isWithin(Uri uri, String within) {
       ? within.substring(0, within.length - 1)
       : within;
   return uri.path == base || uri.path.startsWith('$base/');
+}
+
+/// A hot reload swapped the route table (debug, since 0.19.0): the restore go_router applies
+/// holds this page at the same place, so it is not leaving.
+bool _isRouteSwap(GoRouter router, GoRouterState state) {
+  final info = router.routeInformationProvider.value.state;
+  if (info is! RouteInformationState || info.type != NavigatingType.restore) {
+    return false;
+  }
+  final target = info.baseRouteMatchList;
+  final same = target == null
+      ? null
+      : _matchWithKey(target.matches, state.pageKey);
+  return same != null && same.matchedLocation == state.matchedLocation;
 }
 
 /// The match of [matches] (into shells) whose page key is [pageKey].

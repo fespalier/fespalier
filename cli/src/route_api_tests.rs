@@ -544,10 +544,10 @@ fn not_found_in_a_folder_covers_the_urls_under_it() {
             "() => _i5.ItemNotFound(uri: state.uri),",
         ],
     );
-    // errorBuilder still calls notFound, which picks.
+    // errorBuilder still calls notFound, which picks (through the routing table, since 0.19.0).
     has(
         &c,
-        &["errorBuilder: (context, state) => notFound(state.uri),"],
+        &["errorBuilder: (context, state) => routing.notFound(state.uri),"],
     );
     // /shop has no segment to fail on, so it has no fallback to spell.
     assert_eq!(c.matches("buildWithParams(").count(), 1, "{c}");

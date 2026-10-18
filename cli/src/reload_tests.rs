@@ -483,7 +483,7 @@ fn adding_files_keeps_every_kept_declaration(
     adding_files_keeps_every_kept_declaration_with(base, cases, built);
 }
 
-/// [adding_files_keeps_every_kept_declaration] for a project that `build` makes (since 0.20.0 a
+/// [`adding_files_keeps_every_kept_declaration`] for a project that `build` makes (since 0.20.0 a
 /// test can give the config a `deferred: true`).
 fn adding_files_keeps_every_kept_declaration_with(
     base: &[(&str, &str)],

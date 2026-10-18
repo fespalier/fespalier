@@ -607,15 +607,18 @@ fn types_named_by_a_guard_and_a_page_do_not_share_aliases() {
     has(
         &c,
         &[
-            "as _e1_m;",
-            "{_e1_m.Thing? extra, String? locale}",
-            "import 'a.dart' as _eg0_m;",
-            "{_eg0_m.Thing? extra, String? locale}",
+            "as _ec5960e13_m;",
+            "{_ec5960e13_m.Thing? extra, String? locale}",
+            "import 'a.dart' as _e1fdd8cf5_m;",
+            "{_e1fdd8cf5_m.Thing? extra, String? locale}",
         ],
     );
     lacks(
         &c,
-        &["import 'a.dart' as _e1_m;", "import 'b.dart' as _eg0_m;"],
+        &[
+            "import 'a.dart' as _ec5960e13_m;",
+            "import 'b.dart' as _e1fdd8cf5_m;",
+        ],
     );
 }
 

@@ -26,7 +26,7 @@ pub struct Import {
 pub struct ExtraType {
     /// The type as written in the file that declares it: `Product?`, `m.Product?`.
     pub source: String,
-    /// The type as the generated file spells it: `Product?`, `_i9.Local?`, `_e3_m.Product?`.
+    /// The type as the generated file spells it: `Product?`, `_i9.Local?`, `_e2f5f6d82_m.Product?`.
     pub ty: String,
     /// Names to `show` from each of page.dart's unprefixed imports.
     pub shown: Vec<String>,
@@ -242,12 +242,20 @@ pub fn unprefixed(ty: &str) -> String {
     out
 }
 
+/// The tag of the import aliases of the types `file` names (since 0.20.0): 8 hex digits of a hash
+/// of its path relative to the app folder, so an alias depends on that file alone. One file has
+/// one library per prefix, so its uses share an alias.
+pub fn alias_tag(file: &str) -> String {
+    crate::reload::short_hash(file)
+}
+
 /// Works out the generated spelling of `ty`, the type of `extra` in `src` (the
 /// source of the page, layout, guard or redirect at `file`, whose import in the generated
-/// file is `_i{import}`). `tag` keeps the aliases of one use apart from another's:
-/// the route's id for a page, `g3` for the guard of route 3.
-pub fn extra_type(ty: &str, src: &str, file: &str, import: usize, tag: &str) -> ExtraType {
+/// file is `_i{import}`). A prefixed type's alias is `_e<alias_tag(file)>_<prefix>` (since
+/// 0.20.0: it names the file, not the route's position).
+pub fn extra_type(ty: &str, src: &str, file: &str, import: usize) -> ExtraType {
     let all = imports(src);
+    let tag = alias_tag(file);
     let mut spelled = String::new();
     let mut last = 0;
     let (mut shown, mut aliased): (Vec<String>, Vec<(String, String, String)>) = (vec![], vec![]);
@@ -333,22 +341,35 @@ mod tests {
 
     #[test]
     fn spells_types_for_the_generated_file() {
-        let t = extra_type("Map<String, Product>?", SRC, "a/page.dart", 4, "2");
+        let t = extra_type("Map<String, Product>?", SRC, "a/page.dart", 4);
         assert_eq!(t.ty, "Map<String, Product>?");
         assert_eq!(t.shown, ["Product"]);
-        let t = extra_type("Local?", SRC, "a/page.dart", 4, "2");
+        let t = extra_type("Local?", SRC, "a/page.dart", 4);
         assert_eq!(t.ty, "_i4.Local?");
         assert!(t.shown.is_empty());
-        let t = extra_type("List<m.Thing>?", SRC, "a/page.dart", 4, "2");
-        assert_eq!(t.ty, "List<_e2_m.Thing>?");
+        let t = extra_type("List<m.Thing>?", SRC, "a/page.dart", 4);
+        assert_eq!(t.ty, "List<_e2f5f6d82_m.Thing>?");
         assert_eq!(
             t.aliased,
-            [("m".to_string(), "x.dart".to_string(), "_e2_m".to_string())]
+            [(
+                "m".to_string(),
+                "x.dart".to_string(),
+                "_e2f5f6d82_m".to_string()
+            )]
         );
-        let t = extra_type("({int id, Product p})?", SRC, "a/page.dart", 4, "2");
+        let t = extra_type("({int id, Product p})?", SRC, "a/page.dart", 4);
         assert_eq!(t.ty, "({int id, Product p})?");
         assert_eq!(t.shown, ["Product"]);
-        let t = extra_type("String?", SRC, "a/page.dart", 4, "2");
+        let t = extra_type("String?", SRC, "a/page.dart", 4);
         assert!(t.shown.is_empty());
+    }
+
+    #[test]
+    fn an_alias_names_its_file() {
+        assert_eq!(alias_tag("a/page.dart"), "2f5f6d82");
+        // Another file, the same prefix: another alias, so two imports of `m` never clash.
+        let t = extra_type("m.Thing", SRC, "b/page.dart", 4);
+        assert_eq!(t.ty, format!("_e{}_m.Thing", alias_tag("b/page.dart")));
+        assert_ne!(alias_tag("a/page.dart"), alias_tag("b/page.dart"));
     }
 }

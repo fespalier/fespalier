@@ -21,13 +21,17 @@
 //! tree is protocol 1 of the extension: a new key is fine, a renamed or removed one is protocol 2.
 //!
 //! **Sites** name the places the generated code has a guard, a `redirect.dart`, a `data.dart` or an
-//! action, by the same strings the generated code uses (`refGuard`'s `'g5@6'`, `_data37`,
-//! `_action37_0`), so the extension can tell which of them ran. The generated code passes each to
-//! the runtime: `traceGuard(state, 'g5@6', …)` around a guard or a `redirect.dart` (`r32`),
-//! `traceData(ref, 'd37', key, …)` around the body of a `data.dart` provider (not around one that
-//! returns or selects a provider: `"traced": false`), and `site: 'a37_0'` on an action's provider.
+//! action, by the same strings the generated code uses (`refGuard`'s `'g5@6'`, `_dataProductsId`,
+//! `_actionNotesId_edit`), so the extension can tell which of them ran. The generated code passes
+//! each to the runtime: `traceGuard(state, 'g5@6', …)` around a guard or a `redirect.dart` (`r32`),
+//! `traceData(ref, 'dProductsId', key, …)` around the body of a `data.dart` provider (not around one
+//! that returns or selects a provider: `"traced": false`), and `site: 'aNotesId_edit'` on an
+//! action's provider. Since 0.20.0 a data or action site is named after its folder (`Route::stem`)
+//! and function, the suffix of its private name, so it does not change when a route is added; guard
+//! and `redirect.dart` sites are still numbered, because they appear only in the routes a swap
+//! builds again. A site is an opaque key to the extension: its spelling is not part of protocol 1.
 //! Since 0.8.1 the views name the site too: every `DataView` and `SectionView` watches with
-//! `watchData(ref, 'd37', …)`, which is `ref.watch` that also tells DevTools who holds the
+//! `watchData(ref, 'dProductsId', …)`, which is `ref.watch` that also tells DevTools who holds the
 //! provider (and, for an untraced site, the state the view got). `mount()` hands
 //! `_devToolsProviders` to `devToolsRegister`: each `data.dart`'s provider by its site (a selector
 //! with keys is left out, it is a closure), so a prefetch made before any page finds its record.
@@ -60,15 +64,17 @@ pub fn site_redirect(route: usize) -> String {
     format!("r{route}")
 }
 
-/// The site of the `data.dart` of folder `folder`: the suffix of its provider, `_data37`.
-pub fn site_data(folder: usize) -> String {
-    format!("d{folder}")
+/// The site of the `data.dart` of a folder whose stem is `stem` (since 0.20.0): the letter of its
+/// provider's name, `dProductsId` for `_dataProductsId`. Named after the folder, not its position,
+/// so it stays when a route is added.
+pub fn site_data(stem: &str) -> String {
+    format!("d{stem}")
 }
 
-/// The site of the `index`th function of the `action.dart` of folder `folder`: the suffix of
-/// its provider, `_action37_0`.
-pub fn site_action(folder: usize, index: usize) -> String {
-    format!("a{folder}_{index}")
+/// The site of the function `name` of the `action.dart` of a folder whose stem is `stem` (since
+/// 0.20.0): `aNotesId_edit` for `_actionNotesId_edit`.
+pub fn site_action(stem: &str, name: &str) -> String {
+    format!("a{stem}_{name}")
 }
 
 /// The tree of `app`, as `fsp routes --graph json` prints it and `app.g.dart` embeds it.
@@ -255,7 +261,7 @@ impl Sites {
             }
             if let Some(d) = &r.data {
                 self.0.insert(
-                    site_data(id),
+                    site_data(&r.stem),
                     json!({
                         "kind": "data",
                         "file": rel(r, Kind::Data),
@@ -265,9 +271,9 @@ impl Sites {
                     }),
                 );
             }
-            for (i, a) in r.actions.iter().enumerate() {
+            for a in &r.actions {
                 self.0.insert(
-                    site_action(id, i),
+                    site_action(&r.stem, &a.name),
                     json!({
                         "kind": "action",
                         "file": rel(r, Kind::Action),

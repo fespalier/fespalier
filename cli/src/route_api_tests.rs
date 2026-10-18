@@ -206,14 +206,14 @@ fn a_layouts_data_dart_is_the_data_of_its_section() {
             // The layout waits for the data, showing the default loading and error views.
             "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(",
             "DataView(",
-            "watch: (ref) => watchData(ref, 'd1', _data1),",
+            "watch: (ref) => watchData(ref, 'dShop', _dataShop),",
             "data: (d) => _i1.ShopLayout(child: child, shop: d),",
             "loading: () => const DefaultLoading(),",
             "error: (e, st, retry) => DefaultError(error: e, retry: retry),",
             // The page below takes it by type, from the provider the layout loaded.
             "SectionView(",
             "data: (s1) => _i2.CartPage(shop: s1),",
-            "final _data1 = FutureProvider.autoDispose(",
+            "final _dataShop = FutureProvider.autoDispose(",
         ],
     );
     // A page that doesn't ask for it isn't wrapped, and the section has no route class of its own
@@ -247,11 +247,11 @@ fn section_keys_come_from_segments_and_the_layout_reads_the_url() {
         &c,
         &[
             "() => _layout1(state),",
-            "watch: (ref) => watchData(ref, 'd1', _data1(v.tid)),",
-            "refresh: (ref) => ref.invalidate(_data1(v.tid)),",
+            "watch: (ref) => watchData(ref, 'dTid', _dataTid(v.tid)),",
+            "refresh: (ref) => ref.invalidate(_dataTid(v.tid)),",
             "data: (d) => _i1.TeamLayout(child: child, t: d),",
             // The page reads the same provider, keyed by its own copy of the segment.
-            "watch: (ref) => watchData(ref, 'd1', _data1(v.tid)),\n",
+            "watch: (ref) => watchData(ref, 'dTid', _dataTid(v.tid)),\n",
             "data: (s1) => _i2.MembersPage(team: s1),",
             "({int tid}) _layout1(GoRouterState s) => (tid: Segment.asInt(s, 'tid'));",
         ],
@@ -340,7 +340,7 @@ fn section_data_reaches_nested_sections_and_layouts_below() {
             "_i4.BPage(a: s1, b: s2)",
         ],
     );
-    assert!(c.contains("_data1") && c.contains("_data2"), "{c}");
+    assert!(c.contains("_dataA") && c.contains("_dataAB"), "{c}");
 }
 
 #[test]
@@ -657,7 +657,7 @@ fn a_scaffolded_group_with_layout_and_data_is_a_section() {
         &[
             "pageBuilder: (context, state, child) => namedPage('/', () => layoutPage(",
             "DataView(",
-            "final _data1 = FutureProvider.autoDispose(",
+            "final _dataShop = FutureProvider.autoDispose(",
         ],
     );
 }

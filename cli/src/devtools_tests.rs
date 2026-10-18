@@ -229,9 +229,12 @@ fn the_sites_are_the_ones_the_generated_code_names() {
             assert!(ids.contains(site), "{name}: guard site {site}");
             assert_eq!(tree["sites"][site]["kind"], "guard");
         }
-        // `final _data37 = …`: a provider fespalier wraps.
+        // `final _dataX = …`: a provider fespalier wraps, whose site is `dX` (since 0.20.0 `X` is a stem).
         for def in code.split("\nfinal _data").skip(1) {
-            let n: String = def.chars().take_while(char::is_ascii_digit).collect();
+            let n: String = def
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
             let site = format!("d{n}");
             assert!(ids.contains(site.as_str()), "{name}: {site}");
             assert!(
@@ -239,11 +242,11 @@ fn the_sites_are_the_ones_the_generated_code_names() {
                 "{name}: {def:.40}"
             );
         }
-        // `final _action37_0 = …`.
+        // `final _actionX_fn = …`, whose site is `aX_fn`.
         for def in code.split("\nfinal _action").skip(1) {
             let n: String = def
                 .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '_')
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                 .collect();
             assert!(ids.contains(format!("a{n}").as_str()), "{name}: a{n}");
         }
@@ -643,12 +646,12 @@ fn the_wrappers_pass_their_argument_through_and_change_nothing_else() {
     );
     // The data provider's body: the same call, as `traceData`'s last argument, with the key.
     assert!(
-        code.contains("(Ref ref, int id) => traceData(ref, 'd5', id, _i"),
+        code.contains("(Ref ref, int id) => traceData(ref, 'dOrdersId', id, _i"),
         "{code}"
     );
     // The action: the site is the only thing added to the factory's arguments.
     assert!(
-        code.contains(">[_data5(id)],\n  site: 'a5_0',\n);"),
+        code.contains(">[_dataOrdersId(id)],\n  site: 'aOrdersId_action',\n);"),
         "{code}"
     );
     // Nothing is wrapped twice.
@@ -774,8 +777,7 @@ fn every_data_dart_is_listed_for_prefetches_except_a_selector_with_keys() {
             site("e/$id/data.dart"),
         ),
     ];
-    // Folder order, which is the order of the sites' numbers.
-    want.sort_by_key(|(_, site)| site[1..].parse::<usize>().unwrap());
+    // Folder order: `a`, `b`, `c`, then `e` (the selector with keys of `d` is left out).
     assert_eq!(listed, want, "{code}");
     assert!(
         !listed.iter().any(|(_, s)| *s == site("d/$id/data.dart")),

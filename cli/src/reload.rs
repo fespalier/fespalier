@@ -221,8 +221,9 @@ fn is_identifier(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '$'
 }
 
-/// The first 8 hex digits of the SHA-256 of [text].
-fn short_hash(text: &str) -> String {
+/// The first 8 hex digits of the SHA-256 of [text]. Also the suffix of a folder's stem when another
+/// folder that owns names has the same one, and the tag of an import alias (since 0.20.0).
+pub(crate) fn short_hash(text: &str) -> String {
     hex(text)[..8].to_string()
 }
 

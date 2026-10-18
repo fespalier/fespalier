@@ -316,7 +316,7 @@ fn appending_a_page_keeps_every_kept_hash() {
 }
 
 #[test]
-fn inserting_a_route_before_a_data_route_changes_a_kept_hash() {
+fn inserting_a_route_before_a_data_route_keeps_every_kept_hash() {
     let base: &[(&str, &str)] = &[
         ("page.dart", HOME),
         ("items/$id/data.dart", &data("int")),
@@ -328,17 +328,13 @@ fn inserting_a_route_before_a_data_route_changes_a_kept_hash() {
     let (before, _) = generated("", base);
     let (after, _) = generated("", &more);
 
+    assert_ne!(version_of(&before), version_of(&after));
     let old = kept_of(&before);
     let new = kept_of(&after);
-    let changed: Vec<&String> = old
-        .iter()
-        .filter(|(name, hash)| new.get(*name).is_some_and(|h| h != *hash))
-        .map(|(name, _)| name)
-        .collect();
-    assert!(
-        !changed.is_empty(),
-        "no kept name changed:\n{before}\n{after}"
-    );
+    assert!(old.contains_key("_dataItemsId"), "{old:?}");
+    for (name, hash) in &old {
+        assert_eq!(new.get(name), Some(hash), "{name}");
+    }
 }
 
 #[test]

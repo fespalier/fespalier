@@ -75,9 +75,9 @@ fn example_app_generates_cleanly() {
             "data: (d) => _i14.ProductPage(product: d),",
             "error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),",
             // products/data.dart exports its own provider; it's used as-is.
-            "watch: (ref) => watchData(ref, 'd5', _i10.data),",
+            "watch: (ref) => watchData(ref, 'dProducts', _i10.data),",
             "static final data = _i10.data;",
-            "(Ref ref, int id) => traceData(ref, 'd6', id, _i13.data(ref, id: id)),",
+            "(Ref ref, int id) => traceData(ref, 'dProductsId', id, _i13.data(ref, id: id)),",
             "Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);",
             "redirect: (context, state) => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false))),",
             "String get location => joinLocation(AppRoutes.base, '/products/$id');",
@@ -273,8 +273,8 @@ fn page_params_are_filled_by_name_then_type() {
             "data: (d) => _i1.ItemPage(d, shop: v.shop, note: v.note),",
             "({String shop, int id, String? note}) _params2(GoRouterState s) => (shop: Segment.asString(s, 'shop'), id: Segment.asInt(s, 'id'), note: Query.asString(s, 'note'));",
             // Several segments key the provider by a record.
-            "(Ref ref, ({String shop, int id}) k) => traceData(ref, 'd2', k, _i0.data(ref, shop: k.shop, id: k.id)),",
-            "watch: (ref) => watchData(ref, 'd2', _data2((shop: v.shop, id: v.id))),",
+            "(Ref ref, ({String shop, int id}) k) => traceData(ref, 'dShopId', k, _i0.data(ref, shop: k.shop, id: k.id)),",
+            "watch: (ref) => watchData(ref, 'dShopId', _dataShopId((shop: v.shop, id: v.id))),",
             "const ItemRoute({required this.shop, required this.id, this.note});",
             "withQuery(joinLocation(AppRoutes.base, '/${Uri.encodeComponent(shop)}/$id'), {'note': note})",
             "ref.refresh(data((shop: shop, id: id)).future)",
@@ -396,8 +396,8 @@ fn error_views_get_error_and_retry_by_name_or_type() {
         &c,
         &[
             "error: (e, st, retry) => _i2.E(e, retry, stackTrace: st),",
-            "final _data0 = StreamProvider.autoDispose(",
-            "(Ref ref) => traceData(ref, 'd0', null, _i0.data(ref)),\n);",
+            "final _dataRoot = StreamProvider.autoDispose(",
+            "(Ref ref) => traceData(ref, 'dRoot', null, _i0.data(ref)),\n);",
             "/// Restarts data.dart",
         ],
     );
@@ -426,10 +426,10 @@ fn user_providers_are_used_as_is() {
     has(
         &c,
         &[
-            "watch: (ref) => watchData(ref, 'd3', _i2.data(v.id)),",
+            "watch: (ref) => watchData(ref, 'dId', _i2.data(v.id)),",
             "data: (d) => _i3.ItemPage(item: d),",
             "const ItemRoute({required this.id});\n\n  final int id;",
-            "watch: (ref) => watchData(ref, 'd2', _i0.data((a: v.a, b: v.b))),",
+            "watch: (ref) => watchData(ref, 'dAB', _i0.data((a: v.a, b: v.b))),",
             "const AbRoute({required this.a, required this.b});\n\n  final int a;\n  final String b;",
         ],
     );
@@ -1027,8 +1027,8 @@ fn query_params_reach_every_file_and_key_data() {
         &c,
         &[
             "({String? q, int? page, List<String> tags, bool? admin}) _params1(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'), admin: Query.asBool(s, 'admin'));",
-            "(Ref ref, ({String? q, int? page}) k) => traceData(ref, 'd1', k, _i1.data(ref, q: k.q, page: k.page)),",
-            "watch: (ref) => watchData(ref, 'd1', _data1((q: v.q, page: v.page))),",
+            "(Ref ref, ({String? q, int? page}) k) => traceData(ref, 'dSearch', k, _i1.data(ref, q: k.q, page: k.page)),",
+            "watch: (ref) => watchData(ref, 'dSearch', _dataSearch((q: v.q, page: v.page))),",
             "data: (d) => _i2.SearchPage(results: d, q: v.q, tags: v.tags),",
             "loading: () => _i3.L(page: v.page),",
             "(v) => _i4.guard(ProviderScope.containerOf(context, listen: false), admin: v.admin),",

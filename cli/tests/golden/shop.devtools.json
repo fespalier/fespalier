@@ -114,14 +114,14 @@
     }
   ],
   "sites": {
-    "d5": {
+    "dProducts": {
       "kind": "data",
       "file": "products/data.dart",
       "route": "ProductsRoute",
       "section": null,
       "traced": false
     },
-    "d6": {
+    "dProductsId": {
       "kind": "data",
       "file": "products/$id/data.dart",
       "route": "ProductRoute",

@@ -77,7 +77,7 @@ void main() {
         ),
         dataRecord(
           3,
-          site: 'd76',
+          site: 'dTicks',
           key: null,
           state: DataState.stream,
           value: null,
@@ -126,7 +126,7 @@ void main() {
   testWidgets('a section\'s data.dart says it is a section', (tester) async {
     await pumpApp(
       tester,
-      app([dataRecord(1, site: 'd56', key: const Shown('Null', 'null'))]),
+      app([dataRecord(1, site: 'dReports', key: const Shown('Null', 'null'))]),
     );
     await openTab(tester, 'Data');
     expect(find.text('reports/data.dart (section reports)'), findsOneWidget);
@@ -135,7 +135,10 @@ void main() {
   testWidgets('Invalidate asks the app to build that provider again', (
     tester,
   ) async {
-    final client = app([dataRecord(1), dataRecord(2, site: 'd65')]);
+    final client = app([
+      dataRecord(1),
+      dataRecord(2, site: 'dShopsShopItemsId'),
+    ]);
     await pumpApp(tester, client);
     await openTab(tester, 'Data');
     await tester.tap(find.byKey(const Key('invalidate-2')));
@@ -166,7 +169,7 @@ void main() {
         tester,
         app([
           dataRecord(1),
-          dataRecord(2, site: 'd65', state: DataState.disposed),
+          dataRecord(2, site: 'dShopsShopItemsId', state: DataState.disposed),
         ]),
       );
       await openTab(tester, 'Data');
@@ -260,7 +263,7 @@ void main() {
     expect(find.text('Refund: Refund(2)'), findsOneWidget);
     client.emit(
       DevToolsEvents.data,
-      recordEvent(9, dataRecord(2, site: 'd65').toJson()),
+      recordEvent(9, dataRecord(2, site: 'dShopsShopItemsId').toJson()),
     );
     await settle(tester);
     expect(find.byKey(const Key('data-2')), findsOneWidget);
@@ -294,7 +297,7 @@ void main() {
       final client = app([
         dataRecord(
           1,
-          site: 'd14',
+          site: 'dCatalog',
           key: null,
           via: DataVia.watch,
           provider: appProvider,
@@ -409,7 +412,7 @@ void main() {
           dataRecord(1, listeners: 4),
           dataRecord(
             2,
-            site: 'd14',
+            site: 'dCatalog',
             key: null,
             via: DataVia.watch,
             provider: appProvider,
@@ -493,7 +496,7 @@ void main() {
         app([
           dataRecord(
             1,
-            site: 'd14',
+            site: 'dCatalog',
             key: null,
             via: DataVia.watch,
             provider: appProvider,

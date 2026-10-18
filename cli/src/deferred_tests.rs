@@ -265,7 +265,7 @@ fn a_deferred_page_is_imported_deferred_and_built_in_a_deferred_view() {
         &[
             "import 'app/page.dart' as _i0;",
             "import 'app/a/page.dart' deferred as _i1;",
-            "DeferredView( library: _lib1, page: () => _i1.APage(), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), )",
+            "DeferredView( library: _libA, page: () => _i1.APage(), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), )",
             // The eager page is as before.
             "builder: (context, state) => const _i0.HomePage(),",
         ],
@@ -274,7 +274,7 @@ fn a_deferred_page_is_imported_deferred_and_built_in_a_deferred_view() {
     lacks(&c, &["const _i1.APage()"]);
     has(
         &c,
-        &["final _lib1 = DeferredLibrary(_i1.loadLibrary, 'a/page.dart');"],
+        &["final _libA = DeferredLibrary(_i1.loadLibrary, 'a/page.dart');"],
     );
 }
 
@@ -320,7 +320,7 @@ fn a_deferred_data_page_hands_its_library_to_the_data_view() {
     has(
         &c,
         &[
-            "DataView( watch: (ref) => watchData(ref, 'd1', _data1), refresh: (ref) => ref.invalidate(_data1), data: (d) => _i1.APage(n: d), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), keepPrevious: true, library: _lib1, )",
+            "DataView( watch: (ref) => watchData(ref, 'dA', _dataA), refresh: (ref) => ref.invalidate(_dataA), data: (d) => _i1.APage(n: d), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), keepPrevious: true, library: _libA, )",
         ],
     );
     lacks(&c, &["DeferredView("]);
@@ -339,9 +339,9 @@ fn app_routes_registers_lists_and_loads_the_deferred_pages() {
         &c,
         &[
             "DeferredLibrary.register(deferred);",
-            "static final List<DeferredLibrary> deferred = [_lib1, _lib3];",
+            "static final List<DeferredLibrary> deferred = [_libA, _libBId];",
             "static Future<void> loadDeferred() => DeferredLibrary.loadAll(deferred);",
-            "final _lib3 = DeferredLibrary(_i2.loadLibrary, 'b/\\$id/page.dart');",
+            "final _libBId = DeferredLibrary(_i2.loadLibrary, 'b/\\$id/page.dart');",
         ],
     );
 }
@@ -364,9 +364,9 @@ fn preload_loads_the_code_of_a_deferred_route() {
         &[
             // A route with no data: it had no override; now it loads its code.
             "/// Starts loading this page's code (a/page.dart is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.",
-            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _lib1.preload(); return ref.prefetchAll(const [], keepFor: keepFor); }",
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _libA.preload(); return ref.prefetchAll(const [], keepFor: keepFor); }",
             // A route with data keeps its providers.
-            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _lib2.preload(); return ref.prefetchAll([_data2], keepFor: keepFor); }",
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _libB.preload(); return ref.prefetchAll([_dataB], keepFor: keepFor); }",
             // The app-wide one goes through the matched route.
             "static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ?? ref.prefetchAll(const [], keepFor: keepFor);",
         ],
@@ -404,7 +404,7 @@ fn a_section_page_nests_the_deferred_view_in_its_section_view() {
     has(
         &c,
         &[
-            "SectionView( watch: (ref) => watchData(ref, 'd1', _data1), data: (s1) => DeferredView( library: _lib2, page: () => _i2.CartPage(shop: s1),",
+            "SectionView( watch: (ref) => watchData(ref, 'dShop', _dataShop), data: (s1) => DeferredView( library: _libShopCart, page: () => _i2.CartPage(shop: s1),",
         ],
     );
     // The layout is never deferred.
@@ -531,7 +531,7 @@ fn a_transition_wraps_the_deferred_view() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state) => namedPage('/a', () => _i0.transition( state.pageKey, DeferredView( library: _lib1, page: () => _i1.APage(),",
+            "pageBuilder: (context, state) => namedPage('/a', () => _i0.transition( state.pageKey, DeferredView( library: _libA, page: () => _i1.APage(),",
         ],
     );
 }

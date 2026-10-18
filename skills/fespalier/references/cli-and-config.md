@@ -99,9 +99,11 @@ then `[possible values: mermaid, dot, json]`; before 0.7.0 only the first two).
 (`pattern`, `route`, `file`, `folder`, `markers`, `params` as in `routes --json`, `spellings` only for a
 localized route, `redirect`, `children`), a `shell` (a `layout.dart`, with its `items`) or `tabs` (with `branches`);
 `file` and `folder` are relative to the app folder. `sites` names each guard (`g5@6`), `redirect.dart`
-(`r32`), `data.dart` (`d37`, with `traced: false` when the file returns or selects a provider) and action
-(`a37_0`) by the string the generated code uses (since 0.8.1 the views name it too: `watchData(ref, 'd37', …)`,
-and `app.g.dart` lists the providers by site in `_devToolsProviders`). It is what the DevTools extension reads, and
+(`r32`), `data.dart` (`dProductsId`, with `traced: false` when the file returns or selects a provider) and action
+(`aNotesId_edit`) by the string the generated code uses (since 0.8.1 the views name it too: `watchData(ref, 'dProductsId', …)`,
+and `app.g.dart` lists the providers by site in `_devToolsProviders`). Since 0.20.0 a `data.dart`'s site is `d` and its folder's
+stem, and an action's is `a`, its stem, `_` and the function, so they stay when a route is added; guards and `redirect.dart`s keep
+`g5@6` and `r32`. Read a site as an opaque key. It is what the DevTools extension reads, and
 `app.g.dart` embeds it (see the DevTools page of `fespalier-troubleshooting`).
 
 ### `fsp links` (since 0.5.0)
@@ -529,10 +531,7 @@ configuration; everything after `--` goes to `flutter run` (`fsp dev -- -d chrom
 
 **A hot reload after a regeneration (since 0.19.0).** In a debug build a hot reload swaps in the regenerated route table when the
 generated file's version changed and no name it keeps (a provider, a deferred library, a router setting) changed; a refused swap
-prints a message and keeps the old routes until `R`. A route added, removed, renamed or moved swaps only when no route after it in
-the order of `fsp routes` has a `data()` function (a `data` provider does not count), an action or a deferred page: the generated
-names of those (`_dataN`, `_libN`, `_actionN_i`) are numbered by position, so a route put before one is refused (in the shop
-example `zz/page.dart` swaps and `about/page.dart` does not; stable names made from the folders will lift it). Only the generated
+prints a message and keeps the old routes until `R`. Since 0.20.0 a route added, removed or renamed anywhere swaps: the names a reload keeps follow the folders, not the order of `fsp routes`, so a route put before one with a `data()` function, an action or a deferred page renames nothing (in the shop example `zz/page.dart` and `about/page.dart` both swap). Still refused: a changed `data()` or action, a moved folder that has a `data.dart`, an `action.dart` or a deferred page (also the second of two folders whose names share a stem, added or removed: it renames the first one's names once, or back), a deferred route added or removed while another one exists (a page added below a `route.dart` with `const deferred = true` is deferred too), an `import ... as m` pointed at another library (an action's input, a data route's enum segment), and a router setting; a restart (`R`) brings those in. Only the generated
 `main()` swaps (`StartupGate`): `main: manual` apps, even with `AppRoutes.router()`, keep their routes. `fsp dev` uses it (next paragraph). Profile and release builds never
 swap. See
 [the CLI reference](https://github.com/fespalier/fespalier/blob/main/docs/cli.md#a-hot-reload-after-a-regeneration).

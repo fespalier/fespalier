@@ -35,19 +35,19 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '6460c0c0cd247772';
+  static const String _version = 'e387dbd6d0d2e21f';
   static const Map<String, String> _kept = {
     '(router)': '692c8098',
-    'AppRoutes.deferred': '952b4ea4',
-    'OrderRoute.action': '9684dab6',
-    'OrderRoute.data': '412d0dba',
+    'AppRoutes.deferred': 'ac7c4136',
+    'OrderRoute.action': '1dd64668',
+    'OrderRoute.data': 'abc22723',
     'OrderRoute.read': 'd7c35f03',
     'OrderRoute.submit': '62cd5b04',
     'OrderRoute.useAction': 'f329a145',
     'OrderRoute.watch': '47998864',
-    '_action4_0': '8d85befc',
-    '_data4': 'bae6a576',
-    '_lib5': 'fcc3593a',
+    '_actionTabsOrdersId_action': '3b67e420',
+    '_dataTabsOrdersId': 'ff23aed6',
+    '_libTabsSettings': '664bf663',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -173,8 +173,8 @@ abstract final class AppRoutes {
                     builder: (context, state) => buildWithParams(
                       () => _params4(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd4', _data4(v.id)),
-                        refresh: (ref) => ref.invalidate(_data4(v.id)),
+                        watch: (ref) => watchData(ref, 'dTabsOrdersId', _dataTabsOrdersId(v.id)),
+                        refresh: (ref) => ref.invalidate(_dataTabsOrdersId(v.id)),
                         data: (d) => _i7.OrderPage(id: v.id, data: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -195,7 +195,7 @@ abstract final class AppRoutes {
                 path: joinLocation(at, '/settings'),
                 redirect: (context, state) => traceGuard(state, 'g5@5', refGuard(context, 'g5@5', (ref) => _i10.guard(ref)), telemetry: const TelemetrySite('(tabs)/settings/guard.dart', route: '/settings')),
                 builder: (context, state) => DeferredView(
-                  library: _lib5,
+                  library: _libTabsSettings,
                   page: () => _i9.SettingsPage(),
                   loading: () => const DefaultLoading(),
                   error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -245,7 +245,7 @@ abstract final class AppRoutes {
     }),
     RouteMatcher(['orders', ':id'], (s) {
       final p = _params4(s);
-      return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, [_data4(p.id)]);
+      return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, [_dataTabsOrdersId(p.id)]);
     }, observe: (s, m) {
       final o4 = _observe4(s);
       return [
@@ -280,7 +280,7 @@ abstract final class AppRoutes {
   /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
   /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
   /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
-  static final List<DeferredLibrary> deferred = [_lib5];
+  static final List<DeferredLibrary> deferred = [_libTabsSettings];
 
   /// Loads the code of every deferred route now, and completes when it is all there: once the app
   /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
@@ -426,7 +426,7 @@ final class OrderRoute extends TypedLocation {
   final int id;
 
   /// (tabs)/orders/$id/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data4;
+  static final data = _dataTabsOrdersId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id');
@@ -460,10 +460,10 @@ final class OrderRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data4(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTabsOrdersId(id)], keepFor: keepFor);
 
   /// The state of `action()` ((tabs)/orders/$id/action.dart) keyed by `id`: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action4_0;
+  static final action = _actionTabsOrdersId_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required int id, required String input}) => ref.runAction(action(id), input);
@@ -489,7 +489,7 @@ final class SettingsRoute extends TypedLocation {
   /// Starts loading this page's code ((tabs)/settings/page.dart is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
-    _lib5.preload();
+    _libTabsSettings.preload();
     return ref.prefetchAll(const [], keepFor: keepFor);
   }
 }
@@ -524,26 +524,26 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({int id}) _observe4(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 /// (tabs)/settings/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _lib5 = DeferredLibrary(_i9.loadLibrary, '(tabs)/settings/page.dart', route: '/settings');
+final _libTabsSettings = DeferredLibrary(_i9.loadLibrary, '(tabs)/settings/page.dart', route: '/settings');
 
-final _data4 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceDataCall(ref, 'd4', id, () => _i5.data(ref, id: id), telemetry: const TelemetrySite('(tabs)/orders/\$id/data.dart', route: '/orders/:id')),
+final _dataTabsOrdersId = FutureProvider.autoDispose.family(
+  (Ref ref, int id) => traceDataCall(ref, 'dTabsOrdersId', id, () => _i5.data(ref, id: id), telemetry: const TelemetrySite('(tabs)/orders/\$id/data.dart', route: '/orders/:id')),
 );
 
 /// `action()` of (tabs)/orders/$id/action.dart: its state, and what it invalidates after a success.
-final _action4_0 = actionFamily(
+final _actionTabsOrdersId_action = actionFamily(
   (Ref ref, int id, String input) => _i6.action(ref, id: id, input: input),
-  invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data4(id)],
-  site: 'a4_0',
+  invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataTabsOrdersId(id)],
+  site: 'aTabsOrdersId_action',
   telemetry: const TelemetrySite('(tabs)/orders/\$id/action.dart', route: '/orders/:id', name: 'action'),
 );
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data4: 'd4',
+      _dataTabsOrdersId: 'dTabsOrdersId',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"telemetry","appDir":"lib/app","items":[{"type":"tabs","file":"(tabs)/layout.dart","folder":"(tabs)","markers":[],"branches":[{"index":0,"name":"(home)","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"(tabs)/(home)/page.dart","folder":"(tabs)/(home)","markers":["observe"],"params":[],"redirect":false,"children":[]}]},{"index":1,"name":"orders","items":[{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"(tabs)/orders/page.dart","folder":"(tabs)/orders","markers":["observe"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"(tabs)/orders/\$id/page.dart","folder":"(tabs)/orders/\$id","markers":["data","action","observe"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"index":2,"name":"settings","items":[{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(tabs)/settings/page.dart","folder":"(tabs)/settings","markers":["guard","observe","deferred"],"params":[],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":["observe"],"params":[],"redirect":false,"children":[]}],"sites":{"a4_0":{"kind":"action","file":"(tabs)/orders/\$id/action.dart","name":"action","route":"OrderRoute"},"d4":{"kind":"data","file":"(tabs)/orders/\$id/data.dart","route":"OrderRoute","section":null,"traced":true},"g5@5":{"kind":"guard","file":"(tabs)/settings/guard.dart","route":"SettingsRoute","pattern":"/settings"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"telemetry","appDir":"lib/app","items":[{"type":"tabs","file":"(tabs)/layout.dart","folder":"(tabs)","markers":[],"branches":[{"index":0,"name":"(home)","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"(tabs)/(home)/page.dart","folder":"(tabs)/(home)","markers":["observe"],"params":[],"redirect":false,"children":[]}]},{"index":1,"name":"orders","items":[{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"(tabs)/orders/page.dart","folder":"(tabs)/orders","markers":["observe"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"(tabs)/orders/\$id/page.dart","folder":"(tabs)/orders/\$id","markers":["data","action","observe"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"index":2,"name":"settings","items":[{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(tabs)/settings/page.dart","folder":"(tabs)/settings","markers":["guard","observe","deferred"],"params":[],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":["observe"],"params":[],"redirect":false,"children":[]}],"sites":{"aTabsOrdersId_action":{"kind":"action","file":"(tabs)/orders/\$id/action.dart","name":"action","route":"OrderRoute"},"dTabsOrdersId":{"kind":"data","file":"(tabs)/orders/\$id/data.dart","route":"OrderRoute","section":null,"traced":true},"g5@5":{"kind":"guard","file":"(tabs)/settings/guard.dart","route":"SettingsRoute","pattern":"/settings"}}}';

@@ -362,8 +362,8 @@ fn data_keyed_by_a_catch_all_uses_its_path_as_the_key() {
         &c,
         &[
             // Lists compare by identity, so the provider is keyed by the encoded path.
-            "(Ref ref, String rest) => traceData(ref, 'd2', rest, _i0.data(ref, rest: restParts(rest))),",
-            "watchData(ref, 'd2', _data2(restKey(v.rest)))",
+            "(Ref ref, String rest) => traceData(ref, 'dDocsRest', rest, _i0.data(ref, rest: restParts(rest))),",
+            "watchData(ref, 'dDocsRest', _dataDocsRest(restKey(v.rest)))",
             "static final watch = (WidgetRef ref, {required List<String> rest}) => ref.watch(data(restKey(rest)));",
         ],
     );
@@ -633,8 +633,8 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
     has(
         &c,
         &[
-            "import 'app/models.dart' as _e1_m;",
-            "{List<_e1_m.Item>? extra, String? locale}",
+            "import 'app/models.dart' as _e3f492192_m;",
+            "{List<_e3f492192_m.Item>? extra, String? locale}",
         ],
     );
     // Built-in types need nothing.

@@ -229,94 +229,94 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '1bb2b08bd587fe75';
+  static const String _version = 'fb1ac40aad2174bc';
   static const Map<String, String> _kept = {
     '(router)': '7dcfa259',
-    'BrowseRoute.data': '9568f3c2',
+    'BrowseRoute.data': '30ba4ab7',
     'BrowseRoute.read': '1700917d',
     'BrowseRoute.watch': '9b32d81f',
-    'CatalogRoute.data': '6a015f7a',
+    'CatalogRoute.data': 'db4c724b',
     'CatalogRoute.read': '1f3b428d',
     'CatalogRoute.watch': 'e04d3518',
-    'CategoryShopRoute.data': 'aa4b9dd5',
+    'CategoryShopRoute.data': '5bca49ec',
     'CategoryShopRoute.read': '255fc9fc',
     'CategoryShopRoute.watch': '0be8ee87',
-    'CompareRoute.data': '5af56098',
+    'CompareRoute.data': '8ee98230',
     'CompareRoute.read': 'c4d2f6c9',
     'CompareRoute.watch': '86e76a37',
     'CounterRoute.data': '8bea43fd',
     'CounterRoute.read': '80e133b4',
     'CounterRoute.watch': 'e04d3518',
-    'ItemRoute.data': '6c409eef',
+    'ItemRoute.data': '2f8223bd',
     'ItemRoute.read': '1ef87f43',
     'ItemRoute.watch': 'a7b484e1',
-    'MemberRoute.data': '03cbc29c',
+    'MemberRoute.data': 'cfad21d5',
     'MemberRoute.read': '9573e86a',
     'MemberRoute.watch': '0a8c1f22',
-    'NicknameRoute.action': '99cfd23c',
-    'NicknameRoute.data': 'd75385a6',
+    'NicknameRoute.action': '3cfa6eaf',
+    'NicknameRoute.data': '03db3b44',
     'NicknameRoute.read': '80e133b4',
     'NicknameRoute.submit': '7f297a6d',
     'NicknameRoute.useAction': '5a6dc732',
     'NicknameRoute.useForm': 'ebb57047',
-    'NicknameRoute.watch': '90bbf417',
-    'ProductDetailRoute.data': '1b0d4d13',
+    'NicknameRoute.watch': '64601db5',
+    'ProductDetailRoute.data': 'd33ee00c',
     'ProductDetailRoute.read': '8778bd4f',
     'ProductDetailRoute.watch': '94a45566',
-    'RefundRoute.action': '7be1d0e5',
-    'RefundRoute.data': 'a4c3ff05',
+    'RefundRoute.action': 'd133b733',
+    'RefundRoute.data': '0b61c3c4',
     'RefundRoute.read': 'd7c35f03',
     'RefundRoute.submit': '384b8391',
     'RefundRoute.useAction': 'f329a145',
     'RefundRoute.watch': '47998864',
-    'ReportsSection.data': '5bc5fb42',
+    'ReportsSection.data': '7446034c',
     'ReportsSection.read': 'e0fb787e',
     'ReportsSection.watch': '2fd99ba6',
-    'ReviewsRoute.data': '062e0c60',
+    'ReviewsRoute.data': '23d4f05f',
     'ReviewsRoute.read': '3202abef',
     'ReviewsRoute.watch': '06598f69',
-    'SearchRoute.data': '49ed1b52',
+    'SearchRoute.data': 'ff02ee1f',
     'SearchRoute.read': '157dea03',
     'SearchRoute.watch': '516d796f',
     'SignupSection._flow': 'ca1879e5',
-    'SignupSection.action': '85423439',
+    'SignupSection.action': '9ffb333b',
     'SignupSection.flowOf': '4afe65b2',
     'SignupSection.submit': 'd464ffab',
     'SignupSection.useAction': '5a6dc732',
     'SignupSection.useFlow': '2dc91602',
     'TeamsTeamIdSection.addMember': 'daa13ddd',
-    'TeamsTeamIdSection.addMemberAction': '7ad1f74b',
-    'TeamsTeamIdSection.data': '6744dc0c',
+    'TeamsTeamIdSection.addMemberAction': 'a5d6b946',
+    'TeamsTeamIdSection.data': 'c29a1095',
     'TeamsTeamIdSection.read': '0e51583c',
     'TeamsTeamIdSection.useAddMember': '58082fec',
-    'TeamsTeamIdSection.watch': '2701de0c',
-    'TicksRoute.data': 'b82462fe',
+    'TeamsTeamIdSection.watch': '00ada8b3',
+    'TicksRoute.data': '8fd0342e',
     'TicksRoute.read': '80e133b4',
     'TicksRoute.watch': 'e04d3518',
-    'WikiRoute.data': '67409c6f',
+    'WikiRoute.data': '51249ddb',
     'WikiRoute.read': '997a0f87',
     'WikiRoute.watch': '13a10fc5',
-    '_action3_0': '316f0fa1',
-    '_action40_0': '634a3f76',
-    '_action66_0': 'c24a2a98',
-    '_action72_0': 'ec4884bf',
-    '_data13': '00a3f707',
-    '_data14': '56f42534',
-    '_data15': 'c657137b',
-    '_data16': '40df1fc8',
-    '_data18': '540dc2d8',
-    '_data3': 'ef0e39bd',
-    '_data40': '8aa19485',
-    '_data56': '77ff4f18',
-    '_data59': '0fe51749',
-    '_data61': 'dd20b8d0',
-    '_data65': '5fa86be6',
-    '_data72': '75466aab',
-    '_data74': '785f3ef6',
-    '_data76': 'ed5cc306',
-    '_data79': '298ca14e',
-    '_optimistic3': '6c19534a',
-    '_optimistic72': '79135836',
+    '_actionAccountNickname_action': 'd3ec1d4b',
+    '_actionOrdersIdRefund_action': '1162921d',
+    '_actionSignup_action': 'c9a40de1',
+    '_actionTeamsTeamId_addMember': 'fa6c14ba',
+    '_dataAccountNickname': '79416315',
+    '_dataBrowseCategories': '5a4dd352',
+    '_dataCatalog': 'caa9debb',
+    '_dataCatalogProductId': '6aa0df5b',
+    '_dataCatalogProductIdReviews': 'ab691ca6',
+    '_dataCompareIds': 'b074840e',
+    '_dataOrdersIdRefund': 'c9bb54b1',
+    '_dataReports': '9fdecdec',
+    '_dataSearch': '59df666d',
+    '_dataShopCategory': 'bdcf97a2',
+    '_dataShopsShopItemsId': 'c2eae01f',
+    '_dataTeamsTeamId': 'efba1ce1',
+    '_dataTeamsTeamIdMembersMember': 'b9fe9bbf',
+    '_dataTicks': '7612a1cd',
+    '_dataWikiArticle': 'fdede1cf',
+    '_optimisticAccountNickname': 'e3742028',
+    '_optimisticTeamsTeamId': '873292f9',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -433,13 +433,13 @@ abstract final class AppRoutes {
                       RouteScrollMemory(
                         state: state,
                         child: leaveScope(state, DataView(
-                          watch: (ref) => watchData(ref, 'd3', _data3),
-                          refresh: (ref) => ref.invalidate(_data3),
+                          watch: (ref) => watchData(ref, 'dAccountNickname', _dataAccountNickname),
+                          refresh: (ref) => ref.invalidate(_dataAccountNickname),
                           data: (d) => _i9.NicknamePage(profile: d),
                           loading: () => const DefaultLoading(),
                           error: (e, st, retry) => DefaultError(error: e, retry: retry),
                           keepPrevious: true,
-                          optimistic: (ref) => ref.watch(_optimistic3),
+                          optimistic: (ref) => ref.watch(_optimisticAccountNickname),
                         )),
                       ),
                     )),
@@ -535,8 +535,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => watchData(ref, 'd14', _data14),
-                      refresh: (ref) => ref.invalidateSelected(_data14),
+                      watch: (ref) => watchData(ref, 'dCatalog', _dataCatalog),
+                      refresh: (ref) => ref.invalidateSelected(_dataCatalog),
                       data: (d) => _i24.CatalogPage(featured: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -555,8 +555,8 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params15(state),
                           (v) => DataView(
-                            watch: (ref) => watchData(ref, 'd15', _data15(v.productId)),
-                            refresh: (ref) => ref.invalidateSelected(_data15(v.productId)),
+                            watch: (ref) => watchData(ref, 'dCatalogProductId', _dataCatalogProductId(v.productId)),
+                            refresh: (ref) => ref.invalidateSelected(_dataCatalogProductId(v.productId)),
                             data: (d) => _i26.ProductDetailPage(product: d),
                             loading: () => const _i27.ProductLoading(),
                             error: (e, st, retry) => _i28.ProductError(error: e, retry: retry),
@@ -577,8 +577,8 @@ abstract final class AppRoutes {
                             child: buildWithParams(
                               () => _params16(state),
                               (v) => DataView(
-                                watch: (ref) => watchData(ref, 'd16', _data16((productId: v.productId, page: v.page))),
-                                refresh: (ref) => ref.invalidateSelected(_data16((productId: v.productId, page: v.page))),
+                                watch: (ref) => watchData(ref, 'dCatalogProductIdReviews', _dataCatalogProductIdReviews((productId: v.productId, page: v.page))),
+                                refresh: (ref) => ref.invalidateSelected(_dataCatalogProductIdReviews((productId: v.productId, page: v.page))),
                                 data: (d) => _i30.ReviewsPage(reviews: d),
                                 loading: () => const _i27.ProductLoading(),
                                 error: (e, st, retry) => _i28.ProductError(error: e, retry: retry),
@@ -601,7 +601,7 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => watchData(ref, 'd19', _i33.data),
+                      watch: (ref) => watchData(ref, 'dCounter', _i33.data),
                       refresh: (ref) => ref.invalidate(_i33.data),
                       data: (d) => _i34.CounterPage(count: d),
                       loading: () => const DefaultLoading(),
@@ -860,8 +860,8 @@ abstract final class AppRoutes {
                   buildWithParams(
                       () => _layout56(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd56', _data56(v.period)),
-                        refresh: (ref) => ref.invalidate(_data56(v.period)),
+                        watch: (ref) => watchData(ref, 'dReports', _dataReports(v.period)),
+                        refresh: (ref) => ref.invalidate(_dataReports(v.period)),
                         data: (d) => _i79.ReportsLayout(data: d, child: child),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -881,7 +881,7 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params57(state),
                           (v) => SectionView(
-                            watch: (ref) => watchData(ref, 'd56', _data56(v.period)),
+                            watch: (ref) => watchData(ref, 'dReports', _dataReports(v.period)),
                             data: (s56) => _i80.MonthlyReportPage(data: s56),
                           ),
                           () => notFound(state.uri),
@@ -918,8 +918,8 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params59(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd59', _data59((q: v.q, page: v.page, tags: QueryList(v.tags)))),
-                        refresh: (ref) => ref.invalidate(_data59((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                        watch: (ref) => watchData(ref, 'dSearch', _dataSearch((q: v.q, page: v.page, tags: QueryList(v.tags)))),
+                        refresh: (ref) => ref.invalidate(_dataSearch((q: v.q, page: v.page, tags: QueryList(v.tags)))),
                         data: (d) => _i83.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1000,8 +1000,8 @@ abstract final class AppRoutes {
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
-                      watch: (ref) => watchData(ref, 'd76', _data76),
-                      refresh: (ref) => ref.invalidate(_data76),
+                      watch: (ref) => watchData(ref, 'dTicks', _dataTicks),
+                      refresh: (ref) => ref.invalidate(_dataTicks),
                       data: (d) => _i117.TicksPage(data: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1100,8 +1100,8 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params40(state),
                           (v) => DataView(
-                            watch: (ref) => watchData(ref, 'd40', _data40(v.id)),
-                            refresh: (ref) => ref.invalidate(_data40(v.id)),
+                            watch: (ref) => watchData(ref, 'dOrdersIdRefund', _dataOrdersIdRefund(v.id)),
+                            refresh: (ref) => ref.invalidate(_dataOrdersIdRefund(v.id)),
                             data: (d) => _i60.RefundPage(id: v.id, quote: d),
                             loading: () => const DefaultLoading(),
                             error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1205,8 +1205,8 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params61(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd61', _data61(v.category)),
-                        refresh: (ref) => ref.invalidate(_data61(v.category)),
+                        watch: (ref) => watchData(ref, 'dShopCategory', _dataShopCategory(v.category)),
+                        refresh: (ref) => ref.invalidate(_dataShopCategory(v.category)),
                         data: (d) => _i86.CategoryShopPage(category: v.category, items: d, sort: v.sort),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1256,8 +1256,8 @@ abstract final class AppRoutes {
                             child: buildWithParams(
                               () => _params65(state),
                               (v) => DataView(
-                                watch: (ref) => watchData(ref, 'd65', _data65((shop: v.shop, id: v.id))),
-                                refresh: (ref) => ref.invalidate(_data65((shop: v.shop, id: v.id))),
+                                watch: (ref) => watchData(ref, 'dShopsShopItemsId', _dataShopsShopItemsId((shop: v.shop, id: v.id))),
+                                refresh: (ref) => ref.invalidate(_dataShopsShopItemsId((shop: v.shop, id: v.id))),
                                 data: (d) => _i91.ItemPage(d),
                                 loading: () => const DefaultLoading(),
                                 error: (e, st, retry) => _i92.ItemError(e, retry),
@@ -1280,13 +1280,13 @@ abstract final class AppRoutes {
                   buildWithParams(
                       () => _layout72(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd72', _data72(v.teamId)),
-                        refresh: (ref) => ref.invalidate(_data72(v.teamId)),
+                        watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
+                        refresh: (ref) => ref.invalidate(_dataTeamsTeamId(v.teamId)),
                         data: (d) => _i106.TeamLayout(team: d, child: child),
                         loading: () => const _i104.TeamLoading(),
                         error: (e, st, retry) => _i105.TeamError(error: e, retry: retry),
                         keepPrevious: true,
-                        optimistic: (ref) => ref.watch(_optimistic72(v.teamId)),
+                        optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                         keepDataOnError: true,
                       ),
                       () => _i107.TeamNotFound(uri: state.uri),
@@ -1303,9 +1303,9 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params73(state),
                           (v) => SectionView(
-                            watch: (ref) => watchData(ref, 'd72', _data72(v.teamId)),
+                            watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
                             data: (s72) => _i109.MembersPage(s72, teamId: v.teamId),
-                            optimistic: (ref) => ref.watch(_optimistic72(v.teamId)),
+                            optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                           ),
                           () => _i110.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                         ),
@@ -1322,12 +1322,12 @@ abstract final class AppRoutes {
                             child: buildWithParams(
                               () => _params74(state),
                               (v) => DataView(
-                                watch: (ref) => watchData(ref, 'd74', _data74(v.member)),
-                                refresh: (ref) => ref.invalidate(_data74(v.member)),
+                                watch: (ref) => watchData(ref, 'dTeamsTeamIdMembersMember', _dataTeamsTeamIdMembersMember(v.member)),
+                                refresh: (ref) => ref.invalidate(_dataTeamsTeamIdMembersMember(v.member)),
                                 data: (d) => SectionView(
-                                  watch: (ref) => watchData(ref, 'd72', _data72(v.teamId)),
+                                  watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
                                   data: (s72) => _i113.MemberPage(label: d, team: s72),
-                                  optimistic: (ref) => ref.watch(_optimistic72(v.teamId)),
+                                  optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                                 ),
                                 loading: () => const _i104.TeamLoading(),
                                 error: (e, st, retry) => _i105.TeamError(error: e, retry: retry),
@@ -1351,9 +1351,9 @@ abstract final class AppRoutes {
                         child: buildWithParams(
                           () => _params75(state),
                           (v) => SectionView(
-                            watch: (ref) => watchData(ref, 'd72', _data72(v.teamId)),
+                            watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
                             data: (s72) => _i114.TeamSettingsPage(data: s72),
-                            optimistic: (ref) => ref.watch(_optimistic72(v.teamId)),
+                            optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                           ),
                           () => _i107.TeamNotFound(uri: state.uri),
                         ),
@@ -1374,8 +1374,8 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params13(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd13', _data13(restKey(v.categories))),
-                        refresh: (ref) => ref.invalidate(_data13(restKey(v.categories))),
+                        watch: (ref) => watchData(ref, 'dBrowseCategories', _dataBrowseCategories(restKey(v.categories))),
+                        refresh: (ref) => ref.invalidate(_dataBrowseCategories(restKey(v.categories))),
                         data: (d) => _i22.BrowsePage(categories: v.categories, data: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1396,8 +1396,8 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params18(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd18', _data18(restKey(v.ids))),
-                        refresh: (ref) => ref.invalidate(_data18(restKey(v.ids))),
+                        watch: (ref) => watchData(ref, 'dCompareIds', _dataCompareIds(restKey(v.ids))),
+                        refresh: (ref) => ref.invalidate(_dataCompareIds(restKey(v.ids))),
                         data: (d) => _i32.ComparePage(ids: v.ids, total: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1432,8 +1432,8 @@ abstract final class AppRoutes {
                     child: buildWithParams(
                       () => _params79(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd79', _data79(restKey(v.article))),
-                        refresh: (ref) => ref.invalidate(_data79(restKey(v.article))),
+                        watch: (ref) => watchData(ref, 'dWikiArticle', _dataWikiArticle(restKey(v.article))),
+                        refresh: (ref) => ref.invalidate(_dataWikiArticle(restKey(v.article))),
                         data: (d) => _i123.WikiPage(article: v.article, data: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -1472,7 +1472,7 @@ abstract final class AppRoutes {
 
   static List<RouteMatcher> _allMatchers() => [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const []), caseSensitive: false),
-    RouteMatcher(['nickname'], (s) => UrlMatch(s.uri, const NicknameRoute(), const {}, [_data3]), caseSensitive: false),
+    RouteMatcher(['nickname'], (s) => UrlMatch(s.uri, const NicknameRoute(), const {}, [_dataAccountNickname]), caseSensitive: false),
     RouteMatcher(['profile'], (s) => UrlMatch(s.uri, const ProfileRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['settings'], (s) => UrlMatch(s.uri, const SettingsRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['admin'], (s) => UrlMatch(s.uri, const AdminRoute(), const {}, const []), caseSensitive: false),
@@ -1485,7 +1485,7 @@ abstract final class AppRoutes {
       final p = _params11(s);
       return UrlMatch(s.uri, ProPlanRoute(coupon: p.coupon), {'coupon': p.coupon}, const []);
     }, caseSensitive: false),
-    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), const {}, [_data14]), caseSensitive: false),
+    RouteMatcher(['catalog'], (s) => UrlMatch(s.uri, const CatalogRoute(), const {}, [_dataCatalog]), caseSensitive: false),
     RouteMatcher(['counter'], (s) => UrlMatch(s.uri, const CounterRoute(), const {}, [_i33.data]), caseSensitive: false),
     RouteMatcher(['docs'], (s) => UrlMatch(s.uri, const DocsIndexRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['feed'], (s) => UrlMatch(s.uri, const FeedRoute(), const {}, const []), caseSensitive: false),
@@ -1503,9 +1503,9 @@ abstract final class AppRoutes {
     RouteMatcher(['photos'], (s) => UrlMatch(s.uri, const PhotosRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['search'], (s) {
       final p = _params59(s);
-      return UrlMatch(s.uri, SearchRoute(q: p.q, page: p.page, tags: p.tags), {'q': p.q, 'page': p.page, 'tags': p.tags}, [_data59((q: p.q, page: p.page, tags: QueryList(p.tags)))]);
+      return UrlMatch(s.uri, SearchRoute(q: p.q, page: p.page, tags: p.tags), {'q': p.q, 'page': p.page, 'tags': p.tags}, [_dataSearch((q: p.q, page: p.page, tags: QueryList(p.tags)))]);
     }, caseSensitive: false),
-    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), const {}, [_data76]), caseSensitive: false),
+    RouteMatcher(['ticks'], (s) => UrlMatch(s.uri, const TicksRoute(), const {}, [_dataTicks]), caseSensitive: false),
     RouteMatcher(['vault'], (s) => UrlMatch(s.uri, const VaultRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['docs', 'new'], (s) => UrlMatch(s.uri, const NewDocRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', 'contact|kontakt'], (s) => UrlMatch(s.uri, const ContactRoute(), const {}, const []), caseSensitive: false),
@@ -1514,11 +1514,11 @@ abstract final class AppRoutes {
     RouteMatcher(['photos', 'upload'], (s) => UrlMatch(s.uri, const UploadRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['reports', 'monthly'], (s) {
       final p = _params57(s);
-      return UrlMatch(s.uri, MonthlyReportRoute(period: p.period), {'period': p.period}, [_data56(p.period)]);
+      return UrlMatch(s.uri, MonthlyReportRoute(period: p.period), {'period': p.period}, [_dataReports(p.period)]);
     }, caseSensitive: false),
     RouteMatcher(['reports', 'yearly'], (s) {
       final p = _params58(s);
-      return UrlMatch(s.uri, YearlyReportRoute(period: p.period), {'period': p.period}, [_data56(p.period)]);
+      return UrlMatch(s.uri, YearlyReportRoute(period: p.period), {'period': p.period}, [_dataReports(p.period)]);
     }, caseSensitive: false),
     RouteMatcher(['signup', 'company'], (s) => UrlMatch(s.uri, const SignupCompanyRoute(), const {}, const []), caseSensitive: false),
     RouteMatcher(['signup', 'contact'], (s) => UrlMatch(s.uri, const SignupContactRoute(), const {}, const []), caseSensitive: false),
@@ -1539,7 +1539,7 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['catalog', ':productId'], (s) {
       final p = _params15(s);
-      return UrlMatch(s.uri, ProductDetailRoute(productId: p.productId), {'productId': p.productId}, [_data15(p.productId)]);
+      return UrlMatch(s.uri, ProductDetailRoute(productId: p.productId), {'productId': p.productId}, [_dataCatalogProductId(p.productId)]);
     }, caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', ':topic'], (s) {
       final p = _params28(s);
@@ -1563,7 +1563,7 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['shop|boutique|laden', ':category'], (s) {
       final p = _params61(s);
-      return UrlMatch(s.uri, CategoryShopRoute(category: p.category, sort: p.sort), {'category': p.category, 'sort': p.sort}, [_data61(p.category)]);
+      return UrlMatch(s.uri, CategoryShopRoute(category: p.category, sort: p.sort), {'category': p.category, 'sort': p.sort}, [_dataShopCategory(p.category)]);
     }, caseSensitive: false),
     RouteMatcher(['shops', ':shop'], (s) {
       final p = _params63(s);
@@ -1571,7 +1571,7 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['catalog', ':productId', 'reviews'], (s) {
       final p = _params16(s);
-      return UrlMatch(s.uri, ReviewsRoute(productId: p.productId, page: p.page), {'productId': p.productId, 'page': p.page}, [_data16((productId: p.productId, page: p.page))]);
+      return UrlMatch(s.uri, ReviewsRoute(productId: p.productId, page: p.page), {'productId': p.productId, 'page': p.page}, [_dataCatalogProductIdReviews((productId: p.productId, page: p.page))]);
     }, caseSensitive: false),
     RouteMatcher(['help|aide|hilfe', ':topic', 'examples|exemples|beispiele'], (s) {
       final p = _params29(s);
@@ -1579,15 +1579,15 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund'], (s) {
       final p = _params40(s);
-      return UrlMatch(s.uri, RefundRoute(id: p.id), {'id': p.id}, [_data40(p.id)]);
+      return UrlMatch(s.uri, RefundRoute(id: p.id), {'id': p.id}, [_dataOrdersIdRefund(p.id)]);
     }, caseSensitive: false),
     RouteMatcher(['teams', ':teamId', 'members'], (s) {
       final p = _params73(s);
-      return UrlMatch(s.uri, MembersRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data72(p.teamId)]);
+      return UrlMatch(s.uri, MembersRoute(teamId: p.teamId), {'teamId': p.teamId}, [_dataTeamsTeamId(p.teamId)]);
     }, caseSensitive: false),
     RouteMatcher(['teams', ':teamId', 'settings'], (s) {
       final p = _params75(s);
-      return UrlMatch(s.uri, TeamSettingsRoute(teamId: p.teamId), {'teamId': p.teamId}, [_data72(p.teamId)]);
+      return UrlMatch(s.uri, TeamSettingsRoute(teamId: p.teamId), {'teamId': p.teamId}, [_dataTeamsTeamId(p.teamId)]);
     }, caseSensitive: false),
     RouteMatcher(['orders', ':id', 'refund', 'confirm'], (s) {
       final p = _params41(s);
@@ -1599,19 +1599,19 @@ abstract final class AppRoutes {
     }, caseSensitive: false),
     RouteMatcher(['shops', ':shop', 'items', ':id'], (s) {
       final p = _params65(s);
-      return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_data65((shop: p.shop, id: p.id))]);
+      return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_dataShopsShopItemsId((shop: p.shop, id: p.id))]);
     }, caseSensitive: false),
     RouteMatcher(['teams', ':teamId', 'members', ':member'], (s) {
       final p = _params74(s);
-      return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_data72(p.teamId), _data74(p.member)]);
+      return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_dataTeamsTeamId(p.teamId), _dataTeamsTeamIdMembersMember(p.member)]);
     }, caseSensitive: false),
     RouteMatcher(['browse', '*categories'], (s) {
       final p = _params13(s);
-      return UrlMatch(s.uri, BrowseRoute(categories: p.categories), {'categories': p.categories}, [_data13(restKey(p.categories))]);
+      return UrlMatch(s.uri, BrowseRoute(categories: p.categories), {'categories': p.categories}, [_dataBrowseCategories(restKey(p.categories))]);
     }, caseSensitive: false),
     RouteMatcher(['compare', '*ids'], (s) {
       final p = _params18(s);
-      return UrlMatch(s.uri, CompareRoute(ids: p.ids), {'ids': p.ids}, [_data18(restKey(p.ids))]);
+      return UrlMatch(s.uri, CompareRoute(ids: p.ids), {'ids': p.ids}, [_dataCompareIds(restKey(p.ids))]);
     }, caseSensitive: false),
     RouteMatcher(['docs', '*rest'], (s) {
       final p = _params21(s);
@@ -1623,7 +1623,7 @@ abstract final class AppRoutes {
     }),
     RouteMatcher(['wiki', '*article'], (s) {
       final p = _params79(s);
-      return UrlMatch(s.uri, WikiRoute(article: p.article), {'article': p.article}, [_data79(restKey(p.article))]);
+      return UrlMatch(s.uri, WikiRoute(article: p.article), {'article': p.article}, [_dataWikiArticle(restKey(p.article))]);
     }, caseSensitive: false),
     RouteMatcher([':slug'], (s) {
       final p = _params1(s);
@@ -2162,7 +2162,7 @@ enum SignupStep {
 /// Typed access to the data.dart of the section `reports/` wraps (reports/data.dart) keyed by `period`: the layout and the pages below it read it.
 abstract final class ReportsSection {
   /// reports/data.dart as a Riverpod provider keyed by `period`.
-  static final data = _data56;
+  static final data = _dataReports;
 
   /// Watches reports/data.dart: an `AsyncValue`, typed by inference.
   static final watch = (WidgetRef ref, {String? period}) => ref.watch(data(period));
@@ -2181,7 +2181,7 @@ abstract final class ReportsSection {
 abstract final class SignupSection {
 
   /// The state of `action()` (signup/action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action66_0;
+  static final action = _actionSignup_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required _i93.SignupFields input}) => ref.runAction(action, input);
@@ -2216,10 +2216,10 @@ abstract final class SignupSection {
 /// Typed access to the data.dart of the section `teams/$teamId/` wraps (teams/$teamId/data.dart) keyed by `teamId`: the layout and the pages below it read it.
 abstract final class TeamsTeamIdSection {
   /// teams/$teamId/data.dart as a Riverpod provider keyed by `teamId`.
-  static final data = _data72;
+  static final data = _dataTeamsTeamId;
 
   /// Watches teams/$teamId/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference. Since 0.8.1.
-  static final watch = (WidgetRef ref, {required String teamId}) => ref.watchOptimistic(data(teamId), _optimistic72(teamId));
+  static final watch = (WidgetRef ref, {required String teamId}) => ref.watchOptimistic(data(teamId), _optimisticTeamsTeamId(teamId));
 
   /// Reads teams/$teamId/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref, {required String teamId}) => ref.readData(data(teamId));
@@ -2231,7 +2231,7 @@ abstract final class TeamsTeamIdSection {
   static Future<void> refresh(WidgetRef ref, {required String teamId}) => ref.refresh(data(teamId).future);
 
   /// The state of `addMember()` (teams/$teamId/action.dart) keyed by `teamId`: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final addMemberAction = _action72_0;
+  static final addMemberAction = _actionTeamsTeamId_addMember;
 
   /// Runs `addMember()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final addMember = (WidgetRef ref, {required String teamId, required String input}) => ref.runAction(addMemberAction(teamId), input);
@@ -2285,7 +2285,7 @@ final class NicknameRoute extends TypedLocation {
   const NicknameRoute();
 
   /// (account)/nickname/data.dart as a Riverpod provider.
-  static final data = _data3;
+  static final data = _dataAccountNickname;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/nickname');
@@ -2298,7 +2298,7 @@ final class NicknameRoute extends TypedLocation {
   static NicknameRoute? maybeOf(BuildContext context) => maybeRouteOf<NicknameRoute>(context, AppRoutes.matchUrl);
 
   /// Watches (account)/nickname/data.dart, with the `optimistic()` patches of the writes in flight: an `AsyncValue`, typed by inference (static, so it can name the keys). Since 0.8.1.
-  static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimistic3);
+  static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimisticAccountNickname);
 
   /// Reads (account)/nickname/data.dart once, keeping it alive until it completes.
   static final read = (WidgetRef ref) => ref.readData(data);
@@ -2311,10 +2311,10 @@ final class NicknameRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data3], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataAccountNickname], keepFor: keepFor);
 
   /// The state of `action()` ((account)/nickname/action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action3_0;
+  static final action = _actionAccountNickname_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required _i8.NicknameFields input}) => ref.runAction(action, input);
@@ -2443,7 +2443,7 @@ final class BrowseRoute extends TypedLocation {
   final List<Category> categories;
 
   /// browse/$$categories/data.dart as a Riverpod provider keyed by `categories`.
-  static final data = _data13;
+  static final data = _dataBrowseCategories;
 
   @override
   String get location {
@@ -2480,7 +2480,7 @@ final class BrowseRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data13(restKey(categories))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataBrowseCategories(restKey(categories))], keepFor: keepFor);
 }
 
 /// `/catalog` → catalog/page.dart
@@ -2488,7 +2488,7 @@ final class CatalogRoute extends TypedLocation {
   const CatalogRoute();
 
   /// catalog/data.dart as a Riverpod provider.
-  static final data = _data14;
+  static final data = _dataCatalog;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/catalog');
@@ -2514,7 +2514,7 @@ final class CatalogRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data14], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataCatalog], keepFor: keepFor);
 }
 
 /// `/catalog/:productId` → catalog/$productId/page.dart
@@ -2524,7 +2524,7 @@ final class ProductDetailRoute extends TypedLocation {
   final String productId;
 
   /// catalog/$productId/data.dart as a Riverpod provider keyed by `productId`.
-  static final data = _data15;
+  static final data = _dataCatalogProductId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/catalog/${Uri.encodeComponent(productId)}');
@@ -2558,7 +2558,7 @@ final class ProductDetailRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data15(productId)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataCatalogProductId(productId)], keepFor: keepFor);
 }
 
 /// `/catalog/:productId/reviews` → catalog/$productId/reviews/page.dart
@@ -2569,7 +2569,7 @@ final class ReviewsRoute extends TypedLocation {
   final int? page;
 
   /// catalog/$productId/reviews/data.dart as a Riverpod provider keyed by `(productId, page)`.
-  static final data = _data16;
+  static final data = _dataCatalogProductIdReviews;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/catalog/${Uri.encodeComponent(productId)}/reviews'), {'page': page});
@@ -2603,7 +2603,7 @@ final class ReviewsRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data16((productId: productId, page: page))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataCatalogProductIdReviews((productId: productId, page: page))], keepFor: keepFor);
 }
 
 /// `/compare/*ids` → compare/$$ids/page.dart
@@ -2613,7 +2613,7 @@ final class CompareRoute extends TypedLocation {
   final List<int> ids;
 
   /// compare/$$ids/data.dart as a Riverpod provider keyed by `ids`.
-  static final data = _data18;
+  static final data = _dataCompareIds;
 
   @override
   String get location {
@@ -2650,7 +2650,7 @@ final class CompareRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data18(restKey(ids))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataCompareIds(restKey(ids))], keepFor: keepFor);
 }
 
 /// `/counter` → counter/page.dart
@@ -3077,7 +3077,7 @@ final class RefundRoute extends TypedLocation {
   final int id;
 
   /// orders/$id/refund/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data40;
+  static final data = _dataOrdersIdRefund;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id/refund');
@@ -3111,10 +3111,10 @@ final class RefundRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data40(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataOrdersIdRefund(id)], keepFor: keepFor);
 
   /// The state of `action()` (orders/$id/refund/action.dart) keyed by `id`: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action40_0;
+  static final action = _actionOrdersIdRefund_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required int id, required RefundInput input}) => ref.runAction(action(id), input);
@@ -3377,7 +3377,7 @@ final class MonthlyReportRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data56(period)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataReports(period)], keepFor: keepFor);
 }
 
 /// `/reports/yearly` → reports/yearly/page.dart
@@ -3406,7 +3406,7 @@ final class YearlyReportRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data56(period)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataReports(period)], keepFor: keepFor);
 }
 
 /// `/search` → search/page.dart
@@ -3418,7 +3418,7 @@ final class SearchRoute extends TypedLocation {
   final List<String> tags;
 
   /// search/data.dart as a Riverpod provider keyed by `(q, page, tags)`.
-  static final data = _data59;
+  static final data = _dataSearch;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/search'), {'q': q, 'page': page, 'tags': tags});
@@ -3452,7 +3452,7 @@ final class SearchRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data59((q: q, page: page, tags: QueryList(tags)))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataSearch((q: q, page: page, tags: QueryList(tags)))], keepFor: keepFor);
 }
 
 /// `/shop/:category` → shop/$category/page.dart
@@ -3463,7 +3463,7 @@ final class CategoryShopRoute extends TypedLocation {
   final _i86.Sort? sort;
 
   /// shop/$category/data.dart as a Riverpod provider keyed by `category`.
-  static final data = _data61;
+  static final data = _dataShopCategory;
 
   @override
   String get location => withQuery(joinLocation(AppRoutes.base, '/shop/${category.name}'), {'sort': sort});
@@ -3504,7 +3504,7 @@ final class CategoryShopRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data61(category)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataShopCategory(category)], keepFor: keepFor);
 }
 
 /// `/shops/:shop` → shops/$shop/page.dart
@@ -3540,7 +3540,7 @@ final class ItemRoute extends TypedLocation {
   final int id;
 
   /// shops/$shop/items/$id/data.dart as a Riverpod provider keyed by `(shop, id)`.
-  static final data = _data65;
+  static final data = _dataShopsShopItemsId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/shops/${Uri.encodeComponent(shop)}/items/$id');
@@ -3574,7 +3574,7 @@ final class ItemRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data65((shop: shop, id: id))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataShopsShopItemsId((shop: shop, id: id))], keepFor: keepFor);
 }
 
 /// `/signup/company` → signup/company/page.dart
@@ -3663,7 +3663,7 @@ final class MembersRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data72(teamId)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTeamsTeamId(teamId)], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/members/:member` → teams/$teamId/members/$member/page.dart
@@ -3674,7 +3674,7 @@ final class MemberRoute extends TypedLocation {
   final int member;
 
   /// teams/$teamId/members/$member/data.dart as a Riverpod provider keyed by `member`.
-  static final data = _data74;
+  static final data = _dataTeamsTeamIdMembersMember;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/teams/${Uri.encodeComponent(teamId)}/members/$member');
@@ -3708,7 +3708,7 @@ final class MemberRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data72(teamId), _data74(member)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTeamsTeamId(teamId), _dataTeamsTeamIdMembersMember(member)], keepFor: keepFor);
 }
 
 /// `/teams/:teamId/settings` → teams/$teamId/settings/page.dart
@@ -3737,7 +3737,7 @@ final class TeamSettingsRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data72(teamId)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTeamsTeamId(teamId)], keepFor: keepFor);
 }
 
 /// `/ticks` → ticks/page.dart
@@ -3745,7 +3745,7 @@ final class TicksRoute extends TypedLocation {
   const TicksRoute();
 
   /// ticks/data.dart as a Riverpod provider.
-  static final data = _data76;
+  static final data = _dataTicks;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/ticks');
@@ -3771,7 +3771,7 @@ final class TicksRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data76], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTicks], keepFor: keepFor);
 }
 
 /// `/vault` → vault/page.dart
@@ -3796,7 +3796,7 @@ final class WikiRoute extends TypedLocation {
   final List<String> article;
 
   /// wiki/$$article/data.dart as a Riverpod provider keyed by `article`.
-  static final data = _data79;
+  static final data = _dataWikiArticle;
 
   @override
   String get location {
@@ -3833,7 +3833,7 @@ final class WikiRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data79(restKey(article))], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataWikiArticle(restKey(article))], keepFor: keepFor);
 }
 
 /// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
@@ -3922,103 +3922,103 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 
 ({int id}) _guard40(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
-final _data3 = FutureProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd3', null, _i7.data(ref)),
+final _dataAccountNickname = FutureProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'dAccountNickname', null, _i7.data(ref)),
 );
 
-final _data13 = FutureProvider.autoDispose.family(
-  (Ref ref, String categories) => traceData(ref, 'd13', categories, _i21.data(ref, categories: restParts(categories).map(Category.values.byName).toList())),
+final _dataBrowseCategories = FutureProvider.autoDispose.family(
+  (Ref ref, String categories) => traceData(ref, 'dBrowseCategories', categories, _i21.data(ref, categories: restParts(categories).map(Category.values.byName).toList())),
 );
 
 /// data.dart selects the app's own provider: nothing wraps it.
-final _data14 = _i23.data();
+final _dataCatalog = _i23.data();
 
 /// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
-final _data15 = (String productId) => _i25.data(productId: productId);
+final _dataCatalogProductId = (String productId) => _i25.data(productId: productId);
 
 /// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
-final _data16 = (({String productId, int? page}) k) => _i29.data(productId: k.productId, page: k.page);
+final _dataCatalogProductIdReviews = (({String productId, int? page}) k) => _i29.data(productId: k.productId, page: k.page);
 
-final _data18 = FutureProvider.autoDispose.family(
-  (Ref ref, String ids) => traceData(ref, 'd18', ids, _i31.data(ref, ids: restParts(ids).map(int.parse).toList())),
+final _dataCompareIds = FutureProvider.autoDispose.family(
+  (Ref ref, String ids) => traceData(ref, 'dCompareIds', ids, _i31.data(ref, ids: restParts(ids).map(int.parse).toList())),
 );
 
-final _data40 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceData(ref, 'd40', id, _i58.data(ref, id: id)),
+final _dataOrdersIdRefund = FutureProvider.autoDispose.family(
+  (Ref ref, int id) => traceData(ref, 'dOrdersIdRefund', id, _i58.data(ref, id: id)),
 );
 
-final _data56 = FutureProvider.autoDispose.family(
-  (Ref ref, String? period) => traceData(ref, 'd56', period, _i78.data(ref, period: period)),
+final _dataReports = FutureProvider.autoDispose.family(
+  (Ref ref, String? period) => traceData(ref, 'dReports', period, _i78.data(ref, period: period)),
 );
 
-final _data59 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'd59', k, _i82.data(ref, q: k.q, page: k.page, tags: k.tags)),
+final _dataSearch = FutureProvider.autoDispose.family(
+  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'dSearch', k, _i82.data(ref, q: k.q, page: k.page, tags: k.tags)),
 );
 
-final _data61 = FutureProvider.autoDispose.family(
-  (Ref ref, Category category) => traceData(ref, 'd61', category, _i85.data(ref, category: category)),
+final _dataShopCategory = FutureProvider.autoDispose.family(
+  (Ref ref, Category category) => traceData(ref, 'dShopCategory', category, _i85.data(ref, category: category)),
 );
 
-final _data65 = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'd65', k, _i90.data(ref, shop: k.shop, id: k.id)),
+final _dataShopsShopItemsId = FutureProvider.autoDispose.family(
+  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'dShopsShopItemsId', k, _i90.data(ref, shop: k.shop, id: k.id)),
 );
 
-final _data72 = cachedDataFamily(
-  (Ref ref, String teamId) => traceData(ref, 'd72', teamId, _i101.data(ref, teamId: teamId)),
+final _dataTeamsTeamId = cachedDataFamily(
+  (Ref ref, String teamId) => traceData(ref, 'dTeamsTeamId', teamId, _i101.data(ref, teamId: teamId)),
   cache: _i101.dataCache,
   name: 'teams/\$teamId',
   keyParts: (String teamId) => [teamId],
   freshness: _i103.freshness,
 );
 
-final _data74 = FutureProvider.autoDispose.family(
-  (Ref ref, int member) => freshData(ref, _i103.freshness, traceData(ref, 'd74', member, _i112.data(ref, member: member))),
+final _dataTeamsTeamIdMembersMember = FutureProvider.autoDispose.family(
+  (Ref ref, int member) => freshData(ref, _i103.freshness, traceData(ref, 'dTeamsTeamIdMembersMember', member, _i112.data(ref, member: member))),
 );
 
-final _data76 = StreamProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd76', null, _i116.data(ref)),
+final _dataTicks = StreamProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'dTicks', null, _i116.data(ref)),
 );
 
-final _data79 = FutureProvider.autoDispose.family(
-  (Ref ref, String article) => traceData(ref, 'd79', article, _i122.data(ref, article: restParts(article))),
+final _dataWikiArticle = FutureProvider.autoDispose.family(
+  (Ref ref, String article) => traceData(ref, 'dWikiArticle', article, _i122.data(ref, article: restParts(article))),
 );
 
 /// What reads of (account)/nickname/data.dart show while a write that patches it is in flight (`optimistic()` of (account)/nickname/action.dart). Since 0.8.1.
-final _optimistic3 = optimisticLayer(_data3);
+final _optimisticAccountNickname = optimisticLayer(_dataAccountNickname);
 
 /// What reads of teams/$teamId/data.dart show while a write that patches it is in flight (`addMemberOptimistic()` of teams/$teamId/action.dart). Since 0.8.1.
-final _optimistic72 = optimisticLayerFamily((String teamId) => _data72(teamId));
+final _optimisticTeamsTeamId = optimisticLayerFamily((String teamId) => _dataTeamsTeamId(teamId));
 
 /// `action()` of (account)/nickname/action.dart: its state, and what it invalidates after a success.
-final _action3_0 = actionProvider(
+final _actionAccountNickname_action = actionProvider(
   (Ref ref, _i8.NicknameFields input) => _i8.action(ref, input: input),
-  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data3],
+  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_dataAccountNickname],
   validate: _i8.validate,
-  optimistic: () => _optimistic3.patch(_i8.optimistic),
-  site: 'a3_0',
+  optimistic: () => _optimisticAccountNickname.patch(_i8.optimistic),
+  site: 'aAccountNickname_action',
 );
 
 /// `action()` of orders/$id/refund/action.dart: its state, and what it invalidates after a success.
-final _action40_0 = actionFamily(
+final _actionOrdersIdRefund_action = actionFamily(
   (Ref ref, int id, RefundInput input) => _i59.action(ref, id: id, input: input),
-  invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data40(id)],
-  site: 'a40_0',
+  invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersIdRefund(id)],
+  site: 'aOrdersIdRefund_action',
 );
 
 /// `action()` of signup/action.dart: its state, and what it invalidates after a success.
-final _action66_0 = actionProvider(
+final _actionSignup_action = actionProvider(
   (Ref ref, _i93.SignupFields input) => _i93.action(ref, input: input),
   invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],
   validate: _i93.validate,
-  site: 'a66_0',
+  site: 'aSignup_action',
 );
 
 /// `addMember()` of teams/$teamId/action.dart: its state, and what it invalidates after a success.
-final _action72_0 = actionFamily(
+final _actionTeamsTeamId_addMember = actionFamily(
   (Ref ref, String teamId, String input) => _i102.addMember(ref, teamId: teamId, input: input),
-  invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data72(teamId)],
-  optimistic: (String teamId) => _optimistic72(teamId).patch(_i102.addMemberOptimistic),
-  site: 'a72_0',
+  invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_dataTeamsTeamId(teamId)],
+  optimistic: (String teamId) => _optimisticTeamsTeamId(teamId).patch(_i102.addMemberOptimistic),
+  site: 'aTeamsTeamId_addMember',
 );
 
 /// The folders with a nav.dart, as menus: drawers, tab bars and breadcrumbs (since 0.8.1).
@@ -4223,23 +4223,23 @@ GuardResult _navGuard77(Ref ref, TypedLocation route) =>
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data3: 'd3',
-      _data13: 'd13',
-      _data14: 'd14',
-      _data18: 'd18',
-      _i33.data: 'd19',
-      _data40: 'd40',
-      _data56: 'd56',
-      _data59: 'd59',
-      _data61: 'd61',
-      _data65: 'd65',
-      _data72: 'd72',
-      _data74: 'd74',
-      _data76: 'd76',
-      _data79: 'd79',
+      _dataAccountNickname: 'dAccountNickname',
+      _dataBrowseCategories: 'dBrowseCategories',
+      _dataCatalog: 'dCatalog',
+      _dataCompareIds: 'dCompareIds',
+      _i33.data: 'dCounter',
+      _dataOrdersIdRefund: 'dOrdersIdRefund',
+      _dataReports: 'dReports',
+      _dataSearch: 'dSearch',
+      _dataShopCategory: 'dShopCategory',
+      _dataShopsShopItemsId: 'dShopsShopItemsId',
+      _dataTeamsTeamId: 'dTeamsTeamId',
+      _dataTeamsTeamIdMembersMember: 'dTeamsTeamIdMembersMember',
+      _dataTicks: 'dTicks',
+      _dataWikiArticle: 'dWikiArticle',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/nickname","route":"NicknameRoute","file":"(account)/nickname/page.dart","folder":"(account)/nickname","markers":["data","action","leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":["leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/feed","route":"FeedRoute","file":"feed/page.dart","folder":"feed","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/labs","route":"LabsRoute","file":"labs/page.dart","folder":"labs","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"signup/layout.dart","folder":"signup","markers":["guard"],"items":[{"type":"route","pattern":"/signup/company","route":"SignupCompanyRoute","file":"signup/company/page.dart","folder":"signup/company","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/contact","route":"SignupContactRoute","file":"signup/contact/page.dart","folder":"signup/contact","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/name","route":"SignupNameRoute","file":"signup/name/page.dart","folder":"signup/name","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/review","route":"SignupReviewRoute","file":"signup/review/page.dart","folder":"signup/review","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/vault","route":"VaultRoute","file":"vault/page.dart","folder":"vault","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh","cached"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"a3_0":{"kind":"action","file":"(account)/nickname/action.dart","name":"action","route":"NicknameRoute"},"a40_0":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"a66_0":{"kind":"action","file":"signup/action.dart","name":"action","route":null},"a72_0":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"d13":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"d14":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"d15":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"d16":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"d18":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"d19":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"d3":{"kind":"data","file":"(account)/nickname/data.dart","route":"NicknameRoute","section":null,"traced":true},"d40":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"d56":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"d59":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"d61":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"d65":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"d72":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"d74":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"d76":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"d79":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g31@31":{"kind":"guard","file":"labs/guard.dart","route":"LabsRoute","pattern":"/labs"},"g34@34":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g40@40":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g40@41":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g63@63":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g66@67":{"kind":"guard","file":"signup/guard.dart","route":"SignupCompanyRoute","pattern":"/signup/company"},"g66@68":{"kind":"guard","file":"signup/guard.dart","route":"SignupContactRoute","pattern":"/signup/contact"},"g66@69":{"kind":"guard","file":"signup/guard.dart","route":"SignupNameRoute","pattern":"/signup/name"},"g66@70":{"kind":"guard","file":"signup/guard.dart","route":"SignupReviewRoute","pattern":"/signup/review"},"g6@7":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@8":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g77@77":{"kind":"guard","file":"vault/guard.dart","route":"VaultRoute","pattern":"/vault"},"g7@7":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r35":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r37":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/nickname","route":"NicknameRoute","file":"(account)/nickname/page.dart","folder":"(account)/nickname","markers":["data","action","leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":["leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/feed","route":"FeedRoute","file":"feed/page.dart","folder":"feed","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/labs","route":"LabsRoute","file":"labs/page.dart","folder":"labs","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"signup/layout.dart","folder":"signup","markers":["guard"],"items":[{"type":"route","pattern":"/signup/company","route":"SignupCompanyRoute","file":"signup/company/page.dart","folder":"signup/company","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/contact","route":"SignupContactRoute","file":"signup/contact/page.dart","folder":"signup/contact","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/name","route":"SignupNameRoute","file":"signup/name/page.dart","folder":"signup/name","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/review","route":"SignupReviewRoute","file":"signup/review/page.dart","folder":"signup/review","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/vault","route":"VaultRoute","file":"vault/page.dart","folder":"vault","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh","cached"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"aAccountNickname_action":{"kind":"action","file":"(account)/nickname/action.dart","name":"action","route":"NicknameRoute"},"aOrdersIdRefund_action":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"aSignup_action":{"kind":"action","file":"signup/action.dart","name":"action","route":null},"aTeamsTeamId_addMember":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"dAccountNickname":{"kind":"data","file":"(account)/nickname/data.dart","route":"NicknameRoute","section":null,"traced":true},"dBrowseCategories":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"dCatalog":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"dCatalogProductId":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"dCatalogProductIdReviews":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"dCompareIds":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"dCounter":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"dOrdersIdRefund":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"dReports":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"dSearch":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"dShopCategory":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"dShopsShopItemsId":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"dTeamsTeamId":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"dTeamsTeamIdMembersMember":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"dTicks":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"dWikiArticle":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g31@31":{"kind":"guard","file":"labs/guard.dart","route":"LabsRoute","pattern":"/labs"},"g34@34":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g40@40":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g40@41":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g63@63":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g66@67":{"kind":"guard","file":"signup/guard.dart","route":"SignupCompanyRoute","pattern":"/signup/company"},"g66@68":{"kind":"guard","file":"signup/guard.dart","route":"SignupContactRoute","pattern":"/signup/contact"},"g66@69":{"kind":"guard","file":"signup/guard.dart","route":"SignupNameRoute","pattern":"/signup/name"},"g66@70":{"kind":"guard","file":"signup/guard.dart","route":"SignupReviewRoute","pattern":"/signup/review"},"g6@7":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@8":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g77@77":{"kind":"guard","file":"vault/guard.dart","route":"VaultRoute","pattern":"/vault"},"g7@7":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r35":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r37":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';

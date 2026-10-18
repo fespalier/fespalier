@@ -39,22 +39,22 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'e8541a0c324185cc';
+  static const String _version = '8efda98a0f19eb31';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
-    'OrderRoute.data': '412d0dba',
+    'OrderRoute.data': '4c4f2fac',
     'OrderRoute.read': 'd7c35f03',
     'OrderRoute.watch': '47998864',
-    'OrdersRoute.data': 'd75385a6',
+    'OrdersRoute.data': 'c7871bc8',
     'OrdersRoute.read': '80e133b4',
     'OrdersRoute.watch': 'e04d3518',
-    'SignInRoute.action': '42a3800b',
+    'SignInRoute.action': 'e9ded4dd',
     'SignInRoute.submit': '354bde08',
     'SignInRoute.useAction': '5a6dc732',
     'SignInRoute.useForm': '09d74617',
-    '_action6_0': '794e153a',
-    '_data3': '9d198290',
-    '_data4': 'd6da8013',
+    '_actionSignIn_action': 'fd6f27dd',
+    '_dataSignedInOrders': '8dee535f',
+    '_dataSignedInOrdersId': '96dab84f',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -159,8 +159,8 @@ abstract final class AppRoutes {
             pageBuilder: (context, state) => namedPage('/orders', () => _i1.transition(
               state.pageKey,
               DataView(
-                watch: (ref) => watchData(ref, 'd3', _data3),
-                refresh: (ref) => ref.invalidate(_data3),
+                watch: (ref) => watchData(ref, 'dSignedInOrders', _dataSignedInOrders),
+                refresh: (ref) => ref.invalidate(_dataSignedInOrders),
                 data: (d) => _i7.OrdersPage(orders: d),
                 loading: () => const DefaultLoading(),
                 error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -175,8 +175,8 @@ abstract final class AppRoutes {
                   buildWithParams(
                     () => _params4(state),
                     (v) => DataView(
-                      watch: (ref) => watchData(ref, 'd4', _data4(v.id)),
-                      refresh: (ref) => ref.invalidate(_data4(v.id)),
+                      watch: (ref) => watchData(ref, 'dSignedInOrdersId', _dataSignedInOrdersId(v.id)),
+                      refresh: (ref) => ref.invalidate(_dataSignedInOrdersId(v.id)),
                       data: (d) => _i9.OrderPage(order: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -224,7 +224,7 @@ abstract final class AppRoutes {
   static List<RouteMatcher> _allMatchers() => [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
     RouteMatcher(['admin'], (s) => UrlMatch(s.uri, const AdminRoute(), const {}, const [])),
-    RouteMatcher(['orders'], (s) => UrlMatch(s.uri, const OrdersRoute(), const {}, [_data3])),
+    RouteMatcher(['orders'], (s) => UrlMatch(s.uri, const OrdersRoute(), const {}, [_dataSignedInOrders])),
     RouteMatcher(['forbidden'], (s) => UrlMatch(s.uri, const ForbiddenRoute(), const {}, const [])),
     RouteMatcher(['sign-in'], (s) {
       final p = _params6(s);
@@ -232,7 +232,7 @@ abstract final class AppRoutes {
     }),
     RouteMatcher(['orders', ':id'], (s) {
       final p = _params4(s);
-      return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, [_data4(p.id)]);
+      return UrlMatch(s.uri, OrderRoute(id: p.id), {'id': p.id}, [_dataSignedInOrdersId(p.id)]);
     }),
   ];
 
@@ -389,7 +389,7 @@ final class OrdersRoute extends TypedLocation {
   const OrdersRoute();
 
   /// (signed-in)/orders/data.dart as a Riverpod provider.
-  static final data = _data3;
+  static final data = _dataSignedInOrders;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders');
@@ -415,7 +415,7 @@ final class OrdersRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data3], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataSignedInOrders], keepFor: keepFor);
 }
 
 /// `/orders/:id` → (signed-in)/orders/$id/page.dart
@@ -425,7 +425,7 @@ final class OrderRoute extends TypedLocation {
   final int id;
 
   /// (signed-in)/orders/$id/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data4;
+  static final data = _dataSignedInOrdersId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders/$id');
@@ -459,7 +459,7 @@ final class OrderRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data4(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataSignedInOrdersId(id)], keepFor: keepFor);
 }
 
 /// `/forbidden` → forbidden/page.dart
@@ -502,7 +502,7 @@ final class SignInRoute extends TypedLocation {
       SignInRoute(from: _kept<String?>(from, this.from));
 
   /// The state of `action()` (sign-in/action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action6_0;
+  static final action = _actionSignIn_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required _i11.SignInFields input}) => ref.runAction(action, input);
@@ -528,29 +528,29 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 
 ({String? from}) _params6(GoRouterState s) => (from: Query.asString(s, 'from'));
 
-final _data3 = FutureProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd3', null, _i6.data(ref)),
+final _dataSignedInOrders = FutureProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'dSignedInOrders', null, _i6.data(ref)),
 );
 
-final _data4 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceData(ref, 'd4', id, _i8.data(ref, id: id)),
+final _dataSignedInOrdersId = FutureProvider.autoDispose.family(
+  (Ref ref, int id) => traceData(ref, 'dSignedInOrdersId', id, _i8.data(ref, id: id)),
 );
 
 /// `action()` of sign-in/action.dart: its state, and what it invalidates after a success.
-final _action6_0 = actionProvider(
+final _actionSignIn_action = actionProvider(
   (Ref ref, _i11.SignInFields input) => _i11.action(ref, input: input),
   invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],
   validate: _i11.validate,
-  site: 'a6_0',
+  site: 'aSignIn_action',
 );
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data3: 'd3',
-      _data4: 'd4',
+      _dataSignedInOrders: 'dSignedInOrders',
+      _dataSignedInOrdersId: 'dSignedInOrdersId',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"auth","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(signed-in)/admin/page.dart","folder":"(signed-in)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"(signed-in)/orders/page.dart","folder":"(signed-in)/orders","markers":["data","guard"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"(signed-in)/orders/\$id/page.dart","folder":"(signed-in)/orders/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/forbidden","route":"ForbiddenRoute","file":"forbidden/page.dart","folder":"forbidden","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/sign-in","route":"SignInRoute","file":"sign-in/page.dart","folder":"sign-in","markers":["action","guard"],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]}]}],"sites":{"a6_0":{"kind":"action","file":"sign-in/action.dart","name":"action","route":"SignInRoute"},"d3":{"kind":"data","file":"(signed-in)/orders/data.dart","route":"OrdersRoute","section":null,"traced":true},"d4":{"kind":"data","file":"(signed-in)/orders/\$id/data.dart","route":"OrderRoute","section":null,"traced":true},"g1@2":{"kind":"guard","file":"(signed-in)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g1@3":{"kind":"guard","file":"(signed-in)/guard.dart","route":"OrdersRoute","pattern":"/orders"},"g2@2":{"kind":"guard","file":"(signed-in)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@6":{"kind":"guard","file":"sign-in/guard.dart","route":"SignInRoute","pattern":"/sign-in"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"auth","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(signed-in)/admin/page.dart","folder":"(signed-in)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"(signed-in)/orders/page.dart","folder":"(signed-in)/orders","markers":["data","guard"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"(signed-in)/orders/\$id/page.dart","folder":"(signed-in)/orders/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/forbidden","route":"ForbiddenRoute","file":"forbidden/page.dart","folder":"forbidden","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/sign-in","route":"SignInRoute","file":"sign-in/page.dart","folder":"sign-in","markers":["action","guard"],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]}]}],"sites":{"aSignIn_action":{"kind":"action","file":"sign-in/action.dart","name":"action","route":"SignInRoute"},"dSignedInOrders":{"kind":"data","file":"(signed-in)/orders/data.dart","route":"OrdersRoute","section":null,"traced":true},"dSignedInOrdersId":{"kind":"data","file":"(signed-in)/orders/\$id/data.dart","route":"OrderRoute","section":null,"traced":true},"g1@2":{"kind":"guard","file":"(signed-in)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g1@3":{"kind":"guard","file":"(signed-in)/guard.dart","route":"OrdersRoute","pattern":"/orders"},"g2@2":{"kind":"guard","file":"(signed-in)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@6":{"kind":"guard","file":"sign-in/guard.dart","route":"SignInRoute","pattern":"/sign-in"}}}';

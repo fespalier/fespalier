@@ -6,8 +6,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
+use crate::action_tests::{code as built, errors};
 use crate::config::Config;
-use crate::reload::{Stamp, kept_fields, read_stamp, stamp};
+use crate::reload::{Stamp, kept_fields, read_stamp, short_hash, stamp};
+use crate::resolve::{folder_stem, section_name};
 use crate::session::Session;
 use crate::{analyze, gen_core, manifest};
 
@@ -316,7 +318,7 @@ fn appending_a_page_keeps_every_kept_hash() {
 }
 
 #[test]
-fn inserting_a_route_before_a_data_route_changes_a_kept_hash() {
+fn inserting_a_route_before_a_data_route_keeps_every_kept_hash() {
     let base: &[(&str, &str)] = &[
         ("page.dart", HOME),
         ("items/$id/data.dart", &data("int")),
@@ -328,17 +330,406 @@ fn inserting_a_route_before_a_data_route_changes_a_kept_hash() {
     let (before, _) = generated("", base);
     let (after, _) = generated("", &more);
 
+    assert_ne!(version_of(&before), version_of(&after));
     let old = kept_of(&before);
     let new = kept_of(&after);
-    let changed: Vec<&String> = old
-        .iter()
-        .filter(|(name, hash)| new.get(*name).is_some_and(|h| h != *hash))
-        .map(|(name, _)| name)
-        .collect();
-    assert!(
-        !changed.is_empty(),
-        "no kept name changed:\n{before}\n{after}"
+    assert!(old.contains_key("_dataItemsId"), "{old:?}");
+    for (name, hash) in &old {
+        assert_eq!(new.get(name), Some(hash), "{name}");
+    }
+}
+
+/// The declarations a reload keeps, by name, each `_i<n>` import named by its path (as
+/// `reload.rs` compares them). Since 0.20.0 the names of these declarations follow their folders.
+fn declarations(code: &str) -> BTreeMap<String, String> {
+    let mut imports: Vec<String> = Vec::new();
+    for line in code.lines() {
+        let Some(rest) = line.strip_prefix("import '") else {
+            continue;
+        };
+        let Some((path, tail)) = rest.split_once('\'') else {
+            continue;
+        };
+        let tail = tail.strip_prefix(" deferred").unwrap_or(tail);
+        let Some(number) = tail.strip_prefix(" as _i") else {
+            continue;
+        };
+        let n: usize = number
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .parse()
+            .unwrap();
+        if imports.len() <= n {
+            imports.resize(n + 1, String::new());
+        }
+        imports[n] = path.to_string();
+    }
+    kept_fields(code, &imports).into_iter().collect()
+}
+
+/// The first name a declaration spells by position (since 0.20.0 none is kept): `_data`, `_lib`,
+/// `_optimistic` or `_action`, or a DevTools site (`'d`, `'a`), followed by a digit.
+fn spells_a_number(decl: &str) -> Option<String> {
+    for prefix in ["_data", "_lib", "_optimistic", "_action", "'d", "'a"] {
+        for (at, _) in decl.match_indices(prefix) {
+            if decl[at + prefix.len()..].starts_with(|c: char| c.is_ascii_digit()) {
+                return Some(decl[at..].chars().take(24).collect());
+            }
+        }
+    }
+    None
+}
+
+const AAA: &str = "class AaaPage extends StatelessWidget { const AaaPage({super.key}); }";
+
+const MID: &str = "class MidPage extends StatelessWidget { const MidPage({super.key}); }";
+
+const AAB: &str = "class AabPage extends StatelessWidget { const AabPage({super.key, required this.data}); final int data; }";
+
+const AAB_DATA: &str = "Future<int> data(Ref ref) async => 0;";
+
+const DEFERRED: &str = "const deferred = true;\n";
+
+/// Every kind of name a route with a data.dart, an action.dart, a section layout and a deferred
+/// page gives the generated file (since 0.20.0 each follows its folder).
+const RICH: &[(&str, &str)] = &[
+    ("page.dart", HOME),
+    (
+        "items/$id/page.dart",
+        "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }",
+    ),
+    (
+        "items/$id/data.dart",
+        "Future<int> data(Ref ref, {required int id}) async => 0;",
+    ),
+    (
+        "items/$id/action.dart",
+        "import 'package:m/m.dart' as m;\nint optimistic(int current, String input) => current;\nFuture<void> action(Ref ref, {required int id, required String input}) async {}\nFuture<void> rename(Ref ref, {required int id, required m.Item input}) async {}\n",
+    ),
+    (
+        "teams/$teamId/layout.dart",
+        "class TeamLayout extends StatelessWidget { const TeamLayout({super.key, required this.data, required this.child}); final String data; final Widget child; }",
+    ),
+    (
+        "teams/$teamId/data.dart",
+        "Future<String> data(Ref ref, {required String teamId}) async => '';",
+    ),
+    (
+        "teams/$teamId/action.dart",
+        "Future<void> addMember(Ref ref, {required String teamId, required String input}) async {}\n",
+    ),
+    (
+        "teams/$teamId/members/page.dart",
+        "class MembersPage extends StatelessWidget { const MembersPage({super.key}); }",
+    ),
+    (
+        "big/page.dart",
+        "class BigPage extends StatelessWidget { const BigPage({super.key}); }",
+    ),
+    ("big/route.dart", DEFERRED),
+    (
+        "zoo/page.dart",
+        "class ZooPage extends StatelessWidget { const ZooPage({super.key}); }",
+    ),
+    ("zoo/route.dart", DEFERRED),
+];
+
+#[test]
+fn the_names_a_reload_keeps_follow_the_folders() {
+    let c = built(RICH);
+    has(
+        &c,
+        &[
+            "final _dataItemsId = ",
+            "final _optimisticItemsId = ",
+            "final _actionItemsId_action = ",
+            "final _actionItemsId_rename = ",
+            "final _dataTeamsTeamId = ",
+            "final _actionTeamsTeamId_addMember = ",
+            "final _libBig = ",
+            "final _libZoo = ",
+            "static final List<DeferredLibrary> deferred = [_libBig, _libZoo];",
+            "traceData(ref, 'dItemsId', id, ",
+            "site: 'aItemsId_action',",
+            "site: 'aTeamsTeamId_addMember',",
+            "import 'package:m/m.dart' as _e19a273a4_m;",
+            "_e19a273a4_m.Item input",
+        ],
     );
+    for (name, decl) in declarations(&c) {
+        assert!(
+            spells_a_number(&decl).is_none(),
+            "{name} spells a position: {decl}"
+        );
+    }
+}
+
+/// Builds [base], then [base] with each of [cases] added (a name for the message, and the files),
+/// and asserts that every declaration a reload keeps, and every hash in `_kept`, is as it was.
+fn adding_files_keeps_every_kept_declaration(
+    base: &[(&str, &str)],
+    cases: &[(&str, Vec<(&str, &str)>)],
+) {
+    let before = built(base);
+    let old = declarations(&before);
+    let old_hashes = kept_of(&before);
+    assert!(!old.is_empty() && !old_hashes.is_empty());
+    for (file, extra) in cases {
+        let mut files = base.to_vec();
+        files.extend(extra.iter().copied());
+        let after = built(&files);
+        let new = declarations(&after);
+        for (name, decl) in &old {
+            assert_eq!(
+                new.get(name),
+                Some(decl),
+                "{name} changed when {file} was added"
+            );
+        }
+        let new_hashes = kept_of(&after);
+        for (name, hash) in &old_hashes {
+            assert_eq!(
+                new_hashes.get(name),
+                Some(hash),
+                "{name} changed when {file} was added"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_route_added_anywhere_leaves_every_other_kept_declaration_as_it_was() {
+    adding_files_keeps_every_kept_declaration(
+        RICH,
+        &[
+            ("aaa/page.dart", vec![("aaa/page.dart", AAA)]),
+            ("(g)/mid/page.dart", vec![("(g)/mid/page.dart", MID)]),
+            (
+                "items/$id/aaa/page.dart",
+                vec![("items/$id/aaa/page.dart", AAA)],
+            ),
+            (
+                "teams/$teamId/aaa/page.dart",
+                vec![("teams/$teamId/aaa/page.dart", AAA)],
+            ),
+            (
+                "aab/page.dart",
+                vec![("aab/page.dart", AAB), ("aab/data.dart", AAB_DATA)],
+            ),
+        ],
+    );
+}
+
+/// An enum in a library outside the app folder, which a segment names through a prefixed import.
+const CATEGORY_ENUM: (&str, &str) = ("../models/category.dart", "enum Category { shoes, hats }\n");
+
+/// `shop/$category/b/` has a page and a data.dart that both type the segment `m.Category`.
+const B_PAGE: &str = "import '../../../../models/category.dart' as m;\nclass BPage extends StatelessWidget { const BPage({super.key, required this.category, required this.data}); final m.Category category; final int data; }";
+
+const B_DATA: &str = "import '../../../../models/category.dart' as m;\nFuture<int> data(Ref ref, {required m.Category category}) async => 0;";
+
+/// A sibling page that types the same segment through the same import.
+const A_PAGE: &str = "import '../../../../models/category.dart' as m;\nclass APage extends StatelessWidget { const APage({super.key, required this.category}); final m.Category category; }";
+
+/// A guard of the segment, one folder up, that names the library through its own relative path.
+const CATEGORY_GUARD: &str = "import '../../../models/category.dart' as m;\nString? guard(Ref ref, {required m.Category category}) => null;\n";
+
+/// The project of the two tests below: a data route under a segment that names an enum.
+const CATEGORY_BASE: [(&str, &str); 4] = [
+    ("page.dart", HOME),
+    ("shop/$category/b/page.dart", B_PAGE),
+    ("shop/$category/b/data.dart", B_DATA),
+    CATEGORY_ENUM,
+];
+
+// The first file that types a segment names its type for every route below it. An alias made of
+// that file's path changed when another file became the first: a sibling page that sorts earlier,
+// or a guard of the segment's folder. The alias is made of the library, so it does not.
+
+#[test]
+fn a_sibling_that_types_a_segment_first_leaves_the_alias_of_a_kept_type() {
+    let c = built(&CATEGORY_BASE);
+    assert!(c.contains("final _dataShopCategoryB = "), "{c}");
+    adding_files_keeps_every_kept_declaration(
+        &CATEGORY_BASE,
+        &[(
+            "shop/$category/a/page.dart",
+            vec![("shop/$category/a/page.dart", A_PAGE)],
+        )],
+    );
+}
+
+#[test]
+fn a_guard_that_types_a_segment_first_leaves_the_alias_of_a_kept_type() {
+    adding_files_keeps_every_kept_declaration(
+        &CATEGORY_BASE,
+        &[(
+            "shop/$category/guard.dart",
+            vec![("shop/$category/guard.dart", CATEGORY_GUARD)],
+        )],
+    );
+}
+
+#[test]
+fn an_import_repointed_at_another_library_changes_what_a_reload_keeps() {
+    // The action's input is `m.Item` in both, but from another library: the app that holds the old
+    // one must restart, and the hash says so. (Before 0.20.0 no kept hash saw the library.)
+    let notes = |lib: &str| {
+        format!(
+            "import 'package:demo/{lib}' as m;\nFuture<void> rename(Ref ref, {{required m.Item input}}) async {{}}\n"
+        )
+    };
+    let build = |lib: &str| {
+        let action = notes(lib);
+        built(&[
+            ("page.dart", HOME),
+            ("notes/page.dart", &page("Notes")),
+            ("notes/action.dart", &action),
+        ])
+    };
+    let (a, b, again) = (build("a.dart"), build("b.dart"), build("a.dart"));
+    assert_eq!(kept_of(&a), kept_of(&again));
+    let (old, new) = (kept_of(&a), kept_of(&b));
+    assert!(old.contains_key("_actionNotes_rename"), "{old:?}");
+    for name in ["_actionNotes_rename", "NotesRoute.rename"] {
+        assert_ne!(old.get(name), new.get(name), "{name}");
+    }
+    assert_ne!(version_of(&a), version_of(&b));
+}
+
+#[test]
+fn folders_whose_stems_meet_each_take_a_hash_of_their_own_path() {
+    const HISTORY_A: &str = "class HistoryAPage extends StatelessWidget { const HistoryAPage({super.key, required this.data}); final int data; }";
+    const HISTORY_B: &str =
+        "class HistoryBPage extends StatelessWidget { const HistoryBPage({super.key}); }";
+    const HISTORY_DATA: &str = "Future<int> data(Ref ref) async => 0;";
+    let both = [
+        ("page.dart", HOME),
+        ("order-history/page.dart", HISTORY_A),
+        ("order-history/data.dart", HISTORY_DATA),
+        ("order_history/page.dart", HISTORY_B),
+        ("order_history/data.dart", HISTORY_DATA),
+    ];
+    let c = built(&both);
+    has(
+        &c,
+        &[
+            "final _dataOrderHistory_a6adc020 = ",
+            "final _dataOrderHistory_5cefc874 = ",
+            "traceData(ref, 'dOrderHistory_a6adc020', null, ",
+        ],
+    );
+    assert!(!c.contains("final _dataOrderHistory = "), "{c}");
+    // A route added elsewhere keeps both names.
+    let mut more = both.to_vec();
+    more.push(("aaa/page.dart", AAA));
+    let c = built(&more);
+    has(
+        &c,
+        &[
+            "final _dataOrderHistory_a6adc020 = ",
+            "final _dataOrderHistory_5cefc874 = ",
+        ],
+    );
+    // Without its data.dart, order_history names nothing, so order-history keeps the plain stem.
+    let alone = [
+        ("page.dart", HOME),
+        ("order-history/page.dart", HISTORY_A),
+        ("order-history/data.dart", HISTORY_DATA),
+        ("order_history/page.dart", HISTORY_B),
+    ];
+    let c = built(&alone);
+    has(&c, &["final _dataOrderHistory = "]);
+    assert!(!c.contains("_dataOrderHistory_a6adc020"), "{c}");
+}
+
+#[test]
+fn two_folders_whose_hashes_agree_are_an_error_and_not_a_name_declared_twice() {
+    // Found by searching: two spellings of one stem whose paths agree on all 8 digits of the hash.
+    const ONE: &str = "a_b-c.d.e_f-g-h.i.j.k-l-m-n";
+    const TWO: &str = "a_b_c_d-e-f.g-h-i-j_k_l-m-n";
+    assert_eq!(folder_stem(ONE), folder_stem(TWO));
+    assert_eq!(short_hash(ONE), short_hash(TWO));
+    let page = |name: &str| {
+        format!(
+            "class {name}Page extends StatelessWidget {{ const {name}Page({{super.key, required this.data}}); final int data; }}"
+        )
+    };
+    let (one_page, two_page) = (page("One"), page("Two"));
+    let (one, one_data) = (format!("{ONE}/page.dart"), format!("{ONE}/data.dart"));
+    let (two, two_data) = (format!("{TWO}/page.dart"), format!("{TWO}/data.dart"));
+    let files = |with_both: bool| {
+        let mut files = vec![
+            ("page.dart", HOME),
+            (one.as_str(), one_page.as_str()),
+            (one_data.as_str(), "Future<int> data(Ref ref) async => 0;"),
+        ];
+        if with_both {
+            files.push((two.as_str(), two_page.as_str()));
+            files.push((two_data.as_str(), "Future<int> data(Ref ref) async => 0;"));
+        }
+        errors(&files)
+    };
+    assert_eq!(files(false), "");
+    let e = files(true);
+    assert!(
+        e.contains(&format!("✗ {TWO}/data.dart"))
+            && e.contains(&format!(
+                "the folders `{ONE}` and `{TWO}` would both be called `ABCDEFGHIJKLMN_ff92c64a`"
+            )),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_folder_stem_is_its_path_in_pascal_case() {
+    for (dir, stem) in [
+        ("", "Root"),
+        ("products/$id", "ProductsId"),
+        ("(tabs)/(home)", "TabsHome"),
+        ("browse/$$categories", "BrowseCategories"),
+        ("wiki/$$$path", "WikiPath"),
+        ("order-history", "OrderHistory"),
+        ("order_history", "OrderHistory"),
+        ("teams/$teamId", "TeamsTeamId"),
+        ("2024/recap", "Path2024Recap"),
+        ("class", "Class"),
+    ] {
+        assert_eq!(folder_stem(dir), stem, "{dir:?}");
+    }
+    assert_eq!(section_name("(shop)"), "ShopSection");
+    assert_eq!(section_name(""), "RootSection");
+}
+
+#[test]
+fn a_second_deferred_route_changes_the_list_a_reload_keeps() {
+    let (before, _) = generated(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("big/page.dart", &page("Big")),
+            ("big/route.dart", DEFERRED),
+        ],
+    );
+    let (after, _) = generated(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("big/page.dart", &page("Big")),
+            ("big/route.dart", DEFERRED),
+            ("zoo/page.dart", &page("Zoo")),
+            ("zoo/route.dart", DEFERRED),
+        ],
+    );
+    let old = kept_of(&before);
+    let new = kept_of(&after);
+    assert_ne!(new["AppRoutes.deferred"], old["AppRoutes.deferred"]);
+    for (name, hash) in &old {
+        if name != "AppRoutes.deferred" {
+            assert_eq!(new.get(name), Some(hash), "{name}");
+        }
+    }
 }
 
 #[test]
@@ -645,12 +1036,21 @@ fn a_pass_says_what_fsp_dev_needs() {
     let second = session.stamp.clone().expect("a stamp");
     assert_ne!(second.version, first.version);
     assert!(first.swaps_to(&second));
-    // A page that sorts first renumbers the data route after it, so a kept name changes.
+    // A page that sorts first renames nothing (since 0.20.0): the routes swap.
     fs::create_dir_all(dir.path().join("lib/app/aaa")).unwrap();
     fs::write(dir.path().join("lib/app/aaa/page.dart"), page("Aaa")).unwrap();
     assert!(regenerate(dir.path(), &mut session));
     let third = session.stamp.clone().expect("a stamp");
-    assert!(!second.swaps_to(&third));
+    assert!(second.swaps_to(&third), "a page that sorts first swaps");
+    // A data() that becomes a stream changes a provider the reload keeps: a restart.
+    fs::write(
+        dir.path().join("lib/app/items/$id/data.dart"),
+        "Stream<int> data(Ref ref, {required int id}) async* { yield id; }",
+    )
+    .unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    let fourth = session.stamp.clone().expect("a stamp");
+    assert!(!third.swaps_to(&fourth));
     // startup.dart is read by the generated main, so the main is written again.
     fs::write(dir.path().join("lib/app/startup.dart"), "void startup() {}").unwrap();
     assert!(regenerate(dir.path(), &mut session));

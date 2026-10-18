@@ -40,19 +40,19 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '027e6b63ef41a022';
+  static const String _version = 'dedee79ecd739c67';
   static const Map<String, String> _kept = {
     '(router)': '3fddb5dc',
-    'AppRoutes.deferred': '160a413d',
-    'ProductRoute.data': '98df46aa',
+    'AppRoutes.deferred': '5bb1a6ef',
+    'ProductRoute.data': 'd1a8b78b',
     'ProductRoute.read': 'd7c35f03',
     'ProductRoute.watch': '47998864',
     'ProductsRoute.data': '725711c8',
     'ProductsRoute.read': '80e133b4',
     'ProductsRoute.watch': 'e04d3518',
-    '_data6': '721c9e25',
-    '_lib2': '738324c3',
-    '_lib6': '907e9151',
+    '_dataProductsId': '48df11a9',
+    '_libCheckout': '4a1e2774',
+    '_libProductsId': '2054bdf0',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -163,7 +163,7 @@ abstract final class AppRoutes {
                 pageBuilder: (context, state) => namedPage('/checkout', () => _i3.transition(
                   state.pageKey,
                   DeferredView(
-                    library: _lib2,
+                    library: _libCheckout,
                     page: () => Semantics(identifier: 'route:/checkout', container: true, explicitChildNodes: true, child: _i7.CheckoutPage()),
                     loading: () => const _i1.RootLoading(),
                     error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
@@ -177,7 +177,7 @@ abstract final class AppRoutes {
                   buildWithParams(
                     () => _params5(state),
                     (v) => DataView(
-                      watch: (ref) => watchData(ref, 'd5', _i10.data),
+                      watch: (ref) => watchData(ref, 'dProducts', _i10.data),
                       refresh: (ref) => ref.invalidate(_i10.data),
                       data: (d) => Semantics(identifier: 'route:/products', container: true, explicitChildNodes: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
                       loading: () => const _i12.ProductsLoading(),
@@ -195,14 +195,14 @@ abstract final class AppRoutes {
                       buildWithParams(
                         () => _params6(state),
                         (v) => DataView(
-                          watch: (ref) => watchData(ref, 'd6', _data6(v.id)),
-                          refresh: (ref) => ref.invalidate(_data6(v.id)),
+                          watch: (ref) => watchData(ref, 'dProductsId', _dataProductsId(v.id)),
+                          refresh: (ref) => ref.invalidate(_dataProductsId(v.id)),
                           data: (d) => Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: _i14.ProductPage(product: d)),
                           loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
                           keepDataOnError: true,
-                          library: _lib6,
+                          library: _libProductsId,
                         ),
                         () => notFound(state.uri),
                       ),
@@ -250,7 +250,7 @@ abstract final class AppRoutes {
     }),
     RouteMatcher(['products', ':id'], (s) {
       final p = _params6(s);
-      return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [_data6(p.id)]);
+      return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [_dataProductsId(p.id)]);
     }),
   ];
 
@@ -276,7 +276,7 @@ abstract final class AppRoutes {
   /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
   /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
   /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
-  static final List<DeferredLibrary> deferred = [_lib2, _lib6];
+  static final List<DeferredLibrary> deferred = [_libCheckout, _libProductsId];
 
   /// Loads the code of every deferred route now, and completes when it is all there: once the app
   /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
@@ -435,7 +435,7 @@ final class CheckoutRoute extends TypedLocation {
   /// Starts loading this page's code (checkout/page.dart is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
-    _lib2.preload();
+    _libCheckout.preload();
     return ref.prefetchAll(const [], keepFor: keepFor);
   }
 }
@@ -517,7 +517,7 @@ final class ProductRoute extends TypedLocation {
   final int id;
 
   /// products/$id/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data6;
+  static final data = _dataProductsId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/products/$id');
@@ -552,8 +552,8 @@ final class ProductRoute extends TypedLocation {
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes), and its code (products/$id/page.dart is deferred). Never navigates, runs no guard.
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) {
-    _lib6.preload();
-    return ref.prefetchAll([_data6(id)], keepFor: keepFor);
+    _libProductsId.preload();
+    return ref.prefetchAll([_dataProductsId(id)], keepFor: keepFor);
   }
 }
 
@@ -574,13 +574,13 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 /// checkout/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _lib2 = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');
+final _libCheckout = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');
 
 /// products/$id/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _lib6 = DeferredLibrary(_i14.loadLibrary, 'products/\$id/page.dart');
+final _libProductsId = DeferredLibrary(_i14.loadLibrary, 'products/\$id/page.dart');
 
-final _data6 = cachedDataFamily(
-  (Ref ref, int id) => traceData(ref, 'd6', id, _i13.data(ref, id: id)),
+final _dataProductsId = cachedDataFamily(
+  (Ref ref, int id) => traceData(ref, 'dProductsId', id, _i13.data(ref, id: id)),
   cache: _i13.dataCache,
   name: 'products/\$id',
   keyParts: (int id) => [id],
@@ -591,11 +591,11 @@ final _data6 = cachedDataFamily(
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _i10.data: 'd5',
-      _data6: 'd6',
+      _i10.data: 'dProducts',
+      _dataProductsId: 'dProductsId',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"shop","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/cart","route":"CartRoute","file":"cart/page.dart","folder":"cart","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/checkout","route":"CheckoutRoute","file":"checkout/page.dart","folder":"checkout","markers":["guard","deferred"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/products","route":"ProductsRoute","file":"products/page.dart","folder":"products","markers":["data"],"params":[{"name":"sort","type":"Sort?","in":"query"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data","fresh","cached","deferred"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/greet/:name","route":"GreetRoute","file":"greet/\$name/page.dart","folder":"greet/\$name","markers":[],"params":[{"name":"name","type":"String","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"d5":{"kind":"data","file":"products/data.dart","route":"ProductsRoute","section":null,"traced":false},"d6":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":true},"g2@2":{"kind":"guard","file":"checkout/guard.dart","route":"CheckoutRoute","pattern":"/checkout"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"shop","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/cart","route":"CartRoute","file":"cart/page.dart","folder":"cart","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/checkout","route":"CheckoutRoute","file":"checkout/page.dart","folder":"checkout","markers":["guard","deferred"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/products","route":"ProductsRoute","file":"products/page.dart","folder":"products","markers":["data"],"params":[{"name":"sort","type":"Sort?","in":"query"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data","fresh","cached","deferred"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/greet/:name","route":"GreetRoute","file":"greet/\$name/page.dart","folder":"greet/\$name","markers":[],"params":[{"name":"name","type":"String","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"dProducts":{"kind":"data","file":"products/data.dart","route":"ProductsRoute","section":null,"traced":false},"dProductsId":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":true},"g2@2":{"kind":"guard","file":"checkout/guard.dart","route":"CheckoutRoute","pattern":"/checkout"}}}';

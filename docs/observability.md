@@ -114,7 +114,7 @@ fespalier:
 - passes a `const TelemetrySite('products/$id/data.dart', route: '/products/:id')` to each guard, `data.dart` provider and action;
 - gives each deferred library its page's pattern;
 - has `AppRoutes.attach` follow the router (`AppRoutes.router()` calls it; an app that mounts the tree in a `GoRouter` of its own calls `AppRoutes.attach(router)` once with that router);
-- since 0.9.0, makes each data provider call `data()` inside a closure, `traceDataCall(ref, 'd4', id, () => data(ref, id: id), ...)`, so a sink can [run it inside the span](#spans-around-data-and-actions). That costs one closure per provider build.
+- since 0.9.0, makes each data provider call `data()` inside a closure, `traceDataCall(ref, 'dOrdersId', id, () => data(ref, id: id), ...)`, so a sink can [run it inside the span](#spans-around-data-and-actions). That costs one closure per provider build.
 
 A value that is not a bool is an error. Without the key nothing is generated for telemetry.
 

@@ -67,8 +67,10 @@ void main() {
       final data = sites.firstWhere((s) => s.kind == 'data');
       expect(data.file, 'orders/\$id/refund/data.dart');
       expect(data.traced, isTrue);
+      expect(data.id, 'dOrdersIdRefund');
       final action = sites.firstWhere((s) => s.kind == 'action');
       expect(action.name, 'action');
+      expect(action.id, 'aOrdersIdRefund_action');
       expect(tree.sites[action.id], same(action));
     });
 

@@ -60,7 +60,7 @@
     }
   ],
   "sites": {
-    "d3": {
+    "dItemsId": {
       "kind": "data",
       "file": "items/$id/data.dart",
       "route": "ItemRoute",

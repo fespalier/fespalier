@@ -34,33 +34,33 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '6a500c59beebad99';
+  static const String _version = 'd8f8465f37d3d803';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
-    'NoteEditRoute.data': '9d952b75',
+    'NoteEditRoute.data': '3ce6da8f',
     'NoteEditRoute.edit': '98ebf1ab',
-    'NoteEditRoute.editAction': '8637d423',
+    'NoteEditRoute.editAction': '7025a8d3',
     'NoteEditRoute.read': '33f52539',
     'NoteEditRoute.useEdit': 'e7726ef5',
     'NoteEditRoute.watch': 'ad60525c',
     'NotesRoute.add': 'a9126fc4',
-    'NotesRoute.addAction': '3fbd2884',
-    'NotesRoute.data': 'cef120c5',
+    'NotesRoute.addAction': '659ef03b',
+    'NotesRoute.data': '617c0b11',
     'NotesRoute.read': '80e133b4',
     'NotesRoute.useAdd': 'b1b55bbc',
     'NotesRoute.watch': 'e04d3518',
     'OrdersRoute.cancel': 'e5461fcc',
-    'OrdersRoute.cancelAction': '6d8d8737',
-    'OrdersRoute.data': 'd75385a6',
+    'OrdersRoute.cancelAction': '76747094',
+    'OrdersRoute.data': '8de7952e',
     'OrdersRoute.read': '80e133b4',
     'OrdersRoute.useCancel': '8ac671df',
     'OrdersRoute.watch': 'e04d3518',
-    '_action1_0': 'ae8207dd',
-    '_action2_0': '65c393b2',
-    '_action3_0': 'e5a4424b',
-    '_data1': '9421dcf3',
-    '_data2': '236d2a62',
-    '_data3': '5dbde9da',
+    '_actionNotesId_edit': '888c76af',
+    '_actionNotes_add': '1b719f78',
+    '_actionOrders_cancel': '99f33a5b',
+    '_dataNotes': '1a13606f',
+    '_dataNotesId': '01a366a0',
+    '_dataOrders': '69987f17',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -156,8 +156,8 @@ abstract final class AppRoutes {
           GoRoute(
             path: joinLocation(at, '/notes'),
             builder: (context, state) => DataView(
-              watch: (ref) => watchData(ref, 'd1', _data1),
-              refresh: (ref) => ref.invalidate(_data1),
+              watch: (ref) => watchData(ref, 'dNotes', _dataNotes),
+              refresh: (ref) => ref.invalidate(_dataNotes),
               data: (d) => _i4.NotesPage(d),
               loading: () => const DefaultLoading(),
               error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -169,8 +169,8 @@ abstract final class AppRoutes {
                 builder: (context, state) => buildWithParams(
                   () => _params2(state),
                   (v) => DataView(
-                    watch: (ref) => watchData(ref, 'd2', _data2(v.id)),
-                    refresh: (ref) => ref.invalidate(_data2(v.id)),
+                    watch: (ref) => watchData(ref, 'dNotesId', _dataNotesId(v.id)),
+                    refresh: (ref) => ref.invalidate(_dataNotesId(v.id)),
                     data: (d) => _i7.NoteEditPage(d),
                     loading: () => const DefaultLoading(),
                     error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -184,8 +184,8 @@ abstract final class AppRoutes {
           GoRoute(
             path: joinLocation(at, '/orders'),
             builder: (context, state) => DataView(
-              watch: (ref) => watchData(ref, 'd3', _data3),
-              refresh: (ref) => ref.invalidate(_data3),
+              watch: (ref) => watchData(ref, 'dOrders', _dataOrders),
+              refresh: (ref) => ref.invalidate(_dataOrders),
               data: (d) => _i10.OrdersPage(d),
               loading: () => const DefaultLoading(),
               error: (e, st, retry) => _i11.OrdersError(error: e, retry: retry),
@@ -208,11 +208,11 @@ abstract final class AppRoutes {
 
   static List<RouteMatcher> _allMatchers() => [
     RouteMatcher([], (s) => UrlMatch(s.uri, const RootRoute(), const {}, const [])),
-    RouteMatcher(['notes'], (s) => UrlMatch(s.uri, const NotesRoute(), const {}, [_data1])),
-    RouteMatcher(['orders'], (s) => UrlMatch(s.uri, const OrdersRoute(), const {}, [_data3])),
+    RouteMatcher(['notes'], (s) => UrlMatch(s.uri, const NotesRoute(), const {}, [_dataNotes])),
+    RouteMatcher(['orders'], (s) => UrlMatch(s.uri, const OrdersRoute(), const {}, [_dataOrders])),
     RouteMatcher(['notes', ':id'], (s) {
       final p = _params2(s);
-      return UrlMatch(s.uri, NoteEditRoute(id: p.id), {'id': p.id}, [_data2(p.id)]);
+      return UrlMatch(s.uri, NoteEditRoute(id: p.id), {'id': p.id}, [_dataNotesId(p.id)]);
     }),
   ];
 
@@ -346,7 +346,7 @@ final class NotesRoute extends TypedLocation {
   const NotesRoute();
 
   /// notes/data.dart as a Riverpod provider.
-  static final data = _data1;
+  static final data = _dataNotes;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/notes');
@@ -372,10 +372,10 @@ final class NotesRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data1], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataNotes], keepFor: keepFor);
 
   /// The state of `add()` (notes/action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final addAction = _action1_0;
+  static final addAction = _actionNotes_add;
 
   /// Runs `add()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final add = (WidgetRef ref, {required String input}) => ref.runAction(addAction, input);
@@ -391,7 +391,7 @@ final class NoteEditRoute extends TypedLocation {
   final String id;
 
   /// notes/$id/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data2;
+  static final data = _dataNotesId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/notes/${Uri.encodeComponent(id)}');
@@ -425,10 +425,10 @@ final class NoteEditRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data2(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataNotesId(id)], keepFor: keepFor);
 
   /// The state of `edit()` (notes/$id/action.dart) keyed by `id`: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final editAction = _action2_0;
+  static final editAction = _actionNotesId_edit;
 
   /// Runs `edit()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final edit = (WidgetRef ref, {required String id, required _i6.NoteChanges input}) => ref.runAction(editAction(id), input);
@@ -442,7 +442,7 @@ final class OrdersRoute extends TypedLocation {
   const OrdersRoute();
 
   /// orders/data.dart as a Riverpod provider.
-  static final data = _data3;
+  static final data = _dataOrders;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/orders');
@@ -468,10 +468,10 @@ final class OrdersRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data3], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataOrders], keepFor: keepFor);
 
   /// The state of `cancel()` (orders/action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final cancelAction = _action3_0;
+  static final cancelAction = _actionOrders_cancel;
 
   /// Runs `cancel()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final cancel = (WidgetRef ref, {required _i9.CancelInput input}) => ref.runAction(cancelAction, input);
@@ -492,47 +492,47 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 
 ({String id}) _params2(GoRouterState s) => (id: Segment.asString(s, 'id'));
 
-final _data1 = FutureProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd1', null, _i2.data(ref)),
+final _dataNotes = FutureProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'dNotes', null, _i2.data(ref)),
 );
 
-final _data2 = FutureProvider.autoDispose.family(
-  (Ref ref, String id) => traceData(ref, 'd2', id, _i5.data(ref, id: id)),
+final _dataNotesId = FutureProvider.autoDispose.family(
+  (Ref ref, String id) => traceData(ref, 'dNotesId', id, _i5.data(ref, id: id)),
 );
 
-final _data3 = FutureProvider.autoDispose(
-  (Ref ref) => freshData(ref, _i8.freshness, traceData(ref, 'd3', null, _i8.data(ref))),
+final _dataOrders = FutureProvider.autoDispose(
+  (Ref ref) => freshData(ref, _i8.freshness, traceData(ref, 'dOrders', null, _i8.data(ref))),
 );
 
 /// `add()` of notes/action.dart: its state, and what it invalidates after a success.
-final _action1_0 = actionProvider(
+final _actionNotes_add = actionProvider(
   (Ref ref, String input) => _i3.add(ref, input: input),
-  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data1],
-  site: 'a1_0',
+  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_dataNotes],
+  site: 'aNotes_add',
 );
 
 /// `edit()` of notes/$id/action.dart: its state, and what it invalidates after a success.
-final _action2_0 = actionFamily(
+final _actionNotesId_edit = actionFamily(
   (Ref ref, String id, _i6.NoteChanges input) => _i6.edit(ref, id: id, input: input),
-  invalidates: (String id) => <ProviderListenable<AsyncValue<Object?>>>[_data2(id)],
-  site: 'a2_0',
+  invalidates: (String id) => <ProviderListenable<AsyncValue<Object?>>>[_dataNotesId(id)],
+  site: 'aNotesId_edit',
 );
 
 /// `cancel()` of orders/action.dart: its state, and what it invalidates after a success.
-final _action3_0 = actionProvider(
+final _actionOrders_cancel = actionProvider(
   (Ref ref, _i9.CancelInput input) => _i9.cancel(ref, input: input),
-  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data3],
-  site: 'a3_0',
+  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_dataOrders],
+  site: 'aOrders_cancel',
 );
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data1: 'd1',
-      _data2: 'd2',
-      _data3: 'd3',
+      _dataNotes: 'dNotes',
+      _dataNotesId: 'dNotesId',
+      _dataOrders: 'dOrders',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"offline","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"RootRoute","file":"redirect.dart","folder":"","markers":["redirect"],"params":[],"redirect":true,"children":[]},{"type":"route","pattern":"/notes","route":"NotesRoute","file":"notes/page.dart","folder":"notes","markers":["data","action"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/notes/:id","route":"NoteEditRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["data","action"],"params":[{"name":"id","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"orders/page.dart","folder":"orders","markers":["data","fresh","action"],"params":[],"redirect":false,"children":[]}]}],"sites":{"a1_0":{"kind":"action","file":"notes/action.dart","name":"add","route":"NotesRoute"},"a2_0":{"kind":"action","file":"notes/\$id/action.dart","name":"edit","route":"NoteEditRoute"},"a3_0":{"kind":"action","file":"orders/action.dart","name":"cancel","route":"OrdersRoute"},"d1":{"kind":"data","file":"notes/data.dart","route":"NotesRoute","section":null,"traced":true},"d2":{"kind":"data","file":"notes/\$id/data.dart","route":"NoteEditRoute","section":null,"traced":true},"d3":{"kind":"data","file":"orders/data.dart","route":"OrdersRoute","section":null,"traced":true},"r0":{"kind":"redirect","file":"redirect.dart","route":"RootRoute","pattern":"/"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"offline","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"RootRoute","file":"redirect.dart","folder":"","markers":["redirect"],"params":[],"redirect":true,"children":[]},{"type":"route","pattern":"/notes","route":"NotesRoute","file":"notes/page.dart","folder":"notes","markers":["data","action"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/notes/:id","route":"NoteEditRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["data","action"],"params":[{"name":"id","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders","route":"OrdersRoute","file":"orders/page.dart","folder":"orders","markers":["data","fresh","action"],"params":[],"redirect":false,"children":[]}]}],"sites":{"aNotesId_edit":{"kind":"action","file":"notes/\$id/action.dart","name":"edit","route":"NoteEditRoute"},"aNotes_add":{"kind":"action","file":"notes/action.dart","name":"add","route":"NotesRoute"},"aOrders_cancel":{"kind":"action","file":"orders/action.dart","name":"cancel","route":"OrdersRoute"},"dNotes":{"kind":"data","file":"notes/data.dart","route":"NotesRoute","section":null,"traced":true},"dNotesId":{"kind":"data","file":"notes/\$id/data.dart","route":"NoteEditRoute","section":null,"traced":true},"dOrders":{"kind":"data","file":"orders/data.dart","route":"OrdersRoute","section":null,"traced":true},"r0":{"kind":"redirect","file":"redirect.dart","route":"RootRoute","pattern":"/"}}}';

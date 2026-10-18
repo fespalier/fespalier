@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.20.0
+
+0.20.0 breaks nothing: an app with a `data.dart`, an `action.dart`, a deferred page or a type written with an import prefix in a route file regenerates `app.g.dart` (below), with no code change; any other app's is unchanged.
+
+- **The generated names follow the folders** ([Which edits swap](cli.md#a-hot-reload-after-a-regeneration)). The providers, the deferred libraries, the optimistic layers and the actions are named after their folder, not after where the route sorts: `_dataProductsId`, `_libCheckout`, `_optimisticTeamsTeamId`, `_actionNotesId_edit`. So are the DevTools sites, `dProductsId` and `aNotesId_edit`; the guard and `redirect.dart` sites (`g5@6`, `r32`) do not change, and neither does a route's class. A prefixed type's import alias (`_e…_m`) is made from the library the prefix imports, not from the file that spells the type. The names are private and the DevTools extension reads any site, so no code changes; run `fsp gen` and commit the result, since `fsp check` fails on a stale file until you do ([Failing CI on a stale file](getting-started.md#failing-ci-on-a-stale-file)). A hot reload now swaps a route added or removed anywhere, so `fsp dev` reloads it instead of restarting. Still refused: a changed `data()` or action, a moved folder that has one (and the second of two folders whose names share a stem, added or removed), a second deferred route (a page added below a deferred `route.dart` is one), an import prefix pointed at another library (it was accepted before 0.20.0), and a router setting. A script that reads `fsp routes --graph json` finds the new site ids.
+
 ### 0.19.0
 
 0.19.0 breaks nothing for an app whose telemetry sinks extend `FespalierTelemetry` (every sink fespalier ships does): every app regenerates `app.g.dart` (below), and an app that does not name its screen or set `otel: true` changes nothing else. A telemetry sink that implements `FespalierTelemetry` instead of extending it adds one method (below). With `fespalier_sentry`, the scope is named at the commit, which changes a few events from a page's first frame (below).

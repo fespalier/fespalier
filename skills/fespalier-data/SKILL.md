@@ -330,7 +330,7 @@ button and, since 0.8.1, a **Holders** button that lists who keeps the provider 
 `prefetch` / `preload` handle, a `RouteLink` preload) and counts the other listeners. **Actions** lists the
 runs of the `action.dart` functions. The generated provider body is wrapped in `traceData`, which returns the
 function's own result (a value stays a value, a `Future` stays the `Future`), and every view watches with
-`watchData(ref, 'd37', provider)`, which is `ref.watch`. A `data.dart` that returns or selects a provider is
+`watchData(ref, 'dProductsId', provider)`, which is `ref.watch`. A `data.dart` that returns or selects a provider is
 followed since 0.8.1 as an `app provider`, through the state the views got; its other listeners are not
 visible (`fespalier-troubleshooting`, its DevTools page).
 

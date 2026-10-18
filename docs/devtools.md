@@ -51,8 +51,8 @@ The calls that follow the guards, the data and the views are wrappers that retur
 
 ```dart
 traceGuard(state, 'g5@6', guard(...))
-traceData(ref, 'd37', id, data(...))
-watchData(ref, 'd37', provider)
+traceData(ref, 'dProductsId', id, data(...))
+watchData(ref, 'dProductsId', provider)
 ```
 
 In a release build they are the identity (`watchData` is exactly `ref.watch`) and the compiler inlines them away. What stays is one short string per action (its site, an argument of the generated action provider).
@@ -122,7 +122,7 @@ The `snapshot` has a `guards`, a `data` and an `actions` list (and, since 0.16.0
 - action: `{seq, site, key, input, state, started, ms, result, error}`
 - adapter (since 0.16.0): `{seq, adapter, title, at, values: [{key, value, editable}], truncated, removed}`
 
-A `site` is a key of the tree's `sites`.
+A `site` is a key of the tree's `sites`. Its spelling is not part of the protocol (since 0.20.0 a `data.dart`'s is `dProductsId` and an action's `aNotesId_edit`, where they were numbered by folder before).
 
 Since 0.8.1 a data record's `via` is `build` (fespalier built the provider) or `watch` (the app's own provider, seen through a view; its `provider` is the provider's text and its `listeners` is null). `holders` answers `{found, alive, listeners, others, holders: [{kind, since, keepFor}]}`:
 

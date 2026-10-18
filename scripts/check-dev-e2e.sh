@@ -2,7 +2,7 @@
 # `fsp dev` against the real flutter (`just dev-e2e`): a fresh web app with `fsp init`, run in headless
 # Chrome with `fsp dev --no-tui`. It waits for the app to run, then adds a route that a hot reload
 # swaps in (the home page opens it and keeps its state), adds a route that sorts before a data route
-# (a hot reload too, since 0.20.0: the names follow the folders), opens a deferred page after two routes were put before it and reloads a second deferred route in beside it while that page is on screen (its code stays loaded, since 0.20.0), changes a data() into a stream (fsp
+# (a hot reload too, since 0.20.0: the names follow the folders), opens a deferred page after a route was put before it and reloads a second deferred route in beside it while that page is on screen (its code stays loaded, since 0.20.0), changes a data() into a stream (fsp
 # dev sees that a reload would keep a provider it changes: a hot restart, and startup() runs again),
 # then changes it back behind fsp dev's back (the app refuses the swap and prints so, and fsp dev
 # restarts it on that line), and quits with `q` (since 0.19.0). This is the one check of fsp against
@@ -270,8 +270,9 @@ expect_count 'e2e startup' 1
 expect_count '[fsp] hot restart:' 0
 expect_count '✓ hot restart in' 0
 
-# big/ was there before two reloads put routes before it: its code loads now, through the library the
-# app kept. The about page, which is on screen, opens it: a page edit, so one hot reload.
+# big/ was there before a reload put a route before it (about/; zz/ sorts after it): its code loads
+# now, through the library the app kept. The about page, which is on screen, opens it: a page edit,
+# so one hot reload.
 reloads=$(count '✓ hot reload in')
 cat > lib/app/about/page.dart << 'DART'
 import 'package:e2e_app/app.g.dart';
@@ -391,5 +392,5 @@ expect_count '[fsp] hot restart:' 2
 expect_count '✓ hot restart in' 2
 expect_count '[fsp] hot reload: lib/app.g.dart changed' 3
 expect_count 'was not loaded' 0
-echo "fsp dev: an inserted route hot reloaded in and opened, a route put before a data route did too, a deferred page opened after two routes were put before it, a second deferred route reloaded in beside it while it was on screen, a data() that became a stream restarted the app, an app that refused a swap was restarted on its own line, and q stopped it"
+echo "fsp dev: an inserted route hot reloaded in and opened, a route put before a data route did too, a deferred page opened after a route was put before it, a second deferred route reloaded in beside it while it was on screen, a data() that became a stream restarted the app, an app that refused a swap was restarted on its own line, and q stopped it"
 echo "EXCEPTION CAUGHT lines in the log (reported, not asserted): $(count 'EXCEPTION CAUGHT')"

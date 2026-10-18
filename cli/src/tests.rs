@@ -1434,7 +1434,7 @@ fn tab_layout_makes_a_branch_of_each_folder() {
         &c,
         &[
             "StatefulShellRoute.indexedStack(\n        pageBuilder: (context, state, navigationShell) => namedPage('/', () => layoutPage(\n          context,\n          state,\n          'layout:/',\n          _i1.TabsLayout(navigationShell: navigationShell),\n        )),\n        branches: [",
-            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => const _i0.HomePage(),\n              ),\n            ],\n            restorationScopeId: 'tab:/.',\n          ),",
+            "StatefulShellBranch(\n            routes: [\n              GoRoute(\n                path: joinLocation(at, '/'),\n                builder: (context, state) => const _i0.HomePage(),\n              ),\n            ],\n            navigatorKey: _keys.navigator('tab:/.'),\n            restorationScopeId: 'tab:/.',\n          ),",
             "path: joinLocation(at, '/search'),",
             // A group is a branch too, and adds nothing to the URL.
             "path: joinLocation(at, '/profile'),",

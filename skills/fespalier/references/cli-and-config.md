@@ -527,6 +527,17 @@ tag different from the `fsp` now installed it says to update the refs of fespali
 and it works the same on Windows), and keeps `lib/app.g.dart` current while it runs. It needs no
 configuration; everything after `--` goes to `flutter run` (`fsp dev -- -d chrome --flavor dev`).
 
+**A hot reload after a regeneration (since 0.19.0).** In a debug build a hot reload swaps in the regenerated route table when the
+generated file's version changed and no name it keeps (a provider, a deferred library, a router setting) changed; a refused swap
+prints a message and keeps the old routes until `R`. A route added, removed, renamed or moved swaps only when no route after it in
+the order of `fsp routes` has a `data()` function (a `data` provider does not count), an action or a deferred page: the generated
+names of those (`_dataN`, `_libN`, `_actionN_i`) are numbered by position, so a route put before one is refused (in the shop
+example `zz/page.dart` swaps and `about/page.dart` does not; stable names made from the folders will lift it). Only the generated
+`main()` swaps (`StartupGate`): `main: manual` apps, even with `AppRoutes.router()`, keep their routes. `fsp dev` still restarts
+the app on a regeneration in this release, so the swap is the hot reload you press yourself. Profile and release builds never
+swap. See
+[the CLI reference](https://github.com/fespalier/fespalier/blob/main/docs/cli.md#a-hot-reload-after-a-regeneration).
+
 **The rule an agent needs: a regeneration restarts, a save reloads.** The router is built once, so a hot
 reload keeps the old route table: a pass of the generator that **wrote** an output (a new, removed or edited
 route, a new `data.dart`) sends `app.restart` with `fullRestart: true`; any other save under `lib/` sends a

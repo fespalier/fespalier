@@ -323,7 +323,14 @@ fn a_typed_catch_all_is_parsed_by_the_matcher_like_the_page_does() {
 #[test]
 fn an_app_without_routes_still_generates_an_empty_matcher_list() {
     let (c, _) = generated("", &[("layout.dart", LAYOUT)]);
-    has(&c, &["static final List<RouteMatcher> _matchers = [\n  ];"]);
+    // The matchers are built by `_allMatchers` (since 0.19.0), so a hot reload can build them again.
+    has(
+        &c,
+        &[
+            "static List<RouteMatcher> _matchers = _allMatchers();",
+            "static List<RouteMatcher> _allMatchers() => [\n  ];",
+        ],
+    );
 }
 
 #[test]

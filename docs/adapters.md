@@ -117,7 +117,7 @@ abstract final class AppAdapters {
 
 // AppRoutes.attach(router, [container]) also runs each adapter's attach(router, container)
 // AppRoutes.onEnter(context, current, next, router) forwards to _all.onEnter (since 0.11.0), and
-// AppRoutes.router(launch:, ...) passes GoRouter(onEnter: AppAdapters.handlesEnter ? onEnter : null)
+// AppRoutes.router(launch:, ...) passes RoutingConfig(onEnter: AppAdapters.handlesEnter ? onEnter : null)
 ```
 
 `AppRoutes.router` takes `launch:` (an `InboundLaunch`), with or without adapters, and `AppRoutes.onEnter` exists only

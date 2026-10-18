@@ -161,6 +161,7 @@ class Splash extends StatelessWidget {
 
 - `AppMain.run()`: what `main()` calls.
 - `AppMain.root({router})`: the widget `runApp` gets (`StartupGate` from `package:fespalier/startup.dart`).
+- StartupGate passes a hot reload to the router (`reloadRoutes`, since 0.19.0): its `reassemble` swaps in a regenerated route table in a debug build, and does nothing otherwise.
   Tests pump it to boot everything.
 - `AppMain.app(router)`: `app.dart`'s widget around a router; `pumpRouter(tester, router, app: AppMain.app)`
   (see `fespalier-testing`).

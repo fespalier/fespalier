@@ -28,6 +28,7 @@ mod otel;
 mod parse_cache;
 mod platform_files;
 mod procs;
+mod reload;
 mod resolve;
 mod routes;
 mod samples;
@@ -568,6 +569,8 @@ mod platform_files_tests;
 mod procs_tests;
 #[cfg(test)]
 mod refresh_tests;
+#[cfg(test)]
+mod reload_tests;
 #[cfg(test)]
 mod remount_tests;
 #[cfg(test)]

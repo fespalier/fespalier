@@ -237,7 +237,8 @@ fn a_tree_without_parameters_has_no_copy_with_and_no_sentinel() {
     let about = HOME.replace("Home", "About");
     let c = code(&[("page.dart", HOME), ("about/page.dart", &about)]);
     has(&c, &["static HomeRoute of(", "static AboutRoute? maybeOf("]);
-    lacks(&c, &["copyWith", "_Keep", "_keep", "_kept"]);
+    // `_kept` is always the hot reload's field map (since 0.19.0); the sentinel's function is not.
+    lacks(&c, &["copyWith", "_Keep", "_keep", "_kept<"]);
 }
 
 #[test]

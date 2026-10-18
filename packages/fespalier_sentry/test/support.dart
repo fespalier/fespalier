@@ -48,6 +48,29 @@ FutureOr<String?> Function() checkout = () => null;
 /// What `data()` of an item gives.
 Future<String> Function(int id) load = (id) async => 'item $id';
 
+/// What `/probe`'s page does in `initState`; a test sets it.
+void Function() onProbe = () {};
+
+/// The page at `/probe`, whose `initState` runs [onProbe] as a page's own code does when it shows.
+class Probe extends StatefulWidget {
+  /// The page at `/probe`.
+  const Probe({super.key});
+
+  @override
+  State<Probe> createState() => _ProbeState();
+}
+
+class _ProbeState extends State<Probe> {
+  @override
+  void initState() {
+    super.initState();
+    onProbe();
+  }
+
+  @override
+  Widget build(BuildContext context) => page('probe');
+}
+
 /// A deferred page's library, as the generated file builds one.
 DeferredLibrary shopLibrary = DeferredLibrary(
   () async {},
@@ -94,6 +117,7 @@ GoRouter router({
       ),
       GoRoute(path: '/other', builder: (_, _) => page('other')),
       GoRoute(path: '/login', builder: (_, _) => page('login')),
+      GoRoute(path: '/probe', builder: (_, _) => const Probe()),
       GoRoute(
         path: '/old',
         redirect: (_, state) =>

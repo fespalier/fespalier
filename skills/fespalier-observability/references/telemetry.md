@@ -169,7 +169,7 @@ token)` to say which trace an operation is in (`FespalierOtel` does: the trace a
   first `build`, so before that navigation's `page` events and `end`; the first one comes while the `Router` is
   built, so never navigate, call `setState` or change a provider in it. A superseded navigation never commits, and
   one that commits twice before its first frame is told twice, with `end` naming the last `route` while the same sink stays installed. The default does
-  nothing. A sink that `implements FespalierTelemetry` (rather than extending it) adds the method, and renames a
+  nothing. `FespalierSentry` names its scope there ([sentry.md](sentry.md)). A sink that `implements FespalierTelemetry` (rather than extending it) adds the method, and renames a
   member already named `commit` with another signature.
 
 ## `within`: the data and action span is current (since 0.9.0)

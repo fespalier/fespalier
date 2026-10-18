@@ -135,7 +135,10 @@ void main() {
   testWidgets('Invalidate asks the app to build that provider again', (
     tester,
   ) async {
-    final client = app([dataRecord(1), dataRecord(2, site: 'dShopsShopItemsId')]);
+    final client = app([
+      dataRecord(1),
+      dataRecord(2, site: 'dShopsShopItemsId'),
+    ]);
     await pumpApp(tester, client);
     await openTab(tester, 'Data');
     await tester.tap(find.byKey(const Key('invalidate-2')));

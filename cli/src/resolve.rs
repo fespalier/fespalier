@@ -3991,7 +3991,13 @@ impl Resolver<'_> {
             "guard()",
         );
         let import = self.import(&file);
-        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Guard), &file, import);
+        let extra = extra_of(
+            &f.params,
+            &args,
+            node.files.get(&Kind::Guard),
+            &file,
+            import,
+        );
         Some(Guard {
             import,
             first,
@@ -4220,7 +4226,13 @@ impl Resolver<'_> {
         }
         args.extend(page);
         let import = self.import(&file);
-        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Leave), &file, import);
+        let extra = extra_of(
+            &f.params,
+            &args,
+            node.files.get(&Kind::Leave),
+            &file,
+            import,
+        );
         Some(Leave {
             import,
             takes_context,
@@ -4270,7 +4282,13 @@ impl Resolver<'_> {
             "redirect()",
         );
         let import = self.import(&file);
-        let extra = extra_of(&f.params, &args, node.files.get(&Kind::Redirect), &file, import);
+        let extra = extra_of(
+            &f.params,
+            &args,
+            node.files.get(&Kind::Redirect),
+            &file,
+            import,
+        );
         Some((
             Guard {
                 import,
@@ -4574,7 +4592,8 @@ impl Resolver<'_> {
                         ("a segment", format!("String {}", c.name))
                     };
                     let decl = format!("{text} {}", c.name);
-                    match self.enum_typed(i, text, &c.file, Some((&c.span, &decl, what, &fallback))) {
+                    match self.enum_typed(i, text, &c.file, Some((&c.span, &decl, what, &fallback)))
+                    {
                         Some(t) => t,
                         None => continue,
                     }

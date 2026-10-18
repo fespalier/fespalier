@@ -362,8 +362,10 @@ fn a_data_or_action_site_is_named_after_its_folder_and_function() {
         assert!(id.starts_with(letter), "{id} is not a {kind} site");
         for key in site.as_object().unwrap().keys() {
             assert!(
-                ["kind", "file", "route", "pattern", "section", "traced", "name"]
-                    .contains(&key.as_str()),
+                [
+                    "kind", "file", "route", "pattern", "section", "traced", "name"
+                ]
+                .contains(&key.as_str()),
                 "{id} has {key}, which protocol 1 does not know"
             );
         }

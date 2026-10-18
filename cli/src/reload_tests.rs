@@ -474,7 +474,10 @@ fn a_route_added_anywhere_leaves_every_other_kept_declaration_as_it_was() {
     let cases: Vec<(&str, Vec<(&str, &str)>)> = vec![
         ("aaa/page.dart", vec![("aaa/page.dart", AAA)]),
         ("(g)/mid/page.dart", vec![("(g)/mid/page.dart", MID)]),
-        ("items/$id/aaa/page.dart", vec![("items/$id/aaa/page.dart", AAA)]),
+        (
+            "items/$id/aaa/page.dart",
+            vec![("items/$id/aaa/page.dart", AAA)],
+        ),
         (
             "teams/$teamId/aaa/page.dart",
             vec![("teams/$teamId/aaa/page.dart", AAA)],
@@ -510,7 +513,8 @@ fn a_route_added_anywhere_leaves_every_other_kept_declaration_as_it_was() {
 #[test]
 fn folders_whose_stems_meet_each_take_a_hash_of_their_own_path() {
     const HISTORY_A: &str = "class HistoryAPage extends StatelessWidget { const HistoryAPage({super.key, required this.data}); final int data; }";
-    const HISTORY_B: &str = "class HistoryBPage extends StatelessWidget { const HistoryBPage({super.key}); }";
+    const HISTORY_B: &str =
+        "class HistoryBPage extends StatelessWidget { const HistoryBPage({super.key}); }";
     const HISTORY_DATA: &str = "Future<int> data(Ref ref) async => 0;";
     let both = [
         ("page.dart", HOME),

@@ -46,13 +46,14 @@ fn action_error(action: &str, line: usize, msg: &str) {
 #[test]
 fn companions_are_not_actions() {
     let c = code(&nickname(&all()));
-    assert_eq!(c.matches("static final action = _actionNickname_action;").count(), 1);
+    assert_eq!(
+        c.matches("static final action = _actionNickname_action;")
+            .count(),
+        1
+    );
     // One action provider only: the companions add none.
     assert_eq!(c.matches("final _actionNickname_").count(), 1, "{c}");
-    lacks(
-        &c,
-        &["formAction", "validateAction", "optimisticAction"],
-    );
+    lacks(&c, &["formAction", "validateAction", "optimisticAction"]);
     has(
         &c,
         &[
@@ -333,7 +334,11 @@ fn optimistic_on_section_data_patches_every_read_site() {
             "optimistic: (String teamId) => _optimisticTeamsTeamId(teamId).patch(_i2.addMemberOptimistic),",
         ],
     );
-    assert_eq!(c.matches("ref.watch(_optimisticTeamsTeamId(v.teamId))").count(), 2);
+    assert_eq!(
+        c.matches("ref.watch(_optimisticTeamsTeamId(v.teamId))")
+            .count(),
+        2
+    );
 }
 
 #[test]

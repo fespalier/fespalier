@@ -99,12 +99,17 @@ final class DeviceRegistrar {
 }
 
 /// Registers the device key.
+///
+/// **It must not watch the transport.** Registration sends through the very transport whose
+/// `beforeSigned` calls this registrar, so watching `crateStackTransport` here closes a cycle —
+/// `coseTransport` -> `deviceRegistrar` -> `crateStackTransport` -> `coseTransport` — and Riverpod
+/// refuses with a `CircularDependencyError` before any request is made. The send is therefore
+/// resolved lazily, inside the callback, at the moment the plain call is actually sent.
 final deviceRegistrar = Provider<DeviceRegistrar>((ref) {
-  final transport = ref.watch(crateStackTransport);
   return DeviceRegistrar(
     signer: ref.watch(deviceSigner),
     identity: ref.watch(deviceIdentity),
-    send: transport.send,
+    send: (call) => ref.read(crateStackTransport).send(call),
   );
 });
 

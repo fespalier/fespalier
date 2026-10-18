@@ -664,6 +664,63 @@ fn folders_whose_stems_meet_each_take_a_hash_of_their_own_path() {
 }
 
 #[test]
+fn folders_whose_stems_meet_swap_when_only_their_deferred_libraries_are_named() {
+    const HISTORY_A: &str =
+        "class HistoryAPage extends StatelessWidget { const HistoryAPage({super.key}); }";
+    const HISTORY_B: &str =
+        "class HistoryBPage extends StatelessWidget { const HistoryBPage({super.key}); }";
+    const WITH_DATA: &str = "class HistoryAPage extends StatelessWidget { const HistoryAPage({super.key, required this.data}); final int data; }";
+    const HISTORY_DATA: &str = "Future<int> data(Ref ref) async => 0;";
+    let stamp_of = |code: &str| read_stamp(code).expect("a stamp");
+    // Two deferred pages: the library is the only name either folder owns. Adding the second
+    // renames `_libOrderHistory` to a name of its own, and no name both files hold changes.
+    let alone = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", HISTORY_A),
+        ("order-history/route.dart", DEFERRED),
+    ]);
+    let both = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", HISTORY_A),
+        ("order-history/route.dart", DEFERRED),
+        ("order_history/page.dart", HISTORY_B),
+        ("order_history/route.dart", DEFERRED),
+    ]);
+    has(&alone, &["final _libOrderHistory = "]);
+    has(
+        &both,
+        &[
+            "final _libOrderHistory_a6adc020 = ",
+            "final _libOrderHistory_5cefc874 = ",
+            "deferred as _pageOrderHistory_a6adc020;",
+            "deferred as _pageOrderHistory_5cefc874;",
+        ],
+    );
+    assert!(!both.contains("final _libOrderHistory = "), "{both}");
+    assert!(stamp_of(&alone).swaps_to(&stamp_of(&both)), "adding swaps");
+    assert!(
+        stamp_of(&both).swaps_to(&stamp_of(&alone)),
+        "removing swaps"
+    );
+    // A data.dart in the folder that was there first renames its provider, which its route class
+    // keeps (`HistoryARoute.data`): both edits are refused.
+    let data_alone = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", WITH_DATA),
+        ("order-history/data.dart", HISTORY_DATA),
+    ]);
+    let data_both = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", WITH_DATA),
+        ("order-history/data.dart", HISTORY_DATA),
+        ("order_history/page.dart", HISTORY_B),
+        ("order_history/route.dart", DEFERRED),
+    ]);
+    assert!(!stamp_of(&data_alone).swaps_to(&stamp_of(&data_both)));
+    assert!(!stamp_of(&data_both).swaps_to(&stamp_of(&data_alone)));
+}
+
+#[test]
 fn two_folders_whose_hashes_agree_are_an_error_and_not_a_name_declared_twice() {
     // Found by searching: two spellings of one stem whose paths agree on all 8 digits of the hash.
     const ONE: &str = "a_b-c.d.e_f-g-h.i.j.k-l-m-n";

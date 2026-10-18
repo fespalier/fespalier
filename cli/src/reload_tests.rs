@@ -181,6 +181,58 @@ void build() {
 }
 
 #[test]
+fn a_static_final_in_a_mixin_or_an_extension_is_hashed_under_its_type() {
+    let src = "\
+mixin Plain {
+  static final a = 1;
+}
+base mixin class Both {
+  static final b = 2;
+}
+mixin Bound on Object {
+  static final c = 3;
+}
+extension StringX<T> on List<T> {
+  static final d = 4;
+}
+extension type Id(int v) {
+  static final e = 5;
+}
+extension type const Key._(int v) {
+  static final f = 6;
+}
+extension on int {
+  static final g = 7;
+}
+extension<T> on List<T> {
+  static final h = 8;
+}
+final extension = 9;
+final mixinValue = 10;
+class After {
+  static final i = 11;
+}
+";
+    let names: Vec<String> = kept_fields(src, &[]).into_iter().map(|(n, _)| n).collect();
+    assert_eq!(
+        names,
+        [
+            "Plain.a",
+            "Both.b",
+            "Bound.c",
+            "StringX.d",
+            "Id.e",
+            "Key.f",
+            "extension on int.g",
+            "extension<T> on List<T>.h",
+            "extension",
+            "mixinValue",
+            "After.i",
+        ],
+    );
+}
+
+#[test]
 fn a_multi_line_initializer_is_one_field() {
     let src = "final _d = f(\n  a,\n);\nfinal _after = 2;\n";
     let d = fields(src);
@@ -381,6 +433,7 @@ fn the_reload_refreshes_matchers_manifest_devtools_observe() {
         "\n  }\n",
     );
     assert!(!reload.contains("observeAttach("), "{reload}");
+    assert!(!reload.contains("DeferredLibrary.register("), "{reload}");
 
     let (c, manifest) = generated(
         "fespalier:\n  output_manifest: lib/app.routes.g.dart\n",
@@ -396,4 +449,36 @@ fn the_reload_refreshes_matchers_manifest_devtools_observe() {
     let (c, manifest) = generated("", &[("page.dart", HOME)]);
     assert!(manifest.is_none());
     has(&c, &getters);
+}
+
+#[test]
+fn the_reload_registers_the_deferred_libraries_again() {
+    // A swap that adds an app's first deferred route must reach `loadDeferred()` and
+    // `DeferredLibrary.anyPending`, which only `mount()` registered before.
+    let (c, _) = generated(
+        "",
+        &[
+            ("page.dart", HOME),
+            ("big/page.dart", &page("Big")),
+            ("big/route.dart", "const deferred = true;\n"),
+        ],
+    );
+    let reload = section(
+        &c,
+        "static RoutingConfig _reload(GoRouter router) {",
+        "\n  }\n",
+    );
+    has(reload, &["DeferredLibrary.register(deferred);"]);
+    let mount = section(&c, "static List<RouteBase> mount({", "return _routes(at);");
+    has(mount, &["DeferredLibrary.register(deferred);"]);
+
+    // And that swap is not refused: the first deferred route adds names, it changes none.
+    let (before, _) = generated("", &[("page.dart", HOME), ("big/page.dart", &page("Big"))]);
+    let old = kept_of(&before);
+    let new = kept_of(&c);
+    assert!(!old.contains_key("AppRoutes.deferred"), "{old:?}");
+    assert!(new.contains_key("AppRoutes.deferred"), "{new:?}");
+    for (name, hash) in &old {
+        assert_eq!(new.get(name), Some(hash), "{name}");
+    }
 }

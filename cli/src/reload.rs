@@ -97,26 +97,53 @@ pub(crate) fn kept_fields(code: &str, imports: &[String]) -> Vec<(String, String
     out
 }
 
-/// The class a line at the top level opens (`abstract final class AppRoutes {`), or `None`. Only
-/// the words of a header count: a field named `enumValue` is not an `enum`.
+/// The type a line at the top level opens, or `None`: a class (`abstract final class AppRoutes {`),
+/// an enum, a mixin (`mixin M on X {`, `base mixin class M {`), an extension (`extension Name on T {`)
+/// or an extension type (`extension type const Id(int v) {`). Only the words of a header count: a
+/// field named `enumValue` is not an `enum`. An extension with no name is named by its header
+/// (`extension on List<int>`), so that two of them in a file keep apart.
 fn class_name(line: &str) -> Option<String> {
-    let mut words = line.split_whitespace();
-    let mut word = words.next()?;
-    while matches!(
-        word,
-        "abstract" | "base" | "final" | "sealed" | "interface" | "mixin"
-    ) {
-        word = words.next()?;
+    let words: Vec<&str> = line.split_whitespace().collect();
+    let skip = words
+        .iter()
+        .take_while(|w| matches!(**w, "abstract" | "base" | "final" | "sealed" | "interface"))
+        .count();
+    let word = |n: usize| words.get(skip + n).copied();
+    match word(0)? {
+        "class" | "enum" => identifier(word(1)?),
+        "mixin" => identifier(if word(1) == Some("class") {
+            word(2)?
+        } else {
+            word(1)?
+        }),
+        "extension" if skip == 0 => match word(1)? {
+            "type" => identifier(if word(2) == Some("const") {
+                word(3)?
+            } else {
+                word(2)?
+            }),
+            "on" => Some(unnamed_extension(line)),
+            name => identifier(name),
+        },
+        generic if skip == 0 && generic.starts_with("extension<") => Some(unnamed_extension(line)),
+        _ => None,
     }
-    if !matches!(word, "class" | "enum" | "mixin") {
-        return None;
-    }
-    let name: String = words
-        .next()?
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '$')
-        .collect();
+}
+
+/// The leading identifier of [word] (`Id(int` is `Id`, `StringX<T>` is `StringX`), or `None`.
+fn identifier(word: &str) -> Option<String> {
+    let name: String = word.chars().take_while(|c| is_identifier(*c)).collect();
     (!name.is_empty()).then_some(name)
+}
+
+/// The header of an extension with no name, up to its `{`, whitespace collapsed.
+fn unnamed_extension(line: &str) -> String {
+    line.split('{')
+        .next()
+        .unwrap_or(line)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The name a declaration's first line declares: the last word before its ` = `.

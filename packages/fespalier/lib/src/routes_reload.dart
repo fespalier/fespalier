@@ -93,11 +93,12 @@ abstract class RoutesReload extends ValueListenable<RoutingConfig> {
   void _reassembled(GoRouter router) {
     final now = version;
     if (now == _version) return;
-    _version = now;
     final next = kept;
     if (_kept.entries.any(
       (e) => next[e.key] != null && next[e.key] != e.value,
     )) {
+      // A refusal is final for this version: it is said once, and the same version says nothing.
+      _version = now;
       debugPrint(keptChangedMessage);
       return;
     }
@@ -105,6 +106,7 @@ abstract class RoutesReload extends ValueListenable<RoutingConfig> {
     try {
       config = rebuild(router);
     } catch (error, stack) {
+      // The version stays the one in use, so the next hot reload tries these routes again.
       _report(
         error,
         stack,
@@ -112,6 +114,7 @@ abstract class RoutesReload extends ValueListenable<RoutingConfig> {
       );
       return;
     }
+    _version = now;
     _config = config;
     _kept = next;
     for (final listener in List<VoidCallback>.of(_listeners ?? const [])) {

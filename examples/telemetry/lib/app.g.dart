@@ -35,7 +35,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '19f4a25ea34cdd94';
+  static const String _version = '6460c0c0cd247772';
   static const Map<String, String> _kept = {
     '(router)': '692c8098',
     'AppRoutes.deferred': '952b4ea4',
@@ -103,6 +103,7 @@ abstract final class AppRoutes {
   /// reloaded, with the shells' keys of the last [mount].
   static RoutingConfig _reload(GoRouter router) {
     _matchers = _allMatchers();
+    DeferredLibrary.register(deferred);
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     observeAttach(router, _observeAt);
     return _config(_routes(_base));

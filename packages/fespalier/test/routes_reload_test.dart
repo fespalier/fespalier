@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/floor.dart';
 
+String? _noRedirect(BuildContext context, GoRouterState state) => null;
+
 /// What a generated file gives a router: its version and kept fields as it reads them now, and the
 /// routes a reload builds (`table`). A test changes them between two reloads, as an edit does.
 final class _Reload extends RoutesReload {
@@ -19,15 +21,22 @@ final class _Reload extends RoutesReload {
     List<RouteBase> routes, {
     String version = 'v1',
     Map<String, String> kept = const {},
+    this.redirect,
   }) : table = routes,
        fileVersion = version,
        fileKept = kept,
-       super(RoutingConfig(routes: routes));
+       super(RoutingConfig(routes: routes, redirect: redirect ?? _noRedirect));
 
   String fileVersion;
   Map<String, String> fileKept;
   List<RouteBase> table;
   int rebuilds = 0;
+
+  /// The app's top-level redirect, which a rebuild keeps.
+  final GoRouterRedirect? redirect;
+
+  /// The next [rebuild] throws this, once.
+  Object? failOnce;
 
   @override
   String get version => fileVersion;
@@ -38,7 +47,12 @@ final class _Reload extends RoutesReload {
   @override
   RoutingConfig rebuild(GoRouter router) {
     rebuilds++;
-    return RoutingConfig(routes: table);
+    final failure = failOnce;
+    if (failure != null) {
+      failOnce = null;
+      throw failure;
+    }
+    return RoutingConfig(routes: table, redirect: redirect ?? _noRedirect);
   }
 
   @override
@@ -356,6 +370,121 @@ void main() {
     expect(asked, 1);
     expect(find.text('count 0'), findsOneWidget);
   });
+
+  group('a restore that is not a swap still asks leave()', () {
+    final asked = <String>[];
+    var redirectOn = false;
+
+    setUp(() {
+      asked.clear();
+      redirectOn = false;
+    });
+
+    // A page `x` whose leave() always refuses, between two plain ones.
+    GoRoute refusing() => GoRoute(
+      path: '/x',
+      onExit: (context, state) =>
+          leaveExit(context, state, 'x/leave.dart', (_, _) {
+            asked.add('x');
+            return false;
+          }),
+      builder: (_, _) => const Text('x page'),
+    );
+
+    GoRoute plain(String path, String label) =>
+        GoRoute(path: path, builder: (_, _) => Text(label));
+
+    Future<GoRouter> boot(WidgetTester tester) async {
+      final reload = _Reload(
+        [
+          plain('/y', 'y page'),
+          refusing(),
+          plain('/z', 'z page'),
+          plain('/login', 'login page'),
+        ],
+        redirect: (context, state) =>
+            redirectOn && state.uri.path != '/login' ? '/login' : null,
+      );
+      final router = _routerOf(reload, initialLocation: '/y');
+      await tester.pumpWidget(StartupGate(router: () => router, app: app));
+      unawaited(router.push<void>('/x'));
+      await pumpNavigation(tester);
+      await tester.pumpAndSettle();
+      unawaited(router.push<void>('/z'));
+      await pumpNavigation(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('z page'), findsOneWidget);
+      return router;
+    }
+
+    testWidgets('two pops in one frame ask the page under the first', (
+      tester,
+    ) async {
+      final router = await boot(tester);
+
+      router.pop(); // z goes: nothing to ask
+      router.pop(); // x is asked, and refuses
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(asked, ['x']);
+      expect(find.text('x page'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a pop and a refresh that redirects in one frame ask the page',
+      (tester) async {
+        final router = await boot(tester);
+
+        router.pop(); // z goes
+        redirectOn = true; // a session ends
+        router.refresh();
+        await tester.pump();
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(asked, ['x']);
+      },
+    );
+  });
+
+  testWidgets(
+    'a rebuild that throws is reported, and the next reload tries again',
+    (tester) async {
+      final reload = _Reload([_a()]);
+      final router = _routerOf(reload, initialLocation: '/a');
+      await tester.pumpWidget(StartupGate(router: () => router, app: app));
+      await tester.tap(find.text('count 0'));
+      await tester.pump();
+
+      reload.fileVersion = 'v2';
+      reload.table = [_a(), _b()];
+      reload.failOnce = StateError('the routes do not build');
+      await hotReload(tester);
+
+      expect(tester.takeException(), isA<StateError>());
+      expect(reload.rebuilds, 1);
+      expect(find.text('count 1'), findsOneWidget);
+      router.go('/b');
+      await pumpNavigation(tester);
+      expect(find.text('nothing at /b'), findsOneWidget);
+      router.go('/a');
+      await pumpNavigation(tester);
+
+      // The same version again: the routes of the failed reload are tried again, and swap.
+      await hotReload(tester);
+      expect(tester.takeException(), isNull);
+      expect(reload.rebuilds, 2);
+      router.go('/b');
+      await pumpNavigation(tester);
+      expect(find.text('B page'), findsOneWidget);
+
+      // Swapped: the version is the one in use now, so another reload does nothing.
+      await hotReload(tester);
+      expect(reload.rebuilds, 2);
+    },
+  );
 
   testWidgets('a router no table follows is left alone', (tester) async {
     final router = GoRouter(

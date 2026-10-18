@@ -375,6 +375,9 @@ abstract final class AppRoutes {
   /// reloaded, with the shells' keys of the last [mount].
   static RoutingConfig _reload(GoRouter router) {
     _matchers = _allMatchers();
+{% if deferred_libs %}
+    DeferredLibrary.register(deferred);
+{% endif %}
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl{{ ", providers: _devToolsProviders" if devtools_providers }});
 {% if observe %}
     observeAttach(router, _observeAt);

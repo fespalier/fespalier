@@ -129,7 +129,8 @@ skips the leaf's `leave()` (fixed in 17.4.0).
 
 A swap never asks `leave()` for a page that stays (since 0.19.0, debug builds only): after a hot reload regenerates the route
 table, go_router's restore runs `onExit` for every page, and `leaveExit` answers `true` for a page the restore still holds at
-the same place. A page that leaves for real is asked as usual.
+the same place, built from a route object the router did not have before. A pop or a `refresh()` restore keeps the route
+objects, so a page that really leaves (a second pop in the same frame, a redirect after a pop) is asked as usual.
 
 ## The back gestures
 

@@ -38,9 +38,12 @@ abstract interface class SpanHandle {
 
 /// The span of a screen: a `ui.load` transaction, with its time to initial and to full display.
 abstract interface class ScreenSpan implements SpanHandle {
-  /// Tells the screen its name, the route pattern, once the navigation knows it. A transaction is
-  /// named through the scope; a streamed segment is named here, and spans of it that ended before
-  /// the name was known end now, so that each carries the segment's name.
+  /// Tells the screen its name, the route pattern, when its navigation commits (since 0.19.0), and
+  /// again at its end. A transaction is named through the scope; a streamed segment is named here,
+  /// and spans of it that ended before the name was known end now, so that each carries the
+  /// segment's name. A second commit before the first frame names it again; Sentry copies the
+  /// segment's name onto a span after an `await`, so a span that ended between the two keeps the
+  /// first name only when a microtask ran between them.
   void named(String name);
 
   /// Reports time to initial display: a child span from the start of the screen to now, and its

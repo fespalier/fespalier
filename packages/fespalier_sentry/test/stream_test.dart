@@ -492,4 +492,27 @@ void main() {
     expect(await spansOf(rig, tester), isEmpty);
     expect(rig.sentry.tags['fespalier.route'], '/items/:id');
   });
+
+  testWidgets(
+    "with traceLifecycle stream an event from a page's initState names that page",
+    (tester) async {
+      final rig = streamRig();
+      addTearDown(() => onProbe = () {});
+      onProbe = () => unawaited(
+        rig.sentry.hub.captureException(
+          StateError('first frame'),
+          withScope: (_) {},
+        ),
+      );
+      final r = await rig.boot(tester);
+      r.go('/probe');
+      await tester.pumpAndSettle();
+      final sentEvents = (await rig.sent(
+        tester,
+      )).where((e) => e['type'] != 'transaction');
+      expect(sentEvents.single['transaction'], '/probe');
+      final spans = await spansOf(rig, tester);
+      expect(segments(spans).map((s) => s.name), contains('/probe'));
+    },
+  );
 }

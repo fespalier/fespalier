@@ -208,8 +208,8 @@ span. The rules for a sink of your own:
   code). `FespalierTelemetry.run(token, body)` is the same for an adapter package that starts operations
   of its own with `FespalierTelemetry.begin`.
 
-An app made with `telemetry: true` gets `traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)`
-in `app.g.dart` instead of `traceData(ref, 'd4', id, data(ref, id: id), telemetry: ...)`: **regenerate with
+An app made with `telemetry: true` gets `traceDataCall(ref, 'dOrdersId', id, () => data(ref, id: id), telemetry: ...)`
+in `app.g.dart` instead of `traceData(ref, 'dOrdersId', id, data(ref, id: id), telemetry: ...)`: **regenerate with
 `fsp gen`**. The data span now starts before `data()` runs (its duration includes the sync part), and a
 `data()` that throws before it returns now has a `data` span (`fespalier.data.state = error`,
 `fespalier.async = false`). An app without `telemetry: true` is unchanged. A sink that already had a member

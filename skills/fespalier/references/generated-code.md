@@ -116,20 +116,20 @@ import 'app/checkout/page.dart' deferred as _i7;      // the page.dart, and noth
 ...
 // no data.dart: the page in a DeferredView (never `const`: a deferred class can't be)
 DeferredView(
-  library: _lib2,
+  library: _libCheckout,
   page: () => _i7.CheckoutPage(),
   loading: () => const _i1.RootLoading(),
   error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
 )
 // a data.dart: the library goes to the DataView, so the code loads with the data
-DataView(watch: ..., data: (d) => _i14.ProductPage(product: d), ..., keepPrevious: true, library: _lib6)
+DataView(watch: ..., data: (d) => _i14.ProductPage(product: d), ..., keepPrevious: true, library: _libProductsId)
 ...
-final _lib2 = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');   // one per deferred route, by route id
+final _libCheckout = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');   // one per deferred route, named after its folder (since 0.20.0)
 ```
 
 - `mount()` registers the libraries (`DeferredLibrary.register(deferred);`), so `pumpRouter` can load them.
 - `AppRoutes.deferred` is the list, and `AppRoutes.loadDeferred()` loads all of them.
-- The typed route of a deferred route overrides `preload` to call `_lib2.preload()` (and keeps its
+- The typed route of a deferred route overrides `preload` to call `_libCheckout.preload()` (and keeps its
   providers); `AppRoutes.preload(ref, uri)` is `matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ?? ...`.
 - The manifest says `deferred: true` in the route's `RouteInfo`, the header table and `fsp routes`
   tag it `deferred`.
@@ -190,12 +190,12 @@ Three more pieces follow the guards, the data and the actions, and they are not 
 returns what it is given: every guard and `redirect.dart` call in a `redirect:` is wrapped as
 `traceGuard(state, 'g5@6', <the call>)` (a `redirect.dart`'s site is `r32`; with `guardWithParams` the
 whole `guardWithParams(...)` is wrapped, so a bad segment reads `skipped`), the body of a generated
-provider as `traceData(ref, 'd37', id, _i4.data(ref, id: id))` (the key is the family's parameter, `k` for
+provider as `traceData(ref, 'dProductsId', id, _i4.data(ref, id: id))` (the key is the family's parameter, `k` for
 a record of keys, `null` for none; a `data.dart` that returns or selects a provider is not wrapped; with `telemetry: true`,
-since 0.9.0, it is `traceDataCall(ref, 'd37', id, () => _i4.data(ref, id: id), telemetry: ...)`, which runs `data()` once,
+since 0.9.0, it is `traceDataCall(ref, 'dProductsId', id, () => _i4.data(ref, id: id), telemetry: ...)`, which runs `data()` once,
 synchronously, inside the telemetry sink's `within`), and each
-action factory gets `site: 'a37_0'`. Since 0.8.1 every `DataView` and `SectionView` reads its data with
-`watchData(ref, 'd37', _data37(v.id))` instead of `ref.watch(...)`, and an app with a `data.dart` has a
+action factory gets `site: 'aProductsId_action'`. Since 0.20.0 a data's site is `d` and its folder's stem, and an action's is `a`, its stem, `_` and the function, the suffix of the provider's name, so they stay when a route is added; a guard and a `redirect.dart` keep `g5@6` and `r32`. Since 0.8.1 every `DataView` and `SectionView` reads its data with
+`watchData(ref, 'dProductsId', _dataProductsId(v.id))` instead of `ref.watch(...)`, and an app with a `data.dart` has a
 function `_devToolsProviders()` (each provider, or family, by site; a selector with parameters is left out)
 that `mount()` hands to `devToolsRegister(providers: …)`. The sites are the keys of the tree's `sites`.
 `traceGuard`, `traceData`, `traceDataCall` and `watchData` return their last argument (`traceDataCall`: what its
@@ -205,7 +205,7 @@ release build all three are the identity, inlined away (a release build keeps on
 string). Never remove them by hand.
 
 Since 0.8.1, an `action.dart` with companions adds to this: `XRoute.useForm` (a real hook) for a `form()`,
-`validate:` and `optimistic:` arguments on the action's factory, and a private `_optimisticN` layer for each
+`validate:` and `optimistic:` arguments on the action's factory, and a private `_optimistic<Stem>` layer (`_optimisticItemsId`) for each
 `data.dart` an `optimistic()` patches, which the `DataView`, `SectionView` and typed `watch` of that data
 read (`ref.watchOptimistic`). Nothing of it is generated for an app without companions. Since 0.11.0 the
 file also has `import 'package:fespalier_forms/fespalier_forms.dart';` (after `fespalier/fespalier.dart`),
@@ -218,7 +218,7 @@ In a debug build, a hot reload after the file was regenerated swaps in the new r
 
 - **`_AppRoutesReload`** is a `final class` that extends the runtime's `RoutesReload`. `router()` makes one from `_config(routes)` (a `RoutingConfig` of the routes, and `onEnter` when an adapter has one) and passes it to `GoRouter.routingConfig`, with `routing.follow(router)`. Its methods are the code that is current, so after a reload they read the reloaded `_version`, `_kept` and `AppRoutes._reload`. Nothing goes through a closure made before the reload, which would keep its old code: that is why `router()` builds the routes through these methods.
 - **`_version`** is a const hash of the whole file. A reload with the same version swaps nothing, so a page edit costs nothing.
-- **`_kept`** is a const map: one hash for each top-level and static `final` of the file (a provider, a deferred library, a `data.dart`'s providers and the `AppRoutes` fields), and `'(router)'`, the settings `router()` is built with (`extraCodec`, `observe`, `attach`, `links`, `push_updates_url`, `semantics_ids`, `telemetry`, the adapters). A name present in both the running file and the reloaded one with another hash refuses the swap, and the app keeps its routes. A new or removed name does not. The generated names `_dataN` (a `data()` function), `_libN` (a deferred page) and `_actionN_i` are numbered by the route's position and the class statics that use them spell the name, so a route put before one is a changed hash and a refusal; a route after all of them swaps (stable folder-derived names will lift it). The hashes are computed by `cli/src/reload.rs`, from the generated text, so a new `static final` in the template is covered without a change to the reload.
+- **`_kept`** is a const map: one hash for each top-level and static `final` of the file (a provider, a deferred library, a `data.dart`'s providers and the `AppRoutes` fields), and `'(router)'`, the settings `router()` is built with (`extraCodec`, `observe`, `attach`, `links`, `push_updates_url`, `semantics_ids`, `telemetry`, the adapters). A name present in both the running file and the reloaded one with another hash refuses the swap, and the app keeps its routes. A new or removed name does not. Since 0.20.0 the generated names follow the folder, not the route's position: `_data<Stem>` (a `data()` function), `_lib<Stem>` (a deferred page), `_optimistic<Stem>` and `_action<Stem>_<function>`, where the stem is the folder in PascalCase (`products/$id` is `ProductsId`, so `_dataProductsId`). Two folders that both have names and the same stem each take `_` and 8 hex digits of a hash of their folder (`order-history/` and `order_history/` give `_dataOrderHistory_a6adc020` and `_dataOrderHistory_5cefc874`). An import alias of a prefixed type is `_e<hash of its file>_<prefix>`. So a route added or removed anywhere changes no other name or hash, and a route put before one swaps; a changed `data()` or action, a moved folder that has one, a second deferred route and a router setting are still refused. The hashes are computed by `cli/src/reload.rs`, from the generated text, so a new `static final` in the template is covered without a change to the reload.
 - **`_keys`** is a `ShellKeys` that each `mount()` makes. A layout's `ShellRoute` takes its `navigatorKey` from it, and a `StatefulShellRoute` its `key` and each branch its `navigatorKey`, by restoration id. The reloaded routes take the same keys, so the pages in a layout keep their state.
 - **`_matchers`** is not `final`: `_allMatchers()` makes it, and `_reload` assigns it again. A static that must follow the routes is reassigned in `_reload`, not declared `final`, because a reload keeps the first value of a `final`.
 - **`_reload(router)`** calls `devToolsRegister` again, with deferred routes `DeferredLibrary.register(deferred)` (a swap that adds the app's first deferred route puts it in `loadDeferred()` and `anyPending`) and, with `observe.dart`, `observeAttach(router, _observeAt)`; it returns `_config(_routes(_base))`, the routes of the last `mount()`.

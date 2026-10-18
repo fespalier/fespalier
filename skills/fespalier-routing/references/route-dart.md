@@ -538,11 +538,11 @@ byte-identical code.**
   `meta.dart`, `transition.dart`, `present.dart` and `not_found.dart` stay in the main bundle. A
   `redirect.dart` route has no page, so it is never deferred. **Layouts are never deferred.**
 - **What the generated code does.** A route without data builds its page in a
-  `DeferredView(library: _lib2, page: () => _i7.CheckoutPage(), loading: ..., error: ...)`: the
+  `DeferredView(library: _libCheckout, page: () => _i7.CheckoutPage(), loading: ..., error: ...)`: the
   nearest `loading.dart` (a spinner without one) shows until the code is there, the nearest
   `error.dart` if it can't be fetched (with `retry` loading it again, and the error `loadLibrary()`
   threw, a `DeferredLoadException` on the web). A route with data hands its library to the
-  `DataView` (`library: _lib6,`), so the code loads **in parallel** with the data and the page shows
+  `DataView` (`library: _libProductsId,`), so the code loads **in parallel** with the data and the page shows
   when both are there. The page is built with no `const` (a deferred class can't be named in a
   constant expression), and **once its code is loaded it is built synchronously**.
 - **`loading.dart` and `error.dart` now cover a page without data**, as for one with data, with the

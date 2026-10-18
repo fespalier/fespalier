@@ -110,7 +110,7 @@ Quoted from the extension and the app. A package puts a card here by calling `De
   `watchData`**, passes `site:` to each action provider, and holds the tree in `_devToolsTree` and, for an
   app with a `data.dart`, the providers by site in `_devToolsProviders`. Never remove them by hand; `fsp gen`
   writes them back. `traceGuard` and `traceData` return their last argument, the very object, so a sync guard or
-  a sync `data.dart` stays sync and a `Future` is the one go_router or Riverpod awaits; `watchData(ref, 'd37',
+  a sync `data.dart` stays sync and a `Future` is the one go_router or Riverpod awaits; `watchData(ref, 'dProductsId',
 provider)` is `ref.watch(provider)` that also notes the view as a holder. In release they are inlined away.
 - **A hot reload changes the tree and sends no event**: press the refresh button. A hot restart is a new
   app and reloads by itself.

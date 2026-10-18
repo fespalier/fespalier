@@ -30,13 +30,13 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'fb2d515bb15ad781';
+  static const String _version = '0ac0b615ff4b53f4';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
-    'ItemRoute.data': 'd75385a6',
+    'ItemRoute.data': 'b74297e5',
     'ItemRoute.read': 'd7c35f03',
     'ItemRoute.watch': '47998864',
-    '_data3': '34b0d15f',
+    '_dataItemsId': '6c3c9fd0',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -158,8 +158,9 @@ abstract final class AppRoutes {
                     buildWithParams(
                       () => _params3(state),
                       (v) => DataView(
-                        watch: (ref) => watchData(ref, 'd3', _data3(v.id)),
-                        refresh: (ref) => ref.invalidate(_data3(v.id)),
+                        watch: (ref) =>
+                            watchData(ref, 'dItemsId', _dataItemsId(v.id)),
+                        refresh: (ref) => ref.invalidate(_dataItemsId(v.id)),
                         data: (d) => _i6.ItemPage(item: d, qty: v.qty),
                         loading: () => const _i7.ItemLoading(),
                         error: (e, st, retry) =>
@@ -200,7 +201,7 @@ abstract final class AppRoutes {
         s.uri,
         ItemRoute(id: p.id, qty: p.qty),
         {'id': p.id, 'qty': p.qty},
-        [_data3(p.id)],
+        [_dataItemsId(p.id)],
       );
     }),
   ];
@@ -341,7 +342,7 @@ final class ItemRoute extends TypedLocation {
   final int? qty;
 
   /// items/$id/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data3;
+  static final data = _dataItemsId;
 
   @override
   String get location =>
@@ -382,7 +383,7 @@ final class ItemRoute extends TypedLocation {
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
   PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
-      ref.prefetchAll([_data3(id)], keepFor: keepFor);
+      ref.prefetchAll([_dataItemsId(id)], keepFor: keepFor);
 }
 
 /// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
@@ -399,17 +400,17 @@ T _kept<T>(Object? value, T current) =>
 ({int id, int? qty}) _params3(GoRouterState s) =>
     (id: Segment.asInt(s, 'id'), qty: Query.asInt(s, 'qty'));
 
-final _data3 = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceData(ref, 'd3', id, _i5.data(ref, id: id)),
+final _dataItemsId = FutureProvider.autoDispose.family(
+  (Ref ref, int id) => traceData(ref, 'dItemsId', id, _i5.data(ref, id: id)),
   // No automatic retry: error.dart and its Retry button are the retry UX.
   retry: (retryCount, error) => null,
 );
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
-Map<Object, String> _devToolsProviders() => {_data3: 'd3'};
+Map<Object, String> _devToolsProviders() => {_dataItemsId: 'dItemsId'};
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
 String _devToolsTree() =>
-    '{"protocol":1,"package":"minimal","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/about","route":"AboutRoute","file":"about/page.dart","folder":"about","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/items/:id","route":"ItemRoute","file":"items/\$id/page.dart","folder":"items/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"qty","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]}],"sites":{"d3":{"kind":"data","file":"items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true}}}';
+    '{"protocol":1,"package":"minimal","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/about","route":"AboutRoute","file":"about/page.dart","folder":"about","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/items/:id","route":"ItemRoute","file":"items/\$id/page.dart","folder":"items/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"},{"name":"qty","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]}],"sites":{"dItemsId":{"kind":"data","file":"items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true}}}';

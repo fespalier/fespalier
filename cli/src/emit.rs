@@ -335,7 +335,7 @@ fn transition_cx(
     }
 }
 
-/// One line of `_devToolsProviders`: `_data13: 'd13'`.
+/// One line of `_devToolsProviders`: `_dataProductsId: 'dProductsId'`.
 #[derive(Serialize)]
 struct DevToolsProviderCx {
     expr: String,
@@ -352,9 +352,9 @@ struct ViewDataCx {
     invalidate: String,
     loading: String,
     error: String,
-    /// `_lib6`, for a deferred page: `DataView` loads its code in parallel with the data.
+    /// `_libProductsId`, for a deferred page: `DataView` loads its code in parallel with the data.
     library: Option<String>,
-    /// The optimistic layer an `optimistic()` patches this data through (`_optimistic3(v.id)`),
+    /// The optimistic layer an `optimistic()` patches this data through (`_optimisticItemsId(v.id)`),
     /// for the `DataView` to apply.
     optimistic: Option<String>,
     /// The data has a `freshness` or a `dataCache` (since 0.8.1): a failed reload keeps the
@@ -377,10 +377,10 @@ struct RouteCx {
     location_for: Option<String>,
     /// The type of the page's `extra`, when it takes one.
     extra: Option<String>,
-    /// `preload`: the providers it starts (`_data1(shop), _data3(id)`); None for a route
+    /// `preload`: the providers it starts (`_dataShop(shop), _dataItemsId(id)`); None for a route
     /// without data of its own or above it, which inherits the no-op.
     preload: Option<String>,
-    /// `_lib6`, when the page.dart is deferred: `preload` starts loading its code too.
+    /// `_libProductsId`, when the page.dart is deferred: `preload` starts loading its code too.
     code: Option<String>,
     /// The functions of its `action.dart`.
     actions: Vec<ActionCx>,
@@ -396,7 +396,7 @@ struct ActionCx {
     provider: String,
     run: String,
     hook: String,
-    /// The private provider the member `provider` is: `_action3_0`.
+    /// The private provider the member `provider` is: `_actionItemsId_edit`.
     top: String,
     /// `actionProvider` for an action with no keys, else `actionFamily`.
     factory: &'static str,
@@ -414,7 +414,7 @@ struct ActionCx {
     key_param: String,
     /// `_i5.validate`: the `validate()` beside the action, run before it (since 0.8.1).
     validate: Option<String>,
-    /// `() => _optimistic3.patch(_i5.optimistic)`: binds the `optimistic()` beside the action to
+    /// `() => _optimisticItemsId.patch(_i5.optimistic)`: binds the `optimistic()` beside the action to
     /// the layer it patches (since 0.8.1).
     optimistic: Option<String>,
     /// The `useForm` hook, when the action has a `form()` (since 0.8.1).
@@ -461,7 +461,7 @@ struct TypedDataCx {
     /// `, {required int id, int? page}`: the keys as named parameters of the static
     /// `watch` and `read`, whose types are inferred from the provider.
     args: String,
-    /// `_optimistic3(id)`: the layer of the patches over this data, which `watch` applies.
+    /// `_optimisticItemsId(id)`: the layer of the patches over this data, which `watch` applies.
     optimistic: Option<String>,
 }
 
@@ -476,7 +476,7 @@ struct MatcherCx {
     route: String,
     /// `{'id': p.id}`.
     params: String,
-    /// `[_data1(l1.shop), _data3(p.id)]`: the section data, then the route's own.
+    /// `[_dataShop(l1.shop), _dataItemsId(p.id)]`: the section data, then the route's own.
     data: String,
     /// Whether the route's path matches by case (its `route.dart`, else the config).
     case_sensitive: bool,
@@ -501,7 +501,7 @@ struct SectionCx {
     prefetch_args: String,
     /// Whether the section has a data.dart: its members are only there for one.
     has_data: bool,
-    /// `_optimistic3(teamId)`: the layer of the patches over the section's data, which `watch`
+    /// `_optimisticTeamsTeamId(teamId)`: the layer of the patches over the section's data, which `watch`
     /// applies.
     optimistic: Option<String>,
     actions: Vec<ActionCx>,
@@ -590,9 +590,9 @@ struct FormCx {
 /// The optimistic layer of one data.dart: what reads of it apply.
 #[derive(Serialize)]
 struct LayerCx {
-    /// `_optimistic3`.
+    /// `_optimisticItemsId`.
     name: String,
-    /// `optimisticLayer(_data3)`, or `optimisticLayerFamily((int id) => _data3(id))`.
+    /// `optimisticLayer(_dataItemsId)`, or `optimisticLayerFamily((int id) => _dataItemsId(id))`.
     def: String,
     /// What the layer is, for its comment.
     doc: String,
@@ -2244,7 +2244,7 @@ fn has_layer(app: &App, id: usize) -> bool {
 }
 
 /// The layer to read next to the data of `id`, when an `optimistic()` patches it: keyed the way
-/// the data is (`_optimistic3(v.id)`), `prefix` reading the keys.
+/// the data is (`_optimisticItemsId(v.id)`), `prefix` reading the keys.
 fn layer_expr(app: &App, id: usize, r: &Route, d: &Data, prefix: &str) -> Option<String> {
     has_layer(app, id).then(|| format!("{}{}", layer_name(r), key_expr(app, r, d, prefix)))
 }
@@ -2295,7 +2295,7 @@ fn layers(app: &App) -> Vec<LayerCx> {
 
 /// The providers `_devToolsProviders` lists, in folder order: what `devToolsRegister` uses to
 /// find the record of a provider that was prefetched before any page watched it. A selector with
-/// keys is a closure (`_data14(v.id)` makes the provider), so it is left out: the runtime learns
+/// keys is a closure (`_dataItemsId(v.id)` makes the provider), so it is left out: the runtime learns
 /// its family when a view first watches it.
 fn devtools_providers(app: &App) -> Vec<DevToolsProviderCx> {
     app.routes

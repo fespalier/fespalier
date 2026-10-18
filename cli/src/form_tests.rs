@@ -59,7 +59,7 @@ fn companions_are_not_actions() {
             "static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages(), FormDraft? draft}) => useActionForm(ref, action, data: data, initial: () => _i2.form(data), fields: (ActionFormFields<_i2.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter, draft: DraftCodec.boolean)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i2.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages, id: 'nickname/action.dart#action', shape: 'nickname:String,age:int?,newsletter:bool', draft: draft);\n}\n",
             "final _optimisticNickname = optimisticLayer(_dataNickname);",
             "/// What reads of nickname/data.dart show while a write that patches it is in flight (`optimistic()` of nickname/action.dart). Since 0.8.1.",
-            "final _action1_0 = actionProvider(\n  (Ref ref, _i2.NicknameFields input) => _i2.action(ref, input: input),\n  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_dataNickname],\n  validate: _i2.validate,\n  optimistic: () => _optimisticNickname.patch(_i2.optimistic),\n  site: 'a1_0',\n);",
+            "final _actionNickname_action = actionProvider(\n  (Ref ref, _i2.NicknameFields input) => _i2.action(ref, input: input),\n  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_dataNickname],\n  validate: _i2.validate,\n  optimistic: () => _optimisticNickname.patch(_i2.optimistic),\n  site: 'aNickname_action',\n);",
             // The read sites go through the layer.
             "optimistic: (ref) => ref.watch(_optimisticNickname),",
             "static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimisticNickname);",
@@ -291,7 +291,7 @@ fn optimistic_targets_nearest_matching_data() {
         &c,
         &["optimistic: () => _optimisticANickname.patch(_i4.optimistic),"],
     );
-    lacks(&c, &["_optimisticA"]);
+    lacks(&c, &["final _optimisticA = "]);
 }
 
 #[test]

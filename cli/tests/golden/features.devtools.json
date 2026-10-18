@@ -1091,136 +1091,136 @@
     }
   ],
   "sites": {
-    "a3_0": {
+    "aAccountNickname_action": {
       "kind": "action",
       "file": "(account)/nickname/action.dart",
       "name": "action",
       "route": "NicknameRoute"
     },
-    "a40_0": {
+    "aOrdersIdRefund_action": {
       "kind": "action",
       "file": "orders/$id/refund/action.dart",
       "name": "action",
       "route": "RefundRoute"
     },
-    "a66_0": {
+    "aSignup_action": {
       "kind": "action",
       "file": "signup/action.dart",
       "name": "action",
       "route": null
     },
-    "a72_0": {
+    "aTeamsTeamId_addMember": {
       "kind": "action",
       "file": "teams/$teamId/action.dart",
       "name": "addMember",
       "route": null
     },
-    "d13": {
-      "kind": "data",
-      "file": "browse/$$categories/data.dart",
-      "route": "BrowseRoute",
-      "section": null,
-      "traced": true
-    },
-    "d14": {
-      "kind": "data",
-      "file": "catalog/data.dart",
-      "route": "CatalogRoute",
-      "section": null,
-      "traced": false
-    },
-    "d15": {
-      "kind": "data",
-      "file": "catalog/$productId/data.dart",
-      "route": "ProductDetailRoute",
-      "section": null,
-      "traced": false
-    },
-    "d16": {
-      "kind": "data",
-      "file": "catalog/$productId/reviews/data.dart",
-      "route": "ReviewsRoute",
-      "section": null,
-      "traced": false
-    },
-    "d18": {
-      "kind": "data",
-      "file": "compare/$$ids/data.dart",
-      "route": "CompareRoute",
-      "section": null,
-      "traced": true
-    },
-    "d19": {
-      "kind": "data",
-      "file": "counter/data.dart",
-      "route": "CounterRoute",
-      "section": null,
-      "traced": false
-    },
-    "d3": {
+    "dAccountNickname": {
       "kind": "data",
       "file": "(account)/nickname/data.dart",
       "route": "NicknameRoute",
       "section": null,
       "traced": true
     },
-    "d40": {
+    "dBrowseCategories": {
+      "kind": "data",
+      "file": "browse/$$categories/data.dart",
+      "route": "BrowseRoute",
+      "section": null,
+      "traced": true
+    },
+    "dCatalog": {
+      "kind": "data",
+      "file": "catalog/data.dart",
+      "route": "CatalogRoute",
+      "section": null,
+      "traced": false
+    },
+    "dCatalogProductId": {
+      "kind": "data",
+      "file": "catalog/$productId/data.dart",
+      "route": "ProductDetailRoute",
+      "section": null,
+      "traced": false
+    },
+    "dCatalogProductIdReviews": {
+      "kind": "data",
+      "file": "catalog/$productId/reviews/data.dart",
+      "route": "ReviewsRoute",
+      "section": null,
+      "traced": false
+    },
+    "dCompareIds": {
+      "kind": "data",
+      "file": "compare/$$ids/data.dart",
+      "route": "CompareRoute",
+      "section": null,
+      "traced": true
+    },
+    "dCounter": {
+      "kind": "data",
+      "file": "counter/data.dart",
+      "route": "CounterRoute",
+      "section": null,
+      "traced": false
+    },
+    "dOrdersIdRefund": {
       "kind": "data",
       "file": "orders/$id/refund/data.dart",
       "route": "RefundRoute",
       "section": null,
       "traced": true
     },
-    "d56": {
+    "dReports": {
       "kind": "data",
       "file": "reports/data.dart",
       "route": null,
       "section": "reports",
       "traced": true
     },
-    "d59": {
+    "dSearch": {
       "kind": "data",
       "file": "search/data.dart",
       "route": "SearchRoute",
       "section": null,
       "traced": true
     },
-    "d61": {
+    "dShopCategory": {
       "kind": "data",
       "file": "shop/$category/data.dart",
       "route": "CategoryShopRoute",
       "section": null,
       "traced": true
     },
-    "d65": {
+    "dShopsShopItemsId": {
       "kind": "data",
       "file": "shops/$shop/items/$id/data.dart",
       "route": "ItemRoute",
       "section": null,
       "traced": true
     },
-    "d72": {
+    "dTeamsTeamId": {
       "kind": "data",
       "file": "teams/$teamId/data.dart",
       "route": null,
       "section": "teams/$teamId",
       "traced": true
     },
-    "d74": {
+    "dTeamsTeamIdMembersMember": {
       "kind": "data",
       "file": "teams/$teamId/members/$member/data.dart",
       "route": "MemberRoute",
       "section": null,
       "traced": true
     },
-    "d76": {
+    "dTicks": {
       "kind": "data",
       "file": "ticks/data.dart",
       "route": "TicksRoute",
       "section": null,
       "traced": true
     },
-    "d79": {
+    "dWikiArticle": {
       "kind": "data",
       "file": "wiki/$$article/data.dart",
       "route": "WikiRoute",

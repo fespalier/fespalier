@@ -748,9 +748,6 @@ fn assign_stems(routes: &mut [Route]) {
             stem
         };
     }
-    for (id, r) in routes.iter().enumerate() {
-        eprintln!("STEMDBG {id} {:?} {}", r.dir, r.stem);
-    }
 }
 
 /// A `not_found.dart` below the root, chosen for unknown URLs under `url`.

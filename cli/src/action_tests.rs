@@ -422,7 +422,10 @@ fn invalidates_replaces_the_default_set() {
         &c,
         &["invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersId(id)],"],
     );
-    lacks(&c, &["_data4(id)"]);
+    lacks(
+        &c,
+        &["invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersIdRefund"],
+    );
     // Both, in the order written; a name listed twice counts once.
     let c = code(&files(
         "const invalidates = [RefundRoute, OrderRoute, RefundRoute,];\nFuture<void> action(Ref ref, {required int id, required Object input}) async {}",

@@ -324,6 +324,62 @@ fn guards_redirects_data_and_actions_are_sites_with_their_files() {
 }
 
 #[test]
+fn a_data_or_action_site_is_named_after_its_folder_and_function() {
+    let dir = files_project(&[
+        ("page.dart", &page("Home")),
+        ("account/page.dart", &page("Account")),
+        ("account/guard.dart", "GuardResult guard(Ref ref) => null;"),
+        ("old/redirect.dart", "String redirect() => '/account';"),
+        (
+            "orders/$id/page.dart",
+            "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id, required this.data}); final int id; final String data; }",
+        ),
+        (
+            "orders/$id/data.dart",
+            "Future<String> data(Ref ref, {required int id}) async => '';",
+        ),
+        (
+            "orders/$id/action.dart",
+            "Future<void> action(Ref ref, {required int id, required String input}) async {}\nFuture<void> cancel(Ref ref, {required int id, required String input}) async {}\n",
+        ),
+    ]);
+    let (cfg, app, code) = analyzed(dir.path());
+    let tree = devtools::tree(&app, &cfg);
+    assert_eq!(tree["sites"]["dOrdersId"]["file"], "orders/$id/data.dart");
+    assert_eq!(tree["sites"]["aOrdersId_action"]["name"], "action");
+    assert_eq!(tree["sites"]["aOrdersId_cancel"]["name"], "cancel");
+    assert!(code.contains("final _dataOrdersId = "), "{code}");
+    assert!(code.contains("final _actionOrdersId_cancel = "), "{code}");
+    for (id, site) in sites(&tree) {
+        let kind = site["kind"].as_str().unwrap();
+        let letter = match kind {
+            "guard" => 'g',
+            "redirect" => 'r',
+            "data" => 'd',
+            "action" => 'a',
+            other => panic!("{other}"),
+        };
+        assert!(id.starts_with(letter), "{id} is not a {kind} site");
+        for key in site.as_object().unwrap().keys() {
+            assert!(
+                ["kind", "file", "route", "pattern", "section", "traced", "name"]
+                    .contains(&key.as_str()),
+                "{id} has {key}, which protocol 1 does not know"
+            );
+        }
+    }
+    // A route added before them renames none of their sites.
+    let before = tree["sites"].clone();
+    fs::create_dir_all(dir.path().join("lib/app/aaa")).unwrap();
+    fs::write(dir.path().join("lib/app/aaa/page.dart"), page("Aaa")).unwrap();
+    let (cfg, app, _) = analyzed(dir.path());
+    let after = devtools::tree(&app, &cfg);
+    for site in ["dOrdersId", "aOrdersId_action", "aOrdersId_cancel"] {
+        assert_eq!(after["sites"][site], before[site], "{site}");
+    }
+}
+
+#[test]
 fn a_data_dart_that_selects_or_returns_a_provider_is_not_traced() {
     let dir = files_project(&[
         ("page.dart", &page("Home")),
@@ -758,7 +814,7 @@ fn every_data_dart_is_listed_for_prefetches_except_a_selector_with_keys() {
     let tree = devtools::tree(&app, &cfg);
     let site = |file: &str| site_of(&tree, file);
     let listed = listed_providers(&code);
-    let mut want = vec![
+    let want = vec![
         (
             format!("_data{}", &site("a/data.dart")[1..]),
             site("a/data.dart"),

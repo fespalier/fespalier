@@ -2684,7 +2684,8 @@ const KEPT_CHANGED: &str = "fespalier: the regenerated routes change a provider,
 const APP_WIDGET: &str = "class App extends StatelessWidget { const App({super.key, required this.router}); final GoRouter router; }";
 
 /// A project for `fsp dev` whose routes a hot reload can swap: `app.dart`, and an `items/$id`
-/// route whose data is its id, so a route that sorts before it renumbers it (since 0.19.0).
+/// route whose data is its id. Since 0.20.0 a route put anywhere reloads, and a changed `data()`
+/// restarts (since 0.19.0 the swap was refused for a route put before one).
 #[cfg(unix)]
 fn swap_project() -> tempfile::TempDir {
     let dir = dev_project("");
@@ -2705,7 +2706,7 @@ fn swap_project() -> tempfile::TempDir {
 
 #[cfg(unix)]
 #[test]
-fn dev_reloads_a_regeneration_the_app_can_swap_and_restarts_one_it_cannot() {
+fn dev_reloads_an_inserted_route_and_restarts_after_a_changed_provider() {
     let dir = swap_project();
     let root = dir.path();
     let mut d = Dev::start(root, &[]);
@@ -2721,10 +2722,29 @@ fn dev_reloads_a_regeneration_the_app_can_swap_and_restarts_one_it_cannot() {
         "{}",
         d.flog()
     );
-    // A route that sorts first renumbers the `items` route: the app keeps its old routes, so a
-    // hot restart.
+    // A route that sorts first renames nothing (since 0.20.0): a hot reload too.
     fs::create_dir_all(root.join("lib/app/about")).unwrap();
     fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    d.wait_until("two reloads", || {
+        d.err()
+            .matches("[fsp] hot reload: lib/app.g.dart changed")
+            .count()
+            >= 2
+    });
+    d.wait_until("two reloads in", || {
+        d.err().matches("[fsp] ✓ hot reload in").count() >= 2
+    });
+    assert!(
+        !d.flog().contains("app.restart fullRestart=true"),
+        "{}",
+        d.flog()
+    );
+    // A data() that becomes a stream changes a provider the reload keeps: a hot restart.
+    fs::write(
+        root.join("lib/app/items/$id/data.dart"),
+        "Stream<int> data(Ref ref, {required int id}) async* { yield id; }",
+    )
+    .unwrap();
     d.wait_log("app.restart fullRestart=true");
     d.wait_err("[fsp] hot restart: lib/app.g.dart changed");
     d.wait_err("[fsp] ✓ hot restart in");

@@ -38,12 +38,63 @@ pub async fn measure_all(scenario: &Scenario) -> Result<Vec<Run>, cratestack::Cr
     Ok(runs)
 }
 
+/// The payload sizes the sweep measures, in bytes of note text.
+///
+/// The default scenario's note is 27 bytes, where every difference is a large percentage of a tiny
+/// number. The sweep asks the natural follow-up — *does this hold at a real size?* — and the answer
+/// is that JSON's penalty over CBOR does not grow (it is a fixed structural cost), while the
+/// signature's stays a fixed ~112 bytes. Both facts are invisible at one payload size.
+pub const SWEEP_SIZES: [usize; 8] = [
+    16,
+    64,
+    256,
+    1024,
+    4096,
+    // The sizes a real app actually sends, where the fixed costs stop being visible as a
+    // percentage: 55 KB, 120 KB and 300 KB. Measured rather than extrapolated, because JSON's
+    // penalty turns out to *shrink* slightly in absolute terms as the CBOR length prefix grows.
+    55 * 1024,
+    120 * 1024,
+    300 * 1024,
+];
+
+/// One payload size's measurement, for the sweep table.
+#[derive(Clone, Debug)]
+pub struct SweepRow {
+    /// The note text's length in bytes.
+    pub note_bytes: usize,
+    /// The runs at this size, one per variant.
+    pub runs: Vec<Run>,
+}
+
+/// Measures one scenario, then the same scenario at each size in [`SWEEP_SIZES`].
+///
+/// # Errors
+/// When a run cannot be set up.
+pub async fn measure_sweep() -> Result<Vec<SweepRow>, cratestack::CratestackError> {
+    let mut rows = Vec::new();
+    for note_bytes in SWEEP_SIZES {
+        let scenario = Scenario {
+            reads: 0,
+            writes: 1,
+            note_text: "x".repeat(note_bytes),
+        };
+        rows.push(SweepRow {
+            note_bytes,
+            runs: measure_all(&scenario).await?,
+        });
+    }
+    Ok(rows)
+}
+
 /// The whole report, as Markdown.
 ///
 /// # Errors
 /// When a run cannot be set up, or the scenario's own numbers cannot be measured.
 pub async fn generate() -> Result<String, cratestack::CratestackError> {
-    Ok(report(&measure_all(&Scenario::default()).await?))
+    let runs = measure_all(&Scenario::default()).await?;
+    let sweep = measure_sweep().await?;
+    Ok(report(&runs, &sweep))
 }
 
 /// Renders the measurement as Markdown.
@@ -51,9 +102,11 @@ pub async fn generate() -> Result<String, cratestack::CratestackError> {
 /// Split from [`generate`] so the rendering can be tested against a `Run` built by hand, without a
 /// router: the interesting failures here are arithmetic and formatting, not I/O.
 #[must_use]
-pub fn report(runs: &[Run]) -> String {
+pub fn report(runs: &[Run], sweep: &[SweepRow]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "{}", summary_table(runs));
+    let _ = writeln!(out);
+    let _ = writeln!(out, "{}", payload_table(runs));
     let _ = writeln!(out);
     let _ = writeln!(out, "{}", overhead_table(runs));
     let _ = writeln!(out);
@@ -62,6 +115,85 @@ pub fn report(runs: &[Run]) -> String {
     let _ = writeln!(out, "{}", split_table(runs));
     let _ = writeln!(out);
     let _ = writeln!(out, "{}", credential_comparison(runs));
+    let _ = writeln!(out);
+    let _ = writeln!(out, "{}", sweep_table(sweep));
+    out
+}
+
+/// Whether the payload is JSON, as a table cell.
+///
+/// The one place the report says plainly that JSON's body is *larger* than CBOR's, because a reader
+/// who sees two nearly equal totals deserves to know which direction the difference runs.
+#[must_use]
+pub fn payload_table(runs: &[Run]) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "| Variant | Body bytes | JSON's penalty |");
+    let _ = writeln!(out, "| --- | ---: | ---: |");
+    let json_body = runs
+        .iter()
+        .find(|r| r.variant == Variant::Json)
+        .map_or(0, |r| {
+            r.exchanges
+                .iter()
+                .map(|e| e.request_body_bytes)
+                .sum::<usize>()
+        });
+    for run in runs {
+        let body: usize = run.exchanges.iter().map(|e| e.request_body_bytes).sum();
+        let penalty = match run.variant {
+            Variant::Json => "—".to_owned(),
+            // Signed against unsigned is a different question (the signature is *inside* the body),
+            // so the penalty is only computed against CBOR, the other plain codec.
+            Variant::Cbor => format!("+{} vs CBOR", json_body.saturating_sub(body)),
+            // The signature is *inside* the body, so this is not the same kind of penalty as
+            // JSON's: it is not the codec, it is the credential.
+            Variant::Cose => "n/a (the signature is inside)".to_owned(),
+        };
+        let _ = writeln!(out, "| `{}` | {} | {} |", run.variant.name(), body, penalty);
+    }
+    out
+}
+
+/// The same measurement at several payload sizes.
+///
+/// The question a reader asks next, and the one a single payload size cannot answer: do these
+/// differences scale with the payload or stay fixed? They stay fixed, and the table shows it.
+#[must_use]
+pub fn sweep_table(sweep: &[SweepRow]) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "| `note_text` | JSON body | CBOR body | JSON−CBOR | COSE body | COSE−CBOR |"
+    );
+    let _ = writeln!(out, "| ---: | ---: | ---: | ---: | ---: | ---: |");
+    for row in sweep {
+        let body_of = |variant| {
+            row.runs
+                .iter()
+                .find(|r| r.variant == variant)
+                .map_or(0, |r| {
+                    r.exchanges
+                        .iter()
+                        .map(|e| e.request_body_bytes)
+                        .sum::<usize>()
+                })
+        };
+        let (json, cbor, cose) = (
+            body_of(Variant::Json),
+            body_of(Variant::Cbor),
+            body_of(Variant::Cose),
+        );
+        let _ = writeln!(
+            out,
+            "| {} | {} | {} | +{} | {} | +{} |",
+            row.note_bytes,
+            json,
+            cbor,
+            json.saturating_sub(cbor),
+            cose,
+            cose.saturating_sub(cbor)
+        );
+    }
     out
 }
 
@@ -397,9 +529,55 @@ mod tests {
     #[test]
     fn the_report_renders_every_section() {
         let runs = vec![run(Variant::Json, true, (100, 50, 10))];
-        let text = report(&runs);
+        let text = report(&runs, &[]);
         assert!(text.contains("Request bytes"));
+        assert!(text.contains("Body bytes"));
         assert!(text.contains("External AAD"));
         assert!(text.contains("| Op | Call |"));
+        assert!(text.contains("Head/call"));
+        assert!(text.contains("The credential, compared directly"));
+        assert!(text.contains("JSON body"));
+    }
+
+    #[test]
+    fn the_payload_table_says_json_is_the_bigger_body() {
+        let runs = vec![
+            run(Variant::Json, true, (100, 50, 40)),
+            run(Variant::Cbor, true, (100, 50, 30)),
+        ];
+        let table = payload_table(&runs);
+        assert!(table.contains("| `json` | 40 |"), "{table}");
+        assert!(table.contains("| `cbor` | 30 | +10 vs CBOR |"), "{table}");
+    }
+
+    #[test]
+    fn the_sweep_table_shows_the_fixed_differences() {
+        let sweep = vec![
+            SweepRow {
+                note_bytes: 16,
+                runs: vec![
+                    run(Variant::Json, true, (0, 0, 149)),
+                    run(Variant::Cbor, true, (0, 0, 133)),
+                    run(Variant::Cose, false, (0, 0, 245)),
+                ],
+            },
+            SweepRow {
+                note_bytes: 4096,
+                runs: vec![
+                    run(Variant::Json, true, (0, 0, 4229)),
+                    run(Variant::Cbor, true, (0, 0, 4215)),
+                    run(Variant::Cose, false, (0, 0, 4328)),
+                ],
+            },
+        ];
+        let table = sweep_table(&sweep);
+        assert!(
+            table.contains("| 16 | 149 | 133 | +16 | 245 | +112 |"),
+            "{table}"
+        );
+        assert!(
+            table.contains("| 4096 | 4229 | 4215 | +14 | 4328 | +113 |"),
+            "{table}"
+        );
     }
 }

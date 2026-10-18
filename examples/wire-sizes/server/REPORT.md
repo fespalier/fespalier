@@ -5,6 +5,13 @@
 | `cose` | signature in the body | 1606 | 1302 | 765 | 557 |
 
 
+| Variant | Body bytes | JSON's penalty |
+| --- | ---: | ---: |
+| `json` | 241 | — |
+| `cbor` | 208 | +33 vs CBOR |
+| `cose` | 765 | n/a (the signature is inside) |
+
+
 | Op | Payload | External AAD | Body | Added | Added % |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | `procedure.addNote` | 43 | 102 | 155 | 112 | 260.5% |
@@ -42,4 +49,16 @@
 | `json` `Bearer` header | 116 | in the head (696 over 6 calls) |
 | `cbor` `Bearer` header | 116 | in the head (696 over 6 calls) |
 | `cose` signature | 111 | in the body (557 over 5 sealed calls) |
+
+
+| `note_text` | JSON body | CBOR body | JSON−CBOR | COSE body | COSE−CBOR |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 16 | 149 | 133 | +16 | 245 | +112 |
+| 64 | 197 | 182 | +15 | 294 | +112 |
+| 256 | 389 | 375 | +14 | 488 | +113 |
+| 1024 | 1157 | 1143 | +14 | 1256 | +113 |
+| 4096 | 4229 | 4215 | +14 | 4328 | +113 |
+| 56320 | 56453 | 56439 | +14 | 56552 | +113 |
+| 122880 | 123013 | 123001 | +12 | 123116 | +115 |
+| 307200 | 307333 | 307321 | +12 | 307436 | +115 |
 

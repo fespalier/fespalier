@@ -151,3 +151,104 @@ async fn the_signature_and_the_bearer_are_comparable_in_size() {
          ({bearer} B)"
     );
 }
+
+/// The finding the sweep exists for: neither penalty scales with the payload.
+///
+/// A reader's natural assumption is that JSON's overhead is a *percentage* ("JSON is bloated"), and
+/// that a bigger payload makes CBOR's win bigger. It is the opposite: both differences are fixed
+/// structural costs, so the percentage shrinks to nothing on a large payload. Pinned because a
+/// change that made either figure grow with the payload would invert the advice the example gives.
+#[tokio::test]
+async fn neither_penalty_scales_with_the_payload() {
+    let sweep = report::measure_sweep().await.expect("a sweep");
+    assert!(sweep.len() >= 2, "a sweep of one size cannot show a trend");
+
+    let body_of = |row: &report::SweepRow, variant| {
+        row.runs
+            .iter()
+            .find(|r| r.variant == variant)
+            .map_or(0, |r| {
+                r.exchanges
+                    .iter()
+                    .map(|e| e.request_body_bytes)
+                    .sum::<usize>()
+            })
+    };
+
+    let first = &sweep[0];
+    let last = sweep.last().expect("a last row");
+    assert!(
+        last.note_bytes > first.note_bytes * 10,
+        "the sweep should span an order of magnitude, or it proves nothing"
+    );
+
+    // The payload really did grow, so the runs are not all the same size by accident.
+    assert!(
+        body_of(last, Variant::Cbor) > body_of(first, Variant::Cbor) * 10,
+        "the CBOR body should grow with the note"
+    );
+
+    // JSON's penalty over CBOR: fixed, not proportional.
+    let json_first = body_of(first, Variant::Json) - body_of(first, Variant::Cbor);
+    let json_last = body_of(last, Variant::Json) - body_of(last, Variant::Cbor);
+    assert!(
+        json_last <= json_first,
+        "JSON's penalty should not grow with the payload: {json_first} at {} bytes, \
+         {json_last} at {} bytes",
+        first.note_bytes,
+        last.note_bytes
+    );
+
+    // The signature: fixed too, which is what a 64-byte ESP256 signature looks like.
+    let cose_first = body_of(first, Variant::Cose) - body_of(first, Variant::Cbor);
+    let cose_last = body_of(last, Variant::Cose) - body_of(last, Variant::Cbor);
+    assert!(
+        cose_last.abs_diff(cose_first) <= 4,
+        "the signature should stay a fixed size: {cose_first} at {} bytes, {cose_last} at {} bytes",
+        first.note_bytes,
+        last.note_bytes
+    );
+}
+
+/// The sizes a real app sends: 55 KB, 120 KB and 300 KB, measured because the answer is not
+/// obvious. Both penalties stay in single- to triple-digit bytes, and JSON's *shrinks* slightly as
+/// the CBOR length prefix grows — so "CBOR halves your payload" is wrong by two orders of magnitude
+/// at these sizes.
+#[tokio::test]
+async fn large_payloads_still_show_a_fixed_cost() {
+    let sweep = report::measure_sweep().await.expect("a sweep");
+
+    let body_of = |row: &report::SweepRow, variant| {
+        row.runs
+            .iter()
+            .find(|r| r.variant == variant)
+            .map_or(0, |r| {
+                r.exchanges
+                    .iter()
+                    .map(|e| e.request_body_bytes)
+                    .sum::<usize>()
+            })
+    };
+
+    for row in sweep.iter().filter(|r| r.note_bytes >= 55 * 1024) {
+        let json = body_of(row, Variant::Json) - body_of(row, Variant::Cbor);
+        let cose = body_of(row, Variant::Cose) - body_of(row, Variant::Cbor);
+        assert!(
+            json < 32,
+            "JSON's penalty should stay tens of bytes at {} note bytes, got {json}",
+            row.note_bytes
+        );
+        assert!(
+            cose < 160,
+            "the signature should stay ~115 bytes at {} note bytes, got {cose}",
+            row.note_bytes
+        );
+        assert!(
+            row.runs
+                .iter()
+                .all(wire_sizes_demo_server::scenario::Run::all_succeeded),
+            "every variant should answer 200 at {} note bytes",
+            row.note_bytes
+        );
+    }
+}

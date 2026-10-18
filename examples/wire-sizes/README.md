@@ -22,8 +22,9 @@ three variants. Measured by the server, from what actually arrived, headers and 
 Reading that table:
 
 - **CBOR saves 33 bytes of request over JSON** (1505 vs 1538) on these payloads, and 70 on the
-  response. Real, and less dramatic than "CBOR is half the size" — these payloads are small, and the
-  byte counts are dominated by headers rather than by the payload.
+  response. Real, and less dramatic than "CBOR is half the size" — most of that 33 is headers and
+  framing, not payload, and the payload difference is a _fixed_ ~14-16 bytes (see
+  [does it scale?](#does-it-scale) — it does not).
 - **A `cose` run sends 101 more request bytes than plain CBOR** (1606 vs 1505) — but that total hides
   the interesting part. Read the [head/body split](#the-head-and-the-body-move-in-opposite-directions)
   before drawing a conclusion from it.
@@ -88,6 +89,74 @@ Per op, so the shape of the scenario is visible and not only its total:
 `registerDevice` is the one op a `cose` server leaves **plain** (a device has to identify itself
 before it can sign), and it is the only row where `cose` is smallest — it is plain CBOR carrying no
 header, where the other two carry the `Authorization` header. Every signed row is larger.
+
+## What about JSON?
+
+JSON is the largest body of the three, and by a **constant, not a proportion**:
+
+| Variant | Body bytes (default scenario) |                JSON's penalty |
+| ------- | ----------------------------: | ----------------------------: |
+| `json`  |                           241 |                             — |
+| `cbor`  |                           208 |                   +33 vs CBOR |
+| `cose`  |                           765 | n/a (the signature is inside) |
+
+The 33 bytes above are the _whole_ body difference over a 7-call scenario, and the per-message
+figure is a **fixed ~12-16 bytes** (see [does it scale?](#does-it-scale)). It is structural: CBOR
+spends one byte on a map head where JSON spends `{"args":{`, and it needs no closing braces or
+quotes. A 25-byte JSON body and its 18-byte CBOR twin:
+
+```
+{"args":{"text":"hello"}}          # 25 bytes
+a1 64 61726773 a1 64 74657874 ...  # 18 bytes — one-byte map heads, length-prefixed strings
+```
+
+**JSON is not bloated here, and CBOR is not magic.** The encoder is the same one in both cases and
+the payload is a string either way; only the _framing_ around it differs. So on a 4 KB note JSON
+costs 14 bytes more — **0.3%**. Anyone expecting "CBOR halves your payload" will be disappointed,
+and anyone expecting "JSON costs 14 extra bytes and that is all" will be right.
+
+## Does it scale?
+
+The single most useful table here, because it answers the question a single payload size cannot:
+
+|     `note_text` | JSON body | CBOR body | JSON−CBOR | COSE body | COSE−CBOR |
+| --------------: | --------: | --------: | --------: | --------: | --------: |
+|              16 |       149 |       133 |       +16 |       245 |      +112 |
+|              64 |       197 |       182 |       +15 |       294 |      +112 |
+|             256 |       389 |       375 |       +14 |       488 |      +113 |
+|            1024 |      1157 |      1143 |       +14 |      1256 |      +113 |
+|            4096 |      4229 |      4215 |       +14 |      4328 |      +113 |
+|   55 KB (56320) |     56453 |     56439 |       +14 |     56552 |      +113 |
+| 120 KB (122880) |    123013 |    123001 |       +12 |    123116 |      +115 |
+| 300 KB (307200) |    307333 |    307321 |       +12 |    307436 |      +115 |
+
+(Bodies include the one `registerDevice` call the sweep also sends, which is why a 55 KB note gives a
+56 KB body.)
+
+**Neither penalty grows — and JSON's actually shrinks.** JSON's is +16 bytes at 16 bytes of note and
+**+12** at 300 KB (the CBOR length prefix grows, eating into JSON's advantage); the signature stays
+**+112 to +115** throughout. Both are _fixed structural costs_, so the percentage collapses:
+
+| Payload | JSON vs CBOR | Signing vs CBOR |
+| ------: | -----------: | --------------: |
+|    16 B |    **12.0%** |       **84.2%** |
+|    4 KB |        0.33% |            2.7% |
+|   55 KB |       0.025% |           0.20% |
+|  120 KB |       0.010% |          0.093% |
+|  300 KB |   **0.004%** |      **0.037%** |
+
+**On a 300 KB payload, CBOR saves 12 bytes — 0.004% — and signing costs 115 bytes — 0.037%.** Anyone
+reaching for CBOR to shrink a large payload will be disappointed; anyone reaching for it to make many
+small calls leaner will not. That inversion is the whole point of the table, and it is why a single
+payload size is not evidence.
+
+And the same is true of the credential: the ~112 bytes of signature against the 116-byte bearer
+header are **fixed size**, so on a large payload neither a token nor a signature is worth optimising —
+what matters at that point is the payload, and CBOR's ~14 bytes are noise beside it.
+
+`tests/report.rs` pins this: it measures two payloads an order of magnitude apart and asserts that
+neither difference grows. A change that made either one proportional would fail rather than quietly
+inverting the advice.
 
 ## Where the overhead goes
 

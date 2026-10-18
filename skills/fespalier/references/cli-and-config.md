@@ -439,7 +439,7 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   `--dart-define=LABS=true` in `startup()`; the test uses `FakeFlags`). The `forms` and `flags` pages have a
   `Scaffold` of their own and are opened by URL. Also since 0.15.0, and since 0.19.0 with no `startup.dart` of its own:
   `otel` (`fespalier_otel` and `otel_zone` by commit, `telemetry: true` and `otel: true`; the generated `main()` starts
-  the SDK and adds `FespalierOtel`, inside `runGuarded` except on the web, so a test that builds the app does not start
+  the SDK and adds `FespalierOtel`, inside `runGuarded` on every platform, so a test that builds the app does not start
   it, plus the Riverpod and route observers in `app.main.g.dart`;
   the test reads spans from `dartastic_opentelemetry`'s in-memory exporter; Flutter 3.35 or newer,
   because `otel_zone` needs Dart 3.9: the floor since 0.16.0, so `all` on 3.32 left it out and naming it was refused

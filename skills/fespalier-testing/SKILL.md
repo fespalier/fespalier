@@ -204,7 +204,7 @@ Grafana with `--grafana`) in Docker with four dashboards over fespalier's spans,
 health, Screens, Actions, Errors; green, amber or red), and `fsp telemetry --report` prints the same answers in
 the terminal. The command, the
 endpoint an app on an emulator, a simulator, a phone or the web uses, which dashboard answers which
-question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a web app) are in
+question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a web app before v0.8.1) are in
 [`references/observability.md`](references/observability.md).
 
 ## Examples

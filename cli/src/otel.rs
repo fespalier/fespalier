@@ -4,7 +4,7 @@
 //! ```yaml
 //! dependencies:
 //!   fespalier_otel: ...   # next to fespalier, at the same git ref
-//!   otel_zone: ...        # a git dependency pinned to a commit, 8a72fc4 (the rc.4 line) or later
+//!   otel_zone: ...        # a git dependency pinned to a commit, 64c4661 (v0.8.1) or later
 //! fespalier:
 //!   telemetry: true
 //!   otel: true
@@ -16,8 +16,8 @@
 //! service name is the pubspec's `name`, and the version is read at run time (`FLUTTER_BUILD_NAME`),
 //! never written, so a version bump does not change the file.
 //!
-//! The zone is `otel_zone`'s `runGuarded`, off the web (it never runs its body there), and only when
-//! startup.dart exports no `zone()`: an app's own zone (Sentry's) wins. It is the innermost
+//! The zone is `otel_zone`'s `runGuarded`, on every platform (v0.8.1 runs its body on the web too),
+//! and only when startup.dart exports no `zone()`: an app's own zone (Sentry's) wins. It is the innermost
 //! wrapper, inside the adapters' zones (`adapters.rs`).
 
 use crate::config::Config;

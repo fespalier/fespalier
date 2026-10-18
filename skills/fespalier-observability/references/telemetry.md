@@ -40,11 +40,11 @@ dependencies:
 
 Use the **same `url` spelling (no `.git`) and the same `ref`** (the tag your app pins; `v0.13.0` here) for both, or pub fails with `Because ...
 depends on fespalier from git ... is forbidden`. Since 0.19.0 `fespalier_otel` is on the dartastic rc.4 line (SDK 1.1.0-beta.17), which is
-`otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647` (0.8.0 to be); that `otel_zone`'s
+`otel_zone` v0.8.1 (commit `64c4661ac6cd09718141864d528892916677cc38`); that `otel_zone`'s
 `otel_go_router` accepts go_router 17 and 18, so the app resolves 18 with no override. An older
 `otel_zone` (up to v0.7.0) pulls `otel_go_router` ^0.2.0, which declares `go_router: ^17.0.0` (the app
 resolves 17.5.0 and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18), and it cannot resolve
-beside `fespalier_otel` since 0.19.0: move it to the commit.
+beside `fespalier_otel` since 0.19.0: move it to v0.8.1.
 
 ## Wire it with `otel: true` (since 0.19.0)
 
@@ -66,8 +66,9 @@ fespalier:
   Retry and `add` appends each time, so keep the sink in a top-level `final` and guard the add with
   `if (!FespalierTelemetry.contains(sink)) FespalierTelemetry.add(sink);`.
 - The Riverpod and route observers, null until the SDK is up, through `ProviderScope(observers:)` and `AppRoutes.router(observers:)`.
-- The zone: `observability.runGuarded` around `main()`, off the web, the innermost zone (inside the adapters' zones). A
-  `zone()` in startup.dart replaces it, so Sentry's zone wins. On the web the body runs as it is.
+- The zone: `observability.runGuarded` around `main()`, on every platform (the web too, since 0.19.0, with otel_zone
+  v0.8.1 or later), the innermost zone (inside the adapters' zones). A `zone()` in startup.dart replaces it, so
+  Sentry's zone wins.
 
 The version is the build name, `FLUTTER_BUILD_NAME` (Flutter 3.47 and later; `unknown` before, which `otel_zone` takes),
 and the build is `FLUTTER_BUILD_NUMBER` (or none). A test that pumps `AppMain.root()` never starts the SDK, and
@@ -95,7 +96,7 @@ Future<void> main() => guarded(() async {
 });
 
 Future<void> guarded(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+    observability.runGuarded(body);
 ```
 
 - `WidgetsFlutterBinding.ensureInitialized()` **and** `runApp` run inside the zone `runGuarded` opens
@@ -121,13 +122,16 @@ debug and profile, `http://10.0.2.2:4318` on Android (the emulator's address for
 as "telemetry off" (a store build never sends to a developer's computer). A physical phone needs the
 define.
 
-### Known limitation: `otel_zone` `runGuarded` on web
+### `otel_zone` `runGuarded` on the web
 
-Since 0.8.1: on the web `OtelZone.runGuarded` **never runs its body** and the app stays blank (it builds a
-`ReceivePort`, which `dart:isolate` does not support there; nothing is printed). `start()` works on the
-web, and spans and logs are exported. Run the body as it is on the web (the `guarded` helper above); the
-error hooks `runGuarded` installs are then not installed there. `OtelZoneConfig` and everything else is
-unchanged.
+Since otel_zone v0.8.1, `OtelZone.runGuarded` runs its body on the web. Before it, the zone **never ran its body**
+there and the app stayed blank (it built a `ReceivePort`, which `dart:isolate` does not support; nothing was
+printed). `start()` works on the web, and spans and logs are exported. On an older `otel_zone`, return the body
+without `runGuarded` when `kIsWeb` is true; the error hooks `runGuarded` installs are then not installed there.
+`OtelZoneConfig` and everything else is unchanged. In a release web build the zone's errors go to `otel_zone`'s sink
+only (its console printing and Flutter's error dump are on in debug only), so without `OTEL_EXPORTER_OTLP_ENDPOINT`
+they are seen nowhere, as on mobile. Seen by hand, not by CI: a created `otel` web app rendered and exported in
+headless Chromium (release, `--wasm` and debug), and a release build without the define sent nothing.
 
 ## Several sinks: `combine` and `add` (since 0.9.0)
 

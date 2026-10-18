@@ -28,9 +28,6 @@ it ships.
 
 ## Waiting on others
 
-- **`runGuarded` on the web.** `otel_zone`'s `runGuarded` never runs its body in a Flutter web app,
-  so the docs use `kIsWeb ? body() : observability.runGuarded(body)` until it is fixed in
-  vaam-apps/flutter-otel-zone.
 - **OpenObserve:** a click on a stat tile opens nothing, and PromQL's `or vector(0)` returns no
   series (v1.0.4; v1.1.0 not checked yet). Drill-down is on the tables and charts until then, and the
   Grafana tiles work around the second.

@@ -1721,7 +1721,7 @@ fn otel(on: bool, cfg: &Config, dependencies: &Option<Value>) -> Result<bool> {
         ("fespalier_otel", "next to fespalier, at the same git ref"),
         (
             "otel_zone",
-            "a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines",
+            "a git dependency pinned to a commit, v0.8.1 or later: docs/observability.md has the lines",
         ),
     ] {
         let declared = matches!(dependencies, Some(Value::Mapping(m)) if m.contains_key(name));

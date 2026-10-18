@@ -90,7 +90,7 @@ dependencies:
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
-      ref: 8a72fc4162f6426951176d40c490389f77385647
+      ref: 64c4661ac6cd09718141864d528892916677cc38
   path_provider: "^2.1.0"
   sentry_flutter: ">=9.26.0 <10.0.0"
 

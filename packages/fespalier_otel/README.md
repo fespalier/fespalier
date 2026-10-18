@@ -82,9 +82,9 @@ Future<void> main() => guarded(() async {
   );
 });
 
-/// `runGuarded` leaves a Flutter web app blank (see below): run the body as it is there.
+/// Since otel_zone v0.8.1 the zone runs on the web too: no `kIsWeb` branch.
 Future<void> guarded(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+    observability.runGuarded(body);
 ```
 
 `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when set.
@@ -129,30 +129,31 @@ open quickly?") in green, amber or red, and `fsp telemetry --report` says the sa
 
 _Sample data from `scripts/telemetry/seed.py --showcase`._
 
-## Known limitation: `otel_zone` `runGuarded` on the web
+## `runGuarded` on the web
 
-Since 0.8.1, known limitation: on the web, `OtelZone.runGuarded` never runs its body, so the app
-stays blank. Inside the zone, before the body, it builds a `ReceivePort`, which `dart:isolate` does
-not support there. `OtelZone.start()` itself works on the web, so spans and logs are exported.
-Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does. The
-hooks `runGuarded` installs (`FlutterError.onError` and `PlatformDispatcher.onError` forwarding to
-`otel_zone`'s sink) are then not installed on the web: errors there are not exported unless the app
-forwards them itself.
+Since otel_zone v0.8.1, `OtelZone.runGuarded` runs its body on the web. Before it, the zone built a
+`ReceivePort` ahead of the body, which `dart:isolate` does not support there, so the app stayed blank.
+`OtelZone.start()` works on the web either way, so spans and logs are exported. On an older
+`otel_zone`, return the body without `runGuarded` on the web (when `kIsWeb` is true):
+the hooks `runGuarded` installs (`FlutterError.onError` and `PlatformDispatcher.onError` forwarding to
+`otel_zone`'s sink) are then missing there, and errors are not exported unless the app forwards them
+itself. On v0.8.1 the web gets framework errors and uncaught async errors, but no isolate listener,
+because a browser has no isolates.
 
 ## go_router
 
 Since 0.19.0 this package follows the dartastic rc.4 line (`dartastic_opentelemetry` 1.1.0-beta.17,
-API 1.0.0-rc.4), the one `otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647` (0.8.0 to
-be) starts, and that `otel_zone`'s `otel_go_router` accepts go_router 17 and 18: pub resolves 18 where
-Flutter has it, with no override. An `otel_zone` before that commit (up to v0.7.0) is on the rc.3 line
-and cannot resolve beside this package at all; it also pins `go_router: ^17.0.0`, so move it to the
-commit first.
+API 1.0.0-rc.4), which starts at `otel_zone` v0.8.0. This repository pins v0.8.1 (commit
+`64c4661ac6cd09718141864d528892916677cc38`), the first whose `runGuarded` runs on the web. That
+`otel_zone`'s `otel_go_router` accepts go_router 17 and 18: pub resolves 18 where Flutter has it, with
+no override. An `otel_zone` before the rc.4 line (up to v0.7.0) is on the rc.3 line and cannot resolve
+beside this package at all; it also pins `go_router: ^17.0.0`, so move it to v0.8.1 first.
 
 ## Startup failures
 
-A failure while the app starts arrives through `FlutterError.reportError`. Outside the web,
-`runGuarded` has pointed `FlutterError.onError` at `otel_zone`'s sink, so it is exported; nothing
-here needs to catch it.
+A failure while the app starts arrives through `FlutterError.reportError`. `runGuarded` points
+`FlutterError.onError` at `otel_zone`'s sink on the web too (since otel_zone v0.8.1), so it is exported;
+nothing here needs to catch it.
 
 ## Tests
 

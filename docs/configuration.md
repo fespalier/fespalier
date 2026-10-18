@@ -232,7 +232,7 @@ found by its name, like the other files.
 - `` `fespalier.otel` starts OpenTelemetry for what `telemetry: true` reports, and `telemetry` is not `true`; set `telemetry: true` too ``
 - `` `fespalier.otel` makes the generated main() start otel_zone, and `main: manual` writes no main(); wire otel_zone in your own main() (docs/observability.md) and remove `otel: true`, or set `main: auto` ``
 - `` `fespalier.otel` needs `fespalier_otel` under `dependencies:` in pubspec.yaml (next to fespalier, at the same git ref): the generated main() imports it ``
-- `` `fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines): the generated main() imports it ``
+- `` `fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.8.1 or later: docs/observability.md has the lines): the generated main() imports it ``
 
 An app that does not set it keeps its own wiring, as [OpenTelemetry with otel_zone](observability.md#opentelemetry-with-otel_zone) shows.
 

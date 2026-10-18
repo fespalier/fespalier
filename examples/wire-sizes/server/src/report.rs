@@ -58,7 +58,131 @@ pub fn report(runs: &[Run]) -> String {
     let _ = writeln!(out, "{}", overhead_table(runs));
     let _ = writeln!(out);
     let _ = writeln!(out, "{}", per_op_table(runs));
+    let _ = writeln!(out);
+    let _ = writeln!(out, "{}", split_table(runs));
+    let _ = writeln!(out);
+    let _ = writeln!(out, "{}", credential_comparison(runs));
     out
+}
+
+/// Per-op request bytes **split into head and body**, per call.
+///
+/// This is the table an eye comparing two payloads is really reading, and the two halves move in
+/// *opposite* directions between the variants: a `cose` call sends no `Authorization` header, so its
+/// head is much smaller than the plain variants', while the signature makes its body much larger.
+/// Reporting only the total hides that, and produces a number that reads like "the signature is
+/// cheaper than a token" when it does not.
+#[must_use]
+pub fn split_table(runs: &[Run]) -> String {
+    let mut out = String::new();
+    let _ = writeln!(
+        out,
+        "| Op | Variant | Head/call | Body/call | Total/call | Credential |"
+    );
+    let _ = writeln!(out, "| --- | --- | ---: | ---: | ---: | --- |");
+    for op in ops(runs) {
+        for run in runs {
+            let calls = run.of_op(&op);
+            let count = calls.len();
+            let head: usize = calls.iter().map(|e| e.request_head_bytes()).sum();
+            let body: usize = calls.iter().map(|e| e.request_body_bytes).sum();
+            let total: usize = calls.iter().map(|e| e.request_total_bytes()).sum();
+            // `checked_div` rather than a guard: an op nobody called has no per-call figure, and
+            // skipping it says so, where a printed zero would look like a measurement.
+            let (Some(head), Some(body), Some(total)) = (
+                head.checked_div(count),
+                body.checked_div(count),
+                total.checked_div(count),
+            ) else {
+                continue;
+            };
+            let credential = calls.first().map_or(0, |e| e.authorization_bytes());
+            let _ = writeln!(
+                out,
+                "| `{}` | `{}` | {} | {} | {} | {} |",
+                op,
+                run.variant.name(),
+                head,
+                body,
+                total,
+                if credential > 0 {
+                    format!("{credential} B header")
+                } else {
+                    "in the body".to_owned()
+                }
+            );
+        }
+    }
+    out
+}
+
+/// The credential one run carried in `Authorization` headers, in bytes.
+///
+/// `0` for a `cose` run: its credential is the signature, counted in the body instead.
+#[must_use]
+pub fn credential_bytes(run: &Run) -> usize {
+    run.exchanges
+        .iter()
+        .map(Exchange::authorization_bytes)
+        .sum()
+}
+
+/// The signature against the `Bearer` header it replaces.
+///
+/// The comparison a reader actually wants, and the one the totals hide: a `cose` call's credential
+/// is ~111 bytes inside the body, while the `Bearer` header the plain variants carry is ~116 bytes
+/// of head. They are nearly the same size, which is the honest headline — *signing roughly replaces
+/// a token, it does not add to it* — and it is invisible in a whole-request total, where the `cose`
+/// call simply looks larger.
+#[must_use]
+pub fn credential_comparison(runs: &[Run]) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "**The credential, compared directly.**");
+    let _ = writeln!(out);
+    let _ = writeln!(out, "| Credential | Bytes | Where |");
+    let _ = writeln!(out, "| --- | ---: | --- |");
+    for run in runs {
+        match run.variant {
+            Variant::Cose => {
+                let sealed = run.sealed().len();
+                let added = run.added_total();
+                let _ = writeln!(
+                    out,
+                    "| `cose` signature | {} | in the body ({} over {} sealed calls) |",
+                    added.checked_div(sealed).unwrap_or(0),
+                    added,
+                    sealed
+                );
+            }
+            Variant::Json | Variant::Cbor => {
+                let calls = run.exchanges.len();
+                let bytes = credential_bytes(run);
+                let _ = writeln!(
+                    out,
+                    "| `{}` `Bearer` header | {} | in the head ({} over {} calls) |",
+                    run.variant.name(),
+                    bytes.checked_div(calls).unwrap_or(0),
+                    bytes,
+                    calls
+                );
+            }
+        }
+    }
+    out
+}
+
+/// The ops a run sent, in order, without repeats.
+fn ops(runs: &[Run]) -> Vec<String> {
+    let mut ops: Vec<String> = Vec::new();
+    if let Some(run) = runs.first() {
+        for exchange in &run.exchanges {
+            let op = exchange.path.trim_start_matches("/rpc/").to_owned();
+            if !ops.contains(&op) {
+                ops.push(op);
+            }
+        }
+    }
+    ops
 }
 
 /// The headline table: one row per variant.
@@ -142,25 +266,13 @@ pub fn overhead_table(runs: &[Run]) -> String {
 /// Per-op request bytes, so the scenario's shape is visible rather than only its total.
 #[must_use]
 pub fn per_op_table(runs: &[Run]) -> String {
-    // Every variant sends the same ops in the same order, so the ops come from the first run.
-    let ops: Vec<String> = runs.first().map_or_else(Vec::new, |run| {
-        let mut ops: Vec<String> = Vec::new();
-        for exchange in &run.exchanges {
-            let op = exchange.path.trim_start_matches("/rpc/").to_owned();
-            if !ops.contains(&op) {
-                ops.push(op);
-            }
-        }
-        ops
-    });
-
     let mut out = String::new();
     let _ = writeln!(out, "| Op | Call | JSON | CBOR | COSE |");
     let _ = writeln!(out, "| --- | ---: | ---: | ---: | ---: |");
-    for op in &ops {
+    for op in ops(runs) {
         let mut cells = Vec::new();
         for run in runs {
-            let measured = run.of_op(op);
+            let measured = run.of_op(&op);
             let bytes: usize = measured.iter().map(|e| e.request_total_bytes()).sum();
             cells.push(format!(
                 "{} × {} = {}",
@@ -173,7 +285,7 @@ pub fn per_op_table(runs: &[Run]) -> String {
             out,
             "| `{}` | {} | {} | {} | {} |",
             op,
-            calls_of(runs, op),
+            calls_of(runs, &op),
             cells.first().map_or("-", String::as_str),
             cells.get(1).map_or("-", String::as_str),
             cells.get(2).map_or("-", String::as_str)

@@ -4,7 +4,7 @@ A [fespalier](../../README.md) / [CrateStack](https://cratestack.dev) example wh
 number nobody has to take on trust: **what one call costs in bytes, headers included**, as JSON, as
 plain CBOR, and as CBOR inside a `COSE_Sign1` message.
 
-[`examples/cose`](../cose/README.md) shows *how* to sign every request with a device key. This asks
+[`examples/cose`](../cose/README.md) shows _how_ to sign every request with a device key. This asks
 what that costs against the alternatives a person actually weighs.
 
 ## The numbers
@@ -13,31 +13,77 @@ One scenario — register a device, write two notes, read them back three times 
 three variants. Measured by the server, from what actually arrived, headers and framing included
 ([`server/src/measure.rs`](server/src/measure.rs)).
 
-| Variant | Credential | Request bytes | Response bytes | Request body | Credential bytes |
-| --- | --- | ---: | ---: | ---: | ---: |
-| `json` | `Authorization` header | 1538 | 827 | 241 | 696 |
-| `cbor` | `Authorization` header | 1505 | 757 | 208 | 696 |
-| `cose` | signature in the body | 1606 | 1302 | 765 | 557 |
+| Variant | Credential             | Request bytes | Response bytes | Request body | Credential bytes |
+| ------- | ---------------------- | ------------: | -------------: | -----------: | ---------------: |
+| `json`  | `Authorization` header |          1538 |            827 |          241 |              696 |
+| `cbor`  | `Authorization` header |          1505 |            757 |          208 |              696 |
+| `cose`  | signature in the body  |          1606 |           1302 |          765 |              557 |
 
 Reading that table:
 
 - **CBOR saves 33 bytes of request over JSON** (1505 vs 1538) on these payloads, and 70 on the
   response. Real, and less dramatic than "CBOR is half the size" — these payloads are small, and the
   byte counts are dominated by headers rather than by the payload.
-- **Signing costs 101 bytes of request over plain CBOR** (1606 vs 1505), on a scenario whose payloads
-  total 107 bytes. That is the honest price of the signature.
-- **The credential moves, it does not shrink.** The `Bearer` header is 696 bytes over the run (7
-  calls × ~99 bytes: a 93-byte JWT plus its name and line ending); the `cose` signature is 557. The
-  point is not that one is smaller — it is that the `cose` one is *verified*, and the `Bearer` one
-  here is not (the server accepts any token; see below).
+- **A `cose` run sends 101 more request bytes than plain CBOR** (1606 vs 1505) — but that total hides
+  the interesting part. Read the [head/body split](#the-head-and-the-body-move-in-opposite-directions)
+  before drawing a conclusion from it.
+- **The credential moves, it does not shrink.** The `Bearer` header is 696 bytes over the run (6
+  calls × 116 bytes: a 99-byte JWT value plus its name and line endings); the `cose` signature is
+  557 over 5 sealed calls. The point is not that one is smaller — it is that the `cose` one is
+  _verified_, and the `Bearer` one here is not (the server accepts any token; see below).
+
+### The head and the body move in opposite directions
+
+This is the table an eye comparing two payloads is really reading, and it is the one that is easiest
+to get wrong from a total:
+
+| Op                         | Variant | Head/call | Body/call | Total/call | Credential   |
+| -------------------------- | ------- | --------: | --------: | ---------: | ------------ |
+| `procedure.registerDevice` | `json`  |       221 |       110 |        331 | 116 B header |
+| `procedure.registerDevice` | `cbor`  |       221 |       101 |        322 | 116 B header |
+| `procedure.registerDevice` | `cose`  |       105 |       101 |        206 | in the body  |
+| `procedure.addNote`        | `json`  |       214 |        49 |        263 | 116 B header |
+| `procedure.addNote`        | `cbor`  |       214 |        43 |        257 | 116 B header |
+| `procedure.addNote`        | `cose`  |       146 |       155 |        301 | in the body  |
+| `procedure.listNotes`      | `json`  |       216 |        11 |        227 | 116 B header |
+| `procedure.listNotes`      | `cbor`  |       216 |         7 |        223 | 116 B header |
+| `procedure.listNotes`      | `cose`  |       148 |       118 |        266 | in the body  |
+
+For the same call, a `cose` one has a **much thinner head** — it sends no `Authorization` header
+(116 bytes saved) and pays only a longer `content-type` (40 vs 16 bytes) — and a **much fatter body**,
+the payload plus the ~111 bytes of signature and protected header. So:
+
+- **If you look at headers, `cose` is thinner.** That is a real observation, not an illusion.
+- **If you look at the whole call, `cose` is bigger**, by the difference between the two.
+
+Both are true, of different halves. A report that gave only the total would let the first observation
+look like a mistake, which is why both tables are here.
+
+### The signature against the token it replaces
+
+The headline, stated directly:
+
+| Credential       |   Bytes | Where       |
+| ---------------- | ------: | ----------- |
+| `Bearer` header  | **116** | in the head |
+| `cose` signature | **111** | in the body |
+
+**Signing roughly _replaces_ a token rather than adding to it.** The 64-byte ESP256 signature plus its
+protected header lands within a few bytes of the `Bearer` header it displaces, so a signed call costs
+about the same as a token-authenticated one — and the `cose` one is actually verified. What signing
+costs is _not_ +111 bytes on top of a token; it is ~111 bytes _instead of_ ~116.
+
+The `registerDevice` row is the exception that proves it: that call carries **no credential at all**
+on the `cose` server (a device has to identify itself before it can sign), so `cose` wins there
+outright — 206 against 331.
 
 Per op, so the shape of the scenario is visible and not only its total:
 
-| Op | Call | JSON | CBOR | COSE |
-| --- | ---: | ---: | ---: | ---: |
-| `procedure.registerDevice` | 1 | 1 × 331 = 331 | 1 × 322 = 322 | 1 × 206 = 206 |
-| `procedure.addNote` | 2 | 2 × 263 = 526 | 2 × 257 = 514 | 2 × 301 = 602 |
-| `procedure.listNotes` | 3 | 3 × 227 = 681 | 3 × 223 = 669 | 3 × 266 = 798 |
+| Op                         | Call |          JSON |          CBOR |          COSE |
+| -------------------------- | ---: | ------------: | ------------: | ------------: |
+| `procedure.registerDevice` |    1 | 1 × 331 = 331 | 1 × 322 = 322 | 1 × 206 = 206 |
+| `procedure.addNote`        |    2 | 2 × 263 = 526 | 2 × 257 = 514 | 2 × 301 = 602 |
+| `procedure.listNotes`      |    3 | 3 × 227 = 681 | 3 × 223 = 669 | 3 × 266 = 798 |
 
 `registerDevice` is the one op a `cose` server leaves **plain** (a device has to identify itself
 before it can sign), and it is the only row where `cose` is smallest — it is plain CBOR carrying no
@@ -47,11 +93,11 @@ header, where the other two carry the `Authorization` header. Every signed row i
 
 A delta of "101 bytes" is not an explanation. The report attributes it:
 
-| Op | Payload | External AAD | Body | Added | Added % |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `procedure.addNote` | 43 | 102 | 155 | 112 | 260.5% |
-| `procedure.listNotes` | 7 | 104 | 118 | 111 | 1585.7% |
-| **Total** | **107** | | | **557** | |
+| Op                    | Payload | External AAD | Body |   Added | Added % |
+| --------------------- | ------: | -----------: | ---: | ------: | ------: |
+| `procedure.addNote`   |      43 |          102 |  155 |     112 |  260.5% |
+| `procedure.listNotes` |       7 |          104 |  118 |     111 | 1585.7% |
+| **Total**             | **107** |              |      | **557** |         |
 
 - **Payload** is the CBOR the runner encoded — the thing being sent.
 - **Added** is the body minus the payload: the protected header, the 64-byte ESP256 signature, and
@@ -65,10 +111,17 @@ A delta of "101 bytes" is not an explanation. The report attributes it:
 The added percentage is large (260%, 1585%) because the payloads are tiny. At a realistic payload of
 a few kilobytes the same ~111 bytes would be a few percent — which is the useful way to read it.
 
+**Read "added" as the cost of the envelope, not as the cost of signing.** The ~111 bytes are what
+the `COSE_Sign1` layer wraps around a payload. Whether that is _more_ than the alternative depends on
+what it replaces, and it replaces a 116-byte `Bearer` header — see
+[the signature against the token](#the-signature-against-the-token-it-replaces). Adding the two
+numbers together (111 + 116) would be wrong twice over: it counts bytes that are not in the same
+place, and it compares a variant that has a credential against one that would not.
+
 ## Why the measurement is on the server
 
 A client cannot see its own inherited headers. `content-length`, `host` and the rest are added by
-the stack on the way out, so a client that adds up the headers it *set* reports a number that never
+the stack on the way out, so a client that adds up the headers it _set_ reports a number that never
 existed — and it would be wrong in a direction that flatters whichever variant is smallest, because
 the omitted bytes are the same for all of them.
 
@@ -87,16 +140,16 @@ Two consequences worth knowing:
 
 ## The variants
 
-| Variant | Body | Credential |
-| --- | --- | --- |
-| `json` | `application/json` | none, unless the caller sends `Authorization: Bearer …` |
-| `cbor` | `application/cbor` | none, unless the caller sends `Authorization: Bearer …` |
-| `cose` | `application/cose; cose-type="cose-sign1"` wrapping CBOR | the signature in the body |
+| Variant | Body                                                     | Credential                                              |
+| ------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| `json`  | `application/json`                                       | none, unless the caller sends `Authorization: Bearer …` |
+| `cbor`  | `application/cbor`                                       | none, unless the caller sends `Authorization: Bearer …` |
+| `cose`  | `application/cose; cose-type="cose-sign1"` wrapping CBOR | the signature in the body                               |
 
 **The `Bearer` token is not verified.** This server measures bytes; a real one would check the token,
 and the plain variants would be refused outright without one (they have no signature to identify
-their caller, so the baseline needs *a* token to be authorized at all). The number that variant
-produces is a realistic-*size* header, not a working credential, and the report says so rather than
+their caller, so the baseline needs _a_ token to be authorized at all). The number that variant
+produces is a realistic-_size_ header, not a working credential, and the report says so rather than
 implying the baseline is production-shaped.
 
 ## Run it
@@ -134,31 +187,31 @@ assertion:
   scenario and asserts the statuses, the totals and the credential placement — a runner that built
   requests and never drove them would produce a report of zero bytes, so these assertions are on
   bytes that had to cross a router to exist.
-- **The arithmetic is in the tests.** `measure.rs`'s own tests were written *after* the first three
+- **The arithmetic is in the tests.** `measure.rs`'s own tests were written _after_ the first three
   attempts got the byte counts wrong by hand, and they now derive every constant from its parts.
 
 ## What is in it
 
-| Path | What it is |
-| --- | --- |
-| `server/schema.cstack` | One contract, served by all three variants. |
-| `server/src/measure.rs` | The measurement: what arrived, what was sent, headers and body bytes. |
-| `server/src/registry.rs` | The device registry, and the envelope layer's `CoseVerifierResolver`. |
-| `server/src/lib.rs` | `Variant`, the procedures, and `build` (the envelope only for `cose`). |
-| `server/src/runner.rs` | The scenario driver: the same calls, every variant, in process. |
-| `server/src/scenario.rs` | `Scenario` and `Run`, and the envelope overhead's attribution. |
-| `server/src/report.rs` | The measurement rendered as Markdown. |
-| `server/src/main.rs` | `--variant json\|cbor\|cose --listen ADDR`, and the hello line. |
-| `server/src/bin/report.rs` | `cargo run --bin wire-sizes-report`: the report, for `REPORT.md`. |
-| `server/REPORT.md` | The generated report. Never edit it by hand; regenerate it. |
-| `server/deny.toml` | The cli's licence policy plus what CrateStack's graph brings, as `examples/cose/server/deny.toml` does. |
+| Path                       | What it is                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `server/schema.cstack`     | One contract, served by all three variants.                                                             |
+| `server/src/measure.rs`    | The measurement: what arrived, what was sent, headers and body bytes.                                   |
+| `server/src/registry.rs`   | The device registry, and the envelope layer's `CoseVerifierResolver`.                                   |
+| `server/src/lib.rs`        | `Variant`, the procedures, and `build` (the envelope only for `cose`).                                  |
+| `server/src/runner.rs`     | The scenario driver: the same calls, every variant, in process.                                         |
+| `server/src/scenario.rs`   | `Scenario` and `Run`, and the envelope overhead's attribution.                                          |
+| `server/src/report.rs`     | The measurement rendered as Markdown.                                                                   |
+| `server/src/main.rs`       | `--variant json\|cbor\|cose --listen ADDR`, and the hello line.                                         |
+| `server/src/bin/report.rs` | `cargo run --bin wire-sizes-report`: the report, for `REPORT.md`.                                       |
+| `server/REPORT.md`         | The generated report. Never edit it by hand; regenerate it.                                             |
+| `server/deny.toml`         | The cli's licence policy plus what CrateStack's graph brings, as `examples/cose/server/deny.toml` does. |
 
 ## Not built
 
 - **Realistic payload sizes.** Every payload here is tens of bytes, where framing dominates. The
   example measures a small call honestly; it says nothing about a 1 MiB body, where the percentage
   overhead would be tiny.
-- **A verified `Bearer` token.** The baseline is realistic in *size*, not in behaviour. A server that
+- **A verified `Bearer` token.** The baseline is realistic in _size_, not in behaviour. A server that
   checked the token would need a JWKS, and the scenario's setup would dominate its measurement.
 - **`MEASURE_LIMIT_BYTES` (1 MiB).** A larger body is counted at the limit, so its size understates.
   The payloads here are far below it, and the tests assert that.

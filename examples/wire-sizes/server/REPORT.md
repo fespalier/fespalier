@@ -21,3 +21,25 @@
 | `procedure.addNote` | 2 | 2 × 263 = 526 | 2 × 257 = 514 | 2 × 301 = 602 |
 | `procedure.listNotes` | 3 | 3 × 227 = 681 | 3 × 223 = 669 | 3 × 266 = 798 |
 
+
+| Op | Variant | Head/call | Body/call | Total/call | Credential |
+| --- | --- | ---: | ---: | ---: | --- |
+| `procedure.registerDevice` | `json` | 221 | 110 | 331 | 116 B header |
+| `procedure.registerDevice` | `cbor` | 221 | 101 | 322 | 116 B header |
+| `procedure.registerDevice` | `cose` | 105 | 101 | 206 | in the body |
+| `procedure.addNote` | `json` | 214 | 49 | 263 | 116 B header |
+| `procedure.addNote` | `cbor` | 214 | 43 | 257 | 116 B header |
+| `procedure.addNote` | `cose` | 146 | 155 | 301 | in the body |
+| `procedure.listNotes` | `json` | 216 | 11 | 227 | 116 B header |
+| `procedure.listNotes` | `cbor` | 216 | 7 | 223 | 116 B header |
+| `procedure.listNotes` | `cose` | 148 | 118 | 266 | in the body |
+
+
+**The credential, compared directly.**
+
+| Credential | Bytes | Where |
+| --- | ---: | --- |
+| `json` `Bearer` header | 116 | in the head (696 over 6 calls) |
+| `cbor` `Bearer` header | 116 | in the head (696 over 6 calls) |
+| `cose` signature | 111 | in the body (557 over 5 sealed calls) |
+

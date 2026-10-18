@@ -38,7 +38,8 @@ Native crash records can name their screen, which takes otel_zone v0.7.0 and one
 `fespalier` and every companion to the 0.19.0 tag, regenerate, read the diff, then:
 
 1. **Optional: native crash records can name the screen.** Bump `otel_zone` to v0.8.1 (the pin is the commit
-   `64c4661ac6cd09718141864d528892916677cc38`, which fespalier_otel needs from 0.19.0 anyway; v0.7.0 was the first with `onScreen`), pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and
+   `64c4661ac6cd09718141864d528892916677cc38`; v0.7.0 was the first with `onScreen`, and `fespalier_otel` needs the rc.4 line
+   from 0.19.0 anyway, which is `otel_zone` v0.8.0 or later), pass `onScreen: observability.setCrashScreen` to `FespalierOtel`, and
    run `fsp telemetry --stop`, then `fsp telemetry`, so the collector reads the attribute and the Errors table has its panel. `app.g.dart`
    is not changed by this item (item 5 regenerates it for every app), and an app that does none of this keeps its crash records as they are. See
    [`fespalier-observability`](../fespalier-observability/SKILL.md) (its telemetry section).
@@ -53,8 +54,10 @@ Native crash records can name their screen, which takes otel_zone v0.7.0 and one
    `main()`), and in `lib/app/startup.dart` the `OtelZone`, its `start()`, the `FespalierOtel` sink, the two observers and
    a `zone()` that runs `runGuarded`. `fsp gen` warns about the `OtelZone` and the `FespalierTelemetry.install` that are
    still there. A sink that `startup()` installs with `FespalierTelemetry.install` must use `FespalierTelemetry.add`, once
-   (guarded by `FespalierTelemetry.contains`, because Retry runs `startup()` again), or it replaces the OpenTelemetry sink. `otel: true` needs `telemetry: true`, `fespalier_otel` and `otel_zone` (v0.8.1 or later, item 1's
-   pin) under `dependencies:`, and not `main: manual`; `fsp` says which one is missing. An older `otel_zone` still works on mobile, but its web build is blank, so bump its ref. Only `lib/app.main.g.dart`
+   (guarded by `FespalierTelemetry.contains`, because Retry runs `startup()` again), or it replaces the OpenTelemetry sink. `otel: true` needs `telemetry: true`, `fespalier_otel` and `otel_zone` (item 1's
+   pin) under `dependencies:`, and not `main: manual`; `fsp` says which one is missing. `fespalier_otel` resolves with `otel_zone`
+   v0.8.0 or later, but only v0.8.1 runs the generated zone on the web: on v0.8.0 the app works on mobile and its web build is blank,
+   so use the pin. Only `lib/app.main.g.dart`
    changes for this item (`app.g.dart` changes for item 5). See [`fespalier-observability`](../fespalier-observability/SKILL.md) (its telemetry section).
 4. **Sentry names a page at its commit.** The scope's transaction name, `fespalier.route` and, next to `fespalier_otel`, `otel.trace_id` and `otel.span_id` are set when a navigation commits, before the new page's `initState` and first `build`. Most events read the same: Sentry's own capture of an exception reads the scope after the frame, and a guard, `data()` or action error takes its `fespalier.route` from its call site. What changes is what reads the scope during that frame: an event captured on a copy of it (`captureException(..., withScope: ...)` in your code, and fespalier's own events, whose transaction name now is the page being opened), and code that reads `scope.transaction` or the tags, such as a page's `initState`. From the commit until the first frame, an event from the page being left names the destination too (`captureException` right after `router.go(...)` in the same handler). A search on the transaction name finds these events under the page being opened. Nothing to change in code; a test that read `sentry.tags` or `transactionName` before a pump now sees the new page. See [`fespalier-observability`](../fespalier-observability/SKILL.md) (its Sentry reference).
 

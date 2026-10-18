@@ -1612,6 +1612,38 @@ fn otel_runs_main_in_its_zone_on_every_platform() {
 }
 
 #[test]
+fn otel_with_a_deferred_route_keeps_kisweb_for_the_deferred_load_only() {
+    let g = run_yaml(
+        &with_otel(""),
+        &[
+            ("page.dart", HOME),
+            ("route.dart", "const deferred = true;"),
+        ],
+    );
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.unwrap();
+    // The deferred path still needs `kIsWeb` (the web loads those chunks on demand)...
+    has(
+        &main,
+        &[
+            "import 'package:flutter/foundation.dart' show kIsWeb;",
+            "    if (!kIsWeb) await AppRoutes.loadDeferred();",
+        ],
+    );
+    // ...but the zone does not: it runs the body on every platform, with no web branch.
+    has(
+        &main,
+        &[
+            "static Future<void> run() => _otelZone(_main);",
+            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      observability.runGuarded(body);",
+        ],
+    );
+    has_not(&main, &["kIsWeb ?"]);
+    // `kIsWeb` appears once in the code (the deferred load) besides its import.
+    assert_eq!(main.matches("kIsWeb").count(), 2, "{main}");
+}
+
+#[test]
 fn a_zone_in_startup_dart_replaces_otels() {
     let g = run_yaml(
         &with_otel(""),

@@ -167,7 +167,7 @@ The mark and the word are the colour, in words. The SQL is read from the generat
 
 A web app posts OTLP/HTTP to the collector from another origin (`http://localhost:<port>` to `http://localhost:4318`), which needs CORS: the collector allows `http://localhost:*` and `http://127.0.0.1:*`, plus `FSP_OTLP_CORS_ORIGIN`. A page served over `https` cannot post to `http://localhost` (mixed content); use `flutter run -d chrome` in development.
 
-**`otel_zone`'s `runGuarded` runs its body on the web since v0.8.1.** Before it (checked with `otel_zone` v0.5.0), the zone opened a `ReceivePort` from `dart:isolate` ahead of the body, which the web does not have, and the zone's own handler swallowed the error: the app stayed blank and nothing was printed. `start()` works on the web either way. With `otel: true` the generated `main()` wraps the app in the zone on the web too, and that needs v0.8.1 or later. On an older `otel_zone`, do not use the zone on the web:
+**`otel_zone`'s `runGuarded` runs its body on the web since v0.8.1.** Before it (checked with `otel_zone` v0.5.0), the zone opened a `ReceivePort` from `dart:isolate` ahead of the body, which the web does not have, and the zone's own handler swallowed the error: the app stayed blank and nothing was printed. `start()` works on the web either way. With `otel: true` the generated `main()` wraps the app in the zone on the web too (its `observability` is `AppMain.observability`), so that app's fix is to bump `otel_zone` to v0.8.1. The snippet below is for an app wired by hand on an older `otel_zone`, which must not use the zone on the web:
 
 ```dart
 Future<void> zone(Future<void> Function() body) {

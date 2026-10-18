@@ -143,16 +143,17 @@ because a browser has no isolates.
 ## go_router
 
 Since 0.19.0 this package follows the dartastic rc.4 line (`dartastic_opentelemetry` 1.1.0-beta.17,
-API 1.0.0-rc.4), the one `otel_zone` from v0.8.1 (commit `64c4661ac6cd09718141864d528892916677cc38`) starts, and that `otel_zone`'s `otel_go_router` accepts go_router 17 and 18: pub resolves 18 where
-Flutter has it, with no override. An `otel_zone` before the rc.4 line (up to v0.7.0) is on the rc.3 line
-and cannot resolve beside this package at all; it also pins `go_router: ^17.0.0`, so move it to v0.8.1
-first.
+API 1.0.0-rc.4), which starts at `otel_zone` v0.8.0. This repository pins v0.8.1 (commit
+`64c4661ac6cd09718141864d528892916677cc38`), the first whose `runGuarded` runs on the web. That
+`otel_zone`'s `otel_go_router` accepts go_router 17 and 18: pub resolves 18 where Flutter has it, with
+no override. An `otel_zone` before the rc.4 line (up to v0.7.0) is on the rc.3 line and cannot resolve
+beside this package at all; it also pins `go_router: ^17.0.0`, so move it to v0.8.1 first.
 
 ## Startup failures
 
 A failure while the app starts arrives through `FlutterError.reportError`. `runGuarded` points
-`FlutterError.onError` at `otel_zone`'s sink on the web too (since v0.8.1), so it is exported; nothing
-here needs to catch it.
+`FlutterError.onError` at `otel_zone`'s sink on the web too (since otel_zone v0.8.1), so it is exported;
+nothing here needs to catch it.
 
 ## Tests
 

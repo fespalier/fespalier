@@ -47,4 +47,4 @@ samples are in). `fsp telemetry --report` prints the same answers in the termina
 _Sample data from `scripts/telemetry/seed.py --showcase`._
 
 It resolves go_router 18 like the other examples: since `otel_zone` moved to the dartastic rc.4 line,
-its `otel_go_router` accepts go_router 17 and 18 (the pin in `pubspec.yaml` is that commit).
+its `otel_go_router` accepts go_router 17 and 18 (the pin in `pubspec.yaml` is the commit of its v0.8.1).

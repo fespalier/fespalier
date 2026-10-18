@@ -128,7 +128,10 @@ Since otel_zone v0.8.1, `OtelZone.runGuarded` runs its body on the web. Before i
 there and the app stayed blank (it built a `ReceivePort`, which `dart:isolate` does not support; nothing was
 printed). `start()` works on the web, and spans and logs are exported. On an older `otel_zone`, return the body
 without `runGuarded` when `kIsWeb` is true; the error hooks `runGuarded` installs are then not installed there.
-`OtelZoneConfig` and everything else is unchanged.
+`OtelZoneConfig` and everything else is unchanged. In a release web build the zone's errors go to `otel_zone`'s sink
+only (its console printing and Flutter's error dump are on in debug only), so without `OTEL_EXPORTER_OTLP_ENDPOINT`
+they are seen nowhere, as on mobile. Seen by hand, not by CI: a created `otel` web app rendered and exported in
+headless Chromium (release, `--wasm` and debug), and a release build without the define sent nothing.
 
 ## Several sinks: `combine` and `add` (since 0.9.0)
 

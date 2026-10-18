@@ -15,6 +15,12 @@ path = "src/lib.rs"
 name = "wire-sizes-demo-server"
 path = "src/main.rs"
 
+# The same run the tests drive, printed rather than asserted, so the report's numbers can be
+# re-derived by anyone with a checkout instead of taken on trust.
+[[bin]]
+name = "wire-sizes-report"
+path = "src/bin/report.rs"
+
 [dependencies]
 # Schema macros emit `::cratestack::*` paths, hence the rename. Exact pin: the wire format
 # (binding version 2) moves with the crate.
@@ -31,8 +37,8 @@ async-trait = "0.1"
 base64 = "0.23"
 getrandom = "0.4"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
-
-[dev-dependencies]
+# The runner drives the router in process (`oneshot`) so it can read the server's own measurement
+# back; that is library code, not a test-only helper, so the dependency is not a dev one.
 tower = { version = "0.5", features = ["util"] }
 
 [lints.rust]

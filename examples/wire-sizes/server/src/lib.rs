@@ -18,6 +18,9 @@
 
 pub mod measure;
 pub mod registry;
+pub mod report;
+pub mod runner;
+pub mod scenario;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -117,6 +120,26 @@ pub struct Built {
     pub devices: DeviceKeys,
     /// Every exchange measured, for the report script to read back.
     pub exchanges: ExchangeLog,
+    /// The verification half of the response key, so a client built from the same construction can
+    /// check the answers. `None` for the plain variants, which seal nothing.
+    server_key: Option<CoseVerifyKey>,
+}
+
+impl Built {
+    /// The verification half of the `cose` server's response key.
+    ///
+    /// # Errors
+    /// For `json` and `cbor`, which have no key: asking one for a key is a caller bug, not a
+    /// runtime condition, and a silent `None` would let a signing client be built against a server
+    /// that never verifies anything.
+    pub fn cose_server_key(&self) -> Result<CoseVerifyKey, CratestackError> {
+        self.server_key.clone().ok_or_else(|| {
+            CratestackError::Internal(format!(
+                "the {} server has no key: only `cose` seals its answers",
+                self.hello.variant
+            ))
+        })
+    }
 }
 
 /// Whether `op` travels as a signed message in the `cose` variant.
@@ -220,10 +243,13 @@ impl ProcedureRegistry for Procedures {
     }
 }
 
-/// The verified caller's thumbprint.
+/// The verified caller's storage key.
 ///
-/// The `cose` variant gets it from the envelope layer's verdict; the plain variants from the
-/// `Bearer` header's identity. Either way the procedures are written once.
+/// The `cose` variant gets a real thumbprint from the envelope layer's verdict. The plain variants
+/// get the `Bearer` header's identity, which is an opaque string this server never verifies — so it
+/// is folded into the same 32-byte shape rather than being required to already be one. Insisting on
+/// hex here would have made the plain baseline unable to write a note at all, which is a fact about
+/// the token's spelling rather than about the bytes being measured.
 fn who_of(ctx: &CratestackContext) -> Result<[u8; 32], CratestackError> {
     if let Some(signer) = ctx.verified_signer() {
         return Ok(*signer.thumbprint());
@@ -237,9 +263,36 @@ fn who_of(ctx: &CratestackContext) -> Result<[u8; 32], CratestackError> {
             _ => None,
         })
         .ok_or_else(|| CratestackError::Unauthorized("authenticate".to_owned()))?;
-    hex_to_bytes(&subject)
+    // A hex thumbprint is used as itself, so a caller that presents one is the same caller as
+    // before; anything else is folded down, so the two spellings can never collide.
+    Ok(hex_to_bytes(&subject)
         .and_then(|b| b.try_into().ok())
-        .ok_or_else(|| CratestackError::Unauthorized("bad identity".to_owned()))
+        .unwrap_or_else(|| fold_identity(&subject)))
+}
+
+/// Folds an opaque identity string into 32 bytes.
+///
+/// Not a hash with a claimed security property: this only has to give two different strings two
+/// different keys with overwhelming likelihood, in a server whose whole job is to count bytes.
+fn fold_identity(s: &str) -> [u8; 32] {
+    // FNV-1a over the bytes, then a second pass with a different offset so the two halves are not
+    // the same value repeated (which would make distinct strings collide more easily).
+    let mut out = [0_u8; 32];
+    for (half, offset) in [
+        (0_usize, 0xcbf2_9ce4_8422_2325_u64),
+        (16, 0x9e37_79b9_7f4a_7c15),
+    ] {
+        let mut hash = offset;
+        for byte in s.as_bytes() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        out[half..half + 8].copy_from_slice(&hash.to_le_bytes());
+        // The second half also mixes the length, so `"a"` and `"aa"` cannot land together.
+        out[half + 8..half + 16]
+            .copy_from_slice(&(hash ^ u64::try_from(s.len()).unwrap_or(u64::MAX)).to_le_bytes());
+    }
+    out
 }
 
 /// Decodes a lowercase-hex string, or `None` when it is not hex.
@@ -398,6 +451,15 @@ pub fn build(
         }
     };
 
+    // The `cose` key out of the match, so `Built` can hand it to a client that will verify
+    // answers. Rebuilt from the same scalar rather than moved out of the match arm, so the arm
+    // stays a plain expression.
+    let server_key = if variant == Variant::Cose {
+        Some(P256Signer::from_scalar(server_scalar)?.verify_key())
+    } else {
+        None
+    };
+
     // Outermost: the measurement. Outside every other layer on purpose — a refusal from the
     // envelope layer or the codec is a real exchange with a real size, and a comparison that only
     // weighed successful calls would be measuring something else.
@@ -418,6 +480,7 @@ pub fn build(
         },
         devices,
         exchanges,
+        server_key,
     })
 }
 

@@ -218,6 +218,23 @@ just cose                                                                   # th
 
 `SignKeypairSigner` (the hardware key) is not run by any test: they use a software key.
 
+## wire-sizes
+
+[`examples/wire-sizes`](../examples/wire-sizes) is a **measurement**, not an app: one CrateStack schema served as JSON, plain CBOR and `COSE_Sign1` CBOR, with every request weighed on the wire by the server that received it — headers, request line and framing included. It answers the question [`examples/cose`](../examples/cose) raises: what does signing a call actually cost?
+
+- a Rust server (`examples/wire-sizes/server`, no database, its own `Cargo.lock`) whose `--variant json|cbor|cose` picks the codec, and whose outermost middleware records each exchange before any inner layer can refuse it;
+- a runner that drives the same scenario through all three variants **in process**, so it can read the server's own log back — a client cannot see the headers its stack adds, so the server is the only honest source for the request side;
+- an attributed `cose` overhead: the payload, the protected header, the 64-byte signature and the external AAD are separated, so the delta is explained rather than reported;
+- a **generated** `REPORT.md`, with a test that fails when the committed report is stale.
+
+```sh
+cd examples/wire-sizes/server && cargo run --locked -- --variant cbor --listen 127.0.0.1:8787
+cd examples/wire-sizes/server && cargo run --release --bin wire-sizes-report    # the tables
+just wire-sizes                                                               # fmt, clippy, tests, deny, and the report compared with REPORT.md
+```
+
+The numbers are small-payload numbers: on these tens-of-bytes calls the byte counts are dominated by headers, and the `Bearer` baseline is realistic in _size_ but not verified, which the report says.
+
 ## i18n
 
 [`examples/i18n`](../examples/i18n) is [`fespalier_tolgee`](../packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):

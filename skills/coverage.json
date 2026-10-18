@@ -924,6 +924,7 @@
         "examples/offline",
         "docs/examples.md#cose",
         "examples/cose",
+        "docs/examples.md#wire-sizes",
         "examples/wire-sizes",
         "packages/fespalier_cratestack/README.md",
         "packages/fespalier_cratestack/lib/dio.dart",

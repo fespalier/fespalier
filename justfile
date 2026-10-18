@@ -223,6 +223,21 @@ cose: cose-server
     flutter analyze
     COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
 
+# The wire-sizes example's server (examples/wire-sizes/server, a standalone Rust crate on cratestack-api 0.15.3):
+# fmt, clippy, tests, a locked build and cargo-deny, then the report regenerated and compared with the
+# committed REPORT.md, so a stale report fails rather than being believed. A cold build compiles cratestack
+# and takes a couple of minutes, so it is not part of `just ci`.
+[working-directory: 'examples/wire-sizes/server']
+wire-sizes:
+    cargo fmt --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+    cargo build --locked
+    cargo deny --config deny.toml check
+    # `cargo test` already compares REPORT.md with a fresh measurement; this proves the binary the
+    # README tells a reader to run produces the same text.
+    diff <(cargo run --locked --quiet --bin wire-sizes-report) REPORT.md
+
 # The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
 # ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.
 # Needs Flutter and Node; about two minutes, and not part of `just ci` (CI runs it as `web-routes`)

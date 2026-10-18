@@ -800,6 +800,55 @@ jobs:
           FSP_REQUIRE_COSE_SERVER: "1"
         run: flutter test
 
+  # examples/wire-sizes: a CrateStack server (a Rust crate of its own, examples/wire-sizes/server) that
+  # serves one schema as JSON, CBOR and COSE_Sign1 CBOR with every request measured on the wire, and the
+  # runner that drives it. There is no app: the measurement is the product, and its report is committed.
+  # The last step is the point of the job — the report is generated, so a committed REPORT.md that was not
+  # regenerated after a code change fails here instead of being believed. It is not in the `floor` job:
+  # nothing here is a Flutter package. `just wire-sizes` runs the same steps.
+  wire-sizes:
+    name: wire-sizes example (the measurement and its report)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server crate pins its own toolchain (cli/tests/versions.rs checks it equals the
+      # generator's); this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/wire-sizes/server/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/wire-sizes/server
+      # `cargo test` includes the one that compares the committed REPORT.md with a fresh measurement.
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/wire-sizes/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      # Licences, advisories, sources: examples/wire-sizes/server/deny.toml (cratestack's graph brings a
+      # few more licences than the generator's).
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/wire-sizes/server/Cargo.toml
+          command: check
+      # The binary the README tells a reader to run, checked against the committed report: a report that
+      # only the test library can reproduce would not be reproducible by the reader it is written for.
+      - name: The report binary reproduces REPORT.md
+        working-directory: examples/wire-sizes/server
+        run: diff <(cargo run --locked --quiet --bin wire-sizes-report) REPORT.md
+
   web:
     name: Deferred routes split on the web
     runs-on: ubuntu-latest

@@ -382,6 +382,7 @@ isolate.
 | Where CrateStack's embedded SQLite mode fits and where it does not                                    | [`references/embedded-mode.md`](references/embedded-mode.md)     |
 | Reads, intents, owned rows, sync, testing                                                             | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
 | A transport that signs every request and a server that checks it, end to end                          | [`examples/cose`](../../examples/cose/README.md)                 |
+| What a call costs in bytes, as JSON, as CBOR and as `COSE_Sign1` CBOR, measured on the wire           | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
 
 ## Where the code is
 

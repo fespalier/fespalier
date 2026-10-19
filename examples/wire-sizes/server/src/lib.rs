@@ -9,9 +9,11 @@
 //! | `cbor` | `application/cbor` | none, unless the caller sends a `Bearer` header |
 //! | `cose` | `application/cose; cose-type="cose-sign1"` wrapping CBOR | the signature in the body |
 //!
-//! **Every variant is measured, not estimated.** [`measure`] records what actually arrived and
-//! what was actually sent, headers included, so the report is the wire's own account of itself
-//! rather than a client's guess at its own size.
+//! **Every variant is measured, not estimated.** [`measure`] records each request as the router
+//! received it and each response as the router produced it, headers included. That is the HTTP
+//! message as the handler stack sees it, not the bytes on a socket: `host`, `content-length`,
+//! hyper's `date` and TCP/TLS framing are not counted, so a total is a lower bound (see
+//! [`measure`] and `tests/socket.rs`).
 //!
 //! The envelope layer exists only in the `cose` variant, and that is the whole comparison: the
 //! other two have no signature to verify, and no credential to carry in the body.
@@ -257,7 +259,7 @@ impl ProcedureRegistry for Procedures {
         _authorized: procs::measure_payload::Authorized,
     ) -> Result<procs::measure_payload::Output, CratestackError> {
         // The decoded value's own re-encoding, so the figure is the payload's size rather than the
-        // request's: headers and framing are `measure.rs`'s business, not this op's.
+        // request's: headers are `measure.rs`'s business, not this op's.
         let encoded = CborCodec.encode(&args.args.value)?;
         Ok(procs::measure_payload::Output {
             bytes: i64::try_from(encoded.len()).unwrap_or(i64::MAX),
@@ -267,7 +269,7 @@ impl ProcedureRegistry for Procedures {
 
 /// The verified caller's storage key.
 ///
-/// The `cose` variant gets a real thumbprint from the envelope layer's verdict. The plain variants
+/// The `cose` variant gets a thumbprint from the envelope layer's verdict. The plain variants
 /// get the `Bearer` header's identity, which is an opaque string this server never verifies — so it
 /// is folded into the same 32-byte shape rather than being required to already be one. Insisting on
 /// hex here would have made the plain baseline unable to write a note at all, which is a fact about
@@ -378,8 +380,8 @@ impl AuthProvider for SignerAuth {
 /// The plain variants' auth: a `Bearer` header, or nothing.
 ///
 /// **The token is not verified.** This server measures bytes; a real one would check the token. The
-/// number this variant produces is therefore a *realistic-size* header, not a working credential,
-/// and the report says so rather than implying the baseline is production-shaped.
+/// number this variant produces is therefore a header of realistic size, not a working credential,
+/// and the report says so.
 #[derive(Clone)]
 struct BearerAuth;
 
@@ -482,9 +484,8 @@ pub fn build(
         None
     };
 
-    // Outermost: the measurement. Outside every other layer on purpose — a refusal from the
-    // envelope layer or the codec is a real exchange with a real size, and a comparison that only
-    // weighed successful calls would be measuring something else.
+    // Outermost: the measurement. Outside every other layer on purpose, so a refusal from the
+    // envelope layer or the codec is an exchange with a size and is recorded like any other.
     let router = router.layer(cratestack::axum::middleware::from_fn({
         let log = exchanges.clone();
         move |request: cratestack::axum::extract::Request,

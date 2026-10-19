@@ -1,9 +1,8 @@
-//! The runner end to end: the same scenario through every variant, measured, and the two accounts
-//! compared.
+//! The runner end to end: the same scenario through every variant, measured.
 //!
-//! These tests are the evidence that the runner *sends*. A runner that built requests and never
-//! drove them would pass a unit test of its own helpers and produce a report of zero bytes; the
-//! assertions here are on bytes that had to cross a router to exist.
+//! These tests show that the runner sends. A runner that built requests and never drove them would
+//! pass a unit test of its own helpers and produce a report of zero bytes; the assertions here are
+//! on bytes that had to pass through the router to be counted.
 
 use wire_sizes_demo_server::Variant;
 use wire_sizes_demo_server::runner;
@@ -150,13 +149,13 @@ async fn a_signed_body_weighs_more_than_the_payload_it_carries() {
 }
 
 #[tokio::test]
-async fn the_two_accounts_do_not_contradict_each_other() {
+async fn the_totals_are_sums_of_their_parts() {
     for variant in Variant::all() {
         let run = run_of(variant).await;
-        // The server's account is the only one there is, and it has to be internally consistent:
-        // every total is the sum of its head and its body, and no part is ever larger than the
-        // whole it belongs to. These hold by construction, which is exactly why they are worth
-        // asserting — a refactor that double-counted a header would break one of them.
+        // The server's log is the only count there is, and it has to be internally consistent:
+        // every total is the sum of its head and its body, and no part is larger than the whole it
+        // belongs to. These hold by construction; a refactor that counted a header twice would
+        // break one of them.
         for exchange in &run.exchanges {
             assert_eq!(
                 exchange.request_total_bytes(),

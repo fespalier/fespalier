@@ -51,7 +51,7 @@ async fn the_report_holds_the_numbers_it_claims() {
     // does another.
     assert!(
         cbor.server_request_total() < json.server_request_total(),
-        "plain CBOR should be smaller than JSON on the wire"
+        "plain CBOR should be smaller than JSON"
     );
     assert!(
         cose.added_total() > 0,
@@ -131,11 +131,10 @@ async fn the_signature_and_the_bearer_are_comparable_in_size() {
     let cbor = run_of(Variant::Cbor);
     let cose = run_of(Variant::Cose);
 
-    // This is the honest headline, and the one the totals hide: signing *replaces* a token rather
-    // than adding to it. Pinned with a bound rather than an equality, because the exact figure moves
-    // with the token's length and the protected header, and a test that broke on a 1-byte shift
-    // would be noise — but a change of *direction* (a signature that started costing twice a token)
-    // is exactly what a reader would need to know about.
+    // Signing replaces a token rather than adding to it, and the totals hide that. Pinned with a
+    // bound rather than an equality, because the exact figure moves with the token's length and
+    // the protected header, and a 1-byte shift should not fail the test; a change of direction
+    // (a signature that started costing twice a token) should.
     let bearer = report::credential_bytes(cbor) / cbor.exchanges.len();
     let sealed_calls = cose.sealed().len();
     let signature = cose.added_total() / sealed_calls;

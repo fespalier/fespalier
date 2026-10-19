@@ -1,17 +1,22 @@
-# wire-sizes: what a call costs, measured on the wire
+# wire-sizes: what a call costs in bytes, as JSON, CBOR and COSE_Sign1
 
-A [fespalier](../../README.md) / [CrateStack](https://cratestack.dev) example whose whole point is a
-number nobody has to take on trust: **what one call costs in bytes, headers included**, as JSON, as
-plain CBOR, and as CBOR inside a `COSE_Sign1` message.
+A [fespalier](../../README.md) / [CrateStack](https://cratestack.dev) example that counts **what one
+call costs in bytes, headers included**, as JSON, as plain CBOR, and as CBOR inside a `COSE_Sign1`
+message. The count is of the HTTP message as the server's handler stack sees it. It is not a capture
+of a socket, so it leaves out a few headers a real connection adds;
+[where the measurement is taken](#where-the-measurement-is-taken) says which, and how large they are.
 
 [`examples/cose`](../cose/README.md) shows _how_ to sign every request with a device key. This asks
-what that costs against the alternatives a person actually weighs.
+what that costs against the alternatives a person weighs.
 
 ## The numbers
 
 One scenario — register a device, write two notes, read them back three times — driven through all
-three variants. Measured by the server, from what actually arrived, headers and framing included
-([`server/src/measure.rs`](server/src/measure.rs)).
+three variants. A layer in the server ([`server/src/measure.rs`](server/src/measure.rs)) counts each
+request as the router received it and each response as the router produced it: the request or status
+line, the headers and the body. It does not count `host`, `content-length`, hyper's `date` or TCP/TLS
+framing, so every total below is a lower bound. The differences between variants are exact to within
+the digits of `content-length` (see [where the measurement is taken](#where-the-measurement-is-taken)).
 
 | Variant | Credential             | Request bytes | Response bytes | Request body | Credential bytes |
 | ------- | ---------------------- | ------------: | -------------: | -----------: | ---------------: |
@@ -209,25 +214,36 @@ what it replaces, and it replaces a 116-byte `Bearer` header — see
 numbers together (111 + 116) would be wrong twice over: it counts bytes that are not in the same
 place, and it compares a variant that has a credential against one that would not.
 
-## Why the measurement is on the server
+## Where the measurement is taken
 
-A client cannot see its own inherited headers. `content-length`, `host` and the rest are added by
-the stack on the way out, so a client that adds up the headers it _set_ reports a number that never
-existed — and it would be wrong in a direction that flatters whichever variant is smallest, because
-the omitted bytes are the same for all of them.
+The runner never opens a socket. It builds each request itself (a request line, `content-type`,
+`accept`, an `authorization` header for the plain variants, and the body) and hands it to the
+server's router with `tower::ServiceExt::oneshot`
+([`server/src/runner.rs`](server/src/runner.rs)). A middleware that wraps the whole router
+([`server/src/measure.rs`](server/src/measure.rs)) records the request as the router receives it and
+the response as the router returns it, before hyper would write either to a connection.
 
-So the request side is measured by the server, from what arrived
-([`server/src/measure.rs`](server/src/measure.rs)): the method, the path, every header as received,
-and the exact body bytes. The response side is measured the same way, before hyper frames it.
+So a count is **the HTTP message as the handler stack sees it**, with two lines rebuilt: the request
+line from the method and the path, and the status line from the status code and its standard reason
+phrase, because no middleware sees either. It is not the bytes on a socket:
 
-Two consequences worth knowing:
+- A real HTTP/1.1 request also carries `host` and `content-length`, and whatever else its client
+  adds (`user-agent`, `accept-encoding`, cookies). The runner sends none of them, so none are counted.
+- A real response also carries what hyper adds when it writes it: at least `date`, and
+  `content-length` when the handler stack did not set one. None are counted.
+- TCP and TLS framing is not counted.
+
+Those additions are the same for every variant except the digits of `content-length` (a 7-byte body
+and an 11-byte body differ by one digit), so the differences between variants hold to within that,
+and every total is a lower bound.
+
+Two more properties of the measurement:
 
 - **The measurement layer is outermost.** A refusal from the envelope layer or the codec (`401`,
-  `400`, `415`) is a real exchange with a real size, and it is weighed like any other. A comparison
-  that measured only successful calls would be measuring something else.
-- **The request and status lines are reconstructed**, because hyper adds them and no middleware sees
-  them. They are constant across the variants, so leaving them out would shrink every variant by the
-  same amount.
+  `400`, `415`) is an exchange with a size, and it is weighed like any other. The scenario has none:
+  every call is a `POST` that answers `200`.
+- **The request and status lines are rebuilt** from the method, the path and the status, as above.
+  For one op they are the same in every variant, so they do not move a comparison.
 
 ## The variants
 
@@ -256,8 +272,8 @@ cargo run --locked -- --variant cbor --listen 127.0.0.1:8787
 It prints one JSON line when it listens, then serves until killed. `--variant` is `json`, `cbor` or
 `cose`; the `cose` variant is the only one with an audience and a `server_public_jwk`.
 
-The measurement, which needs no running server — it drives the router in process so it can read the
-server's own log back:
+The measurement, which needs no running server — it drives the router in process (no socket) so it
+can read the server's own log back:
 
 ```sh
 cd server
@@ -274,10 +290,10 @@ assertion:
   a fresh measurement, so a report that was not regenerated after a code change fails the build.
 - **The numbers are deterministic.** Two runs produce byte-identical output; nothing here is
   timing-dependent.
-- **The runner sends for real.** `server/tests/runner.rs` drives every variant through the whole
-  scenario and asserts the statuses, the totals and the credential placement — a runner that built
+- **The runner drives the router.** `server/tests/runner.rs` drives every variant through the whole
+  scenario and asserts the statuses, the totals and the credential placement. A runner that built
   requests and never drove them would produce a report of zero bytes, so these assertions are on
-  bytes that had to cross a router to exist.
+  bytes that had to pass through the router to be counted.
 - **The arithmetic is in the tests.** `measure.rs`'s own tests were written _after_ the first three
   attempts got the byte counts wrong by hand, and they now derive every constant from its parts.
 
@@ -286,10 +302,10 @@ assertion:
 | Path                       | What it is                                                                                              |
 | -------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `server/schema.cstack`     | One contract, served by all three variants.                                                             |
-| `server/src/measure.rs`    | The measurement: what arrived, what was sent, headers and body bytes.                                   |
+| `server/src/measure.rs`    | The measuring layer: each request as the router received it, each response as it produced it.           |
 | `server/src/registry.rs`   | The device registry, and the envelope layer's `CoseVerifierResolver`.                                   |
 | `server/src/lib.rs`        | `Variant`, the procedures, and `build` (the envelope only for `cose`).                                  |
-| `server/src/runner.rs`     | The scenario driver: the same calls, every variant, in process.                                         |
+| `server/src/runner.rs`     | The scenario driver: the same calls, every variant, in process (no socket).                             |
 | `server/src/scenario.rs`   | `Scenario` and `Run`, and the envelope overhead's attribution.                                          |
 | `server/src/report.rs`     | The measurement rendered as Markdown.                                                                   |
 | `server/src/main.rs`       | `--variant json\|cbor\|cose --listen ADDR`, and the hello line.                                         |

@@ -75,7 +75,7 @@ impl Shape {
 
     /// Builds `value` as this shape, roughly `target` bytes of text in total.
     ///
-    /// "Roughly" is honest: the shapes pad to a *field count* rather than to an exact byte count, so
+    /// "Roughly", because the shapes pad to a *field count* rather than to an exact byte count, so
     /// each kind can be measured at a comparable size without the layout making up the numbers. The
     /// caller records the size it got, not the size it asked for.
     #[must_use]
@@ -92,7 +92,7 @@ impl Shape {
                 let fields = (0..count)
                     .map(|i| Record {
                         // Positional, and bounded by the payload size, so the conversion cannot
-                        // fail; `try_from` rather than a cast keeps the lint honest.
+                        // fail; `try_from` rather than a cast avoids the pedantic cast lint.
                         id: i64::try_from(i).unwrap_or(i64::MAX),
                         // A varying slice length, so the records are not all identical — identical
                         // records would let a compressing codec flatter itself.

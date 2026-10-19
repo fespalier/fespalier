@@ -1,9 +1,13 @@
 //! The scenario runner: the same sequence of calls, driven through every variant, measured.
 //!
-//! **In process, on purpose.** The runner drives the router directly — `tower::ServiceExt::oneshot`
-//! — rather than dialling a socket, so that it can read the server's own [`ExchangeLog`] back
-//! afterwards. That log is where the numbers come from: a client cannot see its own inherited
-//! headers, so the request side has exactly one honest source, and it is inside the server.
+//! **In process, with no socket.** The runner builds each request itself (a request line,
+//! `content-type`, `accept`, an `authorization` header for the plain variants, and the body) and
+//! hands it to the router with `tower::ServiceExt::oneshot`, so it can read the server's own
+//! [`ExchangeLog`] back afterwards. That log is where the numbers come from, and it holds the HTTP
+//! message as the router received and answered it. A request sent through a client and a socket
+//! would also carry `host`, `content-length` and the client's own headers, and its response hyper's
+//! `date`; none of that exists here, so the counts are lower bounds (`tests/socket.rs` pins the
+//! difference over a real socket).
 //!
 //! What the runner controls is the *scenario*: which calls, in which order, with which arguments.
 //! Every variant runs the identical sequence, so a size difference is the encoding's and not the
@@ -306,9 +310,9 @@ struct Sender<'a> {
 impl Sender<'_> {
     /// Sends one call and reads the answer.
     ///
-    /// The answer's bytes are discarded: the server measured them, and the server's account is the
-    /// one the report uses. The call is still made, which is the whole point — a request the server
-    /// never saw would not be measured.
+    /// The answer's bytes are discarded: the server's measuring layer counted them, and its log is
+    /// what the report uses. The call still has to be made, because a request the router never
+    /// received is not measured.
     ///
     /// Returns what the envelope added, for a sealed call, so the overhead can be attributed rather
     /// than reported as one unexplained delta.
@@ -344,8 +348,8 @@ impl Sender<'_> {
 /// The external AAD a sealed call of `op` is bound to.
 ///
 /// Reconstructed from the same [`binding`] the sealer used, via the crate's own
-/// [`cratestack_cose::external_aad`]: the AAD is not on the wire (a verifier rebuilds it), so this
-/// is the only honest way to say how many bytes it binds. It is reported beside the body, never
+/// [`cratestack_cose::external_aad`]: the AAD is not sent (a verifier rebuilds it from the binding),
+/// so its size can only be computed, not read from a request. It is reported beside the body, never
 /// added to it.
 ///
 /// # Errors
@@ -354,7 +358,10 @@ fn device_aad(op: &str) -> Result<Vec<u8>, CratestackError> {
     cratestack::cose::external_aad(&binding(op, None, None))
 }
 
-/// Builds the HTTP request for one call, exactly as that variant sends it.
+/// Builds the HTTP request for one call: the headers that variant sends, and the body.
+///
+/// It sets no `host` and no `content-length`, because no connection is opened; a client on a
+/// socket would add both (see the module docs).
 fn request_for(
     variant: Variant,
     op: &str,
@@ -375,18 +382,18 @@ fn request_for(
         .map_err(|e| CratestackError::Internal(format!("request: {e}")))
 }
 
-/// Drives the router once, reading the body so the exchange is fully measured.
+/// Drives the router once and reads the response to the end.
 ///
-/// The response's bytes are deliberately not returned. The server counted them on the way out
-/// ([`crate::measure`]), and that count is the report's, so a second one taken here could only
-/// disagree with it — and it would be the one taken *after* framing rather than before.
+/// The response's bytes are not returned. The measuring layer counted them before the router
+/// returned ([`crate::measure`]), and that count is the report's; one taken here would be a count
+/// of the same message.
 async fn send(router: &Router, request: Request<Body>) {
     // `oneshot` is infallible for an axum `Router`: its error type is `Infallible`, so a `Result`
     // here would claim a failure that cannot happen.
     match router.clone().oneshot(request).await {
         Ok(response) => {
-            // Read the body to the end: a body left unread would leave the middleware's count
-            // unfinished, and the exchange would be missing from the log.
+            // Read the body to the end, as a client would. The measuring layer has already
+            // recorded the exchange by the time the router returns.
             let (_, body) = response.into_parts();
             let _ = to_bytes(body, usize::MAX).await;
         }

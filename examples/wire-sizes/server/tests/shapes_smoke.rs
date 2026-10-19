@@ -1,7 +1,7 @@
 //! The new `measurePayload` op carries every shape through every variant.
 //!
-//! This is the proof that arbitrary payloads reach the wire — without it the sweeps would be
-//! measuring the one shape `addNote` can express, which is the mistake the earlier rounds made.
+//! This shows that arbitrary payloads reach the server: without it the sweeps would measure only
+//! the one shape `addNote` can express.
 
 #![allow(clippy::expect_used, reason = "tests may expect")]
 
@@ -53,7 +53,7 @@ async fn every_shape_reaches_the_server() {
 }
 
 #[tokio::test]
-async fn the_payload_shapes_really_differ_on_the_wire() {
+async fn the_payload_shapes_differ_in_size() {
     // A guard against the shapes collapsing into the same thing: if `records` and `nested` produced
     // identical bytes, the shape dimension would be measuring nothing.
     let mut sizes = Vec::new();

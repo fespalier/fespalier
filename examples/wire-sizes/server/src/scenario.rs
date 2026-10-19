@@ -4,10 +4,10 @@
 //! vocabulary the two share — what a run *is* ([`Scenario`]), what it *cost* ([`Run`]), and the one
 //! table that says how each variant names its body ([`content_type_of_variant`]).
 //!
-//! **The server is the account.** A client cannot see the headers its stack adds (`content-length`,
-//! `host`, `date`), so a total it made of the headers it *set* would be a number that never existed
-//! — and it would be short by the same amount for every variant, which hides the error while making
-//! every figure wrong. There is therefore no client-side total here to be tempted by.
+//! **The counts come from the server's measuring layer**, not from the runner's own bookkeeping, so
+//! the runner cannot count a header it meant to send and did not. They are the HTTP message as the
+//! handler stack saw it: `host`, `content-length`, hyper's `date` and TCP/TLS framing are not part
+//! of them (see [`crate::measure`]), so they are lower bounds.
 
 use cratestack::CratestackError;
 use cratestack::cose::{CoseMode, P256Signer};
@@ -15,7 +15,7 @@ use cratestack::cose::{CoseMode, P256Signer};
 use crate::measure::Exchange;
 use crate::{REGISTER_OP, Variant};
 
-/// What one variant's run cost, by the server's own account.
+/// What one variant's run cost, as the server's measuring layer counted it.
 #[derive(Clone, Debug)]
 pub struct Run {
     /// The variant measured.
@@ -41,7 +41,7 @@ pub struct EnvelopeOverhead {
     pub payload_bytes: usize,
     /// The external AAD the signature is bound to.
     pub aad_bytes: usize,
-    /// The whole `COSE_Sign1` body, as it went on the wire.
+    /// The whole `COSE_Sign1` body, as the runner sent it.
     pub body_bytes: usize,
 }
 
@@ -49,8 +49,8 @@ impl EnvelopeOverhead {
     /// Everything the envelope added: the body minus the payload it carries.
     ///
     /// The external AAD is *not* in the body — it is reconstructed by the verifier from the binding
-    /// — so it is reported separately and never counted here. Adding it would double-count bytes
-    /// that never crossed the wire, which is the one thing this example must not do.
+    /// — so it is reported separately and never counted here. Adding it would count bytes that are
+    /// not in the message.
     #[must_use]
     pub fn added_bytes(&self) -> usize {
         self.body_bytes.saturating_sub(self.payload_bytes)
@@ -71,7 +71,7 @@ impl EnvelopeOverhead {
 }
 
 impl Run {
-    /// Every request byte the server saw: request line, headers and body.
+    /// Every request byte the router received: the request line (rebuilt), the headers and the body.
     #[must_use]
     pub fn server_request_total(&self) -> usize {
         self.exchanges
@@ -80,7 +80,7 @@ impl Run {
             .sum()
     }
 
-    /// Every response byte the server saw: status line, headers and body.
+    /// Every response byte the router produced: the status line (rebuilt), the headers and the body.
     #[must_use]
     pub fn server_response_total(&self) -> usize {
         self.exchanges
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn the_aad_is_never_counted_as_wire_bytes() {
+    fn the_aad_is_never_counted_in_the_added_bytes() {
         let overhead = EnvelopeOverhead {
             op: "procedure.listNotes".to_owned(),
             payload_bytes: 10,
@@ -286,7 +286,7 @@ mod tests {
             body_bytes: 120,
         };
         // The body minus the payload: the AAD is rebuilt by the verifier and never travels, so
-        // counting it would inflate the envelope by bytes that do not exist.
+        // counting it would inflate the envelope by bytes that are not in the message.
         assert_eq!(overhead.added_bytes(), 110);
         assert_eq!(overhead.added_percent(), Some(1100.0));
     }

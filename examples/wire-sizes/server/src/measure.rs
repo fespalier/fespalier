@@ -1,18 +1,26 @@
-//! What a request actually weighed.
+//! What a request and its response weighed, as the handler stack saw them.
 //!
-//! The point of this example is to report the bytes that really crossed the wire, so this module
-//! is the measurement, not an estimate. Two facts make that harder than it sounds, and both are
-//! handled here:
+//! [`measure`] is a middleware that wraps the whole router. It records each request as the router
+//! received it and each response as the router produced it, before hyper writes either to a
+//! connection. A count is therefore the size of **the HTTP message the handler stack handled**,
+//! not the number of bytes on a socket:
 //!
-//! - **A client cannot see its own inherited headers.** `content-length`, `host`, `date` and the
-//!   rest are added by the stack on the way out, so a client that adds up the headers it *set*
-//!   reports a number that never existed. The server is the only place that can see the whole
-//!   request, so the request side is measured here, from what arrived.
-//! - **A response's own length is not on the wire** on the client's side either, so the server
-//!   records the bytes it is about to send before hyper frames them.
+//! - A request counts its request line (rebuilt from the method and the path, because no
+//!   middleware sees it), every header the router received, and the body. A real HTTP/1.1 request
+//!   also carries `host` and `content-length`, and whatever its client adds (`user-agent`,
+//!   `accept-encoding`, ...). They are counted only if the sender put them in the request; the
+//!   runner does not, because it builds the request itself and never opens a socket.
+//! - A response counts its status line (rebuilt from the status), every header the stack set, and
+//!   the body. A real response also carries what hyper adds when it writes it: at least `date`,
+//!   and `content-length` when the stack did not set one.
+//! - TCP and TLS framing is not counted.
+//!
+//! Those additions are the same for every variant except the digits of `content-length`, so a
+//! difference between two variants holds to within that, and a total is a lower bound.
+//! `tests/socket.rs` sends a request over a real socket and pins what the additions are.
 //!
 //! Nothing here parses the payload: the bytes are counted as they were received, so a malformed
-//! body is still weighed, and a measurement can never change what the server answers.
+//! body is still weighed, and the measurement does not change what the server answers.
 
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -44,10 +52,9 @@ pub struct Exchange {
 impl Exchange {
     /// The size of the request line: `METHOD <path> HTTP/1.1\r\n`.
     ///
-    /// Hyper adds this to what it writes and it never reaches a middleware, so it is reconstructed
-    /// here. It is a real part of the request and the comparison is unfair without it: it is
-    /// constant across the variants, so leaving it out would *flatter* whichever variant has the
-    /// fewest bytes, by making every count smaller by the same amount.
+    /// A middleware never sees the request line, so it is rebuilt here from the method and the
+    /// path (the query string, which none of the scenario's calls has, is not counted). It is part
+    /// of every request, and for one op it is the same in every variant.
     #[must_use]
     pub fn request_line_bytes(&self) -> usize {
         // "POST " + path + " HTTP/1.1" + CRLF
@@ -193,23 +200,18 @@ impl ExchangeLog {
 
 /// How much of a body is read and weighed.
 ///
-/// **It must not be smaller than the body limit the router accepts.** An earlier version set this to
-/// 1 MiB while the router's own limit is 2 MiB, and the consequence was not "a truncated count" but
-/// a **behaviour change**: the layer re-hands the router the bytes it kept, so a 1 MiB payload
-/// arrived truncated and the codec rejected it with a `400` that had nothing to do with the client.
-/// A measurement layer that changes what it measures is worse than useless — it produced a failing
-/// test that looked like a client bug for two rounds.
-///
-/// So it is the router's own limit plus a margin, and the margin is what makes the *count* honest
-/// past the limit rather than the *behaviour*: a body over the router's limit is refused by the
-/// router anyway, and this layer still reports how many bytes arrived before that.
+/// **It must not be smaller than the body limit the router accepts.** The layer hands the router
+/// the bytes it kept, so a limit below the router's would truncate a large body and the codec would
+/// refuse it with a `400` the client did not cause (an earlier version set this to 1 MiB against
+/// the router's 2 MiB, [`cratestack::DEFAULT_BODY_LIMIT_BYTES`]). It is the router's limit plus
+/// 4 MiB, so every body the router accepts is passed on whole. A body over the router's limit is
+/// refused by the router, and this layer counts the bytes that arrived, up to its own limit.
 pub const MEASURE_LIMIT_BYTES: usize = cratestack::DEFAULT_BODY_LIMIT_BYTES + (4 * 1024 * 1024);
 
 /// Measures every request and response, and records them in `log`.
 ///
 /// Outermost in the stack: a refusal from any inner layer (the envelope layer's `401`, the codec's
-/// `400`) is a real exchange with a real size, and a comparison that only measured successful calls
-/// would hide exactly what the example is about.
+/// `400`) is an exchange with a size, and it is recorded like any other.
 pub async fn measure(log: ExchangeLog, request: Request, next: Next) -> Response {
     let method = request.method().to_string();
     let path = request.uri().path().to_owned();
@@ -281,7 +283,7 @@ fn headers_of(headers: &HeaderMap) -> Vec<(String, String)> {
             (
                 name.as_str().to_owned(),
                 // A header value that is not text is shown as its bytes escaped rather than
-                // dropped: it still counted on the wire, so it must still be counted here.
+                // dropped: it is still part of the message, so it must still be counted here.
                 value
                     .to_str()
                     .map_or_else(|_| format!("{:?}", value.as_bytes()), ToOwned::to_owned),

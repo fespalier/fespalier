@@ -1,6 +1,6 @@
 //! A device registry, in memory.
 //!
-//! Deliberately small: this example is about bytes on the wire, so the store only has to behave,
+//! Deliberately small: this example is about message sizes, so the store only has to behave,
 //! not to survive a restart.
 
 use std::collections::HashMap;

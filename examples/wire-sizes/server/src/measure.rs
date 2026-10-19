@@ -191,13 +191,19 @@ impl ExchangeLog {
     }
 }
 
-/// How much of a body is read and weighed before the rest is discarded.
+/// How much of a body is read and weighed.
 ///
-/// Generous on purpose: a comparison must not silently truncate the thing it is measuring, and the
-/// payloads here are tiny. A body past this is still answered, but its count is this limit, and
-/// [`Exchange::request_body_bytes`] then understates — the tests assert the real payloads are far
-/// below it.
-pub const MEASURE_LIMIT_BYTES: usize = 1024 * 1024;
+/// **It must not be smaller than the body limit the router accepts.** An earlier version set this to
+/// 1 MiB while the router's own limit is 2 MiB, and the consequence was not "a truncated count" but
+/// a **behaviour change**: the layer re-hands the router the bytes it kept, so a 1 MiB payload
+/// arrived truncated and the codec rejected it with a `400` that had nothing to do with the client.
+/// A measurement layer that changes what it measures is worse than useless — it produced a failing
+/// test that looked like a client bug for two rounds.
+///
+/// So it is the router's own limit plus a margin, and the margin is what makes the *count* honest
+/// past the limit rather than the *behaviour*: a body over the router's limit is refused by the
+/// router anyway, and this layer still reports how many bytes arrived before that.
+pub const MEASURE_LIMIT_BYTES: usize = cratestack::DEFAULT_BODY_LIMIT_BYTES + (4 * 1024 * 1024);
 
 /// Measures every request and response, and records them in `log`.
 ///

@@ -25,6 +25,7 @@ use cratestack_codec_cbor::CborCodec;
 use cratestack_codec_json::JsonCodec;
 use tower::ServiceExt as _;
 
+use crate::payload::Payload;
 use crate::scenario::{EnvelopeOverhead, Run, Scenario, Signing};
 use crate::{Built, DEFAULT_AUDIENCE, REGISTER_OP, Variant, build, cratestack_schema};
 
@@ -225,6 +226,72 @@ pub async fn run(
         bearer: bearer.is_some(),
         exchanges: log.exchanges(),
         overhead,
+    })
+}
+
+/// The op the payload sweeps drive: one call carrying a payload of any shape.
+pub const PAYLOAD_OP: &str = "procedure.measurePayload";
+
+/// Drives one [`Payload`] through one variant, alone, and returns the measurement.
+///
+/// A separate entry point from [`run`] because the sweeps need a *shape* (records, nested, blob) that
+/// `addNote`'s single `text` field cannot express, and because a sweep wants the payload call on its
+/// own rather than behind a registration and a scenario's worth of other calls.
+///
+/// Registration still happens first: the plain variants need a bearer to be authorized at all, and
+/// the `cose` one needs a device key before it can sign. Both are constant across a sweep, so they
+/// are paid once per run rather than once per size.
+///
+/// # Errors
+/// When a request cannot be built or sealed. A refusal is a measured answer, not an error.
+pub async fn run_payload(
+    variant: Variant,
+    payload: &Payload,
+    bearer: Option<&str>,
+) -> Result<Run, CratestackError> {
+    let signing = Signing::fresh()?;
+    let built = build(variant, DEFAULT_AUDIENCE, &signing.scalar)?;
+    let router = built.router.clone();
+    let log = built.exchanges.clone();
+
+    let device = if variant == Variant::Cose {
+        Some(Device::new(&built, &signing)?)
+    } else {
+        None
+    };
+    let sender = Sender {
+        router: &router,
+        variant,
+        bearer,
+        device: device.as_ref(),
+    };
+
+    let (x, y) = match &device {
+        Some(device) => device.xy()?,
+        None => placeholder_xy()?,
+    };
+    sender
+        .call(
+            REGISTER_OP,
+            &serde_json::json!({ "args": { "x": x, "y": y } }),
+        )
+        .await?;
+
+    // Forgets the registration, so a caller measuring this call sees only this call: two
+    // `exchange`s would double the figure an unwary reader adds up.
+    log.clear();
+    sender
+        .call(
+            PAYLOAD_OP,
+            &serde_json::json!({ "args": { "value": payload.value() } }),
+        )
+        .await?;
+
+    Ok(Run {
+        variant,
+        bearer: bearer.is_some(),
+        exchanges: log.exchanges(),
+        overhead: Vec::new(),
     })
 }
 

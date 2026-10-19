@@ -37,6 +37,20 @@ type NoteList {
   notes Note[]
 }
 
+// A payload of any shape, for the size sweeps. `value` is a JSON value, so one op can carry a long
+// string, a list of records or a nested object: the shapes a real request has, and the ones the
+// `addNote` op cannot express with its single `text` field.
+//
+// It is a measurement op, not a feature: the server stores nothing, and it exists so a comparison is
+// not limited to the payload shape the notes happen to have.
+type PayloadArgs {
+  value Json
+}
+
+type PayloadAck {
+  bytes Int
+}
+
 mutation procedure registerDevice(args: RegisterArgs): DeviceView
   @allow(true)
 
@@ -44,4 +58,7 @@ procedure listNotes(args: ListArgs): NoteList
   @allow(auth() != null)
 
 mutation procedure addNote(args: NoteArgs): Note
+  @allow(auth() != null)
+
+mutation procedure measurePayload(args: PayloadArgs): PayloadAck
   @allow(auth() != null)

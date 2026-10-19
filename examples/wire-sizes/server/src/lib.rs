@@ -17,6 +17,7 @@
 //! other two have no signature to verify, and no credential to carry in the body.
 
 pub mod measure;
+pub mod payload;
 pub mod registry;
 pub mod report;
 pub mod runner;
@@ -28,8 +29,8 @@ use std::sync::{Arc, Mutex, PoisonError};
 use cratestack::cose::{CoseEnvelope, CoseMode, CoseVerifyKey, P256Signer};
 use cratestack::envelope_layer::{EnvelopeMode, PolicyRequest};
 use cratestack::{
-    AuthProvider, CratestackContext, CratestackError, InMemoryNonceStore, RequestContext, Value,
-    VerifiedSigner, include_server_schema, serde_json,
+    AuthProvider, CratestackCodec as _, CratestackContext, CratestackError, InMemoryNonceStore,
+    RequestContext, Value, VerifiedSigner, include_server_schema, serde_json,
 };
 use cratestack_codec_cbor::CborCodec;
 use cratestack_codec_json::JsonCodec;
@@ -240,6 +241,27 @@ impl ProcedureRegistry for Procedures {
         };
         mine.push(note.clone());
         Ok(note)
+    }
+
+    /// Accepts a payload of any shape and reports how large it was.
+    ///
+    /// The store is not touched: this op exists so the sweeps can measure a *shape* (a list of
+    /// records, a nested object, a blob), which `addNote`'s single `text` field cannot express. It
+    /// returns the encoded size it received so a caller can confirm the payload arrived whole —
+    /// which matters at the megabyte sizes, where a body limit could silently truncate one.
+    async fn measure_payload(
+        &self,
+        _db: &Cratestack,
+        _ctx: &CratestackContext,
+        args: procs::measure_payload::Args,
+        _authorized: procs::measure_payload::Authorized,
+    ) -> Result<procs::measure_payload::Output, CratestackError> {
+        // The decoded value's own re-encoding, so the figure is the payload's size rather than the
+        // request's: headers and framing are `measure.rs`'s business, not this op's.
+        let encoded = CborCodec.encode(&args.args.value)?;
+        Ok(procs::measure_payload::Output {
+            bytes: i64::try_from(encoded.len()).unwrap_or(i64::MAX),
+        })
     }
 }
 

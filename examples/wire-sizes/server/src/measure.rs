@@ -50,34 +50,42 @@ pub struct Exchange {
 }
 
 impl Exchange {
-    /// The size of the request line: `METHOD <path> HTTP/1.1\r\n`.
+    /// The request line as text, without its line ending: `<METHOD> <path> HTTP/1.1`.
     ///
-    /// A middleware never sees the request line, so it is rebuilt here from the method and the
-    /// path (the query string, which none of the scenario's calls has, is not counted). It is part
-    /// of every request, and for one op it is the same in every variant.
+    /// A middleware never sees the request line, so it is rebuilt from the method and the path. The
+    /// query string is not part of `path`, so a request that has one is counted short by its length;
+    /// none of the scenario's calls has one.
     #[must_use]
-    pub fn request_line_bytes(&self) -> usize {
-        // "POST " + path + " HTTP/1.1" + CRLF
-        "POST ".len() + self.path.len() + " HTTP/1.1".len() + 2
+    pub fn request_line(&self) -> String {
+        format!("{} {} HTTP/1.1", self.method, self.path)
     }
 
-    /// The size of the status line: `HTTP/1.1 <status> <reason>\r\n`.
+    /// The size of the request line with its line ending: `<METHOD> <path> HTTP/1.1\r\n`.
+    ///
+    /// It is part of every request, and for one op it is the same in every variant.
+    #[must_use]
+    pub fn request_line_bytes(&self) -> usize {
+        self.request_line().len() + "\r\n".len()
+    }
+
+    /// The status line as text, without its line ending: `HTTP/1.1 <status> <reason>`.
+    ///
+    /// A middleware never sees the status line either. The reason is the status's canonical phrase,
+    /// which is what hyper writes; for a status that has none hyper writes `<none>` (hyper 1.12,
+    /// `proto/h1/role.rs`, the server's `encode`), and so does this.
+    #[must_use]
+    pub fn status_line(&self) -> String {
+        let reason = StatusCode::from_u16(self.status)
+            .ok()
+            .and_then(|status| status.canonical_reason())
+            .unwrap_or("<none>");
+        format!("HTTP/1.1 {} {reason}", self.status)
+    }
+
+    /// The size of the status line with its line ending: `HTTP/1.1 <status> <reason>\r\n`.
     #[must_use]
     pub fn status_line_bytes(&self) -> usize {
-        // The reason phrase hyper uses for each status it can answer here.
-        let reason = match self.status {
-            200 => "OK",
-            400 => "Bad Request",
-            401 => "Unauthorized",
-            404 => "Not Found",
-            405 => "Method Not Allowed",
-            413 => "Payload Too Large",
-            422 => "Unprocessable Entity",
-            500 => "Internal Server Error",
-            503 => "Service Unavailable",
-            _ => "",
-        };
-        "HTTP/1.1 ".len() + 3 + 1 + reason.len() + 2
+        self.status_line().len() + "\r\n".len()
     }
 
     /// Every request byte except the body: the request line plus the header block, each header as
@@ -329,12 +337,49 @@ mod tests {
     #[test]
     fn the_request_line_is_counted() {
         let e = exchange();
-        // Derived from the parts, rather than written as a magic number: the first version of
-        // this test hard-coded `8 + 25 + 9 + 2`, which is 44 and wrong (`"POST "` is 5 bytes and
-        // the path is 24), and it passed review by *looking* plausible.
-        let expected = "POST ".len() + e.path.len() + " HTTP/1.1".len() + 2;
+        // Derived from the parts rather than written as one number: `"POST "` is 5 bytes, the path
+        // is 24, `" HTTP/1.1"` is 9 and the line ending is 2.
+        let expected = e.method.len() + 1 + e.path.len() + " HTTP/1.1".len() + 2;
         assert_eq!(e.request_line_bytes(), expected);
         assert_eq!(e.request_line_bytes(), 5 + 24 + 9 + 2);
+        assert_eq!(e.request_line(), "POST /rpc/procedure.listNotes HTTP/1.1");
+    }
+
+    #[test]
+    fn the_request_line_uses_the_method_that_arrived() {
+        let mut e = exchange();
+        // `GET` is 3 bytes where `POST` is 4, and `DELETE` is 6: a hard-coded `POST` would be wrong
+        // for both.
+        e.method = "GET".to_owned();
+        assert_eq!(e.request_line(), "GET /rpc/procedure.listNotes HTTP/1.1");
+        assert_eq!(e.request_line_bytes(), 3 + 1 + 24 + 9 + 2);
+        e.method = "DELETE".to_owned();
+        assert_eq!(e.request_line_bytes(), 6 + 1 + 24 + 9 + 2);
+    }
+
+    #[test]
+    fn the_status_line_has_the_reason_hyper_writes() {
+        let mut e = exchange();
+        // `403` and `415` are statuses a refused call can get (a bearer the server rejects, a
+        // media type the codec does not take); they were missing from an earlier hand-written table
+        // and were counted with an empty reason, 9 and 22 bytes short.
+        for (status, line) in [
+            (200, "HTTP/1.1 200 OK"),
+            (400, "HTTP/1.1 400 Bad Request"),
+            (401, "HTTP/1.1 401 Unauthorized"),
+            (403, "HTTP/1.1 403 Forbidden"),
+            (404, "HTTP/1.1 404 Not Found"),
+            (413, "HTTP/1.1 413 Payload Too Large"),
+            (415, "HTTP/1.1 415 Unsupported Media Type"),
+            (422, "HTTP/1.1 422 Unprocessable Entity"),
+            (500, "HTTP/1.1 500 Internal Server Error"),
+            // A status with no canonical reason: hyper writes `<none>`.
+            (299, "HTTP/1.1 299 <none>"),
+        ] {
+            e.status = status;
+            assert_eq!(e.status_line(), line);
+            assert_eq!(e.status_line_bytes(), line.len() + 2, "{line}");
+        }
     }
 
     #[test]

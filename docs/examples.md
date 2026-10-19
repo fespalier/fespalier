@@ -229,11 +229,11 @@ just cose                                                                   # th
 
 ```sh
 cd examples/wire-sizes/server && cargo run --locked -- --variant cbor --listen 127.0.0.1:8787
-cd examples/wire-sizes/server && cargo run --release --bin wire-sizes-report    # the tables
-just wire-sizes                                                               # fmt, clippy, tests, deny, and the report compared with REPORT.md
+cd examples/wire-sizes/server && cargo run --locked --quiet --bin wire-sizes-report    # the tables
+just wire-sizes                                                                        # fmt, clippy, tests, deny, and the report compared with REPORT.md
 ```
 
-The numbers are small-payload numbers: on these tens-of-bytes calls the byte counts are dominated by headers, and the `Bearer` baseline is realistic in _size_ but not verified, which the report says.
+The scenario's payloads are tens of bytes, so its totals are mostly headers; the sweeps go to 300 KB, where JSON's overhead over CBOR depends on whether the text needs escaping. The `Bearer` baseline is realistic in _size_ but not verified, which the report says.
 
 ## i18n
 

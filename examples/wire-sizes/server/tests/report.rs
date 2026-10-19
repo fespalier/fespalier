@@ -8,7 +8,7 @@
 //! Regenerate with:
 //!
 //! ```text
-//! cargo run --release --bin wire-sizes-report > REPORT.md
+//! cargo run --locked --quiet --bin wire-sizes-report > REPORT.md
 //! ```
 
 #![allow(clippy::expect_used, reason = "tests may expect")]
@@ -28,7 +28,7 @@ async fn the_committed_report_matches_a_fresh_measurement() {
         fresh.trim_end(),
         COMMITTED.trim_end(),
         "REPORT.md is stale: regenerate it with \
-         `cargo run --release --bin wire-sizes-report > REPORT.md`"
+         `cargo run --locked --quiet --bin wire-sizes-report > REPORT.md`"
     );
 }
 

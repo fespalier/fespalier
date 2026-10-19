@@ -27,21 +27,24 @@ the digits of `content-length` (see [where the measurement is taken](#where-the-
 Reading that table:
 
 - **CBOR saves 33 bytes of request over JSON** (1505 vs 1538) on these payloads, and 70 on the
-  response. Real, and less dramatic than "CBOR is half the size" — most of that 33 is headers and
-  framing, not payload, and the payload difference is a _fixed_ ~14-16 bytes (see
-  [does it scale?](#does-it-scale) — it does not).
-- **A `cose` run sends 101 more request bytes than plain CBOR** (1606 vs 1505) — but that total hides
-  the interesting part. Read the [head/body split](#the-head-and-the-body-move-in-opposite-directions)
-  before drawing a conclusion from it.
-- **The credential moves, it does not shrink.** The `Bearer` header is 696 bytes over the run (6
-  calls × 116 bytes: a 99-byte JWT value plus its name and line endings); the `cose` signature is
-  557 over 5 sealed calls. The point is not that one is smaller — it is that the `cose` one is
-  _verified_, and the `Bearer` one here is not (the server accepts any token; see below).
+  response. All 33 are in the body (241 vs 208 bytes): the headers are the same size. Per call the
+  body differs by 9 bytes for `registerDevice`, 6 for `addNote` and 4 for `listNotes` (see the table
+  below), so this is far from "CBOR is half the size". (`application/json` and `application/cbor`
+  are both 16 bytes, so the `content-type` and `accept` headers do not differ.)
+- **A `cose` run sends 101 more request bytes than plain CBOR** (1606 vs 1505), but that total adds
+  two things that move in opposite directions. Read the
+  [head/body split](#the-head-and-the-body-move-in-opposite-directions) before drawing a conclusion
+  from it.
+- **The credential moves; it does not shrink much.** The `Bearer` header is 696 bytes over the run
+  (6 calls × 116 bytes: the 13-byte name `authorization`, a colon and a space, a 99-byte value made of
+  `Bearer`, a space and a 92-byte JWT, and the line ending); the `cose` signature and its protected
+  header are 557 over 5 sealed calls. What differs is that the `cose` one is verified, and the
+  `Bearer` one here is not (the server accepts any token; see [the variants](#the-variants)).
 
 ### The head and the body move in opposite directions
 
-This is the table an eye comparing two payloads is really reading, and it is the one that is easiest
-to get wrong from a total:
+The total above is a head plus a body, and the two halves differ between the variants in opposite
+directions:
 
 | Op                         | Variant | Head/call | Body/call | Total/call | Credential   |
 | -------------------------- | ------- | --------: | --------: | ---------: | ------------ |
@@ -55,33 +58,36 @@ to get wrong from a total:
 | `procedure.listNotes`      | `cbor`  |       216 |         7 |        223 | 116 B header |
 | `procedure.listNotes`      | `cose`  |       148 |       118 |        266 | in the body  |
 
-For the same call, a `cose` one has a **much thinner head** — it sends no `Authorization` header
-(116 bytes saved) and pays only a longer `content-type` (40 vs 16 bytes) — and a **much fatter body**,
-the payload plus the ~111 bytes of signature and protected header. So:
+For the same call, a `cose` one has a **thinner head**: it sends no `Authorization` header (116
+bytes saved) and pays for longer `content-type` and `accept` values (40 bytes each against 16: 48
+more in all), so 68 bytes less. And it has a **fatter body**: the payload plus about 111 bytes of
+signature and protected header. So:
 
-- **If you look at headers, `cose` is thinner.** That is a real observation, not an illusion.
-- **If you look at the whole call, `cose` is bigger**, by the difference between the two.
+- **Counting headers only, `cose` is thinner.**
+- **Counting the whole call, `cose` is bigger**: for `addNote`, 112 more bytes of body less 68 of
+  head is 44 more (301 against 257).
 
-Both are true, of different halves. A report that gave only the total would let the first observation
-look like a mistake, which is why both tables are here.
+Both are true, of different halves; the total alone shows only the second.
 
 ### The signature against the token it replaces
 
-The headline, stated directly:
+The credential's own bytes, compared:
 
 | Credential       |   Bytes | Where       |
 | ---------------- | ------: | ----------- |
 | `Bearer` header  | **116** | in the head |
 | `cose` signature | **111** | in the body |
 
-**Signing roughly _replaces_ a token rather than adding to it.** The 64-byte ESP256 signature plus its
-protected header lands within a few bytes of the `Bearer` header it displaces, so a signed call costs
-about the same as a token-authenticated one — and the `cose` one is actually verified. What signing
-costs is _not_ +111 bytes on top of a token; it is ~111 bytes _instead of_ ~116.
+**Signing roughly _replaces_ a token rather than adding to it.** The 64-byte ESP256 signature plus
+its protected header (about 111 bytes) is within a few bytes of the 116-byte `Bearer` header it
+displaces, and the `cose` one is verified. What signing adds over a token is therefore not 111 bytes
+but the 48 bytes of longer `content-type` and `accept` values, less the 4 or 5 bytes by which the
+signature is smaller than the header: 43 to 44 more per sealed call in this scenario (`addNote` 301
+against 257, `listNotes` 266 against 223).
 
-The `registerDevice` row is the exception that proves it: that call carries **no credential at all**
-on the `cose` server (a device has to identify itself before it can sign), so `cose` wins there
-outright — 206 against 331.
+`registerDevice` is the exception: on the `cose` server it carries no credential at all (a device has
+to identify itself before it can sign) and goes as plain CBOR, so the `cose` call is the smallest of
+the three there: 206 against 322 for CBOR and 331 for JSON.
 
 Per op, so the shape of the scenario is visible and not only its total:
 
@@ -91,13 +97,13 @@ Per op, so the shape of the scenario is visible and not only its total:
 | `procedure.addNote`        |    2 | 2 × 263 = 526 | 2 × 257 = 514 | 2 × 301 = 602 |
 | `procedure.listNotes`      |    3 | 3 × 227 = 681 | 3 × 223 = 669 | 3 × 266 = 798 |
 
-`registerDevice` is the one op a `cose` server leaves **plain** (a device has to identify itself
-before it can sign), and it is the only row where `cose` is smallest — it is plain CBOR carrying no
-header, where the other two carry the `Authorization` header. Every signed row is larger.
+`registerDevice` is the only row where `cose` is smallest. Every signed row is larger than the
+plain CBOR one.
 
 ## What about JSON?
 
-JSON is the largest body of the three, and by a **constant, not a proportion**:
+JSON's body is larger than plain CBOR's, and for ordinary text by a few bytes per message, not by a
+proportion:
 
 | Variant | Body bytes (default scenario) |                JSON's penalty |
 | ------- | ----------------------------: | ----------------------------: |
@@ -105,24 +111,28 @@ JSON is the largest body of the three, and by a **constant, not a proportion**:
 | `cbor`  |                           208 |                   +33 vs CBOR |
 | `cose`  |                           765 | n/a (the signature is inside) |
 
-The 33 bytes above are the _whole_ body difference over a 7-call scenario, and the per-message
-figure is a **fixed ~12-16 bytes** (see [does it scale?](#does-it-scale)). It is structural: CBOR
-spends one byte on a map head where JSON spends `{"args":{`, and it needs no closing braces or
-quotes. A 25-byte JSON body and its 18-byte CBOR twin:
+The 33 bytes are the whole body difference over the scenario's 6 calls: 9 for `registerDevice`, 6
+for each `addNote` and 4 for each `listNotes` (9 + 2 × 6 + 3 × 4). It is structural: JSON spends two
+bytes on a pair of braces, one on each colon and two on the quotes of each string, where CBOR spends
+one byte on each map head and string head. A 25-byte JSON body and its 18-byte CBOR twin (12 bytes of
+syntax against 5):
 
-```
+```text
 {"args":{"text":"hello"}}          # 25 bytes
 a1 64 61726773 a1 64 74657874 ...  # 18 bytes — one-byte map heads, length-prefixed strings
 ```
 
-**JSON is not bloated here, and CBOR is not magic.** The encoder is the same one in both cases and
-the payload is a string either way; only the _framing_ around it differs. So on a 4 KB note JSON
-costs 14 bytes more — **0.3%**. Anyone expecting "CBOR halves your payload" will be disappointed,
-and anyone expecting "JSON costs 14 extra bytes and that is all" will be right.
+The payload is a string either way; only the syntax around it differs. So in the sweep below, whose
+two calls are a registration and one note, JSON costs 14 bytes more than CBOR for a 4 KB note: 0.33%
+of the CBOR body. That holds for text JSON does not have to escape;
+[text that it does](#it-depends-on-what-the-payload-is-made-of) is another matter.
 
 ## Does it scale?
 
-The single most useful table here, because it answers the question a single payload size cannot:
+The same measurement at several payload sizes, which a single payload size cannot show. Each row is
+one `registerDevice` (about 100 bytes) and one `addNote` carrying `note_text`; KB means 1024 bytes,
+and the bodies are the sums over those two calls. The text is the `repeated` kind; `prose` and
+`base64` give the same figures (all three are in `REPORT.md`):
 
 |     `note_text` | JSON body | CBOR body | JSON−CBOR | COSE body | COSE−CBOR |
 | --------------: | --------: | --------: | --------: | --------: | --------: |
@@ -135,59 +145,50 @@ The single most useful table here, because it answers the question a single payl
 | 120 KB (122880) |    123013 |    123001 |       +12 |    123116 |      +115 |
 | 300 KB (307200) |    307333 |    307321 |       +12 |    307436 |      +115 |
 
-(Bodies include the one `registerDevice` call the sweep also sends, which is why a 55 KB note gives a
-56 KB body.)
+For this text, neither penalty grows with the payload, and JSON's shrinks slightly. JSON's is +16
+bytes at 16 bytes of note and +12 at 300 KB (CBOR's string length prefix grows from one byte to five,
+which takes away part of JSON's overhead); the signature stays at +112 to +115. Both are fixed costs,
+so as a share of the CBOR body they fall with the payload:
 
-**Neither penalty grows — and JSON's actually shrinks.** JSON's is +16 bytes at 16 bytes of note and
-**+12** at 300 KB (the CBOR length prefix grows, eating into JSON's advantage); the signature stays
-**+112 to +115** throughout. Both are _fixed structural costs_, so the percentage collapses:
+| Payload | JSON over CBOR | Signing over CBOR |
+| ------: | -------------: | ----------------: |
+|    16 B |          12.0% |             84.2% |
+|    4 KB |          0.33% |              2.7% |
+|   55 KB |         0.025% |             0.20% |
+|  120 KB |         0.010% |            0.093% |
+|  300 KB |         0.004% |            0.037% |
 
-| Payload | JSON vs CBOR | Signing vs CBOR |
-| ------: | -----------: | --------------: |
-|    16 B |    **12.0%** |       **84.2%** |
-|    4 KB |        0.33% |            2.7% |
-|   55 KB |       0.025% |           0.20% |
-|  120 KB |       0.010% |          0.093% |
-|  300 KB |   **0.004%** |      **0.037%** |
+On a 300 KB payload of this kind, CBOR saves 12 bytes (0.004%) and signing costs 115 (0.037%). The
+same two costs are 12% and 84% of a 16-byte note. So CBOR shrinks a call made of small payloads by a
+visible share and a large payload of plain text by almost nothing, and the credential, 111 bytes
+against 116, is a fixed size that matters only while the payload is small.
 
-**On a 300 KB payload, CBOR saves 12 bytes — 0.004% — and signing costs 115 bytes — 0.037%.** Anyone
-reaching for CBOR to shrink a large payload will be disappointed; anyone reaching for it to make many
-small calls leaner will not. That inversion is the whole point of the table, and it is why a single
-payload size is not evidence.
+### It depends on what the payload is made of
 
-And the same is true of the credential: the ~112 bytes of signature against the 116-byte bearer
-header are **fixed size**, so on a large payload neither a token nor a signature is worth optimising —
-what matters at that point is the payload, and CBOR's ~14 bytes are noise beside it.
+The table above is one kind of text, and `prose` and `base64` agree with it. A fourth kind does not:
 
-### It depends on what the payload is _made of_
+| Payload kind                          | 300 KB: JSON−CBOR | JSON over CBOR |
+| ------------------------------------- | ----------------: | -------------: |
+| `repeated` (`"xxx…"`)                 |               +12 |         0.004% |
+| `prose`                               |               +12 |         0.004% |
+| `base64`                              |               +12 |         0.004% |
+| `escapable` (a tab-indented CRLF log) |           +51,195 |          16.7% |
 
-The table above is the same three kinds of text, and they agree. **A fourth kind does not**, and it is
-the one real payloads are most likely to resemble:
+JSON must escape `"`, `\`, `\n`, `\t` and every control byte; a single `\u0001` is six characters
+for one. CBOR passes all of them through raw. So on text that is mostly escapable, such as a log
+with CRLF line endings and tab indents (the `escapable` kind), JSON's penalty is not 12 bytes: it is
+about one extra byte per escaped character, and it grows with the payload. Whether a real payload is
+closer to `prose` or to `escapable` depends on what it carries; the sweep does not say which is more
+common, and it has no kind for non-ASCII text or for a payload that is itself JSON.
 
-| Payload kind                                 | 300 KB: JSON−CBOR | JSON vs CBOR |
-| -------------------------------------------- | ----------------: | -----------: |
-| repeated bytes (`"xxx…"`)                    |               +12 |       0.004% |
-| prose                                        |               +12 |       0.004% |
-| base64                                       |               +12 |       0.004% |
-| **escapable** (CRLF log, code, JSON-in-JSON) |       **+51,195** |   **+16.7%** |
-
-JSON must escape `"`, `\`, `\n`, `\t` and **every control byte** — a single `\u0001` is six
-characters for one. CBOR passes all of them through raw. So on text that is mostly escapable, JSON's
-penalty is not 12 bytes: it is **roughly one extra byte per escaped character, and it grows with the
-payload.**
-
-This is the trap the first version of this sweep fell into: it built payloads with `"x".repeat(n)` —
-one repeated byte, nothing to escape — and reported "JSON costs a fixed ~14 bytes" as though it were
-general. It was a property of the one payload kind that has _nothing to escape_. **A degenerate
-payload hid the only case where the answer changes.**
-
-`tests/report.rs` pins all of it: that the signature is fixed for every kind, that JSON's penalty
-does not grow on the three kinds with nothing to escape, and that it **does** grow on escapable text
-— by an order of magnitude at least, and >10% of the body at 300 KB.
+`tests/report.rs` pins this: the signature is fixed for every kind, JSON's penalty does not grow on
+the three kinds with nothing to escape, and it does grow on `escapable` text, by more than ten times
+between 1 KB and 300 KB and to more than a tenth of the body at 300 KB.
 
 ## Where the overhead goes
 
-A delta of "101 bytes" is not an explanation. The report attributes it:
+A delta of "101 bytes" does not say where the bytes are. The report attributes the sealed calls'
+bytes, per op here (`REPORT.md` has one row per call):
 
 | Op                    | Payload | External AAD | Body |   Added | Added % |
 | --------------------- | ------: | -----------: | ---: | ------: | ------: |
@@ -197,22 +198,20 @@ A delta of "101 bytes" is not an explanation. The report attributes it:
 
 - **Payload** is the CBOR the runner encoded — the thing being sent.
 - **Added** is the body minus the payload: the protected header, the 64-byte ESP256 signature, and
-  the CBOR framing around all three. About 111 bytes per call, near-constant, which is what a fixed-
-  size signature looks like.
-- **External AAD** is reported but **never counted**: it is reconstructed by the verifier from the
-  binding and never crosses the wire. Adding it to the body would double-count bytes that do not
-  exist, which is the one thing a byte-measuring example must not do. It is ~103 bytes per call, and
-  it is part of why the fixed added cost is what it is.
+  the CBOR framing around all three. About 111 bytes per call, near-constant, as a fixed-size
+  signature would be.
+- **External AAD** is reported but **never counted**: the signature covers it, but the verifier
+  rebuilds it from the binding and it is not sent. Adding it to the body would count bytes that are
+  not in the message. It is ~103 bytes per call.
 
-The added percentage is large (260%, 1585%) because the payloads are tiny. At a realistic payload of
-a few kilobytes the same ~111 bytes would be a few percent — which is the useful way to read it.
+The added percentage is large (260%, 1585%) because the payloads are tiny. At a payload of a few
+kilobytes the same ~111 bytes are a few percent (2.7% of a 4 KB CBOR body, from the table above).
 
-**Read "added" as the cost of the envelope, not as the cost of signing.** The ~111 bytes are what
-the `COSE_Sign1` layer wraps around a payload. Whether that is _more_ than the alternative depends on
-what it replaces, and it replaces a 116-byte `Bearer` header — see
-[the signature against the token](#the-signature-against-the-token-it-replaces). Adding the two
-numbers together (111 + 116) would be wrong twice over: it counts bytes that are not in the same
-place, and it compares a variant that has a credential against one that would not.
+"Added" is the cost of the envelope, not of signing as such: the ~111 bytes are what the `COSE_Sign1`
+layer wraps around a payload. Whether that is more than the alternative depends on what it replaces,
+and it replaces a 116-byte `Bearer` header (see
+[the signature against the token](#the-signature-against-the-token-it-replaces)). The two do not add:
+a sealed call carries the 111 bytes and no `Authorization` header, a plain one carries the header.
 
 ## Where the measurement is taken
 
@@ -287,11 +286,11 @@ Two more properties of the measurement:
 | `cbor`  | `application/cbor`                                       | none, unless the caller sends `Authorization: Bearer …` |
 | `cose`  | `application/cose; cose-type="cose-sign1"` wrapping CBOR | the signature in the body                               |
 
-**The `Bearer` token is not verified.** This server measures bytes; a real one would check the token,
-and the plain variants would be refused outright without one (they have no signature to identify
-their caller, so the baseline needs _a_ token to be authorized at all). The number that variant
-produces is a realistic-_size_ header, not a working credential, and the report says so rather than
-implying the baseline is production-shaped.
+**The `Bearer` token is not verified.** This server measures bytes; a real one would check the token.
+The plain variants have no signature to identify their caller, so `addNote` and `listNotes` are
+refused with a `403` unless a request carries some `Authorization: Bearer` value (`registerDevice`
+needs none). The baseline sends a 92-byte JWT-shaped string, so the header is a realistic size, but it
+is not a working credential, and `REPORT.md` says so.
 
 ## Run it
 
@@ -311,25 +310,27 @@ can read the server's own log back:
 
 ```sh
 cd server
-cargo run --release --bin wire-sizes-report              # the tables above
-cargo run --release --bin wire-sizes-report > REPORT.md # regenerate the committed report
+cargo run --locked --quiet --bin wire-sizes-report              # the tables above
+cargo run --locked --quiet --bin wire-sizes-report > REPORT.md  # regenerate the committed report
 ```
 
-## Is the report trustworthy?
-
-That is the question this example exists to answer, so it is answered structurally rather than by
-assertion:
+## What checks the report
 
 - **`REPORT.md` is generated and checked.** `server/tests/report.rs` compares the committed file with
   a fresh measurement, so a report that was not regenerated after a code change fails the build.
-- **The numbers are deterministic.** Two runs produce byte-identical output; nothing here is
-  timing-dependent.
+- **The numbers are deterministic.** Two runs produce byte-identical output: nothing here depends on
+  timing, and the random keys have a fixed size.
 - **The runner drives the router.** `server/tests/runner.rs` drives every variant through the whole
   scenario and asserts the statuses, the totals and the credential placement. A runner that built
   requests and never drove them would produce a report of zero bytes, so these assertions are on
   bytes that had to pass through the router to be counted.
-- **The arithmetic is in the tests.** `measure.rs`'s own tests were written _after_ the first three
-  attempts got the byte counts wrong by hand, and they now derive every constant from its parts.
+- **The arithmetic is in the tests.** `measure.rs`'s unit tests derive each count from its parts
+  (the request line, each header line, the status line for a range of statuses) instead of writing
+  a total.
+- **The gap to a socket is in a test.** `server/tests/socket.rs` (see
+  [where the measurement is taken](#where-the-measurement-is-taken)) compares the in-process count
+  with bytes written to and read from a real TCP connection. It writes the HTTP by hand and does not
+  use an HTTP client, so the headers a client adds on its own are not covered.
 
 ## What is in it
 
@@ -342,20 +343,29 @@ assertion:
 | `server/src/runner.rs`     | The scenario driver: the same calls, every variant, in process (no socket).                             |
 | `server/src/scenario.rs`   | `Scenario` and `Run`, and the envelope overhead's attribution.                                          |
 | `server/src/report.rs`     | The measurement rendered as Markdown.                                                                   |
+| `server/src/payload.rs`    | Payload shapes and text kinds, sent by the `measurePayload` op through `runner::run_payload`.           |
 | `server/src/main.rs`       | `--variant json\|cbor\|cose --listen ADDR`, and the hello line.                                         |
-| `server/tests/socket.rs`   | The same requests over a real socket: what the in-process count leaves out, pinned.                     |
 | `server/src/bin/report.rs` | `cargo run --bin wire-sizes-report`: the report, for `REPORT.md`.                                       |
+| `server/tests/`            | `report.rs` (the report is fresh, its claims hold), `runner.rs`, `shapes_smoke.rs` and `socket.rs`.     |
 | `server/REPORT.md`         | The generated report. Never edit it by hand; regenerate it.                                             |
 | `server/deny.toml`         | The cli's licence policy plus what CrateStack's graph brings, as `examples/cose/server/deny.toml` does. |
 
 ## Not built
 
-- **Realistic payload sizes.** Every payload here is tens of bytes, where framing dominates. The
-  example measures a small call honestly; it says nothing about a 1 MiB body, where the percentage
-  overhead would be tiny.
-- **A verified `Bearer` token.** The baseline is realistic in _size_, not in behaviour. A server that
-  checked the token would need a JWKS, and the scenario's setup would dominate its measurement.
-- **`MEASURE_LIMIT_BYTES` (1 MiB).** A larger body is counted at the limit, so its size understates.
-  The payloads here are far below it, and the tests assert that.
+- **Payloads past 300 KB in the report.** The scenario's payloads are tens of bytes and the sweeps
+  stop at 300 KB. `tests/shapes_smoke.rs` sends a 1 MiB payload to check that the measuring layer
+  passes it on whole, but no report row has one.
+- **Payload shapes in the report.** `src/payload.rs` and the `measurePayload` op can send a list of
+  records, a nested object or a blob, and `tests/shapes_smoke.rs` runs them; the report's sweeps still
+  send one string in an `addNote`.
+- **Compression and HTTP/2.** The counts are of uncompressed HTTP/1.1 text: no `content-encoding`
+  and no header compression.
+- **A real client.** The runner and the socket test build HTTP by hand, so the headers an HTTP
+  client adds on its own (`user-agent`, `accept-encoding`) are not counted.
+- **A verified `Bearer` token.** The baseline is realistic in size, not in behaviour. Checking the
+  token would need a key set and a signing step that this example does not have.
+- **A body past `MEASURE_LIMIT_BYTES`.** A body larger than the router's 2 MiB limit plus 4 MiB is
+  counted at that sum, so its size is understated. The router refuses anything over 2 MiB, and the
+  largest body in the report is about 300 KB.
 - **Three variants in one server** (`--variant`) rather than three servers. The comparison is between
-  formats, not deployments; a reviewer may reasonably prefer three binaries.
+  formats, not deployments; a reviewer may prefer three binaries.

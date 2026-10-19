@@ -4,7 +4,7 @@
 //! report can be re-derived by anyone with a checkout, rather than taken on trust:
 //!
 //! ```text
-//! cargo run --release --bin wire-sizes-report > REPORT.md
+//! cargo run --locked --quiet --bin wire-sizes-report > REPORT.md
 //! ```
 //!
 //! `tests/report.rs` compares this output with the committed `REPORT.md`, so a stale report fails

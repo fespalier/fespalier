@@ -11,8 +11,8 @@
 //!   `accept-encoding`, ...). They are counted only if the sender put them in the request; the
 //!   runner does not, because it builds the request itself and never opens a socket.
 //! - A response counts its status line (rebuilt from the status), every header the stack set, and
-//!   the body. A real response also carries what hyper adds when it writes it: at least `date`,
-//!   and `content-length` when the stack did not set one.
+//!   the body. A real response also carries what hyper adds when it writes it: for this server
+//!   `content-length` (the stack sets none) and `date`.
 //! - TCP and TLS framing is not counted.
 //!
 //! Those additions are the same for every variant except the digits of `content-length`, so a

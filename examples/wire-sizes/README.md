@@ -229,13 +229,47 @@ phrase, because no middleware sees either. It is not the bytes on a socket:
 
 - A real HTTP/1.1 request also carries `host` and `content-length`, and whatever else its client
   adds (`user-agent`, `accept-encoding`, cookies). The runner sends none of them, so none are counted.
-- A real response also carries what hyper adds when it writes it: at least `date`, and
-  `content-length` when the handler stack did not set one. None are counted.
+- A real response also carries what hyper adds when it writes it. For this server that is
+  `content-length` (the handler stack sets none) and `date`. Neither is counted.
 - TCP and TLS framing is not counted.
 
 Those additions are the same for every variant except the digits of `content-length` (a 7-byte body
 and an 11-byte body differ by one digit), so the differences between variants hold to within that,
 and every total is a lower bound.
+
+[`server/tests/socket.rs`](server/tests/socket.rs) pins this against hyper. It sends the request the
+runner builds over a TCP connection to the same router, served by `axum::serve`, with `host` and
+`content-length` added as any HTTP/1.1 client adds them. It does this for `registerDevice` in all
+three variants and for `listNotes` in JSON and CBOR (a sealed call needs the device key, which the
+runner keeps to itself, so the `cose` server is exercised through its plain `registerDevice`). It
+asserts that:
+
+- the exchange's request count equals the number of bytes written to the socket, so the rebuilt
+  request line is exact;
+- over a socket the stack receives two more request headers than in process, `host` and
+  `content-length`, and no others;
+- hyper adds two response headers to what the stack set, `content-length` and `date`, and no others,
+  and the status line is the one the exchange rebuilds;
+- JSON against CBOR for the same call differs over a socket from the in-process difference by the
+  digits of `content-length` and by nothing else, on both sides.
+
+Per call, a socket adds:
+
+| Side     | Header                | Bytes                                                 |
+| -------- | --------------------- | ----------------------------------------------------- |
+| request  | `host: <host>`        | 8 + the length of the host (23 for `127.0.0.1:50000`) |
+| request  | `content-length: <n>` | 18 + the digits of `n`                                |
+| response | `content-length: <n>` | 18 + the digits of `n`                                |
+| response | `date: <HTTP date>`   | 37 (an HTTP date is always 29 bytes)                  |
+
+A client adds more of its own (`user-agent`, `accept-encoding`), and TLS adds record framing. For the
+six calls of the scenario, the `host` and `content-length` lines alone are 6 × (23 + 18) = 246 request
+bytes plus the digits of each `content-length` (10 for CBOR, 13 for JSON, 18 for `cose`, from the body
+sizes in the table above): about 17% of the CBOR run's 1505. The response side is at least
+6 × (18 + 37) = 330 bytes plus a digit per call, more than 40% of its 757. The digits also move the
+differences: over a socket the JSON request would be 36 bytes larger than CBOR's, not 33, and the
+`cose` one 109 larger, not 101. The totals in this example are for comparing variants with each other,
+not for predicting a bill.
 
 Two more properties of the measurement:
 
@@ -309,6 +343,7 @@ assertion:
 | `server/src/scenario.rs`   | `Scenario` and `Run`, and the envelope overhead's attribution.                                          |
 | `server/src/report.rs`     | The measurement rendered as Markdown.                                                                   |
 | `server/src/main.rs`       | `--variant json\|cbor\|cose --listen ADDR`, and the hello line.                                         |
+| `server/tests/socket.rs`   | The same requests over a real socket: what the in-process count leaves out, pinned.                     |
 | `server/src/bin/report.rs` | `cargo run --bin wire-sizes-report`: the report, for `REPORT.md`.                                       |
 | `server/REPORT.md`         | The generated report. Never edit it by hand; regenerate it.                                             |
 | `server/deny.toml`         | The cli's licence policy plus what CrateStack's graph brings, as `examples/cose/server/deny.toml` does. |

@@ -6,8 +6,8 @@
 //! [`ExchangeLog`] back afterwards. That log is where the numbers come from, and it holds the HTTP
 //! message as the router received and answered it. A request sent through a client and a socket
 //! would also carry `host`, `content-length` and the client's own headers, and its response hyper's
-//! `date`; none of that exists here, so the counts are lower bounds (`tests/socket.rs` pins the
-//! difference over a real socket).
+//! `content-length` and `date`; none of that exists here, so the counts are lower bounds
+//! (`tests/socket.rs` pins the difference over a real socket).
 //!
 //! What the runner controls is the *scenario*: which calls, in which order, with which arguments.
 //! Every variant runs the identical sequence, so a size difference is the encoding's and not the
@@ -43,7 +43,12 @@ pub const CBOR: &str = "application/cbor";
 pub const JSON: &str = "application/json";
 
 /// Encodes a payload the way one variant's body is encoded.
-fn encode(variant: Variant, value: &Value) -> Result<Vec<u8>, CratestackError> {
+///
+/// Public so that `tests/socket.rs` encodes a body the way the runner does.
+///
+/// # Errors
+/// When the value cannot be encoded.
+pub fn encode(variant: Variant, value: &Value) -> Result<Vec<u8>, CratestackError> {
     match variant {
         Variant::Json => JsonCodec.encode(value),
         // The `cose` body is the sealed CBOR payload, not the plain one: the envelope layer
@@ -361,8 +366,12 @@ fn device_aad(op: &str) -> Result<Vec<u8>, CratestackError> {
 /// Builds the HTTP request for one call: the headers that variant sends, and the body.
 ///
 /// It sets no `host` and no `content-length`, because no connection is opened; a client on a
-/// socket would add both (see the module docs).
-fn request_for(
+/// socket would add both (see the module docs). Public so that `tests/socket.rs` sends the very
+/// request the runner sends, with those two added.
+///
+/// # Errors
+/// When the request cannot be built.
+pub fn request_for(
     variant: Variant,
     op: &str,
     body: Vec<u8>,
@@ -404,8 +413,12 @@ async fn send(router: &Router, request: Request<Body>) {
 /// A P-256 public key's coordinates, for the plain variants' key-shaped registration.
 ///
 /// The bytes are a real point on the curve, so the server's own validation accepts them; the
-/// private half is thrown away, which is fine because nothing will ever sign with it.
-fn placeholder_xy() -> Result<(String, String), CratestackError> {
+/// private half is thrown away, which is fine because nothing will ever sign with it. Public so
+/// that `tests/socket.rs` registers the same kind of key.
+///
+/// # Errors
+/// When the system's random source fails.
+pub fn placeholder_xy() -> Result<(String, String), CratestackError> {
     use base64::Engine as _;
 
     let scalar = crate::random_scalar()?;

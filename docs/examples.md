@@ -223,7 +223,7 @@ just cose                                                                   # th
 [`examples/wire-sizes`](../examples/wire-sizes) is a **measurement**, not an app: one CrateStack schema served as JSON, plain CBOR and `COSE_Sign1` CBOR, with every call weighed by a layer in the server that handles it: the request line, headers and body of each request and the status line, headers and body of each response, as the server's handler stack sees them. That is a count of the HTTP message, not a capture of a socket: `host`, `content-length`, hyper's `date` and TCP/TLS framing are not in it, so totals are lower bounds. It answers the question [`examples/cose`](../examples/cose) raises: what does signing a call actually cost?
 
 - a Rust server (`examples/wire-sizes/server`, no database, its own `Cargo.lock`) whose `--variant json|cbor|cose` picks the codec, and whose outermost middleware records each exchange before any inner layer can refuse it;
-- a runner that drives the same scenario through all three variants **in process** (`tower`'s `oneshot`, no socket), so it can read the server's own log back; `tests/socket.rs` sends one request over a real socket and pins what that adds;
+- a runner that drives the same scenario through all three variants **in process** (`tower`'s `oneshot`, no socket), so it can read the server's own log back; `tests/socket.rs` sends the same requests over a real socket and pins what that adds;
 - an attributed `cose` overhead: the payload, the protected header, the 64-byte signature and the external AAD are separated, so the delta is explained rather than reported;
 - a **generated** `REPORT.md`, with a test that fails when the committed report is stale.
 

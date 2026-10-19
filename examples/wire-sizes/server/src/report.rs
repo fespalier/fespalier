@@ -221,22 +221,153 @@ of realistic length; the server does not verify it.
 /// router: the interesting failures here are arithmetic and formatting, not I/O.
 #[must_use]
 pub fn report(runs: &[Run], sweep: &[SweepRow]) -> String {
-    let mut out = String::from(PREAMBLE);
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", summary_table(runs));
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", payload_table(runs));
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", overhead_table(runs));
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", per_op_table(runs));
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", split_table(runs));
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", credential_comparison(runs));
-    let _ = writeln!(out);
-    let _ = writeln!(out, "{}", sweep_table(sweep));
+    let sections = [
+        PREAMBLE.to_owned(),
+        summary_table(runs),
+        payload_table(runs),
+        overhead_table(runs),
+        per_op_table(runs),
+        split_table(runs),
+        credential_comparison(runs),
+        sweep_table(sweep),
+    ];
+    // One blank line between sections: each section brings its own trailing newline, and two
+    // blank lines in a row fail markdownlint's MD012.
+    let body = sections
+        .iter()
+        .map(|section| section.trim_end())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    align_tables(&format!("{body}\n"))
+}
+
+/// How a table column is aligned, from its delimiter cell.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Align {
+    Left,
+    Right,
+    Center,
+}
+
+/// Rewrites every Markdown table in `text` to the aligned style: each column as wide as its widest
+/// cell (counted in `char`s), padded so that every row has its pipes in the same columns, and a
+/// delimiter row of dashes that fills the width, with the colons of `---:` (right) and `:---:`
+/// (centre) kept. It is the style markdownlint's MD060 `aligned` and prettier ask for.
+///
+/// A table is a run of lines that start with `|`; every other line is copied as it is. Every output
+/// line ends with `\n`. The per-table functions above write compact tables, which are valid
+/// Markdown, and this is applied once to the whole report, so their tests do not depend on it.
+#[must_use]
+pub fn align_tables(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + text.len() / 8);
+    let mut rows: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        if line.starts_with('|') {
+            rows.push(line);
+        } else {
+            write_table(&rows, &mut out);
+            rows.clear();
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    write_table(&rows, &mut out);
     out
+}
+
+/// The cells of one table row, trimmed, without the outer pipes. A `\|` is part of a cell.
+fn cells_of(row: &str) -> Vec<String> {
+    let inner = row.trim();
+    let inner = inner.strip_prefix('|').unwrap_or(inner);
+    let inner = match inner.strip_suffix('|') {
+        Some(rest) if !rest.ends_with('\\') => rest,
+        _ => inner,
+    };
+    let mut cells = vec![String::new()];
+    let mut escaped = false;
+    for c in inner.chars() {
+        if c == '|' && !escaped {
+            cells.push(String::new());
+        } else if let Some(cell) = cells.last_mut() {
+            cell.push(c);
+        }
+        escaped = c == '\\' && !escaped;
+    }
+    cells.iter().map(|cell| cell.trim().to_owned()).collect()
+}
+
+/// The alignment a delimiter cell (`---`, `:---`, `---:`, `:---:`) stands for, or `None` when the
+/// cell is not a delimiter.
+fn align_of(cell: &str) -> Option<Align> {
+    let dashes = cell.trim_matches(':');
+    if dashes.is_empty() || !dashes.chars().all(|c| c == '-') {
+        return None;
+    }
+    Some(match (cell.starts_with(':'), cell.ends_with(':')) {
+        (true, true) => Align::Center,
+        (false, true) => Align::Right,
+        _ => Align::Left,
+    })
+}
+
+/// Writes one table (a run of `|` lines) in the aligned style. An empty run writes nothing.
+fn write_table(rows: &[&str], out: &mut String) {
+    let parsed: Vec<Vec<String>> = rows.iter().map(|row| cells_of(row)).collect();
+    let columns = parsed.iter().map(Vec::len).max().unwrap_or(0);
+    // The second row is the delimiter row when every one of its cells is a delimiter.
+    let aligns: Option<Vec<Align>> = parsed
+        .get(1)
+        .and_then(|cells| cells.iter().map(|cell| align_of(cell)).collect());
+    let alignment = |column: usize| {
+        aligns
+            .as_ref()
+            .and_then(|aligns| aligns.get(column))
+            .copied()
+            .unwrap_or(Align::Left)
+    };
+    let is_delimiter = |row: usize| aligns.is_some() && row == 1;
+
+    // Three is the narrowest a delimiter cell can be (`---`).
+    let mut widths = vec![3_usize; columns];
+    for (row, cells) in parsed.iter().enumerate() {
+        if !is_delimiter(row) {
+            for (width, cell) in widths.iter_mut().zip(cells) {
+                *width = (*width).max(cell.chars().count());
+            }
+        }
+    }
+
+    for (row, cells) in parsed.iter().enumerate() {
+        out.push('|');
+        for (column, width) in widths.iter().copied().enumerate() {
+            let align = alignment(column);
+            let text = cells.get(column).map_or("", String::as_str);
+            let padding = width - text.chars().count().min(width);
+            out.push(' ');
+            if is_delimiter(row) {
+                let (left, right) = match align {
+                    Align::Left => ("", ""),
+                    Align::Right => ("", ":"),
+                    Align::Center => (":", ":"),
+                };
+                out.push_str(left);
+                out.push_str(&"-".repeat(width - left.len() - right.len()));
+                out.push_str(right);
+            } else if align == Align::Right {
+                out.push_str(&" ".repeat(padding));
+                out.push_str(text);
+            } else if align == Align::Center {
+                out.push_str(&" ".repeat(padding / 2));
+                out.push_str(text);
+                out.push_str(&" ".repeat(padding - padding / 2));
+            } else {
+                out.push_str(text);
+                out.push_str(&" ".repeat(padding));
+            }
+            out.push_str(" |");
+        }
+        out.push('\n');
+    }
 }
 
 /// Whether the payload is JSON, as a table cell.
@@ -646,13 +777,97 @@ mod tests {
     }
 
     #[test]
+    fn a_table_is_aligned_to_its_widest_cell() {
+        let aligned = align_tables(
+            "| Op | Bytes | Note |\n| --- | ---: | :---: |\n| `a` | 7 | x |\n| `longer` | 12345 | yy |\n",
+        );
+        assert_eq!(
+            aligned,
+            "\
+| Op       | Bytes | Note |\n\
+| -------- | ----: | :--: |\n\
+| `a`      |     7 |  x   |\n\
+| `longer` | 12345 |  yy  |\n"
+        );
+    }
+
+    #[test]
+    fn alignment_counts_characters_not_bytes() {
+        // `−` is three bytes in UTF-8 and one column.
+        let aligned = align_tables("| a |\n| --- |\n| JSON−CBOR |\n");
+        assert_eq!(aligned, "| a         |\n| --------- |\n| JSON−CBOR |\n");
+    }
+
+    #[test]
+    fn text_around_a_table_is_left_alone_and_alignment_is_stable() {
+        let text = "# Title\n\nSome text with a | pipe.\n\n| a | b |\n| --- | ---: |\n| 1 | 22 |\n\nmore\n";
+        let once = align_tables(text);
+        assert!(
+            once.starts_with("# Title\n\nSome text with a | pipe.\n\n"),
+            "{once}"
+        );
+        assert!(once.ends_with("\n\nmore\n"), "{once}");
+        assert_eq!(align_tables(&once), once, "aligning twice changes nothing");
+    }
+
+    #[test]
+    fn empty_cells_and_escaped_pipes_keep_their_columns() {
+        let aligned =
+            align_tables("| **Total** | **107** | |\n| --- | ---: | --- |\n| a\\|b | | |\n");
+        let lines: Vec<&str> = aligned.lines().collect();
+        assert_eq!(lines.len(), 3);
+        // Three columns on every row: the escaped pipe did not split a cell.
+        for line in &lines {
+            assert_eq!(line.matches(" | ").count() + 1, 3, "{line}");
+        }
+        assert!(lines[2].starts_with("| a\\|b"), "{aligned}");
+    }
+
+    #[test]
+    fn the_report_opens_with_a_heading_and_has_no_double_blank_lines() {
+        let runs = vec![
+            run(Variant::Json, true, (100, 50, 40)),
+            run(Variant::Cbor, true, (100, 50, 30)),
+        ];
+        let text = report(&runs, &[]);
+        assert!(text.starts_with("# wire-sizes report\n\n"), "{text}");
+        assert!(!text.contains("\n\n\n"), "{text}");
+        assert!(
+            text.ends_with("|\n"),
+            "the last table ends the file: {text:?}"
+        );
+    }
+
+    #[test]
+    fn every_table_in_the_report_is_aligned() {
+        let runs = vec![
+            run(Variant::Json, true, (100, 50, 40)),
+            run(Variant::Cbor, true, (100, 50, 30)),
+        ];
+        let text = report(&runs, &[]);
+        let mut width = None;
+        for line in text.lines() {
+            if line.starts_with('|') {
+                let columns = line.chars().count();
+                assert_eq!(*width.get_or_insert(columns), columns, "ragged row: {line}");
+            } else {
+                width = None;
+            }
+        }
+    }
+
+    #[test]
     fn the_report_renders_every_section() {
         let runs = vec![run(Variant::Json, true, (100, 50, 10))];
         let text = report(&runs, &[]);
         assert!(text.contains("Request bytes"));
         assert!(text.contains("Body bytes"));
         assert!(text.contains("External AAD"));
-        assert!(text.contains("| Op | Call |"));
+        // Cells are padded to their column, so match on the header cells and not on the row.
+        assert!(
+            text.contains("| Op ") && text.contains("| Call |"),
+            "{text}"
+        );
         assert!(text.contains("Head/call"));
         assert!(text.contains("The credential, compared directly"));
         assert!(text.contains("JSON body"));

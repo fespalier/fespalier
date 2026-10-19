@@ -609,9 +609,12 @@ jobs:
       # `fsp dev` against the real flutter (since 0.9.0): a fresh web app in headless Chrome. fsp dev
       # runs the app, reloads a new route in, restarts when it must and quits with `q`. Every other
       # test of `fsp dev` talks to a fake flutter; this is the one that notices when flutter changes
-      # its `--machine` protocol. The script is `just dev-e2e`.
+      # its `--machine` protocol. The script is `just dev-e2e`. The step may run 14 minutes: the
+      # script gives `fsp dev` 10 (`timeout 600`) after `flutter create`, `pub add` and `fsp init`,
+      # and a slow runner should fail in the script, with the log of `fsp dev`, before Actions kills
+      # the step.
       - name: fsp dev runs the app, reloads a new route in, restarts when it must and quits
-        timeout-minutes: 10
+        timeout-minutes: 14
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh

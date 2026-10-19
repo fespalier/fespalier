@@ -638,7 +638,7 @@ A `redirect.dart` route has no page, so it is never deferred.
 **Preloading the code.** It goes with the data:
 
 - `XRoute(...).preload(ref)` (and so a [`RouteLink`](#links-routelink) with `preload`, and `AppRoutes.preload(ref, uri)`) also starts the page's code. A route that reads no data returns a closed handle; the code, once loaded, stays loaded, so closing a handle only drops the data. A typed route preloads its own page's code, not the pages `go` stacks under it.
-- `AppRoutes.deferred` lists the `DeferredLibrary` of each deferred route, and `AppRoutes.loadDeferred()` loads them all, which is the "once the app is idle" strategy: call it after the first frame. There is no `const preload = true;`, and no limit on how many load at once (each loads once, and the browser dedups).
+- `AppRoutes.deferred` lists the `DeferredLibrary` of each deferred route (a getter since 0.20.0, which a hot reload's swap lists again), and `AppRoutes.loadDeferred()` loads them all, which is the "once the app is idle" strategy: call it after the first frame. There is no `const preload = true;`, and no limit on how many load at once (each loads once, and the browser dedups). A deferred route a hot reload adds loads on its first visit there too (since 0.20.0).
 - `RouteLink` with a `uri:` and a `RouteLinkScope.match` preloads through the matched route's `preload`.
 
 **Platforms.** On the web each deferred page is a `main.dart.js_N.part.js`. Elsewhere the code is in the binary already, but `loadLibrary()` still takes a turn of the event loop, so a page shows its `loading.dart` for about a frame on its first visit unless it was preloaded. Load them before `runApp` there: it costs no I/O, and keeps a deferred page's restorable state working on Android and iOS.

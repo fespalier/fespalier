@@ -113,15 +113,26 @@ struct ImportCx {
     path: String,
     /// `deferred as`: the page.dart of a deferred route (see [`Route::defers_page`]).
     deferred: bool,
+    /// The import's prefix: `_i<n>`, or [`deferred_prefix`] for a deferred page (since 0.20.0).
+    alias: String,
 }
 
-/// The `DeferredLibrary` of a deferred route: `final _libCheckout = DeferredLibrary(_i7.loadLibrary, ...)`.
+/// The prefix of a deferred page's import (since 0.20.0): `_page` and the route's stem, as in
+/// `import 'app/checkout/page.dart' deferred as _pageCheckout;`. The VM and DDC keep a deferred
+/// import's loaded state across a hot reload under its prefix's name, and the kept `_lib<Stem>`
+/// loads through the prefix it was made with, so the name follows the folder and never the import's
+/// position (`_i7`). `fsp size` reads the same names (`size::deferred_routes`).
+pub(crate) fn deferred_prefix(r: &Route) -> String {
+    format!("_page{}", r.stem)
+}
+
+/// The `DeferredLibrary` of a deferred route: `final _libCheckout = DeferredLibrary(_pageCheckout.loadLibrary, ...)`.
 #[derive(Serialize)]
 struct DeferredLibCx {
     /// `_libCheckout`: the route's folder stem (since 0.20.0), as `_dataCheckout` spells it.
     name: String,
-    /// The index of the page.dart's import.
-    import: usize,
+    /// The page.dart's import prefix, [`deferred_prefix`] (since 0.20.0).
+    prefix: String,
     /// The page.dart relative to the app folder, as a Dart string literal.
     file: String,
     /// The same, as a doc comment shows it.
@@ -657,11 +668,11 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
         Some(_) => (None, vec![]),
     };
     let matchers = matchers(app, &mut fns);
-    let deferred_imports: BTreeSet<usize> = app
+    let deferred_aliases: BTreeMap<usize, String> = app
         .routes
         .iter()
         .filter(|r| r.defers_page())
-        .filter_map(|r| r.page.as_ref().map(|p| p.import))
+        .filter_map(|r| Some((r.page.as_ref()?.import, deferred_prefix(r))))
         .collect();
     let routes: Vec<RouteCx> = app
         .routes
@@ -680,11 +691,13 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .imports
             .iter()
             .enumerate()
-            .map(|(i, rel)| (rel, deferred_imports.contains(&i)))
-            .chain(metas.iter().map(|rel| (rel, false)))
-            .map(|(rel, deferred)| ImportCx {
+            .map(|(i, rel)| (rel, deferred_aliases.get(&i).cloned()))
+            .chain(metas.iter().map(|rel| (rel, None)))
+            .enumerate()
+            .map(|(n, (rel, deferred))| ImportCx {
                 path: cfg.import_path(&rel.replace('$', "\\$")),
-                deferred,
+                deferred: deferred.is_some(),
+                alias: deferred.unwrap_or_else(|| format!("_i{n}")),
             })
             .collect(),
         deferred_libs: app
@@ -693,7 +706,7 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             .filter(|r| r.defers_page())
             .map(|r| DeferredLibCx {
                 name: format!("_lib{}", r.stem),
-                import: r.page.as_ref().expect("a deferred route has a page").import,
+                prefix: deferred_prefix(r),
                 file: dart_str(&rel(r, Kind::Page)),
                 path: rel(r, Kind::Page),
                 route: dart_str(&resolve::pattern(&r.url)),
@@ -1726,7 +1739,7 @@ fn page_route(
     });
     // A deferred page's class can't be named in a constant expression.
     let page_call = if library.is_some() {
-        page.call_non_const(in_builder)
+        page.call_deferred(&deferred_prefix(r), in_builder)
     } else {
         page.call(in_builder)
     };

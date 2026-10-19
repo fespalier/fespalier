@@ -389,6 +389,8 @@ const AAB: &str = "class AabPage extends StatelessWidget { const AabPage({super.
 
 const AAB_DATA: &str = "Future<int> data(Ref ref) async => 0;";
 
+const YAK: &str = "class YakPage extends StatelessWidget { const YakPage({super.key}); }";
+
 const DEFERRED: &str = "const deferred = true;\n";
 
 /// Every kind of name a route with a data.dart, an action.dart, a section layout and a deferred
@@ -449,13 +451,20 @@ fn the_names_a_reload_keeps_follow_the_folders() {
             "final _actionTeamsTeamId_addMember = ",
             "final _libBig = ",
             "final _libZoo = ",
-            "static final List<DeferredLibrary> deferred = [_libBig, _libZoo];",
+            "static List<DeferredLibrary> _allDeferred() => [_libBig, _libZoo];",
+            "static List<DeferredLibrary> get deferred => _deferred;",
+            "import 'app/big/page.dart' deferred as _pageBig;",
+            "final _libBig = DeferredLibrary(_pageBig.loadLibrary, 'big/page.dart');",
             "traceData(ref, 'dItemsId', id, ",
             "site: 'aItemsId_action',",
             "site: 'aTeamsTeamId_addMember',",
             "import 'package:m/m.dart' as _e19a273a4_m;",
             "_e19a273a4_m.Item input",
         ],
+    );
+    assert!(
+        !c.contains("deferred as _i"),
+        "a deferred page is named after its folder"
     );
     for (name, decl) in declarations(&c) {
         assert!(
@@ -471,14 +480,24 @@ fn adding_files_keeps_every_kept_declaration(
     base: &[(&str, &str)],
     cases: &[(&str, Vec<(&str, &str)>)],
 ) {
-    let before = built(base);
+    adding_files_keeps_every_kept_declaration_with(base, cases, built);
+}
+
+/// [`adding_files_keeps_every_kept_declaration`] for a project that `build` makes (since 0.20.0 a
+/// test can give the config a `deferred: true`).
+fn adding_files_keeps_every_kept_declaration_with(
+    base: &[(&str, &str)],
+    cases: &[(&str, Vec<(&str, &str)>)],
+    build: impl Fn(&[(&str, &str)]) -> String,
+) {
+    let before = build(base);
     let old = declarations(&before);
     let old_hashes = kept_of(&before);
     assert!(!old.is_empty() && !old_hashes.is_empty());
     for (file, extra) in cases {
         let mut files = base.to_vec();
         files.extend(extra.iter().copied());
-        let after = built(&files);
+        let after = build(&files);
         let new = declarations(&after);
         for (name, decl) in &old {
             assert_eq!(
@@ -645,6 +664,63 @@ fn folders_whose_stems_meet_each_take_a_hash_of_their_own_path() {
 }
 
 #[test]
+fn folders_whose_stems_meet_swap_when_only_their_deferred_libraries_are_named() {
+    const HISTORY_A: &str =
+        "class HistoryAPage extends StatelessWidget { const HistoryAPage({super.key}); }";
+    const HISTORY_B: &str =
+        "class HistoryBPage extends StatelessWidget { const HistoryBPage({super.key}); }";
+    const WITH_DATA: &str = "class HistoryAPage extends StatelessWidget { const HistoryAPage({super.key, required this.data}); final int data; }";
+    const HISTORY_DATA: &str = "Future<int> data(Ref ref) async => 0;";
+    let stamp_of = |code: &str| read_stamp(code).expect("a stamp");
+    // Two deferred pages: the library is the only name either folder owns. Adding the second
+    // renames `_libOrderHistory` to a name of its own, and no name both files hold changes.
+    let alone = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", HISTORY_A),
+        ("order-history/route.dart", DEFERRED),
+    ]);
+    let both = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", HISTORY_A),
+        ("order-history/route.dart", DEFERRED),
+        ("order_history/page.dart", HISTORY_B),
+        ("order_history/route.dart", DEFERRED),
+    ]);
+    has(&alone, &["final _libOrderHistory = "]);
+    has(
+        &both,
+        &[
+            "final _libOrderHistory_a6adc020 = ",
+            "final _libOrderHistory_5cefc874 = ",
+            "deferred as _pageOrderHistory_a6adc020;",
+            "deferred as _pageOrderHistory_5cefc874;",
+        ],
+    );
+    assert!(!both.contains("final _libOrderHistory = "), "{both}");
+    assert!(stamp_of(&alone).swaps_to(&stamp_of(&both)), "adding swaps");
+    assert!(
+        stamp_of(&both).swaps_to(&stamp_of(&alone)),
+        "removing swaps"
+    );
+    // A data.dart in the folder that was there first renames its provider, which its route class
+    // keeps (`HistoryARoute.data`): both edits are refused.
+    let data_alone = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", WITH_DATA),
+        ("order-history/data.dart", HISTORY_DATA),
+    ]);
+    let data_both = built(&[
+        ("page.dart", HOME),
+        ("order-history/page.dart", WITH_DATA),
+        ("order-history/data.dart", HISTORY_DATA),
+        ("order_history/page.dart", HISTORY_B),
+        ("order_history/route.dart", DEFERRED),
+    ]);
+    assert!(!stamp_of(&data_alone).swaps_to(&stamp_of(&data_both)));
+    assert!(!stamp_of(&data_both).swaps_to(&stamp_of(&data_alone)));
+}
+
+#[test]
 fn two_folders_whose_hashes_agree_are_an_error_and_not_a_name_declared_twice() {
     // Found by searching: two spellings of one stem whose paths agree on all 8 digits of the hash.
     const ONE: &str = "a_b-c.d.e_f-g-h.i.j.k-l-m-n";
@@ -703,33 +779,156 @@ fn a_folder_stem_is_its_path_in_pascal_case() {
 }
 
 #[test]
-fn a_second_deferred_route_changes_the_list_a_reload_keeps() {
-    let (before, _) = generated(
-        "",
+fn a_deferred_route_added_anywhere_keeps_every_kept_hash() {
+    // Since 0.20.0 `AppRoutes.deferred` is a getter over `_deferred`, which a reload makes again, so
+    // no kept declaration spells the list and a deferred route added anywhere keeps every hash.
+    adding_files_keeps_every_kept_declaration(
+        RICH,
         &[
-            ("page.dart", HOME),
-            ("big/page.dart", &page("Big")),
-            ("big/route.dart", DEFERRED),
+            (
+                "aaa/page.dart",
+                vec![("aaa/page.dart", AAA), ("aaa/route.dart", DEFERRED)],
+            ),
+            (
+                "yak/page.dart",
+                vec![("yak/page.dart", YAK), ("yak/route.dart", DEFERRED)],
+            ),
+            (
+                "items/$id/aaa/page.dart",
+                vec![
+                    ("items/$id/aaa/page.dart", AAA),
+                    ("items/$id/aaa/route.dart", DEFERRED),
+                ],
+            ),
+            (
+                "aab/page.dart",
+                vec![
+                    ("aab/page.dart", AAB),
+                    ("aab/data.dart", AAB_DATA),
+                    ("aab/route.dart", DEFERRED),
+                ],
+            ),
         ],
     );
-    let (after, _) = generated(
-        "",
+    assert!(!kept_of(&built(RICH)).contains_key("AppRoutes.deferred"));
+}
+
+#[test]
+fn with_deferred_true_a_page_added_anywhere_keeps_every_kept_hash() {
+    let base: &[(&str, &str)] = &[
+        ("page.dart", HOME),
+        ("items/$id/page.dart", &item()),
+        ("items/$id/data.dart", &data("int")),
+        ("big/page.dart", &page("Big")),
+    ];
+    let yaml = "fespalier:\n  deferred: true\n";
+    let (before, _) = generated(yaml, base);
+    has(
+        &before,
         &[
-            ("page.dart", HOME),
-            ("big/page.dart", &page("Big")),
-            ("big/route.dart", DEFERRED),
-            ("zoo/page.dart", &page("Zoo")),
-            ("zoo/route.dart", DEFERRED),
+            "import 'app/page.dart' deferred as _pageRoot;",
+            "import 'app/big/page.dart' deferred as _pageBig;",
         ],
     );
+    let zzz = page("Zzz");
+    adding_files_keeps_every_kept_declaration_with(
+        base,
+        &[
+            ("aaa/page.dart", vec![("aaa/page.dart", AAA)]),
+            ("(g)/mid/page.dart", vec![("(g)/mid/page.dart", MID)]),
+            (
+                "items/$id/aaa/page.dart",
+                vec![("items/$id/aaa/page.dart", AAA)],
+            ),
+            ("zzz/page.dart", vec![("zzz/page.dart", zzz.as_str())]),
+        ],
+        |files| generated(yaml, files).0,
+    );
+    let mut more = base.to_vec();
+    more.push(("aaa/page.dart", AAA));
+    let (after, _) = generated(yaml, &more);
+    has(
+        &after,
+        &[
+            "import 'app/big/page.dart' deferred as _pageBig;",
+            "import 'app/aaa/page.dart' deferred as _pageAaa;",
+        ],
+    );
+}
+
+#[test]
+fn turning_deferred_on_or_off_keeps_every_other_kept_hash() {
+    let base: &[(&str, &str)] = &[
+        ("page.dart", HOME),
+        ("big/page.dart", &page("Big")),
+        ("big/route.dart", DEFERRED),
+        ("items/$id/page.dart", &item()),
+        ("items/$id/data.dart", &data("int")),
+    ];
+    let mut more = base.to_vec();
+    more.push(("items/$id/route.dart", DEFERRED));
+    let (before, _) = generated("", base);
+    let (after, _) = generated("", &more);
     let old = kept_of(&before);
     let new = kept_of(&after);
-    assert_ne!(new["AppRoutes.deferred"], old["AppRoutes.deferred"]);
+    // On: every name the old map has keeps its hash, and the one new name is the page's library.
     for (name, hash) in &old {
-        if name != "AppRoutes.deferred" {
-            assert_eq!(new.get(name), Some(hash), "{name}");
+        assert_eq!(new.get(name), Some(hash), "{name}");
+    }
+    assert!(new.contains_key("_libItemsId") && !old.contains_key("_libItemsId"));
+    // Off: the same two maps the other way round, so every name both have is equal.
+    for (name, hash) in &new {
+        if let Some(was) = old.get(name) {
+            assert_eq!(was, hash, "{name}");
         }
     }
+    has(
+        &after,
+        &["import 'app/items/\\$id/page.dart' deferred as _pageItemsId;"],
+    );
+}
+
+#[test]
+fn a_deferred_page_is_imported_under_its_folder_so_a_route_put_before_it_renames_nothing() {
+    // The VM and DDC keep a deferred import's loaded state under its prefix's name across a hot
+    // reload (`_pageCheckout`, not `_i7`), so a route put before it must not renumber it.
+    let products = "class ProductPage extends StatelessWidget { const ProductPage({super.key, required this.data}); final int data; }";
+    let base: &[(&str, &str)] = &[
+        ("page.dart", HOME),
+        ("checkout/page.dart", &page("Checkout")),
+        ("checkout/route.dart", DEFERRED),
+        ("products/$id/page.dart", products),
+        ("products/$id/data.dart", &data("int")),
+        ("products/$id/route.dart", DEFERRED),
+    ];
+    let about = page("About");
+    let mut more = base.to_vec();
+    more.push(("about/page.dart", &about));
+    let before = generated("", base).0;
+    let after = generated("", &more).0;
+    let lines = |c: &str| {
+        c.lines()
+            .filter(|l| l.contains(" deferred as "))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        lines(&before),
+        [
+            "import 'app/checkout/page.dart' deferred as _pageCheckout;",
+            "import 'app/products/\\$id/page.dart' deferred as _pageProductsId;",
+        ]
+    );
+    assert_eq!(lines(&before), lines(&after));
+    has(
+        &before,
+        &[
+            "final _libCheckout = DeferredLibrary(_pageCheckout.loadLibrary, 'checkout/page.dart');",
+            "_pageCheckout.CheckoutPage()",
+            "_pageProductsId.ProductPage(",
+        ],
+    );
+    assert!(!before.contains("deferred as _i"));
 }
 
 #[test]
@@ -847,7 +1046,7 @@ fn the_reload_refreshes_matchers_manifest_devtools_observe() {
 }
 
 #[test]
-fn the_reload_registers_the_deferred_libraries_again() {
+fn the_reload_lists_and_registers_the_deferred_libraries_again() {
     // A swap that adds an app's first deferred route must reach `loadDeferred()` and
     // `DeferredLibrary.anyPending`, which only `mount()` registered before.
     let (c, _) = generated(
@@ -863,7 +1062,15 @@ fn the_reload_registers_the_deferred_libraries_again() {
         "static RoutingConfig _reload(GoRouter router) {",
         "\n  }\n",
     );
-    has(reload, &["DeferredLibrary.register(deferred);"]);
+    has(
+        reload,
+        &[
+            "_deferred = _allDeferred();",
+            "DeferredLibrary.register(deferred);",
+        ],
+    );
+    let listed = reload.find("_deferred = _allDeferred();").unwrap();
+    assert!(listed < reload.find("DeferredLibrary.register(deferred);").unwrap());
     let mount = section(&c, "static List<RouteBase> mount({", "return _routes(at);");
     has(mount, &["DeferredLibrary.register(deferred);"]);
 
@@ -872,7 +1079,8 @@ fn the_reload_registers_the_deferred_libraries_again() {
     let old = kept_of(&before);
     let new = kept_of(&c);
     assert!(!old.contains_key("AppRoutes.deferred"), "{old:?}");
-    assert!(new.contains_key("AppRoutes.deferred"), "{new:?}");
+    assert!(!new.contains_key("AppRoutes.deferred"), "{new:?}");
+    assert!(new.contains_key("_libBig"), "{new:?}");
     for (name, hash) in &old {
         assert_eq!(new.get(name), Some(hash), "{name}");
     }
@@ -1042,6 +1250,38 @@ fn a_pass_says_what_fsp_dev_needs() {
     assert!(regenerate(dir.path(), &mut session));
     let third = session.stamp.clone().expect("a stamp");
     assert!(second.swaps_to(&third), "a page that sorts first swaps");
+    // The first deferred route rewrites the main: the main loads the code before the first frame.
+    fs::create_dir_all(dir.path().join("lib/app/big")).unwrap();
+    fs::write(dir.path().join("lib/app/big/page.dart"), page("Big")).unwrap();
+    fs::write(dir.path().join("lib/app/big/route.dart"), DEFERRED).unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    assert!(
+        session.main_changed,
+        "the first deferred route rewrites the main"
+    );
+    let big = session.stamp.clone().expect("a stamp");
+    // A second deferred route swaps (since 0.20.0), and so does its removal.
+    fs::create_dir_all(dir.path().join("lib/app/zoo")).unwrap();
+    fs::write(dir.path().join("lib/app/zoo/page.dart"), page("Zoo")).unwrap();
+    fs::write(dir.path().join("lib/app/zoo/route.dart"), DEFERRED).unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    assert!(
+        !session.main_changed,
+        "a second deferred route leaves the main alone"
+    );
+    let zoo = session.stamp.clone().expect("a stamp");
+    assert!(
+        big.swaps_to(&zoo),
+        "a second deferred route swaps (since 0.20.0)"
+    );
+    fs::remove_dir_all(dir.path().join("lib/app/zoo")).unwrap();
+    assert!(regenerate(dir.path(), &mut session));
+    assert!(!session.main_changed);
+    let gone = session.stamp.clone().expect("a stamp");
+    assert!(
+        zoo.swaps_to(&gone),
+        "a removed deferred route swaps (since 0.20.0)"
+    );
     // A data() that becomes a stream changes a provider the reload keeps: a restart.
     fs::write(
         dir.path().join("lib/app/items/$id/data.dart"),
@@ -1050,7 +1290,7 @@ fn a_pass_says_what_fsp_dev_needs() {
     .unwrap();
     assert!(regenerate(dir.path(), &mut session));
     let fourth = session.stamp.clone().expect("a stamp");
-    assert!(!third.swaps_to(&fourth));
+    assert!(!gone.swaps_to(&fourth));
     // startup.dart is read by the generated main, so the main is written again.
     fs::write(dir.path().join("lib/app/startup.dart"), "void startup() {}").unwrap();
     assert!(regenerate(dir.path(), &mut session));

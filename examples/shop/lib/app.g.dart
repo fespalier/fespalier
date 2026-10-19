@@ -18,14 +18,14 @@ import 'app/transition.dart' as _i3;
 import 'app/layout.dart' as _i4;
 import 'app/not_found.dart' as _i5;
 import 'app/cart/page.dart' as _i6;
-import 'app/checkout/page.dart' deferred as _i7;
+import 'app/checkout/page.dart' deferred as _pageCheckout;
 import 'app/checkout/guard.dart' as _i8;
 import 'app/greet/\$name/page.dart' as _i9;
 import 'app/products/data.dart' as _i10;
 import 'app/products/page.dart' as _i11;
 import 'app/products/loading.dart' as _i12;
 import 'app/products/\$id/data.dart' as _i13;
-import 'app/products/\$id/page.dart' deferred as _i14;
+import 'app/products/\$id/page.dart' deferred as _pageProductsId;
 import 'app/products/\$id/error.dart' as _i15;
 
 /// The file tree under lib/app/, ready to mount.
@@ -40,10 +40,9 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'dedee79ecd739c67';
+  static const String _version = '387370f098f83f59';
   static const Map<String, String> _kept = {
     '(router)': '3fddb5dc',
-    'AppRoutes.deferred': '5bb1a6ef',
     'ProductRoute.data': 'd1a8b78b',
     'ProductRoute.read': 'd7c35f03',
     'ProductRoute.watch': '47998864',
@@ -51,8 +50,8 @@ abstract final class AppRoutes {
     'ProductsRoute.read': '80e133b4',
     'ProductsRoute.watch': 'e04d3518',
     '_dataProductsId': '48df11a9',
-    '_libCheckout': '4a1e2774',
-    '_libProductsId': '2054bdf0',
+    '_libCheckout': 'b163e3a9',
+    '_libProductsId': 'ad6ee698',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -108,6 +107,7 @@ abstract final class AppRoutes {
   /// reloaded, with the shells' keys of the last [mount].
   static RoutingConfig _reload(GoRouter router) {
     _matchers = _allMatchers();
+    _deferred = _allDeferred();
     DeferredLibrary.register(deferred);
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return _config(_routes(_base));
@@ -164,7 +164,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   DeferredView(
                     library: _libCheckout,
-                    page: () => Semantics(identifier: 'route:/checkout', container: true, explicitChildNodes: true, child: _i7.CheckoutPage()),
+                    page: () => Semantics(identifier: 'route:/checkout', container: true, explicitChildNodes: true, child: _pageCheckout.CheckoutPage()),
                     loading: () => const _i1.RootLoading(),
                     error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
                   ),
@@ -197,7 +197,7 @@ abstract final class AppRoutes {
                         (v) => DataView(
                           watch: (ref) => watchData(ref, 'dProductsId', _dataProductsId(v.id)),
                           refresh: (ref) => ref.invalidate(_dataProductsId(v.id)),
-                          data: (d) => Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: _i14.ProductPage(product: d)),
+                          data: (d) => Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: _pageProductsId.ProductPage(product: d)),
                           loading: () => const _i12.ProductsLoading(),
                           error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
                           keepPrevious: true,
@@ -275,8 +275,14 @@ abstract final class AppRoutes {
 
   /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
   /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
-  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
-  static final List<DeferredLibrary> deferred = [_libCheckout, _libProductsId];
+  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred]. A getter (since 0.20.0):
+  /// a hot reload in a debug build that swaps the routes lists them again, so adding or removing a
+  /// deferred route swaps too.
+  static List<DeferredLibrary> get deferred => _deferred;
+
+  static List<DeferredLibrary> _deferred = _allDeferred();
+
+  static List<DeferredLibrary> _allDeferred() => [_libCheckout, _libProductsId];
 
   /// Loads the code of every deferred route now, and completes when it is all there: once the app
   /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
@@ -574,10 +580,10 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 /// checkout/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _libCheckout = DeferredLibrary(_i7.loadLibrary, 'checkout/page.dart');
+final _libCheckout = DeferredLibrary(_pageCheckout.loadLibrary, 'checkout/page.dart');
 
 /// products/$id/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _libProductsId = DeferredLibrary(_i14.loadLibrary, 'products/\$id/page.dart');
+final _libProductsId = DeferredLibrary(_pageProductsId.loadLibrary, 'products/\$id/page.dart');
 
 final _dataProductsId = cachedDataFamily(
   (Ref ref, int id) => traceData(ref, 'dProductsId', id, _i13.data(ref, id: id)),

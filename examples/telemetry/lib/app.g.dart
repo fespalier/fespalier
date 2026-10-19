@@ -19,7 +19,7 @@ import 'app/(tabs)/orders/\$id/data.dart' as _i5;
 import 'app/(tabs)/orders/\$id/action.dart' as _i6;
 import 'app/(tabs)/orders/\$id/page.dart' as _i7;
 import 'app/(tabs)/orders/\$id/observe.dart' as _i8;
-import 'app/(tabs)/settings/page.dart' deferred as _i9;
+import 'app/(tabs)/settings/page.dart' deferred as _pageTabsSettings;
 import 'app/(tabs)/settings/guard.dart' as _i10;
 import 'app/login/page.dart' as _i11;
 
@@ -35,10 +35,9 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'e387dbd6d0d2e21f';
+  static const String _version = '29347d30ebfa2471';
   static const Map<String, String> _kept = {
     '(router)': '692c8098',
-    'AppRoutes.deferred': 'ac7c4136',
     'OrderRoute.action': '1dd64668',
     'OrderRoute.data': 'abc22723',
     'OrderRoute.read': 'd7c35f03',
@@ -47,7 +46,7 @@ abstract final class AppRoutes {
     'OrderRoute.watch': '47998864',
     '_actionTabsOrdersId_action': '3b67e420',
     '_dataTabsOrdersId': 'ff23aed6',
-    '_libTabsSettings': '664bf663',
+    '_libTabsSettings': 'ea78bf9c',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -103,6 +102,7 @@ abstract final class AppRoutes {
   /// reloaded, with the shells' keys of the last [mount].
   static RoutingConfig _reload(GoRouter router) {
     _matchers = _allMatchers();
+    _deferred = _allDeferred();
     DeferredLibrary.register(deferred);
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     observeAttach(router, _observeAt);
@@ -196,7 +196,7 @@ abstract final class AppRoutes {
                 redirect: (context, state) => traceGuard(state, 'g5@5', refGuard(context, 'g5@5', (ref) => _i10.guard(ref)), telemetry: const TelemetrySite('(tabs)/settings/guard.dart', route: '/settings')),
                 builder: (context, state) => DeferredView(
                   library: _libTabsSettings,
-                  page: () => _i9.SettingsPage(),
+                  page: () => _pageTabsSettings.SettingsPage(),
                   loading: () => const DefaultLoading(),
                   error: (e, st, retry) => DefaultError(error: e, retry: retry),
                 ),
@@ -279,8 +279,14 @@ abstract final class AppRoutes {
 
   /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
   /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
-  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
-  static final List<DeferredLibrary> deferred = [_libTabsSettings];
+  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred]. A getter (since 0.20.0):
+  /// a hot reload in a debug build that swaps the routes lists them again, so adding or removing a
+  /// deferred route swaps too.
+  static List<DeferredLibrary> get deferred => _deferred;
+
+  static List<DeferredLibrary> _deferred = _allDeferred();
+
+  static List<DeferredLibrary> _allDeferred() => [_libTabsSettings];
 
   /// Loads the code of every deferred route now, and completes when it is all there: once the app
   /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
@@ -524,7 +530,7 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({int id}) _observe4(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 /// (tabs)/settings/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _libTabsSettings = DeferredLibrary(_i9.loadLibrary, '(tabs)/settings/page.dart', route: '/settings');
+final _libTabsSettings = DeferredLibrary(_pageTabsSettings.loadLibrary, '(tabs)/settings/page.dart', route: '/settings');
 
 final _dataTabsOrdersId = FutureProvider.autoDispose.family(
   (Ref ref, int id) => traceDataCall(ref, 'dTabsOrdersId', id, () => _i5.data(ref, id: id), telemetry: const TelemetrySite('(tabs)/orders/\$id/data.dart', route: '/orders/:id')),

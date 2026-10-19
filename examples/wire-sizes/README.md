@@ -332,6 +332,12 @@ cargo run --locked --quiet --bin wire-sizes-report > REPORT.md  # regenerate the
   with bytes written to and read from a real TCP connection. It writes the HTTP by hand and does not
   use an HTTP client, so the headers a client adds on its own are not covered.
 
+A fresh report shows that the numbers match the code, not that a comparison is fair. Compare like
+with like: a head with a head and a credential with a credential (never the growth of a body with a
+whole request), one payload kind with the same kind, and check that a difference holds at more than
+one size and for more than one kind of text. A sweep over `repeated` text alone, which has nothing to
+escape, would report JSON's overhead as 12 to 16 bytes at every size.
+
 ## What is in it
 
 | Path                       | What it is                                                                                              |

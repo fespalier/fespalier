@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.19.0
+      ref: v0.20.0
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.19.0
+      ref: v0.20.0
 ```
 <!-- x-release-please-end -->
 

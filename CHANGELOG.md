@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.20.0](https://github.com/fespalier/fespalier/compare/v0.19.0...v0.20.0) (2026-10-19)
+
+
+### Features
+
+* **fsp:** adding or removing a deferred route hot reloads too ([#242](https://github.com/fespalier/fespalier/issues/242)) ([587bb82](https://github.com/fespalier/fespalier/commit/587bb8288b5c46ac81a57b54b7a5b1fe6e79f58d))
+* **fsp:** generated names follow the route, not its position, so inserting a route hot reloads ([#239](https://github.com/fespalier/fespalier/issues/239)) ([c8eb2ac](https://github.com/fespalier/fespalier/commit/c8eb2ac8d6bc85690337265cc518874f7ab9fa0d))
+
+
+### Documentation
+
+* **examples:** a wire-sizes example, what a call costs in bytes as JSON, CBOR and COSE_Sign1 ([#241](https://github.com/fespalier/fespalier/issues/241)) ([af86642](https://github.com/fespalier/fespalier/commit/af866422a187b82049d7acc3acc806a69f3386d6))
+
 ## [0.19.0](https://github.com/fespalier/fespalier/compare/v0.18.0...v0.19.0) (2026-10-18)
 
 

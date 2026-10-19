@@ -193,10 +193,10 @@ fn a_prefixed_enum_keeps_its_import_under_a_prefix_of_its_own() {
     has(
         &c,
         &[
-            "import 'models/category.dart' as _es2_m;",
-            "({_es2_m.Category category}) _params2",
-            "Segment.asEnum(s, 'category', _es2_m.Category.values)",
-            "final _es2_m.Category category;",
+            "import 'models/category.dart' as _eeb5c8a86_m;",
+            "({_eeb5c8a86_m.Category category}) _params2",
+            "Segment.asEnum(s, 'category', _eeb5c8a86_m.Category.values)",
+            "final _eeb5c8a86_m.Category category;",
             // The manifest names the type as the app does.
             "RouteParam('category', 'Category')",
         ],
@@ -370,10 +370,10 @@ fn data_providers_are_keyed_by_the_enum() {
         &c,
         &[
             // An enum is hashable, so it keys the family as it is.
-            "(Ref ref, ({Category category, int? page}) k) => traceData(ref, 'd2', k, _i0.data(ref, category: k.category, page: k.page)),",
+            "(Ref ref, ({Category category, int? page}) k) => traceData(ref, 'dShopCategory', k, _i0.data(ref, category: k.category, page: k.page)),",
             "static final watch = (WidgetRef ref, {required Category category, int? page}) => ref.watch(data((category: category, page: page)));",
             // What AppRoutes.dataAt watches: the very provider, keyed by the parsed enum.
-            "_data2((category: p.category, page: p.page))",
+            "_dataShopCategory((category: p.category, page: p.page))",
         ],
     );
     // A provider of the app's own.
@@ -440,7 +440,7 @@ fn a_data_dart_can_take_an_enum_query_parameter() {
             "Query.asEnum(s, 'only', Category.values)",
             "Query.asEnumList(s, 'not', Category.values)",
             // A list is a QueryList in the key, enum or not.
-            "(Ref ref, ({Category? only, QueryList<Category> not}) k) => traceData(ref, 'd1', k, _i0.data(ref, only: k.only, not: k.not)),",
+            "(Ref ref, ({Category? only, QueryList<Category> not}) k) => traceData(ref, 'dShop', k, _i0.data(ref, only: k.only, not: k.not)),",
             "QueryList(p.not)",
         ],
     );
@@ -582,7 +582,7 @@ fn data_keyed_by_an_enum_catch_all_is_keyed_by_its_path() {
         &[
             "restKey(v.path)",
             // The path was built from the names of the parts that parsed.
-            "(Ref ref, String path) => traceData(ref, 'd2', path, _i0.data(ref, path: restParts(path).map(Category.values.byName).toList())),",
+            "(Ref ref, String path) => traceData(ref, 'dBrowsePath', path, _i0.data(ref, path: restParts(path).map(Category.values.byName).toList())),",
             "static final watch = (WidgetRef ref, {required List<Category> path}) => ref.watch(data(restKey(path)));",
         ],
     );

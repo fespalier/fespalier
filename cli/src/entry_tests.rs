@@ -1530,7 +1530,7 @@ fn otel_needs_both_packages_under_dependencies() {
         ),
         "`fespalier.otel` needs `fespalier_otel` under `dependencies:` in pubspec.yaml (next to fespalier, at the same git ref): the generated main() imports it"
     );
-    let no_zone = "`fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.7.0 or later: docs/observability.md has the lines): the generated main() imports it";
+    let no_zone = "`fespalier.otel` needs `otel_zone` under `dependencies:` in pubspec.yaml (a git dependency pinned to a commit, v0.8.1 or later: docs/observability.md has the lines): the generated main() imports it";
     assert_eq!(
         refused(
             "dependencies:\n  fespalier_otel: ^1.0.0\nfespalier:\n  telemetry: true\n  otel: true\n"
@@ -1596,18 +1596,51 @@ fn otel_starts_the_sdk_first_and_adds_its_sink() {
 }
 
 #[test]
-fn otel_guards_its_zone_off_the_web() {
+fn otel_runs_main_in_its_zone_on_every_platform() {
     let g = run_yaml(&with_otel(""), &[("page.dart", HOME)]);
     let main = g.main.unwrap();
     has(
         &main,
         &[
-            "import 'package:flutter/foundation.dart' show kIsWeb;",
             "static Future<void> run() => _otelZone(_main);",
-            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      kIsWeb ? body() : observability.runGuarded(body);",
-            "everything runs inside otel_zone's guarded zone (not on the web): the binding,",
+            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      observability.runGuarded(body);",
+            "everything runs inside otel_zone's guarded zone: the binding,",
         ],
     );
+    // No deferred route here, so no `kIsWeb` is left: the zone runs on the web too (v0.8.1).
+    has_not(&main, &["kIsWeb"]);
+}
+
+#[test]
+fn otel_with_a_deferred_route_keeps_kisweb_for_the_deferred_load_only() {
+    let g = run_yaml(
+        &with_otel(""),
+        &[
+            ("page.dart", HOME),
+            ("route.dart", "const deferred = true;"),
+        ],
+    );
+    assert!(g.diags.is_empty(), "{:?}", g.diags);
+    let main = g.main.unwrap();
+    // The deferred path still needs `kIsWeb` (the web loads those chunks on demand)...
+    has(
+        &main,
+        &[
+            "import 'package:flutter/foundation.dart' show kIsWeb;",
+            "    if (!kIsWeb) await AppRoutes.loadDeferred();",
+        ],
+    );
+    // ...but the zone does not: it runs the body on every platform, with no web branch.
+    has(
+        &main,
+        &[
+            "static Future<void> run() => _otelZone(_main);",
+            "  static Future<void> _otelZone(Future<void> Function() body) =>\n      observability.runGuarded(body);",
+        ],
+    );
+    has_not(&main, &["kIsWeb ?"]);
+    // `kIsWeb` appears once in the code (the deferred load) besides its import.
+    assert_eq!(main.matches("kIsWeb").count(), 2, "{main}");
 }
 
 #[test]
@@ -1808,4 +1841,58 @@ fn an_app_dart_router_is_told_to_pass_otels_observer() {
         &[("page.dart", HOME), ("app.dart", &passes)],
     );
     assert!(g.diags.is_empty(), "{:?}", g.diags);
+}
+
+// --- whether a hot reload can swap the routes (since 0.19.0) -----------------------------------
+
+/// What `gen` asks of a project with `yaml` and `files`: whether `entry::swaps` says a hot reload
+/// can swap the routes the app holds.
+fn swaps(yaml: &str, files: &[(&str, &str)]) -> bool {
+    let dir = project(yaml, files);
+    let cfg = Config::load(dir.path()).unwrap();
+    let mut diags = crate::diag::Diags::default();
+    let tree = scan::scan(&dir.path().join("lib/app"), &mut diags).unwrap();
+    entry::swaps(&tree, &cfg)
+}
+
+#[test]
+fn a_hot_reload_swaps_the_routes_only_when_the_main_and_the_router_are_the_generated_ones() {
+    // A page alone: no main is written, so nothing holds the router to swap it.
+    assert!(!swaps("", &[("page.dart", HOME)]));
+    // `main: generated` writes the main whatever the folder holds.
+    assert!(swaps(
+        "fespalier:\n  main: generated\n",
+        &[("page.dart", HOME)]
+    ));
+    // An app.dart that leaves the router to the generated one.
+    assert!(swaps("", &[("page.dart", HOME), ("app.dart", APP)]));
+    // A router() that passes its options to the generated router.
+    let passes = format!("{APP}\nGoRouter router() => AppRoutes.router(observers: []);");
+    assert!(swaps("", &[("page.dart", HOME), ("app.dart", &passes)]));
+    // A router() that builds the router another way.
+    let builds = format!("{APP}\nGoRouter router() => buildRouter();");
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &builds)]));
+    // A router() that mounts the generated routes into a router of its own.
+    let mounts =
+        format!("{APP}\nGoRouter router() => GoRouter(routes: AppRoutes.mount(at: '/x'));");
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &mounts)]));
+    // `mount` is a whole identifier: `amount(` and `unmount(` are not a mount.
+    let unrelated = format!(
+        "{APP}\nGoRouter router() {{ final n = amount(1) + unmount(2); return AppRoutes.router(observers: []); }}"
+    );
+    assert!(swaps("", &[("page.dart", HOME), ("app.dart", &unrelated)]));
+    // ... and a bare `mount(` still is one.
+    let bare =
+        format!("{APP}\nGoRouter router() {{ mount(1); return AppRoutes.router(observers: []); }}");
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &bare)]));
+    // A comment that names the generated router is not a call to it.
+    let commented = format!(
+        "{APP}\nGoRouter router() {{ // AppRoutes.router() is not called here\n  return buildRouter(); }}"
+    );
+    assert!(!swaps("", &[("page.dart", HOME), ("app.dart", &commented)]));
+    // `main: manual`: the generator writes no main, so the app's own main() decides.
+    assert!(!swaps(
+        "fespalier:\n  main: manual\n",
+        &[("page.dart", HOME), ("app.dart", APP)]
+    ));
 }

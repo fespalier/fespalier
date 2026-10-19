@@ -99,16 +99,17 @@ pub struct Widget {
 impl Widget {
     /// Constructor call, given how to spell each binding.
     pub fn call(&self, value: impl Fn(&Bind) -> String) -> String {
-        self.call_with(value, true)
+        self.call_with(value, None)
     }
 
-    /// [`call`](Self::call) that is never `const`: a deferred page's class can't be named in
-    /// a constant expression (`const_deferred_class`).
-    pub fn call_non_const(&self, value: impl Fn(&Bind) -> String) -> String {
-        self.call_with(value, false)
+    /// [`call`](Self::call) through a deferred import, whose prefix is `prefix` (since 0.20.0,
+    /// `emit::deferred_prefix`), and never `const`: a deferred page's class can't be named in a
+    /// constant expression (`const_deferred_class`).
+    pub fn call_deferred(&self, prefix: &str, value: impl Fn(&Bind) -> String) -> String {
+        self.call_with(value, Some(prefix))
     }
 
-    fn call_with(&self, value: impl Fn(&Bind) -> String, allow_const: bool) -> String {
+    fn call_with(&self, value: impl Fn(&Bind) -> String, deferred: Option<&str>) -> String {
         let args: Vec<String> = self
             .args
             .iter()
@@ -120,17 +121,13 @@ impl Widget {
                 }
             })
             .collect();
-        let konst = if allow_const && self.is_const && args.is_empty() {
+        let konst = if deferred.is_none() && self.is_const && args.is_empty() {
             "const "
         } else {
             ""
         };
-        format!(
-            "{konst}_i{}.{}({})",
-            self.import,
-            self.class,
-            args.join(", ")
-        )
+        let prefix = deferred.map_or_else(|| format!("_i{}", self.import), str::to_string);
+        format!("{konst}{prefix}.{}({})", self.class, args.join(", "))
     }
 }
 
@@ -312,8 +309,6 @@ struct Companions<'a> {
     m: &'a Module,
     src: &'a str,
     file: &'a str,
-    /// The id of the route (or section) whose `action.dart` it is.
-    id: usize,
     /// The folder, for the step folders of a flow.
     node: &'a Node,
     /// Whether the folder is a section's (no page.dart, a layout.dart).
@@ -578,6 +573,13 @@ pub struct Route {
     /// `Product` for `ProductPage`; the typed route is `ProductRoute`. A
     /// `redirect.dart` route is named after its path (`OldProductsId`).
     pub name: Option<String>,
+    /// What this folder's generated names are made of (since 0.20.0): `_data`, `_lib`,
+    /// `_optimistic` and `_action` put it before the rest, and the DevTools sites `d` and `a`
+    /// (`_dataProductsId`, `dProductsId`, `_actionNotesId_edit`). It is [`folder_stem`] of the
+    /// folder, followed by `_` and 8 hex digits of a hash of the folder when another folder that
+    /// owns names has the same stem ([`assign_stems`]), so a name follows its folder and never its
+    /// position.
+    pub stem: String,
     pub data: Option<Data>,
     /// The functions of this folder's `action.dart`, in the order the file declares them.
     pub actions: Vec<Action>,
@@ -675,6 +677,12 @@ impl Route {
         self.deferred && self.page.is_some()
     }
 
+    /// Whether the generated file names something after this folder's stem (since 0.20.0): a
+    /// data.dart's provider and site, an action.dart's, a deferred page's library.
+    pub fn owns_names(&self) -> bool {
+        self.data.is_some() || !self.actions.is_empty() || self.defers_page()
+    }
+
     /// A page-less folder whose layout wraps a section, and whose data.dart
     /// feeds the layout and the pages below it.
     pub fn is_section(&self) -> bool {
@@ -694,16 +702,76 @@ impl Route {
     }
 }
 
-/// The name of the typed handle of a section: `teams/$teamId` is `TeamsTeamIdSection`, `(shop)`
-/// is `ShopSection`, the app folder `RootSection`.
-pub fn section_name(dir: &str) -> String {
+/// The stem of a folder's generated names and of its section's handle (since 0.20.0):
+/// `teams/$teamId` is `TeamsTeamId`, `(shop)` is `Shop`, the app folder `Root`, and a path that
+/// starts with a digit `Path2024…`.
+pub fn folder_stem(dir: &str) -> String {
     let stem = pascal(dir);
-    let stem = match stem.chars().next() {
+    match stem.chars().next() {
         None => "Root".to_string(),
         Some(c) if c.is_ascii_digit() => format!("Path{stem}"),
         _ => stem,
-    };
-    format!("{stem}Section")
+    }
+}
+
+/// The name of the typed handle of a section: `teams/$teamId` is `TeamsTeamIdSection`, `(shop)`
+/// is `ShopSection`, the app folder `RootSection`.
+pub fn section_name(dir: &str) -> String {
+    format!("{}Section", folder_stem(dir))
+}
+
+/// Gives each folder its [`Route::stem`] (since 0.20.0). A folder that owns names and whose stem
+/// another such folder has takes `_` and [`crate::reload::short_hash`] of its path, so that
+/// `order-history/` and `order_history/` keep apart. Every other folder keeps the bare stem. A
+/// name depends on its own folder and on the folders that share its stem, never on the rest of
+/// the tree: a folder added elsewhere renames nothing. Two folders that still end with one stem
+/// (their hashes agree on all 8 digits, about one pair in four billion) are an error: the
+/// generated file would declare one name twice.
+fn assign_stems(routes: &mut [Route], diags: &mut Diags) {
+    let stems: Vec<String> = routes.iter().map(|r| folder_stem(&r.dir)).collect();
+    let mut owners: HashMap<&str, usize> = HashMap::new();
+    for (r, stem) in routes.iter().zip(&stems) {
+        if r.owns_names() {
+            *owners.entry(stem.as_str()).or_default() += 1;
+        }
+    }
+    let shared: BTreeSet<String> = owners
+        .into_iter()
+        .filter(|(_, n)| *n > 1)
+        .map(|(s, _)| s.to_string())
+        .collect();
+    for (r, stem) in routes.iter_mut().zip(stems) {
+        r.stem = if r.owns_names() && shared.contains(&stem) {
+            format!("{stem}_{}", crate::reload::short_hash(&r.dir))
+        } else {
+            stem
+        };
+    }
+    let mut seen: HashMap<&str, &str> = HashMap::new();
+    for r in routes.iter().filter(|r| r.owns_names()) {
+        if let Some(first) = seen.insert(r.stem.as_str(), r.dir.as_str()) {
+            let file = if r.data.is_some() {
+                "data.dart"
+            } else if r.actions.is_empty() {
+                "route.dart"
+            } else {
+                "action.dart"
+            };
+            let at = if r.dir.is_empty() {
+                file.to_string()
+            } else {
+                format!("{}/{file}", r.dir)
+            };
+            diags.error(
+                &at,
+                None,
+                format!(
+                    "the folders `{first}` and `{}` would both be called `{}` in the generated file (the hashes of their paths agree): rename one of them",
+                    r.dir, r.stem
+                ),
+            );
+        }
+    }
 }
 
 /// A `not_found.dart` below the root, chosen for unknown URLs under `url`.
@@ -970,7 +1038,6 @@ pub fn resolve(
         app: App::default(),
         libs,
         sources,
-        tags: 0,
         import_ix: HashMap::new(),
         route_names: HashMap::new(),
         patterns: HashMap::new(),
@@ -1009,6 +1076,7 @@ pub fn resolve(
     r.settle_actions();
     r.settle_flows();
     r.unused_freshness();
+    assign_stems(&mut r.app.routes, r.diags);
     r.app
 }
 
@@ -1027,8 +1095,6 @@ struct Resolver<'a> {
     libs: &'a Libs,
     /// The source of each file, for the enums the files name.
     sources: HashMap<String, &'a str>,
-    /// Counts the uses of an enum's import, for the aliases of a prefixed type (see `extra_type`).
-    tags: usize,
     import_ix: HashMap<String, usize>,
     route_names: HashMap<String, String>,
     /// URL pattern → the page.dart that serves it.
@@ -1072,6 +1138,7 @@ impl Resolver<'_> {
             page: None,
             page_span: None,
             name: None,
+            stem: String::new(),
             data: None,
             actions: vec![],
             loading: None,
@@ -1244,7 +1311,7 @@ impl Resolver<'_> {
             let w = self.bind(&c, &cx);
             if let (Some(ty), Some(src)) = (&extra_ty, node.files.get(&Kind::Page))
                 && w.args.iter().any(|a| a.bind == Bind::Extra) {
-                    extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import, &id.to_string()));
+                    extra = Some(extra::extra_type(&ty.text, src, &page_file, w.import));
                 }
             if let Some(d) = &data
                 && !w.args.iter().any(|a| a.bind == Bind::Data) {
@@ -1442,7 +1509,7 @@ impl Resolver<'_> {
                 let msg = format!("{} asks for both a `child` and a navigation shell; a tab layout takes only the `StatefulNavigationShell`", c.display());
                 self.diags.error(&file, Some(&c.span), msg);
             }
-            layout_extra = extra_of(&c.params, &w.args, node.files.get(&Kind::Layout), &file, w.import, &format!("l{id}"));
+            layout_extra = extra_of(&c.params, &w.args, node.files.get(&Kind::Layout), &file, w.import);
             Some(w)
         });
         let guard = modules
@@ -2586,8 +2653,6 @@ impl Resolver<'_> {
         } else {
             format!("{base}?")
         };
-        self.tags += 1;
-        let tag = format!("q{}", self.tags);
         let err = strict.map(|(span, name)| {
             let fallback = if list {
                 format!("List<String> {name}")
@@ -2605,7 +2670,6 @@ impl Resolver<'_> {
             base,
             &whole,
             file,
-            &tag,
             err.as_ref()
                 .map(|(s, d, w, f)| (*s, d.as_str(), *w, f.as_str())),
         ) {
@@ -2623,14 +2687,13 @@ impl Resolver<'_> {
         base: &str,
         whole: &str,
         file: &str,
-        tag: &str,
         err: Option<(&Span, &str, &str, &str)>,
     ) -> Option<Typed> {
         let src = *self.sources.get(file)?;
         let lookup = self.libs.find(file, src, base);
         if let Lookup::Found(found) = lookup {
             let import = self.import(file);
-            let spelled = extra::extra_type(whole, src, file, import, tag);
+            let spelled = extra::extra_type(whole, src, file, import);
             if let Some(b) = enums::enum_base(&spelled.ty) {
                 self.app
                     .enum_values
@@ -3139,13 +3202,7 @@ impl Resolver<'_> {
                 import,
                 flow,
                 keys: in_path_order(keys, segs),
-                input: extra::extra_type(
-                    &input.text,
-                    src,
-                    &file,
-                    import,
-                    &format!("a{id}_{}", f.name),
-                ),
+                input: extra::extra_type(&input.text, src, &file, import),
                 invalidates: vec![],
                 form: None,
                 validate: None,
@@ -3157,7 +3214,6 @@ impl Resolver<'_> {
                 m,
                 src,
                 file: &file,
-                id,
                 node,
                 section_folder,
                 segs,
@@ -3275,13 +3331,7 @@ impl Resolver<'_> {
             }
             [p] if !p.named && p.required => {
                 if let Some(ty) = &p.ty {
-                    data = Some(extra::extra_type(
-                        &ty.text,
-                        at.src,
-                        file,
-                        a.import,
-                        &format!("f{}_{action}", at.id),
-                    ));
+                    data = Some(extra::extra_type(&ty.text, at.src, file, a.import));
                 } else {
                     let msg = format!(
                         "give the parameter of `{name}()` a type: it is the type of `data:` in `{hook}`"
@@ -3319,7 +3369,7 @@ impl Resolver<'_> {
                 let draft = if codec.is_some() {
                     None
                 } else {
-                    self.draft_codec(file, &format!("f{}_{action}_{name}", at.id), &ty)
+                    self.draft_codec(file, &ty)
                 };
                 FormField {
                     name,
@@ -3477,7 +3527,7 @@ impl Resolver<'_> {
 
     /// The `DraftCodec` a value field of type `ty` is kept with in a draft: one for `bool` and
     /// `DateTime`, and `enumOf` for an enum fsp can find and name. `None` for any other type.
-    fn draft_codec(&mut self, file: &str, tag: &str, ty: &str) -> Option<String> {
+    fn draft_codec(&mut self, file: &str, ty: &str) -> Option<String> {
         if let Some(c) = forms::draft_codec(ty) {
             return Some(format!("DraftCodec.{c}"));
         }
@@ -3488,7 +3538,7 @@ impl Resolver<'_> {
         if !enums::is_candidate(base) {
             return None;
         }
-        let typed = self.enum_typed(base, ty, file, tag, None)?;
+        let typed = self.enum_typed(base, ty, file, None)?;
         self.use_type(&typed);
         let spelled = enums::enum_base(&typed.spelled)?;
         let call = if optional { "optionalEnumOf" } else { "enumOf" };
@@ -3971,7 +4021,6 @@ impl Resolver<'_> {
             node.files.get(&Kind::Guard),
             &file,
             import,
-            &format!("g{route}"),
         );
         Some(Guard {
             import,
@@ -4207,7 +4256,6 @@ impl Resolver<'_> {
             node.files.get(&Kind::Leave),
             &file,
             import,
-            &format!("e{route}"),
         );
         Some(Leave {
             import,
@@ -4264,7 +4312,6 @@ impl Resolver<'_> {
             node.files.get(&Kind::Redirect),
             &file,
             import,
-            &format!("r{route}"),
         );
         Some((
             Guard {
@@ -4569,13 +4616,8 @@ impl Resolver<'_> {
                         ("a segment", format!("String {}", c.name))
                     };
                     let decl = format!("{text} {}", c.name);
-                    match self.enum_typed(
-                        i,
-                        text,
-                        &c.file,
-                        &format!("s{}", c.folder),
-                        Some((&c.span, &decl, what, &fallback)),
-                    ) {
+                    match self.enum_typed(i, text, &c.file, Some((&c.span, &decl, what, &fallback)))
+                    {
                         Some(t) => t,
                         None => continue,
                     }
@@ -4624,21 +4666,19 @@ impl Resolver<'_> {
 }
 
 /// The `extra` parameter of a layout, guard or redirect, when one was bound to it: its type
-/// spelled for the generated file. `tag` keeps that spelling's import aliases apart from
-/// the other files' (see `extra::extra_type`).
+/// spelled for the generated file (see `extra::extra_type` for its import aliases).
 fn extra_of(
     params: &[dart::Param],
     bound: &[Arg],
     src: Option<&String>,
     file: &str,
     import: usize,
-    tag: &str,
 ) -> Option<HookExtra> {
     if !bound.iter().any(|a| a.bind == Bind::Extra) {
         return None;
     }
     let p = params.iter().find(|p| !p.is_super && p.name == "extra")?;
-    let ty = extra::extra_type(&p.ty.as_ref()?.text, src?, file, import, tag);
+    let ty = extra::extra_type(&p.ty.as_ref()?.text, src?, file, import);
     Some(HookExtra {
         ty,
         span: p.span.clone(),

@@ -606,12 +606,15 @@ jobs:
           flutter pub get
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier --version
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier routes
-      # `fsp dev` against the real flutter (since 0.9.0): a fresh web app in headless Chrome. It
-      # waits for the app, adds a route (a hot restart), edits a page (a hot reload) and quits with
-      # `q`. Every other test of `fsp dev` talks to a fake flutter; this is the one that notices when
-      # flutter changes its `--machine` protocol. The script is `just dev-e2e`.
-      - name: fsp dev runs the app, restarts on a new route and reloads on an edit
-        timeout-minutes: 10
+      # `fsp dev` against the real flutter (since 0.9.0): a fresh web app in headless Chrome. fsp dev
+      # runs the app, reloads a new route in, restarts when it must and quits with `q`. Every other
+      # test of `fsp dev` talks to a fake flutter; this is the one that notices when flutter changes
+      # its `--machine` protocol. The script is `just dev-e2e`. The step may run 14 minutes: the
+      # script gives `fsp dev` 10 (`timeout 600`) after `flutter create`, `pub add` and `fsp init`,
+      # and a slow runner should fail in the script, with the log of `fsp dev`, before Actions kills
+      # the step.
+      - name: fsp dev runs the app, reloads a new route in, restarts when it must and quits
+        timeout-minutes: 14
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh

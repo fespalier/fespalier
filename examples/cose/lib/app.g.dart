@@ -25,17 +25,17 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '63482d5943f2c830';
+  static const String _version = '7465fee458bb1117';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
-    'HomeRoute.action': 'a53520ff',
-    'HomeRoute.data': 'fa8d7747',
+    'HomeRoute.action': '3e435ab3',
+    'HomeRoute.data': '2cf0105d',
     'HomeRoute.read': '80e133b4',
     'HomeRoute.submit': 'eca12edf',
     'HomeRoute.useAction': '5a6dc732',
     'HomeRoute.watch': 'e04d3518',
-    '_action0_0': '2eb70141',
-    '_data0': '345dbaa5',
+    '_actionRoot_action': '54f3c461',
+    '_dataRoot': 'dea9ba9d',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -119,8 +119,8 @@ abstract final class AppRoutes {
       GoRoute(
         path: joinLocation(at, '/'),
         builder: (context, state) => DataView(
-          watch: (ref) => watchData(ref, 'd0', _data0),
-          refresh: (ref) => ref.invalidate(_data0),
+          watch: (ref) => watchData(ref, 'dRoot', _dataRoot),
+          refresh: (ref) => ref.invalidate(_dataRoot),
           data: (d) => _i2.HomePage(notes: d),
           loading: () => const _i3.HomeLoading(),
           error: (e, st, retry) => _i4.HomeError(error: e, retry: retry),
@@ -137,7 +137,7 @@ abstract final class AppRoutes {
   static List<RouteMatcher> _matchers = _allMatchers();
 
   static List<RouteMatcher> _allMatchers() => [
-    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, [_data0])),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, [_dataRoot])),
   ];
 
   /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
@@ -232,7 +232,7 @@ final class HomeRoute extends TypedLocation {
   const HomeRoute();
 
   /// data.dart as a Riverpod provider.
-  static final data = _data0;
+  static final data = _dataRoot;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/');
@@ -258,10 +258,10 @@ final class HomeRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data0], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataRoot], keepFor: keepFor);
 
   /// The state of `action()` (action.dart): `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
-  static final action = _action0_0;
+  static final action = _actionRoot_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
   static final submit = (WidgetRef ref, {required String input}) => ref.runAction(action, input);
@@ -270,24 +270,24 @@ final class HomeRoute extends TypedLocation {
   static final useAction = (WidgetRef ref) => ref.watchAction(action);
 }
 
-final _data0 = FutureProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'd0', null, _i0.data(ref)),
+final _dataRoot = FutureProvider.autoDispose(
+  (Ref ref) => traceData(ref, 'dRoot', null, _i0.data(ref)),
 );
 
 /// `action()` of action.dart: its state, and what it invalidates after a success.
-final _action0_0 = actionProvider(
+final _actionRoot_action = actionProvider(
   (Ref ref, String input) => _i1.action(ref, input: input),
   invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],
   validate: _i1.validate,
-  site: 'a0_0',
+  site: 'aRoot_action',
 );
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data0: 'd0',
+      _dataRoot: 'dRoot',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"cose_example","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":["data","action"],"params":[],"redirect":false,"children":[]}],"sites":{"a0_0":{"kind":"action","file":"action.dart","name":"action","route":"HomeRoute"},"d0":{"kind":"data","file":"data.dart","route":"HomeRoute","section":null,"traced":true}}}';
+String _devToolsTree() => '{"protocol":1,"package":"cose_example","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":["data","action"],"params":[],"redirect":false,"children":[]}],"sites":{"aRoot_action":{"kind":"action","file":"action.dart","name":"action","route":"HomeRoute"},"dRoot":{"kind":"data","file":"data.dart","route":"HomeRoute","section":null,"traced":true}}}';

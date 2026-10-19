@@ -538,11 +538,11 @@ byte-identical code.**
   `meta.dart`, `transition.dart`, `present.dart` and `not_found.dart` stay in the main bundle. A
   `redirect.dart` route has no page, so it is never deferred. **Layouts are never deferred.**
 - **What the generated code does.** A route without data builds its page in a
-  `DeferredView(library: _lib2, page: () => _i7.CheckoutPage(), loading: ..., error: ...)`: the
+  `DeferredView(library: _libCheckout, page: () => _pageCheckout.CheckoutPage(), loading: ..., error: ...)`: the
   nearest `loading.dart` (a spinner without one) shows until the code is there, the nearest
   `error.dart` if it can't be fetched (with `retry` loading it again, and the error `loadLibrary()`
   threw, a `DeferredLoadException` on the web). A route with data hands its library to the
-  `DataView` (`library: _lib6,`), so the code loads **in parallel** with the data and the page shows
+  `DataView` (`library: _libProductsId,`), so the code loads **in parallel** with the data and the page shows
   when both are there. The page is built with no `const` (a deferred class can't be named in a
   constant expression), and **once its code is loaded it is built synchronously**.
 - **`loading.dart` and `error.dart` now cover a page without data**, as for one with data, with the
@@ -553,7 +553,7 @@ byte-identical code.**
 - **Preloading** also loads the code: `preload` of the typed route (so `RouteLink` and
   `AppRoutes.preload`), and `AppRoutes.loadDeferred()` loads every deferred page now (call it after
   the first frame; before `runApp` outside the web: `if (!kIsWeb) await AppRoutes.loadDeferred();`).
-  `AppRoutes.deferred` lists the `DeferredLibrary` of each.
+  `AppRoutes.deferred` lists the `DeferredLibrary` of each (a getter since 0.20.0: a hot reload that adds or removes a deferred route lists them again, and swaps; the page's import is `deferred as _page<Stem>`).
 - **A type declared in a deferred page.dart is an error (G4).** An enum segment or query type, or a
   typed `extra` class, declared in the page's own file is named by the generated file outside the
   page, where Dart can't use a deferred library's type. Move it to its own file and import it in the

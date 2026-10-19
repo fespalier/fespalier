@@ -117,7 +117,7 @@ void main() {
       );
       client.emit(
         DevToolsEvents.data,
-        recordEvent(9, dataRecord(2, site: 'd65').toJson()),
+        recordEvent(9, dataRecord(2, site: 'dShopsShopItemsId').toJson()),
       );
       await pumpEventQueue();
       final data = controller.snapshot!.data;

@@ -567,7 +567,7 @@ fsp dev in /abs/project
   run     flutter run --machine -d chrome
   after   (nothing)
   env     API_URL=http://localhost:8080
-  hot reload after a save; hot restart when lib/app.g.dart changes
+  hot reload after a save; when lib/app.g.dart changes, a hot reload if the app can swap its routes, else a hot restart
 "
     );
 }

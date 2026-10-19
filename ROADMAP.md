@@ -10,11 +10,6 @@ it ships.
 - **`fespalier_frb`, the rest.** The change feed ships in 0.13.0 (docs/data.md). Not built: a
   `flutter_rust_bridge` dependency (the generated bindings own it) and a rebuild budget for a core that
   emits thousands of events a second (coarser events or an `InvalidationTable` is the answer today).
-- **Reload instead of restart after a regeneration.** `fsp dev` hot restarts when `lib/app.g.dart`
-  changes, because the generated router is built once, so a hot reload would keep the old route
-  table. In debug the router could rebuild itself on `reassemble` (go_router's
-  `GoRouter.routingConfig`, with a `ValueListenable<RoutingConfig>`); a regeneration would then need
-  only a hot reload and keep the app's state.
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
   configurations.
 - **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks
@@ -30,9 +25,6 @@ it ships.
 
 ## Waiting on others
 
-- **`runGuarded` on the web.** `otel_zone`'s `runGuarded` never runs its body in a Flutter web app,
-  so the docs use `kIsWeb ? body() : observability.runGuarded(body)` until it is fixed in
-  vaam-apps/flutter-otel-zone.
 - **OpenObserve:** a click on a stat tile opens nothing, and PromQL's `or vector(0)` returns no
   series (v1.0.4; v1.1.0 not checked yet). Drill-down is on the tables and charts until then, and the
   Grafana tiles work around the second.

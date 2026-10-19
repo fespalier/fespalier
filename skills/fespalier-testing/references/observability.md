@@ -66,10 +66,10 @@ build (so a store build never sends to a laptop); `http://10.0.2.2:4318` on Andr
 | An Android phone on USB                  | `adb reverse tcp:4318 tcp:4318`, then `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`    |
 | A changed `FSP_OTLP_HTTP_PORT`           | Pass the define; `endpoint()` always says 4318                                                             |
 
-**On the web, do not run the app inside `otel_zone`'s `runGuarded`** (checked on `otel_zone` v0.5.0): it
-opens a `ReceivePort` from `dart:isolate` before the body, the web has none, and the app stays blank with
-nothing printed. `start()` works on the web. Use
-`kIsWeb ? body() : observability.runGuarded(body)`. A page served over `https` cannot post to
+**On the web, `otel_zone` before v0.8.1 does not run the app inside its `runGuarded`** (checked on `otel_zone`
+v0.5.0): it opens a `ReceivePort` from `dart:isolate` before the body, the web has none, and the app stays blank
+with nothing printed. `start()` works on the web. From v0.8.1 the zone runs on the web; on an older one, call
+the body directly when `kIsWeb` is true. A page served over `https` cannot post to
 `http://localhost`.
 
 ## Which dashboard answers what
@@ -167,7 +167,7 @@ asserts on `debugPrint` sees one line.
 ## Traps
 
 - **Empty dashboards** is almost always the app: telemetry not switched on or installed, a web app inside
-  `runGuarded`, a phone without `--lan`, or a release build without the define. See the symptom table in
+  `runGuarded` (`otel_zone` before v0.8.1), a phone without `--lan`, or a release build without the define. See the symptom table in
   `diagnostics-telemetry.md`.
 - **The password is set on the first start.** A changed `FSP_O2_PASSWORD` needs `fsp telemetry --reset`
   (it deletes the data), and OpenObserve refuses a weak one.

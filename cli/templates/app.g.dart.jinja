@@ -256,7 +256,7 @@ import 'package:{{ a.name }}/fespalier_adapter.dart' as {{ a.alias }};
 {% endif %}
 
 {% for i in imports %}
-import '{{ i.path }}'{{ " deferred" if i.deferred }} as _i{{ loop.index0 }};
+import '{{ i.path }}'{{ " deferred" if i.deferred }} as {{ i.alias }};
 {% endfor %}
 {% for i in extra_imports %}
 {{ i }}
@@ -376,6 +376,7 @@ abstract final class AppRoutes {
   static RoutingConfig _reload(GoRouter router) {
     _matchers = _allMatchers();
 {% if deferred_libs %}
+    _deferred = _allDeferred();
     DeferredLibrary.register(deferred);
 {% endif %}
     if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl{{ ", providers: _devToolsProviders" if devtools_providers }});
@@ -530,8 +531,14 @@ abstract final class AppRoutes {
 
   /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
   /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
-  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred].
-  static final List<DeferredLibrary> deferred = [{% for l in deferred_libs %}{{ l.name }}{{ ", " if not loop.last }}{% endfor %}];
+  /// built, or ahead of time by `preload`, a `RouteLink` or [loadDeferred]. A getter (since 0.20.0):
+  /// a hot reload in a debug build that swaps the routes lists them again, so adding or removing a
+  /// deferred route swaps too.
+  static List<DeferredLibrary> get deferred => _deferred;
+
+  static List<DeferredLibrary> _deferred = _allDeferred();
+
+  static List<DeferredLibrary> _allDeferred() => [{% for l in deferred_libs %}{{ l.name }}{{ ", " if not loop.last }}{% endfor %}];
 
   /// Loads the code of every deferred route now, and completes when it is all there: once the app
   /// is idle on the web, or before `runApp` elsewhere. A widget test that pumps its own router calls
@@ -782,20 +789,20 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 {% for l in deferred_libs %}
 
 /// {{ l.path }}, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final {{ l.name }} = DeferredLibrary(_i{{ l.import }}.loadLibrary, {{ l.file }}{{ ", route: " ~ l.route if telemetry }});
+final {{ l.name }} = DeferredLibrary({{ l.prefix }}.loadLibrary, {{ l.file }}{{ ", route: " ~ l.route if telemetry }});
 {% endfor %}
 {% for p in providers %}
 {% if p.selector and p.family %}
 
 /// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
-final _data{{ p.id }} = ({{ p.params }}) => {{ p.call }};
+final {{ p.name }} = ({{ p.params }}) => {{ p.call }};
 {% elif p.selector %}
 
 /// data.dart selects the app's own provider: nothing wraps it.
-final _data{{ p.id }} = {{ p.call }};
+final {{ p.name }} = {{ p.call }};
 {% elif p.cache %}
 
-final _data{{ p.id }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
+final {{ p.name }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
   ({{ p.params }}) => {{ trace_data(p) }},
   cache: {{ p.cache.expr }},
   name: {{ p.cache.name }},
@@ -812,7 +819,7 @@ final _data{{ p.id }} = {{ "cachedDataFamily" if p.family else "cachedData" }}(
 );
 {% else %}
 
-final _data{{ p.id }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
+final {{ p.name }} = {{ p.kind }}.autoDispose{{ ".family" if p.family }}(
 {% if p.freshness %}
   ({{ p.params }}) => freshData(ref, {{ p.freshness }}, {{ trace_data(p) }}),
 {% else %}

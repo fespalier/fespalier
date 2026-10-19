@@ -122,8 +122,8 @@ fn freshness_wraps_the_value_and_keeps_the_page_on_a_failed_reload() {
     has(
         &c,
         &[
-            "final _data2 = FutureProvider.autoDispose.family(",
-            "(Ref ref, int id) => freshData(ref, _i1.freshness, traceData(ref, 'd2', id, _i1.data(ref, id: id))),",
+            "final _dataItemsId = FutureProvider.autoDispose.family(",
+            "(Ref ref, int id) => freshData(ref, _i1.freshness, traceData(ref, 'dItemsId', id, _i1.data(ref, id: id))),",
             "keepDataOnError: true,",
         ],
     );
@@ -143,7 +143,7 @@ fn a_synchronous_data_function_may_have_one() {
     ]);
     has(
         &c,
-        &["(Ref ref) => freshData(ref, _i1.freshness, traceData(ref, 'd1', null, _i1.data(ref)))"],
+        &["(Ref ref) => freshData(ref, _i1.freshness, traceData(ref, 'dN', null, _i1.data(ref)))"],
     );
 }
 
@@ -189,7 +189,7 @@ fn route_dart_is_the_default_of_the_data_below_and_is_imported_only_then() {
     has(
         &c,
         &[
-            "freshData(ref, _i3.freshness, traceData(ref, 'd2', id, _i1.data(ref, id: id)))",
+            "freshData(ref, _i3.freshness, traceData(ref, 'dTeamsId', id, _i1.data(ref, id: id)))",
             "keepDataOnError: true,",
         ],
     );
@@ -475,8 +475,8 @@ fn a_cache_without_keys_is_cached_data() {
     has(
         &c,
         &[
-            "final _data1 = cachedData(",
-            "(Ref ref) => traceData(ref, 'd1', null, _i1.data(ref)),",
+            "final _dataMotd = cachedData(",
+            "(Ref ref) => traceData(ref, 'dMotd', null, _i1.data(ref)),",
             "cache: _i1.dataCache,",
             "name: 'motd',",
             "keepDataOnError: true,",
@@ -496,8 +496,8 @@ fn a_cache_with_one_key_lists_it_and_escapes_the_name() {
     has(
         &c,
         &[
-            "final _data2 = cachedDataFamily(",
-            "(Ref ref, int id) => traceData(ref, 'd2', id, _i1.data(ref, id: id)),",
+            "final _dataProductsId = cachedDataFamily(",
+            "(Ref ref, int id) => traceData(ref, 'dProductsId', id, _i1.data(ref, id: id)),",
             "name: 'products/\\$id',",
             "keyParts: (int id) => [id],",
         ],
@@ -589,7 +589,7 @@ fn retry_none_and_freshness_go_with_the_cache() {
     has(
         &c,
         &[
-            "final _data2 = cachedDataFamily(",
+            "final _dataItemsId = cachedDataFamily(",
             "cache: _i1.dataCache,",
             "freshness: _i1.freshness,",
             "// No automatic retry: error.dart and its Retry button are the retry UX.",
@@ -644,7 +644,7 @@ fn an_app_that_opts_in_to_nothing_is_as_it_was() {
     );
     has(
         &c,
-        &["(Ref ref, int id) => traceData(ref, 'd2', id, _i1.data(ref, id: id)),"],
+        &["(Ref ref, int id) => traceData(ref, 'dItemsId', id, _i1.data(ref, id: id)),"],
     );
 }
 

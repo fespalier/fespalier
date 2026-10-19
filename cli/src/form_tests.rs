@@ -46,26 +46,24 @@ fn action_error(action: &str, line: usize, msg: &str) {
 #[test]
 fn companions_are_not_actions() {
     let c = code(&nickname(&all()));
-    assert_eq!(c.matches("static final action = _action1_0;").count(), 1);
-    lacks(
-        &c,
-        &[
-            "formAction",
-            "validateAction",
-            "optimisticAction",
-            "_action1_1",
-        ],
+    assert_eq!(
+        c.matches("static final action = _actionNickname_action;")
+            .count(),
+        1
     );
+    // One action provider only: the companions add none.
+    assert_eq!(c.matches("final _actionNickname_").count(), 1, "{c}");
+    lacks(&c, &["formAction", "validateAction", "optimisticAction"]);
     has(
         &c,
         &[
             "static final useForm = (WidgetRef ref, {required Profile data, ActionFormValidation validation = ActionFormValidation.afterSubmit, bool resetOnSuccess = false, ActionFormMessages messages = const ActionFormMessages(), FormDraft? draft}) => useActionForm(ref, action, data: data, initial: () => _i2.form(data), fields: (ActionFormFields<_i2.NicknameFields> f) => (nickname: f.text('nickname', (v) => v.nickname, FieldCodec.text), age: f.text('age', (v) => v.age, FieldCodec.optionalInteger), newsletter: f.value('newsletter', (v) => v.newsletter, draft: DraftCodec.boolean)), input: (f) => (nickname: f.nickname.value, age: f.age.value, newsletter: f.newsletter.value), validate: _i2.validate, validation: validation, resetOnSuccess: resetOnSuccess, messages: messages, id: 'nickname/action.dart#action', shape: 'nickname:String,age:int?,newsletter:bool', draft: draft);\n}\n",
-            "final _optimistic1 = optimisticLayer(_data1);",
+            "final _optimisticNickname = optimisticLayer(_dataNickname);",
             "/// What reads of nickname/data.dart show while a write that patches it is in flight (`optimistic()` of nickname/action.dart). Since 0.8.1.",
-            "final _action1_0 = actionProvider(\n  (Ref ref, _i2.NicknameFields input) => _i2.action(ref, input: input),\n  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_data1],\n  validate: _i2.validate,\n  optimistic: () => _optimistic1.patch(_i2.optimistic),\n  site: 'a1_0',\n);",
+            "final _actionNickname_action = actionProvider(\n  (Ref ref, _i2.NicknameFields input) => _i2.action(ref, input: input),\n  invalidates: () => <ProviderListenable<AsyncValue<Object?>>>[_dataNickname],\n  validate: _i2.validate,\n  optimistic: () => _optimisticNickname.patch(_i2.optimistic),\n  site: 'aNickname_action',\n);",
             // The read sites go through the layer.
-            "optimistic: (ref) => ref.watch(_optimistic1),",
-            "static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimistic1);",
+            "optimistic: (ref) => ref.watch(_optimisticNickname),",
+            "static final watch = (WidgetRef ref) => ref.watchOptimistic(data, _optimisticNickname);",
         ],
     );
 }
@@ -82,11 +80,11 @@ fn named_companions_follow_their_action() {
     has(
         &c,
         &[
-            "static final approveAction = _action1_0;",
+            "static final approveAction = _actionNickname_approve;",
             "static final useApproveForm = (WidgetRef ref, {required Profile data,",
             "useActionForm(ref, approveAction, data: data, initial: () => _i2.approveForm(data),",
             "validate: _i2.approveValidate,",
-            "optimistic: () => _optimistic1.patch(_i2.approveOptimistic),",
+            "optimistic: () => _optimisticNickname.patch(_i2.approveOptimistic),",
             "(`approveOptimistic()` of nickname/action.dart)",
         ],
     );
@@ -292,9 +290,9 @@ fn optimistic_targets_nearest_matching_data() {
     ]);
     has(
         &c,
-        &["optimistic: () => _optimistic2.patch(_i4.optimistic),"],
+        &["optimistic: () => _optimisticANickname.patch(_i4.optimistic),"],
     );
-    lacks(&c, &["_optimistic1"]);
+    lacks(&c, &["final _optimisticA = "]);
 }
 
 #[test]
@@ -327,16 +325,20 @@ fn optimistic_on_section_data_patches_every_read_site() {
         &c,
         &[
             // The layout's DataView and the page's SectionView.
-            "optimistic: (ref) => ref.watch(_optimistic2(v.teamId)),",
+            "optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),",
             "SectionView(",
             // The typed handle.
-            "static final watch = (WidgetRef ref, {required String teamId}) => ref.watchOptimistic(data(teamId), _optimistic2(teamId));",
+            "static final watch = (WidgetRef ref, {required String teamId}) => ref.watchOptimistic(data(teamId), _optimisticTeamsTeamId(teamId));",
             // The layer and the action.
-            "final _optimistic2 = optimisticLayerFamily((String teamId) => _data2(teamId));",
-            "optimistic: (String teamId) => _optimistic2(teamId).patch(_i2.addMemberOptimistic),",
+            "final _optimisticTeamsTeamId = optimisticLayerFamily((String teamId) => _dataTeamsTeamId(teamId));",
+            "optimistic: (String teamId) => _optimisticTeamsTeamId(teamId).patch(_i2.addMemberOptimistic),",
         ],
     );
-    assert_eq!(c.matches("ref.watch(_optimistic2(v.teamId))").count(), 2);
+    assert_eq!(
+        c.matches("ref.watch(_optimisticTeamsTeamId(v.teamId))")
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -346,13 +348,13 @@ fn layer_is_shared_by_actions_patching_the_same_data() {
          Profile renameOptimistic(Profile current, String input) => current;\n\
          Future<void> rename(Ref ref, {{required String input}}) async {{}}\n"
     )));
-    assert_eq!(c.matches("final _optimistic1 = ").count(), 1);
+    assert_eq!(c.matches("final _optimisticNickname = ").count(), 1);
     has(
         &c,
         &[
             "(`optimistic()` of nickname/action.dart, `renameOptimistic()` of nickname/action.dart)",
-            "optimistic: () => _optimistic1.patch(_i2.optimistic),",
-            "optimistic: () => _optimistic1.patch(_i2.renameOptimistic),",
+            "optimistic: () => _optimisticNickname.patch(_i2.optimistic),",
+            "optimistic: () => _optimisticNickname.patch(_i2.renameOptimistic),",
         ],
     );
 }
@@ -377,9 +379,9 @@ fn a_family_layer_is_keyed_by_a_record_of_keys() {
     has(
         &c,
         &[
-            "final _optimistic4 = optimisticLayerFamily((({String shop, int id}) k) => _data4((shop: k.shop, id: k.id)));",
-            "optimistic: (({String shop, int id}) k) => _optimistic4((shop: k.shop, id: k.id)).patch(_i2.optimistic),",
-            "optimistic: (ref) => ref.watch(_optimistic4((shop: v.shop, id: v.id))),",
+            "final _optimisticShopsShopItemsId = optimisticLayerFamily((({String shop, int id}) k) => _dataShopsShopItemsId((shop: k.shop, id: k.id)));",
+            "optimistic: (({String shop, int id}) k) => _optimisticShopsShopItemsId((shop: k.shop, id: k.id)).patch(_i2.optimistic),",
+            "optimistic: (ref) => ref.watch(_optimisticShopsShopItemsId((shop: v.shop, id: v.id))),",
         ],
     );
 }

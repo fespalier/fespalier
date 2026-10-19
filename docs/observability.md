@@ -114,7 +114,7 @@ fespalier:
 - passes a `const TelemetrySite('products/$id/data.dart', route: '/products/:id')` to each guard, `data.dart` provider and action;
 - gives each deferred library its page's pattern;
 - has `AppRoutes.attach` follow the router (`AppRoutes.router()` calls it; an app that mounts the tree in a `GoRouter` of its own calls `AppRoutes.attach(router)` once with that router);
-- since 0.9.0, makes each data provider call `data()` inside a closure, `traceDataCall(ref, 'd4', id, () => data(ref, id: id), ...)`, so a sink can [run it inside the span](#spans-around-data-and-actions). That costs one closure per provider build.
+- since 0.9.0, makes each data provider call `data()` inside a closure, `traceDataCall(ref, 'dOrdersId', id, () => data(ref, id: id), ...)`, so a sink can [run it inside the span](#spans-around-data-and-actions). That costs one closure per provider build.
 
 A value that is not a bool is an error. Without the key nothing is generated for telemetry.
 
@@ -141,7 +141,7 @@ fespalier:
 - `static final OtelZone observability`, with `serviceName` the pubspec's `name` and `endpoint: FespalierOtel.endpoint()`. A release build without `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` exports nothing.
 - In `_main()`, right after `WidgetsFlutterBinding.ensureInitialized()` and before the deferred routes, the adapters' `beforeRun` and `runApp`: `observability.start(...)` with the version and the build, then `FespalierTelemetry.add(FespalierOtel(isReady: ..., onScreen: observability.setCrashScreen))`. It is `add`, not `install`, so a sink that an adapter or your `startup()` adds stays.
 - The Riverpod observer and the route observer, which are null until the SDK is up: they reach `ProviderScope(observers:)` and `AppRoutes.router(observers:)` through the same hooks the [adapters](adapters.md) use.
-- The zone: `observability.runGuarded` around all of `main()`, off the web, where `runGuarded` never runs its body. On the web the body runs as it is, as in the [hand wiring](#opentelemetry-with-otel_zone). It is the innermost zone, inside the [adapters' zones](adapters.md), and a `zone()` in startup.dart replaces it, so Sentry's zone wins ([Wiring Sentry](#wiring-sentry)).
+- The zone: `observability.runGuarded` around all of `main()`, on every platform. Since 0.19.0 that includes the web, which needs `otel_zone` v0.8.1 or later: an older one leaves a web build blank, so bump its pin. It is the innermost zone, inside the [adapters' zones](adapters.md), and a `zone()` in startup.dart replaces it, so Sentry's zone wins ([Wiring Sentry](#wiring-sentry)).
 
 **The version and the build.** `serviceVersion` is the build name: `FLUTTER_BUILD_NAME`, which Flutter passes from 3.47 on (`1.4.0` of `version: 1.4.0+12`, or `--build-name`). An older Flutter passes none, and `service.version` is `unknown`, which `otel_zone` takes (it refuses an empty one). `buildId` is `FLUTTER_BUILD_NUMBER` (the `12`), or none. Neither is written into the file, so a version bump does not change the generated code. `FespalierOtel.serviceVersion()` and `FespalierOtel.buildId()` read them.
 
@@ -151,7 +151,7 @@ fespalier:
 
 **What it does not configure.** The rest of `OtelZoneConfig`: `deploymentEnvironmentName`, `exportFloor`, `redact` and the spool. An app that needs them keeps the hand wiring of [the next section](#opentelemetry-with-otel_zone) and leaves `otel: true` out. That works under `main: auto`, with no `main: manual`: write it in `lib/app/startup.dart` (the `OtelZone`, its `start()`, the sink and the observers, and a `zone()` for `runGuarded`), or in a `lib/main.dart` of your own that does not call `AppMain.run()`, as `examples/telemetry` does.
 
-**Checked, and not checked.** CI's `create` jobs build `fsp create --features otel`, `telemetry` and `all` and run their tests, and the generator's tests check the emitted `main()`. Nothing runs the SDK on a phone or in a browser, so these are **UNCHECKED on a device**: the spans arrive with `service.name` set to the app, `service.version` the build name and `app.build_id` the build number (Android, iOS, Flutter 3.47 and later); the web is not blank and its spans reach `localhost`; a release build without the define exports nothing; a native crash names its screen ([above](#the-screen-a-native-crash-happened-on)); and with `sentry` and a DSN an uncaught async error reaches Sentry with `otel.trace_id`.
+**Checked, and not checked.** CI's `create` jobs build `fsp create --features otel`, `telemetry` and `all` and run their tests, and the generator's tests check the emitted `main()`. No CI job runs the SDK on a phone or in a browser. **Seen by hand on the web**, once, in headless Chromium with Flutter 3.47.7: an `fsp create --features otel --platforms web` app rendered in a release build (dart2js and `--wasm`) and in a debug build (DDC); with `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` set to a local collector its logs and spans arrived, and so did an uncaught async error and a framework error; a release build without the define sent nothing; and the same app on the previous `otel_zone` pin stayed blank. That run is not a test. **UNCHECKED on a device:** the spans arrive with `service.name` set to the app, `service.version` the build name and `app.build_id` the build number (Android, iOS, Flutter 3.47 and later); a native crash names its screen ([above](#the-screen-a-native-crash-happened-on)); and with `sentry` and a DSN an uncaught async error reaches Sentry with `otel.trace_id`.
 
 ### OpenTelemetry with otel_zone
 
@@ -165,12 +165,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.18.0
+      ref: v0.19.0
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.18.0
+      ref: v0.19.0
 ```
 
 <!-- x-release-please-end -->
@@ -179,10 +179,10 @@ dependencies:
 otel_zone:
   git:
     url: https://github.com/vaam-apps/flutter-otel-zone
-    ref: 8a72fc4162f6426951176d40c490389f77385647 # a commit, not a tag
+    ref: 64c4661ac6cd09718141864d528892916677cc38 # v0.8.1, a commit, not a tag
 ```
 
-Since 0.19.0, `otel_zone` from commit `8a72fc4162f6426951176d40c490389f77385647` (0.8.0 to be) is on the dartastic rc.4 line, and its `otel_go_router` accepts go_router 17 and 18, so pub resolves go_router 18 on a Flutter that has it and no override is needed; `fespalier_otel` follows the same line (`dartastic_opentelemetry` 1.1.0-beta.17, API 1.0.0-rc.4). An app that stays on an `otel_zone` before that commit (up to v0.7.0) still gets `otel_go_router: ^0.2.0`, which asks for `go_router: ^17.0.0`: it resolves go_router 17, and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18, as `otel_zone`'s README says. `examples/telemetry` is on go_router 18.
+Since 0.19.0, `otel_zone` v0.8.1 (commit `64c4661ac6cd09718141864d528892916677cc38`) is on the dartastic rc.4 line, and its `otel_go_router` accepts go_router 17 and 18, so pub resolves go_router 18 on a Flutter that has it and no override is needed; `fespalier_otel` follows the same line (`dartastic_opentelemetry` 1.1.0-beta.17, API 1.0.0-rc.4). An app that stays on an `otel_zone` before the rc.4 line (up to v0.7.0) still gets `otel_go_router: ^0.2.0`, which asks for `go_router: ^17.0.0`: it resolves go_router 17, and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18, as `otel_zone`'s README says. `examples/telemetry` is on go_router 18.
 
 The wiring, in `main.dart` (`examples/telemetry` is this, inside Sentry's zone):
 
@@ -212,7 +212,7 @@ Future<void> main() => guarded(() async {
 });
 
 Future<void> guarded(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+    observability.runGuarded(body);
 ```
 
 `otel_zone` owns the zone that `WidgetsFlutterBinding.ensureInitialized()` and `runApp` run in, so both go inside `runGuarded`. A failure while the app starts arrives through `FlutterError.reportError`.
@@ -221,7 +221,7 @@ Future<void> guarded(Future<void> Function() body) =>
 - `recordLocations: true` adds the committed location and a guard's redirect target to the spans (segment and query values are app data, so it is off).
   `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there is one. Without it a debug build exports to `http://10.0.2.2:4318` on Android (the emulator's host) and `http://localhost:4318` elsewhere; a release build gets `''`, which `otel_zone` takes as "telemetry off", so a store build never sends to a developer's computer.
 
-**Known limitation on the web (since 0.8.1).** `OtelZone.runGuarded` never runs its body there, so the app stays blank: it builds a `ReceivePort`, which `dart:isolate` does not support on the web (`start()` works). Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does; the error hooks `runGuarded` installs are then missing there.
+**On the web (since otel_zone v0.8.1).** `OtelZone.runGuarded` runs its body in a browser from v0.8.1 on, so `guarded` above needs no `kIsWeb` branch. An older `otel_zone` never ran it there: it built a `ReceivePort`, which `dart:isolate` does not support on the web, so the app stayed blank (`start()` works). On an older one, return the body without `runGuarded` when `kIsWeb` is true. On the web the zone reports framework errors and uncaught async errors; there is no isolate error listener, because a browser has no isolates. In a release web build those errors go to `otel_zone`'s sink only (its console printing and Flutter's own error dump are on in debug only), so without `OTEL_EXPORTER_OTLP_ENDPOINT` they are seen nowhere, as on mobile.
 
 ### The screen a native crash happened on
 
@@ -409,12 +409,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.18.0
+      ref: v0.19.0
   fespalier_sentry:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sentry
-      ref: v0.18.0
+      ref: v0.19.0
 ```
 
 <!-- x-release-please-end -->
@@ -491,7 +491,7 @@ List<NavigatorObserver> get routerObservers => [
 ];
 ```
 
-Next to OpenTelemetry (`otel_zone`), install both in the one slot. Do **not** also use `OtelZone.runGuarded`: its zone sends an uncaught async error to Talker only, and Sentry would never see it (it is also blank on the web). Start the SDK with `observability.start()` in `startup()` instead:
+Next to OpenTelemetry (`otel_zone`), install both in the one slot. Do **not** also use `OtelZone.runGuarded`: its zone sends an uncaught async error to Talker only, and Sentry would never see it. Start the SDK with `observability.start()` in `startup()` instead:
 
 ```dart
 Future<void> zone(Future<void> Function() body) => SentryFlutter.init(

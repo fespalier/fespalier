@@ -27,17 +27,17 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'd8f2d5451644ba38';
+  static const String _version = 'a0cada877a065827';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
-    'ProductRoute.data': '9d952b75',
+    'ProductRoute.data': 'd1a8b78b',
     'ProductRoute.read': '5f531548',
     'ProductRoute.watch': '47998864',
-    'ProductsRoute.data': 'fa8d7747',
+    'ProductsRoute.data': '2cf0105d',
     'ProductsRoute.read': '1f3b428d',
     'ProductsRoute.watch': 'e04d3518',
-    '_data0': 'e43e9766',
-    '_data2': 'b94e0660',
+    '_dataProductsId': '23d18918',
+    '_dataRoot': '750ebd70',
   };
 
   /// Where the tree is mounted: '/' standalone, or the `at` given to [mount].
@@ -121,8 +121,8 @@ abstract final class AppRoutes {
       GoRoute(
         path: joinLocation(at, '/'),
         builder: (context, state) => DataView(
-          watch: (ref) => watchData(ref, 'd0', _data0),
-          refresh: (ref) => ref.invalidateSelected(_data0),
+          watch: (ref) => watchData(ref, 'dRoot', _dataRoot),
+          refresh: (ref) => ref.invalidateSelected(_dataRoot),
           data: (d) => _i1.ProductsPage(products: d),
           loading: () => const DefaultLoading(),
           error: (e, st, retry) => DefaultError(error: e, retry: retry),
@@ -134,8 +134,8 @@ abstract final class AppRoutes {
             builder: (context, state) => buildWithParams(
               () => _params2(state),
               (v) => DataView(
-                watch: (ref) => watchData(ref, 'd2', _data2(v.id)),
-                refresh: (ref) => ref.invalidateSelected(_data2(v.id)),
+                watch: (ref) => watchData(ref, 'dProductsId', _dataProductsId(v.id)),
+                refresh: (ref) => ref.invalidateSelected(_dataProductsId(v.id)),
                 data: (d) => _i4.ProductPage(product: d),
                 loading: () => const _i5.ProductLoading(),
                 error: (e, st, retry) => _i6.ProductError(retry: retry),
@@ -156,10 +156,10 @@ abstract final class AppRoutes {
   static List<RouteMatcher> _matchers = _allMatchers();
 
   static List<RouteMatcher> _allMatchers() => [
-    RouteMatcher([], (s) => UrlMatch(s.uri, const ProductsRoute(), const {}, [_data0])),
+    RouteMatcher([], (s) => UrlMatch(s.uri, const ProductsRoute(), const {}, [_dataRoot])),
     RouteMatcher(['products', ':id'], (s) {
       final p = _params2(s);
-      return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [_data2(p.id)]);
+      return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [_dataProductsId(p.id)]);
     }),
   ];
 
@@ -262,7 +262,7 @@ final class ProductsRoute extends TypedLocation {
   const ProductsRoute();
 
   /// data.dart as a Riverpod provider.
-  static final data = _data0;
+  static final data = _dataRoot;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/');
@@ -288,7 +288,7 @@ final class ProductsRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data0], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataRoot], keepFor: keepFor);
 }
 
 /// `/products/:id` → products/$id/page.dart
@@ -298,7 +298,7 @@ final class ProductRoute extends TypedLocation {
   final int id;
 
   /// products/$id/data.dart as a Riverpod provider keyed by `id`.
-  static final data = _data2;
+  static final data = _dataProductsId;
 
   @override
   String get location => joinLocation(AppRoutes.base, '/products/$id');
@@ -332,7 +332,7 @@ final class ProductRoute extends TypedLocation {
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data2(id)], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataProductsId(id)], keepFor: keepFor);
 }
 
 /// What a `copyWith` parameter is when it is left out: private, so no caller can pass it,
@@ -348,17 +348,17 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 ({int id}) _params2(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 /// data.dart selects the app's own provider: nothing wraps it.
-final _data0 = _i0.data();
+final _dataRoot = _i0.data();
 
 /// data.dart selects the app's own provider: nothing wraps it (a closure, so its type is inferred).
-final _data2 = (int id) => _i3.data(id: id);
+final _dataProductsId = (int id) => _i3.data(id: id);
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
-      _data0: 'd0',
+      _dataRoot: 'dRoot',
     };
 
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"adopt","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"ProductsRoute","file":"page.dart","folder":"","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}],"sites":{"d0":{"kind":"data","file":"data.dart","route":"ProductsRoute","section":null,"traced":false},"d2":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":false}}}';
+String _devToolsTree() => '{"protocol":1,"package":"adopt","appDir":"lib/app","items":[{"type":"route","pattern":"/","route":"ProductsRoute","file":"page.dart","folder":"","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}],"sites":{"dProductsId":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":false},"dRoot":{"kind":"data","file":"data.dart","route":"ProductsRoute","section":null,"traced":false}}}';

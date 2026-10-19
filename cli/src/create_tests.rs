@@ -1679,7 +1679,7 @@ fn otel_and_sentry_third_parties_are_never_tags() {
         pubspec.contains(concat!(
             "  otel_zone:\n    git:\n",
             "      url: https://github.com/vaam-apps/flutter-otel-zone\n",
-            "      ref: 8a72fc4162f6426951176d40c490389f77385647\n"
+            "      ref: 64c4661ac6cd09718141864d528892916677cc38\n"
         )),
         "{pubspec}"
     );
@@ -1696,7 +1696,7 @@ fn otel_and_sentry_third_parties_are_never_tags() {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/telemetry/pubspec.yaml"),
     )
     .unwrap();
-    assert!(example.contains("ref: 8a72fc4162f6426951176d40c490389f77385647"));
+    assert!(example.contains("ref: 64c4661ac6cd09718141864d528892916677cc38"));
     assert!(example.contains("sentry_flutter: \">=9.26.0 <10.0.0\""));
 }
 

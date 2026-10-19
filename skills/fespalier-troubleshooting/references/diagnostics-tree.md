@@ -52,6 +52,7 @@ spelling in `fsp routes`.
 | `/settings is unreachable: $a/page.dart (/:a) comes first and matches it; move one of them into or out of its (group)`                                                     | A route another always catches first; see below                                                                                                                     |
 | `/docs/*rest/child is unreachable: docs/$$rest/page.dart (/docs/*rest) comes first and matches it; ...`                                                                    | Something below a catch-all (also reported as `a catch-all matches the rest of the path, so no route can go below it; move the routes beside it`)                   |
 | `/files is served by both files/page.dart and files/$$$path/page.dart: an optional catch-all also matches the path without it; use $$rest instead, or drop the page above` | `$$$rest` and a page in the folder above both serve the bare path                                                                                                   |
+| ``the folders `a/x` and `a_x` would both be called `AX_1f2e3d4c` in the generated file (the hashes of their paths agree): rename one of them``                             | Two folders with a `data.dart`, an `action.dart` or a deferred page share a stem and the 8 hex digits of their path hashes (since 0.20.0). Rename one folder        |
 
 ### Reading an "unreachable" error
 

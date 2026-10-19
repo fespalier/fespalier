@@ -107,7 +107,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.18.0
+      ref: v0.19.0
 ```
 
 <!-- x-release-please-end -->
@@ -129,7 +129,7 @@ Get `fsp` one of these ways (details in
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 dart run fespalier <command>      # installs nothing: downloads the matching release, SHA-256 pinned
-cargo install --git https://github.com/fespalier/fespalier --tag v0.18.0 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.19.0 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -139,7 +139,7 @@ fsp create my_app                          # a new app with fespalier in it, gen
 fsp init                                   # starter layout/page/not_found/transition, then gen
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
-fsp dev [-- <flutter run args>]            # the app, regenerated and hot restarted on every save (0.9.0)
+fsp dev [-- <flutter run args>]            # the app, regenerated and hot reloaded on every save (0.9.0)
 fsp build <target> [-- <args>]             # fsp gen, then flutter build <target>, with the hooks of `tasks: build:` (0.9.0)
 fsp run [task]                             # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0)
 fsp check                                  # CI: non-zero on errors, writes nothing

@@ -180,7 +180,7 @@ byUri.close();
   access.
 - **It loads a deferred page's code too (since 0.7.0).** When the route's `page.dart` is
   [deferred](../../fespalier-routing/references/route-dart.md#deferred-load-a-pages-code-on-demand)
-  (`const deferred = true;`), `preload` also starts loading it (`_lib6.preload()` in the generated
+  (`const deferred = true;`), `preload` also starts loading it (`_libProductsId.preload()` in the generated
   override), and so does a `RouteLink`. A deferred route that reads no data now has a `preload`
   override that returns a closed handle (it holds nothing). The code, once loaded, stays loaded:
   closing the handle releases the data only. `AppRoutes.preload` goes through

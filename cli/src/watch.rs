@@ -16,6 +16,7 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use crate::config::Config;
 use crate::diag::{self, Diags, Level, Loc};
 use crate::parse_cache;
+use crate::reload::Stamp;
 use crate::session::Session;
 
 /// What wakes the loop: a relevant change on disk, a failure of the file watcher, or a request
@@ -57,6 +58,14 @@ pub struct GenReport {
     /// Whether it wrote an output file. A pass can write and still fail: a string path that
     /// `lints: unknown_path: error` rejects fails the command, not the output.
     pub wrote: bool,
+    /// Whether it wrote the generated `main()` (since 0.19.0). A hot reload never runs `main()`
+    /// again, so `fsp dev` restarts the app for it.
+    pub main_changed: bool,
+    /// The output's stamp as the pass left it, when it got to writing (since 0.19.0). `None` makes
+    /// `fsp dev` restart rather than reload.
+    pub stamp: Option<Stamp>,
+    /// Whether a hot reload can swap the routes the pass generated (since 0.19.0; `entry::swaps`).
+    pub swaps: bool,
     /// The route count of a pass that succeeded.
     pub routes: Option<usize>,
     /// How many errors the pass reported (0 when `ok`).
@@ -226,6 +235,9 @@ impl Pass<'_> {
                 first,
                 ok: true,
                 wrote: o.wrote,
+                main_changed: self.session.main_changed,
+                stamp: self.session.stamp.clone(),
+                swaps: self.session.swaps,
                 routes: Some(o.routes),
                 errors: 0,
                 first_error: None,
@@ -241,6 +253,9 @@ impl Pass<'_> {
                     // A string path that `lints: unknown_path: error` rejects fails the command
                     // after the output is written.
                     wrote: self.session.wrote,
+                    main_changed: self.session.main_changed,
+                    stamp: self.session.stamp.clone(),
+                    swaps: self.session.swaps,
                     routes: None,
                     errors: errors.max(1),
                     first_error: first_error.or_else(|| {

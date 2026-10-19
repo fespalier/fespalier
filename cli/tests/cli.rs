@@ -2394,6 +2394,10 @@ fn telemetry_stop_and_reset_run_down_with_the_grafana_profile() {
 /// prints `$FAKE_DEVICES` (one Android emulator by default), `build` exits `$FAKE_BUILD_EXIT`,
 /// and `run` answers the daemon protocol: `app.restart` is logged (`app.restart fullRestart=...`)
 /// and answered, `app.stop` is logged and ends it. With `$FAKE_RUN_EXIT` set it exits at once.
+/// A hot reload (not a restart) first makes the app log `$FAKE_REFUSE` when that is set, as an app
+/// that kept its routes does, and fails with `$FAKE_RELOAD_FAIL` as its message when that is set.
+/// `$FAKE_REFUSE_PLAIN` is `$FAKE_REFUSE` as a plain line on stdout, which is how flutter on the web
+/// sends the app's prints.
 #[cfg(unix)]
 fn fake_flutter(root: &Path) -> std::path::PathBuf {
     let bin = root.join("bin");
@@ -2424,7 +2428,17 @@ while IFS= read -r line; do
       full=false
       case "$line" in *'"fullRestart":true'*) full=true ;; esac
       echo "app.restart fullRestart=$full" >> "$FAKE_LOG"
-      echo "[{\"id\":$id,\"result\":{\"code\":0,\"message\":\"Reloaded 1 of 9 libraries\"}}]" ;;
+      if [ "$full" = false ] && [ -n "$FAKE_REFUSE" ]; then
+        echo "[{\"event\":\"app.log\",\"params\":{\"appId\":\"a1\",\"log\":\"$FAKE_REFUSE\"}}]"
+      fi
+      if [ "$full" = false ] && [ -n "$FAKE_REFUSE_PLAIN" ]; then
+        printf '%s\n' "$FAKE_REFUSE_PLAIN"
+      fi
+      if [ "$full" = false ] && [ -n "$FAKE_RELOAD_FAIL" ]; then
+        echo "[{\"id\":$id,\"result\":{\"code\":1,\"message\":\"$FAKE_RELOAD_FAIL\"}}]"
+      else
+        echo "[{\"id\":$id,\"result\":{\"code\":0,\"message\":\"Reloaded 1 of 9 libraries\"}}]"
+      fi ;;
     *'"app.stop"'*)
       echo "app.stop" >> "$FAKE_LOG"
       echo "[{\"id\":$id,\"result\":true}]"
@@ -2657,6 +2671,162 @@ fn dev_with_no_config_runs_flutter_and_follows_the_files() {
     d.wait_log("app.stop");
     assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
     assert!(d.err().contains("stopping flutter…"));
+}
+
+/// What an app prints when it keeps its old routes: the message of `routes_reload.dart`, which
+/// `KEPT_CHANGED` in `dev_state.rs` repeats (since 0.19.0).
+#[cfg(unix)]
+const KEPT_CHANGED: &str = "fespalier: the regenerated routes change a provider, a deferred library or a router setting that a hot reload keeps, so the app keeps its old routes: hot restart (R) to use the new ones";
+
+/// The app widget of `lib/app/app.dart`, which leaves the router to the generated `AppRoutes`, so
+/// the generated main is written and its routes can be swapped (since 0.19.0).
+#[cfg(unix)]
+const APP_WIDGET: &str = "class App extends StatelessWidget { const App({super.key, required this.router}); final GoRouter router; }";
+
+/// A project for `fsp dev` whose routes a hot reload can swap: `app.dart`, and an `items/$id`
+/// route whose data is its id. Since 0.20.0 a route put anywhere reloads, and a changed `data()`
+/// restarts (since 0.19.0 the swap was refused for a route put before one).
+#[cfg(unix)]
+fn swap_project() -> tempfile::TempDir {
+    let dir = dev_project("");
+    fs::write(dir.path().join("lib/app/app.dart"), APP_WIDGET).unwrap();
+    fs::create_dir_all(dir.path().join("lib/app/items/$id")).unwrap();
+    fs::write(
+        dir.path().join("lib/app/items/$id/data.dart"),
+        "Future<int> data(Ref ref, {required int id}) async => id;",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("lib/app/items/$id/page.dart"),
+        "class ItemPage extends StatelessWidget { const ItemPage({super.key, required this.data}); final int data; }",
+    )
+    .unwrap();
+    dir
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_reloads_an_inserted_route_and_restarts_after_a_changed_provider() {
+    let dir = swap_project();
+    let root = dir.path();
+    let mut d = Dev::start(root, &[]);
+    d.wait_ready();
+    // A route that sorts last adds names and changes none: a hot reload.
+    fs::create_dir_all(root.join("lib/app/zz")).unwrap();
+    fs::write(root.join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    d.wait_err("[fsp] hot reload: lib/app.g.dart changed");
+    d.wait_log("app.restart fullRestart=false");
+    d.wait_err("[fsp] ✓ hot reload in");
+    assert!(
+        !d.flog().contains("app.restart fullRestart=true"),
+        "{}",
+        d.flog()
+    );
+    // A route that sorts first renames nothing (since 0.20.0): a hot reload too.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    d.wait_until("two reloads", || {
+        d.err()
+            .matches("[fsp] hot reload: lib/app.g.dart changed")
+            .count()
+            >= 2
+    });
+    d.wait_until("two reloads in", || {
+        d.err().matches("[fsp] ✓ hot reload in").count() >= 2
+    });
+    assert!(
+        !d.flog().contains("app.restart fullRestart=true"),
+        "{}",
+        d.flog()
+    );
+    // A data() that becomes a stream changes a provider the reload keeps: a hot restart.
+    fs::write(
+        root.join("lib/app/items/$id/data.dart"),
+        "Stream<int> data(Ref ref, {required int id}) async* { yield id; }",
+    )
+    .unwrap();
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] hot restart: lib/app.g.dart changed");
+    d.wait_err("[fsp] ✓ hot restart in");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_restarts_an_app_that_kept_its_old_routes() {
+    let dir = swap_project();
+    let refusal = format!("I/flutter ( 4242): {KEPT_CHANGED}");
+    let mut d = Dev::start_with(dir.path(), &[], &[("FAKE_REFUSE", refusal.as_str())], true);
+    d.wait_ready();
+    fs::create_dir_all(dir.path().join("lib/app/zz")).unwrap();
+    fs::write(dir.path().join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    // The reload is refused by the app, so the restart that follows brings the new routes in.
+    d.wait_err("[fsp] hot restart: the app kept its old routes");
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] ✓ hot restart in");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_restarts_an_app_that_kept_its_old_routes_when_it_says_so_in_a_plain_line() {
+    // Flutter on the web sends the app's prints as plain lines, not as `app.log` events.
+    let dir = swap_project();
+    let mut d = Dev::start_with(
+        dir.path(),
+        &[],
+        &[("FAKE_REFUSE_PLAIN", KEPT_CHANGED)],
+        true,
+    );
+    d.wait_ready();
+    fs::create_dir_all(dir.path().join("lib/app/zz")).unwrap();
+    fs::write(dir.path().join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    d.wait_err("[fsp] hot restart: the app kept its old routes");
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] ✓ hot restart in");
+    // One refusal is one restart: the line said once is not answered twice.
+    let err = d.err();
+    assert_eq!(
+        err.matches("[fsp] hot restart: the app kept its old routes")
+            .count(),
+        1,
+        "{err}"
+    );
+    assert_eq!(
+        log_calls(&d.flog(), "app.restart fullRestart=true").len(),
+        1,
+        "{}",
+        d.flog()
+    );
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_restarts_after_a_failed_reload_of_a_regeneration() {
+    let dir = swap_project();
+    let mut d = Dev::start_with(
+        dir.path(),
+        &[],
+        &[("FAKE_RELOAD_FAIL", "Hot reload was rejected")],
+        true,
+    );
+    d.wait_ready();
+    fs::create_dir_all(dir.path().join("lib/app/zz")).unwrap();
+    fs::write(dir.path().join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    d.wait_err("[fsp] ✗ hot reload failed: Hot reload was rejected");
+    d.wait_err("[fsp] hot restart: lib/app.g.dart changed and the hot reload failed");
+    d.wait_log("app.restart fullRestart=true");
+    d.wait_err("[fsp] ✓ hot restart in");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
 }
 
 #[cfg(unix)]
@@ -3094,7 +3264,7 @@ fsp dev in {root}
   run     flutter run --machine -d chrome
   after   (nothing)
   env     API_URL=http://localhost:8080
-  hot reload after a save; hot restart when lib/app.g.dart changes
+  hot reload after a save; when lib/app.g.dart changes, a hot reload if the app can swap its routes, else a hot restart
 "
         )
     );

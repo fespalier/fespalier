@@ -927,6 +927,34 @@ fn the_cose_example_server_builds_with_the_generators_rust() {
     }
 }
 
+#[test]
+fn the_wire_sizes_example_server_builds_with_the_generators_rust() {
+    // Same as the cose server: a crate of its own with its own rust-toolchain.toml, which the
+    // `wire-sizes` job reads, so it must not drift from cli/rust-toolchain.toml.
+    assert_eq!(
+        toolchain_channel("examples/wire-sizes/server/rust-toolchain.toml"),
+        toolchain_channel("cli/rust-toolchain.toml"),
+        "examples/wire-sizes/server/rust-toolchain.toml (left) and cli/rust-toolchain.toml (right) \
+         differ"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("\n  wire-sizes:\n"),
+        "ci.yml has no `wire-sizes` job (examples/wire-sizes)"
+    );
+    for needle in [
+        "examples/wire-sizes/server/rust-toolchain.toml",
+        // The report is generated, and the job has to prove the committed one is fresh rather
+        // than trusting it: `wire-sizes-report` writes the very text REPORT.md holds.
+        "wire-sizes-report",
+    ] {
+        assert!(
+            ci.contains(needle),
+            "the wire-sizes job must mention `{needle}`"
+        );
+    }
+}
+
 /// `fsp create` writes the version it is, and spells it out nowhere: the pubspec it plans (for
 /// every feature at once) pins fespalier and every companion to `ref: v<this version>` at one
 /// url, and nothing in its sources or templates carries a version for release-please to miss.

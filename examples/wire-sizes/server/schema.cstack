@@ -1,0 +1,64 @@
+// The wire-sizes example's contract. No database: the notes live in memory.
+//
+// Unlike `examples/cose`, **the same server serves plain JSON, plain CBOR and COSE_Sign1 CBOR**,
+// so one payload can be measured three ways through one code path. Which one a call travels as is
+// decided by the codec the router was built with and, for COSE, by the envelope layer.
+
+transport rpc
+
+datasource db {
+  provider = "none"
+}
+
+type RegisterArgs {
+  x String
+  y String
+}
+
+type DeviceView {
+  kid String
+  thumbprint String
+}
+
+type ListArgs {
+  limit Int?
+}
+
+type NoteArgs {
+  text String
+}
+
+type Note {
+  id Int
+  text String
+}
+
+type NoteList {
+  notes Note[]
+}
+
+// A payload of any shape, for the size sweeps. `value` is a JSON value, so one op can carry a long
+// string, a list of records or a nested object: the shapes a real request has, and the ones the
+// `addNote` op cannot express with its single `text` field.
+//
+// It is a measurement op, not a feature: the server stores nothing, and it exists so a comparison is
+// not limited to the payload shape the notes happen to have.
+type PayloadArgs {
+  value Json
+}
+
+type PayloadAck {
+  bytes Int
+}
+
+mutation procedure registerDevice(args: RegisterArgs): DeviceView
+  @allow(true)
+
+procedure listNotes(args: ListArgs): NoteList
+  @allow(auth() != null)
+
+mutation procedure addNote(args: NoteArgs): Note
+  @allow(auth() != null)
+
+mutation procedure measurePayload(args: PayloadArgs): PayloadAck
+  @allow(auth() != null)

@@ -154,9 +154,31 @@ And the same is true of the credential: the ~112 bytes of signature against the 
 header are **fixed size**, so on a large payload neither a token nor a signature is worth optimising —
 what matters at that point is the payload, and CBOR's ~14 bytes are noise beside it.
 
-`tests/report.rs` pins this: it measures two payloads an order of magnitude apart and asserts that
-neither difference grows. A change that made either one proportional would fail rather than quietly
-inverting the advice.
+### It depends on what the payload is _made of_
+
+The table above is the same three kinds of text, and they agree. **A fourth kind does not**, and it is
+the one real payloads are most likely to resemble:
+
+| Payload kind                                 | 300 KB: JSON−CBOR | JSON vs CBOR |
+| -------------------------------------------- | ----------------: | -----------: |
+| repeated bytes (`"xxx…"`)                    |               +12 |       0.004% |
+| prose                                        |               +12 |       0.004% |
+| base64                                       |               +12 |       0.004% |
+| **escapable** (CRLF log, code, JSON-in-JSON) |       **+51,195** |   **+16.7%** |
+
+JSON must escape `"`, `\`, `\n`, `\t` and **every control byte** — a single `\u0001` is six
+characters for one. CBOR passes all of them through raw. So on text that is mostly escapable, JSON's
+penalty is not 12 bytes: it is **roughly one extra byte per escaped character, and it grows with the
+payload.**
+
+This is the trap the first version of this sweep fell into: it built payloads with `"x".repeat(n)` —
+one repeated byte, nothing to escape — and reported "JSON costs a fixed ~14 bytes" as though it were
+general. It was a property of the one payload kind that has _nothing to escape_. **A degenerate
+payload hid the only case where the answer changes.**
+
+`tests/report.rs` pins all of it: that the signature is fixed for every kind, that JSON's penalty
+does not grow on the three kinds with nothing to escape, and that it **does** grow on escapable text
+— by an order of magnitude at least, and >10% of the body at 300 KB.
 
 ## Where the overhead goes
 

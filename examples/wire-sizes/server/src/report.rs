@@ -41,48 +41,148 @@ pub async fn measure_all(scenario: &Scenario) -> Result<Vec<Run>, cratestack::Cr
 /// The payload sizes the sweep measures, in bytes of note text.
 ///
 /// The default scenario's note is 27 bytes, where every difference is a large percentage of a tiny
-/// number. The sweep asks the natural follow-up — *does this hold at a real size?* — and the answer
-/// is that JSON's penalty over CBOR does not grow (it is a fixed structural cost), while the
-/// signature's stays a fixed ~112 bytes. Both facts are invisible at one payload size.
+/// number. The sweep asks the natural follow-up — *does this hold at a real size?* — and **the
+/// answer depends on the payload's content, which is why both dimensions are measured.**
 pub const SWEEP_SIZES: [usize; 8] = [
     16,
     64,
     256,
     1024,
     4096,
-    // The sizes a real app actually sends, where the fixed costs stop being visible as a
-    // percentage: 55 KB, 120 KB and 300 KB. Measured rather than extrapolated, because JSON's
-    // penalty turns out to *shrink* slightly in absolute terms as the CBOR length prefix grows.
+    // The sizes a real app actually sends. Measured rather than extrapolated.
     55 * 1024,
     120 * 1024,
     300 * 1024,
 ];
 
-/// One payload size's measurement, for the sweep table.
+/// What a payload is *made of*, which decides whether JSON has to escape anything.
+///
+/// **This dimension was missing at first, and its absence produced a wrong answer.** The sweep
+/// originally built payloads with `"x".repeat(n)` — one repeated byte — and reported that JSON's
+/// penalty over CBOR is a fixed ~14 bytes at every size. That is true of a payload with nothing
+/// JSON must escape, and no real payload is like that: a `"` becomes `\"`, a newline `\n`, a tab
+/// `\t`, and a control byte six characters of `\u0001`. CBOR passes all of them through raw, so
+/// on text that is *mostly* escapable — a CRLF log, JSON itself, a code sample — JSON's penalty is
+/// **~17%, and it scales**, not 14 bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayloadKind {
+    /// One repeated ASCII letter. The degenerate case, kept as the control: nothing to escape.
+    Repeated,
+    /// Ordinary prose: letters, spaces, a little punctuation.
+    Prose,
+    /// Base64, as a thumbnail or an encrypted field arrives.
+    Base64,
+    /// A CRLF-terminated, tab-indented log: **most bytes escapable**, where JSON loses badly.
+    Escapable,
+}
+
+impl PayloadKind {
+    /// The name used in the report.
+    #[must_use]
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Repeated => "repeated",
+            Self::Prose => "prose",
+            Self::Base64 => "base64",
+            Self::Escapable => "escapable",
+        }
+    }
+
+    /// Every kind, for the sweep.
+    #[must_use]
+    pub fn all() -> [Self; 4] {
+        [Self::Repeated, Self::Prose, Self::Base64, Self::Escapable]
+    }
+
+    /// `n` bytes of this kind of text.
+    ///
+    /// Deterministic on purpose: a measurement that moved between runs could not be committed to a
+    /// report. The base64 generator is a seeded LCG, not `rand`, so no dependency is added for it.
+    #[must_use]
+    pub fn text(self, n: usize) -> String {
+        match self {
+            Self::Repeated => "x".repeat(n),
+            Self::Prose => {
+                const WORDS: [&str; 14] = [
+                    "the", "quick", "brown", "fox", "jumps", "over", "lazy", "dog", "and", "then",
+                    "some", "more", "words", "here",
+                ];
+                let mut out = String::with_capacity(n + 8);
+                let mut i = 0;
+                while out.len() < n {
+                    out.push_str(WORDS[i % WORDS.len()]);
+                    out.push(' ');
+                    i += 1;
+                }
+                out.truncate(n);
+                out
+            }
+            Self::Base64 => {
+                const ALPHABET: &[u8] =
+                    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+                let mut out = String::with_capacity(n);
+                // A fixed starting state, so the same bytes come out every time.
+                let mut state: u64 = 0x2545_f491_4f6c_dd1d;
+                for _ in 0..n {
+                    state = state
+                        .wrapping_mul(6_364_136_223_846_793_005)
+                        .wrapping_add(1_442_695_040_888_963_407);
+                    out.push(char::from(
+                        ALPHABET[(state >> 33) as usize % ALPHABET.len()],
+                    ));
+                }
+                out
+            }
+            Self::Escapable => {
+                let mut out = String::with_capacity(n + 32);
+                let mut i = 0_u64;
+                while out.len() < n {
+                    out.push('\t');
+                    out.push_str("line ");
+                    out.push_str(&i.to_string());
+                    out.push('\t');
+                    out.push_str("value=");
+                    out.push_str(&(i * 7).to_string());
+                    out.push_str("\r\n");
+                    i += 1;
+                }
+                out.truncate(n);
+                out
+            }
+        }
+    }
+}
+
+/// One payload size and kind's measurement, for the sweep table.
 #[derive(Clone, Debug)]
 pub struct SweepRow {
-    /// The note text's length in bytes.
+    /// What the payload is made of.
+    pub kind: PayloadKind,
+    /// The note text's length in bytes, as it was built.
     pub note_bytes: usize,
     /// The runs at this size, one per variant.
     pub runs: Vec<Run>,
 }
 
-/// Measures one scenario, then the same scenario at each size in [`SWEEP_SIZES`].
+/// Measures the same scenario at each size, for each payload kind.
 ///
 /// # Errors
 /// When a run cannot be set up.
 pub async fn measure_sweep() -> Result<Vec<SweepRow>, cratestack::CratestackError> {
     let mut rows = Vec::new();
-    for note_bytes in SWEEP_SIZES {
-        let scenario = Scenario {
-            reads: 0,
-            writes: 1,
-            note_text: "x".repeat(note_bytes),
-        };
-        rows.push(SweepRow {
-            note_bytes,
-            runs: measure_all(&scenario).await?,
-        });
+    for kind in PayloadKind::all() {
+        for note_bytes in SWEEP_SIZES {
+            let scenario = Scenario {
+                reads: 0,
+                writes: 1,
+                note_text: kind.text(note_bytes),
+            };
+            rows.push(SweepRow {
+                kind,
+                note_bytes,
+                runs: measure_all(&scenario).await?,
+            });
+        }
     }
     Ok(rows)
 }
@@ -163,9 +263,9 @@ pub fn sweep_table(sweep: &[SweepRow]) -> String {
     let mut out = String::new();
     let _ = writeln!(
         out,
-        "| `note_text` | JSON body | CBOR body | JSON−CBOR | COSE body | COSE−CBOR |"
+        "| Payload | `note_text` | JSON body | CBOR body | JSON−CBOR | COSE body | COSE−CBOR |"
     );
-    let _ = writeln!(out, "| ---: | ---: | ---: | ---: | ---: | ---: |");
+    let _ = writeln!(out, "| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
     for row in sweep {
         let body_of = |variant| {
             row.runs
@@ -185,7 +285,8 @@ pub fn sweep_table(sweep: &[SweepRow]) -> String {
         );
         let _ = writeln!(
             out,
-            "| {} | {} | {} | +{} | {} | +{} |",
+            "| `{}` | {} | {} | {} | +{} | {} | +{} |",
+            row.kind.name(),
             row.note_bytes,
             json,
             cbor,
@@ -554,6 +655,7 @@ mod tests {
     fn the_sweep_table_shows_the_fixed_differences() {
         let sweep = vec![
             SweepRow {
+                kind: PayloadKind::Repeated,
                 note_bytes: 16,
                 runs: vec![
                     run(Variant::Json, true, (0, 0, 149)),
@@ -562,6 +664,7 @@ mod tests {
                 ],
             },
             SweepRow {
+                kind: PayloadKind::Repeated,
                 note_bytes: 4096,
                 runs: vec![
                     run(Variant::Json, true, (0, 0, 4229)),

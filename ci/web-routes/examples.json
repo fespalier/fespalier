@@ -219,23 +219,23 @@
         },
         {
           "path": "/signup/name",
-          "expect": "Step 1 of 3"
+          "expect": "For a business"
         },
         {
           "path": "/signup/company",
-          "expect": "Step 1 of 3",
+          "expect": "For a business",
           "at": "/signup/name",
           "note": "the flow guard sends a deep link to a later step back to its first one"
         },
         {
           "path": "/signup/contact",
-          "expect": "Step 1 of 3",
+          "expect": "For a business",
           "at": "/signup/name",
           "note": "the flow guard sends a deep link to a later step back to its first one"
         },
         {
           "path": "/signup/review",
-          "expect": "Step 1 of 3",
+          "expect": "For a business",
           "at": "/signup/name",
           "note": "the flow guard sends a deep link to a later step back to its first one"
         },

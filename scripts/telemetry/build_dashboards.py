@@ -270,11 +270,12 @@ class Context:
 
     @staticmethod
     def call_pct_prom(den, ok):
-        # OpenObserve's PromQL answers nothing for `X or vector(0)` when X is empty, so the failures
-        # are the calls minus the ones that did not fail: 0 when nothing failed.
+        # The failures are the calls minus the ones that did not fail. `or vector(0)` reads "none
+        # passed" as 0 (OpenObserve's PromQL answers it since v1.1.0; v1.0.4 answered nothing), so a
+        # tile where every call failed says 100 %, not "Not enough data yet".
         total = f"sum(sum_over_time(fespalier_calls{{{den}}}[$__range]))"
         passed = f"sum(sum_over_time(fespalier_calls{{{ok}}}[$__range]))"
-        return f"100 * ({total} - {passed}) / {total}"
+        return f"100 * ({total} - ({passed} or vector(0))) / {total}"
 
     def call_gate_prom(self, selector):
         return f"and on() (sum(sum_over_time(fespalier_calls{{{selector}}}[$__range])) >= {self.min_samples})"

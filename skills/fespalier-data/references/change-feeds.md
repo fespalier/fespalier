@@ -122,21 +122,23 @@ class OrderPage extends StatelessWidget {
 - **One subscription for N topics.** `changes.latest` is a keep-alive `StreamProvider<Change<CoreEvent>>`; every topic watches it. The
   function you pass to `ChangeFeed` runs **once per container** (a generated stream takes one listener). If it does
   `ref.watch(coreProvider)` and the core is restarted, the stream is opened again and the old one cancelled.
-- **A topic moves only on a match.** Its per-key revision is an auto-dispose `Notifier<int>`; an event for another key
-  rebuilds the revision but returns the same number, and Riverpod does not notify the dependents of an unchanged value. The
-  first watch counts nothing: an event older than the watcher is history.
+- **A topic moves only on a match.** Its per-key revision is an auto-dispose `Notifier<int>` that watches the feed through a
+  `select`, so an event for another key costs one call of the matcher and does not even rebuild the revision (since 0.21.0;
+  before, it rebuilt and returned the same number). The first watch counts nothing: an event older than the watcher is history.
 - **Equal events are still two changes.** Riverpod 3 drops a state equal to the last, so `latest` carries `Change(event, seq)`
   and `Change` is never `==`. Riverpod rebuilds lazily and may deliver a burst to a dependent in one rebuild or in several, but **no event is lost**: the feed keeps a log of the last 64 events of its subscription
   (`changeLogCapacity`) and a topic scans every event it missed (`[7, 42, 7]` rebuilds the watcher of 42; a paused page
   catches up on resume). A watcher that missed more than the log holds, or whose core was restarted, rebuilds anyway.
-  Do not "fix" a burst with a debounce: a debounce is a timer.
+  Do not "fix" a burst with a debounce in a provider: a debounce is a timer. A busy key gets a `ChangeBudget` (below).
 - **A stream error** stays in `changes.latest` as an `AsyncError` (watch it for a "live updates stopped" banner); no topic
   rebuilds on it, and the next event works. The function you gave `ChangeFeed` is not called again after a failure of its
   own either: `latest` does not retry (since 0.16.0; Riverpod's default would call it again, with a `Timer`).
 - **`changes.any`** is a topic of every event (an `int` that counts each event, a burst included), for a provider that depends on
   the whole core.
-- **Cost.** Each watched key runs its matcher once per event. Tens or hundreds of keys: nothing. A core that emits thousands of
-  events a second should emit coarser ones (a table, not a row) or use an `InvalidationTable`.
+- **Cost.** An event costs each watched key one matcher call (about a microsecond in a debug build) and a rebuild of the keys
+  it concerns (since 0.21.0; before, every key was rebuilt by every event, which grew with the square of the keys). What a
+  busy core costs the providers that reload, and the budget that bounds it, are in
+  [A rebuild budget](#a-rebuild-budget-changebudget).
 - **Hidden tabs.** A page in a hidden tab has its watchers paused by Riverpod and catches up when it is shown _(not checked on a
   device)_.
 
@@ -292,7 +294,8 @@ void main() {
 
 - **A `ProviderContainer` of your own** (no `pumpRouter`) disposes on a zero-duration timer, and a provider derived from another
   recomputes on the same scheduler: `await container.pump()` (or `tester.pump()`) before you count rebuilds. Two events fed
-  before the pump are **one** rebuild.
+  before the pump are **one** rebuild while the feed keeps flowing; a key watched alone that both concern takes the second one
+  turn later (Riverpod pauses the feed while its only watcher rebuilds), unless its topic has a budget.
 - **A test that feeds the fake after the container is disposed** gets nothing: disposal cancels the subscription
   (`source.hasListener` is false, `cancelCount` is 1).
 
@@ -416,8 +419,8 @@ void main() {
 
 - The codecs are top-level, so their counts add up across a test file: assert on what `decode` returns, not on `unknownCount`
   or `errorCount`.
-- A batch is a burst: a watcher rebuilds once for it. A batch longer than the 64-event log makes every watcher rebuild once,
-  which is safe.
+- A batch is a burst: a watcher rebuilds at most once for it, and one that no event of the batch concerns does not rebuild
+  (since 0.21.0).
 - A heartbeat is a batch of none: `split` returns nothing, so there is no event and no skip.
 - `ReceivePort` and protobuf are fragments, not built, the same as in `docs/data.md` (they need your generated classes and your
   FFI call):
@@ -440,10 +443,117 @@ ref.watch(coreProvider).subscribe(port.sendPort.nativePort);
 return port.transform(ChangeCodec<Object?, CoreEvent>((raw) => eventFromProto(raw as Uint8List)));
 ```
 
+## A rebuild budget: `ChangeBudget`
+
+Since 0.21.0. A key that matches more events than what watches it can reload gets a budget:
+`topic(matches, budget: ChangeBudget(tick))` moves each key at most once between two ticks of `tick`, a provider the app fires.
+Why, measured in the package's tests (a debug build, fake time):
+
+- Riverpod runs a provider's rebuild after two zero-length timers, not once a frame, and `flutter_rust_bridge` delivers an event
+  per event-loop turn, so a `data()` reloads once per event about its key: 5,000 a second are 5,000 reloads for 60 widget
+  builds _(not checked on a device with a real core)_.
+- A `data()` slower than the gap between its events never settles: 1,000 events a second and a 5 ms `data()` showed a loaded
+  value in none of 60 frames.
+- Riverpod 3 pauses `changes.latest` while every provider that watches it rebuilds, so a key watched alone takes a burst that
+  concerns it one event per turn. With no topic watched at all, the stream is paused too and holds what the core sends; a
+  shell banner that watches `changes.latest.select((v) => v.hasError)` keeps it flowing.
+
+The first event after a tick moves the key at once; the next ones are held; the next tick moves it once if anything was held.
+Nothing is dropped (a held change waits for the next tick, however long the core stays quiet), a tick moves only the keys that
+hold a change, and a held key does not rebuild, so the burst goes through in one turn. With a 16 ms tick, 5,000 events a second
+are 61 reloads; with the slow `data()`, 40 of 60 frames show a loaded value (50 ms: 21, 100 ms: 11).
+
+The package has no clock (`test/no_timers_test.dart`), so the tick is the app's: a `RefetchSignal` it fires from a timer of its
+own, auto-dispose so that it runs only while a budgeted key is watched. One tick serves every budgeted topic. `changes.any` has no
+budget: `changes.topic<Null>((_, _) => true, budget: ...)(null)` is a budgeted "anything changed" that counts moves.
+
+```dart
+// lib/core/budget.dart
+import 'dart:async';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_frb/fespalier_frb.dart';
+import 'package:my_app/core/changes.dart';
+import 'package:my_app/core/core.dart';
+
+/// Fires every 100 ms while a budgeted key is watched: the app's timer, not the package's.
+final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
+
+class ChangeTick extends RefetchSignal {
+  @override
+  int build() {
+    final timer = Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
+    ref.onDispose(timer.cancel);
+    return 0;
+  }
+}
+
+/// An order moves at most once per tick, however busy the core is.
+final busyOrderChanged = changes.topic<int>(
+  (event, id) => event is OrderChanged && event.id == id,
+  budget: ChangeBudget(changeTick),
+);
+```
+
+```dart
+// test/budget_test.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_frb/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/core/budget.dart';
+import 'package:my_app/core/core.dart';
+
+class FakeCore implements Core {
+  FakeCore(this.source);
+
+  final FakeChangeSource<CoreEvent> source;
+
+  @override
+  Stream<CoreEvent> changes() => source.stream;
+
+  @override
+  Future<String> order(int id) async => 'Order $id';
+}
+
+void main() {
+  test('a busy order moves at once, then at most once per tick', () async {
+    final source = FakeChangeSource<CoreEvent>(broadcast: false);
+    final container = ProviderContainer(
+      overrides: [
+        coreProvider.overrideWithValue(FakeCore(source)),
+        changeTick.overrideWith(RefetchSignal.new), // nothing fires it but the test
+      ],
+    );
+    addTearDown(container.dispose);
+    final moves = <int>[];
+    container.listen(busyOrderChanged(42), (_, next) => moves.add(next));
+    await container.pump();
+
+    source.emit(const OrderChanged(42));
+    await container.pump();
+    expect(moves, [1]); // the first event after a tick: at once
+
+    for (var i = 0; i < 100; i++) {
+      source.emit(const OrderChanged(42));
+    }
+    await container.pump();
+    expect(moves, [1]); // held
+
+    container.read(changeTick.notifier).fire();
+    await container.pump();
+    expect(moves, [1, 2]); // one move for the hundred
+  });
+}
+```
+
+- **A tick that never fires holds a change for ever.** In a test that is what you want (fire it by hand); in the app, the tick's
+  timer runs while a budgeted key is watched, which is why it is auto-dispose.
+- **Pick the period from the screen**: 100 ms is ten updates a second; a key with a slow `data()` wants a period longer than one
+  load.
+
 ## Not built
 
 A `flutter_rust_bridge` dependency (the generated bindings own it); a codec per format in the package (JSON is `jsonDecode`
 and a `switch`; protobuf, CBOR and bincode would be dependencies, and their generated types are per app: the codec takes your
-decoder); a provider that counts skips (`unknownCount`, `errorCount` and `onSkipped` are enough); a budget or a batching window
-for a core that emits thousands of events a second (that would be a timer: emit coarser events, or apply an `InvalidationTable`
-yourself).
+decoder); a provider that counts skips (`unknownCount`, `errorCount` and `onSkipped` are enough); a clock of the package's own
+for `ChangeBudget` (a timer or a frame callback: the tick is the app's), and a budget on `changes.any`.

@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.21.0
+
+0.21.0 breaks nothing, and `app.g.dart` is unchanged for it.
+
+- **`fespalier_frb` rebuilds less** ([A rebuild budget](data.md#a-rebuild-budget-changebudget)). A topic's key is rebuilt only by an event that concerns it, and a burst goes through in one event-loop turn while some watched key is not concerned; before, Riverpod took a burst one event per turn whenever nothing else watched `changes.latest`, so a key could reload once per event of it. A test that counted reloads after a burst may count fewer now (a key watched alone reloads as before); no code changes. `ChangeBudget`, a budget of one move per key per tick of a provider you fire, is new and opt-in.
+
 ### 0.20.0
 
 0.20.0 breaks nothing: an app with a `data.dart`, an `action.dart`, a deferred page or a type written with an import prefix in a route file regenerates `app.g.dart` (below), with no code change; any other app's is unchanged.

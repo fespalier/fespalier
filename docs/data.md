@@ -396,7 +396,7 @@ Future<Order> data(Ref ref, {required int id}) {
 
 `changes.latest` is the **one subscription**: a provider that is never auto-disposed, so it is opened by the first topic anyone watches (the function you gave it runs once per container, because a generated stream accepts one listener: since 0.16.0 not again after a failure either, because the provider does not retry, which would be a `Timer`) and cancelled by the container's disposal. Ten thousand topics are still one subscription. A topic's value is a counter per key that moves **only** when a matching event arrives after the first watch, so `data()` is rebuilt exactly then and the screen shows the usual reload (the old value stays up, `keepDataOnError` keeps the page if the reload fails, and the rest of [freshness](#freshness-staletime-resume-and-reconnect) applies). `changes.any` is the topic of every event (it counts them, each event of a burst included), for a provider that depends on the whole core (a badge count).
 
-What it does not do. It starts no timer, schedules nothing and has no `listen` of its own: `test/no_timers_test.dart` allows none in `lib/`. Riverpod rebuilds lazily, so events that arrive before a dependent rebuilds (a burst in one frame, or a page that was paused) can share one rebuild, but **none is lost**: the feed remembers the last 64 events of its subscription (`changeLogCapacity`) and a topic looks at every one it missed, so a `[7, 42, 7]` burst still rebuilds the watcher of order 42, and `changes.any` counts each event of a burst. A watcher that missed more than 64, or whose core was restarted, rebuilds anyway (a rebuild too many is safe, one too few is not). Two equal events one after the other are still two changes (`Change.seq` numbers them, because Riverpod drops a state equal to the last). A stream error stays in `changes.latest` as an `AsyncError` and rebuilds no topic. Every watched key evaluates its matcher once per event: fine for tens or hundreds of watchers, so give a core that emits thousands of events a second coarser events (one per table) or use the table below. A page that is hidden in a tab has its watchers paused by Riverpod; they catch up when it comes back _(not checked on a device)_. If `open` does `ref.watch(coreProvider)` and the core is restarted, the stream is opened again and the next event counts as a change.
+What it does not do. It starts no timer, schedules nothing and has no `listen` of its own: `test/no_timers_test.dart` allows none in `lib/`. A key is rebuilt only by an event that concerns it (since 0.21.0): Riverpod calls the topic's matcher for each event through a `select`, and an event about another key costs that call and nothing else. Events that arrive before a dependent rebuilds (a burst, or a page that was paused) can share one rebuild, but **none is lost**: the feed remembers the last 64 events of its subscription (`changeLogCapacity`) and a topic looks at every one it missed, so a `[7, 42, 7]` burst still rebuilds the watcher of order 42, and `changes.any` counts each event of a burst. A watcher that missed more than 64, or whose core was restarted, rebuilds anyway (a rebuild too many is safe, one too few is not). Two equal events one after the other are still two changes (`Change.seq` numbers them, because Riverpod drops a state equal to the last). A stream error stays in `changes.latest` as an `AsyncError` and rebuilds no topic. What a core that emits thousands of events a second costs, and the budget that bounds it, are in [A rebuild budget](#a-rebuild-budget-changebudget). A page that is hidden in a tab has its watchers paused by Riverpod; they catch up when it comes back _(not checked on a device)_. If `open` does `ref.watch(coreProvider)` and the core is restarted, the stream is opened again and the next event counts as a change.
 
 **A table, when you own the subscription.** If the app already has code that receives the events (or does not want to edit its `data.dart` files), an `InvalidationTable` is the pure form: rules from an event to the providers it makes stale, applied by a function you pass. It holds no container and no stream:
 
@@ -471,7 +471,7 @@ The Rust side is `#[serde(tag = "type")]` on the enum and `serde_json::to_string
 
 **A bad message is skipped, not fatal.** The codec catches what your decoder throws (a `FormatException`, a failed cast, a `RangeError`). The next message decodes as usual, `changes.latest` keeps its last change (one bad message is not a stopped core, so it is no `AsyncError`), and the skipped message gets no `Change.seq` and moves no topic. This is what decoding in Dart buys: `flutter_rust_bridge` 2.13 reads its stream in an `async*` that stops at the first throw, so a message it cannot decode, or an error the core adds, ends a typed stream _(read in its source, not run by a test here)_. An error of the stream itself still reaches `changes.latest` as an `AsyncError`.
 
-**Batches.** `ChangeCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a batch is a burst, so a watcher rebuilds once for it, and a batch longer than the 64-event log makes every watcher rebuild once, because it cannot see the events it missed. A failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
+**Batches.** `ChangeCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a batch is a burst, so a watcher rebuilds at most once for it, and one that no event of the batch concerns does not rebuild (since 0.21.0; before, a batch longer than the 64-event log rebuilt every watcher once). A failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
 
 ```dart
 final batchCodec = ChangeCodec.batch<String, Object?, CoreEvent>(
@@ -512,6 +512,53 @@ return port.transform(ChangeCodec<Object?, CoreEvent>((raw) => eventFromProto(ra
 ```
 
 **Testing.** `FakeChangeSource<String>` (or `<Uint8List>`) is the raw stream. `codec.decode(raw)` is the codec without a stream (empty when the message is skipped), and it is also how an app that owns its subscription feeds an `InvalidationTable`: `for (final e in coreCodec.decode(raw)) table.apply(e, container.invalidate);`. A test can check a skip directly: `final before = coreCodec.unknownCount;`, then `expect(coreCodec.decode('{"type":"OrderArchived","id":42}'), isEmpty);` and `expect(coreCodec.unknownCount, before + 1);`. A top-level codec's counters never reset, so they add up across the tests of a run: compare with a count taken before, or assert on what `decode` returns alone.
+
+### A rebuild budget: `ChangeBudget`
+
+Since 0.21.0. What a core that emits thousands of events a second costs, measured in the package's tests (`flutter test`, a debug build, so the ratios matter more than the microseconds):
+
+- **The keys an event does not concern: a matcher call each.** A topic's key watches the feed through a `select`, so an event about order 7 costs the watcher of order 42 one call of its matcher, about a microsecond, and no rebuild. Before 0.21.0 every watched key was rebuilt by every event, and the cost grew with the square of the keys: about 40 µs per key per event with 100 keys watched, 200 µs with 1,000.
+- **Widgets: once a frame.** Flutter rebuilds a widget at most once a frame, however often what it watches changes: 5,000 events in a second were 60 widget builds.
+- **Providers: once per event.** Riverpod runs a provider's rebuild after two zero-length timers, not at the next frame, and `flutter_rust_bridge` delivers each event in an event-loop turn of its own. So a `data()` that watches a key reloads once per event about it: 5,000 events a second about one order are 5,000 calls to the core for 60 frames _(measured with fake time in a widget test, not checked on a device with a real core)_.
+- **A slow `data()` never settles.** One that takes 5 ms and is invalidated every millisecond starts again before it finishes: over a simulated second of 1,000 events, none of the 60 frames showed a loaded value, and the page kept its old one, refreshing, until the core went quiet.
+- **A burst that concerns every watched key comes through one event per turn.** Riverpod 3 pauses `changes.latest` while every provider that watches it rebuilds, and the stream holds the rest: a key watched alone takes 1,000 events of which 500 concern it in 500 turns and 500 reloads. While another watched key is not concerned, or something else watches `changes.latest`, the burst goes through in one turn and is one reload.
+- **Nobody watching: the stream holds what comes.** With no topic watched, Riverpod pauses `changes.latest` too, and the stream keeps what the core sends in memory until a topic is watched again _(Dart's buffering of a paused stream; not checked with a real core)_; that topic then takes it all in one turn and rebuilds only what it concerns. Something that keeps watching `changes.latest`, such as a "live updates stopped" banner in the app's shell that watches `changes.latest.select((v) => v.hasError)`, keeps the subscription flowing, so nothing is held, and it rebuilds on no event.
+
+A budget bounds the reloads: `budget: ChangeBudget(tick)` lets each key of a topic move at most once between two ticks of `tick`, a provider **you** fire:
+
+```dart
+// lib/core/change_tick.dart
+/// Fires every 100 ms while a budgeted key is watched: the app's timer, not the package's.
+final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
+
+class ChangeTick extends RefetchSignal {
+  @override
+  int build() {
+    final timer = Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
+    ref.onDispose(timer.cancel);
+    return 0;
+  }
+}
+
+// lib/core/changes.dart
+final orderChanged = changes.topic<int>(
+  (event, id) => event is OrderChanged && event.id == id,
+  budget: ChangeBudget(changeTick),
+);
+```
+
+The first event that concerns a key after a tick moves it at once, so a quiet core is as quick as before; the next ones are held, and the next tick moves the key once if anything was held. A held change is never dropped: it waits for the next tick however long the core then stays quiet, so a tick that stops firing holds it until it fires again. A tick moves only the keys that hold a change. A held key does not rebuild, so the feed is not paused for it, and a key watched alone takes a whole burst in one turn. Measured: with a 16 ms tick, the 5,000 events a second are 61 reloads instead of 5,000; with the slow `data()`, a 16 ms tick let 40 of the 60 frames show a loaded value, 50 ms 21 and 100 ms 11, against none.
+
+The tick is yours because the package has no clock: a `Timer` in it would wake an idle app, and a frame callback is a listener on the framework; `test/no_timers_test.dart` allows neither. A `RefetchSignal` (from fespalier) fires with `fire()`; auto-dispose, as above, it is created by the first budgeted key watched, and its timer is cancelled with the last. One tick serves every budgeted topic; 100 ms is ten updates a second. `changes.any` has no budget: `changes.topic<Null>((_, _) => true, budget: ChangeBudget(changeTick))(null)` is a budgeted "anything changed", whose value counts moves, not events.
+
+**Testing.** Override the tick with `RefetchSignal.new`: nothing fires it but the test, so a held change moves exactly when the test says.
+
+```dart
+final container = ProviderContainer(overrides: [changeTick.overrideWith(RefetchSignal.new)]);
+// ... the first OrderChanged(42) reloads order 42 at once, the next ones wait
+container.read(changeTick.notifier).fire();
+await container.pump(); // order 42 reloads once
+```
 
 ### Providers per page instance: fespalier_riverpod
 

@@ -1196,6 +1196,46 @@ fn every_third_party_dependency_has_one_constraint() {
 }
 
 #[test]
+fn a_sibling_package_by_git_is_this_repository_at_its_own_folder() {
+    // A `fespalier*` git dependency must name this repository and `packages/<name>`: the workspace
+    // resolves it to the checkout whatever it says, so a wrong url or path would only fail for an app.
+    let mut checked = 0;
+    for dir in dart_folders() {
+        let pubspec = pubspec_of(&dir);
+        for section in ["dependencies", "dev_dependencies", "dependency_overrides"] {
+            let Some(deps) = pubspec
+                .get(section)
+                .and_then(serde_yaml_ng::Value::as_mapping)
+            else {
+                continue;
+            };
+            for (name, spec) in deps {
+                let name = name.as_str().unwrap();
+                let Some(git) = spec.get("git").filter(|_| name.starts_with("fespalier")) else {
+                    continue;
+                };
+                checked += 1;
+                let field = |key: &str| git.get(key).and_then(serde_yaml_ng::Value::as_str);
+                assert_eq!(
+                    field("url"),
+                    Some("https://github.com/fespalier/fespalier"),
+                    "{dir}/pubspec.yaml ({section}): the git url of `{name}`"
+                );
+                assert_eq!(
+                    field("path"),
+                    Some(format!("packages/{name}").as_str()),
+                    "{dir}/pubspec.yaml ({section}): the git path of `{name}`"
+                );
+            }
+        }
+    }
+    assert!(
+        checked > 20,
+        "only {checked} git dependencies on a fespalier package were found: did the walk break?"
+    );
+}
+
+#[test]
 fn the_floor_copies_override_what_each_package_reaches() {
     use std::collections::BTreeSet;
     let dest = tempfile::tempdir().unwrap();

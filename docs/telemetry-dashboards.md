@@ -41,14 +41,14 @@ It returns, in this order:
 3. `http://10.0.2.2:4318` on Android (not the web), the emulator's name for its host;
 4. `http://localhost:4318` everywhere else: the iOS simulator, desktop and the web.
 
-| Where the app runs      | What reaches the stack                                                                                               |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Android emulator        | Nothing to do: `10.0.2.2`.                                                                                           |
-| iOS simulator           | Nothing to do: `localhost`.                                                                                          |
-| Desktop                 | Nothing to do: `localhost`.                                                                                          |
-| Chrome                  | Nothing to do: `localhost`, with CORS ([The web](#the-web-and-otel_zone)).                                           |
-| A phone on your Wi-Fi   | `fsp telemetry --lan`, then `flutter run --dart-define-from-file="$HOME/.fespalier/telemetry/dart-defines.json"`.    |
-| An Android phone on USB | `adb reverse tcp:4318 tcp:4318`, then `flutter run --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`. |
+| Where the app runs      | What reaches the stack                                                                                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Android emulator        | Nothing to do: `10.0.2.2`.                                                                                                                                                                       |
+| iOS simulator           | Nothing to do: `localhost`.                                                                                                                                                                      |
+| Desktop                 | Nothing to do: `localhost`.                                                                                                                                                                      |
+| Chrome                  | Nothing to do: `localhost`, with CORS ([The web](#the-web-and-otel_zone)).                                                                                                                       |
+| A phone on your Wi-Fi   | `fsp telemetry --lan`, then `flutter run --dart-define-from-file="$HOME/.fespalier/telemetry/dart-defines.json"`, or the path `fsp telemetry --lan` prints (it also covers cmd.exe and `--dir`). |
+| An Android phone on USB | `adb reverse tcp:4318 tcp:4318`, then `flutter run --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.                                                                             |
 
 The port in `endpoint()` is 4318. If you changed `FSP_OTLP_HTTP_PORT`, pass the define.
 

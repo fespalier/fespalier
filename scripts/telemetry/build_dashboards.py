@@ -529,7 +529,8 @@ def oo_panel(panel, ordinal, layout, style, titles):
             {"name": "good", "type": "yAxis", "value": number(limits["good_below"])},
             {"name": "bad", "type": "yAxis", "value": number(limits["bad_from"])},
         ]
-    # A click on a stat tile does nothing in OpenObserve (checked on v1.0.4); a table row opens it.
+    # A click on a stat tile does nothing in OpenObserve (checked on v1.0.4 and v1.1.2: the value's
+    # copy-button overlay takes the click); a table row opens it.
     if panel["drilldown"] and panel["type"] != "stat":
         title = titles[panel["drilldown"]]
         config["drilldown"] = [

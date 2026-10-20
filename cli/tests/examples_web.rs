@@ -104,7 +104,12 @@ fn every_route_without_parameters_is_opened_or_skipped() {
             .as_array()
             .map(|s| {
                 s.iter()
-                    .map(|k| (k["pattern"].as_str().unwrap(), k["reason"].as_str().unwrap()))
+                    .map(|k| {
+                        (
+                            k["pattern"].as_str().unwrap(),
+                            k["reason"].as_str().unwrap(),
+                        )
+                    })
                     .collect()
             })
             .unwrap_or_default();

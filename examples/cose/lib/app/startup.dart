@@ -20,7 +20,7 @@ import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
 /// - an iOS simulator's keychain is not a secure element.
 ///
 /// The fallback is honest about what it loses: a software key is not hardware-backed and does not
-/// survive a reload. `isHardwareBacked()` on the signer says which kind of key it is, but the page
+/// survive a restart. `isHardwareBacked()` on the signer says which kind of key it is, but the page
 /// does not show it: the page shows the key's `kid`. A build that must *require* hardware passes
 /// `requireHardware: true` and takes the failure instead.
 Future<List<Override>> startup() async {

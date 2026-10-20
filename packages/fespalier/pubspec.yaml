@@ -21,6 +21,7 @@ executables:
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   # What a data.dart's `freshness` and `dataCache` read the time from (since 0.8.1), so a test's

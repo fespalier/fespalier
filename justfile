@@ -7,7 +7,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The pub workspace's packages: the root pubspec.yaml's `workspace:` list, the packages that claim Flutter 3.35
 # (fespalier_devtools aside). They share one resolution (`melos bootstrap`).
-members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | tr '\n' ' '`
+members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | sed 's/ *#.*//' | tr '\n' ' '`
 
 # Resolved on their own, outside the workspace: the packages that need a newer Flutter, the DevTools extension
 # (its lockfile is committed) and every example. cli/tests/versions.rs keeps this list complete.

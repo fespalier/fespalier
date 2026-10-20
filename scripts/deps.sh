@@ -23,7 +23,7 @@ case "${1:-}" in
     ;;
 esac
 
-members="$(sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml)"
+members="$(sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | sed 's/ *#.*//')"
 outside=()
 for pubspec in packages/*/pubspec.yaml examples/*/pubspec.yaml; do
   dir="${pubspec%/pubspec.yaml}"

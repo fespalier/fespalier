@@ -1017,6 +1017,31 @@ fn the_root_pins_melos_exactly() {
 }
 
 #[test]
+fn the_workspace_list_is_plain_entries() {
+    // The justfile and scripts/deps.sh read `workspace:` with sed: an entry is `  - <path>` and nothing else
+    // (a trailing comment, or a comment at the left margin, which ends the list for sed).
+    let text = read("pubspec.yaml");
+    let list: Vec<&str> = text
+        .lines()
+        .skip_while(|l| *l != "workspace:")
+        .skip(1)
+        .take_while(|l| !l.starts_with(|c: char| c.is_ascii_alphabetic()))
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    assert!(
+        !list.is_empty(),
+        "the root pubspec.yaml has no `workspace:` entries"
+    );
+    for line in list {
+        assert!(
+            line.starts_with("  - ") && !line.contains('#'),
+            "the root pubspec.yaml's `workspace:` entry `{line}` is not a plain `  - <path>` (no comment: the \
+             justfile and scripts/deps.sh read the list with sed)"
+        );
+    }
+}
+
+#[test]
 fn workspace_packages_resolve_together_and_the_others_alone() {
     let members = workspace_members();
     for dir in dart_folders() {
@@ -1051,7 +1076,7 @@ fn the_justfile_and_ci_run_every_package_and_example() {
     let justfile = read("justfile");
     assert!(
         justfile.contains(
-            "members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | tr '\\n' ' '`"
+            "members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | sed 's/ *#.*//' | tr '\\n' ' '`"
         ),
         "the justfile reads `members` from the root pubspec.yaml"
     );

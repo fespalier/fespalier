@@ -230,7 +230,8 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   member has `resolution: workspace` and no `dependency_overrides`: pub refuses an override of a workspace
   package ("Cannot override workspace packages"), and a third-party override in one member would apply to all
   of them, so `cli/tests/versions.rs` refuses any. A new 3.35 package goes into `workspace:` and the `dart` and
-  `floor` matrices (`cli/tests/versions.rs`; the justfile reads the list). `flutter pub downgrade` inside a member downgrades
+  `floor` matrices (`cli/tests/versions.rs`; the justfile and `scripts/deps.sh` read the list, so an entry
+  carries no comment). `flutter pub downgrade` inside a member downgrades
   every member together, so the floor runs copies (`scripts/floor_copy.py`, which overrides only the members
   a package reaches: pub adds every override to the resolution, used or not). Each third-party dependency is
   spelled one way in every pubspec, in the workspace or not (`every_third_party_dependency_has_one_constraint`,

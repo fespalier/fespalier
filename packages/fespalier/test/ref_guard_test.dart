@@ -587,4 +587,126 @@ void main() {
       expect(currentLocation(tester), '/new');
     });
   });
+
+  group('a live guard on a pushed page (fespalier/fespalier#258)', () {
+    testWidgets('moves on sign-out in one navigation, with the page below kept', (
+      tester,
+    ) async {
+      final r = router(initial: '/other');
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/inbox');
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      // go_router restored the pushed entry without its redirect: the guard's answer is the
+      // login location, and the page must move there, not stay on screen.
+      expect(currentLocation(tester), '/login?from=/inbox');
+      expect(find.text('INBOX'), findsNothing);
+      expect(find.text('LOGIN'), findsOneWidget);
+      expect(find.text('OTHER', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('the guard keeps watching after an unrelated refresh()', (
+      tester,
+    ) async {
+      final r = router(initial: '/other');
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(open, 1);
+      r.refresh();
+      await tester.pumpAndSettle();
+      expect(open, 1, reason: 'a refresh does not close the pushed page guard');
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/login?from=/inbox');
+    });
+
+    testWidgets('a guard that throws when it runs again shows the error view', (
+      tester,
+    ) async {
+      // Evaluations: the push, the sign-out, then the one the router asks for. The last one throws.
+      var evaluations = 0;
+      final r = router(
+        initial: '/other',
+        inbox: (ref, uri) {
+          evaluations++;
+          final signedIn = ref.watch(session);
+          if (!signedIn && evaluations > 2) throw StateError('boom');
+          return signedIn ? null : '/login?from=$uri';
+        },
+      );
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/inbox');
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(find.text('INBOX'), findsNothing);
+      expect(find.text('LOGIN'), findsNothing);
+      // This router's error builder names the error's type.
+      expect(find.text('ERROR GuardFailure'), findsOneWidget);
+    });
+
+    testWidgets('a guard that throws on a change keeps the page it guards', (
+      tester,
+    ) async {
+      final r = router(
+        initial: '/other',
+        inbox: (ref, uri) {
+          if (!ref.watch(session)) throw StateError('boom');
+          return null;
+        },
+      );
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      // A re-evaluation that throws on its own is not an answer: the page stays, as it does for a
+      // page the router shows without a push.
+      expect(currentLocation(tester), '/inbox');
+      expect(find.text('INBOX'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a page under a pushed guarded page is guarded again when it is uncovered',
+      (tester) async {
+        final r = router(initial: '/other');
+        final c = await pumpRouter(tester, r);
+        unawaited(r.push<void>('/inbox'));
+        await tester.pumpAndSettle();
+        unawaited(r.push<void>('/third'));
+        await tester.pumpAndSettle();
+        c.read(session.notifier).set(false);
+        await tester.pumpAndSettle();
+        // Covered: the guard of /inbox is not asked while /third is on top.
+        expect(currentLocation(tester), '/third');
+        expect(open, 0);
+        r.pop();
+        await tester.pumpAndSettle();
+        // Uncovered by a pop, the guard runs and the answer is the new one.
+        expect(currentLocation(tester), '/login?from=/inbox');
+        expect(find.text('INBOX'), findsNothing);
+      },
+    );
+
+    testWidgets('uncovered by the system back, the guard runs too', (
+      tester,
+    ) async {
+      final r = router(initial: '/other');
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/third'));
+      await tester.pumpAndSettle();
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/login?from=/inbox');
+      expect(find.text('INBOX'), findsNothing);
+    });
+  });
 }

@@ -1,0 +1,602 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844,
+    "deviceScaleFactor": 2
+  },
+  "time": "2026-01-15T10:42:00Z",
+  "examples": {
+    "shop": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Browse products"
+        },
+        {
+          "path": "/cart",
+          "expect": "Your cart is empty"
+        },
+        {
+          "path": "/checkout",
+          "expect": "Your cart is empty",
+          "at": "/cart",
+          "note": "the guard sends an empty cart to /cart"
+        },
+        {
+          "path": "/greet/Ada",
+          "expect": "Hello, Ada"
+        },
+        {
+          "path": "/products",
+          "expect": "Page 1 of 2"
+        },
+        {
+          "path": "/products/1",
+          "expect": "Add to cart",
+          "note": "a deferred page: its own chunk on the web"
+        },
+        {
+          "path": "/products/13",
+          "expect": "Couldn't load product #13",
+          "note": "fails once: error.dart with Retry"
+        },
+        {
+          "path": "/products/abc",
+          "expect": "Nothing at /products/abc"
+        }
+      ]
+    },
+    "features": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Home"
+        },
+        {
+          "path": "/nickname",
+          "expect": "Hello Ann"
+        },
+        {
+          "path": "/profile",
+          "expect": "Profile"
+        },
+        {
+          "path": "/settings",
+          "expect": "Settings"
+        },
+        {
+          "path": "/admin",
+          "expect": "Log in to see /admin",
+          "at": "/login?from=/admin"
+        },
+        {
+          "path": "/inbox",
+          "expect": "Log in to see /inbox",
+          "at": "/login?from=/inbox"
+        },
+        {
+          "path": "/free",
+          "expect": "Plan free"
+        },
+        {
+          "path": "/pro",
+          "expect": "Plan pro"
+        },
+        {
+          "path": "/catalog",
+          "expect": "Featured: alpha, beta"
+        },
+        {
+          "path": "/catalog/p1",
+          "expect": "Product p1"
+        },
+        {
+          "path": "/catalog/p1/reviews",
+          "expect": "p1 review, page 1"
+        },
+        {
+          "path": "/counter",
+          "expect": "Count 0"
+        },
+        {
+          "path": "/docs",
+          "expect": "Docs index"
+        },
+        {
+          "path": "/docs/new",
+          "expect": "New doc"
+        },
+        {
+          "path": "/docs/a/b",
+          "expect": "Doc a > b"
+        },
+        {
+          "path": "/feed",
+          "expect": "Featured 0"
+        },
+        {
+          "path": "/files",
+          "expect": "Files root"
+        },
+        {
+          "path": "/files/a/b",
+          "expect": "File a/b"
+        },
+        {
+          "path": "/guide",
+          "expect": "Guide"
+        },
+        {
+          "path": "/help",
+          "expect": "Help index"
+        },
+        {
+          "path": "/help/contact",
+          "expect": "Contact us"
+        },
+        {
+          "path": "/help/routing",
+          "expect": "Help topic routing"
+        },
+        {
+          "path": "/help/routing/examples",
+          "expect": "Examples of routing"
+        },
+        {
+          "path": "/labs",
+          "expect": "Home",
+          "at": "/",
+          "note": "the labs flag is off (FEATURES_LABS): its guard sends the user home"
+        },
+        {
+          "path": "/login",
+          "expect": "Log in"
+        },
+        {
+          "path": "/old-search?q=x",
+          "expect": "x, page 1:",
+          "at": "/search?q=x"
+        },
+        {
+          "path": "/old-shops/acme",
+          "expect": "Welcome to acme",
+          "at": "/shops/acme"
+        },
+        {
+          "path": "/photos",
+          "expect": "Liked: no"
+        },
+        {
+          "path": "/photos/1",
+          "expect": "Photo 1"
+        },
+        {
+          "path": "/photos/share",
+          "expect": "Share photos"
+        },
+        {
+          "path": "/photos/share/terms",
+          "expect": "Terms of sharing"
+        },
+        {
+          "path": "/photos/sort",
+          "expect": "Sort photos by"
+        },
+        {
+          "path": "/photos/upload",
+          "expect": "Upload photo"
+        },
+        {
+          "path": "/reports/monthly",
+          "expect": "Monthly: Report latest"
+        },
+        {
+          "path": "/reports/yearly",
+          "expect": "Yearly"
+        },
+        {
+          "path": "/search?q=hat",
+          "expect": "hat, page 1:"
+        },
+        {
+          "path": "/shop/shoes",
+          "expect": "Shop shoes: sneaker, boot"
+        },
+        {
+          "path": "/shops/acme",
+          "expect": "Welcome to acme"
+        },
+        {
+          "path": "/shops/acme/items/1",
+          "expect": "Item acme #1"
+        },
+        {
+          "path": "/signup/name",
+          "expect": "Step 1 of 3"
+        },
+        {
+          "path": "/signup/company",
+          "expect": "Step 1 of 3",
+          "at": "/signup/name",
+          "note": "the flow guard sends a deep link to a later step back to its first one"
+        },
+        {
+          "path": "/signup/contact",
+          "expect": "Step 1 of 3",
+          "at": "/signup/name",
+          "note": "the flow guard sends a deep link to a later step back to its first one"
+        },
+        {
+          "path": "/signup/review",
+          "expect": "Step 1 of 3",
+          "at": "/signup/name",
+          "note": "the flow guard sends a deep link to a later step back to its first one"
+        },
+        {
+          "path": "/teams/core/members",
+          "expect": "Members: ann, bob"
+        },
+        {
+          "path": "/teams/core/members/1",
+          "expect": "member #1 of CORE"
+        },
+        {
+          "path": "/teams/core/settings",
+          "expect": "Settings of CORE"
+        },
+        {
+          "path": "/ticks",
+          "expect": "Tick 42"
+        },
+        {
+          "path": "/vault",
+          "expect": "Log in to see /vault",
+          "at": "/login?from=/vault"
+        },
+        {
+          "path": "/wiki/a/b",
+          "expect": "Article a/b (2 parts)"
+        },
+        {
+          "path": "/browse/shoes",
+          "expect": "Browse shoes (1 different)"
+        },
+        {
+          "path": "/compare/1/2",
+          "expect": "Compare 1 vs 2 (total 3)"
+        },
+        {
+          "path": "/orders/1",
+          "expect": "Request a refund"
+        },
+        {
+          "path": "/orders/1/refund",
+          "expect": "Up to 10 EUR back"
+        },
+        {
+          "path": "/orders/1/refund/receipt",
+          "expect": "Refunded"
+        },
+        {
+          "path": "/notes/1",
+          "expect": "Note 1: no extra"
+        },
+        {
+          "path": "/remount/location/1",
+          "expect": "location 1, page 1, taps 0"
+        },
+        {
+          "path": "/remount/never/1",
+          "expect": "never 1, page 1, taps 0"
+        },
+        {
+          "path": "/remount/segments/1",
+          "expect": "segments 1, page 1, taps 0"
+        },
+        {
+          "path": "/anything",
+          "expect": "Page anything",
+          "note": "the catch-all $slug page"
+        }
+      ]
+    },
+    "tabs": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Home"
+        },
+        {
+          "path": "/search",
+          "expect": "Search count 0"
+        },
+        {
+          "path": "/profile",
+          "expect": "Edit profile"
+        },
+        {
+          "path": "/profile/edit",
+          "expect": "Editing your profile",
+          "note": "on the root navigator, over the tabs"
+        },
+        {
+          "path": "/profile/security",
+          "expect": "Security"
+        },
+        {
+          "path": "/library/books",
+          "expect": "Books count 0"
+        },
+        {
+          "path": "/library/authors",
+          "expect": "Authors list"
+        },
+        {
+          "path": "/settings",
+          "expect": "Settings"
+        }
+      ]
+    },
+    "minimal": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Hello from fespalier"
+        },
+        {
+          "path": "/about",
+          "expect": "A page written as a function."
+        },
+        {
+          "path": "/items/1",
+          "expect": "1 × Teapot (#1)"
+        },
+        {
+          "path": "/items/2?qty=3",
+          "expect": "3 × Kettle (#2)"
+        },
+        {
+          "path": "/items/99",
+          "expect": "Couldn't load item #99",
+          "note": "error.dart, with Retry"
+        },
+        {
+          "path": "/items/abc",
+          "expect": "Nothing at /items/abc",
+          "note": "an int segment that does not parse is not found"
+        },
+        {
+          "path": "/nope",
+          "expect": "Nothing at /nope"
+        }
+      ]
+    },
+    "telemetry": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Home"
+        },
+        {
+          "path": "/orders",
+          "expect": "Order 1"
+        },
+        {
+          "path": "/orders/1",
+          "expect": "Refuse"
+        },
+        {
+          "path": "/settings",
+          "expect": "Settings",
+          "at": "/settings",
+          "note": "guarded and deferred"
+        },
+        {
+          "path": "/login",
+          "expect": "Sign in"
+        }
+      ],
+      "allow": [
+        {
+          "blocked": "^https://browser\\.sentry-cdn\\.com/",
+          "reason": "sentry_flutter loads its browser SDK from browser.sentry-cdn.com on the web even when SENTRY_DSN is empty (FespalierSentry.configure says an empty DSN sends nothing); fix item: fix(sentry): an empty DSN loads no Sentry script on the web"
+        }
+      ]
+    },
+    "auth": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Signed out"
+        },
+        {
+          "path": "/sign-in",
+          "expect": "User name"
+        },
+        {
+          "path": "/orders",
+          "expect": "Sign in to see /orders",
+          "at": "/sign-in?from=/orders",
+          "note": "requireSignedIn sends a signed-out user to the sign-in page"
+        },
+        {
+          "path": "/orders/1",
+          "expect": "Sign in to see /orders/1",
+          "at": "/sign-in?from=/orders/1"
+        },
+        {
+          "path": "/admin",
+          "expect": "Sign in to see /admin",
+          "at": "/sign-in?from=/admin"
+        },
+        {
+          "path": "/forbidden",
+          "expect": "Your account can't open that page."
+        }
+      ]
+    },
+    "plugins": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Simulate a tap: order 42"
+        },
+        {
+          "path": "/account",
+          "expect": "Log in to see /account",
+          "at": "/login?from=/account"
+        },
+        {
+          "path": "/login",
+          "expect": "Log in"
+        },
+        {
+          "path": "/orders/42",
+          "expect": "Order 42"
+        }
+      ]
+    },
+    "downloads": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Small file (SHA-256 checked)"
+        },
+        {
+          "path": "/files/large",
+          "expect": "Refresh the files",
+          "at": "/files/large"
+        },
+        {
+          "path": "/files/small",
+          "expect": "Refresh the files",
+          "at": "/files/small"
+        }
+      ]
+    },
+    "i18n": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Hello",
+          "at": "/en",
+          "note": "redirect.dart follows the browser's language (en-US here)"
+        },
+        {
+          "path": "/en",
+          "expect": "This text comes from assets/i18n/en.arb."
+        },
+        {
+          "path": "/fr",
+          "expect": "Ce texte vient de assets/i18n/fr.arb."
+        },
+        {
+          "path": "/en/products",
+          "expect": "1 item in stock"
+        },
+        {
+          "path": "/fr/produits",
+          "expect": "1 article en stock",
+          "note": "the French spelling of the folder, from route.dart's paths"
+        },
+        {
+          "path": "/xx",
+          "expect": "Nothing at /xx"
+        }
+      ]
+    },
+    "maps": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Where should we deliver?"
+        },
+        {
+          "path": "/offline",
+          "expect": "Not on this device"
+        }
+      ],
+      "skip": [
+        {
+          "pattern": "/pick-place",
+          "reason": "the map: on the web maplibre_gl loads maplibre-gl from unpkg.com and the demo style's tiles from demotiles.maplibre.org, which this check blocks (with them blocked the page throws an uncaught Error); a map is checked on a device (README, Run it)"
+        }
+      ]
+    },
+    "adopt": {
+      "mount": "/shop",
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Legacy home",
+          "note": "a hand-written go_router route"
+        },
+        {
+          "path": "/legacy/orders/7",
+          "expect": "Order 7"
+        },
+        {
+          "path": "/products",
+          "expect": "Teapot",
+          "at": "/shop",
+          "note": "an old URL redirected to the typed route that replaced it"
+        },
+        {
+          "path": "/products/2",
+          "expect": "Kettle costs 39 €",
+          "at": "/shop/products/2"
+        },
+        {
+          "path": "/shop",
+          "expect": "Teapot"
+        },
+        {
+          "path": "/shop/products/2",
+          "expect": "Kettle costs 39 €"
+        },
+        {
+          "path": "/products/abc",
+          "expect": "Nothing at /products/abc"
+        },
+        {
+          "path": "/products/99",
+          "expect": "Could not load the product",
+          "at": "/shop/products/99"
+        }
+      ]
+    },
+    "offline": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Cancel order 1",
+          "at": "/orders"
+        },
+        {
+          "path": "/orders",
+          "expect": "Order 3: Cast-iron pan (shipped)"
+        },
+        {
+          "path": "/notes",
+          "expect": "Groceries"
+        },
+        {
+          "path": "/notes/n1",
+          "expect": "Rename on the other phone"
+        }
+      ]
+    },
+    "cose": {
+      "defines": {
+        "COSE_SERVER_JWK": "{\"kty\":\"EC\",\"crv\":\"P-256\",\"x\":\"E8LKhUtw1gs762xvmGhaHruBfljGLN4bg4HLvJM7Q20\",\"y\":\"T8bXmosAVJTNYMcoN2nNsbSmkJzJWvbJODPuKxRD8a4\"}"
+      },
+      "urls": [
+        {
+          "path": "/",
+          "expect": "The server did not answer",
+          "note": "no server runs in this check: the page shows its offline copy; the JWK is the public test key of test/config_test.dart"
+        }
+      ]
+    }
+  }
+}

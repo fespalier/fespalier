@@ -4,6 +4,14 @@ A pin picker that returns a place, and one offline map pack, with [`fespalier_ma
 The skill is [`fespalier-maps`](../../skills/fespalier-maps/SKILL.md) and the guide is
 [Maps](../../docs/maps.md).
 
+## Screenshots
+
+| `/`                                                                                                                                                              | `/offline`                                                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The maps example's home page: Where should we deliver?, No place yet, and the buttons Pick a place and Offline map.](../../docs/images/examples/maps/home.png) | ![The offline map page: one region pack, Douala, not on this device (about 55 tiles), with a Download button.](../../docs/images/examples/maps/offline.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots maps`).
+
 ## What it shows
 
 Three routes, two screens of interest.

@@ -5,6 +5,14 @@ from the URL, the texts are bundled in the app, and nothing here touches the net
 the [`fespalier-i18n`](../../skills/fespalier-i18n/SKILL.md) skill; the guide is
 [i18n with Tolgee](../../docs/i18n-tolgee.md).
 
+## Screenshots
+
+| `/en`                                                                                                                                                                                                                   | `/fr`                                                                                                                                                  | `/fr/produits`                                                                                                                                       |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The i18n example's home page in English: the title Translations, EN and FR buttons, Hello, the text from en.arb with a line only the English file has, and See the products.](../../docs/images/examples/i18n/en.png) | ![The same page in French: Traductions, Bonjour, the text from fr.arb, and the line fr.arb lacks, in English.](../../docs/images/examples/i18n/fr.png) | ![The products page at its French path, /fr/produits: Produits and an ICU plural, 1 article en stock.](../../docs/images/examples/i18n/produits.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots i18n`).
+
 ## What it shows
 
 Two screens, in two languages.

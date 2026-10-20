@@ -697,7 +697,7 @@
           "path": "/en",
           "expect": "This text comes from assets/i18n/en.arb.",
           "title": "`/en`",
-          "alt": "The i18n example's home page in English: Translations, EN and FR buttons, Hello and the texts from en.arb."
+          "alt": "The i18n example's home page in English: the title Translations, EN and FR buttons, Hello, the text from en.arb with a line only the English file has, and See the products."
         },
         {
           "file": "fr.png",

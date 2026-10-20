@@ -313,6 +313,40 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets('a refresh after a pushed failure holds the page: each commit '
+        'names no route, and the ends match them (fespalier/fespalier#258)', (
+      tester,
+    ) async {
+      checkout = () => throw StateError('boom');
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      rec.log.clear();
+      r.refresh();
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.contains('route=')), isEmpty);
+      expect(rec.log.where((l) => l.contains(' commit ')), isNotEmpty);
+      expectCommitsMatchEnds(rec.log);
+    });
+
+    testWidgets('a refresh of a pushed page whose guard passes is two '
+        'navigations: the refresh, then the re-run of the page, which both name '
+        'it (fespalier/fespalier#258)', (tester) async {
+      checkout = () => null;
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      rec.log.clear();
+      r.refresh();
+      await tester.pumpAndSettle();
+      // The page that passed stays on screen while its guard runs again: the refresh commits it, and
+      // the re-run replaces it with the same location.
+      final commits = rec.log.where((l) => l.contains(' commit ')).toList();
+      expect(commits, hasLength(2));
+      expect(commits, everyElement(endsWith('commit ok route=/checkout')));
+      expectCommitsMatchEnds(rec.log);
+    });
+
     testWidgets('a superseded navigation never commits', (tester) async {
       final answer = Completer<String?>();
       checkout = () => answer.future;

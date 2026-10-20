@@ -53,6 +53,8 @@ void main() {
     tester,
   ) async {
     await pumpRouter(tester, AppRoutes.router());
+    // The line the browser check (ci/web-routes/examples.json) waits for: not the tab's label.
+    expect(find.text('Each page you open here is a span.'), findsOneWidget);
     final nav = only('navigate /');
     expect(nav.attributes.getString('fespalier.navigation.kind'), 'initial');
     expect(nav.spanEvents?.map((e) => e.name), ['fespalier.page.enter']);
@@ -108,6 +110,11 @@ void main() {
       exporter.clear();
       router.go('/settings');
       await tester.pumpAndSettle();
+      // The line the browser check (ci/web-routes/examples.json) waits for: not the tab's label.
+      expect(
+        find.text('This page is guarded and loads on demand.'),
+        findsOneWidget,
+      );
       final nav = only('navigate /settings');
       final guard = only('guard (tabs)/settings/guard.dart');
       expect(guard.parentSpanContext?.spanId, nav.spanContext.spanId);

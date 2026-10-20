@@ -31,7 +31,7 @@ What changed between releases, newest first, each with a link to the reference s
 
 0.21.0 breaks an app only where a parameter is spelled with a `typedef` of a type the app already had. Only an app that has one regenerates a different `app.g.dart`; nothing else changes.
 
-- **A typedef of a query type is a query parameter, and a typedef of a data type gets the data.** An _optional_ parameter of a page or layout whose type is a `typedef` of a type `fsp` makes a query parameter (`String?`, `int?`, `double?`, `bool?`, a `List` of them, or an enum), declared in the app's own files, is now a query parameter, where it was left to its default, so its typed route gains that optional argument. A page or layout parameter spelled with a `typedef` or an import prefix of what a `data.dart` yields now gets the data by type. [Known limitations](troubleshooting.md#known-limitations) says which types are followed.
+- **A typedef of a query type is a query parameter, and a typedef of a data type gets the data.** An _optional_ parameter of a page or layout whose type is a `typedef`, declared in the app's own files, of a query type (`String?`, `int?`, `double?`, `bool?`, a `List` of them, or an enum) is now a query parameter, where it was left to its default, so its typed route gains that optional argument. A page or layout parameter spelled with a `typedef` or an import prefix of what a `data.dart` yields now gets the data by type. [Known limitations](troubleshooting.md#known-limitations) says which types are followed.
 
 ### 0.20.0
 

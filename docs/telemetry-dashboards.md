@@ -150,8 +150,8 @@ fespalier · telemetry-example · last hour
   ! needs attention    How often does content fail to load?         2.5 %
   ✗ bad                How often do actions fail?                   6.2 %
   ✓ good               How often does a link lead nowhere?          0.4 %
-  ✓ good               Did anything throw an uncaught error?        none
-  ✓ good               Did the app crash or freeze?                 none
+  ! needs attention    Did anything throw an uncaught error?        5
+  ✗ bad                Did the app crash or freeze?                 2
   Slowest screen: /orders/:id, 1.2 s to open and 2.3 s for its content (slowest 5 %, 412 views)
   Fails most: Action (action.dart) orders/$id/action.dart on /orders/:id, 3 × StateError
   Details: http://localhost:5080, Dashboards, folder fespalier, fespalier · App health

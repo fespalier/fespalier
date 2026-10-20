@@ -9,9 +9,9 @@ push service, store or launcher. [Run the examples](../../docs/examples.md#plugi
 
 ## Screenshots
 
-| `/`                                                                                                                                                                                                                                                                             | `/orders/42`                                                                                                                                                                 | `/account`, signed out                                                                                                                                                         |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ![The plugins example's home page, titled Plugins: Signed out, buttons that simulate a notification tap (order 42, account, a foreign link), a shortcut and a widget tap, and Analytics: undecided with Allow and Refuse buttons.](../../docs/images/examples/plugins/home.png) | ![Order 42: an app bar with a back arrow and the title Order 42, and the line Order 42 has shipped in the middle of the page.](../../docs/images/examples/plugins/order.png) | ![The login page a signed-out person gets for /account: an app bar titled Log in, Log in to see /account, and a Sign in button.](../../docs/images/examples/plugins/login.png) |
+| `/`                                                                                                                                                                                                                                                                                                   | `/orders/42`                                                                                                                                                                 | `/account`, signed out                                                                                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ![The plugins example's home page, titled Plugins: Signed out with a Sign in button, buttons that simulate a notification tap (order 42, account, a foreign link), a shortcut and a widget tap, and Analytics: undecided with Allow and Refuse buttons.](../../docs/images/examples/plugins/home.png) | ![Order 42: an app bar with a back arrow and the title Order 42, and the line Order 42 has shipped in the middle of the page.](../../docs/images/examples/plugins/order.png) | ![The login page a signed-out person gets for /account: an app bar titled Log in, Log in to see /account, and a Sign in button.](../../docs/images/examples/plugins/login.png) |
 
 A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots plugins`).
 
@@ -24,8 +24,9 @@ flutter pub get
 flutter run
 ```
 
-The buttons on the home page stand in for the system: a tap on a notification, a shortcut and a widget tap. Nothing
-here runs on a device. The real sources are recipes in the skills
+The buttons on the home page stand in for the system: a tap on a notification, a shortcut and a widget tap. The
+platform sources are fakes, so none of this needs a push service, a launcher or a widget on a device. The real sources
+are recipes in the skills
 ([`push-sources.md`](../../skills/fespalier-routing/references/push-sources.md),
 [`launch-sources.md`](../../skills/fespalier-routing/references/launch-sources.md)).
 
@@ -36,7 +37,7 @@ here runs on a device. The real sources are recipes in the skills
 - **Simulate a tap: foreign link** navigates nowhere: a link to another host is refused.
 - **Simulate a shortcut: last order** opens order 42, and **Simulate a widget tap: order 7** opens `/orders/7`.
 - **Allow analytics** and **Refuse analytics** set the consent. The analytics backend here only records what it would
-  send; nothing leaves the app, and nothing is recorded while the consent is undecided or refused.
+  send; nothing leaves the app, and no screen view is recorded while the consent is undecided or refused.
 
 ## Test it
 

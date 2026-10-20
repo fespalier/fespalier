@@ -28,8 +28,8 @@ flutter run
 
 ## Things to try
 
-- On Library, press **+** on Books, then switch to Home and back: the count is still there, because the tab kept its
-  state.
+- Library opens on Authors: tap **Books**, press **+**, then switch to Home and back. The count is still there,
+  because the tab kept its state.
 - Tap the tab you are on: it goes back to its first page.
 - `/recherche` opens the Search tab under its French spelling (the same route as `/search`).
 - `/settings` covers the whole screen, with no bar. `/profile/edit` covers the bar too, and the URL still starts

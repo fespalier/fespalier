@@ -33,8 +33,8 @@ The product photos come from an [EmgR](https://github.com/vaam-apps/image-resize
 - `/products/13` fails once, so you see `error.dart` and **Retry**.
 - `/products/abc`: the int parse fails, so you get `not_found.dart`.
 - `/checkout` with an empty cart: the guard redirects to `/cart`.
-- `/greet/you`.
-- Hover a row on the web: its product page's photo is loaded before you click.
+- `/greet/you`: `greet/$name/page.dart` takes the `$name` segment as a plain `String`, so the page says `Hello, you`.
+- Hover a row on the web: its product page and the photo start loading before you click.
 
 ## Test it
 

@@ -608,7 +608,7 @@
         },
         {
           "path": "/orders/42",
-          "expect": "Order 42"
+          "expect": "Order 42 has shipped."
         }
       ],
       "shots": [
@@ -617,12 +617,12 @@
           "path": "/",
           "expect": "Simulate a tap: order 42",
           "title": "`/`",
-          "alt": "The plugins example's home page, titled Plugins: Signed out, buttons that simulate a notification tap (order 42, account, a foreign link), a shortcut and a widget tap, and Analytics: undecided with Allow and Refuse buttons."
+          "alt": "The plugins example's home page, titled Plugins: Signed out with a Sign in button, buttons that simulate a notification tap (order 42, account, a foreign link), a shortcut and a widget tap, and Analytics: undecided with Allow and Refuse buttons."
         },
         {
           "file": "order.png",
           "path": "/orders/42",
-          "expect": "Order 42",
+          "expect": "Order 42 has shipped.",
           "title": "`/orders/42`",
           "alt": "Order 42: an app bar with a back arrow and the title Order 42, and the line Order 42 has shipped in the middle of the page."
         },

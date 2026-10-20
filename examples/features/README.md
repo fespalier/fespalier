@@ -28,8 +28,10 @@ flutter run
   and a title that shows the new nickname at once.
 - `/teams/core/members`: **Add carol** writes to the team's section, and the page and the team reload.
 - `/photos/share`: a bottom sheet with a URL of its own, over `/photos`; `/photos/share/terms` opens a page on top of it.
-- `/admin` or `/vault` signed out: the guard sends you to `/login?from=...`, and the login page sends you back.
-- `/labs`: a route behind a feature flag. It is refused until you run with `--dart-define=FEATURES_LABS=true`.
+- `/vault` signed out: the guard sends you to `/login?from=/vault`, and **Sign in** sends you back. `/admin` goes to the
+  login page too; once signed in, its own guard runs next and, since you are not an admin, sends you to `/inbox` (guards
+  run outermost first).
+- `/labs`: a route behind a feature flag. Until you run with `--dart-define=FEATURES_LABS=true`, its guard sends you to `/`.
 - `/old-shops/acme` and `/old-search?q=x`: old addresses that redirect to `/shops/acme` and `/search?q=x`.
 - `/aide` and `/hilfe`: the `help/` pages under their French and German spellings.
 - `/signup/company` on its own: the flow guard sends you back to step 1 of 3.

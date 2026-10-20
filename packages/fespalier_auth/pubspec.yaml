@@ -40,6 +40,10 @@ dependencies:
   flutter_secure_storage: ">=10.0.0 <12.0.0"
   # 1.5.0: Abortable requests, which a replayed request keeps (the abort trigger is copied).
   http: ^1.5.0
+  # Not imported. flutter_secure_storage_windows reaches path_provider, whose platform interface allows
+  # platform 3.0.0, which reads `Platform.packageRoot`, gone from Dart 3: an app's `flutter pub downgrade`
+  # picks it and does not compile. Depending on it steers every app's resolution to 3.1.4 or newer.
+  platform: ^3.1.4
 
 dev_dependencies:
   flutter_lints: ^6.0.0

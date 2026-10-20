@@ -785,4 +785,132 @@ void main() {
       expect(find.text('LOGIN'), findsOneWidget);
     });
   });
+
+  group('a retry pressed from a dialog or a sheet over the error view', () {
+    Future<
+      ({
+        GoRouter router,
+        Future<Object?> answer,
+        List<Object?> done,
+        BuildContext errorContext,
+      })
+    >
+    failed(WidgetTester tester, String kind) async {
+      var failFirst = true;
+      inbox = (ref) {
+        if (failFirst) {
+          failFirst = false;
+          throw StateError('boom');
+        }
+        return null;
+      };
+      final r = router(initial: '/under');
+      await pumpRouter(tester, r);
+      unawaited(r.push<void>('/other'));
+      await tester.pumpAndSettle();
+      final done = <Object?>[];
+      final Future<Object?> answer;
+      if (kind == 'go') {
+        r.go('/inbox?x=1');
+        answer = Future<Object?>.value();
+      } else {
+        answer = r.push<Object?>('/inbox?x=1', extra: 'EX');
+      }
+      unawaited(answer.then(done.add));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      return (
+        router: r,
+        answer: answer,
+        done: done,
+        errorContext: tester.element(find.text('ERROR Bad state: boom')),
+      );
+    }
+
+    for (final kind in ['push', 'go']) {
+      testWidgets('$kind: a dialog is closed, and the retry runs', (
+        tester,
+      ) async {
+        final f = await failed(tester, kind);
+        unawaited(
+          showDialog<void>(
+            context: f.errorContext,
+            builder: (_) => AlertDialog(
+              content: TextButton(
+                onPressed: heldRetry,
+                child: const Text('RETRY FROM THE DIALOG'),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('RETRY FROM THE DIALOG'));
+        await tester.pumpAndSettle();
+        expect(find.text('RETRY FROM THE DIALOG'), findsNothing);
+        expect(inboxRuns, 2);
+        expect(
+          find.text(kind == 'push' ? 'INBOX x=1 EX' : 'INBOX'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('ERROR'), findsNothing);
+        expect(tester.takeException(), isNull);
+        if (kind == 'push') {
+          // Back from the page the retry pushed leads to the page under it, not to the error view.
+          f.router.pop();
+          await tester.pumpAndSettle();
+          expect(find.text('OTHER'), findsOneWidget);
+          expect(find.textContaining('ERROR'), findsNothing);
+        }
+      });
+    }
+
+    testWidgets('push: a bottom sheet is closed, and the retry runs', (
+      tester,
+    ) async {
+      final f = await failed(tester, 'push');
+      unawaited(
+        showModalBottomSheet<void>(
+          context: f.errorContext,
+          builder: (_) => TextButton(
+            onPressed: heldRetry,
+            child: const Text('RETRY FROM THE SHEET'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('RETRY FROM THE SHEET'));
+      await tester.pumpAndSettle();
+      expect(find.text('RETRY FROM THE SHEET'), findsNothing);
+      expect(find.text('INBOX x=1 EX'), findsOneWidget);
+      f.router.pop();
+      await tester.pumpAndSettle();
+      expect(find.text('OTHER'), findsOneWidget);
+      expect(find.textContaining('ERROR'), findsNothing);
+    });
+
+    testWidgets('a page pushed over the error view keeps its dialog: the '
+        'retry does nothing', (tester) async {
+      final f = await failed(tester, 'push');
+      final held = heldRetry!;
+      unawaited(f.router.push<void>('/under'));
+      await tester.pumpAndSettle();
+      unawaited(
+        showDialog<void>(
+          context: tester.element(find.text('UNDER')),
+          builder: (_) => AlertDialog(
+            content: TextButton(
+              onPressed: held,
+              child: const Text('RETRY FROM THE DIALOG'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('RETRY FROM THE DIALOG'));
+      await tester.pumpAndSettle();
+      expect(inboxRuns, 1);
+      expect(find.text('RETRY FROM THE DIALOG'), findsOneWidget);
+      expect(find.text('UNDER'), findsOneWidget);
+    });
+  });
 }

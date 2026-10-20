@@ -461,8 +461,10 @@ const _guardFailureContext = 'while running a guard or redirect.dart';
 /// entry on top of the stack and the router's own `error` stays null: the retry then closes that
 /// entry and pushes the same location with the same `extra` again. The `Future` of the `push` that
 /// failed completes with `null` when the retry closes the entry, as it does when the user does; the
-/// page the retry pushes has no `Future` of its own that anyone waits for. A retry held after the
-/// router moved on (the entry closed, another page above it) does nothing.
+/// page the retry pushes has no `Future` of its own that anyone waits for. A dialog, a sheet or
+/// another route without a page over the error view is closed first, so the retry replaces the
+/// error view and not the dialog. A retry held after the router moved on (the entry closed, another
+/// page above it) does nothing.
 Widget routerErrorPage(
   BuildContext context,
   GoRouterState state,
@@ -489,22 +491,28 @@ Widget routerErrorPage(
     );
   }
   final router = GoRouter.maybeOf(context);
-  void retry() {
-    if (router != null) _retry(router, failure);
-  }
+  // The view is built inside the error page's route, so its retry can tell which navigator the
+  // pages are in, and what lies over the view.
+  return Builder(
+    builder: (inside) {
+      void retry() {
+        if (router != null) _retry(router, failure, inside);
+      }
 
-  return guardError?.call(
-        state.uri,
-        failure.error,
-        failure.stackTrace,
-        retry,
-      ) ??
-      notFound(state.uri);
+      return guardError?.call(
+            state.uri,
+            failure.error,
+            failure.stackTrace,
+            retry,
+          ) ??
+          notFound(state.uri);
+    },
+  );
 }
 
 /// Runs again the navigation that failed with [failure], if the router still shows it: see
-/// [routerErrorPage].
-void _retry(GoRouter router, GuardFailure failure) {
+/// [routerErrorPage]. [inside] is a context inside the error view.
+void _retry(GoRouter router, GuardFailure failure, BuildContext inside) {
   final config = router.routerDelegate.currentConfiguration;
   if (identical(config.error, failure)) {
     router.refresh();
@@ -512,11 +520,28 @@ void _retry(GoRouter router, GuardFailure failure) {
   }
   // A pushed navigation: go_router keeps its failed list in the entry it pushed, which is the
   // page on top (the last pushed entry, however deep in the shells) while the error view shows.
+  // A page pushed over it makes another entry the last one, and the retry does nothing.
   final pushed = <ImperativeRouteMatch>[];
   pushedMatches(config.matches, pushed);
   if (pushed.isEmpty || !identical(pushed.last.matches.error, failure)) return;
   if (!router.canPop()) return;
   final failed = pushed.last.matches;
+  // Only dialogs, sheets and other routes without a page can be over the error view now: close
+  // them first, or the pop below would close the topmost of them and leave the error view.
+  _closeRoutesOver(inside);
   router.pop();
   unawaited(router.push<Object?>(failed.uri.toString(), extra: failed.extra));
 }
+
+/// Closes what lies over the page that [inside] is in (since 0.21.0): the routes without a `Page`
+/// on top of its navigator, and on top of the root one when the page is in a nested navigator
+/// (`showDialog`'s default). Routes that have a page are left alone.
+void _closeRoutesOver(BuildContext inside) {
+  if (!inside.mounted) return;
+  final nearest = Navigator.maybeOf(inside);
+  final root = Navigator.maybeOf(inside, rootNavigator: true);
+  nearest?.popUntil(_hasPage);
+  if (root != nearest) root?.popUntil(_hasPage);
+}
+
+bool _hasPage(Route<Object?> route) => route.settings is Page<Object?>;

@@ -152,7 +152,9 @@ class LoginPage extends ConsumerWidget {
     an entry on top of the stack, and the router's own `error` stays `null`. The error view, the report and
     the outcome `error` are the same. `retry` closes that entry and pushes the same location and `extra`
     again; the `Future` of the failed `push` completes with `null` when the entry closes, and the pushed page
-    of the retry has no `Future` that anyone awaits. A retry held after the entry closed does nothing.
+    of the retry has no `Future` that anyone awaits. A retry pressed from a dialog or a sheet over the error
+    view closes it first (since 0.21.0), so the retry replaces the error view and not the dialog. A retry held
+    after the entry closed, or while a page is pushed over it, does nothing.
   - **A refresh after a pushed failure skips the guard** (go_router, fespalier/fespalier#258): a later
     `GoRouter.refresh()` restores the pushed location without running its redirect and the guarded page
     shows. A plain `GoRouter` does the same on 17.2.3 to 18.1.1; fespalier does not work around it, and

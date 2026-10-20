@@ -101,8 +101,8 @@ sandboxed app cannot write a keychain item without a `keychain-access-groups` en
 entitlement requires a real development certificate — an ad-hoc signed build (`CODE_SIGN_IDENTITY =
 "-"`, what `flutter create` produces) fails the build outright if you add it. Without it the key
 write fails with `OSStatus -34018`, which `startup.dart` catches and turns into a software key. The
-software key is not hardware-backed and does not survive a restart: the page shows the thumbprint,
-and a restarted app is a *new device* to the server. `lib/app/startup.dart` says all of this.
+software key is not hardware-backed and does not survive a restart: the page shows the key's `kid`,
+which changes, and a restarted app is a *new device* to the server. `lib/app/startup.dart` says all of this.
 
 ### Where the hardware key is not available
 

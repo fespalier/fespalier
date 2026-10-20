@@ -138,7 +138,7 @@ void main() {
   });
 
   test(
-    'a paused watcher keeps what it held and moves on the next tick',
+    'a watcher paused through a tick rebuilds when it resumes, not at a later tick',
     () async {
       container.listen(feed.latest, (_, _) {});
       final sub = container.listen(order(42), (_, _) {});
@@ -147,14 +147,17 @@ void main() {
       await container.pump();
       expect(builds[42], 2);
       sub.pause();
+      // Held: the key already moved since the last tick.
       core.emit(const OrderChanged(42));
+      // The tick releases it while the watcher is paused: nothing rebuilds yet.
       fire();
       await container.pump();
       expect(builds[42], 2);
       sub.resume();
       await container.pump();
-      await container.pump();
-      // Resumed after a tick it missed: the held change moves now, or at the next tick.
+      // The key moved at the tick; the watcher takes the move as soon as it resumes.
+      expect(builds[42], 3);
+      // The next tick has nothing left to release.
       fire();
       await container.pump();
       expect(builds[42], 3);

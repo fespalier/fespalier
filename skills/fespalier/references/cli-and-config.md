@@ -476,7 +476,7 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   its client and `apiUrl` from `--dart-define=API_URL`; `lib/app/headlines/data.dart` loads through
   `ref.abortable(ref.watch(httpClient))` before its first `await`; the test serves it from `FakeHttpClient` and counts an
   abort when the page is left; `/headlines` is in `test: skip:`; session, retry and `WriteGuardClient` are the app's, in the
-  order of docs/http.md, "The wrapping order") and `download` (`fespalier_download` and `path_provider`; `startup()`
+  order of docs/http.md, "The wrapping order") and `download` (`fespalier_download` and `path_provider`, with `platform` and `file`, which nothing imports: they keep the app's lowest dependency versions compiling; `startup()`
   overrides `downloadsEngine` with a `Downloads` over `HttpDownloadBackend`, `FileDownloadStore` and
   `TransferDownloadFiles`, the base folders from `path_provider` in `appBases`; `/downloads` shows `downloadStatus`; the test
   uses `downloadTestOverrides` and `FakeDownloadBackend`; `/downloads` is in `test: skip:`; the background package

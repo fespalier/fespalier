@@ -542,7 +542,18 @@ pub const RECIPES: &[Recipe] = &[
         companions: &["fespalier_download"],
         // The foreground backend takes an http.Client. The package names no plugin for the base
         // folders (application support, cache, documents), so the app adds one.
+        //
+        // `file` and `platform` are not imported. fespalier_download pulls no path_provider, so
+        // nothing else in the app steers away from what path_provider allows at the lowest
+        // versions: platform 3.0.0 (it reads `Platform.packageRoot`, gone from Dart 3) and file
+        // before 6.1.3 (`File.create` has no `exclusive:` on Dart 3.9, and a Linux or Windows
+        // build compiles path_provider's plugins). The packages that bring path_provider carry
+        // the same two constraints, and cli/tests/versions.rs checks that none forgets them.
         third_party: &[
+            ThirdParty {
+                name: "file",
+                source: Source::Range(">=6.1.3 <8.0.0"),
+            },
             ThirdParty {
                 name: "http",
                 source: Source::Range("^1.5.0"),
@@ -550,6 +561,10 @@ pub const RECIPES: &[Recipe] = &[
             ThirdParty {
                 name: "path_provider",
                 source: Source::Range("^2.1.0"),
+            },
+            ThirdParty {
+                name: "platform",
+                source: Source::Range("^3.1.4"),
             },
         ],
         dev_third_party: &[],

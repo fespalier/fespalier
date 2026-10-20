@@ -26,7 +26,8 @@ pub trait Scope {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Canonical {
     /// Each name replaced by what it names: a typedef by its own canonical `key`, a type this
-    /// package declares by `<decl>#<Name>`, anything else by its bare name. Equal keys, one type.
+    /// package declares by `<decl>#<Name>`, anything else as spelled, its import prefix included
+    /// (two packages' `User` are two types). Equal keys, one type.
     pub key: String,
     /// The typedefs followed, prefixes dropped, every name bare: `Map<String, Product>`.
     pub expanded: String,
@@ -58,6 +59,12 @@ fn canonical_at(scope: &dyn Scope, path: &str, text: &str, depth: usize) -> Cano
         out.expanded.push_str(between);
         last = r.at.end;
         let Some(d) = scope.declared(path, r.prefix.as_deref(), &r.name) else {
+            // Not followed, so compared as spelled, prefix included: `api.User` and `db.User` are the
+            // classes of two other packages, and are not one type.
+            if let Some(prefix) = &r.prefix {
+                out.key.push_str(prefix);
+                out.key.push('.');
+            }
             out.key.push_str(&r.name);
             out.expanded.push_str(&r.name);
             push_unknown(&mut out.unknown, r.name);

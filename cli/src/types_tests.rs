@@ -152,6 +152,20 @@ fn a_name_nothing_declares_is_unknown_and_listed_once() {
 }
 
 #[test]
+fn two_prefixes_of_a_name_nothing_declares_are_two_types() {
+    // `api.User` and `db.User` come from two other packages, which fsp does not read: they are
+    // compared as spelled, prefix and all (the bare name is what the hint reports).
+    let f = models();
+    let (api, db) = (canon(&f, PAGE, "api.User"), canon(&f, PAGE, "db.User"));
+    assert_eq!(api.key, "api.User");
+    assert_eq!(api.expanded, "User");
+    assert_eq!(api.unknown, ["User"]);
+    assert_ne!(api.key, db.key);
+    assert_eq!(api.key, canon(&f, PAGE, "api.User").key);
+    assert_eq!(canon(&f, PAGE, "List<api.User>?").key, "List<api.User>?");
+}
+
+#[test]
 fn a_cycle_stops_at_the_depth_limit() {
     let f = Fake::default()
         .sees("a.dart", None, "A", "a.dart", Some("B"))
@@ -453,6 +467,57 @@ fn extra_through_a_typedef_fits() {
     let page = "import '../../models/product.dart';\nclass ShopPage extends StatelessWidget { const ShopPage({super.key, this.extra}); final Product? extra; }";
     let files = with_models(&[("shop/guard.dart", guard), ("shop/page.dart", page)]);
     assert_eq!(messages(&files), Vec::<String>::new());
+}
+
+/// A page under `u/` that takes `ty` as `name`, over a data.dart that yields `yields`; both reach
+/// other packages' `User` through a prefix.
+fn user_page(prefix: &str, name: &str) -> String {
+    format!(
+        "import 'package:{prefix}/models.dart' as {prefix};\n{}",
+        widget(
+            "UPage",
+            &format!("final {prefix}.User {name};"),
+            &format!(", required this.{name}")
+        )
+    )
+}
+
+#[test]
+fn one_class_name_from_two_packages_is_two_types() {
+    // Two prefixes of two packages that fsp does not read, for the same bare name: not one type,
+    // as before 0.21.0 (the prefix was dropped from the key, so they compared equal).
+    let data =
+        "import 'package:db/models.dart' as db;\nFuture<db.User> data(Ref ref) async => db.User();";
+    let by_type = user_page("api", "user");
+    let e = messages(&[("u/page.dart", &by_type), ("u/data.dart", data)]);
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(e[0].starts_with("can't fill `user`"), "{e:?}");
+    // A parameter called `data` is the data, and says what it is.
+    let named = user_page("api", "data");
+    let e = messages(&[("u/page.dart", &named), ("u/data.dart", data)]);
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(
+        e[0].starts_with("`data` is api.User but data.dart yields db.User"),
+        "{e:?}"
+    );
+    // The same package under the same prefix is the one type.
+    let same = "import 'package:api/models.dart' as api;\nFuture<api.User> data(Ref ref) async => api.User();";
+    assert_eq!(
+        messages(&[("u/page.dart", &named), ("u/data.dart", same)]),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
+fn the_extra_of_two_packages_classes_of_one_name_clashes() {
+    let guard = "import 'package:api/models.dart' as api;\nGuardResult guard(ProviderContainer c, {api.User? extra}) => null;";
+    let page = "import 'package:db/models.dart' as db;\nclass UPage extends StatelessWidget { const UPage({super.key, this.extra}); final db.User? extra; }";
+    let e = messages(&[("u/guard.dart", guard), ("u/page.dart", page)]);
+    assert_eq!(e.len(), 1, "{e:?}");
+    assert!(
+        e[0].starts_with("`extra` is `api.User?` here, but the routes it covers take other types"),
+        "{e:?}"
+    );
 }
 
 #[test]

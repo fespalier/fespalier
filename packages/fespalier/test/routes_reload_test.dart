@@ -318,6 +318,74 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a loaded tab the edit removed keeps its pages until its layout goes',
+    skip: beforeGoRouter1811,
+    (tester) async {
+      final keys = ShellKeys();
+      GoRoute tab(String name) => GoRoute(
+        path: '/$name',
+        builder: (_, _) => Text('$name root'),
+        routes: [
+          GoRoute(path: 'child', builder: (_, _) => Text('$name child')),
+        ],
+      );
+      List<RouteBase> tabs({bool withB = true}) => [
+        StatefulShellRoute.indexedStack(
+          key: keys.shell('tabs:/'),
+          pageBuilder: (context, state, shell) =>
+              layoutPage(context, state, 'tabs:/', Scaffold(body: shell)),
+          branches: [
+            StatefulShellBranch(
+              navigatorKey: keys.navigator('tab:a'),
+              routes: [tab('a')],
+            ),
+            if (withB)
+              StatefulShellBranch(
+                navigatorKey: keys.navigator('tab:b'),
+                routes: [tab('b')],
+              ),
+          ],
+        ),
+      ];
+
+      final reload = _Reload(tabs());
+      final router = _routerOf(reload, initialLocation: '/b/child');
+      final seen = <String>[];
+      observeAttach(
+        router,
+        (uri) => [
+          RouteHooks(
+            'observe.dart',
+            onLeave: (ref) => seen.add('leave ${uri.path}'),
+          ),
+        ],
+      );
+      await tester.pumpWidget(StartupGate(router: () => router, app: app));
+      router.go('/a/child');
+      await pumpNavigation(tester);
+      expect(find.text('a child'), findsOneWidget);
+
+      // The edit drops tab b, which is not on screen: its pages are not left by the swap.
+      seen.clear();
+      reload.fileVersion = 'v2';
+      reload.table = tabs(withB: false);
+      await hotReload(tester);
+      expect(reload.rebuilds, 1);
+      expect(find.text('a child'), findsOneWidget);
+      expect(seen, isEmpty);
+
+      // When the layout goes, every page it still holds is left, the removed tab's too.
+      reload.fileVersion = 'v3';
+      reload.table = [
+        GoRoute(path: '/z', builder: (_, _) => const Text('Z page')),
+      ];
+      await hotReload(tester);
+      await tester.pumpAndSettle();
+      expect(seen, unorderedEquals(['leave /a/child', 'leave /b/child']));
+    },
+  );
+
   testWidgets('a pushed page survives', (tester) async {
     GoRoute pushed() =>
         GoRoute(path: '/p', builder: (_, _) => const Text('P page'));

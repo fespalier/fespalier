@@ -13,6 +13,8 @@
 //     placeholder Flutter puts in every page, so no example needs `semantics_ids`), a node's text
 //     contains `expect` within 20 s. `expect` is a text of the page itself, not of its layout (a
 //     navigation label is on every page of its tab);
+//   - the page then settles: its texts stay as they are for QUIET ms and the network is idle, so
+//     an error a moment after the first frame still counts;
 //   - the address ends on `at` (the URL's own path, without its query, when the entry gives none),
 //     so a URL says where it lands: `at` is for a redirect, a guard or a path the app rewrites;
 //   - nothing threw (`pageerror`) and nothing was logged as an error: a release build draws a broken
@@ -42,8 +44,14 @@ const SPEC = JSON.parse(
     "utf8",
   ),
 );
-// How long a page has to show its text.
+// How long a page has to show its text, and then to settle.
 const TIMEOUT = 20000;
+// How long a page's texts must stay as they are, after its text appeared, before it counts as settled.
+// A second is not enough: an error 2 s after a page was built comes about 1.5 s after its text can be
+// read, and a window of 1 s closes before it.
+const QUIET = 2000;
+// How long to wait for the network to go idle once the texts have settled.
+const IDLE = 5000;
 const MIME = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -190,9 +198,13 @@ const open = async (browser, base, url, viewport) => {
       document.querySelector("flt-semantics-placeholder")?.click(),
     );
     const deadline = Date.now() + TIMEOUT;
+    let shown = false;
     for (;;) {
       seen = await texts(page);
-      if (seen.some((t) => t.includes(url.expect))) break;
+      if (seen.some((t) => t.includes(url.expect))) {
+        shown = true;
+        break;
+      }
       if (Date.now() > deadline) {
         problems.push(
           `"${url.expect}" did not appear within ${TIMEOUT} ms; the page shows ${JSON.stringify(seen.slice(0, 15))}`,
@@ -201,8 +213,34 @@ const open = async (browser, base, url, viewport) => {
       }
       await page.waitForTimeout(250);
     }
-    // An error a frame later still counts.
-    await page.waitForTimeout(500);
+    if (shown) {
+      // Settle: the texts stay as they are for QUIET ms (a page that is still loading, or that
+      // changes after its first frame, keeps changing them), then the network goes idle. An error
+      // a moment after the text appeared is therefore still in the problems.
+      const settleBy = Date.now() + TIMEOUT;
+      let last = JSON.stringify(seen);
+      let since = Date.now();
+      for (;;) {
+        await page.waitForTimeout(250);
+        seen = await texts(page);
+        const now = JSON.stringify(seen);
+        if (now !== last) {
+          last = now;
+          since = Date.now();
+        } else if (Date.now() - since >= QUIET) {
+          break;
+        }
+        if (Date.now() > settleBy) {
+          problems.push(
+            `the page was still changing ${TIMEOUT} ms after "${url.expect}" appeared; it shows ${JSON.stringify(seen.slice(0, 15))}`,
+          );
+          break;
+        }
+      }
+      await page
+        .waitForLoadState("networkidle", { timeout: IDLE })
+        .catch(() => {});
+    }
     at = locationOf(page.url());
     // A URL ends where it was opened unless `at` says where it lands.
     const [want, got] =

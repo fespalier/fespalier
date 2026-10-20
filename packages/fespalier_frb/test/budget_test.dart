@@ -184,6 +184,8 @@ void main() {
     await container.pump();
     sources[1].emit(const OrderChanged(1));
     await container.pump();
+    // A new stream is a change: the budget holds it until the tick.
+    expect(values, [1]);
     fire();
     await container.pump();
     expect(values, [1, 2]);

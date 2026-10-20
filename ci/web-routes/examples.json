@@ -44,6 +44,12 @@
           "path": "/products/abc",
           "expect": "Nothing at /products/abc"
         }
+      ],
+      "allow": [
+        {
+          "blocked": "^http://localhost:13001/",
+          "reason": "the product photos come from an EmgR image proxy on localhost:13001 (images.dart, SHOP_IMAGES), which this check does not run: the request is aborted and the page shows the product's initial instead (the shop's tests fake the images)"
+        }
       ]
     },
     "features": {
@@ -594,6 +600,12 @@
           "path": "/",
           "expect": "The server did not answer",
           "note": "no server runs in this check: the page shows its offline copy; the JWK is the public test key of test/config_test.dart"
+        }
+      ],
+      "allow": [
+        {
+          "blocked": "^http://127\\.0\\.0\\.1:8787/",
+          "reason": "the app asks cose-demo-server on 127.0.0.1:8787 (COSE_SERVER_URL), which this check does not run: the request is aborted and the page shows its offline copy (the signed round trip is `just cose`)"
         }
       ]
     }

@@ -8,7 +8,7 @@
 // why (`allow`) and the `--dart-define`s of its build (`defines`). cli/tests/examples_web.rs keeps
 // `urls` and `skip` in step with `fsp routes --json`.
 //
-// A URL works when, in a fresh browser profile with every request off this machine aborted:
+// A URL works when, in a fresh browser profile where only the build's own server answers:
 //   - Flutter starts (`flutter-view`) and, once its semantics tree is on (the harness clicks the
 //     placeholder Flutter puts in every page, so no example needs `semantics_ids`), a node's text
 //     contains `expect` within 20 s. `expect` is a text of the page itself, not of its layout (a
@@ -20,8 +20,10 @@
 //   - nothing threw (`pageerror`) and nothing was logged as an error: a release build draws a broken
 //     widget as a grey box and prints the exception to the console as errors, so that is where it
 //     shows. The browser's own `Failed to load resource` lines are not the app's errors;
-//   - nothing was fetched from another host, unless `allow` says why. An `allow` entry that matches
-//     nothing in a whole run fails it, so it goes when its reason does.
+//   - nothing was requested from anywhere but the build's own server (and `data:` and `blob:`), not
+//     even another port of this machine, unless `allow` says why. Every other request is aborted
+//     whether or not it is allowed; `allow` only keeps it from being reported. An `allow` entry that
+//     matches nothing in a whole run fails it, so it goes when its reason does.
 //
 // A URL with `known` (what is broken, and the fix item or issue that fixes it) is reported but does
 // not fail the run, and fails once it passes, so the note cannot outlive the bug.
@@ -84,11 +86,11 @@ const print = rest.includes("--print");
 
 const firstLine = (text) => String(text).split("\n")[0].slice(0, 300);
 
-const isLocal = (url) => {
+/** Whether the build's own server (`origin`), or the browser itself (`data:`, `blob:`), answers `url`. */
+const isServed = (url, origin) => {
   try {
-    const { protocol, hostname } = new URL(url);
-    if (protocol === "data:" || protocol === "blob:") return true;
-    return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+    const { protocol, origin: requested } = new URL(url);
+    return protocol === "data:" || protocol === "blob:" || requested === origin;
   } catch {
     return false;
   }
@@ -168,7 +170,7 @@ const open = async (browser, base, url, viewport) => {
   const problems = [];
   await context.route("**/*", (route) => {
     const requested = route.request().url();
-    if (isLocal(requested)) return route.continue();
+    if (isServed(requested, base)) return route.continue();
     if (!allowed("blocked", requested)) problems.push(`fetched ${requested}`);
     return route.abort();
   });

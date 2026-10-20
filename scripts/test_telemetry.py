@@ -383,8 +383,9 @@ class Structure(unittest.TestCase):
                     self.assertIn(uid, [f"fespalier-{i}" for i in titles])
 
     def test_percentages_read_no_passed_call_as_zero(self):
-        # `X or vector(0)` is 0 when X is empty in OpenObserve's PromQL since v1.1.0 (v1.0.4 answered
-        # nothing), so a tile where every call failed says 100 %. No other `or` is used.
+        # `X or vector(0)` is 0 when X is empty in OpenObserve's PromQL (per the release notes of
+        # v1.1.0, and it was run on v1.1.2; v1.0.4 answered nothing), so a tile where every call
+        # failed says 100 %. No other `or` is used.
         for dash in self.dashboards:
             for panel in dash["panels"]:
                 for target in panel["promql"]:

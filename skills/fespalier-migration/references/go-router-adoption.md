@@ -73,8 +73,9 @@ GoRouter buildRouter() {
       ...AppRoutes.mount(at: '/shop', navigatorKey: rootKey),
     ],
     // Unknown URLs: fespalier's nearest not_found.dart (the prefix is skipped when
-    // looking for the folder, and a URL outside it gets the root's).
-    errorBuilder: (context, state) => AppRoutes.notFound(state.uri),
+    // looking for the folder, and a URL outside it gets the root's). A failed guard shows its
+    // route's error.dart (since 0.21.0: AppRoutes.errorPage does both).
+    errorBuilder: AppRoutes.errorPage,
   );
 }
 ```
@@ -160,8 +161,8 @@ What `mount` changes:
 - **Not passed through `mount`**: `extraCodec` (import it from `lib/app/extra_codec.dart`
   and pass `extraCodec:` to your `GoRouter`), `restorationScopeId`, `observers`,
   `initialLocation`: they are the host router's.
-- **Unknown URLs** reach **your** `errorBuilder`. Forward them to
-  `AppRoutes.notFound(state.uri)`, as above, or users see go_router's own error screen.
+- **Unknown URLs** reach **your** `errorBuilder`. Forward them to `AppRoutes.errorPage`, as
+  above (since 0.21.0; before, `AppRoutes.notFound(state.uri)`), or users see go_router's own error screen.
 - **Redirects**: fespalier's guards are `redirect`s on the mounted `GoRoute`s; your router's
   top-level `redirect` and `refreshListenable` still apply around them. A guard that
   takes a `Ref` and `ref.watch`es re-runs when what it watches changes (since 0.5.0), in your
@@ -190,7 +191,7 @@ For each `GoRoute` you move:
 | `state.extra` read in the builder                                            | a nullable `extra` parameter (`fespalier-routing`)                                                                                                                                          |
 | A FutureBuilder or provider loaded in the page                               | `data.dart` (a selector for a provider you already have) (`fespalier-data`)                                                                                                                 |
 | `context.go('/products/2')`                                                  | `ProductRoute(id: 2).go(context)` (string paths keep working, and since 0.7.0 `fsp` warns about one that matches no route; under `mount(at: '/shop')` only paths under `/shop` are checked) |
-| `errorBuilder`                                                               | `not_found.dart`                                                                                                                                                                            |
+| `errorBuilder`                                                               | `AppRoutes.errorPage`: `not_found.dart`, and a failed guard's `error.dart` (since 0.21.0)                                                                                                   |
 
 - Keep paths identical while migrating: mount at `/` (`AppRoutes.mount()`) once the tree
   holds **every** route at that level, or mount at a prefix and **redirect** the old URLs

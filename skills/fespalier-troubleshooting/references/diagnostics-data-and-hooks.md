@@ -221,3 +221,9 @@ that one is for a page-less folder that is no flow (`action.dart` with `const st
   `MaterialApp` (or a `Localizations` with the Material delegate) must be above the router.
 - **A `BadSegment` exception** is thrown inside generated code and turned into
   `not_found.dart`; you should never see it unless you call `Segment.asInt` yourself.
+- **`══╡ EXCEPTION CAUGHT BY FESPALIER ╞══`, then `The following StateError was thrown while running a guard or redirect.dart:`** (since 0.21.0).
+  A guard, a `redirect.dart`, or the `Future` one returned, threw. The report is the guard's own exception, library `fespalier`, with its
+  stack, and it is printed once per failure, in a debug build only. The router's error is a `GuardFailure` (its `toString` is
+  `GuardFailure: <error>`; its message is `a guard or redirect.dart failed with <type>`), and the route's error view, or the not-found view,
+  shows. The cause is in the guard: a value it did not expect, a provider it reads that throws, a store that is down. Fix the guard, or
+  make it answer (a `null`, a location) instead of throwing. A widget test that expects the failure calls `tester.takeException()`.

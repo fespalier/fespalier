@@ -7,7 +7,8 @@ no transaction. Performance (`tracing: true`) is the opt-in, for a team that has
 
 ## What you get by default
 
-- **Every error and crash, tagged where it happened.** A guard, `data.dart`, action or deferred load that throws
+- **Every error and crash, tagged where it happened.** A guard that fails after an `await` (one that throws before it
+  returns has no span, so no event: its navigation still ends with the outcome `error`), a `data.dart`, action or deferred load that throws
   is a Sentry event (handled, mechanism `fespalier.{operation}`) with the tags `fespalier.operation`,
   `fespalier.route` (the pattern, `/products/:id`), `fespalier.file` (`products/$id/data.dart`) and, for an
   action, `fespalier.action`; the fingerprint is `['{{ default }}', file]` (grouped by the file, not by the
@@ -15,7 +16,7 @@ no transaction. Performance (`tracing: true`) is the opt-in, for a team that has
   data, `fespalier.data.keyed`.
 - **The screen names the scope.** When each navigation commits (since 0.19.0, before the new page's `initState`
   and first `build`, through `FespalierTelemetry.commit`; before, once that frame was built) the scope's
-  transaction name is the route pattern (`navigate (not found)` for a location that matched no route) and the
+  transaction name is the route pattern (`navigate (not found)` for a location that matched no route, `navigate` for one a guard stopped, since 0.21.0) and the
   tag `fespalier.route` is set, so a crash that no fespalier operation reported, caught by Sentry's own
   integrations, says which screen it happened on. What the commit changes is what reads the scope during the
   first frame: an event captured on a copy of it (`withScope`: the app's own, and fespalier's own, whose

@@ -133,16 +133,15 @@ class LoginPage extends ConsumerWidget {
   - **A change that does not change the answer does nothing.** A **sign-out runs the
     guard twice**: Riverpod recomputes it, then the router asks again.
   - **Don't `ref.keepAlive()`** in a guard: it keeps one provider alive per navigation.
-  - **A guard that throws never refreshes the router**: on a navigation the error reaches
-    go_router as any redirect's does; when a later run throws, the page you are on stays
-    until the next navigation. The guard's provider does not retry. On a navigation, a guard
-    that throws before it returns ends it in go_router's error route (`errorBuilder` and
-    `onException` get a `GoException`; the generated app shows its not-found view at the asked
-    address), and so does one that fails after an `await` **from go_router 18.1.1**. Before
-    18.1.1 that failure was an uncaught `GoException`, `errorBuilder` and `onException` never
-    got it, and the navigation never ended: the router stayed on the page it was on. Test it
-    by the error route (`router.routerDelegate.currentConfiguration.error`) on 18.1.1 and by
-    the zone's uncaught error before it, never by the exception's message.
+  - **A guard that throws never refreshes the router**: on a navigation its failure reaches go_router
+    as a `GuardFailure` (since 0.21.0, on every go_router): the route's `error.dart` shows when it takes
+    only `error`, `stackTrace` and `retry`, and the not-found view otherwise. The failure is reported once
+    in a debug build (library `fespalier`, context `while running a guard or redirect.dart`), so a widget
+    test calls `tester.takeException()`, as it does for a failed `startup()`. The navigation ends with the
+    telemetry outcome `error`, and the page it was on is left. A guard that throws before it returns has no
+    DevTools record and no guard span. When a later run throws, the page you are on stays until the next
+    navigation. The guard's provider does not retry. Test it by the error route
+    (`router.routerDelegate.currentConfiguration.error` is a `GuardFailure`), never by the exception's message.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

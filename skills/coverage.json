@@ -571,7 +571,8 @@
         "packages/fespalier_biometrics/lib/testing.dart",
         "packages/fespalier_biometrics/lib/material.dart",
         "packages/fespalier_biometrics/README.md",
-        "packages/fespalier_biometrics/lib/fespalier_biometrics.dart"
+        "packages/fespalier_biometrics/lib/fespalier_biometrics.dart",
+        "docs/guards.md#When a guard fails"
       ]
     },
     "fespalier-testing": {

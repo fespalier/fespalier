@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.21.0
+
+0.21.0 breaks nothing, and `app.g.dart` is unchanged for it.
+
+- **The telemetry stack moves to OpenObserve v1.1.2, which migrates its data** ([Dashboards on your computer](telemetry-dashboards.md)). `fsp telemetry` pins v1.1.2 where it pinned v1.0.4, and OpenObserve migrates the stack's database on its first start; v1.0.4 cannot open it afterwards. The stack in `~/.fespalier/telemetry` is shared by every app on the computer, so use `fsp` 0.21.0 or later for `fsp telemetry` in all of them: an older one writes the v1.0.4 file back, and OpenObserve restarts in a loop (`Migration file of version '…' is missing` in its log, and the importer says it did not answer). Run the newer `fsp telemetry` again: OpenObserve starts on the same data, and `--reset` is not needed. It also makes a Grafana percentage tile say 100 % when every call in the range failed, where it said _Not enough data yet_. No app code changes.
+
 ### 0.20.0
 
 0.20.0 breaks nothing: an app with a `data.dart`, an `action.dart`, a deferred page or a type written with an import prefix in a route file regenerates `app.g.dart` (below), with no code change; any other app's is unchanged.

@@ -146,13 +146,20 @@ parameter, trying these rules in order:
    `navigationShell` (or `shell`), `error`, `stackTrace`, `retry`, `uri` and `extra` (in a page, a
    layout, a guard or a redirect) get what their name says, in the files where they make sense.
 2. **Query.** An _optional_ parameter that is nullable or a `List` of
-   `String`/`int`/`double`/`bool` (or of an [enum](routing.md#enum-segments)) is a query parameter:
-   `int? page` gets `?page=2`, and `List<String> tags = const []` gets every `?tags=`.
+   `String`/`int`/`double`/`bool` (or of an [enum](routing.md#enum-segments), or of a `typedef` of one of
+   those since 0.21.0) is a query parameter: `int? page` gets `?page=2`, and `List<String> tags = const []`
+   gets every `?tags=`.
 3. **By type.** Otherwise, a page's parameter whose type is what `data.dart` yields gets the data, so
    `required this.product` with `final Product product;` works. (A page or layout below a
    [section](data.md#section-data) can take the section's data the same way.) An error view's `Object`
    gets the error, `StackTrace` the stack trace and `VoidCallback` the retry. A layout's `Widget` gets
    the child, its `StatefulNavigationShell` gets the tab shell, and not-found's `Uri` gets the URI.
+   Since 0.21.0 a type is what it names: `typedef ProductView = Product;` in `lib/models/ids.dart` is
+   a `Product`, so `required ProductView product` gets the data that yields `Product`, and `m.Product`
+   (with an import prefix) is the same type as `Product`. The spelling is tried first: a parameter typed
+   with a `typedef` of a query type (rule 2) is the data, not a query parameter, when `data.dart` yields
+   that type spelled the same. Only the app's own files are followed, and a typedef of another package is
+   still compared as spelled ([Known limitations](troubleshooting.md#known-limitations)).
 4. **Otherwise**, a required parameter is a generator error pointing at it. An optional one is left to
    its default.
 

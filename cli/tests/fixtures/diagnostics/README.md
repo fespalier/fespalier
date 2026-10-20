@@ -25,6 +25,7 @@ explains it.
 | `cant-fill-param`            | a required page parameter that is no segment                            | `diagnostics-binding.md`                              |
 | `segment-type-mismatch`      | `$id` is a `String` in `data.dart` and an `int` in `page.dart`          | `diagnostics-binding.md`                              |
 | `unknown-segment-type`       | a `Uri` segment                                                         | `diagnostics-binding.md`                              |
+| `typedef-not-followed`       | a typedef of another package, compared as spelled                       | `diagnostics-binding.md`                              |
 | `extra-not-nullable`         | `extra` declared non-nullable                                           | `diagnostics-binding.md`                              |
 | `data-without-page`          | a `data.dart` with no `page.dart` or `layout.dart`                      | `diagnostics-data-and-hooks.md`                       |
 | `data-without-ref`           | `data()` without `Ref ref` first                                        | `diagnostics-data-and-hooks.md`                       |

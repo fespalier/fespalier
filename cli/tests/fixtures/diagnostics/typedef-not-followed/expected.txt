@@ -1,0 +1,6 @@
+exit: 1
+stdout:
+{"file":"lib/app/p/$id/page.dart","line":5,"column":60,"severity":"error","message":"`data` is JsonMap but data.dart yields Map<String, Object?>; fsp follows typedefs in this package's files only, and found no declaration of `JsonMap` there, so it compares it as spelled"}
+
+stderr:
+1 error(s); lib/app.g.dart left unchanged

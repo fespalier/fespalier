@@ -38,7 +38,22 @@ An error message from `fsp` is explained, with its fix, in the `fespalier-troubl
 
 ## Known limitations
 
-**Types are compared by spelling, not resolved.** The generator reads a syntax tree, not the Dart
-analyzer, so `Product` and a `typedef` of it count as different types. The Dart compiler still catches
-real mismatches in the generated code. (An enum is the one type it does look up: it reads the
-declaration, and compares enums by it.)
+**Types are followed through this package's files, not resolved.** Since 0.21.0 `fsp` follows a `typedef`
+and an import prefix declared in the app's own files: the file itself, its relative imports and the
+`package:` imports of its own package, through `export`s and `show`/`hide`. So `ProductView` and the
+`Product` it names, or `m.Product` and `Product`, are one type. Before 0.21.0 they were compared by
+spelling, and a `typedef` counted as a different type. The Dart compiler still catches real mismatches in
+the generated code.
+
+Not followed, so still compared as spelled: a `typedef` of another package (a `path:` dependency
+included), a generic `typedef` (`typedef Json<T> = Map<String, T>;`), a `typedef` in a `part` file, and
+a name that does not start with a capital letter. When two types differ and one of their names could not
+be followed, the four messages that compare types (a parameter against `data.dart`, against a section's
+`data.dart`, a form's return against its input, and an `extra` that clashes) end by naming those names:
+``found no declaration of `JsonMap` there, so it compares it as spelled``.
+
+Still by spelling: a form field's kind (a `typedef Email = String;` field is a value field, not a text
+field), the framework types (`Ref`, `BuildContext`, `RouteScope`, ...), and an enum alias that two routes'
+query parameters spell differently (`Cat` in one, `Category` in another), which stays a mismatch for an
+action's keys. `fsp` never reads `.dart_tool/` or the pub cache, so `fsp check` gives the same answer
+before and after `pub get`.

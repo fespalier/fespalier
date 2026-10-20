@@ -20,6 +20,14 @@ Read it with the skills [`fespalier-cratestack`](../../skills/fespalier-cratesta
 [`fespalier-offline`](../../skills/fespalier-offline/SKILL.md) (reads that say how current they are, intents).
 [CrateStack and fespalier](../../docs/cratestack.md) and [Offline-first](../../docs/offline-first.md) are the pages.
 
+## Screenshots
+
+| Screen                                                                                                                                                                                                  | What it shows                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The cose example's Notes page with no server running: this device's key, The server did not answer, No notes yet, and a New note field with an Add button.](../../docs/images/examples/cose/home.png) | With no server running, the page shows this device's key and that the server did not answer. `just cose` is the signed round trip against the real server. |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots cose`). The device key is made at start, so it differs on every run.
+
 ## Run it
 
 Two terminals. The server first (Rust, the toolchain in `server/rust-toolchain.toml`):

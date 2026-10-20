@@ -875,7 +875,7 @@
           "path": "/",
           "expect": "The server did not answer",
           "title": "`/` with no server",
-          "alt": "The cose example's notes page with no server running: this device's key, The server did not answer, No notes yet, and a field to add a note that is kept under its key."
+          "alt": "The cose example's Notes page with no server running: this device's key, The server did not answer, No notes yet, and a New note field with an Add button."
         }
       ]
     }

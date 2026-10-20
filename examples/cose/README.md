@@ -267,7 +267,7 @@ sequenceDiagram
     Q->>T: send(RpcCall addNote, idempotencyKey)
     T->>S: POST registerDevice, plain CBOR {x, y} (first call of the run)
     S-->>T: 200 plain {kid, thumbprint}
-    T->>T: payload = CBOR {args}; binding = audience, POST, op, digest, idempotency key
+    T->>T: payload = CBOR {args}, binding = audience, POST, op, digest, idempotency key
     T->>K: sign(Sig_structure(protected{alg, kid, iat, cti}, binding, payload))
     K-->>T: r||s (made low-s)
     T->>S: POST /rpc/procedure.addNote, application/cose sign1, Cratestack-Contract

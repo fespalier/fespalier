@@ -6,8 +6,8 @@
 # (scripts/web-copy.sh), with the `--dart-define`s its entry in ci/web-routes/examples.json names,
 # and hands build/web to ci/web-routes/examples.mjs:
 #
-#   default   every URL of the entry opens, shows its text, logs no error and fetches nothing
-#             from another host (`just examples-web`, CI's `examples-web` job).
+#   default   every URL of the entry opens, shows its text, settles, logs no error and requests
+#             nothing but the local server (`just examples-web`, CI's `examples-web` job).
 #   --print   the same, and every text each page shows (to write an `expect`).
 #
 # The examples stay platform-free: the `web/` folder that `flutter create` adds lives in the copy,

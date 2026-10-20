@@ -905,3 +905,126 @@ fn only_type_names_are_candidates() {
     assert_eq!(enum_base("DateTime"), None);
     assert_eq!(enum_base("String?"), None);
 }
+
+#[test]
+fn the_libs_follow_typedefs_and_combinators() {
+    use crate::enums::{Libs, Lookup};
+    use crate::types::Scope;
+    let dir = project(&[
+        ("app/shop/page.dart", ""),
+        ("models/category.dart", CATEGORY),
+        ("models/all.dart", "export 'category.dart';"),
+        (
+            "models/ids.dart",
+            "import 'category.dart';\ntypedef Cat = Category;\ntypedef _Hidden = Category;\ntypedef Chained = Cat;\n",
+        ),
+        (
+            "models/ids2.dart",
+            "import 'category.dart' as c;\ntypedef Cat2 = c.Category;\n",
+        ),
+        ("models/barrel.dart", "export 'ids.dart';"),
+        ("models/loop.dart", "typedef A = B;\ntypedef B = A;\n"),
+    ]);
+    let app_dir = dir.path().join("lib/app");
+    // A `Libs` keeps the first source it is given for a file, so each page gets its own.
+    let fresh = || Libs::for_app(&app_dir, &Config::default());
+    let find = |src: &str, ty: &str| fresh().find("shop/page.dart", src, ty);
+    let found = |l: Lookup| match l {
+        Lookup::Found(f) => format!("{}:{}", f.decl, f.name),
+        other => format!("{other:?}"),
+    };
+    let cat = "lib/models/category.dart:Category";
+    // A typedef of an enum, in an imported file, is the enum; the page names the typedef.
+    assert_eq!(found(find("import '../../models/ids.dart';", "Cat")), cat);
+    // Through a chain of typedefs, and through a barrel that exports the typedef's file.
+    assert_eq!(
+        found(find("import '../../models/ids.dart';", "Chained")),
+        cat
+    );
+    assert_eq!(
+        found(find("import '../../models/barrel.dart';", "Cat")),
+        cat
+    );
+    // Through a prefix: the typedef's own alias is a prefixed name (`c.Category`).
+    assert_eq!(found(find("import '../../models/ids2.dart';", "Cat2")), cat);
+    assert_eq!(
+        found(find("import '../../models/ids2.dart' as i;", "i.Cat2")),
+        cat
+    );
+    // A typedef declared in the page itself, aliasing an enum it imports.
+    assert_eq!(
+        found(find(
+            "import '../../models/category.dart';\ntypedef Mine = Category;",
+            "Mine"
+        )),
+        cat
+    );
+    // `show` and `hide` decide what an import brings in.
+    assert_eq!(
+        found(find(
+            "import '../../models/all.dart' hide Category;",
+            "Category"
+        )),
+        "Missing"
+    );
+    assert_eq!(
+        found(find(
+            "import '../../models/all.dart' show Category;",
+            "Category"
+        )),
+        cat
+    );
+    assert_eq!(
+        found(find("import '../../models/ids.dart' hide Cat;", "Cat")),
+        "Missing"
+    );
+    // A private typedef is not visible through an import, and nothing in another package is read.
+    assert_eq!(
+        found(find("import '../../models/ids.dart';", "_Hidden")),
+        "Private"
+    );
+    assert_eq!(
+        found(find("import 'package:other/ids.dart';", "Cat")),
+        "Missing"
+    );
+    // A cycle of typedefs is not followed.
+    assert_eq!(
+        found(find("import '../../models/loop.dart';", "A")),
+        "Missing"
+    );
+    // Two spellings of one enum are one canonical form.
+    let src = "import '../../models/ids.dart';\nimport '../../models/category.dart';";
+    let libs = fresh();
+    assert_eq!(
+        libs.canonical("shop/page.dart", src, "Cat").key,
+        libs.canonical("shop/page.dart", src, "Category").key
+    );
+    assert_eq!(
+        libs.canonical("shop/page.dart", src, "Cat").expanded,
+        "Category"
+    );
+    let hidden = fresh().canonical(
+        "shop/page.dart",
+        "import '../../models/ids.dart';",
+        "_Hidden",
+    );
+    // A private name is not a type reference fsp reads, so it stays as spelled and is not followed.
+    assert!(!hidden.followed);
+    assert_eq!(hidden.key, "_Hidden");
+    // As a `Scope`, a project path answers for its declarations: an enum and a typedef of one.
+    let libs = fresh();
+    let cat_decl = <Libs as Scope>::declared(&libs, "lib/models/ids.dart", None, "Cat");
+    assert_eq!(
+        cat_decl.map(|d| (d.decl, d.alias)),
+        Some((
+            "lib/models/ids.dart".to_string(),
+            Some("Category".to_string())
+        ))
+    );
+    let category = <Libs as Scope>::declared(&libs, "lib/models/ids.dart", None, "Category");
+    assert_eq!(
+        category.map(|d| d.decl),
+        Some("lib/models/category.dart".to_string())
+    );
+    assert!(<Libs as Scope>::declared(&libs, "lib/models/ids.dart", None, "Nope").is_none());
+}

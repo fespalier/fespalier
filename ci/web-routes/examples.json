@@ -480,6 +480,11 @@
           "expect": "Home"
         },
         {
+          "path": "/",
+          "expect": "Each page you open here is a span.",
+          "note": "the page's own line: \"Home\" alone is also the navigation label"
+        },
+        {
           "path": "/orders",
           "expect": "Order 1"
         },
@@ -508,9 +513,9 @@
         {
           "file": "home.png",
           "path": "/",
-          "expect": "Home",
+          "expect": "Each page you open here is a span.",
           "title": "`/`",
-          "alt": "The telemetry example's home tab, with a bottom navigation bar: Home, Orders and Settings."
+          "alt": "The telemetry example's home tab: the line Home, the line Each page you open here is a span, and a bottom navigation bar with Home, Orders and Settings."
         },
         {
           "file": "orders.png",

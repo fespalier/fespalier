@@ -1116,14 +1116,11 @@ fn the_justfile_and_ci_run_every_package_and_example() {
     );
 }
 
-/// The pubspecs that may spell a third-party dependency their own way: (folder, dependency, reason).
-/// Every other pubspec that names the dependency spells it one way.
-const SPELLING_EXCEPTIONS: [(&str, &str, &str); 1] = [(
-    "packages/fespalier_sentry",
-    "http",
-    "a test dependency down to 0.13.0: from 1.0 the floor's downgrade picks package_info_plus 4.0.2 and \
-     win32 4.0.0, which does not compile on Dart 3.9",
-)];
+/// The pubspecs that may spell a third-party dependency their own way: (folder, dependency, reason). None
+/// today: `fespalier_sentry` spelled `http` down to 0.13.0 so that its own floor avoided a win32 that does not
+/// compile on Dart 3.9, until it depended on `win32` itself. Every other pubspec that names the dependency
+/// spells it one way.
+const SPELLING_EXCEPTIONS: [(&str, &str, &str); 0] = [];
 
 #[test]
 fn every_third_party_dependency_has_one_constraint() {

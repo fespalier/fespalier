@@ -740,21 +740,25 @@ fn the_post_publish_smoke_runs_the_flutter_of_ci() {
     );
 }
 
-/// The `dir:` entries of the matrix of ci.yml's `floor` job, in order.
-fn floor_matrix(ci: &str) -> Vec<String> {
-    let job = ci
-        .split_once("\n  floor:\n")
-        .expect("ci.yml has no `floor` job")
+/// The `dir:` entries of the matrix of one ci.yml job, in order.
+fn job_matrix(ci: &str, job: &str) -> Vec<String> {
+    let body = ci
+        .split_once(&format!("\n  {job}:\n"))
+        .unwrap_or_else(|| panic!("ci.yml has no `{job}` job"))
         .1;
-    let dirs = job
+    let dirs = body
         .split_once("\n        dir:\n")
-        .expect("the floor job has no `dir:` matrix")
+        .unwrap_or_else(|| panic!("the {job} job has no `dir:` matrix"))
         .1;
-    let dirs: Vec<String> = dirs
-        .lines()
+    dirs.lines()
         .map_while(|l| l.trim().strip_prefix("- "))
         .map(str::to_string)
-        .collect();
+        .collect()
+}
+
+/// The `dir:` entries of the matrix of ci.yml's `floor` job, in order.
+fn floor_matrix(ci: &str) -> Vec<String> {
+    let dirs = job_matrix(ci, "floor");
     assert!(!dirs.is_empty(), "the floor job's `dir:` matrix is empty");
     dirs
 }
@@ -785,17 +789,35 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
     // companion that says `flutter: ">=3.35.0"` is run there from its first PR. fespalier_devtools
     // claims it too but is an app whose build and lockfile are committed (see the job's comment).
     let matrix = floor_matrix(&ci);
-    let recipe: Vec<String> = read("justfile")
-        .lines()
-        .find_map(|l| l.strip_prefix("floor_dirs := "))
-        .expect("the justfile has no `floor_dirs := ` line")
-        .trim_matches('"')
-        .split_whitespace()
-        .map(str::to_string)
-        .collect();
+    let mut expected = workspace_members();
+    expected.push("examples/minimal".to_string());
     assert_eq!(
-        recipe, matrix,
-        "`floor_dirs` in the justfile (left) and the floor job's matrix in ci.yml (right) differ"
+        sorted(matrix.clone()),
+        sorted(expected),
+        "the floor job's matrix (left) is not the workspace plus examples/minimal (right)"
+    );
+    // Inside the workspace a pub downgrade moves every package together: the job and the recipe run each
+    // package in a copy outside it.
+    let job = ci.split_once("\n  floor:\n").unwrap().1;
+    let job = job.split_once("\n  devtools:\n").map_or(job, |(j, _)| j);
+    assert!(
+        job.contains("run: python3 scripts/floor_copy.py \"$RUNNER_TEMP/floor\""),
+        "the floor job copies first"
+    );
+    assert_eq!(
+        job.matches("working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}")
+            .count(),
+        3,
+        "downgrade, analyze and test run in the copy"
+    );
+    let justfile = read("justfile");
+    assert!(
+        justfile.contains("python3 scripts/floor_copy.py \"$work/tree\""),
+        "`just floor` copies first"
+    );
+    assert!(
+        justfile.contains("(cd \"$work/tree/$d\" && flutter pub downgrade"),
+        "`just floor` runs in the copy"
     );
     let claim = format!("flutter: \">={minor}.0\"");
     let mut claiming: Vec<String> = fs::read_dir(root().join("packages"))
@@ -818,7 +840,7 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
     assert_eq!(
         run, claiming,
         "the floor job's packages (left) are not the packages that claim `{claim}` (right): add a \
-         new one to the matrix in ci.yml and to `floor_dirs` in the justfile"
+         new one to the root pubspec.yaml's `workspace:` and to the floor matrix in ci.yml"
     );
     for readme in [
         "README.md",
@@ -829,6 +851,313 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
             read(readme).contains(&format!("Flutter {minor} or newer")),
             "{readme} does not say `Flutter {minor} or newer`, the floor job's Flutter {floor}"
         );
+    }
+}
+
+/// The root pubspec.yaml's `workspace:` list: the packages that share one resolution.
+fn workspace_members() -> Vec<String> {
+    let pubspec: serde_yaml_ng::Value = serde_yaml_ng::from_str(&read("pubspec.yaml")).unwrap();
+    pubspec
+        .get("workspace")
+        .and_then(serde_yaml_ng::Value::as_sequence)
+        .expect("the root pubspec.yaml has a `workspace:` list")
+        .iter()
+        .map(|v| v.as_str().expect("a workspace entry is a path").to_string())
+        .collect()
+}
+
+/// Every folder under packages/ and examples/ with a pubspec.yaml, sorted.
+fn dart_folders() -> Vec<String> {
+    let mut out = Vec::new();
+    for parent in ["packages", "examples"] {
+        for entry in fs::read_dir(root().join(parent)).unwrap() {
+            let dir = format!(
+                "{parent}/{}",
+                entry.unwrap().file_name().into_string().unwrap()
+            );
+            if root().join(&dir).join("pubspec.yaml").is_file() {
+                out.push(dir);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+fn sorted(mut v: Vec<String>) -> Vec<String> {
+    v.sort();
+    v
+}
+
+fn pubspec_of(dir: &str) -> serde_yaml_ng::Value {
+    serde_yaml_ng::from_str(&read(&format!("{dir}/pubspec.yaml"))).unwrap()
+}
+
+/// The names under some top-level sections of a pubspec.
+fn dependency_names(pubspec: &serde_yaml_ng::Value, sections: &[&str]) -> Vec<String> {
+    sections
+        .iter()
+        .filter_map(|s| pubspec.get(*s).and_then(serde_yaml_ng::Value::as_mapping))
+        .flat_map(|m| m.keys().filter_map(|k| k.as_str().map(str::to_string)))
+        .collect()
+}
+
+#[test]
+fn the_workspace_is_the_packages_that_claim_the_floor() {
+    let members = workspace_members();
+    assert_eq!(
+        members,
+        sorted(members.clone()),
+        "keep the root pubspec.yaml's `workspace:` sorted"
+    );
+    let claiming: Vec<String> = dart_folders()
+        .into_iter()
+        .filter(|d| d.starts_with("packages/") && d != "packages/fespalier_devtools")
+        .filter(|d| read(&format!("{d}/pubspec.yaml")).contains("flutter: \">=3.35.0\""))
+        .collect();
+    assert_eq!(
+        members, claiming,
+        "the root pubspec.yaml's `workspace:` (left) is not the packages that claim Flutter 3.35 (right)"
+    );
+    let root = pubspec_of(".");
+    let core = pubspec_of("packages/fespalier");
+    assert_eq!(
+        root["environment"]["sdk"], core["environment"]["sdk"],
+        "the root claims fespalier's Dart"
+    );
+}
+
+#[test]
+fn workspace_packages_resolve_together_and_the_others_alone() {
+    let members = workspace_members();
+    for dir in dart_folders() {
+        let pubspec = pubspec_of(&dir);
+        let resolution = pubspec
+            .get("resolution")
+            .and_then(serde_yaml_ng::Value::as_str);
+        if members.contains(&dir) {
+            assert_eq!(
+                resolution,
+                Some("workspace"),
+                "{dir}/pubspec.yaml is in the workspace: `resolution: workspace`"
+            );
+            assert!(
+                pubspec.get("dependency_overrides").is_none(),
+                "{dir}/pubspec.yaml: a workspace package overrides nothing (pub: \"Cannot override workspace \
+                 packages\"); the workspace resolves its git dependencies on the others to the checkout"
+            );
+        } else {
+            assert!(
+                resolution.is_none(),
+                "{dir}/pubspec.yaml is outside the workspace: no `resolution:`"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_justfile_and_ci_run_every_package_and_example() {
+    let justfile = read("justfile");
+    assert!(
+        justfile.contains(
+            "members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | tr '\\n' ' '`"
+        ),
+        "the justfile reads `members` from the root pubspec.yaml"
+    );
+    for line in [
+        "dart_dirs := members + outside_dirs",
+        "floor_dirs := members + \"examples/minimal\"",
+    ] {
+        assert!(
+            justfile.lines().any(|l| l == line),
+            "the justfile has no `{line}`"
+        );
+    }
+    let outside: Vec<String> = justfile
+        .lines()
+        .find_map(|l| l.strip_prefix("outside_dirs := "))
+        .expect("the justfile has no `outside_dirs := ` line")
+        .trim_matches('"')
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    let members = workspace_members();
+    let expected: Vec<String> = dart_folders()
+        .into_iter()
+        .filter(|d| !members.contains(d))
+        .collect();
+    assert_eq!(
+        sorted(outside.clone()),
+        expected,
+        "`outside_dirs` (left) is not every Dart folder outside the workspace (right)"
+    );
+    let mut all = members;
+    all.extend(outside);
+    assert_eq!(
+        sorted(job_matrix(&read(".github/workflows/ci.yml"), "dart")),
+        sorted(all),
+        "the dart job's matrix (left) is not every package and example (right)"
+    );
+}
+
+/// The pubspecs that may spell a third-party dependency their own way: (folder, dependency, reason).
+/// Every other pubspec that names the dependency spells it one way.
+const SPELLING_EXCEPTIONS: [(&str, &str, &str); 1] = [(
+    "packages/fespalier_sentry",
+    "http",
+    "a test dependency down to 0.13.0: from 1.0 the floor's downgrade picks package_info_plus 4.0.2 and \
+     win32 4.0.0, which does not compile on Dart 3.9",
+)];
+
+#[test]
+fn every_third_party_dependency_has_one_constraint() {
+    use std::collections::BTreeMap;
+    // dependency -> spelling -> where
+    let mut seen: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
+    let mut excepted = Vec::new();
+    let mut dirs = vec![".".to_string()];
+    dirs.extend(dart_folders());
+    for dir in dirs {
+        let pubspec = pubspec_of(&dir);
+        for section in ["dependencies", "dev_dependencies", "dependency_overrides"] {
+            let Some(deps) = pubspec
+                .get(section)
+                .and_then(serde_yaml_ng::Value::as_mapping)
+            else {
+                continue;
+            };
+            for (name, spec) in deps {
+                let name = name.as_str().unwrap();
+                if name.starts_with("fespalier")
+                    || spec.get("sdk").is_some()
+                    || spec.get("path").is_some()
+                {
+                    continue;
+                }
+                let spelling = match spec {
+                    serde_yaml_ng::Value::String(s) => s.clone(),
+                    serde_yaml_ng::Value::Null => "any".to_string(),
+                    other => serde_yaml_ng::to_string(other).unwrap(),
+                };
+                if SPELLING_EXCEPTIONS
+                    .iter()
+                    .any(|(d, n, _)| *d == dir && *n == name)
+                {
+                    excepted.push((dir.clone(), name.to_string(), spelling));
+                    continue;
+                }
+                seen.entry(name.to_string())
+                    .or_default()
+                    .entry(spelling)
+                    .or_default()
+                    .push(format!("{dir}/pubspec.yaml ({section})"));
+            }
+        }
+    }
+    let bad: Vec<String> = seen
+        .iter()
+        .filter(|(_, spellings)| spellings.len() > 1)
+        .map(|(name, spellings)| format!("{name}: {spellings:?}"))
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "spell each third-party dependency one way in every pubspec, or add the pubspec to \
+         SPELLING_EXCEPTIONS with the reason:\n{}",
+        bad.join("\n")
+    );
+    for (dir, name, reason) in SPELLING_EXCEPTIONS {
+        let own = excepted
+            .iter()
+            .find(|(d, n, _)| d == dir && n == name)
+            .map(|(_, _, spelling)| spelling);
+        let common = seen.get(name).and_then(|s| s.keys().next());
+        assert!(
+            own.is_some() && own != common,
+            "SPELLING_EXCEPTIONS lets {dir} spell `{name}` its own way ({reason}), but it does not \
+             any more: remove the entry"
+        );
+    }
+}
+
+#[test]
+fn the_floor_copies_override_what_each_package_reaches() {
+    use std::collections::BTreeSet;
+    let dest = tempfile::tempdir().unwrap();
+    let out = match Command::new("python3")
+        .arg(root().join("scripts/floor_copy.py"))
+        .arg(dest.path().join("tree"))
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!(
+                "skipping: no python3 to run scripts/floor_copy.py ({e}); CI runs it on Linux"
+            );
+            return;
+        }
+    };
+    assert!(
+        out.status.success(),
+        "floor_copy.py failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let tree = dest.path().join("tree");
+    assert!(
+        !tree.join("pubspec.yaml").exists(),
+        "no workspace root above the copies"
+    );
+    assert!(tree.join("examples/minimal/pubspec.yaml").is_file());
+    let members = workspace_members();
+    let names: BTreeSet<String> = members
+        .iter()
+        .map(|d| d.rsplit('/').next().unwrap().to_string())
+        .collect();
+    for dir in &members {
+        let name = dir.rsplit('/').next().unwrap();
+        let mut reached = BTreeSet::new();
+        let mut todo = dependency_names(&pubspec_of(dir), &["dependencies", "dev_dependencies"]);
+        while let Some(dep) = todo.pop() {
+            if names.contains(&dep) && dep != name && reached.insert(dep.clone()) {
+                todo.extend(dependency_names(
+                    &pubspec_of(&format!("packages/{dep}")),
+                    &["dependencies"],
+                ));
+            }
+        }
+        let file = tree.join(dir).join("pubspec_overrides.yaml");
+        let overrides: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&fs::read_to_string(&file).unwrap()).unwrap();
+        assert!(
+            overrides
+                .get("resolution")
+                .is_some_and(serde_yaml_ng::Value::is_null),
+            "{dir}: the copy resets `resolution:`"
+        );
+        let mut got = BTreeSet::new();
+        if let Some(map) = overrides
+            .get("dependency_overrides")
+            .and_then(serde_yaml_ng::Value::as_mapping)
+        {
+            for (dep, spec) in map {
+                let dep = dep.as_str().unwrap().to_string();
+                assert_eq!(
+                    spec["path"].as_str(),
+                    Some(format!("../{dep}").as_str()),
+                    "{dir}: {dep}"
+                );
+                got.insert(dep);
+            }
+        }
+        assert_eq!(
+            got, reached,
+            "{dir}: the copy overrides exactly the workspace packages it reaches"
+        );
+        for skipped in [".dart_tool", "build", "pubspec.lock"] {
+            assert!(
+                !tree.join(dir).join(skipped).exists(),
+                "{dir}: {skipped} was copied"
+            );
+        }
     }
 }
 

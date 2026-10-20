@@ -51,6 +51,8 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 | a deep link to `/products/1`           | enter `/products/1` only; `/products` enters the first time it shows                              |
 | a location with no route               | no hooks; the previous page leaves                                                                |
 
+A pushed navigation whose guard fails (since 0.21.0) enters nothing: its error view covers the page below, which gets no `onFocus` while the view shows and gets it when the view closes. `pushReplacement` and `replace` over other pages removed the page they replaced before the guard ran, so that page leaves when the navigation fails ([When a guard fails](guards.md#when-a-guard-fails)).
+
 **Errors.** A hook that throws is caught and reported with `FlutterError.reportError` (library `fespalier`, context `while running onEnter of products/$id/observe.dart`, the hook and the file filled in), and the hooks after it still run. In a widget test that fails the test.
 
 **Other rules:** hooks fire after the frame, not at `context.go()` (a test pumps first: `await tester.pump()`); none runs when the router is disposed or the app is killed; layouts and sections have none; a hook may navigate (it is looked at at the end of the next frame; to redirect, use a [guard](guards.md)); `fsp new 'orders/[id]' --observe` writes the file. An `observe.dart` with no `page.dart` at or below its folder is a warning, and one with none of the three functions an error.

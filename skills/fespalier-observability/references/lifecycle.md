@@ -26,6 +26,10 @@ So `onEnter` and `onLeave` are paired, `onFocus` only falls between them, and:
 - Switching tabs enters the other tab's page and parks the first; switching back focuses it. Going to a
   **different** page of the parked tab leaves the old one.
 - `push('/x')`, then `pop()`: enter `/x`, then leave `/x` and focus the page below.
+- A **pushed navigation whose guard fails** (since 0.21.0) enters nothing: its error view covers the page
+  below, which gets no `onFocus` while the view shows and gets it when the view closes. `pushReplacement` and
+  `replace` over other pages removed the page they replaced before the guard ran, so that page leaves when the
+  navigation fails.
 - A `go` that a guard redirects: only the final location's events. The redirected-from location never
   committed.
 - A `go` out of a tab layout leaves every entered page of every tab, newest first.

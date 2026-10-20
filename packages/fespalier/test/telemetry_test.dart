@@ -347,23 +347,24 @@ void main() {
         // go_router keeps the failure in the pushed entry: the router's own error is null.
         expect(r.routerDelegate.currentConfiguration.error, isNull);
         // The failed location is no page: nothing is entered. `push` leaves the page under the
-        // error view alone; the other two removed the page they replaced, so the one below it
-        // is the visible one again.
+        // error view alone; the other two removed the page they replaced, which leaves. The page
+        // below is covered by the error view, so it gets no focus yet.
         expect(rec.log, [
           '#3 start navigate /checkout',
           if (kind != 'push') '#3 page leave /other',
-          if (kind != 'push') '#3 page focus /home',
           if (kind == 'push')
             '#3 end navigate error kind=push from=/other depth=2 at=/checkout'
           else
             '#3 end navigate error kind=replace from=/other depth=1 at=/checkout',
         ]);
         rec.log.clear();
-        // Closing the error view comes from the page that was under it.
+        // Closing the error view comes from the page that was under it, which is the visible
+        // one again and gets its focus then.
         r.pop();
         await tester.pumpAndSettle();
         expect(rec.log, [
           '#4 start navigate (commit)',
+          '#4 page focus ${kind == 'push' ? '/other' : '/home'}',
           if (kind == 'push')
             '#4 end navigate ok route=/other kind=pop from=/other depth=1 at=/other'
           else

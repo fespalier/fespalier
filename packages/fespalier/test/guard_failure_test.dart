@@ -667,13 +667,54 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isA<StateError>());
       expect(find.text('ERROR Bad state: boom'), findsOneWidget);
-      // The failed location was never a page: no enter for it, and `/other` was not left.
+      // The failed location was never a page: no enter for it, `/other` was not left, and it
+      // gets no focus while the error view covers it.
       expect(events, ['enter /under', 'enter /other']);
       r.pop();
       await tester.pumpAndSettle();
-      expect(events, ['enter /under', 'enter /other']);
+      // The error view is gone: `/other` is the visible page again.
+      expect(events, ['enter /under', 'enter /other', 'focus /other']);
       expect(find.text('OTHER'), findsOneWidget);
     });
+
+    for (final kind in ['pushReplacement', 'replace']) {
+      testWidgets('$kind: the replaced page leaves, and the page under it gets '
+          'its focus when the error view closes, not before', (tester) async {
+        inbox = (ref) => throw StateError('boom');
+        final events = <String>[];
+        final r = router(initial: '/under');
+        observeAttach(
+          r,
+          (uri) => [
+            RouteHooks(
+              'observe.dart',
+              onEnter: (_, _) => events.add('enter ${uri.path}'),
+              onLeave: (_) => events.add('leave ${uri.path}'),
+              onFocus: (_) => events.add('focus ${uri.path}'),
+            ),
+          ],
+        );
+        await pumpRouter(tester, r);
+        unawaited(r.push<void>('/other'));
+        await tester.pumpAndSettle();
+        events.clear();
+        unawaited(
+          kind == 'replace'
+              ? r.replace<void>('/inbox')
+              : r.pushReplacement<void>('/inbox'),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isA<StateError>());
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        // `/other` was replaced before the guard ran, so it is gone. `/under` is under the error
+        // view, which covers it: no focus yet.
+        expect(events, ['leave /other']);
+        r.pop();
+        await tester.pumpAndSettle();
+        expect(events, ['leave /other', 'focus /under']);
+        expect(find.text('UNDER'), findsOneWidget);
+      });
+    }
 
     testWidgets('pushReplacement over a single page is the router\'s own '
         'error: the retry refreshes', (tester) async {

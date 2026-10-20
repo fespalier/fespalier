@@ -92,6 +92,10 @@ final class _Instance {
 final class _Walk {
   final List<_Instance> instances = [];
 
+  /// Whether the last thing the walk found is the error view of a pushed navigation that failed
+  /// its guard (since 0.21.0): it covers [instances], and the page under it is not the visible one.
+  bool covered = false;
+
   /// The tab branches that are the current one of their shell.
   final Set<String> activeBranches = {};
 
@@ -105,8 +109,12 @@ final class _Walk {
       if (m is ImperativeRouteMatch) {
         // A pushed navigation that failed its guard (since 0.21.0): go_router keeps the failed list
         // here, with an empty path, and the page it was pushed from stays under its error view. It
-        // is no page.
-        if (m.matches.isError) continue;
+        // is no page, but it covers the one below: that page is not visible until the view closes.
+        if (m.matches.isError) {
+          covered = true;
+          continue;
+        }
+        covered = false;
         instances.add(
           _Instance(
             instanceId(m.pageKey.value, m.matchedLocation, m.matches.uri.path),
@@ -126,6 +134,7 @@ final class _Walk {
           add(m.matches, uri, branches);
         }
       } else if (m is RouteMatch) {
+        covered = false;
         instances.add(
           _Instance(
             instanceId(m.pageKey.value, m.matchedLocation, uri.path),
@@ -138,6 +147,10 @@ final class _Walk {
     }
   }
 }
+
+/// What `_top` is while the error view of a pushed navigation covers the page below: no page has
+/// this id, so the page below is on top again, and gets its focus, once the view closes.
+const _coveredTop = '<error view>';
 
 /// A page instance the hooks have seen enter.
 final class _Entered {
@@ -373,9 +386,11 @@ final class RouterWatch {
         _report(error, st, 'while ending the RouteScope of ${e.instance.id}');
       }
     }
-    // Then the page on top: entered for the first time, or on top again.
+    // Then the page on top: entered for the first time, or on top again. Under the error view of a
+    // pushed navigation that failed its guard (since 0.21.0) it is neither: the view has no hooks
+    // and covers the page below, which gets its `onFocus` when the view closes, not before.
     final visible = walk.instances.lastOrNull;
-    if (visible != null) {
+    if (visible != null && !walk.covered) {
       final known = _entered[visible.id];
       final pattern = _telemetry ? _patternOf(visible) : null;
       if (known == null) {
@@ -397,7 +412,7 @@ final class RouterWatch {
         _run(_bind(visible.uri), 'onFocus', (h) => h.onFocus);
       }
     }
-    _top = visible?.id;
+    _top = walk.covered ? _coveredTop : visible?.id;
     if (_telemetry) _finishTelemetry(config, visible, pages);
   }
 

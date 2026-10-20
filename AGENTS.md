@@ -227,9 +227,10 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
 - **The companion packages are pinned together.** `fespalier_otel`, `fespalier_auth`, `fespalier_image`, `fespalier_http`, `fespalier_dio`, `fespalier_cratestack`, `fespalier_sentry`, `fespalier_tolgee`, `fespalier_forms`, `fespalier_maps`, `fespalier_download`, `fespalier_download_background` (which also depends on `fespalier_download`), `fespalier_push`, `fespalier_analytics` and `fespalier_launch` (since 0.18.0) depend on `fespalier`, and `fespalier_sign_keypair` on `fespalier_auth`, by git at the release tag, and `cli/tests/versions.rs` reads every `ref: v…` in their pubspecs and READMEs (and in `docs/*.md`) as fespalier's own version, so an app must write the same `url` and `ref` for all of them. A dependency of another repository that is pinned by tag must be pinned by commit instead, or that test reads it as fespalier's.
 - **The pub workspace (since 0.21.0).** The packages that claim Flutter 3.35 are one workspace (the root
   `pubspec.yaml`): one resolution, and their git dependencies on each other resolve to the checkout. So a
-  member has `resolution: workspace` and no `dependency_overrides` (pub refuses any: "Cannot override
-  workspace packages"), and a new 3.35 package goes into `workspace:` and the `dart` and `floor` matrices
-  (`cli/tests/versions.rs`; the justfile reads the list). `flutter pub downgrade` inside a member downgrades
+  member has `resolution: workspace` and no `dependency_overrides`: pub refuses an override of a workspace
+  package ("Cannot override workspace packages"), and a third-party override in one member would apply to all
+  of them, so `cli/tests/versions.rs` refuses any. A new 3.35 package goes into `workspace:` and the `dart` and
+  `floor` matrices (`cli/tests/versions.rs`; the justfile reads the list). `flutter pub downgrade` inside a member downgrades
   every member together, so the floor runs copies (`scripts/floor_copy.py`, which overrides only the members
   a package reaches: pub adds every override to the resolution, used or not). Each third-party dependency is
   spelled one way in every pubspec, in the workspace or not (`every_third_party_dependency_has_one_constraint`,

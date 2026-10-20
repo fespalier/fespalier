@@ -1032,8 +1032,10 @@ fn workspace_packages_resolve_together_and_the_others_alone() {
             );
             assert!(
                 pubspec.get("dependency_overrides").is_none(),
-                "{dir}/pubspec.yaml: a workspace package overrides nothing (pub: \"Cannot override workspace \
-                 packages\"); the workspace resolves its git dependencies on the others to the checkout"
+                "{dir}/pubspec.yaml: a workspace package has no `dependency_overrides`: pub refuses an \
+                 override of a workspace package (\"Cannot override workspace packages\"), and a third-party \
+                 override in one member would apply to all of them, so this test refuses any; the workspace \
+                 resolves its git dependencies on the others to the checkout"
             );
         } else {
             assert!(

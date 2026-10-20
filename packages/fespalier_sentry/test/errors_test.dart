@@ -1,6 +1,7 @@
 // What a failure becomes in Sentry, which is the point of the package: an event tagged with the
 // route pattern, the app file and the action, grouped by file, and never a validation answer.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
@@ -10,6 +11,9 @@ import 'support.dart';
 
 Map<String, Object?> map(Object? value) =>
     Map<String, Object?>.from(value! as Map);
+
+/// A guard that throws after an `await`: its error is the event, not go_router's wrapper.
+Future<String?> failingCheckout() async => throw StateError('boom');
 
 /// The events (not transactions) among [sent].
 List<Map<String, Object?>> events(List<Map<String, Object?>> sent) =>
@@ -209,19 +213,34 @@ void main() {
 
   group('the other operations', () {
     testWidgets('a guard that throws is an event on its file', (tester) async {
-      checkout = () => Future<String?>.error(StateError('boom'));
+      checkout = failingCheckout;
       final rig = Rig();
       final r = await rig.boot(tester);
-      // go_router turns a throwing guard into a GoException the app would show: not this test's
-      // business.
+      // go_router hands the router's error route a GuardFailure, which the error view shows: the
+      // event is the guard's own error, and the wrapper never reaches Sentry.
       await runZonedGuarded(() async {
         r.go('/checkout');
         await tester.pump(const Duration(milliseconds: 1));
         await tester.pump();
       }, (error, _) {});
+      expect(r.routerDelegate.currentConfiguration.error, isA<GuardFailure>());
       expect(await rig.lines(tester), [
         'event StateError operation=guard route=/checkout file=checkout/guard.dart',
       ]);
+      final sent = events(await rig.sent(tester));
+      expect(sent, hasLength(1));
+      expect(exception(sent.single)['type'], 'StateError');
+      expect(jsonEncode(sent), isNot(contains('GuardFailure')));
+      // The stack names the function that threw, not go_router's frames.
+      final frames =
+          (map(exception(sent.single)['stacktrace'])['frames']! as List)
+              .map(map)
+              .toList();
+      expect(
+        frames.any((f) => '${f['function']}'.contains('failingCheckout')),
+        isTrue,
+        reason: '$frames',
+      );
     });
 
     testWidgets('an auth step that fails is no event: a breadcrumb with the '

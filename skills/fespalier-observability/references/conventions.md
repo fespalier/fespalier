@@ -16,7 +16,7 @@ OpenTelemetry's semantic conventions are followed where they exist (`service.*`,
 ```text
 instrumentation scope   fespalier            (version = the fespalier release)
 resource                fespalier.version, fespalier.telemetry.version
-spans                   navigate {route} | navigate (not found) | navigate   (superseded)
+spans                   navigate {route} | navigate (not found) | navigate   (superseded, or a guard failed: since 0.21.0)
                         guard {file} | redirect {file} | data {file}
                         action {file}#{name} | deferred {file}
                         auth {operation}   (since 0.9.0, fespalier_auth)
@@ -27,7 +27,7 @@ events (on navigate)    fespalier.page.enter | fespalier.page.focus | fespalier.
 every span              fespalier.operation = navigate | guard | redirect | data | action | deferred | auth | image | custom
                         fespalier.route, fespalier.file, fespalier.async, error.type
 navigate                fespalier.navigation.kind = initial | go | push | pop | replace | refresh
-                        fespalier.navigation.outcome = ok | not_found | superseded
+                        fespalier.navigation.outcome = ok | not_found | error (since 0.21.0) | superseded
                         fespalier.navigation.from, fespalier.navigation.redirected (bool)
                         fespalier.navigation.depth (int), url.path, url.query (recordLocations only)
                         fespalier.navigation.source = notification | shortcut | widget | link   (since 0.9.0)
@@ -63,7 +63,9 @@ enter, focus events     fespalier.route
   section folder's pattern. **File** is relative to the app folder, as spelled on disk.
 - **Duration** is the span's own. For `navigate` it is _requested to first frame_ (guards, redirects, the
   build and the first-frame loads included); a `data` span's duration is its loading time.
-- **Status** is `Error` exactly when the outcome attribute is `error`. `not_found` is not an error, and
+- **Status** is `Error` exactly when the outcome attribute is `error`. A `navigate` that ends `error` (a guard or
+  `redirect.dart` failed, since 0.21.0) has the status and no exception text: its guard's span carries the exception.
+  `not_found` is not an error, and
   neither is an `auth` span that ends `rejected` or `cancelled`. An `auth` span that ends `error` has the status
   and `error.type`, **never the exception's text** (it can name a host).
 - **`auth` spans** (since 0.9.0, `fespalier_auth`, within version 1: a new operation and new keys) follow the

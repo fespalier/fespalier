@@ -529,7 +529,8 @@ abstract final class TelemetryOutcome {
   /// navigate: the location matched a page. action, deferred: it worked.
   static const String ok = 'ok';
 
-  /// navigate: the location matched no route.
+  /// navigate: the location matched no route, or go_router could not finish it for a reason of its
+  /// own (a redirect loop, too many redirects).
   static const String notFound = 'not_found';
 
   /// navigate: a newer navigation started before this one committed.
@@ -541,7 +542,9 @@ abstract final class TelemetryOutcome {
   /// guard, redirect: it returned a location.
   static const String redirect = 'redirect';
 
-  /// guard, redirect, data, action, deferred: it threw, or its `Future` failed.
+  /// guard, redirect, data, action, deferred: it threw, or its `Future` failed. navigate (since
+  /// 0.21.0): a guard or a `redirect.dart` of the location failed and the router shows the error
+  /// view; the exception is on the guard's own operation.
   static const String error = 'error';
 
   /// guard: a segment it asks for did not parse, so it did not run.
@@ -598,7 +601,8 @@ final class TelemetryEnd {
   /// Whether the operation returned a `Future` (guard, redirect, data, action).
   final bool isAsync;
 
-  /// The exception, on outcome [TelemetryOutcome.error].
+  /// The exception, on outcome [TelemetryOutcome.error]. A navigation that ends `error` has none:
+  /// its guard's operation carries it.
   final Object? error;
 
   /// The stack trace of [error], when there is one.
@@ -682,7 +686,8 @@ final class TelemetryCommit {
   /// A commit with [outcome] that puts the page [route] on screen.
   const TelemetryCommit(this.outcome, {this.route});
 
-  /// [TelemetryOutcome.ok], or [TelemetryOutcome.notFound] when the location matched no route.
+  /// [TelemetryOutcome.ok]; [TelemetryOutcome.notFound] when the location matched no route;
+  /// [TelemetryOutcome.error] when a guard or `redirect.dart` failed (since 0.21.0).
   final String outcome;
 
   /// The pattern of the page on screen after the commit (`/orders/:id`); null when not found. Never

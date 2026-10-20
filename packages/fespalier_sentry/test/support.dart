@@ -120,22 +120,26 @@ GoRouter router({
       GoRoute(path: '/probe', builder: (_, _) => const Probe()),
       GoRoute(
         path: '/old',
-        redirect: (_, state) =>
-            traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+        ),
       ),
       GoRoute(
         path: '/checkout',
-        redirect: (_, state) =>
-            traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+        ),
         builder: (_, _) => page('checkout'),
       ),
       // The guard loads a deferred page's code, as `/shop` does in a generated app.
       GoRoute(
         path: '/shop',
-        redirect: (_, state) => traceGuard(state, 'g2@4', () async {
-          await shopLibrary.load();
-          return null;
-        }(), telemetry: shopGuardSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'g2@4', () async {
+            await shopLibrary.load();
+            return null;
+          }(), telemetry: shopGuardSite),
+        ),
         builder: (context, _) => Consumer(
           builder: (context, ref, _) =>
               page(ref.watch(item(3)).value ?? 'loading'),

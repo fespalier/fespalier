@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart' show VoidCallback, Widget;
 import 'package:go_router/go_router.dart' hide RouteMatch;
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show ProviderListenable;
@@ -107,6 +108,7 @@ final class RouteMatcher {
     this.build, {
     this.caseSensitive = true,
     this.observe,
+    this.guardError,
   });
 
   /// The URL's path segments; `:name` ones are parameters.
@@ -121,6 +123,16 @@ final class RouteMatcher {
   /// The observe.dart hooks of this route at a location, outermost first (since 0.8.1):
   /// generated only for routes that have some.
   final List<RouteHooks> Function(GoRouterState state, UrlMatch match)? observe;
+
+  /// The view of a failed guard or `redirect.dart` of this route (since 0.21.0): the route's
+  /// nearest error.dart, when it takes nothing but the error, its stack trace and a retry.
+  /// Generated only for a route that a guard or a `redirect.dart` covers.
+  final Widget Function(
+    Object error,
+    StackTrace stackTrace,
+    VoidCallback retry,
+  )?
+  guardError;
 }
 
 /// What the generated `AppRoutes.matchUrl` calls: the first of [routes] whose pattern
@@ -176,6 +188,29 @@ List<RouteHooks> observeRoutes(
     }
   }
   return const [];
+}
+
+/// The view of a failed guard of the route at [uri] (since 0.21.0): the [RouteMatcher.guardError]
+/// of the first of [routes] whose pattern fits [uri] below [base], the order go_router tries them
+/// in, built with [error], [stackTrace] and [retry]. Null when nothing fits or that route has none.
+/// It parses no segment (a guard that asks for none runs on a segment that does not parse), runs no
+/// guard and builds nothing else.
+Widget? guardErrorRoutes(
+  Uri uri,
+  String base,
+  List<RouteMatcher> routes,
+  Object error,
+  StackTrace stackTrace,
+  VoidCallback retry, {
+  bool caseSensitive = true,
+}) {
+  final path = pathBelow(uri, base, caseSensitive: caseSensitive);
+  if (path == null) return null;
+  for (final route in routes) {
+    if (_capture(route.pattern, path, route.caseSensitive) == null) continue;
+    return route.guardError?.call(error, stackTrace, retry);
+  }
+  return null;
 }
 
 /// Whether [segment] is the static pattern part [part]: a part is one spelling

@@ -158,7 +158,7 @@ rest). Two options since 0.9.0:
 - `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what
   runs inside a `data()` or an action. It is off by default so a log written before 0.9.0 reads the same.
 - `RecordingTelemetry(recordCommits: true)` (since 0.19.0) also writes `#n commit ok route=/orders/:id` (or
-  `#n commit not_found`) when a navigation commits, before its `page` lines and its end. It is off by default too.
+  `#n commit not_found`, or since 0.21.0 `#n commit error` when a guard failed) when a navigation commits, before its `page` lines and its end. It is off by default too.
 
 To run two sinks in a test, `FespalierTelemetry.combine([recording, other])`; a sink that throws is isolated
 and printed once per sink (`fespalier telemetry: <error> in <Sink> (not shown again)`), so a test that

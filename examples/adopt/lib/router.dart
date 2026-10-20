@@ -21,8 +21,10 @@ GoRouter buildRouter({String initialLocation = '/'}) {
       ..._movedUrls(),
       ...AppRoutes.mount(at: '/shop', navigatorKey: rootKey),
     ],
-    // Anything no route matches gets fespalier's nearest not_found.dart.
-    errorBuilder: (context, state) => AppRoutes.notFound(state.uri),
+    // Anything no route matches gets fespalier's nearest not_found.dart, and a failed guard its
+    // error.dart (since 0.21.0; AppRoutes.errorPage shows a failed guard's error.dart, and
+    // not_found.dart for anything else).
+    errorBuilder: AppRoutes.errorPage,
   );
 }
 

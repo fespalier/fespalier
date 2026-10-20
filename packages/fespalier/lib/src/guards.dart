@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:hooks_riverpod/misc.dart' show ProviderException;
 
+import 'navigation_kind.dart' show activeMatches, pushedMatches;
 import 'segments.dart';
 
 /// Generated redirects call this to chain guards: they run in order and the
@@ -55,7 +57,8 @@ String returnTo(String? from, {String fallback = '/'}) {
 /// evaluation.
 ///
 /// A guard that throws, or a re-evaluation that fails, never refreshes the router:
-/// the error reaches go_router on a navigation, as a guard's errors always have.
+/// the error reaches go_router on a navigation, through the generated [runRedirect]
+/// as a [GuardFailure] (since 0.21.0).
 FutureOr<String?> refGuard(
   BuildContext context,
   String site,
@@ -221,16 +224,31 @@ final class _RouterGuards {
     }
   }
 
-  /// The router committed a location: guards it did not run are not its any more.
+  /// The router committed a location: guards it did not run are not its any more. When what it
+  /// committed is a guard that failed (since 0.21.0), the guards that navigation did run are not
+  /// its either: a page that never showed has nothing to keep up to date, and a refresh that one of
+  /// them asked for after a pushed failure would show the guarded page without running its guard
+  /// (go_router's own gap, fespalier/fespalier#258).
   void _committed() {
+    final failed = _failed();
     final stale = [
       for (final site in _live.keys)
-        if (!_touched.contains(site)) site,
+        if (failed || !_touched.contains(site)) site,
     ];
     for (final site in stale) {
       _live.remove(site)?.close();
     }
     _touched.clear();
+  }
+
+  /// Whether the router shows a guard that failed: its own error (after `go`, a link or a tab), or
+  /// the failed list in the entry on top of the stack (after `push`, and `pushReplacement` and
+  /// `replace` over other pages).
+  bool _failed() {
+    final config = _router.routerDelegate.currentConfiguration;
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    return activeMatches(config, pushed).error is GuardFailure;
   }
 
   void _closeAll() {
@@ -328,3 +346,202 @@ Future<void>? guardsIdle(GoRouter router) => _guardsOf[router]?.idle();
 final guardRefreshHooks = Expando<void Function(void Function() refresh)>(
   'fespalier guard refresh',
 );
+
+/// What go_router gets when a guard or a `redirect.dart` fails (since 0.21.0): it threw, or the
+/// `Future` it returned completed with an error.
+///
+/// The generated `redirect:` runs its guards through [runRedirect], which hands go_router this
+/// exception in place of the failure. go_router passes a [GoException] on as it is, so the router's
+/// error route has it as `GoRouterState.error` (and `onException` gets it): the generated
+/// `AppRoutes.errorPage` reports it once, in every build mode, and shows the route's `error.dart`, or
+/// its not-found view. [error] and [stackTrace] are what the guard threw, unwrapped from Riverpod's
+/// `ProviderException`: they are what a crash reporter should see, not this wrapper.
+final class GuardFailure extends GoException {
+  /// Wraps [error], which a guard or a `redirect.dart` threw with [stackTrace].
+  GuardFailure(this.error, this.stackTrace)
+    : super('a guard or redirect.dart failed with ${error.runtimeType}');
+
+  /// What the guard or `redirect.dart` threw, or what its `Future` failed with.
+  final Object error;
+
+  /// Where [error] was thrown.
+  final StackTrace stackTrace;
+
+  /// Whether [routerErrorPage] reported it: once, however often the error page builds.
+  bool _reported = false;
+
+  @override
+  String toString() => 'GuardFailure: $error';
+}
+
+/// go_router's zone value for the router a redirect runs for (`currentRouterKey`, internal to
+/// go_router, the same from 17.2.3 to 18.1.1).
+const Symbol _goRouterZoneKey = #goRouterRedirectContext;
+
+/// What a generated `redirect:` runs its guards and its `redirect.dart` through (since 0.21.0):
+/// `redirect: (context, state) => runRedirect(() => traceGuard(...))`.
+///
+/// A guard or `redirect.dart` that throws, or whose `Future` fails, reaches go_router as a
+/// [GuardFailure] (what it threw and its stack trace, Riverpod's `ProviderException` taken off), so
+/// the router shows its error route on every go_router fespalier allows. A synchronous answer is
+/// returned as it is, the very object: a sync guard stays sync, with no `Future`, microtask or
+/// timer. An asynchronous answer comes back as a `Future` of its own, with the same value or the
+/// [GuardFailure]. `traceGuard` and the telemetry inside still see the guard's own result.
+///
+/// go_router 17.2.3 to 18.1.0 run a redirect in an error zone of their own (`runZonedGuarded`), from
+/// which a failed `Future` never reaches the code that awaits it: the failure was uncaught and the
+/// navigation never ended. There, [redirect] runs where go_router 18.1.1 runs it: in a plain fork of
+/// the zone that called go_router, with go_router's router value. Anywhere else (go_router 18.1.1, no
+/// router, a zone of the app's own) it runs in the current zone.
+FutureOr<String?> runRedirect(GuardResult Function() redirect) {
+  final zone = Zone.current;
+  final parent = zone.parent;
+  final router = zone[_goRouterZoneKey];
+  if (router != null &&
+      parent != null &&
+      parent[_goRouterZoneKey] == null &&
+      !zone.inSameErrorZone(parent)) {
+    return parent
+        .fork(zoneValues: {_goRouterZoneKey: router})
+        .run(() => _redirect(redirect));
+  }
+  return _redirect(redirect);
+}
+
+FutureOr<String?> _redirect(GuardResult Function() redirect) {
+  final GuardResult result;
+  try {
+    result = redirect();
+  } catch (error, stackTrace) {
+    final failure = _failure(error, stackTrace);
+    Error.throwWithStackTrace(failure, failure.stackTrace);
+  }
+  if (result is! Future<String?>) return result;
+  return result.then<String?>(
+    _same,
+    onError: (Object error, StackTrace stackTrace) {
+      final failure = _failure(error, stackTrace);
+      Error.throwWithStackTrace(failure, failure.stackTrace);
+    },
+  );
+}
+
+String? _same(String? location) => location;
+
+/// [error] as a [GuardFailure]: one already is, and a `ProviderException` gives what it wraps.
+GuardFailure _failure(Object error, StackTrace stackTrace) {
+  var e = error;
+  var s = stackTrace;
+  while (e is ProviderException) {
+    s = e.stackTrace;
+    e = e.exception;
+  }
+  return e is GuardFailure ? e : GuardFailure(e, s);
+}
+
+/// How the report of a [GuardFailure] says where it came from (Flutter prints "... was thrown while
+/// running a guard or redirect.dart").
+const _guardFailureContext = 'while running a guard or redirect.dart';
+
+/// What the router shows for go_router's error route (since 0.21.0): the generated
+/// `AppRoutes.errorPage` calls it with the app's `notFound` and, when some route can show a failed
+/// guard, its `guardError`.
+///
+/// When `state.error` is a [GuardFailure], it is reported once, in every build mode, with
+/// `FlutterError.reportError` (library `fespalier`, what the guard threw and its stack trace): a
+/// widget test fails unless it calls `tester.takeException()`, and in a release build
+/// `FlutterError.onError` hears it, which is where `SentryFlutter.init` listens. [guardError] builds
+/// the view of the route at `state.uri` with a retry that runs the navigation again, only while the
+/// router still shows this failure. Without a view, [notFound] shows. Any other error (no route matched, a
+/// redirect loop, too many redirects) is [notFound]. It makes no `Future` and starts no timer.
+///
+/// The failure reaches the error route in one of two places. After `go`, a link or the first
+/// location, it is the router's own error (`GoRouter.refresh` runs the navigation again). After
+/// `push`, and `pushReplacement` and `replace` over other pages, go_router puts the failed list in an
+/// entry on top of the stack and the router's own `error` stays null: the retry then closes that
+/// entry and pushes the same location with the same `extra` again. The `Future` of the `push` that
+/// failed completes with `null` when the retry closes the entry, as it does when the user does; the
+/// page the retry pushes has no `Future` of its own that anyone waits for. A dialog, a sheet or
+/// another route without a page over the error view is closed first, so the retry replaces the
+/// error view and not the dialog. A retry held after the router moved on (the entry closed, another
+/// page above it) does nothing.
+Widget routerErrorPage(
+  BuildContext context,
+  GoRouterState state,
+  Widget Function(Uri uri) notFound, {
+  Widget? Function(
+    Uri uri,
+    Object error,
+    StackTrace stackTrace,
+    VoidCallback retry,
+  )?
+  guardError,
+}) {
+  final failure = state.error;
+  if (failure is! GuardFailure) return notFound(state.uri);
+  if (!failure._reported) {
+    failure._reported = true;
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: failure.error,
+        stack: failure.stackTrace,
+        library: 'fespalier',
+        context: ErrorDescription(_guardFailureContext),
+      ),
+    );
+  }
+  final router = GoRouter.maybeOf(context);
+  // The view is built inside the error page's route, so its retry can tell which navigator the
+  // pages are in, and what lies over the view.
+  return Builder(
+    builder: (inside) {
+      void retry() {
+        if (router != null) _retry(router, failure, inside);
+      }
+
+      return guardError?.call(
+            state.uri,
+            failure.error,
+            failure.stackTrace,
+            retry,
+          ) ??
+          notFound(state.uri);
+    },
+  );
+}
+
+/// Runs again the navigation that failed with [failure], if the router still shows it: see
+/// [routerErrorPage]. [inside] is a context inside the error view.
+void _retry(GoRouter router, GuardFailure failure, BuildContext inside) {
+  final config = router.routerDelegate.currentConfiguration;
+  if (identical(config.error, failure)) {
+    router.refresh();
+    return;
+  }
+  // A pushed navigation: go_router keeps its failed list in the entry it pushed, which is the
+  // page on top (the last pushed entry, however deep in the shells) while the error view shows.
+  // A page pushed over it makes another entry the last one, and the retry does nothing.
+  final pushed = <ImperativeRouteMatch>[];
+  pushedMatches(config.matches, pushed);
+  if (pushed.isEmpty || !identical(pushed.last.matches.error, failure)) return;
+  if (!router.canPop()) return;
+  final failed = pushed.last.matches;
+  // Only dialogs, sheets and other routes without a page can be over the error view now: close
+  // them first, or the pop below would close the topmost of them and leave the error view.
+  _closeRoutesOver(inside);
+  router.pop();
+  unawaited(router.push<Object?>(failed.uri.toString(), extra: failed.extra));
+}
+
+/// Closes what lies over the page that [inside] is in (since 0.21.0): the routes without a `Page`
+/// on top of its navigator, and on top of the root one when the page is in a nested navigator
+/// (`showDialog`'s default). Routes that have a page are left alone.
+void _closeRoutesOver(BuildContext inside) {
+  if (!inside.mounted) return;
+  final nearest = Navigator.maybeOf(inside);
+  final root = Navigator.maybeOf(inside, rootNavigator: true);
+  nearest?.popUntil(_hasPage);
+  if (root != nearest) root?.popUntil(_hasPage);
+}
+
+bool _hasPage(Route<Object?> route) => route.settings is Page<Object?>;

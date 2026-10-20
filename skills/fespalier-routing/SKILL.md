@@ -150,7 +150,8 @@ A `not_found.dart` at the root is the app-wide one (without it users see a plain
 
 - **Unknown paths.** An unknown URL shows the `not_found.dart` of the deepest folder it is
   under (a `$dynamic` folder matches any value), else the root's. That is
-  `AppRoutes.notFound(uri)`, which the router's `errorBuilder` calls.
+  `AppRoutes.notFound(uri)`, which the router's `errorBuilder` calls through `AppRoutes.errorPage`
+  (since 0.21.0), which shows a failed guard's `error.dart` instead when the route has one.
 - **Unparsable segments.** `/teams/a/members/abc` (an `int` id) shows the nearest
   `not_found.dart` above that route; a `(group)`'s counts here, but a group adds nothing to
   the URL, so its own is **never** picked for an unknown URL.

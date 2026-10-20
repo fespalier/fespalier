@@ -48,7 +48,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'fbf1eaa65e236238';
+  static const String _version = '19f8e24d5f8988fc';
   static const Map<String, String> _kept = {
     '(router)': 'a35294dc',
   };
@@ -91,7 +91,7 @@ abstract final class AppRoutes {
         // extra_codec.dart: what a page's `extra` is saved as, so it survives a reload on the web.
         extraCodec: _i17.extraCodec,
         navigatorKey: rootNavigatorKey,
-        errorBuilder: (context, state) => routing.notFound(state.uri),
+        errorBuilder: (context, state) => routing.errorPage(context, state),
       );
       routing.follow(router);
       if (kFespalierDevTools) devToolsAttach(router);
@@ -258,6 +258,14 @@ abstract final class AppRoutes {
 
   static Widget notFound(Uri uri) => DefaultNotFound(uri);
 
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound);
+
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).
   static List<RouteMatcher> _matchers = _allMatchers();
@@ -311,6 +319,9 @@ final class _AppRoutesReload extends RoutesReload {
 
   @override
   Widget notFound(Uri uri) => AppRoutes.notFound(uri);
+
+  @override
+  Widget errorPage(BuildContext context, GoRouterState state) => AppRoutes.errorPage(context, state);
 }
 
 /// `/` → (tabs)/(home)/page.dart

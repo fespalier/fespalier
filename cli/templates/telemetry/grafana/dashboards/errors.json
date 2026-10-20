@@ -82,7 +82,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum(sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum(sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false
@@ -330,6 +330,74 @@
     },
     {
       "id": 6,
+      "type": "stat",
+      "title": "Did a failing check stop a screen from opening?",
+      "description": "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the error report of the failure names the others.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "fespalier-openobserve"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "fespalier-openobserve"
+          },
+          "expr": "sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"error\"}[$__range]))",
+          "legendFormat": "__auto",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 7,
       "type": "timeseries",
       "title": "When did things fail?",
       "description": "Failures over time, by kind.",
@@ -339,7 +407,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 11,
         "w": 24,
         "h": 9
       },
@@ -350,7 +418,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_operation) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__interval]))",
+          "expr": "sum by (fespalier_operation) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__interval]))",
           "legendFormat": "{{fespalier_operation}}",
           "instant": false,
           "range": true
@@ -495,7 +563,7 @@
       "options": {}
     },
     {
-      "id": 7,
+      "id": 8,
       "type": "table",
       "title": "What failed, and where?",
       "description": "Each failure by kind, screen, file and error type, most frequent first. Open the file named here.",
@@ -505,7 +573,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 16,
+        "y": 20,
         "w": 24,
         "h": 9
       },
@@ -516,7 +584,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,
@@ -637,7 +705,7 @@
       ]
     },
     {
-      "id": 8,
+      "id": 9,
       "type": "table",
       "title": "Which uncaught errors?",
       "description": "Uncaught errors by type. The message is in Recent uncaught errors.",
@@ -647,7 +715,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 25,
+        "y": 29,
         "w": 12,
         "h": 9
       },
@@ -718,7 +786,7 @@
       ]
     },
     {
-      "id": 9,
+      "id": 10,
       "type": "table",
       "title": "Which screen was the app on when it crashed?",
       "description": "Native crashes and freezes by the screen the app showed when it died (since 0.19.0, when the app names it; see docs/observability.md). Unknown: it did not say. Open that screen's files first.",
@@ -728,7 +796,7 @@
       },
       "gridPos": {
         "x": 12,
-        "y": 25,
+        "y": 29,
         "w": 12,
         "h": 9
       },
@@ -799,7 +867,7 @@
       ]
     },
     {
-      "id": 10,
+      "id": 11,
       "type": "table",
       "title": "What failed last?",
       "description": "The latest 50 failures with their message and trace id; click a trace id in OpenObserve's Traces to see the whole navigation.",
@@ -809,7 +877,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 34,
+        "y": 38,
         "w": 24,
         "h": 9
       },
@@ -820,7 +888,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,

@@ -16,6 +16,7 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'guards.dart' show GuardFailure;
 import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
@@ -91,6 +92,10 @@ final class _Instance {
 final class _Walk {
   final List<_Instance> instances = [];
 
+  /// Whether the last thing the walk found is the error view of a pushed navigation that failed
+  /// its guard (since 0.21.0): it covers [instances], and the page under it is not the visible one.
+  bool covered = false;
+
   /// The tab branches that are the current one of their shell.
   final Set<String> activeBranches = {};
 
@@ -102,6 +107,14 @@ final class _Walk {
   void add(List<RouteMatchBase> matches, Uri uri, List<String> branches) {
     for (final m in matches) {
       if (m is ImperativeRouteMatch) {
+        // A pushed navigation that failed its guard (since 0.21.0): go_router keeps the failed list
+        // here, with an empty path, and the page it was pushed from stays under its error view. It
+        // is no page, but it covers the one below: that page is not visible until the view closes.
+        if (m.matches.isError) {
+          covered = true;
+          continue;
+        }
+        covered = false;
         instances.add(
           _Instance(
             instanceId(m.pageKey.value, m.matchedLocation, m.matches.uri.path),
@@ -121,6 +134,7 @@ final class _Walk {
           add(m.matches, uri, branches);
         }
       } else if (m is RouteMatch) {
+        covered = false;
         instances.add(
           _Instance(
             instanceId(m.pageKey.value, m.matchedLocation, uri.path),
@@ -133,6 +147,10 @@ final class _Walk {
     }
   }
 }
+
+/// What `_top` is while the error view of a pushed navigation covers the page below: no page has
+/// this id, so the page below is on top again, and gets its focus, once the view closes.
+const _coveredTop = '<error view>';
 
 /// A page instance the hooks have seen enter.
 final class _Entered {
@@ -368,9 +386,11 @@ final class RouterWatch {
         _report(error, st, 'while ending the RouteScope of ${e.instance.id}');
       }
     }
-    // Then the page on top: entered for the first time, or on top again.
+    // Then the page on top: entered for the first time, or on top again. Under the error view of a
+    // pushed navigation that failed its guard (since 0.21.0) it is neither: the view has no hooks
+    // and covers the page below, which gets its `onFocus` when the view closes, not before.
     final visible = walk.instances.lastOrNull;
-    if (visible != null) {
+    if (visible != null && !walk.covered) {
       final known = _entered[visible.id];
       final pattern = _telemetry ? _patternOf(visible) : null;
       if (known == null) {
@@ -392,7 +412,7 @@ final class RouterWatch {
         _run(_bind(visible.uri), 'onFocus', (h) => h.onFocus);
       }
     }
-    _top = visible?.id;
+    _top = walk.covered ? _coveredTop : visible?.id;
     if (_telemetry) _finishTelemetry(config, visible, pages);
   }
 
@@ -409,10 +429,30 @@ final class RouterWatch {
   String? _patternOf(_Instance i) =>
       pathTemplate(i.fullPath, _base?.call() ?? '/');
 
-  /// The pattern of the page [config] shows ([visible] is the top of its walk), null when no route
-  /// matched: what a navigation's commit and its end both report, so the two never differ.
+  /// The list that tells what [config] shows on top (since 0.21.0): [config] itself, or, when a page
+  /// was pushed (`push`, `pushReplacement`, `replace`), the list of the page on top. go_router keeps
+  /// the error of a pushed navigation there and not in [config], whose own `error` stays null.
+  RouteMatchList _activeOf(RouteMatchList config) {
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    return activeMatches(config, pushed);
+  }
+
+  /// The pattern of the page [config] shows ([visible] is the top of its walk), null when the router
+  /// shows its error route, as its own or over a pushed navigation: what a navigation's commit and
+  /// its end both report, so the two never differ.
   String? _routeOf(RouteMatchList config, _Instance? visible) =>
-      config.error != null || visible == null ? null : _patternOf(visible);
+      _activeOf(config).isError || visible == null ? null : _patternOf(visible);
+
+  /// What [config] says of its navigation (since 0.21.0): `error` when a guard or a `redirect.dart`
+  /// failed and the router shows the error view ([GuardFailure]), `not_found` for any other error of
+  /// the router's (no route matched, a redirect loop), `ok` otherwise. A navigation that was pushed
+  /// says it the same way, though go_router holds its error in the pushed entry.
+  String _outcomeOf(RouteMatchList config) => switch (_activeOf(config).error) {
+    null => TelemetryOutcome.ok,
+    GuardFailure() => TelemetryOutcome.error,
+    _ => TelemetryOutcome.notFound,
+  };
 
   /// Tells the sink what [config] puts on screen, for [nav], at the commit (since 0.19.0).
   void _tellCommit(_Nav nav, RouteMatchList config) {
@@ -420,7 +460,7 @@ final class RouterWatch {
     telemetryNavigationCommit(
       nav.token,
       TelemetryCommit(
-        config.error != null ? TelemetryOutcome.notFound : TelemetryOutcome.ok,
+        _outcomeOf(config),
         route: _routeOf(config, walk.instances.lastOrNull),
       ),
     );
@@ -446,14 +486,15 @@ final class RouterWatch {
   }
 
   void _endNavigation(_Nav nav, RouteMatchList config, _Instance? visible) {
-    final notFound = config.error != null;
     final route = _routeOf(config, visible);
-    final location = visible?.uri ?? config.uri;
+    final active = _activeOf(config);
+    // An error view is at the location that failed.
+    final location = active.isError ? active.uri : (visible?.uri ?? config.uri);
     final requested = nav.requested;
     telemetryNavigationEnd(
       nav.token,
       TelemetryEnd(
-        notFound ? TelemetryOutcome.notFound : TelemetryOutcome.ok,
+        _outcomeOf(config),
         route: route,
         from: _topPattern,
         kind: nav.kind,
@@ -462,7 +503,11 @@ final class RouterWatch {
         depth: nav.depth,
       ),
     );
-    _topPattern = route;
+    // The next navigation comes from the page the walk shows: for the error view of a pushed
+    // navigation, the page under it (`route` is null there, as for any error).
+    _topPattern = config.isError || visible == null
+        ? null
+        : _patternOf(visible);
   }
 
   List<RouteHooks> _bind(Uri uri) {

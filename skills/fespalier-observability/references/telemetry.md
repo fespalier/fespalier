@@ -284,7 +284,7 @@ Image spans follow the installed sink and need no `telemetry: true`, like `auth`
 A `custom` operation (since 0.11.0) is `#6 start custom fespalier.push.open fespalier.push.kind=alert`, then
 `#6 end custom ok fespalier.push.fresh=true`: the attributes sorted by key.
 Since 0.19.0 `RecordingTelemetry(recordCommits: true)` also writes `#n commit ok route=/orders/:id` (or
-`#n commit not_found`) when a navigation commits, before its `page` lines and its end. It is off by default, so a log
+`#n commit not_found`, or since 0.21.0 `#n commit error` when a guard failed) when a navigation commits, before its `page` lines and its end. It is off by default, so a log
 written before 0.19.0 reads the same.
 
 Two sinks next to each other, and a sink of your own that makes its operation current:

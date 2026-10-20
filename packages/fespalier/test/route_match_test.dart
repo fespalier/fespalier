@@ -116,6 +116,19 @@ final observed = <RouteMatcher>[
       m,
 ];
 
+/// The matchers with a view for a failed guard on the product route; the docs route has none.
+final guarded = <RouteMatcher>[
+  for (final m in matchers)
+    if (m.pattern.first == 'products')
+      RouteMatcher(
+        m.pattern,
+        m.build,
+        guardError: (error, _, _) => Text('PRODUCT ${error.runtimeType}'),
+      )
+    else
+      m,
+];
+
 final List<String> seen = [];
 
 void main() {
@@ -234,6 +247,74 @@ void main() {
       });
       expect(at('/nums/1/x', routes: typed), isNull);
       expect(at('/nums', routes: typed), isNull);
+    });
+  });
+
+  group('guardErrorRoutes', () {
+    Widget? view(
+      String location, {
+      String base = '/',
+      bool caseSensitive = true,
+      List<RouteMatcher>? routes,
+    }) => guardErrorRoutes(
+      Uri.parse(location),
+      base,
+      routes ?? guarded,
+      StateError('boom'),
+      StackTrace.empty,
+      () {},
+      caseSensitive: caseSensitive,
+    );
+
+    String? textOf(Widget? widget) => (widget as Text?)?.data;
+
+    test('is the view of the first route that fits', () {
+      final both = [
+        RouteMatcher(
+          ['products', ':id'],
+          (s) => UrlMatch(s.uri, const AboutRoute(), {}, []),
+          guardError: (error, _, _) => Text('FIRST ${error.runtimeType}'),
+        ),
+        RouteMatcher(
+          ['products', '*rest?'],
+          (s) => UrlMatch(s.uri, const AboutRoute(), {}, []),
+          guardError: (error, _, _) => const Text('SECOND'),
+        ),
+      ];
+      expect(textOf(view('/products/42', routes: both)), 'FIRST StateError');
+    });
+
+    test('is null when no route fits, or the route that does has no view', () {
+      expect(view('/nowhere'), isNull);
+      expect(view('/docs/a/b'), isNull);
+    });
+
+    test('is found below the mount point', () {
+      expect(
+        textOf(view('/shop/products/42', base: '/shop')),
+        'PRODUCT StateError',
+      );
+      expect(view('/products/42', base: '/shop'), isNull);
+    });
+
+    test('is found case-insensitively when the routes are', () {
+      final insensitive = [
+        RouteMatcher(
+          ['products', ':id'],
+          (s) => UrlMatch(s.uri, const AboutRoute(), {}, []),
+          caseSensitive: false,
+          guardError: (error, _, _) => const Text('PRODUCT'),
+        ),
+      ];
+      expect(
+        textOf(view('/PRODUCTS/42', caseSensitive: false, routes: insensitive)),
+        'PRODUCT',
+      );
+      expect(view('/PRODUCTS/42'), isNull);
+    });
+
+    test('is found for a segment that does not parse: it runs no build', () {
+      expect(textOf(view('/products/abc')), 'PRODUCT StateError');
     });
   });
 

@@ -229,7 +229,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'fb1ac40aad2174bc';
+  static const String _version = '02ab944db255934d';
   static const Map<String, String> _kept = {
     '(router)': '7dcfa259',
     'BrowseRoute.data': '30ba4ab7',
@@ -355,7 +355,7 @@ abstract final class AppRoutes {
         observers: observers,
         restorationScopeId: restorationScopeId,
         navigatorKey: rootNavigatorKey,
-        errorBuilder: (context, state) => routing.notFound(state.uri),
+        errorBuilder: (context, state) => routing.errorPage(context, state),
       );
       routing.follow(router);
       if (kFespalierDevTools) devToolsAttach(router);
@@ -473,10 +473,10 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'admin',
                 caseSensitive: false,
-                redirect: (context, state) => firstRedirect([
+                redirect: (context, state) => runRedirect(() => firstRedirect([
                   () => traceGuard(state, 'g6@7', refGuard(context, 'g6@7', (ref) => _i13.guard(ref, uri: state.uri))),
                   () => traceGuard(state, 'g7@7', _i15.guard(ProviderScope.containerOf(context, listen: false))),
-                ]),
+                ])),
                 pageBuilder: (context, state) => namedPage('/admin', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
@@ -488,7 +488,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'inbox',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'g6@8', refGuard(context, 'g6@8', (ref) => _i13.guard(ref, uri: state.uri))),
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'g6@8', refGuard(context, 'g6@8', (ref) => _i13.guard(ref, uri: state.uri)))),
                 pageBuilder: (context, state) => namedPage('/inbox', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
@@ -746,7 +746,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'labs',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'g31@31', refGuard(context, 'g31@31', (ref) => _i48.guard(ref))),
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'g31@31', refGuard(context, 'g31@31', (ref) => _i48.guard(ref)))),
                 pageBuilder: (context, state) => namedPage('/labs', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
@@ -773,10 +773,10 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'old-search',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'r35', guardWithParams(
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'r35', guardWithParams(
                   () => _params35(state),
                   (v) => _i54.redirect(q: v.q),
-                )),
+                ))),
               ),
               GoRoute(
                 path: 'photos',
@@ -939,7 +939,7 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'signup/company',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g66@67', refGuard(context, 'g66@67', (ref) => _i95.guard(ref, uri: state.uri))),
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g66@67', refGuard(context, 'g66@67', (ref) => _i95.guard(ref, uri: state.uri)))),
                     onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/company', () => _i1.transition(
                       state.pageKey,
@@ -952,7 +952,7 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'signup/contact',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g66@68', refGuard(context, 'g66@68', (ref) => _i95.guard(ref, uri: state.uri))),
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g66@68', refGuard(context, 'g66@68', (ref) => _i95.guard(ref, uri: state.uri)))),
                     onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/contact', () => _i1.transition(
                       state.pageKey,
@@ -965,7 +965,7 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'signup/name',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g66@69', refGuard(context, 'g66@69', (ref) => _i95.guard(ref, uri: state.uri))),
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g66@69', refGuard(context, 'g66@69', (ref) => _i95.guard(ref, uri: state.uri)))),
                     onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/name', () => _i1.transition(
                       state.pageKey,
@@ -978,7 +978,7 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'signup/review',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g66@70', refGuard(context, 'g66@70', (ref) => _i95.guard(ref, uri: state.uri))),
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g66@70', refGuard(context, 'g66@70', (ref) => _i95.guard(ref, uri: state.uri)))),
                     onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/review', () => _i1.transition(
                       state.pageKey,
@@ -1013,7 +1013,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'vault',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'g77@77', refGuard(context, 'g77@77', (ref) => _i120.guard(ref, uri: state.uri))),
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'g77@77', refGuard(context, 'g77@77', (ref) => _i120.guard(ref, uri: state.uri)))),
                 pageBuilder: (context, state) => namedPage('/vault', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
@@ -1046,7 +1046,7 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'notes/:id',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g34@34', _i53.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state))),
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g34@34', _i53.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state)))),
                     pageBuilder: (context, state) => namedPage('/notes/:id', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
@@ -1066,10 +1066,10 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'old-shops/:shop',
                 caseSensitive: false,
-                redirect: (context, state) => traceGuard(state, 'r37', guardWithParams(
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'r37', guardWithParams(
                   () => _params37(state),
                   (v) => _i55.redirect(shop: v.shop),
-                )),
+                ))),
               ),
               GoRoute(
                 path: 'orders/:id',
@@ -1089,10 +1089,10 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'refund',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g40@40', guardWithParams(
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g40@40', guardWithParams(
                       () => _params40(state),
                       (v) => _i61.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
-                    )),
+                    ))),
                     pageBuilder: (context, state) => namedPage('/orders/:id/refund', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
@@ -1132,10 +1132,10 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'refund/confirm',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g40@41', guardWithParams(
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g40@41', guardWithParams(
                       () => _guard40(state),
                       (v) => _i61.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
-                    )),
+                    ))),
                     pageBuilder: (context, state) => namedPage('/orders/:id/refund/confirm', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
@@ -1230,10 +1230,10 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'shops/:shop',
                     caseSensitive: false,
-                    redirect: (context, state) => traceGuard(state, 'g63@63', guardWithParams(
+                    redirect: (context, state) => runRedirect(() => traceGuard(state, 'g63@63', guardWithParams(
                       () => _params63(state),
                       (v) => _i89.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
-                    )),
+                    ))),
                     pageBuilder: (context, state) => namedPage('/shops/:shop', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
@@ -1466,6 +1466,17 @@ abstract final class AppRoutes {
         caseSensitive: false,
       );
 
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound, guardError: _guardErrorAt);
+
+  /// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
+  static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry, caseSensitive: false);
+
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).
   static List<RouteMatcher> _matchers = _allMatchers();
@@ -1600,7 +1611,7 @@ abstract final class AppRoutes {
     RouteMatcher(['shops', ':shop', 'items', ':id'], (s) {
       final p = _params65(s);
       return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_dataShopsShopItemsId((shop: p.shop, id: p.id))]);
-    }, caseSensitive: false),
+    }, caseSensitive: false, guardError: (e, st, retry) => _i92.ItemError(e, retry)),
     RouteMatcher(['teams', ':teamId', 'members', ':member'], (s) {
       final p = _params74(s);
       return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_dataTeamsTeamId(p.teamId), _dataTeamsTeamIdMembersMember(p.member)]);
@@ -1685,6 +1696,9 @@ final class _AppRoutesReload extends RoutesReload {
 
   @override
   Widget notFound(Uri uri) => AppRoutes.notFound(uri);
+
+  @override
+  Widget errorPage(BuildContext context, GoRouterState state) => AppRoutes.errorPage(context, state);
 }
 
 /// What `fsp gen` knows about every route: its typed route, path template,

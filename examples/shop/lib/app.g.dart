@@ -40,7 +40,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '387370f098f83f59';
+  static const String _version = '941f41953d3473c8';
   static const Map<String, String> _kept = {
     '(router)': '3fddb5dc',
     'ProductRoute.data': 'd1a8b78b',
@@ -90,7 +90,7 @@ abstract final class AppRoutes {
         observers: observers,
         restorationScopeId: restorationScopeId,
         navigatorKey: rootNavigatorKey,
-        errorBuilder: (context, state) => routing.notFound(state.uri),
+        errorBuilder: (context, state) => routing.errorPage(context, state),
       );
       routing.follow(router);
       if (kFespalierDevTools) devToolsAttach(router);
@@ -159,7 +159,7 @@ abstract final class AppRoutes {
               ),
               GoRoute(
                 path: 'checkout',
-                redirect: (context, state) => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false))),
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false)))),
                 pageBuilder: (context, state) => namedPage('/checkout', () => _i3.transition(
                   state.pageKey,
                   DeferredView(
@@ -232,6 +232,17 @@ abstract final class AppRoutes {
 
   static Widget notFound(Uri uri) => _i5.NotFound(uri: uri);
 
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound, guardError: _guardErrorAt);
+
+  /// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
+  static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry);
+
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).
   static List<RouteMatcher> _matchers = _allMatchers();
@@ -239,7 +250,7 @@ abstract final class AppRoutes {
   static List<RouteMatcher> _allMatchers() => [
     RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
     RouteMatcher(['cart'], (s) => UrlMatch(s.uri, const CartRoute(), const {}, const [])),
-    RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), const {}, const [])),
+    RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), const {}, const []), guardError: (e, st, retry) => _i2.RootError(error: e, retry: retry)),
     RouteMatcher(['products'], (s) {
       final p = _params5(s);
       return UrlMatch(s.uri, ProductsRoute(sort: p.sort, page: p.page), {'sort': p.sort, 'page': p.page}, [_i10.data]);
@@ -321,6 +332,9 @@ final class _AppRoutesReload extends RoutesReload {
 
   @override
   Widget notFound(Uri uri) => AppRoutes.notFound(uri);
+
+  @override
+  Widget errorPage(BuildContext context, GoRouterState state) => AppRoutes.errorPage(context, state);
 }
 
 /// What `fsp gen` knows about every route: its typed route, path template,

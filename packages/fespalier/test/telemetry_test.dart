@@ -8,8 +8,6 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/floor.dart';
-
 const TelemetrySite guardSite = TelemetrySite(
   'checkout/guard.dart',
   route: '/checkout',
@@ -65,14 +63,16 @@ GoRouter router({String initial = '/home'}) {
       GoRoute(path: '/other', builder: (_, _) => page('other')),
       GoRoute(
         path: '/checkout',
-        redirect: (_, state) =>
-            traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+        ),
         builder: (_, _) => page('checkout'),
       ),
       GoRoute(
         path: '/old',
-        redirect: (_, state) =>
-            traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+        ),
       ),
       GoRoute(path: '/login', builder: (_, _) => page('login')),
       StatefulShellRoute.indexedStack(
@@ -300,26 +300,78 @@ void main() {
           rec.log,
           contains('#3 end guard error async error=Bad state: boom'),
         );
-        final ended = rec.log.where(
-          (line) => line.startsWith('#2 end navigate'),
+        // On every go_router the failure reaches the router as a GuardFailure, the navigation
+        // ends with the outcome `error`, and the page it left is left (its onLeave runs).
+        expect(uncaught, isEmpty);
+        expect(
+          r.routerDelegate.currentConfiguration.error,
+          isA<GuardFailure>(),
         );
-        if (beforeGoRouter1811) {
-          // go_router reports it as an uncaught error, once (the side listener adds none), and the
-          // navigation never ends: the router stays where it was.
-          expect(uncaught, hasLength(1));
-          expect('${uncaught.single}', contains('boom'));
-          expect(ended, isEmpty);
-        } else {
-          // go_router 18.1.1 hands it to the error route, where errorBuilder and onException get it,
-          // and the navigation ends there. Nothing is uncaught.
-          expect(uncaught, isEmpty);
-          final error = r.routerDelegate.currentConfiguration.error;
-          expect(error, isNotNull);
-          expect('$error', contains('boom'));
-          expect(ended, hasLength(1));
-        }
+        expect(rec.log, contains('#2 page leave /home'));
+        expect(rec.log.where((line) => line.startsWith('#2 end navigate')), [
+          '#2 end navigate error kind=go from=/home at=/checkout',
+        ]);
       },
     );
+
+    testWidgets('a guard that throws before it returns ends the navigation as '
+        'error, with no guard span', (tester) async {
+      checkout = () => throw StateError('boom');
+      final r = await boot(tester);
+      rec.log.clear();
+      r.go('/checkout');
+      await tester.pumpAndSettle();
+      expect(rec.log.where((line) => line.contains('guard')), isEmpty);
+      expect(rec.log.where((line) => line.startsWith('#2 end navigate')), [
+        '#2 end navigate error kind=go from=/home at=/checkout',
+      ]);
+      expect(r.routerDelegate.currentConfiguration.error, isA<GuardFailure>());
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final kind in ['push', 'pushReplacement', 'replace']) {
+      testWidgets('$kind: a guard that throws ends the navigation as error and '
+          'enters nothing', (tester) async {
+        checkout = () => throw StateError('boom');
+        final r = await boot(tester);
+        unawaited(r.push<void>('/other'));
+        await tester.pumpAndSettle();
+        rec.log.clear();
+        final Future<void> navigation = switch (kind) {
+          'push' => r.push<void>('/checkout'),
+          'pushReplacement' => r.pushReplacement<void>('/checkout'),
+          _ => r.replace<void>('/checkout'),
+        };
+        unawaited(navigation);
+        await tester.pumpAndSettle();
+        // go_router keeps the failure in the pushed entry: the router's own error is null.
+        expect(r.routerDelegate.currentConfiguration.error, isNull);
+        // The failed location is no page: nothing is entered. `push` leaves the page under the
+        // error view alone; the other two removed the page they replaced, which leaves. The page
+        // below is covered by the error view, so it gets no focus yet.
+        expect(rec.log, [
+          '#3 start navigate /checkout',
+          if (kind != 'push') '#3 page leave /other',
+          if (kind == 'push')
+            '#3 end navigate error kind=push from=/other depth=2 at=/checkout'
+          else
+            '#3 end navigate error kind=replace from=/other depth=1 at=/checkout',
+        ]);
+        rec.log.clear();
+        // Closing the error view comes from the page that was under it, which is the visible
+        // one again and gets its focus then.
+        r.pop();
+        await tester.pumpAndSettle();
+        expect(rec.log, [
+          '#4 start navigate (commit)',
+          '#4 page focus ${kind == 'push' ? '/other' : '/home'}',
+          if (kind == 'push')
+            '#4 end navigate ok route=/other kind=pop from=/other depth=1 at=/other'
+          else
+            '#4 end navigate ok route=/home kind=pop from=/home at=/home',
+        ]);
+      });
+    }
 
     testWidgets('a guard that did not run for a bad segment is skipped', (
       tester,

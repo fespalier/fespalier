@@ -60,7 +60,7 @@ class Seed:
     def hex(self, n):
         return "".join(self.rng.choice("0123456789abcdef") for _ in range(n))
 
-    def span(self, name, start, duration_ms, trace, parent, attributes, error=None):
+    def span(self, name, start, duration_ms, trace, parent, attributes, error=None, failed=False):
         end = start + int(duration_ms * 1e6)
         span = {
             "traceId": trace,
@@ -83,7 +83,10 @@ class Seed:
                     "attributes": attrs({"exception.type": error, "exception.message": "failed"}),
                 }
             ]
-        flat = dict(attributes, _error=bool(error), _duration_ms=duration_ms)
+        elif failed:
+            # A navigation a guard stopped: the status, and no exception (the guard's span has it).
+            span["status"] = {"code": 2}
+        flat = dict(attributes, _error=bool(error) or failed, _duration_ms=duration_ms)
         self.spans.append((span, flat))
         return span
 
@@ -108,6 +111,10 @@ class Seed:
                 attributes["fespalier.navigation.outcome"] = "superseded"
                 attributes["fespalier.navigation.redirected"] = False
                 name = "navigate"
+            elif roll < 0.11:
+                attributes["fespalier.navigation.outcome"] = "error"
+                attributes["fespalier.navigation.redirected"] = False
+                name = "navigate"
             else:
                 route = rng.choice(ROUTES)
                 redirected = rng.random() < 0.1
@@ -120,7 +127,15 @@ class Seed:
                     attributes["fespalier.navigation.from"] = rng.choice(ROUTES)
                 name = f"navigate {route}"
             duration = round(rng.lognormvariate(3.4, 0.7), 2)
-            root_span = self.span(name, clock, duration, trace, None, attributes)
+            root_span = self.span(
+                name,
+                clock,
+                duration,
+                trace,
+                None,
+                attributes,
+                failed=attributes.get("fespalier.navigation.outcome") == "error",
+            )
             root = root_span["spanId"]
             route = attributes.get("fespalier.route")
             if rng.random() < 0.55:
@@ -290,7 +305,8 @@ class Seed:
         viewed = count(
             both(navigate, is_("fespalier.navigation.outcome", "ok"), not_("fespalier.navigation.kind", "refresh"))
         )
-        failed = count(lambda a: a["_error"])
+        # A navigate span that ends `error` has the status and no exception: its guard's span counts it.
+        failed = count(lambda a: a["_error"] and a.get("fespalier.operation") != "navigate")
         action_runs = count(op("action"))
         action_failures = count(both(op("action"), is_("fespalier.action.result", "error")))
         retries = count(both(op("data"), lambda a: (a.get("fespalier.data.attempt") or 1) > 1))
@@ -314,6 +330,7 @@ class Seed:
             "errors/guard_errors": count(
                 both(op("guard", "redirect"), is_("fespalier.guard.decision", "error"))
             ),
+            "errors/stopped_screens": count(both(navigate, is_("fespalier.navigation.outcome", "error"))),
         }
 
     def rates(self):

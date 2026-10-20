@@ -105,6 +105,9 @@ struct FileCx {
     /// The host of `AppRoutes.urlOf` (since 0.16.0): the first of `links: domains:`. None, and no
     /// `urlOf`, without a `links:` section or when its domains are not usable.
     url_host: Option<String>,
+    /// Some route shows its error.dart for a failed guard (since 0.21.0): `errorPage` then asks the
+    /// matchers for that view (`_guardErrorAt`).
+    guard_errors: bool,
 }
 
 /// One `import` of the generated file.
@@ -493,6 +496,9 @@ struct MatcherCx {
     case_sensitive: bool,
     /// `, observe: (s, m) {...}` for a page with observe.dart hooks above it, else empty.
     observe: String,
+    /// `, guardError: (e, st, retry) => …` for a route whose failed guard has a view (since 0.21.0),
+    /// else empty.
+    guard_error: String,
 }
 
 /// The typed handle of a section's data.dart: `AccountSection.watch(ref, ...)`.
@@ -757,6 +763,10 @@ pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
             Some("AppAdapters.handlesEnter")
         },
         url_host: url_host(cfg, diags),
+        guard_errors: app
+            .routes
+            .iter()
+            .any(|r| r.is_route() && r.name.is_some() && r.guard_error.is_some()),
         keep_previous: cfg.keep_previous,
         push_updates_url: cfg.push_updates_url,
         semantics_ids: cfg.semantics_ids,
@@ -2876,10 +2886,14 @@ fn matchers(app: &App, fns: &mut BTreeSet<ParamsFn>) -> Vec<MatcherCx> {
             .map(|(n, _)| format!("{}: p.{n}", dart_str(n)))
             .collect();
         let observe = observe_closure(app, r, fns);
+        let guard_error = r.guard_error.as_ref().map_or_else(String::new, |w| {
+            format!(", guardError: (e, st, retry) => {}", w.call(in_builder))
+        });
         all.push((
             ranks,
             MatcherCx {
                 observe,
+                guard_error,
                 pattern: format!("[{}]", parts.join(", ")),
                 lines,
                 route,

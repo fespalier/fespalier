@@ -33,6 +33,7 @@ String currentLocation(WidgetTester tester)
   after its own, and a second `dispose` throws: _A GoRouteInformationProvider was used after
   being disposed_). Since 0.6.0 you can keep it and pass `disposeRouter: false` instead. A
   router you disposed in the test body is fine. Don't share a router between tests.
+- **A guard that fails is reported** (since 0.21.0): the router's error view reports the `GuardFailure` once, in every build mode, so the test calls `tester.takeException()` for it, as it does for a failed `startup()`. Assert on the router's error after `go` (`currentConfiguration.error` is a `GuardFailure`; after a `push` it is `null`, so assert on the error view), not on the text the exception has.
 - **A guard that returns a `Future` costs a frame**, even `Future.value(...)`: the router
   waits for it, so the test (and a cold deep link) sees a blank first frame before the
   page. Return the `GuardResult` directly when nothing needs an `await`.

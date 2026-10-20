@@ -214,7 +214,11 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   guard or `data()` stays sync (no `Future`, no microtask) and a `Future` is never replaced; `devtools_trace_test.dart`
   checks it, and in release they are the identity and dart2js inlines them away (the scaffold CI job
   greps a release build with a guard, a `data.dart` and an action in it). Keep them that way: no provider
-  read, no listener on a provider or a stream, no timer.
+  read, no listener on a provider or a stream, no timer. The outermost call of a generated `redirect:`,
+  `runRedirect` (since 0.21.0), is not one of them: it returns a sync answer as it is and turns a failure into
+  a `GuardFailure`, and for an async guard gives go_router a `Future` of its own, run outside go_router's error
+  zone on 17.2.3 to 18.1.0; it makes no `Future`, microtask or timer for a sync guard, and `traceGuard` inside
+  still sees the guard's own result.
 - **Telemetry costs nothing when off, and never makes async.** An app generated without `telemetry: true`
   passes no `TelemetrySite`, so every `telemetry:` parameter (`traceGuard`, `traceData`, `ActionNotifier`,
   `DeferredLibrary(route:)`) is null and the code behind it is compiled out; the scaffold CI job greps a

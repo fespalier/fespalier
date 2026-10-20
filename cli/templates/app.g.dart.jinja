@@ -132,13 +132,13 @@ StatefulShellRoute.indexedStack(
   parentNavigatorKey: rootNavigatorKey,
 {% endif %}
 {% if r.redirects | length == 1 %}
-  redirect: (context, state) => {{ redirect_call(r.redirects[0]) | indent(2) }},
+  redirect: (context, state) => runRedirect(() => {{ redirect_call(r.redirects[0]) | indent(2) }}),
 {% elif r.redirects %}
-  redirect: (context, state) => firstRedirect([
+  redirect: (context, state) => runRedirect(() => firstRedirect([
 {% for c in r.redirects %}
     () => {{ redirect_call(c) | indent(4) }},
 {% endfor %}
-  ]),
+  ])),
 {% endif %}
   pageBuilder: (context, state, navigationShell) => namedPage({{ r.layout.page_name }}, () => {{ layout_page(r.layout) | indent(2) }}),
   branches: [
@@ -187,13 +187,13 @@ GoRoute(
   caseSensitive: false,
 {% endif %}
 {% if r.redirects | length == 1 %}
-  redirect: (context, state) => {{ redirect_call(r.redirects[0]) | indent(2) }},
+  redirect: (context, state) => runRedirect(() => {{ redirect_call(r.redirects[0]) | indent(2) }}),
 {% elif r.redirects %}
-  redirect: (context, state) => firstRedirect([
+  redirect: (context, state) => runRedirect(() => firstRedirect([
 {% for c in r.redirects %}
     () => {{ redirect_call(c) | indent(4) }},
 {% endfor %}
-  ]),
+  ])),
 {% endif %}
 {% if r.leave %}
   onExit: (context, state) => {{ r.leave | indent(2) }},
@@ -351,7 +351,7 @@ abstract final class AppRoutes {
         extraCodec: {{ extra_codec }},
 {% endif %}
         navigatorKey: rootNavigatorKey,
-        errorBuilder: (context, state) => routing.notFound(state.uri),
+        errorBuilder: (context, state) => routing.errorPage(context, state),
       );
       routing.follow(router);
 {% if attach %}
@@ -480,6 +480,19 @@ abstract final class AppRoutes {
   static Widget notFound(Uri uri) => {{ not_found }};
 {% endif %}
 
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound{{ ", guardError: _guardErrorAt" if guard_errors }});
+{% if guard_errors %}
+
+  /// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
+  static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry{{ ", caseSensitive: false" if not case_sensitive }});
+{% endif %}
+
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).
   static List<RouteMatcher> _matchers = _allMatchers();
@@ -492,9 +505,9 @@ abstract final class AppRoutes {
       {{ l }}
 {% endfor %}
       return UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }});
-    }{{ ", caseSensitive: false" if not m.case_sensitive }}{{ m.observe }}),
+    }{{ ", caseSensitive: false" if not m.case_sensitive }}{{ m.observe }}{{ m.guard_error }}),
 {% else %}
-    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }}){{ ", caseSensitive: false" if not m.case_sensitive }}{{ m.observe }}),
+    RouteMatcher({{ m.pattern }}, (s) => UrlMatch(s.uri, {{ m.route }}, {{ m.params }}, {{ m.data }}){{ ", caseSensitive: false" if not m.case_sensitive }}{{ m.observe }}{{ m.guard_error }}),
 {% endif %}
 {% endfor %}
   ];
@@ -586,6 +599,9 @@ final class _AppRoutesReload extends RoutesReload {
 
   @override
   Widget notFound(Uri uri) => AppRoutes.notFound(uri);
+
+  @override
+  Widget errorPage(BuildContext context, GoRouterState state) => AppRoutes.errorPage(context, state);
 }
 {% if manifest %}
 

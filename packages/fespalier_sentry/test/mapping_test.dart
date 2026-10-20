@@ -140,6 +140,23 @@ void main() {
       },
     );
 
+    testWidgets('a navigation a guard stopped is named navigate, with the '
+        'outcome error, and no not-found breadcrumb', (tester) async {
+      checkout = () => Future<String?>.error(StateError('boom'));
+      final rig = Rig(tracing: true);
+      final r = await rig.boot(tester);
+      await runZonedGuarded(() async {
+        r.go('/checkout');
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+      }, (error, _) {});
+      final tx = only(await rig.sent(tester));
+      expect(tx['transaction'], 'navigate');
+      expect(map(tx['tags'])['fespalier.navigation.outcome'], 'error');
+      expect(rig.sentry.breadcrumbs.join(), isNot(contains('not found')));
+      expect(rig.sentry.breadcrumbs.join(), isNot(contains('not_found')));
+    });
+
     testWidgets('a navigation that a newer one superseded is not sent', (
       tester,
     ) async {

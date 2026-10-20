@@ -133,16 +133,38 @@ class LoginPage extends ConsumerWidget {
   - **A change that does not change the answer does nothing.** A **sign-out runs the
     guard twice**: Riverpod recomputes it, then the router asks again.
   - **Don't `ref.keepAlive()`** in a guard: it keeps one provider alive per navigation.
-  - **A guard that throws never refreshes the router**: on a navigation the error reaches
-    go_router as any redirect's does; when a later run throws, the page you are on stays
-    until the next navigation. The guard's provider does not retry. On a navigation, a guard
-    that throws before it returns ends it in go_router's error route (`errorBuilder` and
-    `onException` get a `GoException`; the generated app shows its not-found view at the asked
-    address), and so does one that fails after an `await` **from go_router 18.1.1**. Before
-    18.1.1 that failure was an uncaught `GoException`, `errorBuilder` and `onException` never
-    got it, and the navigation never ended: the router stayed on the page it was on. Test it
-    by the error route (`router.routerDelegate.currentConfiguration.error`) on 18.1.1 and by
-    the zone's uncaught error before it, never by the exception's message.
+  - **A guard that throws never refreshes the router**: on a navigation its failure reaches go_router
+    as a `GuardFailure` (since 0.21.0, on every go_router): the route's `error.dart` shows when it takes
+    only `error`, `stackTrace` and `retry`, and the not-found view otherwise. go_router builds the error
+    route as a bare page, so that `error.dart` builds its own `Scaffold` and says something a person can
+    act on (not the exception). The failure is reported once, in every build mode
+    (`FlutterError.reportError`: library `fespalier`, context `while running a guard or redirect.dart`),
+    so it reaches `FlutterError.onError`, where `SentryFlutter.init` listens, and a widget test calls
+    `tester.takeException()`, as it does for a failed `startup()`. With `FespalierSentry` next to
+    `SentryFlutter.init`, a failure after an `await` is still one event: the sink's, tagged with the route
+    and the file, comes first, and the report carries the same error object, which Sentry's deduplication
+    (on by default, `enableDeduplication`) drops; with deduplication off it is two. One before the guard
+    returns is the report alone. The navigation ends with the telemetry outcome `error` (the Errors
+    dashboard counts it in "Did a failing check stop a screen from opening?"). After `go` the page it was
+    on is left; after `push` it stays under the error view, covered and not left, and it gets `onFocus`
+    when the view closes; `pushReplacement` and `replace` over other pages leave the page they replaced.
+    A guard that throws before it returns has no DevTools record and no guard span. When a
+    later run throws, the page you are on stays until the next navigation. The guard's provider does not
+    retry. Test it by the error route (after `go`, `router.routerDelegate.currentConfiguration.error` is a
+    `GuardFailure`; after `push` it is `null`, so look at the error view), never by the exception's message.
+  - **After `push`, `pushReplacement` and `replace` over other pages** go_router keeps the failed list in
+    an entry on top of the stack, and the router's own `error` stays `null`. The error view, the report and
+    the outcome `error` are the same. `retry` closes that entry and pushes the same location and `extra`
+    again; the `Future` of the failed `push` completes with `null` when the entry closes, and the pushed page
+    of the retry has no `Future` that anyone awaits. A retry pressed from a dialog or a sheet over the error
+    view closes it first (since 0.21.0), so the retry replaces the error view and not the dialog. A retry held
+    after the entry closed, or while a page is pushed over it, does nothing.
+  - **A refresh after a pushed failure skips the guard** (go_router, fespalier/fespalier#258): a later
+    `GoRouter.refresh()` restores the pushed location without running its redirect and the guarded page
+    shows. A plain `GoRouter` does the same on 17.2.3 to 18.1.1; fespalier does not work around it, and
+    `retry` does not refresh. Since 0.21.0 fespalier's own re-evaluation no longer triggers it after a
+    failed push: the guards a failed navigation ran are closed as it commits, so a sign-out does not
+    refresh the router. An app's own `refresh()` or `refreshListenable` still does.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

@@ -10,6 +10,7 @@ issue_tracker: https://github.com/fespalier/fespalier/issues
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   # Event-driven (no polling): Android's NetworkCallback, iOS's NWPathMonitor, the web's online/offline events.
@@ -30,9 +31,3 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-
-# In this repository the package is built against the fespalier beside it. A dependency's
-# overrides are ignored, so apps never see this.
-dependency_overrides:
-  fespalier:
-    path: ../fespalier

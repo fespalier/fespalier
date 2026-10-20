@@ -10,6 +10,7 @@ issue_tracker: https://github.com/fespalier/fespalier/issues
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   # What a draft's age is read from (since 0.11.0), so a test's fake clock ages it. Flutter's SDK pins 1.1.2.
@@ -34,9 +35,3 @@ dev_dependencies:
   # Flutter's own flutter_test pins the version (3.0.10 on Flutter 3.35, the floor), so the constraint
   # must admit that one.
   leak_tracker_flutter_testing: ^3.0.10
-
-# In this repository the package is built against the fespalier beside it. A dependency's
-# overrides are ignored, so apps never see this.
-dependency_overrides:
-  fespalier:
-    path: ../fespalier

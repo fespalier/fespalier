@@ -10,6 +10,7 @@ issue_tracker: https://github.com/fespalier/fespalier/issues
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   flutter:
@@ -40,8 +41,8 @@ dependencies:
   # File packs download with an http.Client the app provides (so its timeouts, proxy and
   # certificates apply). 1.5.0 is the first http release with abortable requests (Dart 3.4), and
   # crypto 3.0.6 the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
-  http: ">=1.5.0 <2.0.0"
-  crypto: ">=3.0.6 <4.0.0"
+  http: ^1.5.0
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:
@@ -50,13 +51,3 @@ dev_dependencies:
   # Flutter's own flutter_test pins the version (3.0.10 on Flutter 3.35, the floor), so the constraint
   # must admit that one.
   leak_tracker_flutter_testing: ^3.0.10
-
-# In this repository the package is built against the fespalier beside it. A dependency's
-# overrides are ignored, so apps never see this.
-dependency_overrides:
-  fespalier:
-    path: ../fespalier
-  fespalier_download:
-    path: ../fespalier_download
-  fespalier_http:
-    path: ../fespalier_http

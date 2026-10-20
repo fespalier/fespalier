@@ -10,6 +10,7 @@ issue_tracker: https://github.com/fespalier/fespalier/issues
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   # What every expiry check reads the time from, so a test's fake clock ages the tokens.
@@ -18,7 +19,8 @@ dependencies:
   # PKCE's S256 challenge (package:fespalier_auth/oidc.dart).
   crypto: ^3.0.6
   # Only package:fespalier_auth/dio.dart imports it: pure Dart, and tree-shaken when it is not used.
-  dio: ^5.4.0
+  # 5.7.0: the floor fespalier_dio and fespalier_cratestack claim, one constraint per dependency in this repository.
+  dio: ^5.7.0
   flutter:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to
@@ -43,11 +45,3 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-
-# In this repository the package is built against the fespalier beside it. A dependency's
-# overrides are ignored, so apps never see this.
-dependency_overrides:
-  fespalier:
-    path: ../fespalier
-  fespalier_http:
-    path: ../fespalier_http

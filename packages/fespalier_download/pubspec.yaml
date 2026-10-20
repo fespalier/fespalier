@@ -10,6 +10,7 @@ issue_tracker: https://github.com/fespalier/fespalier/issues
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   clock: ^1.1.1
@@ -31,7 +32,7 @@ dependencies:
   # 1.5.0: abortable requests, which the foreground backend aborts a pause or a cancel with.
   http: ^1.5.0
   # The SHA-256 of a finished file (3.0.6 is the first release whose floor is Dart 3.4).
-  crypto: ">=3.0.6 <4.0.0"
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -40,11 +41,3 @@ dev_dependencies:
   # Flutter's own flutter_test pins the version (3.0.10 on Flutter 3.35, the floor), so the constraint
   # must admit that one.
   leak_tracker_flutter_testing: ^3.0.10
-
-# In this repository the package is built against the fespalier beside it. A dependency's
-# overrides are ignored, so apps never see this.
-dependency_overrides:
-  fespalier:
-    path: ../fespalier
-  fespalier_http:
-    path: ../fespalier_http

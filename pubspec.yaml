@@ -1,0 +1,96 @@
+# The pub workspace (dart.dev/tools/pub/workspaces) of the packages that claim Flutter 3.35, fespalier's floor:
+# one resolution for all of them, and Melos's configuration (`dart run melos <command>`). It is not a package and
+# is published nowhere. Apps never read it: they depend on each package by git at the release tag, and pub
+# ignores a dependency's `resolution: workspace`. cli/tests/versions.rs keeps `workspace:` equal to the packages
+# that claim `flutter: ">=3.35.0"` (fespalier_devtools aside), the justfile reads it, and CI's floor job runs
+# each of them in a copy outside it (scripts/floor_copy.py).
+#
+# Outside it on purpose, each resolved on its own: packages/fespalier_sign_keypair (Flutter 3.44),
+# packages/fespalier_download_background (3.47), packages/fespalier_devtools (its lockfile is committed) and
+# every example (what an app resolves).
+name: fespalier_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+workspace:
+  - packages/fespalier
+  - packages/fespalier_adaptive
+  - packages/fespalier_analytics
+  - packages/fespalier_auth
+  - packages/fespalier_biometrics
+  - packages/fespalier_connectivity
+  - packages/fespalier_cratestack
+  - packages/fespalier_dio
+  - packages/fespalier_download
+  - packages/fespalier_flags
+  - packages/fespalier_forms
+  - packages/fespalier_frb
+  - packages/fespalier_http
+  - packages/fespalier_image
+  - packages/fespalier_launch
+  - packages/fespalier_maps
+  - packages/fespalier_otel
+  - packages/fespalier_push
+  - packages/fespalier_riverpod
+  - packages/fespalier_sentry
+  - packages/fespalier_storage
+  - packages/fespalier_tolgee
+
+dev_dependencies:
+  # Melos 8 runs only where the workspace root depends on it (a global install alone says the folder "does not
+  # appear to be within a Melos workspace"), so it is part of the shared resolution. Exact, so that a new Melos
+  # is a deliberate edit (`deps:upgrade` writes the pin exact again; cli/tests/versions.rs checks it). That
+  # does not freeze the dependencies of Melos: no root lockfile is committed, so a release of one of them can
+  # still change what the root resolves. `dart run melos run deps:outdated` shows newer ones.
+  melos: 8.9.0
+
+melos:
+  # No .idea/ run configurations on bootstrap.
+  ide:
+    intellij:
+      enabled: false
+  scripts:
+    check:
+      description: >-
+        What `just flutter` and CI's dart job run in each workspace package, one package after another:
+        dart format (generated *.g.dart left out), flutter analyze, flutter test. `--scope=<package>` for one.
+      exec:
+        command: >-
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0
+          | xargs -0 dart format --output=none --set-exit-if-changed
+          && flutter analyze
+          && flutter test
+        concurrency: 1
+        failFast: true
+    check:format:
+      description: dart format --set-exit-if-changed in each workspace package (generated *.g.dart left out).
+      exec:
+        command: >-
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0
+          | xargs -0 dart format --output=none --set-exit-if-changed
+        concurrency: 1
+        failFast: true
+    check:analyze:
+      description: flutter analyze in each workspace package.
+      exec:
+        command: flutter analyze
+        concurrency: 1
+        failFast: true
+    check:test:
+      description: flutter test in each workspace package.
+      exec:
+        command: flutter test
+        concurrency: 1
+        failFast: true
+    deps:outdated:
+      description: >-
+        What is newer than the constraints allow: the workspace (one resolution), then each package and example
+        outside it (scripts/deps.sh).
+      run: scripts/deps.sh outdated
+    deps:upgrade:
+      description: >-
+        flutter pub upgrade --major-versions in the workspace and in each package and example outside it, so every
+        pubspec moves together (scripts/deps.sh); then run the checks it prints.
+      run: scripts/deps.sh upgrade

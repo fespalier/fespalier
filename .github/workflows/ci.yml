@@ -173,6 +173,8 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # In a package of the pub workspace (the root pubspec.yaml) this resolves the whole workspace at the root:
+      # the package is tested in the resolution it shares with the others.
       - run: flutter pub get
       # After pub get: the formatter reads each package's language version from its package
       # config. Generated files (`*.g.dart`) are left out: fsp writes them unformatted unless
@@ -191,12 +193,37 @@ jobs:
           WORKSPACE: ${{ github.workspace }}
         run: '"$WORKSPACE/scripts/check-const-lints.sh" .'
 
+  # The pub workspace (the root pubspec.yaml) and Melos: one resolution for the packages that claim Flutter 3.35,
+  # and Melos reads its configuration, as `just flutter` does. Each package's format, analyze and test run in
+  # the `dart` job above.
+  workspace:
+    name: Pub workspace (Melos)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: One resolution for the workspace's packages
+        run: dart run melos bootstrap
+      - name: The packages Melos sees
+        run: dart run melos list --relative
+
   # The declared floor. Everything above runs on FLUTTER_VERSION, so "Flutter 3.35 or newer" was never
   # exercised: a call to an API newer than 3.35 compiled and passed here. This runs the package and
   # the companions that claim 3.35 on FLUTTER_FLOOR_VERSION with every dependency at its lowest
   # allowed version (`flutter pub downgrade`, so a constraint nobody tested fails here, as
   # `hooks_riverpod: ^3.2.1` did), then analyzes and tests them.
   # examples/minimal is the one app that goes through the same. `just floor` runs it locally.
+  # The packages are one pub workspace (the root pubspec.yaml), where a downgrade would move every package
+  # together, so each one runs in a copy outside it, on its own (scripts/floor_copy.py).
   #
   # Left out on purpose:
   # - packages/fespalier_sign_keypair: flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so it
@@ -240,9 +267,6 @@ jobs:
           - packages/fespalier_riverpod
           - packages/fespalier_launch
           - examples/minimal
-    defaults:
-      run:
-        working-directory: ${{ matrix.dir }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -253,10 +277,15 @@ jobs:
           flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}
           cache: true
       - run: flutter --version
+      - name: Copy each package out of the workspace (scripts/floor_copy.py)
+        run: python3 scripts/floor_copy.py "$RUNNER_TEMP/floor"
       - run: flutter pub downgrade
+        working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}
       # No `dart format` here: its output depends on the SDK, and the `dart` job checks it.
       - run: flutter analyze
+        working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}
       - run: flutter test
+        working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}
 
   devtools:
     name: DevTools extension (built output is current)

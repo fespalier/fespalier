@@ -455,7 +455,7 @@
           "path": "/",
           "expect": "Hello from fespalier",
           "title": "`/`",
-          "alt": "The minimal example's home page: an app bar with Home and About, Hello from fespalier, and links to item 1, item 2 three times, and item 99."
+          "alt": "The minimal example's home page: an app bar titled Minimal with Home and About, Hello from fespalier, and three rows: Item 1, Item 2 (three of them) and Item 99, which does not exist."
         },
         {
           "file": "item.png",
@@ -469,7 +469,7 @@
           "path": "/items/99",
           "expect": "Couldn't load item #99",
           "title": "`/items/99`",
-          "alt": "The item page's error.dart for an item that does not exist: Couldn't load item #99, with a Retry button."
+          "alt": "The item page's error.dart for an item that does not exist: Couldn't load item #99: No item #99, with a Retry button."
         }
       ]
     },
@@ -524,7 +524,7 @@
           "path": "/orders/1",
           "expect": "Refuse",
           "title": "`/orders/1`",
-          "alt": "An order page with its data loaded and two actions, Refund and Refuse (the action that throws, for the Sentry event)."
+          "alt": "The page of order 1, with its two actions, Refund and Refuse, above the bottom navigation bar with Orders selected."
         }
       ]
     },
@@ -572,14 +572,14 @@
           "path": "/sign-in",
           "expect": "User name",
           "title": "`/sign-in`",
-          "alt": "The sign-in page: a form with User name and Password, on an action."
+          "alt": "The sign-in page: a back arrow and the title Sign in, a form with User name and Password fields, and a Sign in button."
         },
         {
           "file": "guarded.png",
           "path": "/orders",
           "expect": "Sign in to see /orders",
           "title": "`/orders`, signed out",
-          "alt": "A signed-out user who opens /orders lands on the sign-in page, which says Sign in to see /orders and will send them back there."
+          "alt": "The sign-in page a signed-out person gets for /orders: Sign in to see /orders above User name and Password fields and a Sign in button."
         }
       ]
     },
@@ -609,21 +609,21 @@
           "path": "/",
           "expect": "Simulate a tap: order 42",
           "title": "`/`",
-          "alt": "The plugins example's home page: the session, buttons that simulate a notification tap, a home-screen shortcut and a widget tap, and the analytics consent, still undecided."
+          "alt": "The plugins example's home page, titled Plugins: Signed out, buttons that simulate a notification tap (order 42, account, a foreign link), a shortcut and a widget tap, and Analytics: undecided with Allow and Refuse buttons."
         },
         {
           "file": "order.png",
           "path": "/orders/42",
           "expect": "Order 42",
           "title": "`/orders/42`",
-          "alt": "Order 42, the page a notification tap opens."
+          "alt": "Order 42: an app bar with a back arrow and the title Order 42, and an empty page below it."
         },
         {
           "file": "login.png",
           "path": "/account",
           "expect": "Log in to see /account",
           "title": "`/account`, signed out",
-          "alt": "The members-only account page, opened signed out: the login page says Log in to see /account."
+          "alt": "The login page a signed-out person gets for /account: an app bar titled Log in, Log in to see /account, and a Sign in button."
         }
       ]
     },

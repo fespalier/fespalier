@@ -1,6 +1,6 @@
 # Run the examples
 
-Start with [`examples/minimal`](../examples/minimal), then read on for what each of the others shows.
+Start with [`examples/minimal`](../examples/minimal), then read on for what each of the others shows. Each example's README also has screenshots of its web build, made by `just example-screenshots`.
 
 Trees that `fsp` rejects are not examples: the smallest broken app folder for each of fifteen common diagnostics, with the output of `fsp check --json` beside it, is under [`cli/tests/fixtures/diagnostics/`](https://github.com/fespalier/fespalier/blob/main/cli/tests/fixtures/diagnostics/README.md). They are what the troubleshooting skill's messages are tested against.
 

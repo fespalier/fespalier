@@ -1,0 +1,168 @@
+{
+  "adopt": {
+    "legacy.png": {
+      "spec": "623b8db711e8dba17af166d7ed273b37081fea50ef7b2e480228a014f3361b93",
+      "png": "3294caf0bd56b6a946b83caa13bd266376b618a43ba39aeb53ff0c13a26a0002"
+    },
+    "product.png": {
+      "spec": "83311ca96c4f060dfa1d012af5ef22390438b6e4ee7df90618f6e90ef6b6734c",
+      "png": "85da9fb22f50a11adbde706d0719749c99feeea9428d9cbf8484badd2e569da2"
+    },
+    "shop.png": {
+      "spec": "5c75596fd9409d58f57d49774d577c01e6c6ba01f2448d953f89787c0603467d",
+      "png": "6ba8a6d8b9f312d37022c435d847beb4715a22406b17f657da336a91957b6b1d"
+    }
+  },
+  "auth": {
+    "guarded.png": {
+      "spec": "9912dd0f15824c20eb32ba33ee5a1bad90b3a6bfb1cb5b6cf85331bb7e8a0703",
+      "png": "066ba820c7bc26478cd48b15cbecbe2155710ddc4a6c9d6cc958d6ddad7daa07"
+    },
+    "home.png": {
+      "spec": "2ea177c5530553cbe063129d1ac7fe9b16a4c6556bb893983c9e9bbfa932628a",
+      "png": "86a4e543e22f218e06688fcfd55264325e6f271db4b3307a42669b44495f2eb5"
+    },
+    "sign-in.png": {
+      "spec": "5b0f52148f9403cbe7177d1b52f8e798cbdedd3cf3ba6cd9174172686b1b18ff",
+      "png": "18c023f885849d2b90bff58d59607d928294203818728c5f38d8a2dd665a9b3d"
+    }
+  },
+  "cose": {
+    "home.png": {
+      "spec": "7b9db4e1105c8fc295f922d7b4cbdc9bac0769f4c1255c1c8028ff227f5c73f1",
+      "png": "b0230f8df722be852b6b67cbd3f8e767f007eddc89e93add7ddb65b49680a7d2"
+    }
+  },
+  "downloads": {
+    "home.png": {
+      "spec": "3f08b78150ecee7d0c789f08701f0851ba215570ad5e3c452f92ff1f788b7cdb",
+      "png": "0ff0c6ba2ae69051af9e05b96ea97d612b6c9c4e3ca4e24085329d092bec4dcb"
+    },
+    "large.png": {
+      "spec": "14f7400a8141904374ecd9d2673b4cb1a1d65267ffe1b314d4b00ee44303e9af",
+      "png": "6c7b8a856f8d5ba806747499da74523427068ae0c42ff2a1cbe56e21af5e73f8"
+    }
+  },
+  "features": {
+    "nickname.png": {
+      "spec": "f7fffb757690a0de4fc471b707ad4115067c4b5977eadcfbd608569ce803aa79",
+      "png": "ef1299e32a6bd65467a095aa9a04decddc339e2204c0b068b75aaf638f196fc4"
+    },
+    "share.png": {
+      "spec": "2411c9e631d87c7ae3e387ea994a6e6c70d544ccc77f163258b0e755bd50f02c",
+      "png": "8cd418aef5cc0190e2bfff2f3872b410cf52aa0ad5bc0a1ee7a72f88d43bb373"
+    },
+    "team.png": {
+      "spec": "b2bd750ad399f66fc116328c0df95deabb54ae0035e504919aecac33a9e1fc8f",
+      "png": "59c15cd4b3054a2d74a0cffcc2fea2a9c6531c60d9e8f4854ed2748fb5bc40ad"
+    }
+  },
+  "i18n": {
+    "en.png": {
+      "spec": "10fed22eaa1930b23cdc4e8b44d6dca44162633c485f34c685f223aaf2b08c9c",
+      "png": "bc48b3d863f7935674baaa96f8a9abd6a370348c2a2b6916ab7b7bd81bb829b0"
+    },
+    "fr.png": {
+      "spec": "f03d74b6a89271f41e3f002c3840d9c8c77a5d08856814730240122522ef2771",
+      "png": "b808fe9b683db4704221a26275bcc5ea3f31e5db3c507053a2d44556edbd311a"
+    },
+    "produits.png": {
+      "spec": "ec2a24d07daf828b3e8704c43f89672ec57ac0533b3fa327fa41d392d0d6cedf",
+      "png": "bc82895dbfc4cc08a1725ac0052365c3c9177858c214adc4280c6e17674cbcf8"
+    }
+  },
+  "maps": {
+    "home.png": {
+      "spec": "9f00c3687dddc21e0bedd5793fe190cae2e6c247b4d81fdcb9f31f7c45cbcda1",
+      "png": "fa2070b47db24a6d25f80198eb55a22ec00c2c57ff9ff63858efc0fdc07dc3c0"
+    },
+    "offline.png": {
+      "spec": "cae4ae345abc8d04b318e965b68a737a7ffff5a1f09d6bd1bcc99c7a8734307f",
+      "png": "223685487c6535e1025f7407af47f2c5711155f148c53140c6bf43e11b509a44"
+    }
+  },
+  "minimal": {
+    "error.png": {
+      "spec": "ce4f893ce51dc6702130adbac13cd0fee22710673c3c65dfca5a26d0b7eb78bd",
+      "png": "5629484f04e43807b10b7d360028f27c143e630f952c586bad21e4f474782070"
+    },
+    "home.png": {
+      "spec": "0fa5093deab021c81d3b8464885ca853f6d15e00e3cee997be853885de75c609",
+      "png": "ca4f6a4d35e83625e54ab9fe62a7b1966af115ff71e2c9b0203c117c392a351e"
+    },
+    "item.png": {
+      "spec": "b34d41b60c700af67ae54166ee3b84fe6d6e82cd8504ca8612f7a7a4900ecfea",
+      "png": "9680fb8186d49a481ac6c9dc9a19558756d687637703c8841f03a3cbff0332fd"
+    }
+  },
+  "offline": {
+    "note.png": {
+      "spec": "2c7e1bd6b9850286214993472381f43c08e8c56c07561f20cefff9694aaec259",
+      "png": "220dd4e7a8ecb88aa247acc661b9dc6ed079042b70752651768d56a870ee53ec"
+    },
+    "notes.png": {
+      "spec": "67a0256ba1642ab9bfba41655299d97c3a26adbe5c9d7e0ebcfce1d8338d6e87",
+      "png": "52d784da2a3bb54f54d607050709c18db1da0c8ff28585f5612920c763009ff1"
+    },
+    "orders.png": {
+      "spec": "da4ba086d9427b352d78b8d3d5d7f36adf7461aff95c28a2a72ebf4dd3a98dc2",
+      "png": "85ed73122b007b9849a0a77cd20d12c00845707e9373a51683648ee56c55f7be"
+    }
+  },
+  "plugins": {
+    "home.png": {
+      "spec": "be19345023f2eb64debf7fae498450431e6df8ba1a4b9003be47a4f59f3cdba7",
+      "png": "d555792d328f6e6cc876a6aef26a7fbfd0756a7f8b9a2f62a2c622c533e78166"
+    },
+    "login.png": {
+      "spec": "79cf09817dae7e4d207d54fbf88a88156d495fe0561e6a5cb2c7458528c3d922",
+      "png": "496f31c5cd8c6071a6c3f01eb89d300c10f6f302679af9de33bc1dd745eb2fd4"
+    },
+    "order.png": {
+      "spec": "186cc01aec14f62982ca21c1203586991f0b9fee45559077ba0c2c5cd48df4de",
+      "png": "61361ad3dd445a6c94210ff82e069ee641c5c4ec55dd7df7b38e4b8fa593b31a"
+    }
+  },
+  "shop": {
+    "home.png": {
+      "spec": "e0a65d156f3d0ee94e97e3e0ece17579e290bbd46a3b1ff7ccf24a8486f78a66",
+      "png": "ea8445da0f9e58c25ce1b686a289b45f12db48b4003f56d0b5aaaf385540bdd5"
+    },
+    "product.png": {
+      "spec": "dcde1b4ca2bb3da9a67f38d59d5bcc91566f26a7b028d469212533c838c91eb8",
+      "png": "91cb2b86f5d731db117e7400bdc53337c617629cf0ffb93d32ef1e3b8af14e14"
+    },
+    "products.png": {
+      "spec": "f6c5d6f09daa9ad0e03c543146b8e53523b4a2f44c717d5785a1f649b6a12b69",
+      "png": "0ee19fe3aabe03ea2ca8c53571358a5adf7cbb4c1fe42f43573b337fdb2a38a1"
+    }
+  },
+  "tabs": {
+    "books-wide.png": {
+      "spec": "5a0436360f60b4d71e226642c72f937fc1219a20fca296a3abf1bc5caec52f3f",
+      "png": "f96e4e76677de6c41645496b81eccb4340f6be6436d67774cf0fd4d688d67140"
+    },
+    "books.png": {
+      "spec": "46757158cbe402ecefa99611478bce075c329c6dee0b614bd4412e0bc9b142f3",
+      "png": "c56835b4cbad1654bba6e68ecc502c7e822ce389d9472c68f7a6e300f19b667f"
+    },
+    "profile.png": {
+      "spec": "b7d6bb13c2ba26c859a75c6191c5ff0b5c1807483d792c48d92f521c2137955c",
+      "png": "e6cde5ec292797ab0c5f768343da0de80c9defa8ae6b561837f5b30dca3e1e88"
+    }
+  },
+  "telemetry": {
+    "home.png": {
+      "spec": "d604c59bc964242ab494d16b0d7bf09cb76ab7722d870d0517fe603391d6c8f4",
+      "png": "c2f8c0f84158aaf094e66cbb10da039a0c47755f8f71642410105a74250c3960"
+    },
+    "order.png": {
+      "spec": "ae816342091104b80dc488a396192a1ba4275c97d20015f6c96129f20a3b37a4",
+      "png": "a3106726d34cdb4adf8b1d8bbd4a11db65fbe3d482aba74f8d0cc9fc41b0c4bc"
+    },
+    "orders.png": {
+      "spec": "b8e05a78e9c5aeebdf0ae673f6a05de22e5a310b59705b5e262f3d8c4d8e79e7",
+      "png": "a8feb6589f93e4bd6b0d51d22678f4db0d48f9e041f21e7d07928a39cd83417d"
+    }
+  }
+}

@@ -286,7 +286,8 @@ example-screenshots *names:
     node ci/web-routes/example-images.mjs
 
 # The examples' README screenshots match ci/web-routes/examples.json: every shot is there, of its size, within the
-# byte budget, shown by its README, and one of the URLs `just examples-web` opens (no browser, no build)
+# byte budget, shown by its README, made from the current spec and not edited since (ci/web-routes/example-shots.lock.json),
+# and one of the URLs `just examples-web` opens (no browser, no build)
 example-images:
     node ci/web-routes/example-images.mjs
 

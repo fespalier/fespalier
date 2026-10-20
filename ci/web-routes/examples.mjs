@@ -38,10 +38,16 @@
 // --print also prints every text each page shows (to write an `expect`).
 //
 // `shots` takes a screenshot of a URL of the entry that passes these checks (a shot is one of the
-// entry's URLs: the same path and the same expect), once the page settles: two captures 300 ms apart
-// are the same bytes (a spinner or a blinking cursor never settles: pick another screen). The images
-// are optimised with a pinned oxipng (Docker; FSP_OXIPNG=/path/to/oxipng uses a local binary), held to
-// the byte budget, and only then replace the example's images in <out dir>.
+// entry's URLs: the same path and the same expect), once the page settles: three captures in a row
+// are the same bytes, less than 500 ms apart and over more than 500 ms, so a blinking text caret (it
+// shows for 500 ms and hides for 500 ms) or a spinner never settles: pick another screen (shots.mjs).
+// The images are optimised with a pinned oxipng (Docker; FSP_OXIPNG=/path/to/oxipng uses a local
+// binary) and held to the byte budget; only then are they written to <out dir>, where they replace
+// the example's images: any other `*.png` there that is no shot of the entry is deleted (a shot that
+// was removed) and nothing else is touched. The shots' hashes go to example-shots.lock.json, next to
+// this file (FSP_SHOTS_LOCK=/path/to/lock.json writes another file, for a trial run into a folder of
+// your own), which example-images.mjs checks against the spec and the images, so an image whose spec
+// changed is noticed without a browser.
 //
 // FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk; otherwise Playwright's own
 // (`npx --no-install playwright install chromium` in this folder).
@@ -65,6 +71,16 @@ import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import {
+  LOCK_FILE,
+  SETTLE_GAP,
+  SETTLE_MS,
+  SETTLE_RUN,
+  SETTLE_SPAN,
+  settle,
+  sha256,
+  specHash,
+} from "./shots.mjs";
 
 const SPEC = JSON.parse(
   readFileSync(
@@ -80,8 +96,6 @@ const TIMEOUT = 20000;
 const QUIET = 2000;
 // How long to wait for the network to go idle once the texts have settled.
 const IDLE = 5000;
-// How many 300 ms polls a screenshot waits for its screen to settle (about 10 s).
-const SETTLE_TRIES = 33;
 // The oxipng that optimises the screenshots, pinned by digest.
 const OXIPNG =
   "ghcr.io/shssoichiro/oxipng:v9.1.5@sha256:e1623b0da9f14b63b242ffb78e4eef4ba0f09c9159880d238665af4654c75b4f";
@@ -309,16 +323,28 @@ const open = async (browser, base, url, viewport) => {
   return { context, page, problems, seen, at };
 };
 
-/** Two captures 300 ms apart that are the same bytes, or null. */
-const settle = async (page) => {
-  let last = await page.screenshot();
-  for (let i = 0; i < SETTLE_TRIES; i++) {
-    await page.waitForTimeout(300);
-    const next = await page.screenshot();
-    if (next.equals(last)) return next;
-    last = next;
-  }
-  return null;
+/** Writes the lock's entries for the images of this entry's shots in `out`, keeping the other examples'. */
+const writeLock = (out, shots) => {
+  const file =
+    process.env.FSP_SHOTS_LOCK ??
+    fileURLToPath(new URL(LOCK_FILE, import.meta.url));
+  const lock = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+  lock[name] = Object.fromEntries(
+    shots
+      .map((shot) => [
+        shot.file,
+        {
+          spec: specHash(SPEC, name, shot),
+          png: sha256(readFileSync(join(out, shot.file))),
+        },
+      ])
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  const sorted = Object.fromEntries(
+    Object.entries(lock).sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  writeFileSync(file, `${JSON.stringify(sorted, null, 2)}\n`);
+  console.log(`wrote the hashes of ${shots.length} images to ${file}`);
 };
 
 /** Optimises the PNGs of `dir` in place with oxipng; false when it failed. */
@@ -374,7 +400,7 @@ const shoot = async (browser, base, out) => {
         if (png) writeFileSync(join(temp, shot.file), png);
         else
           problems.push(
-            "the screen did not settle within 10 s (a spinner, a cursor or an animation)",
+            `the screen did not settle within ${SETTLE_MS / 1000} s: it never gave ${SETTLE_RUN} captures in a row that are the same bytes, less than ${SETTLE_GAP} ms apart and over more than ${SETTLE_SPAN} ms (a spinner, a blinking cursor or an animation)`,
           );
       }
       await context.close();
@@ -401,12 +427,20 @@ const shoot = async (browser, base, out) => {
         return false;
       }
     }
-    rmSync(out, { recursive: true, force: true });
+    // `out` is not emptied: it may hold more than images. Only a `*.png` that is no shot of the
+    // entry (one that was removed from the spec) goes; the shots' files are written over.
     mkdirSync(out, { recursive: true });
+    for (const file of readdirSync(out)) {
+      if (file.endsWith(".png") && !shots.some((shot) => shot.file === file)) {
+        console.log(`removed ${file}: it is no shot of ${name}`);
+        rmSync(join(out, file), { force: true });
+      }
+    }
     for (const shot of shots) {
       copyFileSync(join(temp, shot.file), join(out, shot.file));
     }
     console.log(`wrote ${shots.length} images to ${out}`);
+    writeLock(out, shots);
     return true;
   } finally {
     rmSync(temp, { recursive: true, force: true });

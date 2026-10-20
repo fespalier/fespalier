@@ -330,6 +330,7 @@ class Seed:
             "errors/guard_errors": count(
                 both(op("guard", "redirect"), is_("fespalier.guard.decision", "error"))
             ),
+            "errors/stopped_screens": count(both(navigate, is_("fespalier.navigation.outcome", "error"))),
         }
 
     def rates(self):

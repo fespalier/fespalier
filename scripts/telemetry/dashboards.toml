@@ -176,6 +176,8 @@ data_timed_sel = '{sel:data}, fespalier_data_state=~"data|error"'
 data_error_sel = '{sel:data}, fespalier_data_state="error"'
 data_ok_sel = '{sel:data}, fespalier_data_state="data"'
 nav_matched_sel = '{sel:navigate}, fespalier_navigation_outcome=~"ok|error"'
+nav_stopped_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'error'"
+nav_stopped_sel = '{sel:navigate}, fespalier_navigation_outcome="error"'
 action_error_sel = '{sel:action}, fespalier_action_result="error"'
 action_ok_sel = '{sel:action}, fespalier_action_result="ok"'
 failed_sel = '{sel}, status_code="STATUS_CODE_ERROR", fespalier_operation!="navigate"'
@@ -751,6 +753,18 @@ description = "What broke, where, and with which error: failed checks, loads, ac
   sql = "SELECT COUNT(*) AS errors {from} WHERE {guard_sql} AND fespalier_guard_decision = 'error' AND {svc}"
   columns = [{ name = "errors" }]
   promql = [{ expr = 'sum(sum_over_time(fespalier_calls{ {guard_sel}, fespalier_guard_decision="error" }[$__range]))' }]
+
+  # A navigation that ends `error` (since 0.21.0) was stopped by a check that threw. A check that threw
+  # before it returned has no span of its own, so "Did a check throw?" above does not see it; this tile does.
+  [[dashboard.panels]]
+  id = "stopped_screens"
+  title = "Did a failing check stop a screen from opening?"
+  type = "stat"
+  verdict = "error_count"
+  description = "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the debug report names the others."
+  sql = "SELECT COUNT(*) AS stopped {from} WHERE {nav_stopped_sql} AND {svc}"
+  columns = [{ name = "stopped" }]
+  promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {nav_stopped_sel} }[$__range]))" }]
 
   [[dashboard.panels]]
   id = "failed_over_time"

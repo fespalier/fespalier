@@ -317,6 +317,73 @@
           }
         },
         {
+          "id": "panel_stopped_screens",
+          "type": "metric",
+          "title": "Did a failing check stop a screen from opening?",
+          "description": "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the debug report names the others.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0,
+            "mappings": [
+              {
+                "type": "gte",
+                "value": "0",
+                "color": "#0ca30c"
+              },
+              {
+                "type": "gte",
+                "value": "1",
+                "color": "#fab219"
+              },
+              {
+                "type": "gte",
+                "value": "10",
+                "color": "#d03b3b"
+              }
+            ]
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS stopped FROM \"default\" WHERE fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'error' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "stopped",
+                    "alias": "stopped",
+                    "column": "stopped",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 14,
+            "w": 48,
+            "h": 8,
+            "i": 6
+          }
+        },
+        {
           "id": "panel_failed_over_time",
           "type": "bar",
           "title": "When did things fail?",
@@ -374,10 +441,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 14,
+            "y": 22,
             "w": 192,
             "h": 16,
-            "i": 6
+            "i": 7
           }
         },
         {
@@ -496,10 +563,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 30,
+            "y": 38,
             "w": 192,
             "h": 16,
-            "i": 7
+            "i": 8
           }
         },
         {
@@ -553,10 +620,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 46,
+            "y": 54,
             "w": 96,
             "h": 16,
-            "i": 8
+            "i": 9
           }
         },
         {
@@ -610,10 +677,10 @@
           ],
           "layout": {
             "x": 96,
-            "y": 46,
+            "y": 54,
             "w": 96,
             "h": 16,
-            "i": 9
+            "i": 10
           }
         },
         {
@@ -743,10 +810,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 62,
+            "y": 70,
             "w": 192,
             "h": 16,
-            "i": 10
+            "i": 11
           }
         },
         {
@@ -817,10 +884,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 78,
+            "y": 86,
             "w": 192,
             "h": 16,
-            "i": 11
+            "i": 12
           }
         }
       ]

@@ -19,6 +19,14 @@ runs and is tested with no network.
   tokens rotate: a second refresh with the same token would fail, which is why the refresh is a
   single flight.
 
+## Screenshots
+
+| `/`                                                                                                                 | `/sign-in`                                                                                                                                                             | `/orders`, signed out                                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The auth example's public home page: Signed out, and a Sign in button.](../../docs/images/examples/auth/home.png) | ![The sign-in page: a back arrow and the title Sign in, a form with User name and Password fields, and a Sign in button.](../../docs/images/examples/auth/sign-in.png) | ![The sign-in page a signed-out person gets for /orders: Sign in to see /orders above User name and Password fields and a Sign in button.](../../docs/images/examples/auth/guarded.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots auth`).
+
 ## Tests
 
 `test/` runs against the demo server on the test's fake clock: `guards_test.dart` (`fakeAuth`),

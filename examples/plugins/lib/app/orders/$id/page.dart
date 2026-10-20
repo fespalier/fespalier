@@ -7,6 +7,8 @@ class OrderPage extends StatelessWidget {
   final int id;
 
   @override
-  Widget build(BuildContext context) =>
-      Scaffold(appBar: AppBar(title: Text('Order $id')));
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text('Order $id')),
+    body: Center(child: Text('Order $id has shipped.')),
+  );
 }

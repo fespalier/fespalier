@@ -27,6 +27,14 @@ The queue is in memory here, so a queued change is lost when the app exits. A de
 `HiveLocalStore` (`package:fespalier_cratestack/hive.dart`) so it survives; see the
 [wiring page](../../skills/fespalier-cratestack/references/wiring.md) of the `fespalier-cratestack` skill.
 
+## Screenshots
+
+| `/orders`                                                                                                                                                                                            | `/notes`                                                                                                         | `/notes/n1`                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The offline example's orders: an Online switch and Sign out in the app bar, three orders with a Cancel button each, and the Orders and Notes tabs.](../../docs/images/examples/offline/orders.png) | ![The notes this phone owns: Groceries, Milk, eggs, and New note.](../../docs/images/examples/offline/notes.png) | ![A note being edited: the copy on this phone, Title and Body fields, Save, and Rename on the other phone to make a conflicting edit.](../../docs/images/examples/offline/note.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots offline`).
+
 ## Skills
 
 Read it with [`fespalier-offline`](../../skills/fespalier-offline/SKILL.md) (what a write is, `serve`, intents, owned

@@ -20,6 +20,14 @@ Read it with the skills [`fespalier-cratestack`](../../skills/fespalier-cratesta
 [`fespalier-offline`](../../skills/fespalier-offline/SKILL.md) (reads that say how current they are, intents).
 [CrateStack and fespalier](../../docs/cratestack.md) and [Offline-first](../../docs/offline-first.md) are the pages.
 
+## Screenshots
+
+| Screen                                                                                                                                                                                                  | What it shows                                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The cose example's Notes page with no server running: this device's key, The server did not answer, No notes yet, and a New note field with an Add button.](../../docs/images/examples/cose/home.png) | With no server running, the page shows this device's key and that the server did not answer. `just cose` is the signed round trip against the real server. |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots cose`). The device key is made at start, so it differs on every run.
+
 ## Run it
 
 Two terminals. The server first (Rust, the toolchain in `server/rust-toolchain.toml`):
@@ -39,7 +47,7 @@ is the object the app pins). Passing the line's `addr` instead is the easy mista
 
 ```sh
 cd examples/cose
-flutter create . --platforms=android,ios   # adds platform folders only
+flutter create --empty . --platforms=android,ios   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run \
   --dart-define=COSE_SERVER_JWK='{"crv":"P-256","kty":"EC","x":"...","y":"..."}' \
@@ -75,7 +83,7 @@ another: the page says it kept the note under its key; start the server again an
 
 ### On macOS
 
-macOS runs, and it needs one thing beyond the defaults: `flutter create . --platforms=macos` makes a
+macOS runs, and it needs one thing beyond the defaults: `flutter create --empty . --platforms=macos` makes a
 sandboxed app whose entitlements allow `network.server` (the Dart VM service) but **not
 `network.client`**, so every outbound request is blocked and the app only shows its "the server did
 not answer" copy. `macos/Runner/{DebugProfile,Release}.entitlements` add

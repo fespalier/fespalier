@@ -1,11 +1,14 @@
-// Opens every example's routes in Chromium against its release web build (`just examples-web`).
+// Opens every example's routes in Chromium against its release web build (`just examples-web`), and
+// takes the screenshots its README shows (`just example-screenshots`).
 //
 //   node examples.mjs check <example> <build/web dir> [--print]
+//   node examples.mjs shots <example> <build/web dir> <out dir>
 //
 // scripts/check-examples-web.sh builds the example (a throwaway copy, `--no-web-resources-cdn`) and
 // runs this. examples.json, next to this file, says per example which URLs to open and the text each
 // must show (`urls`), which routes are not opened and why (`skip`), what may be logged or fetched and
-// why (`allow`) and the `--dart-define`s of its build (`defines`). cli/tests/examples_web.rs keeps
+// why (`allow`), the `--dart-define`s of its build (`defines`) and its screenshots (`shots`), which
+// example-images.mjs keeps in step with docs/images/examples/ and the READMEs. cli/tests/examples_web.rs keeps
 // `urls` and `skip` in step with `fsp routes --json`: a URL that no route of the tree answers says
 // why (`notFound`: the not-found page is the point; `handWritten`: a go_router route of the app's
 // own answers it), which only that test reads.
@@ -34,16 +37,50 @@
 //
 // --print also prints every text each page shows (to write an `expect`).
 //
+// `shots` takes a screenshot of a URL of the entry that passes these checks (a shot is one of the
+// entry's URLs: the same path and the same expect), once the page settles: three captures in a row
+// are the same bytes, less than 500 ms apart and over more than 500 ms, so a blinking text caret (it
+// shows for 500 ms and hides for 500 ms) or a spinner never settles: pick another screen (shots.mjs).
+// The images are optimised with a pinned oxipng (Docker; FSP_OXIPNG=/path/to/oxipng uses a local
+// binary) and held to the byte budget; only then are they written to <out dir>, where they replace
+// the example's images: any other `*.png` there that is no shot of the entry is deleted (a shot that
+// was removed) and nothing else is touched. The shots' hashes go to example-shots.lock.json, next to
+// this file (FSP_SHOTS_LOCK=/path/to/lock.json writes another file, for a trial run into a folder of
+// your own), which example-images.mjs checks against the spec and the images, so an image whose spec
+// changed is noticed without a browser.
+//
 // FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk; otherwise Playwright's own
 // (`npx --no-install playwright install chromium` in this folder).
 //
-// Exit codes: 0 every URL passed, 1 one failed (or the example has no URL to check), 2 usage or an
-// unknown example.
+// Exit codes: 0 every URL (or shot) passed, 1 one failed (or the example has no URL to check), 2 usage
+// or an unknown example.
+import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import {
+  LOCK_FILE,
+  SETTLE_GAP,
+  SETTLE_MS,
+  SETTLE_RUN,
+  SETTLE_SPAN,
+  settle,
+  sha256,
+  specHash,
+} from "./shots.mjs";
 
 const SPEC = JSON.parse(
   readFileSync(
@@ -59,6 +96,9 @@ const TIMEOUT = 20000;
 const QUIET = 2000;
 // How long to wait for the network to go idle once the texts have settled.
 const IDLE = 5000;
+// The oxipng that optimises the screenshots, pinned by digest.
+const OXIPNG =
+  "ghcr.io/shssoichiro/oxipng:v9.1.5@sha256:e1623b0da9f14b63b242ffb78e4eef4ba0f09c9159880d238665af4654c75b4f";
 const MIME = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -75,13 +115,15 @@ const MIME = {
 
 const usage = () => {
   console.error(
-    "usage: node examples.mjs check <example> <build/web dir> [--print]",
+    "usage: node examples.mjs check <example> <build/web dir> [--print]\n" +
+      "       node examples.mjs shots <example> <build/web dir> <out dir>",
   );
   process.exit(2);
 };
 
 const [mode, name, buildDir, ...rest] = process.argv.slice(2);
-if (mode !== "check" || !name || !buildDir) usage();
+if (!["check", "shots"].includes(mode) || !name || !buildDir) usage();
+if (mode === "shots" && rest.length !== 1) usage();
 const entry = SPEC.examples[name];
 if (!entry) {
   console.error(`examples.json has no entry for ${name}`);
@@ -281,6 +323,130 @@ const open = async (browser, base, url, viewport) => {
   return { context, page, problems, seen, at };
 };
 
+/** Writes the lock's entries for the images of this entry's shots in `out`, keeping the other examples'. */
+const writeLock = (out, shots) => {
+  const file =
+    process.env.FSP_SHOTS_LOCK ??
+    fileURLToPath(new URL(LOCK_FILE, import.meta.url));
+  const lock = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+  lock[name] = Object.fromEntries(
+    shots
+      .map((shot) => [
+        shot.file,
+        {
+          spec: specHash(SPEC, name, shot),
+          png: sha256(readFileSync(join(out, shot.file))),
+        },
+      ])
+      .sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  const sorted = Object.fromEntries(
+    Object.entries(lock).sort(([a], [b]) => (a < b ? -1 : 1)),
+  );
+  writeFileSync(file, `${JSON.stringify(sorted, null, 2)}\n`);
+  console.log(`wrote the hashes of ${shots.length} images to ${file}`);
+};
+
+/** Optimises the PNGs of `dir` in place with oxipng; false when it failed. */
+const optimise = (dir) => {
+  const files = readdirSync(dir).filter((f) => f.endsWith(".png"));
+  const args = ["-o", "4", "--strip", "safe", ...files];
+  const run = process.env.FSP_OXIPNG
+    ? spawnSync(process.env.FSP_OXIPNG, args, { cwd: dir, stdio: "inherit" })
+    : spawnSync(
+        "docker",
+        ["run", "--rm", "-v", `${dir}:/work`, "-w", "/work", OXIPNG, ...args],
+        { stdio: "inherit" },
+      );
+  return run.status === 0;
+};
+
+/**
+ * The entry's screenshots. Each shot is one of its URLs (the same path and expect), opened with the
+ * checks `check` makes, and taken once the page settles. The images replace those in `out` only when
+ * every shot passed, was optimised and fits the budget. Returns whether that happened.
+ */
+const shoot = async (browser, base, out) => {
+  const shots = entry.shots ?? [];
+  if (shots.length === 0 || shots.length > SPEC.budget.perExample) {
+    console.error(
+      `${name} has ${shots.length} shots; 1 to ${SPEC.budget.perExample} are allowed`,
+    );
+    return false;
+  }
+  const temp = mkdtempSync(join(tmpdir(), "fespalier-example-shots-"));
+  try {
+    let failed = false;
+    for (const shot of shots) {
+      const url = entry.urls.find(
+        (u) => u.path === shot.path && u.expect === shot.expect,
+      );
+      if (!url || url.known) {
+        failed = true;
+        console.error(
+          `FAIL: ${name} ${shot.file}: ${shot.path} is not a URL of the entry that shows "${shot.expect}", or it is known`,
+        );
+        continue;
+      }
+      const viewport = { ...SPEC.viewport, ...(shot.viewport ?? {}) };
+      const { context, page, problems } = await open(
+        browser,
+        base,
+        url,
+        viewport,
+      );
+      if (problems.length === 0) {
+        const png = await settle(page);
+        if (png) writeFileSync(join(temp, shot.file), png);
+        else
+          problems.push(
+            `the screen did not settle within ${SETTLE_MS / 1000} s: it never gave ${SETTLE_RUN} captures in a row that are the same bytes, less than ${SETTLE_GAP} ms apart and over more than ${SETTLE_SPAN} ms (a spinner, a blinking cursor or an animation)`,
+          );
+      }
+      await context.close();
+      if (problems.length === 0) {
+        console.log(`shot: ${name} ${shot.path} -> ${shot.file}`);
+      } else {
+        failed = true;
+        console.error(`FAIL: ${name} ${shot.path} (${shot.file})`);
+        for (const p of problems) console.error(`  ${p}`);
+      }
+    }
+    if (failed) return false;
+    if (!optimise(temp)) {
+      console.error("oxipng failed; no image was replaced");
+      return false;
+    }
+    for (const shot of shots) {
+      const size = statSync(join(temp, shot.file)).size;
+      console.log(`  ${shot.file}: ${size} bytes`);
+      if (size > SPEC.budget.perImage) {
+        console.error(
+          `${shot.file} is ${size} bytes, over the budget of ${SPEC.budget.perImage}: pick a calmer screen, never a lower scale`,
+        );
+        return false;
+      }
+    }
+    // `out` is not emptied: it may hold more than images. Only a `*.png` that is no shot of the
+    // entry (one that was removed from the spec) goes; the shots' files are written over.
+    mkdirSync(out, { recursive: true });
+    for (const file of readdirSync(out)) {
+      if (file.endsWith(".png") && !shots.some((shot) => shot.file === file)) {
+        console.log(`removed ${file}: it is no shot of ${name}`);
+        rmSync(join(out, file), { force: true });
+      }
+    }
+    for (const shot of shots) {
+      copyFileSync(join(temp, shot.file), join(out, shot.file));
+    }
+    console.log(`wrote ${shots.length} images to ${out}`);
+    writeLock(out, shots);
+    return true;
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+};
+
 const main = async () => {
   const server = await serve(buildDir);
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -292,51 +458,55 @@ const main = async () => {
   console.log(`${name}: chromium ${browser.version()}, ${base}`);
   let failed = false;
   try {
-    for (const url of entry.urls) {
-      const { context, problems, seen, at } = await open(
-        browser,
-        base,
-        url,
-        SPEC.viewport,
-      );
-      await context.close();
-      if (url.known) {
-        // A failure someone is fixing elsewhere: reported, not failed. Only the problem it names.
-        const named = problems.filter((p) => p.includes(url.known.problem));
-        const others = problems.filter((p) => !p.includes(url.known.problem));
-        if (named.length === 0) {
+    if (mode === "shots") {
+      failed = !(await shoot(browser, base, resolve(rest[0])));
+    } else {
+      for (const url of entry.urls) {
+        const { context, problems, seen, at } = await open(
+          browser,
+          base,
+          url,
+          SPEC.viewport,
+        );
+        await context.close();
+        if (url.known) {
+          // A failure someone is fixing elsewhere: reported, not failed. Only the problem it names.
+          const named = problems.filter((p) => p.includes(url.known.problem));
+          const others = problems.filter((p) => !p.includes(url.known.problem));
+          if (named.length === 0) {
+            failed = true;
+            console.error(
+              `FAIL: ${name} ${url.path}: its "known" problem ${JSON.stringify(url.known.problem)} did not happen: remove the "known"`,
+            );
+          } else {
+            console.log(`known: ${name} ${url.path} (${url.known.reason})`);
+            for (const p of named) console.log(`  ${p}`);
+          }
+          if (others.length > 0) {
+            failed = true;
+            console.error(`FAIL: ${name} ${url.path}: more than it names`);
+            for (const p of others) console.error(`  ${p}`);
+          }
+        } else if (problems.length === 0) {
+          console.log(`ok: ${name} ${url.path} shows "${url.expect}"`);
+        } else {
+          failed = true;
+          console.error(`FAIL: ${name} ${url.path}`);
+          for (const p of problems) console.error(`  ${p}`);
+        }
+        if (print) console.log(`  at: ${at}\n  texts: ${JSON.stringify(seen)}`);
+      }
+      for (const allow of entry.allow ?? []) {
+        if (!used.has(allow)) {
           failed = true;
           console.error(
-            `FAIL: ${name} ${url.path}: its "known" problem ${JSON.stringify(url.known.problem)} did not happen: remove the "known"`,
+            `FAIL: ${name}: the allow entry ${JSON.stringify(allow)} matched nothing: remove it`,
           );
-        } else {
-          console.log(`known: ${name} ${url.path} (${url.known.reason})`);
-          for (const p of named) console.log(`  ${p}`);
         }
-        if (others.length > 0) {
-          failed = true;
-          console.error(`FAIL: ${name} ${url.path}: more than it names`);
-          for (const p of others) console.error(`  ${p}`);
-        }
-      } else if (problems.length === 0) {
-        console.log(`ok: ${name} ${url.path} shows "${url.expect}"`);
-      } else {
-        failed = true;
-        console.error(`FAIL: ${name} ${url.path}`);
-        for (const p of problems) console.error(`  ${p}`);
       }
-      if (print) console.log(`  at: ${at}\n  texts: ${JSON.stringify(seen)}`);
-    }
-    for (const allow of entry.allow ?? []) {
-      if (!used.has(allow)) {
-        failed = true;
-        console.error(
-          `FAIL: ${name}: the allow entry ${JSON.stringify(allow)} matched nothing: remove it`,
-        );
+      for (const skip of entry.skip ?? []) {
+        console.log(`skipped: ${name} ${skip.pattern}: ${skip.reason}`);
       }
-    }
-    for (const skip of entry.skip ?? []) {
-      console.log(`skipped: ${name} ${skip.pattern}: ${skip.reason}`);
     }
   } finally {
     await browser.close();

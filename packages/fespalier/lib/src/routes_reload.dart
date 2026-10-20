@@ -21,6 +21,8 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
+import 'guards.dart' show routerErrorPage;
+
 /// What `debugPrint` shows, once per regenerated version, when a hot reload finds a provider, a
 /// deferred library or a router setting that a hot reload keeps changed in the regenerated file
 /// (since 0.19.0). The app keeps its old routes until a hot restart.
@@ -70,9 +72,17 @@ abstract class RoutesReload extends ValueListenable<RoutingConfig> {
   @protected
   RoutingConfig rebuild(GoRouter router);
 
-  /// The page for a location that matches no route: the generated `errorBuilder` calls it, so a
-  /// route removed by a hot reload shows the app's not-found page.
+  /// The page for a location that matches no route: [errorPage] shows it for a location that
+  /// matches no route, so a route removed by a hot reload shows the app's not-found page.
   Widget notFound(Uri uri);
+
+  /// The page for go_router's error route (since 0.21.0): the generated `errorBuilder` calls it
+  /// (`routing.errorPage(context, state)`), and the generated subclass answers with
+  /// `AppRoutes.errorPage`, so a hot reload runs the code just reloaded. This default, which a
+  /// subclass generated before 0.21.0 inherits (its `errorBuilder` calls [notFound] itself), is
+  /// [routerErrorPage] with [notFound] alone.
+  Widget errorPage(BuildContext context, GoRouterState state) =>
+      routerErrorPage(context, state, notFound);
 
   /// Makes [router] follow this table: a hot reload swaps the routes of [router] when it is
   /// called from `reloadRoutes`. Called once, right after the router is made. In a profile or

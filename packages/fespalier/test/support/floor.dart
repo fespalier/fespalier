@@ -86,7 +86,10 @@ List<int>? _goRouterVersion() {
 ///   during redirect: ..." for the top-level one) in the error route, which `errorBuilder` or
 ///   `onException` gets, as a redirect that throws before an `await` always did. Nothing is
 ///   uncaught. What a test can tell both apart by is `GoRouterState.error` and the zone's errors,
-///   never the exception's message.
+///   never the exception's message. The generated redirects run through `runRedirect` (since
+///   0.21.0), which runs a redirect where 18.1.1 does, so through them both sides reach the error
+///   route; a router that calls `refGuard` or `traceGuard` itself still sees go_router's own
+///   difference.
 /// - A `StatefulShellRoute` that is replaced (`GoRouter.routingConfig`, a hot reload's swap) keeps
 ///   the loaded branches that are not on screen when its branches reuse their navigator keys, and
 ///   parses their saved locations again (18.1.1 keys the branch state by the navigator key, where

@@ -312,7 +312,8 @@ Future<void> pumpTransition(
 /// the order says it. It is off by default, so a log written before 0.9.0 reads the same.
 ///
 /// With [recordCommits] (since 0.19.0) the recorder writes `#n commit ok route=P` (or
-/// `#n commit not_found`) when a navigation commits, before its `page` lines and its end: the
+/// `#n commit not_found`, and since 0.21.0 `#n commit error` when a guard or `redirect.dart`
+/// failed) when a navigation commits, before its `page` lines and its end: the
 /// page the router puts on screen, before that page is built. The end's `route` is the last
 /// commit's. It is off by default, so a log written before 0.19.0 reads the same.
 final class RecordingTelemetry extends FespalierTelemetry {

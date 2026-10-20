@@ -41,12 +41,14 @@ GoRoute guarded(
   GuardResult Function(Ref ref, Uri uri) guard,
 ) => GoRoute(
   path: path,
-  redirect: (context, state) => refGuard(context, site, (ref) {
-    runs++;
-    opened++;
-    ref.onDispose(() => closed++);
-    return guard(ref, state.uri);
-  }),
+  redirect: (context, state) => runRedirect(
+    () => refGuard(context, site, (ref) {
+      runs++;
+      opened++;
+      ref.onDispose(() => closed++);
+      return guard(ref, state.uri);
+    }),
+  ),
   builder: (_, _) => Text(path.substring(1).toUpperCase()),
 );
 
@@ -77,6 +79,7 @@ GoRouter router({
   final r = GoRouter(
     initialLocation: initial,
     routes: routes(inbox: inbox, login: login),
+    errorBuilder: (_, state) => Text('ERROR ${state.error.runtimeType}'),
   );
   return r;
 }
@@ -479,7 +482,11 @@ void main() {
         await pumpRouter(tester, r);
         r.go('/inbox');
         await tester.pumpAndSettle();
-        expect(tester.takeException(), isNotNull);
+        final error = r.routerDelegate.currentConfiguration.error;
+        expect(error, isA<GuardFailure>());
+        expect((error! as GuardFailure).error, isA<StateError>());
+        expect(find.text('ERROR GuardFailure'), findsOneWidget);
+        expect(tester.takeException(), isNull);
         expect(open, 0);
         final ran = runs;
         // The container's default retry would run a throwing provider again later.
@@ -500,7 +507,11 @@ void main() {
       await pumpRouter(tester, r, container: c);
       r.go('/inbox');
       await tester.pumpAndSettle();
-      expect(tester.takeException(), isNotNull);
+      final error = r.routerDelegate.currentConfiguration.error;
+      expect(error, isA<GuardFailure>());
+      expect((error! as GuardFailure).error, isA<StateError>());
+      expect(find.text('ERROR GuardFailure'), findsOneWidget);
+      expect(tester.takeException(), isNull);
       final ran = runs;
       await tester.pump(const Duration(minutes: 1));
       expect(runs, ran);
@@ -520,20 +531,15 @@ void main() {
         r.go('/inbox');
         await tester.pumpAndSettle();
       }, (error, _) => errors.add(error));
-      if (beforeGoRouter1811) {
-        // go_router reports it as an uncaught error, once, and the router stays where it was.
-        expect(errors, hasLength(1));
-        expect('${errors.single}', contains('boom'));
-        expect(r.routerDelegate.currentConfiguration.uri.path, '/other');
-        expect(find.text('OTHER'), findsOneWidget);
-      } else {
-        // go_router 18.1.1 hands it to the error route (errorBuilder, onException). Nothing is
-        // uncaught.
-        expect(errors, isEmpty);
-        final error = r.routerDelegate.currentConfiguration.error;
-        expect(error, isNotNull);
-        expect('$error', contains('boom'));
-      }
+      // On every go_router, the failure is the router's error (a GuardFailure) and the error
+      // route shows it: nothing is uncaught, and the navigation ends.
+      expect(errors, isEmpty);
+      final error = r.routerDelegate.currentConfiguration.error;
+      expect(error, isA<GuardFailure>());
+      expect('$error', contains('boom'));
+      expect(r.routerDelegate.currentConfiguration.uri.path, '/inbox');
+      expect(find.text('OTHER'), findsNothing);
+      expect(find.text('ERROR GuardFailure'), findsOneWidget);
       expect(open, 0);
     });
 

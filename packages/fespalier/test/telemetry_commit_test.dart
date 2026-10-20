@@ -64,14 +64,16 @@ GoRouter buildRouter({String initial = '/home'}) => GoRouter(
     GoRoute(path: '/other', builder: (_, _) => page('other')),
     GoRoute(
       path: '/checkout',
-      redirect: (_, state) =>
-          traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+      redirect: (_, state) => runRedirect(
+        () => traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+      ),
       builder: (_, _) => page('checkout'),
     ),
     GoRoute(
       path: '/old',
-      redirect: (_, state) =>
-          traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+      redirect: (_, state) => runRedirect(
+        () => traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+      ),
     ),
     GoRoute(path: '/login', builder: (_, _) => page('login')),
     GoRoute(path: '/probe', builder: (_, _) => const Probe()),
@@ -135,10 +137,12 @@ Future<GoRouter> boot(WidgetTester tester, {String initial = '/home'}) async {
   return (microtasks: microtasks, timers: timers);
 }
 
-/// For every `#n end navigate ok|not_found [route=P]` line of [log], the last `#n commit` line of
+/// For every `#n end navigate ok|not_found|error [route=P]` line of [log], the last `#n commit` line of
 /// that navigation says the same outcome and route: a committed navigation ends on its last commit.
 void expectCommitsMatchEnds(List<String> log) {
-  final end = RegExp(r'^(#\d+) end navigate (ok|not_found)(?: route=(\S+))?');
+  final end = RegExp(
+    r'^(#\d+) end navigate (ok|not_found|error)(?: route=(\S+))?',
+  );
   var checked = 0;
   for (final line in log) {
     final m = end.firstMatch(line);
@@ -279,6 +283,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(rec.log, contains('#2 commit not_found'));
       expect(rec.log.where((l) => l.contains('route=')), isEmpty);
+    });
+
+    testWidgets('a guard that fails: the commit is error, with no route', (
+      tester,
+    ) async {
+      checkout = () => Future<String?>.error(StateError('boom'));
+      final r = await boot(tester);
+      rec.log.clear();
+      r.go('/checkout');
+      await tester.pumpAndSettle();
+      expect(rec.log, contains('#2 commit error'));
+      expect(rec.log.where((l) => l.contains('route=')), isEmpty);
+      expectCommitsMatchEnds(rec.log);
     });
 
     testWidgets('a superseded navigation never commits', (tester) async {

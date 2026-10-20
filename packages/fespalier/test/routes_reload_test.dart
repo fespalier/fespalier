@@ -532,6 +532,32 @@ void main() {
     expect(find.text('home'), findsOneWidget);
   });
 
+  testWidgets('a table that overrides notFound alone shows it for a failed '
+      'guard, and the failure is reported', (tester) async {
+    final reload = _Reload([
+      GoRoute(path: '/', builder: (_, _) => const Text('HOME')),
+      GoRoute(
+        path: '/boom',
+        redirect: (_, _) => runRedirect(() => throw StateError('boom')),
+        builder: (_, _) => const Text('BOOM'),
+      ),
+    ]);
+    final router = GoRouter.routingConfig(
+      routingConfig: reload,
+      initialLocation: '/',
+      overridePlatformDefaultLocation: true,
+      errorBuilder: (context, state) => reload.errorPage(context, state),
+    );
+    reload.follow(router);
+    await tester.pumpWidget(StartupGate(router: () => router, app: app));
+
+    router.go('/boom');
+    await tester.pumpAndSettle();
+
+    expect(find.text('nothing at /boom'), findsOneWidget);
+    expect(tester.takeException(), isA<StateError>());
+  });
+
   test(
     'ShellKeys gives the same key for the same id, and another for another',
     () {

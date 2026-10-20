@@ -16,6 +16,7 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'guards.dart' show GuardFailure;
 import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
@@ -409,10 +410,20 @@ final class RouterWatch {
   String? _patternOf(_Instance i) =>
       pathTemplate(i.fullPath, _base?.call() ?? '/');
 
-  /// The pattern of the page [config] shows ([visible] is the top of its walk), null when no route
-  /// matched: what a navigation's commit and its end both report, so the two never differ.
+  /// The pattern of the page [config] shows ([visible] is the top of its walk), null when the router
+  /// shows its error route: what a navigation's commit and its end both report, so the two never
+  /// differ.
   String? _routeOf(RouteMatchList config, _Instance? visible) =>
       config.error != null || visible == null ? null : _patternOf(visible);
+
+  /// What [config] says of its navigation (since 0.21.0): `error` when a guard or a `redirect.dart`
+  /// failed and the router shows the error view ([GuardFailure]), `not_found` for any other error of
+  /// the router's (no route matched, a redirect loop), `ok` otherwise.
+  String _outcomeOf(RouteMatchList config) => switch (config.error) {
+    null => TelemetryOutcome.ok,
+    GuardFailure() => TelemetryOutcome.error,
+    _ => TelemetryOutcome.notFound,
+  };
 
   /// Tells the sink what [config] puts on screen, for [nav], at the commit (since 0.19.0).
   void _tellCommit(_Nav nav, RouteMatchList config) {
@@ -420,7 +431,7 @@ final class RouterWatch {
     telemetryNavigationCommit(
       nav.token,
       TelemetryCommit(
-        config.error != null ? TelemetryOutcome.notFound : TelemetryOutcome.ok,
+        _outcomeOf(config),
         route: _routeOf(config, walk.instances.lastOrNull),
       ),
     );
@@ -446,14 +457,13 @@ final class RouterWatch {
   }
 
   void _endNavigation(_Nav nav, RouteMatchList config, _Instance? visible) {
-    final notFound = config.error != null;
     final route = _routeOf(config, visible);
     final location = visible?.uri ?? config.uri;
     final requested = nav.requested;
     telemetryNavigationEnd(
       nav.token,
       TelemetryEnd(
-        notFound ? TelemetryOutcome.notFound : TelemetryOutcome.ok,
+        _outcomeOf(config),
         route: route,
         from: _topPattern,
         kind: nav.kind,

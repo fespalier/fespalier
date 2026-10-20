@@ -322,6 +322,50 @@ void main() {
       expect(find.text('BOOM'), findsNothing);
     });
 
+    testWidgets('the same guard through runRedirect: go_router gets a '
+        'GuardFailure on every version, and nothing is uncaught', (
+      tester,
+    ) async {
+      final failing = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(path: '/', builder: (_, _) => page('HOME')),
+          GoRoute(
+            path: '/boom',
+            redirect: (context, state) => runRedirect(
+              () => traceGuard(
+                state,
+                'g5@6',
+                Future<String?>.delayed(
+                  Duration.zero,
+                  () => throw StateError('nope'),
+                ),
+              ),
+            ),
+            builder: (_, _) => page('BOOM'),
+          ),
+        ],
+      );
+      devToolsAttach(failing);
+      await pumpRouter(tester, failing);
+      final uncaught = <Object>[];
+      await runZonedGuarded(() async {
+        failing.go('/boom');
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+      }, (error, _) => uncaught.add(error));
+      final record = (await snapshot()).guards.single;
+      expect(record.result, GuardOutcome.error);
+      expect(record.error, contains('nope'));
+      expect(record.error, isNot(contains('GuardFailure')));
+      // The traced error is the guard's own; the router's is the GuardFailure that wraps it.
+      expect(uncaught, isEmpty);
+      final error = failing.routerDelegate.currentConfiguration.error;
+      expect(error, isA<GuardFailure>());
+      expect('$error', contains('nope'));
+      expect(find.text('BOOM'), findsNothing);
+    });
+
     testWidgets('a guard whose segments do not parse is skipped', (
       tester,
     ) async {

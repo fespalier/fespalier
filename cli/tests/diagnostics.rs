@@ -66,6 +66,14 @@ const CASES: &[Case] = &[
         quotes: &["`$id` is String in ", " but int here"],
     },
     Case {
+        name: "typedef-not-followed",
+        page: "diagnostics-binding.md",
+        quotes: &[
+            "`data` is JsonMap but data.dart yields Map<String, Object?>",
+            "; fsp follows typedefs in this package's files only, and found no declaration of `JsonMap` there, so it compares it as spelled",
+        ],
+    },
+    Case {
         name: "unknown-segment-type",
         page: "diagnostics-binding.md",
         quotes: &["`Uri id`: segments are String, int, double or bool, or an enum"],

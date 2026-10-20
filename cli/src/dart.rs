@@ -1377,7 +1377,8 @@ mod tests {
 
     #[test]
     fn combinators_read_show_and_hide() {
-        let show = |names: &[&str]| Some(names.iter().map(|n| n.to_string()).collect::<Vec<_>>());
+        let show =
+            |names: &[&str]| Some(names.iter().copied().map(String::from).collect::<Vec<_>>());
         assert_eq!(
             Combinators::parse(" show B;"),
             Combinators {

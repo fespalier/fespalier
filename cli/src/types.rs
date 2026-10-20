@@ -57,28 +57,27 @@ fn canonical_at(scope: &dyn Scope, path: &str, text: &str, depth: usize) -> Cano
         out.key.push_str(between);
         out.expanded.push_str(between);
         last = r.at.end;
-        match scope.declared(path, r.prefix.as_deref(), &r.name) {
-            Some(d) => match d.alias {
-                Some(alias) if depth < DEPTH => {
-                    let inner = canonical_at(scope, &d.decl, &alias, depth + 1);
-                    out.key.push_str(&inner.key);
-                    out.expanded.push_str(&inner.expanded);
-                    for name in inner.unknown {
-                        push_unknown(&mut out.unknown, name);
-                    }
-                    out.declared |= inner.declared;
-                    out.followed = true;
+        let Some(d) = scope.declared(path, r.prefix.as_deref(), &r.name) else {
+            out.key.push_str(&r.name);
+            out.expanded.push_str(&r.name);
+            push_unknown(&mut out.unknown, r.name);
+            continue;
+        };
+        match d.alias {
+            Some(alias) if depth < DEPTH => {
+                let inner = canonical_at(scope, &d.decl, &alias, depth + 1);
+                out.key.push_str(&inner.key);
+                out.expanded.push_str(&inner.expanded);
+                for name in inner.unknown {
+                    push_unknown(&mut out.unknown, name);
                 }
-                _ => {
-                    out.key.push_str(&format!("{}#{}", d.decl, d.name));
-                    out.expanded.push_str(&d.name);
-                    out.declared = true;
-                }
-            },
-            None => {
-                out.key.push_str(&r.name);
-                out.expanded.push_str(&r.name);
-                push_unknown(&mut out.unknown, r.name);
+                out.declared |= inner.declared;
+                out.followed = true;
+            }
+            _ => {
+                out.key.push_str(&format!("{}#{}", d.decl, d.name));
+                out.expanded.push_str(&d.name);
+                out.declared = true;
             }
         }
     }

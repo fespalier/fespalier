@@ -17,6 +17,7 @@
 )]
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::rc::Rc;
 
 use heck::{ToLowerCamelCase, ToUpperCamelCase};
 
@@ -28,6 +29,7 @@ use crate::extra::{self, ExtraType};
 use crate::forms::{self, Companion, RecordError};
 use crate::locale::{self, Localized};
 use crate::scan::{ACTION_RESERVED, Kind, Node, ROUTE_MEMBERS, SECTION_MEMBERS, Seg};
+use crate::types::{self, Canonical};
 
 /// What a segment can be, besides an enum.
 pub const SEGMENT_TYPES: [&str; 4] = ["String", "int", "double", "bool"];
@@ -1012,6 +1014,9 @@ struct BindCx<'a> {
     role: Role,
     segs: &'a [(String, usize)],
     data: Option<&'a str>,
+    /// The data.dart the `data` type was read from, relative to the app folder (since 0.21.0): a
+    /// typedef in it is followed as that file spells it.
+    data_file: Option<&'a str>,
     /// The sections above this file, whose data it can ask for by type or as `data`.
     sections: &'a [SectionRef],
     file: &'a str,
@@ -1116,6 +1121,39 @@ struct Resolver<'a> {
 }
 
 impl Resolver<'_> {
+    /// `text` as written in the tree file `file` (relative to the app folder), made canonical: the
+    /// typedefs and import prefixes followed (since 0.21.0). `None` when the file isn't in the tree.
+    fn canon(&self, file: &str, text: &str) -> Option<Rc<Canonical>> {
+        let src = self.sources.get(file)?;
+        Some(self.libs.canonical(file, src, text))
+    }
+
+    /// Whether `a` (written in `fa`) and `b` (in `fb`) are one type: the same text, or since 0.21.0
+    /// the same canonical form. The canonical forms are made only when the spellings differ.
+    fn same_type(&self, a: &str, fa: &str, b: &str, fb: &str) -> bool {
+        a == b
+            || matches!(
+                (self.canon(fa, a), self.canon(fb, b)),
+                (Some(x), Some(y)) if x.key == y.key
+            )
+    }
+
+    /// What a message about two types that are not one adds (`types::hint`); empty when either
+    /// can't be made canonical.
+    fn type_hint(&self, a: &str, fa: &str, b: &str, fb: &str) -> String {
+        match (self.canon(fa, a), self.canon(fb, b)) {
+            (Some(x), Some(y)) => types::hint(&x, &y),
+            _ => String::new(),
+        }
+    }
+
+    /// A type whose typedefs come to `dart:core` types only, as those: `ProductId?` is `int?`. `None`
+    /// when no typedef was followed, or a name that is declared here or unknown is left in it.
+    fn plain_expansion(&self, file: &str, text: &str) -> Option<String> {
+        let c = self.canon(file, text)?;
+        (c.followed && !c.declared && c.unknown.is_empty()).then(|| c.expanded.clone())
+    }
+
     fn import(&mut self, rel: &str) -> usize {
         if let Some(&i) = self.import_ix.get(rel) {
             return i;
@@ -1298,11 +1336,13 @@ impl Resolver<'_> {
                 .clone()
         });
         let mut extra = None;
+        let data_file = node.rel(Kind::Data);
         let page = page_class.map(|c| {
             let cx = BindCx {
                 role: Role::Page,
                 segs: &segs,
                 data: data.as_ref().map(|d| d.ty.as_str()),
+                data_file: data.as_ref().map(|_| data_file.as_str()),
                 sections: &up.sections,
                 file: &page_file,
                 covering: None,
@@ -1473,6 +1513,7 @@ impl Resolver<'_> {
                             role,
                             segs: &segs,
                             data: None,
+                            data_file: None,
                             sections: &[],
                             file: &f.file,
                             covering: Some(&covering),
@@ -1495,10 +1536,12 @@ impl Resolver<'_> {
         let layout = modules.get(&Kind::Layout).and_then(|m| {
             let file = node.rel(Kind::Layout);
             let c = self.widget_class(m, &file, Kind::Layout)?;
+            let data_file = node.rel(Kind::Data);
             let cx = BindCx {
                 role: Role::Layout,
                 segs: &segs,
                 data: data.as_ref().filter(|_| section).map(|d| d.ty.as_str()),
+                data_file: data.as_ref().filter(|_| section).map(|_| data_file.as_str()),
                 sections: &up.sections,
                 file: &file,
                 covering: None,
@@ -1558,6 +1601,7 @@ impl Resolver<'_> {
                     role: Role::NotFound,
                     segs: &segs,
                     data: None,
+                    data_file: None,
                     sections: &[],
                     file: &file,
                     covering: None,
@@ -2538,6 +2582,7 @@ impl Resolver<'_> {
                     })
                     .or_else(|| by_type(p.ty.as_ref()?, cx))
                     .or_else(|| self.data_by_type(p, cx))
+                    .or_else(|| self.by_expanded_type(p, cx))
             };
             let Some(bind) = bind else {
                 if p.required {
@@ -2552,7 +2597,7 @@ impl Resolver<'_> {
                 continue;
             };
             if let Some(ty) = &p.ty
-                && let Some(msg) = mismatch(&p.name, &bind, ty)
+                && let Some(msg) = self.mismatch_of(&p.name, &bind, ty, cx.file)
             {
                 self.diags.error(cx.file, Some(&p.span), msg);
             }
@@ -2562,9 +2607,10 @@ impl Resolver<'_> {
                     .iter()
                     .find(|s| s.id == *sid)
                     .expect("a section bind names a section above");
-                if !ty.is(&sec.ty) {
+                if !self.same_type(&ty.text, cx.file, &sec.ty, &sec.file) {
+                    let hint = self.type_hint(&ty.text, cx.file, &sec.ty, &sec.file);
                     let msg = format!(
-                        "`{}` is {} but the section's data.dart ({}) yields {}",
+                        "`{}` is {} but the section's data.dart ({}) yields {}{hint}",
                         p.name, ty.text, sec.file, sec.ty
                     );
                     self.diags.error(cx.file, Some(&p.span), msg);
@@ -2586,11 +2632,23 @@ impl Resolver<'_> {
                         span: p.span.clone(),
                     });
                 }
-                (Bind::Data, Some(ty), Some(want)) if !ty.is(want) => {
+                (Bind::Data, Some(ty), Some(want))
+                    if !self.same_type(
+                        &ty.text,
+                        cx.file,
+                        want,
+                        cx.data_file.unwrap_or(cx.file),
+                    ) =>
+                {
+                    let data_file = cx.data_file.unwrap_or(cx.file);
+                    let hint = self.type_hint(&ty.text, cx.file, want, data_file);
                     self.diags.error(
                         cx.file,
                         Some(&p.span),
-                        format!("`{}` is {} but data.dart yields {want}", p.name, ty.text),
+                        format!(
+                            "`{}` is {} but data.dart yields {want}{hint}",
+                            p.name, ty.text
+                        ),
                     );
                 }
                 _ => {}
@@ -2617,13 +2675,10 @@ impl Resolver<'_> {
             return None;
         }
         let ty = p.ty.as_ref()?;
-        let own = (cx.data == Some(ty.text.as_str())).then_some(Bind::Data);
-        let mut found: Vec<(Bind, String)> = own
-            .into_iter()
-            .map(|b| (b, "this folder's data.dart".to_string()))
-            .collect();
-        for s in cx.sections.iter().filter(|s| ty.is(&s.ty)) {
-            found.push((Bind::Section(s.id), format!("the section's {}", s.file)));
+        // The spelling first; a typedef or a prefix of the type counts only when that finds nothing.
+        let mut found = self.yields(ty, cx, false);
+        if found.is_empty() {
+            found = self.yields(ty, cx, true);
         }
         if found.len() > 1 {
             let names: Vec<&str> = found.iter().map(|(_, n)| n.as_str()).collect();
@@ -2638,12 +2693,78 @@ impl Resolver<'_> {
         found.into_iter().next().map(|(b, _)| b)
     }
 
+    /// What the data a parameter of type `ty` can take yields: this folder's data.dart and the
+    /// sections above it that yield `ty`, by its spelling or, with `by_meaning`, as the same type
+    /// (since 0.21.0).
+    fn yields(&self, ty: &Ty, cx: &BindCx, by_meaning: bool) -> Vec<(Bind, String)> {
+        let own_file = cx.data_file.unwrap_or(cx.file);
+        let fits = |text: &str, file: &str| {
+            if by_meaning {
+                self.same_type(&ty.text, cx.file, text, file)
+            } else {
+                ty.text == text
+            }
+        };
+        let mut found: Vec<(Bind, String)> = cx
+            .data
+            .filter(|d| fits(d, own_file))
+            .map(|_| (Bind::Data, "this folder's data.dart".to_string()))
+            .into_iter()
+            .collect();
+        for s in cx.sections.iter().filter(|s| fits(&s.ty, &s.file)) {
+            found.push((Bind::Section(s.id), format!("the section's {}", s.file)));
+        }
+        found
+    }
+
+    /// `by_type` for the type a typedef of it expands to, when that is a type `by_type` knows:
+    /// `typedef Kid = Widget;` is a `Widget` (since 0.21.0).
+    fn by_expanded_type(&self, p: &dart::Param, cx: &BindCx) -> Option<Bind> {
+        let ty = p.ty.as_ref()?;
+        let expanded = self.canon(cx.file, &ty.text).filter(|c| c.followed)?;
+        by_type(
+            &Ty {
+                text: expanded.expanded.clone(),
+                record: None,
+            },
+            cx,
+        )
+    }
+
+    /// `mismatch`, but a type that is a typedef of what the binding accepts is accepted too: what it
+    /// expands to is looked at (since 0.21.0). The message keeps the type as written.
+    fn mismatch_of(&self, name: &str, bind: &Bind, ty: &Ty, file: &str) -> Option<String> {
+        let msg = mismatch(name, bind, ty)?;
+        let expanded = self
+            .canon(file, &ty.text)
+            .filter(|c| c.followed)
+            .map(|c| c.expanded.clone());
+        let accepted =
+            expanded.is_some_and(|text| mismatch(name, bind, &Ty { text, record: None }).is_none());
+        (!accepted).then_some(msg)
+    }
+
     /// A query parameter's type: a plain one, or an enum's (`Sort?`, `List<Sort>`). With `strict`
     /// (the parameter and where to point at: a `data()`'s or a guard's, which can't be anything
     /// else) a type that should be an enum but can't be found is an error.
     fn query_typed(&mut self, ty: &Ty, file: &str, strict: Option<(&Span, &str)>) -> QueryTy {
         if let Some(q) = query_type(ty) {
             return QueryTy::Is(Box::new(Typed::plain(q)));
+        }
+        // A typedef of a plain query type (`typedef PageNo = int;`) is that query type (since 0.21.0).
+        if let Some(q) = self.plain_expansion(file, &ty.text).and_then(|e| {
+            query_type(&Ty {
+                text: e,
+                record: None,
+            })
+        }) {
+            return QueryTy::Is(Box::new(Typed {
+                spelled: q.clone(),
+                key: q,
+                shown: ty.text.clone(),
+                import: None,
+                decl: None,
+            }));
         }
         let Some((base, list)) = enums::query_shape(&ty.text) else {
             return QueryTy::Isnt;
@@ -3292,9 +3413,10 @@ impl Resolver<'_> {
                 self.diags.error(file, Some(&g.span), msg);
                 ok = false;
             }
-            Some(ret) if ret.text != input.text => {
+            Some(ret) if !self.same_type(&ret.text, file, found, file) => {
+                let hint = self.type_hint(&ret.text, file, found, file);
                 let msg = format!(
-                    "`{name}()` returns `{}`, but `{action}()` takes `{found}` as `input`: the form builds the action's input, so they are the same type",
+                    "`{name}()` returns `{}`, but `{action}()` takes `{found}` as `input`: the form builds the action's input, so they are the same type{hint}",
                     ret.text
                 );
                 self.diags.error(file, Some(&g.span), msg);
@@ -3302,11 +3424,20 @@ impl Resolver<'_> {
             }
             Some(_) => {}
         }
-        let fields = match forms::record_fields(input, &at.m.typedefs) {
+        // A typedef of this file's, or (since 0.21.0) of a file of this package that action.dart imports:
+        // the fields come with the file that declares the record, for the draft codecs.
+        let (read, declared_in) = match forms::record_fields(input, &at.m.typedefs) {
+            Err(RecordError::NotARecord) => match self.libs.typedef_record(file, at.src, found) {
+                Some((ty, decl)) => (forms::record_fields(&ty, &[]), Some(decl)),
+                None => (Err(RecordError::NotARecord), None),
+            },
+            read => (read, None),
+        };
+        let fields = match read {
             Ok(fields) => fields,
             Err(RecordError::NotARecord) => {
                 let msg = format!(
-                    "the form of `{action}()` needs the fields of its input, and `{found}` is not a record type declared here: take `input` as a record with named fields (`required ({{int amount, String note}}) input`), or as a typedef of one declared in action.dart"
+                    "the form of `{action}()` needs the fields of its input, and `{found}` is not a record type fsp can read: take `input` as a record with named fields (`required ({{int amount, String note}}) input`), or as a typedef of one declared in action.dart or in a file of this package it imports"
                 );
                 self.diags.error(file, Some(&g.span), msg);
                 return None;
@@ -3366,7 +3497,12 @@ impl Resolver<'_> {
             .into_iter()
             .map(|(name, ty)| {
                 let codec = forms::codec(&ty);
-                let draft = if codec.is_some() {
+                // A field read from another file keeps a draft only when action.dart names the same type.
+                let same = declared_in.as_ref().is_none_or(|decl| {
+                    self.libs.canonical_in(decl, &ty).key
+                        == self.libs.canonical(file, at.src, &ty).key
+                });
+                let draft = if codec.is_some() || !same {
                     None
                 } else {
                     self.draft_codec(file, &ty)
@@ -3504,7 +3640,7 @@ impl Resolver<'_> {
                     g.params.as_slice(),
                     [a, b] if !a.named && a.required && !b.named && b.required
                         && a.ty.as_ref().is_some_and(|t| t.text == enum_name)
-                        && b.ty.as_ref().is_some_and(|t| t.text == input.text)
+                        && b.ty.as_ref().is_some_and(|t| self.same_type(&t.text, file, &input.text, file))
                 );
             if fits {
                 return Some(skip_name.clone());
@@ -3567,7 +3703,7 @@ impl Resolver<'_> {
             .is_some_and(|r| r.text == "FieldErrors?" || r.text == "FieldErrors");
         let takes = matches!(
             g.params.as_slice(),
-            [p] if !p.named && p.required && p.ty.as_ref().is_some_and(|t| t.text == input.text)
+            [p] if !p.named && p.required && p.ty.as_ref().is_some_and(|t| self.same_type(&t.text, file, &input.text, file))
         );
         if returns && takes {
             return Some(name.clone());
@@ -3602,8 +3738,8 @@ impl Resolver<'_> {
             && !given.named
             && given.required
             && let (Some(t), Some(i), Some(ret)) = (&current.ty, &given.ty, &g.ret)
-            && ret.text == t.text
-            && i.text == input.text
+            && self.same_type(&ret.text, file, &t.text, file)
+            && self.same_type(&i.text, file, &input.text, file)
         {
             return Some(Optimistic {
                 function: name.clone(),
@@ -3819,7 +3955,12 @@ impl Resolver<'_> {
                 .map(|d| d.ty.clone())
                 .unwrap_or_default()
         };
-        let target = order.iter().copied().find(|&t| gives(t) == o.ty);
+        // What a data.dart gives is compared as that file spells it (since 0.21.0).
+        let data_file = |t: usize| format!("{}data.dart", folder_prefix(&self.app.routes[t].dir));
+        let target = order
+            .iter()
+            .copied()
+            .find(|&t| self.same_type(&gives(t), &data_file(t), &o.ty, file));
         if target.is_none() {
             let (name, action, ty) = (&o.function, &a.name, &o.ty);
             let msg = if order.is_empty() {
@@ -4527,6 +4668,8 @@ impl Resolver<'_> {
                     .is_some_and(|rest| rest.starts_with('/'))
         };
         let mut clashes: Vec<Vec<String>> = vec![vec![]; readers.len()];
+        // Per reader, the pairs of types (as their files spell them) that clash: what the hint names.
+        let mut pairs: Vec<Vec<[(String, String); 2]>> = vec![vec![]; readers.len()];
         let mut typed: Vec<(usize, ExtraType)> = vec![];
         for (id, r) in self
             .app
@@ -4544,21 +4687,26 @@ impl Resolver<'_> {
                 .collect();
             let own = r.extra.as_ref();
             for (n, &i) in chain.iter().enumerate() {
-                let want = &readers[i].2.ty.source;
+                let (reader_file, want) = (&readers[i].2.file, &readers[i].2.ty.source);
                 if extra::takes_any(want) {
                     continue;
                 }
                 // The route's own type has the last word; without one, the readers above agree among themselves.
                 let other = match own {
-                    Some(e) => Some((&e.file, &e.source)).filter(|(_, ty)| !extra::fits(want, ty)),
+                    Some(e) => Some((&e.file, &e.source))
+                        .filter(|(f, ty)| !self.fits_in((reader_file, want), (f, ty))),
                     None => chain[..n]
                         .iter()
                         .map(|&j| &readers[j].2)
-                        .find(|o| !extra::agree(want, &o.ty.source))
+                        .find(|o| !self.agree_in((reader_file, want), (&o.file, &o.ty.source)))
                         .map(|o| (&o.file, &o.ty.source)),
                 };
                 if let Some((file, ty)) = other {
                     clashes[i].push(format!("`{}` ({file} takes `{ty}`)", pattern(&r.url)));
+                    pairs[i].push([
+                        (reader_file.clone(), want.clone()),
+                        (file.clone(), ty.clone()),
+                    ]);
                 }
             }
             if r.extra.is_none() {
@@ -4568,10 +4716,11 @@ impl Resolver<'_> {
                 typed.extend(first.map(|&i| (id, readers[i].2.ty.clone())));
             }
         }
-        for ((kind, _, e), mut routes) in readers.into_iter().zip(clashes) {
+        for (((kind, _, e), mut routes), pairs) in readers.into_iter().zip(clashes).zip(pairs) {
             if routes.is_empty() {
                 continue;
             }
+            let hint = types::hint_of(&self.unfollowed_names(&pairs));
             routes.dedup();
             let more = routes.len().saturating_sub(5);
             routes.truncate(5);
@@ -4582,7 +4731,7 @@ impl Resolver<'_> {
                     String::new()
                 };
             let msg = format!(
-                "`extra` is `{}` here, but the routes it covers take other types: {list}; a {kind} sees the extra of every route it covers, so declare it as `Object?` to accept any of them, or as their type when they share one",
+                "`extra` is `{}` here, but the routes it covers take other types: {list}; a {kind} sees the extra of every route it covers, so declare it as `Object?` to accept any of them, or as their type when they share one{hint}",
                 e.ty.source
             );
             self.diags.error(&e.file, Some(&e.span), msg);
@@ -4590,6 +4739,60 @@ impl Resolver<'_> {
         for (id, ty) in typed {
             self.app.routes[id].extra = Some(ty);
         }
+    }
+
+    /// A segment's type that is a typedef of a plain one, as that one: `ProductId` is `int`, and
+    /// `List<ProductId>` of a catch-all is `List<int>` (since 0.21.0). `None` for any other type.
+    fn plain_segment(&self, file: &str, text: &str, catch_all: bool) -> Option<Typed> {
+        let e = self.plain_expansion(file, text)?;
+        let plain = if catch_all {
+            list_item(&e).is_some_and(|i| CATCH_ALL_ITEMS.contains(&i))
+        } else {
+            SEGMENT_TYPES.contains(&e.as_str())
+        };
+        plain.then(|| Typed {
+            spelled: e.clone(),
+            key: e,
+            shown: text.to_string(),
+            import: None,
+            decl: None,
+        })
+    }
+
+    /// Whether a guard or layout's `extra` of type `reader` (written in its file) can read what a
+    /// route's `extra` of type `route` holds: `extra::fits` by text, or the same type (since 0.21.0).
+    fn fits_in(&self, reader: (&str, &str), route: (&str, &str)) -> bool {
+        extra::fits(reader.1, route.1) || self.same_key_sans_null(reader, route)
+    }
+
+    /// Whether two readers above a route that takes no `extra` agree: `extra::agree` by text, or the
+    /// same type (since 0.21.0).
+    fn agree_in(&self, a: (&str, &str), b: (&str, &str)) -> bool {
+        extra::agree(a.1, b.1) || self.same_key_sans_null(a, b)
+    }
+
+    /// Whether two types, each written in its file, have one canonical form, a trailing `?` aside.
+    fn same_key_sans_null(&self, a: (&str, &str), b: (&str, &str)) -> bool {
+        match (self.canon(a.0, a.1), self.canon(b.0, b.1)) {
+            (Some(x), Some(y)) => x.key.trim_end_matches('?') == y.key.trim_end_matches('?'),
+            _ => false,
+        }
+    }
+
+    /// The names `types::unfollowed` finds over these pairs of types, each written in its file,
+    /// once each.
+    fn unfollowed_names(&self, pairs: &[[(String, String); 2]]) -> Vec<String> {
+        let mut names: Vec<String> = vec![];
+        for [(af, at), (bf, bt)] in pairs {
+            if let (Some(a), Some(b)) = (self.canon(af, at), self.canon(bf, bt)) {
+                for n in types::unfollowed(&a, &b) {
+                    if !names.contains(&n) {
+                        names.push(n);
+                    }
+                }
+            }
+        }
+        names
     }
 
     /// Every file that uses `$id` must agree on its type; nobody saying means String.
@@ -4604,39 +4807,51 @@ impl Resolver<'_> {
             } else {
                 (Some(text), &SEGMENT_TYPES)
             };
-            let typed = match item {
-                Some(i) if plain.contains(&i) => Typed::plain(text.to_string()),
-                Some(i) if enums::is_candidate(i) => {
-                    let (what, fallback) = if catch_all {
-                        (
-                            "a catch-all segment's part",
-                            format!("List<String> {}", c.name),
-                        )
-                    } else {
-                        ("a segment", format!("String {}", c.name))
-                    };
-                    let decl = format!("{text} {}", c.name);
-                    match self.enum_typed(i, text, &c.file, Some((&c.span, &decl, what, &fallback)))
-                    {
-                        Some(t) => t,
-                        None => continue,
+            // A typedef of a plain type is that type (since 0.21.0), spelled as the typedef expands.
+            let by_typedef = item
+                .filter(|i| !plain.contains(i))
+                .and_then(|_| self.plain_segment(&c.file, text, catch_all));
+            let typed = if let Some(t) = by_typedef {
+                t
+            } else {
+                match item {
+                    Some(i) if plain.contains(&i) => Typed::plain(text.to_string()),
+                    Some(i) if enums::is_candidate(i) => {
+                        let (what, fallback) = if catch_all {
+                            (
+                                "a catch-all segment's part",
+                                format!("List<String> {}", c.name),
+                            )
+                        } else {
+                            ("a segment", format!("String {}", c.name))
+                        };
+                        let decl = format!("{text} {}", c.name);
+                        match self.enum_typed(
+                            i,
+                            text,
+                            &c.file,
+                            Some((&c.span, &decl, what, &fallback)),
+                        ) {
+                            Some(t) => t,
+                            None => continue,
+                        }
                     }
-                }
-                _ if catch_all => {
-                    let msg = format!(
-                        "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime, or of an enum",
-                        c.ty.text, c.name
-                    );
-                    self.diags.error(&c.file, Some(&c.span), msg);
-                    continue;
-                }
-                _ => {
-                    let msg = format!(
-                        "`{} {}`: segments are String, int, double or bool, or an enum",
-                        c.ty.text, c.name
-                    );
-                    self.diags.error(&c.file, Some(&c.span), msg);
-                    continue;
+                    _ if catch_all => {
+                        let msg = format!(
+                            "`{} {}`: a catch-all segment is the rest of the path, a `List` of String, int, double, num, bool or DateTime, or of an enum",
+                            c.ty.text, c.name
+                        );
+                        self.diags.error(&c.file, Some(&c.span), msg);
+                        continue;
+                    }
+                    _ => {
+                        let msg = format!(
+                            "`{} {}`: segments are String, int, double or bool, or an enum",
+                            c.ty.text, c.name
+                        );
+                        self.diags.error(&c.file, Some(&c.span), msg);
+                        continue;
+                    }
                 }
             };
             match first.get(&c.folder) {

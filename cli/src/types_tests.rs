@@ -12,8 +12,10 @@ const IDS: &str = "lib/models/ids.dart";
 const PRODUCT: &str = "lib/models/product.dart";
 
 /// What a file sees: `(file, prefix, name)` → the declaring file and the typedef's alias, if any.
+type Seen = HashMap<(String, Option<String>, String), (String, Option<String>)>;
+
 #[derive(Default)]
-struct Fake(HashMap<(String, Option<String>, String), (String, Option<String>)>);
+struct Fake(Seen);
 
 impl Fake {
     fn sees(
@@ -275,14 +277,14 @@ fn a_page_takes_data_through_a_typedef() {
 #[test]
 fn a_data_parameter_spelled_with_a_typedef_or_a_prefix_is_data() {
     let data =
-        "import '../../../models/product.dart';\nFuture<Product> data(Ref ref) async => Product();";
+        "import '../../models/product.dart';\nFuture<Product> data(Ref ref) async => Product();";
     let typedef_page = product_page(
-        "import '../../../models/ids.dart';",
+        "import '../../models/ids.dart';",
         ", required this.data",
         "final ProductView data;",
     );
     let prefix_page = product_page(
-        "import '../../../models/product.dart' as m;",
+        "import '../../models/product.dart' as m;",
         ", required this.data",
         "final m.Product data;",
     );
@@ -296,7 +298,7 @@ fn a_data_parameter_spelled_with_a_typedef_or_a_prefix_is_data() {
     assert_eq!(messages(&files), Vec::<String>::new());
     // The mismatch stays where the types differ: a typedef of another class is still an error.
     let other = product_page(
-        "import '../../../models/ids.dart';",
+        "import '../../models/ids.dart';",
         ", required this.data",
         "final PageNo data;",
     );
@@ -315,7 +317,7 @@ fn a_data_parameter_spelled_with_a_typedef_or_a_prefix_is_data() {
 fn section_data_through_a_typedef() {
     let layout = "class ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.child}); final Widget child; }";
     let section_data =
-        "import '../../../models/product.dart';\nFuture<Product> data(Ref ref) async => Product();";
+        "import '../../models/product.dart';\nFuture<Product> data(Ref ref) async => Product();";
     let page = product_page(
         "import '../../../models/ids.dart';",
         ", required this.team",
@@ -423,7 +425,7 @@ fn a_form_reads_a_record_typedef_from_an_imported_file() {
 
 #[test]
 fn companions_compare_through_typedefs() {
-    let action = "import '../../models/ids.dart';\n\
+    let action = "import '../../models/ids.dart';\nimport '../../models/product.dart';\n\
         PayFields form() => (amount: 1, note: '');\n\
         FieldErrors? validate(PayFields input) => null;\n\
         Product optimistic(ProductView current, PayFields input) => current;\n\
@@ -540,7 +542,7 @@ fn spellings_that_agree_read_no_file() {
 fn show_and_hide_decide_which_typedef() {
     // `ProductView` is the models' typedef of `Product` unless the page hides it, in which case
     // the other library's `ProductView` (of `Item`) is the one it names.
-    let other = "import '../../models/product.dart';\ntypedef ProductView = Item;\n";
+    let other = "import '../models/product.dart';\ntypedef ProductView = Item;\n";
     let page = "import '../../../models/ids.dart' hide ProductView;\nimport '../../../other/ids.dart';\nclass ProductPage extends StatelessWidget { const ProductPage({super.key, required this.id, required this.data}); final int id; final ProductView data; }";
     let item = "import '../../../models/product.dart';\nFuture<Item> data(Ref ref, {required int id}) async => Item();";
     let product = "import '../../../models/product.dart';\nFuture<Product> data(Ref ref, {required int id}) async => Product();";
@@ -561,4 +563,276 @@ fn show_and_hide_decide_which_typedef() {
             .any(|m| m.starts_with("`data` is ProductView but data.dart yields Product")),
         "{e:?}"
     );
+}
+
+// --- fsp's verdict against the Dart analyzer (since 0.21.0) -------------------------------------
+
+/// The probe's models: the typedefs that the cases below spell, in files the probe's `lib/` holds.
+const PROBE_FILES: [(&str, &str); 5] = [
+    (
+        "lib/models/product.dart",
+        "class Product {}\nclass Item {}\nenum Category { shoes, hats }\n",
+    ),
+    (
+        "lib/models/ids.dart",
+        "import 'product.dart';\nimport 'product.dart' as p;\n\
+         typedef ProductView = Product;\ntypedef Chain = ProductView;\n\
+         typedef Prefixed = p.Item;\ntypedef ProductId = int;\ntypedef MaybeInt = int?;\n\
+         typedef Json = Map<String, Object?>;\ntypedef PayFields = ({int amount, String note});\n\
+         typedef Retry = void Function();\ntypedef Cat = Category;\n\
+         typedef Generic<T> = Map<String, T>;\n",
+    ),
+    (
+        "lib/models/all.dart",
+        "export 'product.dart' show Product, Category;\nexport 'ids.dart' hide Json;\n",
+    ),
+    (
+        "lib/other/ids.dart",
+        "import '../models/product.dart';\ntypedef ProductView = Item;\n",
+    ),
+    ("lib/other/product.dart", "class Product {}\n"),
+];
+
+/// One case of the table: the imports of `lib/app/c<n>/page.dart`, the two types, the line the
+/// page adds after `f`, what fsp says (`same`) and what the analyzer says (`same`).
+struct Case {
+    n: usize,
+    imports: &'static str,
+    a: &'static str,
+    b: &'static str,
+    extra: &'static str,
+    fsp_same: bool,
+    analyzer_same: bool,
+}
+
+const PROBE_IDS: &str = "import '../../models/ids.dart';\n";
+const PROBE_PRODUCT: &str = "import '../../models/product.dart';\n";
+const PROBE_BOTH: &str = "import '../../models/ids.dart';\nimport '../../models/product.dart';\n";
+
+fn probe_cases() -> Vec<Case> {
+    let case = |n, imports, a, b, fsp_same, analyzer_same| Case {
+        n,
+        imports,
+        a,
+        b,
+        extra: "",
+        fsp_same,
+        analyzer_same,
+    };
+    vec![
+        case(
+            1,
+            "import '../../models/product.dart';\ntypedef Local = Product;\n",
+            "Local",
+            "Product",
+            true,
+            true,
+        ),
+        case(2, PROBE_BOTH, "ProductView", "Product", true, true),
+        case(
+            3,
+            "import 'package:probe/models/all.dart';\n",
+            "ProductView",
+            "Product",
+            true,
+            true,
+        ),
+        case(
+            4,
+            "import '../../models/ids.dart' as ids;\nimport '../../models/product.dart' as m;\n",
+            "ids.ProductView",
+            "m.Product",
+            true,
+            true,
+        ),
+        case(5, PROBE_BOTH, "Chain", "Product", true, true),
+        case(6, PROBE_IDS, "List<ProductId>", "List<int>", true, true),
+        case(
+            7,
+            PROBE_IDS,
+            "Map<String, Json>",
+            "Map<String, Map<String, Object?>>",
+            true,
+            true,
+        ),
+        case(8, PROBE_IDS, "MaybeInt", "int?", true, true),
+        case(9, PROBE_IDS, "MaybeInt?", "int?", true, true),
+        case(
+            10,
+            PROBE_IDS,
+            "PayFields",
+            "({int amount, String note})",
+            true,
+            true,
+        ),
+        case(11, PROBE_IDS, "Retry", "void Function()", true, true),
+        case(
+            12,
+            "import '../../models/ids.dart' hide ProductView;\nimport '../../other/ids.dart';\nimport '../../models/product.dart';\n",
+            "ProductView",
+            "Item",
+            true,
+            true,
+        ),
+        case(
+            13,
+            "import '../../models/ids.dart' show ProductId;\nimport '../../models/product.dart';\n",
+            "ProductView",
+            "Product",
+            false,
+            false,
+        ),
+        case(14, PROBE_BOTH, "ProductView", "Item", false, false),
+        case(15, PROBE_IDS, "ProductId", "String", false, false),
+        case(16, PROBE_IDS, "List<ProductId>", "List<num>", false, false),
+        case(
+            17,
+            "import '../../models/product.dart' as m;\nimport '../../other/product.dart' as o;\n",
+            "m.Product",
+            "o.Product",
+            false,
+            false,
+        ),
+        Case {
+            extra: "Object use() => [Cat.values.byName('shoes'), Cat.shoes, Cat.values];\n",
+            ..case(18, PROBE_BOTH, "Cat", "Category", true, true)
+        },
+        // Analyzer: the same (a generic typedef is not followed by fsp: the one allowed disagreement).
+        case(
+            19,
+            PROBE_IDS,
+            "Generic<int>",
+            "Map<String, int>",
+            false,
+            true,
+        ),
+        case(20, PROBE_BOTH, "Prefixed", "Item", true, true),
+        case(
+            21,
+            "import 'package:probe/models/all.dart';\nimport '../../models/ids.dart' as i;\n",
+            "Json",
+            "Map<String, Object?>",
+            false,
+            false,
+        ),
+        case(
+            22,
+            "import '../../models/product.dart';\nimport '../../models/product.dart' as m;\n",
+            "m.Product",
+            "Product",
+            true,
+            true,
+        ),
+    ]
+}
+
+/// `lib/app/c<n>/page.dart`: the imports, then `f`, which assigns each type to the other.
+fn probe_page(c: &Case) -> String {
+    if c.a.is_empty() {
+        return format!("{}{}", c.imports, c.extra);
+    }
+    format!(
+        "{}\nvoid f({} a, {} b) {{\n  {} x = a;\n  {} y = b;\n  print([x, y]);\n}}\n{}",
+        c.imports, c.a, c.b, c.b, c.a, c.extra
+    )
+}
+
+/// The files of the analyzer probe: `lib/` as `PROBE_FILES`, the cases and no `pub get`.
+fn probe_project(cases: &[Case]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: probe\nenvironment:\n  sdk: ^3.9.0\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.path().join(".dart_tool")).unwrap();
+    fs::write(
+        dir.path().join(".dart_tool/package_config.json"),
+        r#"{"configVersion":2,"packages":[{"name":"probe","rootUri":"../","packageUri":"lib/","languageVersion":"3.9"}]}"#,
+    )
+    .unwrap();
+    for (rel, body) in PROBE_FILES {
+        let p = dir.path().join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    }
+    for c in cases {
+        let p = dir.path().join(format!("lib/app/c{}/page.dart", c.n));
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, probe_page(c)).unwrap();
+    }
+    dir
+}
+
+/// Whether the Dart analyzer reports no error in each case's page, or `None` when it can't run.
+fn analyzer_verdicts(dir: &std::path::Path, cases: &[Case]) -> Option<Vec<bool>> {
+    let dart = std::env::var("FSP_DART").unwrap_or_else(|_| "dart".into());
+    let out = std::process::Command::new(dart)
+        .args(["analyze", "--format=machine", "lib"])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    let report = String::from_utf8_lossy(&out.stdout).to_string();
+    let errors: Vec<&str> = report.lines().filter(|l| l.starts_with("ERROR|")).collect();
+    Some(
+        cases
+            .iter()
+            .map(|c| {
+                let page = format!("/c{}/page.dart|", c.n);
+                !errors.iter().any(|l| {
+                    l.split('|')
+                        .nth(3)
+                        .is_some_and(|f| f.ends_with(page.trim_end_matches('|')))
+                })
+            })
+            .collect(),
+    )
+}
+
+#[test]
+fn follows_typedefs_as_the_analyzer_does() {
+    let mut cases = probe_cases();
+    // Case 23: an enum alias is a static access through the typedef, and an import prefix of
+    // its own; the analyzer must compile it (no fsp verdict: it is what `app.g.dart` writes).
+    cases.push(Case {
+        n: 23,
+        imports: "// ignore_for_file: unused_shown_name\nimport '../../models/ids.dart' show Cat;\nimport '../../models/ids.dart' as _e1;\n",
+        a: "",
+        b: "",
+        extra: "Object use() => [Cat.values.byName('shoes'), Cat.shoes, Cat.values, _e1.Cat.values];\nfinal Cat first = Cat.values.first;\n",
+        fsp_same: false,
+        analyzer_same: true,
+    });
+    let dir = probe_project(&cases);
+    let Some(compiles) = analyzer_verdicts(dir.path(), &cases) else {
+        let required = std::env::var("FSP_REQUIRE_DART").is_ok_and(|v| v == "1");
+        assert!(
+            !required,
+            "dart is required (FSP_REQUIRE_DART=1) and is not on PATH"
+        );
+        return;
+    };
+    // The analyzer's column, for the cases it decides.
+    for (c, same) in cases.iter().zip(&compiles) {
+        if c.n == 23 {
+            assert!(same, "case 23 must compile");
+            continue;
+        }
+        assert_eq!(
+            *same, c.analyzer_same,
+            "case {}: the analyzer's verdict",
+            c.n
+        );
+    }
+    // fsp's column, through the same canonical form the resolver uses.
+    let app = dir.path().join("lib/app");
+    let libs = crate::enums::Libs::for_app(&app, &Config::default());
+    for c in cases.iter().filter(|c| c.n != 23) {
+        let file = format!("c{}/page.dart", c.n);
+        let src = probe_page(c);
+        let fsp_same = libs.canonical(&file, &src, c.a).key == libs.canonical(&file, &src, c.b).key;
+        assert_eq!(fsp_same, c.fsp_same, "case {}: fsp's verdict", c.n);
+        // fsp never says "same" where the analyzer says "different".
+        assert!(!fsp_same || c.analyzer_same, "case {}", c.n);
+    }
 }

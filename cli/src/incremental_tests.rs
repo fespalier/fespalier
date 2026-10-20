@@ -1161,6 +1161,16 @@ fn a_symlinked_folder_is_still_a_folder() {
     assert!(code.contains("LinkedRoute"));
 }
 
+/// The type the `ShopIdRoute` of a generated file takes its `id` as (`int`, `String`).
+fn shop_id_type(out: &str) -> &str {
+    let at = out
+        .find("ShopIdRoute(id: _kept<")
+        .expect("the route's copyWith")
+        + 22;
+    let end = out[at..].find('>').expect("the type");
+    &out[at..at + end]
+}
+
 /// A typedef of a plain type in a file outside the app folder is followed, and a run with it
 /// unchanged parses nothing (since 0.21.0).
 #[test]
@@ -1174,10 +1184,7 @@ fn a_typedef_outside_the_app_folder_follows() {
     sim.write("s1/shop/$id/page.dart", &shop);
     let r = sim.same("the first run");
     assert!(
-        r.ok && r.outputs[0]
-            .as_ref()
-            .unwrap()
-            .contains("Segment.asInt(s, 'id')"),
+        r.ok && shop_id_type(r.outputs[0].as_ref().unwrap()) == "int",
         "{r:?}"
     );
     sim.regen();
@@ -1186,7 +1193,7 @@ fn a_typedef_outside_the_app_folder_follows() {
     sim.lib_write("models/ids.dart", "typedef ProductId = String;\n");
     let r = sim.same("the typedef changed to String");
     assert!(
-        r.ok && !r.outputs[0].as_ref().unwrap().contains("asInt"),
+        r.ok && shop_id_type(r.outputs[0].as_ref().unwrap()) == "String",
         "{r:?}"
     );
     sim.lib_remove("models/ids.dart");

@@ -49,6 +49,16 @@ final plainProvider = Provider<GuardResult>(
 GuardResult plainGuard(ProviderContainer container) =>
     container.read(plainProvider);
 
+/// Whether someone is signed in, which the first guard of `/admin` watches, and how often it ran.
+class Flag extends Notifier<bool> {
+  @override
+  bool build() => true;
+  void set(bool value) => state = value;
+}
+
+final signedIn = NotifierProvider<Flag, bool>(Flag.new);
+var adminRuns = 0;
+
 /// The retry of the last view built, and the state of the last error page built.
 VoidCallback? heldRetry;
 GoRouterState? lastErrorState;
@@ -71,7 +81,9 @@ Widget? _view(
   StackTrace stackTrace,
   VoidCallback retry,
 ) {
-  if (uri.path != '/inbox' && uri.path != '/plain') return null;
+  if (uri.path != '/inbox' && uri.path != '/plain' && uri.path != '/admin') {
+    return null;
+  }
   heldRetry = retry;
   return GuardErrorView(error: error, retry: retry);
 }
@@ -115,6 +127,22 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
       ),
       builder: (_, _) => const Text('PLAIN'),
     ),
+    // Two guards, as the generator writes them: the first watches `signedIn` and passes, the second
+    // is the `/plain` one and fails.
+    GoRoute(
+      path: '/admin',
+      redirect: (context, state) => runRedirect(
+        () => firstRedirect([
+          () => refGuard(context, 'g1@admin', (ref) {
+            adminRuns++;
+            return ref.watch(signedIn) ? null : '/login';
+          }),
+          () => plainGuard(ProviderScope.containerOf(context, listen: false)),
+        ]),
+      ),
+      builder: (_, _) => const Text('ADMIN'),
+    ),
+    GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
   ],
   errorBuilder: (context, state) {
     lastErrorState = state;
@@ -130,6 +158,7 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
 void main() {
   setUp(() {
     inboxRuns = 0;
+    adminRuns = 0;
     inbox = (ref) => null;
     plainAnswer = () => null;
     heldRetry = null;
@@ -666,6 +695,53 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('INBOX'), findsOneWidget);
       expect(r.routerDelegate.currentConfiguration.error, isNull);
+    });
+  });
+
+  group('a failed navigation closes the guards it touched', () {
+    // The first guard of `/admin` watches `signedIn` and passed; the second failed. Its
+    // subscription would stay open (the committed location "still runs" it), and a sign-out would
+    // make fespalier refresh the router itself: with a pushed failure, go_router then restores the
+    // guarded page without running a redirect (fespalier/fespalier#258).
+    for (final kind in ['push', 'go']) {
+      testWidgets('$kind: a sign-out afterwards re-runs nothing and refreshes '
+          'nothing', (tester) async {
+        plainAnswer = () => throw StateError('boom');
+        final r = router();
+        final c = await pumpRouter(tester, r);
+        if (kind == 'push') {
+          unawaited(r.push<void>('/admin'));
+        } else {
+          r.go('/admin');
+        }
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isA<StateError>());
+        expect(adminRuns, 1);
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        c.read(signedIn.notifier).set(false);
+        await tester.pumpAndSettle();
+        // The first guard was closed with the failure: Riverpod did not run it again.
+        expect(adminRuns, 1);
+        expect(find.text('ADMIN'), findsNothing);
+        expect(find.text('LOGIN'), findsNothing);
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a navigation that passes still keeps its guards live', (
+      tester,
+    ) async {
+      plainAnswer = () => null;
+      final r = router();
+      final c = await pumpRouter(tester, r);
+      r.go('/admin');
+      await tester.pumpAndSettle();
+      expect(find.text('ADMIN'), findsOneWidget);
+      c.read(signedIn.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(adminRuns, greaterThan(1));
+      expect(find.text('LOGIN'), findsOneWidget);
     });
   });
 }

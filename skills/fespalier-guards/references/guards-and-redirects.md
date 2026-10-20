@@ -156,7 +156,9 @@ class LoginPage extends ConsumerWidget {
   - **A refresh after a pushed failure skips the guard** (go_router, fespalier/fespalier#258): a later
     `GoRouter.refresh()` restores the pushed location without running its redirect and the guarded page
     shows. A plain `GoRouter` does the same on 17.2.3 to 18.1.1; fespalier does not work around it, and
-    `retry` does not refresh.
+    `retry` does not refresh. Since 0.21.0 fespalier's own re-evaluation no longer triggers it after a
+    failed push: the guards a failed navigation ran are closed as it commits, so a sign-out does not
+    refresh the router. An app's own `refresh()` or `refreshListenable` still does.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show ProviderException;
 
-import 'navigation_kind.dart' show pushedMatches;
+import 'navigation_kind.dart' show activeMatches, pushedMatches;
 import 'segments.dart';
 
 /// Generated redirects call this to chain guards: they run in order and the
@@ -224,16 +224,31 @@ final class _RouterGuards {
     }
   }
 
-  /// The router committed a location: guards it did not run are not its any more.
+  /// The router committed a location: guards it did not run are not its any more. When what it
+  /// committed is a guard that failed (since 0.21.0), the guards that navigation did run are not
+  /// its either: a page that never showed has nothing to keep up to date, and a refresh that one of
+  /// them asked for after a pushed failure would show the guarded page without running its guard
+  /// (go_router's own gap, fespalier/fespalier#258).
   void _committed() {
+    final failed = _failed();
     final stale = [
       for (final site in _live.keys)
-        if (!_touched.contains(site)) site,
+        if (failed || !_touched.contains(site)) site,
     ];
     for (final site in stale) {
       _live.remove(site)?.close();
     }
     _touched.clear();
+  }
+
+  /// Whether the router shows a guard that failed: its own error (after `go`, a link or a tab), or
+  /// the failed list in the entry on top of the stack (after `push`, and `pushReplacement` and
+  /// `replace` over other pages).
+  bool _failed() {
+    final config = _router.routerDelegate.currentConfiguration;
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    return activeMatches(config, pushed).error is GuardFailure;
   }
 
   void _closeAll() {

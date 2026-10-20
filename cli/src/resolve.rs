@@ -1336,13 +1336,13 @@ impl Resolver<'_> {
                 .clone()
         });
         let mut extra = None;
-        let data_file = node.rel(Kind::Data);
+        let data_file = data.as_ref().map(|_| node.rel(Kind::Data));
         let page = page_class.map(|c| {
             let cx = BindCx {
                 role: Role::Page,
                 segs: &segs,
                 data: data.as_ref().map(|d| d.ty.as_str()),
-                data_file: data.as_ref().map(|_| data_file.as_str()),
+                data_file: data_file.as_deref(),
                 sections: &up.sections,
                 file: &page_file,
                 covering: None,
@@ -1536,12 +1536,12 @@ impl Resolver<'_> {
         let layout = modules.get(&Kind::Layout).and_then(|m| {
             let file = node.rel(Kind::Layout);
             let c = self.widget_class(m, &file, Kind::Layout)?;
-            let data_file = node.rel(Kind::Data);
+            let data_file = data.as_ref().filter(|_| section).map(|_| node.rel(Kind::Data));
             let cx = BindCx {
                 role: Role::Layout,
                 segs: &segs,
                 data: data.as_ref().filter(|_| section).map(|d| d.ty.as_str()),
-                data_file: data.as_ref().filter(|_| section).map(|_| data_file.as_str()),
+                data_file: data_file.as_deref(),
                 sections: &up.sections,
                 file: &file,
                 covering: None,

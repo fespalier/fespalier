@@ -324,7 +324,7 @@ so the stack is `/orders/1`, `/orders/1/refund/confirm`, and the `refund` page i
 
 A `not_found.dart` at the root is the app-wide one. Any other folder can have one too, and the nearest wins, for two things:
 
-- **Unknown paths.** An unknown URL shows the `not_found.dart` of the deepest folder it is under (a `$dynamic` folder matches any value), or the root's. With `teams/$teamId/not_found.dart` and `teams/$teamId/members/not_found.dart`, `/teams/a/members/1/x` shows the members one, `/teams/a/x` the team one, and `/nope` the root's. This is what `AppRoutes.notFound(uri)` does, and the router's `errorBuilder` calls it. The view shows without any layout.
+- **Unknown paths.** An unknown URL shows the `not_found.dart` of the deepest folder it is under (a `$dynamic` folder matches any value), or the root's. With `teams/$teamId/not_found.dart` and `teams/$teamId/members/not_found.dart`, `/teams/a/members/1/x` shows the members one, `/teams/a/x` the team one, and `/nope` the root's. This is what `AppRoutes.notFound(uri)` does, and the router's `errorBuilder` (`AppRoutes.errorPage`, since 0.21.0) calls it for every error but a guard's failure that an error.dart can show ([When a guard fails](guards.md#when-a-guard-fails)). The view shows without any layout.
 - **Unparsable segments.** `/teams/a/members/abc`, where a member's id is an `int`, shows the nearest `not_found.dart` above that route (a `(group)`'s counts here).
 
 **What it gets.** `Uri uri`, and the segments of its own path as `String`s, as the URL spells them (`teams/$teamId/not_found.dart` can take `String teamId`).

@@ -69,6 +69,8 @@ Each dashboard has an **App** variable (the resource's `service.name`, so apps a
 
 The retry, saved-copy, undone and validation tiles and columns (since 0.18.0) read 0 for an app before 0.18.0, which sends none of those attributes.
 
+A navigation that a failing guard stopped ends with the outcome `error` (since 0.21.0). The "link leads nowhere" tile does not count it, since the location matched a route. "How many operations failed?" counts it once, on the guard's span, and the navigation's own span is left out of the failure counts for the same reason. A guard that throws before it returns is seen only in the outcome, not as a failed check.
+
 ![The Screens dashboard in OpenObserve: each route with its typical and slowest open and content-load times, the slowest cells coloured, and open time over time with the good and bad lines.](images/telemetry/openobserve-screens.png)
 
 _Sample data from `scripts/telemetry/seed.py --showcase`._

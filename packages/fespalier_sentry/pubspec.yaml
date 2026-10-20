@@ -27,12 +27,15 @@ dependencies:
   # 9.26.0: standalone app start, which the first-screen rule of `tracing: true` reads. It
   # re-exports package:sentry and pins it exactly, so it is the only Sentry import.
   sentry_flutter: ">=9.26.0 <10.0.0"
+  # Not imported. sentry_flutter asks for package_info_plus 1.0.0 or newer, and package_info_plus 4.0.2 allows
+  # win32 4.0.0: its Windows plugin does not compile on Dart 3.9 (win32 before 5.5.3 uses
+  # `UnmodifiableUint8ListView`, gone from dart:typed_data), so an app's `flutter pub downgrade` builds for
+  # Windows only if something else raised win32. Depending on it steers every app's resolution to 5.5.3 or newer.
+  win32: ">=5.5.3 <8.0.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0
-  # `MockClient`, under the `SentryHttpClient` of the HTTP span tests. Down to 0.13.0, the one spelling of
-  # http that differs in this repository (cli/tests/versions.rs, SPELLING_EXCEPTIONS): from 1.0 the floor
-  # job's downgrade picks package_info_plus 4.0.2 and win32 4.0.0, which does not compile on Dart 3.9.
-  http: ">=0.13.0 <2.0.0"
+  # `MockClient`, under the `SentryHttpClient` of the HTTP span tests.
+  http: ^1.5.0
   flutter_test:
     sdk: flutter

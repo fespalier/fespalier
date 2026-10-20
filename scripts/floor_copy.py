@@ -60,10 +60,14 @@ def dependencies(pubspec, sections):
     return names
 
 
-def reached(name, members):
-    """The workspace packages `name` resolves: its (dev) dependencies, then their dependencies."""
+def reached(name, members, dev=True):
+    """The workspace packages `name` resolves: its (dev) dependencies, then their dependencies.
+
+    `dev=False` leaves out its own dev dependencies: an app that depends on `name` resolves its regular
+    dependencies only (scripts/floor_app.py)."""
     found = set()
-    todo = dependencies(members[name] / "pubspec.yaml", {"dependencies", "dev_dependencies"})
+    sections = {"dependencies", "dev_dependencies"} if dev else {"dependencies"}
+    todo = dependencies(members[name] / "pubspec.yaml", sections)
     while todo:
         dep = todo.pop()
         if dep in members and dep != name and dep not in found:

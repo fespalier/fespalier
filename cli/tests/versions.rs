@@ -756,6 +756,120 @@ fn job_matrix(ci: &str, job: &str) -> Vec<String> {
         .collect()
 }
 
+/// The text of one ci.yml job: from its `  <job>:` key to the next job key (a line indented two spaces that is
+/// neither blank nor a comment), so a job added after it is not read as part of it.
+fn job_text<'a>(ci: &'a str, job: &str) -> &'a str {
+    let body = ci
+        .split_once(&format!("\n  {job}:\n"))
+        .unwrap_or_else(|| panic!("ci.yml has no `{job}` job"))
+        .1;
+    let mut len = 0;
+    for line in body.split_inclusive('\n') {
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        let is_key = !line.trim().is_empty() && !line.trim_start().starts_with('#');
+        if is_key && indent < 4 {
+            break;
+        }
+        len += line.len();
+    }
+    &body[..len]
+}
+
+/// ci.yml parsed as YAML.
+fn ci_yaml() -> serde_yaml_ng::Value {
+    serde_yaml_ng::from_str(&read(".github/workflows/ci.yml")).expect("ci.yml is YAML")
+}
+
+/// The steps of one ci.yml job, parsed.
+fn ci_steps(ci: &serde_yaml_ng::Value, job: &str) -> Vec<serde_yaml_ng::Value> {
+    ci["jobs"][job]["steps"]
+        .as_sequence()
+        .unwrap_or_else(|| panic!("ci.yml: jobs.{job} has no `steps:`"))
+        .clone()
+}
+
+/// The index of the one step of a job that runs exactly `run` in the folder `dir` (None: no `working-directory`).
+fn step_running(steps: &[serde_yaml_ng::Value], job: &str, run: &str, dir: Option<&str>) -> usize {
+    let found: Vec<usize> = steps
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| {
+            s["run"].as_str().map(str::trim) == Some(run) && s["working-directory"].as_str() == dir
+        })
+        .map(|(i, _)| i)
+        .collect();
+    assert_eq!(
+        found.len(),
+        1,
+        "ci.yml: jobs.{job} must have exactly one step that runs `{run}` (in {dir:?}); it has {}",
+        found.len()
+    );
+    found[0]
+}
+
+/// What an app's steps are in the `floor` job (one package alone) and the `floor-app` job (all of them):
+/// the same five steps, in this order, in the app's folder. `write` is the step that writes the app.
+struct AppSteps<'a> {
+    job: &'a str,
+    dir: &'a str,
+    /// The `if:` every one of the steps has, if any.
+    condition: Option<&'a str>,
+    /// The `env:` of the `--plugins` step.
+    plugins_env: &'a [(&'a str, &'a str)],
+    plugins: &'a str,
+}
+
+impl AppSteps<'_> {
+    fn check(&self, steps: &[serde_yaml_ng::Value], after: usize) {
+        let job = self.job;
+        let order: Vec<(usize, &str)> = [
+            ("flutter pub downgrade", "downgrades the app"),
+            ("flutter pub get", "writes the plugin list"),
+            (self.plugins, "writes the plugins' test"),
+            ("flutter test", "tests the app"),
+            (
+                "python3 \"$GITHUB_WORKSPACE/scripts/floor_app.py\" --web .",
+                "builds the app for the web",
+            ),
+        ]
+        .into_iter()
+        .map(|(run, what)| (step_running(steps, job, run, Some(self.dir)), what))
+        .collect();
+        let mut previous = after;
+        for (index, what) in &order {
+            let step = &steps[*index];
+            assert!(
+                *index > previous,
+                "ci.yml: jobs.{job}: the step that {what} comes out of order"
+            );
+            previous = *index;
+            assert_eq!(
+                step.get("if").and_then(serde_yaml_ng::Value::as_str),
+                self.condition,
+                "ci.yml: jobs.{job}: the step that {what} has the job's condition"
+            );
+            assert!(
+                step.get("continue-on-error").is_none(),
+                "ci.yml: jobs.{job}: the step that {what} cannot fail without failing the job"
+            );
+        }
+        let plugins = &steps[order[2].0];
+        for (key, value) in self.plugins_env {
+            assert_eq!(
+                plugins["env"][*key].as_str(),
+                Some(*value),
+                "ci.yml: jobs.{job}: the plugins step's env {key}"
+            );
+        }
+        // The web build must not skip: FSP_REQUIRE_WEB=1 turns the no-web-support skip into a failure.
+        assert_eq!(
+            steps[order[4].0]["env"]["FSP_REQUIRE_WEB"].as_str(),
+            Some("1"),
+            "ci.yml: jobs.{job}: the web build sets FSP_REQUIRE_WEB=1, or it skips instead of failing"
+        );
+    }
+}
+
 /// The Flutter the floor job installs, as `ci.yml` spells it (`FLUTTER_FLOOR_VERSION:`, a
 /// `major.minor.patch`): the one place the floor is written for CI, and what the packages that claim
 /// it are matched against.
@@ -863,8 +977,7 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
     );
     // Inside the workspace a pub downgrade moves every package together: the job and the recipe run each
     // package in a copy outside it.
-    let job = ci.split_once("\n  floor:\n").unwrap().1;
-    let job = job.split_once("\n  devtools:\n").map_or(job, |(j, _)| j);
+    let job = job_text(&ci, "floor");
     assert!(
         job.contains("run: python3 scripts/floor_copy.py \"$RUNNER_TEMP/floor\""),
         "the floor job copies first"
@@ -1116,14 +1229,11 @@ fn the_justfile_and_ci_run_every_package_and_example() {
     );
 }
 
-/// The pubspecs that may spell a third-party dependency their own way: (folder, dependency, reason).
-/// Every other pubspec that names the dependency spells it one way.
-const SPELLING_EXCEPTIONS: [(&str, &str, &str); 1] = [(
-    "packages/fespalier_sentry",
-    "http",
-    "a test dependency down to 0.13.0: from 1.0 the floor's downgrade picks package_info_plus 4.0.2 and \
-     win32 4.0.0, which does not compile on Dart 3.9",
-)];
+/// The pubspecs that may spell a third-party dependency their own way: (folder, dependency, reason). None
+/// today: `fespalier_sentry` spelled `http` down to 0.13.0 so that its own floor avoided a win32 that does not
+/// compile on Dart 3.9, until it depended on `win32` itself. Every other pubspec that names the dependency
+/// spells it one way.
+const SPELLING_EXCEPTIONS: [(&str, &str, &str); 0] = [];
 
 #[test]
 fn every_third_party_dependency_has_one_constraint() {
@@ -1193,6 +1303,89 @@ fn every_third_party_dependency_has_one_constraint() {
              any more: remove the entry"
         );
     }
+}
+
+/// What an app picks at the lowest versions of a plugin or of Dio does not always compile, and a constraint that
+/// steers it away must sit in the pubspec of every package that brings the plugin (an app resolves its regular
+/// dependencies only): (the dependencies that bring it, the ones that steer, why).
+const STEERING: [(&[&str], &[&str], &str); 4] = [
+    (
+        &[
+            "path_provider",
+            "shared_preferences",
+            "flutter_secure_storage",
+            "background_downloader",
+        ],
+        &["platform", "file"],
+        "path_provider's platform interface allows platform 3.0.0, which reads `Platform.packageRoot` (gone from \
+         Dart 3), and its Linux and Windows plugins, like shared_preferences', allow file 6.0.0 to 6.1.2, which \
+         fail on Dart 3.9 (`File.create` has no `exclusive:`); a Linux or Windows build compiles those plugins' \
+         Dart code and `flutter test` does not",
+    ),
+    (
+        &["sentry_flutter", "package_info_plus"],
+        &["win32"],
+        "sentry_flutter asks for package_info_plus 1.0.0 or newer, and package_info_plus 4.0.2 allows win32 4.0.0: \
+         win32 before 5.5.3 uses `UnmodifiableUint8ListView`, gone from dart:typed_data, so a Windows build fails",
+    ),
+    (
+        &["connectivity_plus"],
+        &["web"],
+        "connectivity_plus 6.0.1 allows web 0.3.0, whose JS interop does not compile for the web on Dart 3.9 \
+         (`The type 'JSObject' can't be used as supertype`)",
+    ),
+    (
+        &["dio"],
+        &["dio_web_adapter"],
+        "dio 5.7.0 with dio_web_adapter 1.0.0 (what the lowest versions pick) calls a `debugLog` that 5.7.0 lacks, \
+         so a web build fails",
+    ),
+];
+
+#[test]
+fn a_package_that_brings_a_plugin_or_dio_steers_its_apps_away_from_versions_that_do_not_compile() {
+    // `scripts/floor_app.py` finds these in the floor jobs; this keeps the next package that depends on one
+    // of them (or an example, or `fsp create`'s pubspec, which is checked in create_tests.rs) from forgetting.
+    use std::collections::BTreeSet;
+    // The regular dependencies a package or example resolves: its own, and those of the fespalier packages it names.
+    fn regular(dir: &str, seen: &mut BTreeSet<String>) {
+        for dep in dependency_names(&pubspec_of(dir), &["dependencies"]) {
+            if seen.insert(dep.clone()) && dep.starts_with("fespalier") {
+                regular(&format!("packages/{dep}"), seen);
+            }
+        }
+    }
+    let mut checked = 0;
+    for dir in dart_folders() {
+        if dir == "packages/fespalier_devtools" {
+            continue;
+        }
+        let own: BTreeSet<String> = dependency_names(&pubspec_of(&dir), &["dependencies"])
+            .into_iter()
+            .collect();
+        for (brings, steers, why) in STEERING {
+            if !brings.iter().any(|b| own.contains(*b)) {
+                continue;
+            }
+            // A dependency on a fespalier package that steers already carries it.
+            let mut inherited = BTreeSet::new();
+            for dep in own.iter().filter(|d| d.starts_with("fespalier")) {
+                regular(&format!("packages/{dep}"), &mut inherited);
+            }
+            for steer in steers {
+                checked += 1;
+                assert!(
+                    own.contains(*steer) || inherited.contains(*steer),
+                    "{dir}/pubspec.yaml depends on one of {brings:?} and so must list `{steer}` (not imported, \
+                     with a comment): {why}"
+                );
+            }
+        }
+    }
+    assert!(
+        checked > 10,
+        "only {checked} steering constraints were checked: did the walk break?"
+    );
 }
 
 #[test]
@@ -1314,6 +1507,422 @@ fn the_floor_copies_override_what_each_package_reaches() {
                 "{dir}: {skipped} was copied"
             );
         }
+    }
+}
+
+/// Runs `python3 scripts/<script>` with the arguments; None when there is no python3 (CI runs it on Linux).
+fn python(script: &str, args: &[&Path]) -> Option<std::process::Output> {
+    match Command::new("python3")
+        .arg(root().join("scripts").join(script))
+        .args(args)
+        .output()
+    {
+        Ok(out) => Some(out),
+        Err(e) => {
+            eprintln!("skipping: no python3 to run scripts/{script} ({e}); CI runs it on Linux");
+            None
+        }
+    }
+}
+
+/// The `lib/*.dart` files of a package, sorted.
+fn public_libraries(dir: &str) -> Vec<String> {
+    let mut libs: Vec<String> = fs::read_dir(root().join(dir).join("lib"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .filter(|n| {
+            Path::new(n)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("dart"))
+        })
+        .collect();
+    libs.sort();
+    libs
+}
+
+#[test]
+fn the_floor_apps_depend_on_what_they_are_for() {
+    // scripts/floor_app.py writes the apps the floor runs: one with every workspace package, and one per package
+    // with that package alone. Read back here, so a package the union leaves out, a library its test does not
+    // import or an override a one-package app lacks fails this test, not a CI run an hour later.
+    use std::collections::BTreeSet;
+    let dest = tempfile::tempdir().unwrap();
+    let tree = dest.path().join("tree");
+    let Some(copied) = python("floor_copy.py", &[&tree]) else {
+        return;
+    };
+    assert!(
+        copied.status.success(),
+        "floor_copy.py failed: {}",
+        String::from_utf8_lossy(&copied.stderr)
+    );
+    let members = workspace_members();
+    let names: BTreeSet<String> = members
+        .iter()
+        .map(|d| d.rsplit('/').next().unwrap().to_string())
+        .collect();
+    let keys = |pubspec: &serde_yaml_ng::Value, section: &str| -> BTreeSet<String> {
+        pubspec[section]
+            .as_mapping()
+            .unwrap_or_else(|| panic!("the app's {section} is a map"))
+            .keys()
+            .filter_map(serde_yaml_ng::Value::as_str)
+            .map(str::to_string)
+            .collect()
+    };
+    // The test and the web entry point import every public library (each lib/*.dart, not lib/src) of `of`.
+    let imports = |app: &Path, of: &[String]| {
+        for file in ["test/imports_test.dart", "lib/main.dart"] {
+            let text = fs::read_to_string(app.join(file)).unwrap();
+            for dir in of {
+                let name = dir.rsplit('/').next().unwrap();
+                let libs = public_libraries(dir);
+                assert!(!libs.is_empty(), "{dir} has no lib/*.dart");
+                for lib in libs {
+                    assert!(
+                        text.contains(&format!("import 'package:{name}/{lib}' as p")),
+                        "{file} does not import package:{name}/{lib}"
+                    );
+                }
+            }
+            let count = text.matches("import 'package:").count();
+            let want: usize = of.iter().map(|d| public_libraries(d).len()).sum();
+            // flutter_test or flutter, and one import per library.
+            assert_eq!(count, want + 1, "{file}: one import per public library");
+        }
+        assert!(
+            fs::read_to_string(app.join("web/index.html"))
+                .unwrap()
+                .contains("flutter_bootstrap.js"),
+            "web/index.html loads the bootstrap script a web build needs"
+        );
+    };
+    let pubspec_at = |app: &Path| -> serde_yaml_ng::Value {
+        serde_yaml_ng::from_str(&fs::read_to_string(app.join("pubspec.yaml")).unwrap()).unwrap()
+    };
+    let in_tree = |app: &Path, pubspec: &serde_yaml_ng::Value, section: &str, name: &str| {
+        let path = pubspec[section][name]["path"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{section}: {name} is a path dependency"));
+        assert_eq!(
+            app.join(path).canonicalize().unwrap(),
+            tree.join("packages").join(name).canonicalize().unwrap(),
+            "{section}: {name} is not its copy in the tree"
+        );
+    };
+
+    // The union: every package, depended on and overridden.
+    let app = dest.path().join("app");
+    let out = python("floor_app.py", &[&tree, &app]).unwrap();
+    assert!(
+        out.status.success(),
+        "floor_app.py failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let pubspec = pubspec_at(&app);
+    for section in ["dependencies", "dependency_overrides"] {
+        let got: BTreeSet<String> = keys(&pubspec, section)
+            .into_iter()
+            .filter(|k| names.contains(k))
+            .collect();
+        assert_eq!(
+            got, names,
+            "the app's {section} is not every workspace package"
+        );
+        for name in &names {
+            in_tree(&app, &pubspec, section, name);
+        }
+    }
+    imports(&app, &members);
+
+    // One package alone: a dependency on it, an override for it and for what it reaches, its own imports.
+    for dir in &members {
+        let name = dir.rsplit('/').next().unwrap();
+        let app = dest.path().join(format!("only-{name}"));
+        let out = Command::new("python3")
+            .arg(root().join("scripts/floor_app.py"))
+            .args(["--only", name])
+            .arg(&tree)
+            .arg(&app)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "floor_app.py --only {name} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let pubspec = pubspec_at(&app);
+        let depends: BTreeSet<String> = keys(&pubspec, "dependencies")
+            .into_iter()
+            .filter(|k| k != "flutter")
+            .collect();
+        assert_eq!(
+            depends,
+            BTreeSet::from([name.to_string()]),
+            "{name} alone: the app depends on that package and nothing else"
+        );
+        // What the package reaches in the workspace through its regular dependencies (an app resolves no dev
+        // dependency of it), then theirs.
+        let mut reached = BTreeSet::from([name.to_string()]);
+        let mut todo = dependency_names(&pubspec_of(dir), &["dependencies"]);
+        while let Some(dep) = todo.pop() {
+            if names.contains(&dep) && reached.insert(dep.clone()) {
+                todo.extend(dependency_names(
+                    &pubspec_of(&format!("packages/{dep}")),
+                    &["dependencies"],
+                ));
+            }
+        }
+        assert_eq!(
+            keys(&pubspec, "dependency_overrides"),
+            reached,
+            "{name} alone: the app overrides the package and the workspace packages it reaches, no others"
+        );
+        for dep in &reached {
+            in_tree(&app, &pubspec, "dependency_overrides", dep);
+        }
+        imports(&app, std::slice::from_ref(dir));
+    }
+    let bad = python(
+        "floor_app.py",
+        &[
+            Path::new("--only"),
+            Path::new("nope"),
+            &tree,
+            &dest.path().join("nope"),
+        ],
+    )
+    .unwrap();
+    assert!(
+        !bad.status.success(),
+        "--only names a workspace package, and refuses another"
+    );
+}
+
+#[test]
+fn the_plugins_check_imports_the_dart_implementations_the_app_resolved() {
+    // `floor_app.py --plugins <app>` reads `.flutter-plugins-dependencies` (what `flutter pub get` writes) and
+    // each plugin's pubspec, and imports the `dartPluginClass` libraries of the native platforms: what a
+    // build's plugin registrant compiles and `flutter test` does not. Here with plugins made up for it.
+    let dest = tempfile::tempdir().unwrap();
+    let plugins = dest.path().join("plugins");
+    let app = dest.path().join("app");
+    fs::create_dir_all(app.join("test")).unwrap();
+    let plugin = |name: &str, platforms: &str| {
+        let dir = plugins.join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("pubspec.yaml"),
+            format!(
+                "name: {name}\ndescription: >-\n  A plugin: with a colon\nflutter:\n  plugin:\n    platforms:\n{platforms}\ndependencies:\n  flutter:\n    sdk: flutter\n"
+            ),
+        )
+        .unwrap();
+        format!("{{\"name\":\"{name}\",\"path\":\"{}/\"}}", dir.display())
+    };
+    let linux_dart = plugin(
+        "shared_preferences_linux",
+        "      linux:\n        dartPluginClass: SharedPreferencesLinux\n",
+    );
+    let custom_file = plugin(
+        "custom_windows",
+        "      windows:\n        dartPluginClass: CustomWindows\n        dartFileName: src/custom.dart\n",
+    );
+    let native_only = plugin(
+        "native_only",
+        "      linux:\n        pluginClass: NativeOnlyPlugin\n",
+    );
+    let web_dart = plugin(
+        "shared_preferences_web",
+        "      web:\n        pluginClass: SharedPreferencesPlugin\n        fileName: shared_preferences_web.dart\n",
+    );
+    let endorsed = plugin(
+        "shared_preferences",
+        "      linux:\n        default_package: shared_preferences_linux\n",
+    );
+    fs::write(
+        app.join(".flutter-plugins-dependencies"),
+        format!(
+            "{{\"plugins\":{{\"linux\":[{linux_dart},{native_only},{endorsed}],\"windows\":[{custom_file}],\"web\":[{web_dart}],\"ios\":[]}}}}"
+        ),
+    )
+    .unwrap();
+    let Some(out) = python("floor_app.py", &[Path::new("--plugins"), &app]) else {
+        return;
+    };
+    assert!(
+        out.status.success(),
+        "floor_app.py --plugins failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let test = fs::read_to_string(app.join("test/plugins_test.dart")).unwrap();
+    assert!(
+        test.contains(
+            "import 'package:shared_preferences_linux/shared_preferences_linux.dart' as p"
+        ),
+        "a dartPluginClass imports <package>.dart:\n{test}"
+    );
+    assert!(
+        test.contains("import 'package:custom_windows/src/custom.dart' as p"),
+        "dartFileName names the library:\n{test}"
+    );
+    assert_eq!(
+        test.matches("import 'package:").count(),
+        3,
+        "flutter_test and the two Dart plugins, not a native-only, web or endorsing plugin:\n{test}"
+    );
+    // No plugin resolved: the app with every package refuses to prove nothing.
+    let empty = dest.path().join("empty");
+    fs::create_dir_all(&empty).unwrap();
+    fs::write(
+        empty.join(".flutter-plugins-dependencies"),
+        "{\"plugins\":{\"linux\":[]}}",
+    )
+    .unwrap();
+    let none = python("floor_app.py", &[Path::new("--plugins"), &empty]).unwrap();
+    assert!(
+        !none.status.success(),
+        "no Dart plugin implementation in the app with every package means the check proves nothing"
+    );
+    // A package alone may have none.
+    let alone = python(
+        "floor_app.py",
+        &[
+            Path::new("--only"),
+            Path::new("fespalier_flags"),
+            Path::new("--plugins"),
+            &empty,
+        ],
+    )
+    .unwrap();
+    assert!(
+        alone.status.success(),
+        "a package alone may resolve no plugin"
+    );
+    assert!(!empty.join("test/plugins_test.dart").exists());
+}
+
+#[test]
+fn the_floor_jobs_run_every_app_check_and_cannot_skip_one() {
+    // The `floor-app` job (every package) and the `floor` job (each package alone, in its matrix leg) run the same
+    // checks on an app at its lowest versions: downgrade, pub get (the plugin list), the plugins' Dart code,
+    // flutter test, the web build. Read as YAML, so a step with an `if: false`, one that echoes instead of running,
+    // or one in another folder fails here. The `justfile`'s `floor` recipe runs them too, and is read line by line.
+    let ci = ci_yaml();
+    let floor_app = &ci["jobs"]["floor-app"];
+    assert!(
+        floor_app.is_mapping(),
+        "ci.yml has a floor-app job: it is the only run of the app with every package"
+    );
+    assert!(
+        floor_app.get("if").is_none(),
+        "ci.yml: jobs.floor-app has an `if:`, so it can be skipped"
+    );
+    assert!(
+        floor_app.get("continue-on-error").is_none(),
+        "ci.yml: jobs.floor-app cannot fail the build"
+    );
+    assert_eq!(
+        job_text(&read(".github/workflows/ci.yml"), "floor-app")
+            .matches("flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}")
+            .count(),
+        1,
+        "the floor-app job installs the floor's Flutter"
+    );
+    let steps = ci_steps(&ci, "floor-app");
+    let write = step_running(
+        &steps,
+        "floor-app",
+        "python3 scripts/floor_copy.py \"$RUNNER_TEMP/floor-app/tree\"\npython3 scripts/floor_app.py \"$RUNNER_TEMP/floor-app/tree\" \"$RUNNER_TEMP/floor-app/app\"",
+        None,
+    );
+    AppSteps {
+        job: "floor-app",
+        dir: "${{ runner.temp }}/floor-app/app",
+        condition: None,
+        plugins_env: &[],
+        plugins: "python3 \"$GITHUB_WORKSPACE/scripts/floor_app.py\" --plugins .",
+    }
+    .check(&steps, write);
+
+    // The floor job: the packages (not examples/minimal) run once more, each alone as an app.
+    let floor = &ci["jobs"]["floor"];
+    assert!(
+        floor.get("if").is_none(),
+        "ci.yml: jobs.floor has an `if:`, so it can be skipped"
+    );
+    let steps = ci_steps(&ci, "floor");
+    let copy = step_running(
+        &steps,
+        "floor",
+        "python3 scripts/floor_copy.py \"$RUNNER_TEMP/floor\"",
+        None,
+    );
+    let write = step_running(
+        &steps,
+        "floor",
+        "python3 scripts/floor_app.py --only \"${DIR##*/}\" \"$RUNNER_TEMP/floor\" \"$RUNNER_TEMP/floor-only\"",
+        None,
+    );
+    assert!(
+        write > copy,
+        "ci.yml: the package alone is written after the copies"
+    );
+    assert_eq!(
+        steps[write]["env"]["DIR"].as_str(),
+        Some("${{ matrix.dir }}"),
+        "ci.yml: jobs.floor: the package alone is the matrix leg's"
+    );
+    assert_eq!(
+        steps[write]
+            .get("if")
+            .and_then(serde_yaml_ng::Value::as_str),
+        Some("startsWith(matrix.dir, 'packages/')"),
+        "ci.yml: jobs.floor: the package alone runs for every package, and only for them"
+    );
+    AppSteps {
+        job: "floor",
+        dir: "${{ runner.temp }}/floor-only",
+        condition: Some("startsWith(matrix.dir, 'packages/')"),
+        plugins_env: &[("DIR", "${{ matrix.dir }}")],
+        plugins: "python3 \"$GITHUB_WORKSPACE/scripts/floor_app.py\" --only \"${DIR##*/}\" --plugins .",
+    }
+    .check(&steps, write);
+
+    // The recipe, line by line (a commented-out line is another line).
+    let justfile = read("justfile");
+    let recipe: Vec<&str> = justfile
+        .lines()
+        .skip_while(|l| !l.starts_with("floor sdk="))
+        .take_while(|l| !l.is_empty() || l.starts_with(' '))
+        .collect();
+    let lines = [
+        "    python3 scripts/floor_copy.py \"$work/tree\" > /dev/null",
+        "    app_floor() {",
+        "        (cd \"$1\" && flutter pub downgrade && flutter pub get \\",
+        "            && python3 \"$root/scripts/floor_app.py\" $2 --plugins . \\",
+        "            && flutter test \\",
+        "            && python3 \"$root/scripts/floor_app.py\" --web .)",
+        "    }",
+        "        (cd \"$work/tree/$d\" && flutter pub downgrade && flutter analyze && flutter test)",
+        "        case \"$d\" in",
+        "            packages/*)",
+        "                python3 scripts/floor_app.py --only \"${d##*/}\" \"$work/tree\" \"$work/only\" > /dev/null",
+        "                app_floor \"$work/only\" \"--only ${d##*/}\"",
+        "    python3 scripts/floor_app.py \"$work/tree\" \"$work/app\" > /dev/null",
+        "    app_floor \"$work/app\" \"\"",
+    ];
+    let mut previous = 0;
+    for line in lines {
+        let at = recipe
+            .iter()
+            .position(|l| *l == line)
+            .unwrap_or_else(|| panic!("the justfile's `floor` recipe has no line `{line}`"));
+        assert!(
+            at >= previous,
+            "the justfile's `floor` recipe: `{line}` is out of order"
+        );
+        previous = at;
     }
 }
 

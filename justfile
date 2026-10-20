@@ -105,7 +105,7 @@ floor_dirs := members + "examples/minimal"
 # temporary copy outside the workspace (scripts/floor_copy.py), so the checkout's resolution and test assets
 # are left as they were.
 #
-# The declared floor as CI's `floor` job runs it, `just floor <sdk dir>` or FLUTTER_FLOOR=<sdk dir>: pub downgrade, analyze, test (not part of `just ci`)
+# The declared floor as CI's `floor` and `floor-app` jobs run it, `just floor <sdk dir>` or FLUTTER_FLOOR=<sdk dir>: pub downgrade, analyze, test for each package, each package alone as an app and then one app with every package (scripts/floor_app.py), at their lowest versions (not part of `just ci`)
 floor sdk=env("FLUTTER_FLOOR", ""):
     #!/usr/bin/env bash
     set -euo pipefail
@@ -121,15 +121,37 @@ floor sdk=env("FLUTTER_FLOOR", ""):
         exit 2
     fi
     export PATH="$sdk/bin:$PATH"
+    root="$(pwd)"
     # Inside the workspace a pub downgrade moves every package together (one resolution): each package runs
     # in a copy outside it, on its own (scripts/floor_copy.py), removed afterwards.
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' EXIT
     python3 scripts/floor_copy.py "$work/tree" > /dev/null
+    # An app at its lowest versions (scripts/floor_app.py): pub downgrade, pub get (the plugin list), the Dart
+    # code of the plugins it resolved, flutter test, and the web build (skipped when this SDK has no web
+    # support, unless FSP_REQUIRE_WEB=1). $2 is `--only <package>` for an app with one package.
+    app_floor() {
+        (cd "$1" && flutter pub downgrade && flutter pub get \
+            && python3 "$root/scripts/floor_app.py" $2 --plugins . \
+            && flutter test \
+            && python3 "$root/scripts/floor_app.py" --web .)
+    }
     for d in {{ floor_dirs }}; do
         echo "==> $d (Flutter $have, lowest dependencies)"
         (cd "$work/tree/$d" && flutter pub downgrade && flutter analyze && flutter test)
+        case "$d" in
+            packages/*)
+                echo "==> ${d##*/} alone, as an app (Flutter $have, lowest dependencies)"
+                python3 scripts/floor_app.py --only "${d##*/}" "$work/tree" "$work/only" > /dev/null
+                app_floor "$work/only" "--only ${d##*/}"
+                rm -rf "$work/only"
+                ;;
+        esac
     done
+    # One app with every package, at its lowest versions together: the packages meet there.
+    python3 scripts/floor_app.py "$work/tree" "$work/app" > /dev/null
+    echo "==> the app with every package (Flutter $have, lowest dependencies)"
+    app_floor "$work/app" ""
 
 # Rebuild the DevTools extension into packages/fespalier/extension/devtools/build (needs Flutter)
 devtools-build:

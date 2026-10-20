@@ -40,8 +40,10 @@ workspace:
 
 dev_dependencies:
   # Melos 8 runs only where the workspace root depends on it (a global install alone says the folder "does not
-  # appear to be within a Melos workspace"), so it is part of the shared resolution: exact, so that a Melos
-  # release never changes `just ci`. `dart run melos run deps:outdated` shows newer ones.
+  # appear to be within a Melos workspace"), so it is part of the shared resolution. Exact, so that a new Melos
+  # is a deliberate edit (`deps:upgrade` writes the pin exact again; cli/tests/versions.rs checks it). That
+  # does not freeze the dependencies of Melos: no root lockfile is committed, so a release of one of them can
+  # still change what the root resolves. `dart run melos run deps:outdated` shows newer ones.
   melos: 8.9.0
 
 melos:

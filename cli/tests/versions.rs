@@ -1003,6 +1003,20 @@ fn the_workspace_is_the_packages_that_claim_the_floor() {
 }
 
 #[test]
+fn the_root_pins_melos_exactly() {
+    // `flutter pub upgrade --major-versions` rewrites an exact pin to `^<newest>`: scripts/deps.sh writes
+    // it exact again, and this keeps a hand edit from leaving it a range.
+    let melos = pubspec_of(".")["dev_dependencies"]["melos"]
+        .as_str()
+        .map(str::to_string);
+    assert!(
+        melos.as_deref().is_some_and(looks_like_a_version),
+        "the root pubspec.yaml's dev dependency `melos:` is {melos:?}, not an exact version: write `melos: X.Y.Z` \
+         (scripts/deps.sh writes the pin exact again after `deps:upgrade`)"
+    );
+}
+
+#[test]
 fn workspace_packages_resolve_together_and_the_others_alone() {
     let members = workspace_members();
     for dir in dart_folders() {

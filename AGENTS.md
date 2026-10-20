@@ -236,7 +236,9 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   `SPELLING_EXCEPTIONS` for a reason), and in `fsp create`'s recipes
   (`the_recipes_spell_a_dependency_as_the_pubspecs_do`). The root `pubspec.lock` is not committed. Melos is
   the root's dev dependency, so it is part of the resolution the members are tested in; run it as
-  `dart run melos ...`.
+  `dart run melos ...`. Its pin is exact (`cli/tests/versions.rs`), so a new Melos is a deliberate edit; that
+  does not freeze Melos's own dependencies (no root lockfile is committed). `pub upgrade --major-versions`
+  rewrites an exact pin to `^<newest>`, so `scripts/deps.sh upgrade` writes it exact again.
 - **`fespalier_adaptive/lib/material.dart` must compile on Flutter 3.35**, fespalier's floor. CI's `floor` job (`just floor` locally) checks it, but check a Material API's first release before using it: `NavigationDrawer.header` and `footer` exist from 3.35, so they could be slots, but today the scaffold puts `leading` and `trailing` into `children`. What it uses today (`NavigationBar`, `NavigationRail` and `NavigationDrawer`, and the `enabled` and `disabled` flags of their destinations) is compiled by the `floor` job on 3.35.7.
 - **`fsp dev` is a pure state plus threads.** Every decision (hot reload or restart, coalescing, the
   shutdown, the device choice, the keys) is in `dev_state.rs` (a regeneration's reload or restart is `DevState::reloads`), which reads no clock, file or terminal and is

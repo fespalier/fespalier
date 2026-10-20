@@ -9,6 +9,7 @@ How a URL becomes a route: segment types, query parameters, case, localized path
 - A segment's type comes from the parameters that ask for it. With none, it is a `String`.
 - The types are `String`, `int`, `double`, `bool` or an [enum](#enum-segments) of your app. (A [catch-all](#catch-all-segments) is a `List` of those, or of `num` or `DateTime`.)
 - **Every file that asks for `$id` must agree on its type**, or `fsp` reports the mismatch with a code frame.
+- **A typedef is the type it names** (since 0.21.0): `typedef ProductId = int;` in a file of your package makes `required ProductId id` an `int`, so the typed route's field is the `int` (`final int id;`) and the segment parses as one. A typedef of a plain type is followed in the app's own files only; a typedef of a `List` of an enum (`typedef Cats = List<Category>;`) is not a catch-all type, and keeps the error.
 - **A part that does not parse is a bad segment**: `/products/abc` goes to `not_found.dart`, the page is never built, and a guard that reads segments or query parameters is skipped (see [Guards](guards.md)).
 
 `fsp new` scaffolds every segment as a `String`: `fsp new 'products/[id]' --data` writes `data(Ref ref, {required String id})`. To make `$id` an `int`, change the parameter type in each file that asks for it, then run `fsp gen` (or let `fsp watch` do it).
@@ -35,6 +36,7 @@ class ShopPage extends StatelessWidget {
 const ShopRoute(category: Category.hats, sort: Sort.price).go(context);   // → /shop/hats?sort=price
 ```
 
+- **Finding the enum** (since 0.21.0). A `typedef` of an enum (`typedef Cat = Category;`) is followed to the enum, in the app's own files: `required Cat category` works in a file that imports the file of the typedef. The generated code names the alias as the first file that constrains the segment spells it, and imports it from there (`Cat.values`); the enum itself is the same type either way. `show` and `hide` count: a name a file hides is not found through that file.
 - **Read by name.** A value is the one whose `name` the text spells (`Category.values.byName`). A segment or catch-all part that names no value is a bad segment ([Segment types](#segment-types)). A query parameter that names none is `null`, or left out of a list.
 - **Case follows the route.** Names match exactly by default. Where the route's paths match in any case ([`case_sensitive: false`, or a `route.dart`](#case-and-trailing-slashes)), `/shop/SHOES` is `Category.shoes` too. A name that matches exactly always wins, so an enum with `a` and `A` still tells them apart.
 - **Written by name.** `.location` writes `.name` for a segment, each part of a catch-all and a query parameter. The typed route's field has the enum's type.
@@ -46,7 +48,7 @@ const ShopRoute(category: Category.hats, sort: Sort.price).go(context);   // →
 
 - An enum is read by `name` only.
 - `Sort sort = Sort.price` (not nullable) isn't a query parameter, as for `int`.
-- An _optional_ nullable parameter of a type `fsp` finds no enum for keeps its default (it may be plain widget configuration, `Color? color`); the error comes when a `data.dart`, `guard.dart` or `redirect.dart` asks for it.
+- An _optional_ nullable parameter of a type `fsp` finds no enum for keeps its default (it may be plain widget configuration, `Color? color`); the error comes when a `data.dart`, `guard.dart` or `redirect.dart` asks for it. Since 0.21.0 a typedef of a query type (`typedef PageNo = int;`, `PageNo? page`) is a query parameter, where it kept its default before: the typed route gains that optional argument.
 - `fsp watch` also watches the rest of `lib/`, so an enum added or edited there regenerates (outside `lib/`, run `fsp gen`).
 - `fsp new` below an enum segment writes its type name into the new files; you add the import.
 
@@ -120,7 +122,7 @@ class SearchPage extends StatelessWidget {
 }
 ```
 
-A query parameter's type comes from the parameters that ask for it, like a segment's: `T?` for a single value, `List<T>` for repeated ones. Every file of a route that asks for `?page` must agree on its type.
+A query parameter's type comes from the parameters that ask for it, like a segment's: `T?` for a single value, `List<T>` for repeated ones. Every file of a route that asks for `?page` must agree on its type; since 0.21.0 a typedef of one of these types (`typedef PageNo = int;`) is that type.
 
 - A missing or unparsable value is `null` (or left out of a list). Unlike a bad segment, it never leads to not-found.
 - The typed route takes query parameters as optional arguments and writes them into `.location`, leaving out nulls and empty lists.

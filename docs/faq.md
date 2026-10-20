@@ -121,6 +121,25 @@ copy of the matcher. The cost of a syntax tree is that `fsp` can't know that `co
 `BuildContext`: it only reads string literals in the call shapes listed in
 [Checking string paths](cli.md#checking-string-paths).
 
+### Why fsp follows typedefs itself, not through the analyzer
+
+Since 0.21.0 `fsp` treats a `typedef` of a type in your own files as that type, and an import prefix as the
+library it names: `ProductView` and the `Product` it names are one type, and so are `m.Product` and `Product`.
+It reads the files it already reads (the app folder, the relative imports, and the `package:` imports of your
+own package, through `export`s and `show`/`hide`), and it compares spellings first, so an app whose spellings
+agree gets the same code as before.
+
+It does not ask the Dart analyzer, because the analyzer needs the package configuration that `pub get` writes,
+so its answer would depend on the pub cache, and `fsp check` must give the same answer before and after
+`pub get`. The analyzer also takes seconds to start on a mismatch, where `fsp check` takes tens of
+milliseconds, and `fsp watch` runs it on every save. A separate `analyzer` dependency in every app would pin
+a version next to build_runner's and freezed's.
+
+What it leaves: a `typedef` of another package (a hosted package, or a `path:` dependency), a generic
+`typedef`, and one in a `part` file. Those are compared as written, and the messages say which name could not
+be followed. A test checks what `fsp` says against `dart analyze` on the same types, so a disagreement is a
+failing test, not a surprise in an app.
+
 ### Why fsp watch doesn't cache per route
 
 A full resolve is 30 ms at 5,000 routes, a tenth of a save that changes output. Resolving one route reads

@@ -207,6 +207,9 @@ it until you delete or rewrite it. `flutter create` also writes the platform fol
 
 ## Types that look the same but are not
 
-`fsp` reads a syntax tree. `Product` and a `typedef` of it, `List<int>` and `List<num>`,
-or one enum name declared in two files, are **different** types to it and produce the
-"X in file:line but Y here" error. The Dart compiler still checks the generated code.
+`fsp` reads a syntax tree, and since 0.21.0 it follows the typedefs and import prefixes of the
+app's own files: `ProductView` and the `Product` it names are one type, and so are `m.Product`
+and `Product`. Still **different** types to it: a `typedef` of another package, a generic
+`typedef`, `List<int>` and `List<num>`, and one enum name declared in two files. Those produce the
+"X in file:line but Y here" error, and the message names the typedef it could not follow. The
+Dart compiler still checks the generated code.

@@ -23,9 +23,9 @@ flutter run
 
 Every example's run steps use this command. The examples commit no platform folders, and a plain `flutter create` in an
 existing app also writes a `test/widget_test.dart` for a `MyApp` that no example has, which fails `flutter analyze` and
-`flutter test`: `--empty` leaves that test out. A recent Flutter's `pub get` (checked with 3.47; `flutter create` runs
-one too) also adds the new platform folders to `analyzer: exclude:` in the example's `analysis_options.yaml`. That edit
-is harmless, and `git checkout analysis_options.yaml` takes it back.
+`flutter test`: `--empty` leaves that test out. On a recent Flutter (checked with 3.47), every `flutter` command (`pub get`,
+`run`, `test`, `build`) adds the platform folders to `analyzer: exclude:` in `analysis_options.yaml`. That is harmless;
+`git checkout analysis_options.yaml` drops it when you are done.
 
 Things to try:
 

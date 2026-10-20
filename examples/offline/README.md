@@ -48,7 +48,6 @@ signed requests; this one is the same wiring with no server to start.
 cd examples/offline
 flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
-git checkout analysis_options.yaml   # pub get added the platform folders to analyzer: exclude:; this takes that back
 flutter run -d chrome   # or any device
 ```
 

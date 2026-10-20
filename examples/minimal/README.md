@@ -102,7 +102,6 @@ A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-scr
 cd examples/minimal
 flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
-git checkout analysis_options.yaml   # pub get added the platform folders to analyzer: exclude:; this takes that back
 flutter run
 ```
 

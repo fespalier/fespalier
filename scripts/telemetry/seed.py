@@ -610,16 +610,29 @@ class Showcase(Seed):
             )
 
     def _logs(self, end):
-        # Three uncaught errors, no crash, and a few ordinary records.
+        # Three uncaught errors, a native crash on /orders/:id, an ANR that names no screen (so the
+        # Errors table shows it as unknown), and a few ordinary records. The crash and the ANR are
+        # shaped like otel_zone's (docs/observability.md, "The screen a native crash happened on").
         window = end - self.start
-        shapes = [(17, "ERROR")] * 3 + [(9, "INFO")] * 5
+        shapes = [(17, "ERROR", None, None)] * 3
+        shapes += [(21, "FATAL", "device.crash", "/orders/:id"), (21, "FATAL", "device.anr", None)]
+        shapes += [(9, "INFO", None, None)] * 5
         self.log_records, self.logs = [], []
-        for i, (number, text) in enumerate(shapes):
-            at = self.start + int(window * (0.2 + 0.1 * i))
+        for i, (number, text, event, screen) in enumerate(shapes):
+            at = self.start + int(window * (i + 1) / (len(shapes) + 1))
             attributes = {
                 "exception.type": "FlutterError",
                 "exception.message": "A RenderFlex overflowed by 14 pixels on the bottom.",
             }
+            if event == "device.crash":
+                attributes = {"exception.type": "SIGSEGV", "exception.message": "Segmentation fault"}
+            if event == "device.anr":
+                attributes = {"exception.type": "ANR", "exception.message": "Input dispatching timed out"}
+            if event:
+                attributes["event.name"] = event
+                attributes["device.crash.kind"] = "anr" if event == "device.anr" else "native"
+            if screen:
+                attributes["otel_zone.crashed.screen"] = screen
             self.log_records.append(
                 {
                     "timeUnixNano": str(at),
@@ -629,7 +642,7 @@ class Showcase(Seed):
                     "attributes": attrs(attributes),
                 }
             )
-            self.logs.append({"number": number, "event": None})
+            self.logs.append({"number": number, "event": event})
 
     def batch(self, until, since=None):
         """The spans and records that start in [since, until) (nanoseconds), as OTLP payloads."""

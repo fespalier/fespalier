@@ -10,6 +10,7 @@
 use crate::extra;
 
 /// What a type name names, found by a [`Scope`].
+#[derive(Debug, Clone, PartialEq)]
 pub struct Declared {
     /// The file that declares it, relative to the project: `lib/models/ids.dart`.
     pub decl: String,

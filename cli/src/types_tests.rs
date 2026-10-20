@@ -711,6 +711,38 @@ fn what_pub_get_writes_changes_nothing() {
     assert_eq!(run(), before);
 }
 
+/// Resolves the app of `files` (under `lib/app/`, with `../models/...` for `lib/models/...`) and
+/// returns the project paths it read from disk and the lookup work it did: libraries parsed and
+/// libraries searched for a declaration.
+fn lookups(files: &[(&str, &str)]) -> (Vec<String>, (usize, usize)) {
+    let dir = project(files);
+    let app_dir = dir.path().join("lib/app");
+    let cfg = Config::default();
+    let mut diags = crate::diag::Diags::default();
+    let tree = crate::scan::scan(&app_dir, &mut diags).unwrap();
+    let libs = crate::enums::Libs::for_app(&app_dir, &cfg);
+    let before = crate::enums::work();
+    let _ = crate::resolve::resolve(
+        &tree,
+        cfg.case_sensitive,
+        cfg.remount,
+        cfg.deferred,
+        &libs,
+        &mut diags,
+    );
+    let after = crate::enums::work();
+    let reads = libs
+        .reads()
+        .paths()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    (
+        reads,
+        (after.parses - before.parses, after.probes - before.probes),
+    )
+}
+
 #[test]
 fn spellings_that_agree_read_no_file() {
     // Rule 1: a page and its data that spell the same type read no library at all.
@@ -724,25 +756,70 @@ fn spellings_that_agree_read_no_file() {
         ("products/$id/page.dart", &page),
         ("products/$id/data.dart", data),
     ]);
-    let dir = project(&files);
-    let app_dir = dir.path().join("lib/app");
-    let cfg = Config::default();
-    let mut diags = crate::diag::Diags::default();
-    let tree = crate::scan::scan(&app_dir, &mut diags).unwrap();
-    let libs = crate::enums::Libs::for_app(&app_dir, &cfg);
-    let _ = crate::resolve::resolve(
-        &tree,
-        cfg.case_sensitive,
-        cfg.remount,
-        cfg.deferred,
-        &libs,
-        &mut diags,
-    );
-    let reads = libs.reads();
+    let (reads, work) = lookups(&files);
     assert!(
-        reads.paths().iter().all(|p| !p.starts_with("lib/models/")),
-        "{:?}",
-        reads.paths()
+        reads.iter().all(|p| !p.starts_with("lib/models/")),
+        "{reads:?}"
+    );
+    assert_eq!(work, (0, 0));
+}
+
+/// `pages` pages that each import a barrel of `files` model files and have two parameters that
+/// nothing binds (`EdgeInsets padding = ...`, `VoidCallback? onTap`), and the barrel.
+fn barrel_app(pages: usize, files: usize) -> Vec<(String, String)> {
+    let mut out = vec![("page.dart".to_string(), HOME.to_string())];
+    let exports: String = (0..files)
+        .map(|k| format!("export 'm{k}.dart';\n"))
+        .collect();
+    out.push(("../models/all.dart".into(), exports));
+    for k in 0..files {
+        let body = format!("class Model{k} {{}}\nclass Other{k} {{ final int id = {k}; }}\n");
+        out.push((format!("../models/m{k}.dart"), body));
+    }
+    for i in 0..pages {
+        let page = format!(
+            "import 'package:demo/models/all.dart';\n{}",
+            widget(
+                &format!("P{i}Page"),
+                "final EdgeInsets padding; final VoidCallback? onTap;",
+                ", this.padding = EdgeInsets.zero, this.onTap"
+            )
+        );
+        out.push((format!("p{i}/page.dart"), page));
+    }
+    out
+}
+
+fn barrel_lookups(pages: usize, files: usize) -> (Vec<String>, (usize, usize)) {
+    let app = barrel_app(pages, files);
+    let app: Vec<(&str, &str)> = app.iter().map(|(p, s)| (p.as_str(), s.as_str())).collect();
+    lookups(&app)
+}
+
+#[test]
+fn a_barrel_is_read_and_searched_once_however_many_pages_import_it() {
+    // Parameters nothing binds are looked up (is `EdgeInsets` a typedef of a query type?), and
+    // every page imports the barrel. The barrel is walked once per name, not once per page: the
+    // work a page adds does not depend on how many files the barrel exports (it used to grow with
+    // pages times files), only the barrel is parsed, and each file is read once.
+    let (reads, (parses, probes)) = barrel_lookups(3, 10);
+    let mut want: Vec<String> = (0..10).map(|k| format!("lib/models/m{k}.dart")).collect();
+    want.push("lib/models/all.dart".into());
+    want.sort();
+    assert_eq!(reads, want);
+    assert_eq!(parses, 1, "only the barrel is parsed");
+    let per_page = |files: usize| {
+        let (_, (p3, a)) = barrel_lookups(3, files);
+        let (_, (p12, b)) = barrel_lookups(12, files);
+        assert_eq!((p3, p12), (1, 1));
+        (b - a) / 9
+    };
+    let (few, many) = (per_page(10), per_page(40));
+    assert_eq!(few, many, "a page's lookups do not walk the barrel again");
+    let (_, (_, probes_12_40)) = barrel_lookups(12, 40);
+    assert!(
+        probes_12_40 < 12 * 40,
+        "{probes_12_40} probes; {probes} for 3x10"
     );
 }
 

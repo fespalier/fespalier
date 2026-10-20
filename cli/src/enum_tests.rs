@@ -872,6 +872,43 @@ fn the_libs_find_declarations_the_way_imports_do() {
 }
 
 #[test]
+fn an_enum_is_found_however_its_declaration_is_laid_out() {
+    // A library is searched for a declaration without being parsed when it spells none: the name
+    // after `enum`, however the lines and comments fall, is what makes it be parsed.
+    use crate::enums::{Libs, Lookup};
+    let dir = project(&[
+        ("app/shop/page.dart", ""),
+        (
+            "models/odd.dart",
+            "class A {} enum\n  Spread\n{ a, b }\nenum /* why */ Noted { c }\n// class Fake\nclass NotAnEnum {}\n",
+        ),
+        (
+            "models/plain.dart",
+            "class Other {}\nfinal text = 'enum Hidden';\n",
+        ),
+    ]);
+    let app_dir = dir.path().join("lib/app");
+    let find = |imports: &str, ty: &str| {
+        Libs::for_app(&app_dir, &Config::default()).find("shop/page.dart", imports, ty)
+    };
+    let values = |l: Lookup| match l {
+        Lookup::Found(f) => f.values,
+        other => vec![format!("{other:?}")],
+    };
+    let odd = "import '../../models/odd.dart';";
+    assert_eq!(values(find(odd, "Spread")), ["a", "b"]);
+    assert_eq!(values(find(odd, "Noted")), ["c"]);
+    for (src, ty) in [
+        (odd, "Fake"),
+        (odd, "NotAnEnum"),
+        (odd, "Spreads"),
+        ("import '../../models/plain.dart';", "Hidden"),
+    ] {
+        assert_eq!(values(find(src, ty)), ["Missing"], "{ty}");
+    }
+}
+
+#[test]
 fn only_type_names_are_candidates() {
     use crate::enums::{enum_base, is_candidate, query_shape};
     for ty in ["Category", "m.Category", "_Private", "X"] {

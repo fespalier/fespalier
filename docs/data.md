@@ -471,7 +471,7 @@ The Rust side is `#[serde(tag = "type")]` on the enum and `serde_json::to_string
 
 **A bad message is skipped, not fatal.** The codec catches what your decoder throws (a `FormatException`, a failed cast, a `RangeError`). The next message decodes as usual, `changes.latest` keeps its last change (one bad message is not a stopped core, so it is no `AsyncError`), and the skipped message gets no `Change.seq` and moves no topic. This is what decoding in Dart buys: `flutter_rust_bridge` 2.13 reads its stream in an `async*` that stops at the first throw, so a message it cannot decode, or an error the core adds, ends a typed stream _(read in its source, not run by a test here)_. An error of the stream itself still reaches `changes.latest` as an `AsyncError`.
 
-**Batches.** `ChangeCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a batch is a burst, so a watcher rebuilds at most once for it, and one that no event of the batch concerns does not rebuild (since 0.21.0; before, a batch longer than the 64-event log rebuilt every watcher once). A failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
+**Batches.** `ChangeCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a batch is a burst, so a watcher rebuilds at most once for it while another watched key is not concerned, or something watches `changes.latest`, and one that no event of the batch concerns does not rebuild (since 0.21.0; before, a batch longer than the 64-event log rebuilt every watcher once). A key watched alone takes the events of a batch one per turn and reloads once for each that concerns it, unless its topic has [a budget](#a-rebuild-budget-changebudget). A failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
 
 ```dart
 final batchCodec = ChangeCodec.batch<String, Object?, CoreEvent>(
@@ -522,20 +522,31 @@ Since 0.21.0. What a core that emits thousands of events a second costs, measure
 - **Providers: once per event.** Riverpod runs a provider's rebuild after two zero-length timers, not at the next frame, and `flutter_rust_bridge` delivers each event in an event-loop turn of its own. So a `data()` that watches a key reloads once per event about it: 5,000 events a second about one order are 5,000 calls to the core for 60 frames _(measured with fake time in a widget test, not checked on a device with a real core)_.
 - **A slow `data()` never settles.** One that takes 5 ms and is invalidated every millisecond starts again before it finishes: over a simulated second of 1,000 events, none of the 60 frames showed a loaded value, and the page kept its old one, refreshing, until the core went quiet.
 - **A burst that concerns every watched key comes through one event per turn.** Riverpod 3 pauses `changes.latest` while every provider that watches it rebuilds, and the stream holds the rest: a key watched alone takes 1,000 events of which 500 concern it in 500 turns and 500 reloads. While another watched key is not concerned, or something else watches `changes.latest`, the burst goes through in one turn and is one reload.
-- **Nobody watching: the stream holds what comes.** With no topic watched, Riverpod pauses `changes.latest` too, and the stream keeps what the core sends in memory until a topic is watched again _(Dart's buffering of a paused stream; not checked with a real core)_; that topic then takes it all in one turn and rebuilds only what it concerns. Something that keeps watching `changes.latest`, such as a "live updates stopped" banner in the app's shell that watches `changes.latest.select((v) => v.hasError)`, keeps the subscription flowing, so nothing is held, and it rebuilds on no event.
+- **Nobody watching: the stream holds what comes.** With no topic watched, Riverpod pauses `changes.latest` too, and the stream keeps what the core sends in memory until a topic is watched again _(Dart's buffering of a paused stream; not checked with a real core)_; that topic then rebuilds only for the events that concern it, and takes them in one turn while another watched key is not concerned, or something watches `changes.latest`; a key watched alone takes them one per turn, and reloads once for each, unless its topic has a budget. Something that keeps watching `changes.latest`, such as a "live updates stopped" banner in the app's shell that watches `changes.latest.select((v) => v.hasError)`, keeps the subscription flowing, so nothing is held, and it rebuilds on no event.
 
 A budget bounds the reloads: `budget: ChangeBudget(tick)` lets each key of a topic move at most once between two ticks of `tick`, a provider **you** fire:
 
 ```dart
 // lib/core/change_tick.dart
-/// Fires every 100 ms while a budgeted key is watched: the app's timer, not the package's.
+/// Fires every 100 ms while a budgeted key is watched and active: the app's timer, not the package's.
 final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
 
 class ChangeTick extends RefetchSignal {
+  Timer? _timer;
+
+  void _start() => _timer ??= Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
   @override
   int build() {
-    final timer = Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
-    ref.onDispose(timer.cancel);
+    _start();
+    ref.onCancel(_stop); // every budgeted key is paused (a covered page, a hidden tab): no timer
+    ref.onResume(_start);
+    ref.onDispose(_stop);
     return 0;
   }
 }
@@ -547,9 +558,9 @@ final orderChanged = changes.topic<int>(
 );
 ```
 
-The first event that concerns a key after a tick moves it at once, so a quiet core is as quick as before; the next ones are held, and the next tick moves the key once if anything was held. A held change is never dropped: it waits for the next tick however long the core then stays quiet, so a tick that stops firing holds it until it fires again. A tick moves only the keys that hold a change. A held key does not rebuild, so the feed is not paused for it, and a key watched alone takes a whole burst in one turn. Measured: with a 16 ms tick, the 5,000 events a second are 61 reloads instead of 5,000; with the slow `data()`, a 16 ms tick let 40 of the 60 frames show a loaded value, 50 ms 21 and 100 ms 11, against none.
+A key that has not moved since the last tick moves at once on the first event that concerns it, so a quiet core is as quick as before; the next ones are held, and the next tick moves the key once if anything was held. That move opens the next period: an event right after a tick that released a held change is held for the tick after it, and only a tick that moved nothing lets the next event through at once. A held change is never dropped: it waits for the next tick however long the core then stays quiet, so a tick that stops firing holds it until it fires again. A tick moves only the keys that hold a change. A held key does not rebuild, so the feed is not paused for it, and a key watched alone takes a whole burst in one turn. Measured: with a 16 ms tick, the 5,000 events a second are 61 reloads instead of 5,000; with the slow `data()`, a 16 ms tick let 40 of the 60 frames show a loaded value, 50 ms 21 and 100 ms 11, against none.
 
-The tick is yours because the package has no clock: a `Timer` in it would wake an idle app, and a frame callback is a listener on the framework; `test/no_timers_test.dart` allows neither. A `RefetchSignal` (from fespalier) fires with `fire()`; auto-dispose, as above, it is created by the first budgeted key watched, and its timer is cancelled with the last. One tick serves every budgeted topic; 100 ms is ten updates a second. `changes.any` has no budget: `changes.topic<Null>((_, _) => true, budget: ChangeBudget(changeTick))(null)` is a budgeted "anything changed", whose value counts moves, not events.
+The tick is yours because the package has no clock: a `Timer` in it would wake an idle app, and a frame callback is a listener on the framework; `test/no_timers_test.dart` allows neither. A `RefetchSignal` (from fespalier) fires with `fire()`; auto-dispose, as above, it is created by the first budgeted key watched and disposed with the last. Disposal is not enough to stop the timer when a page is hidden: Riverpod pauses the watchers of a page that an opaque route covers or a tab that is not shown, and a paused watcher still keeps its provider alive, so a timer that is only cancelled in `onDispose` keeps firing every 100 ms for a page nobody sees _(measured with fake time: 600 fires in a minute with the only budgeted key paused)_. The recipe starts the timer in `build`, stops it in `onCancel` (the last active watcher is gone or paused) and starts it again in `onResume`, so no budgeted key being active means no timer. A held change of a paused key waits for the page to be shown again and for the next tick after that. One tick serves every budgeted topic; 100 ms is ten updates a second. `changes.any` has no budget: `changes.topic<Null>((_, _) => true, budget: ChangeBudget(changeTick))(null)` is a budgeted "anything changed", whose value counts moves, not events.
 
 **Testing.** Override the tick with `RefetchSignal.new`: nothing fires it but the test, so a held change moves exactly when the test says.
 

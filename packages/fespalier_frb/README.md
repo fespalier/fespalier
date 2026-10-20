@@ -53,7 +53,7 @@ Future<void> startup() => initRustCore(RustLib.init);
   matching event (none of a burst is lost: the feed logs the last 64); `any` counts every event.
 - `InvalidationTable` is the pure form, for an app that owns its subscription: `table.apply(event, container.invalidate)`.
 - `ChangeCodec` (since 0.18.0) decodes a core that sends raw messages (JSON, bytes, a batch per message) in `open`: `(ref) => core.rawChanges().transform(codec)`. A message or item that does not decode, or whose decoder throws `UnknownChange` (a variant a newer core added), is skipped, counted and never numbered, and the feed goes on; `fespalier.frb.decode` reports it with constants and a count, never its text.
-- `ChangeBudget` (since 0.21.0) holds a busy key to one move per tick of a provider the app fires (`topic(matches, budget: ChangeBudget(changeTick))`): the first event after a tick moves the key at once, the next ones wait for the next tick, and nothing is dropped. Since 0.21.0 an event costs a key it does not concern one matcher call and no rebuild.
+- `ChangeBudget` (since 0.21.0) holds a busy key to one move per tick of a provider the app fires (`topic(matches, budget: ChangeBudget(changeTick))`): a key that has not moved since the last tick moves at once on its first event, the next ones wait for the next tick, and nothing is dropped. Since 0.21.0 an event costs a key it does not concern one matcher call and no rebuild.
 - `initRustCore` reports `fespalier.frb.init` (`ok` or `error`; not the error, its text or its stack trace) and rethrows, so `startup()` shows
   `splash.dart`'s error and can retry.
 - `package:fespalier_frb/testing.dart` has `FakeChangeSource`, a stream the test feeds.

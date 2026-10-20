@@ -187,23 +187,42 @@ final class ChangeTopic<E, K> {
 /// A rebuild budget for the keys of a [ChangeFeed.topic] (since 0.21.0): each key moves at most
 /// once between two ticks of [tick], a provider the app fires.
 ///
-/// The first event that concerns a key after a tick moves it at once, so a quiet core is as quick
-/// as without a budget; the next ones are held, and the next tick moves the key once if anything
-/// was held. Nothing is dropped: a held change waits for the next tick however long the core then
-/// stays quiet, so a tick that stops firing holds it until it fires again. A tick moves only the
-/// keys that hold a change; the others cost one comparison each.
+/// A key that has not moved since the last tick moves at once on the first event that concerns
+/// it, so a quiet core is as quick as without a budget; the next ones are held, and the next tick
+/// moves the key once if anything was held. That move opens the next period: an event right after
+/// a tick that released a held change is held for the tick after it, and only a tick that moved
+/// nothing lets the next event through at once. Nothing is dropped: a held change waits for the
+/// next tick however long the core then stays quiet, so a tick that stops firing holds it until
+/// it fires again. A tick moves only the keys that hold a change; the others cost one comparison
+/// each.
 ///
 /// The package has no clock (no `Timer`, no frame callback): [tick] is the app's, usually a
-/// `RefetchSignal` that fires from a timer of its own while a budgeted key is watched:
+/// `RefetchSignal` that fires from a timer of its own. The timer runs while a budgeted key is
+/// watched and active, and stops while every one is paused (a page covered by an opaque route, a
+/// hidden tab), because Riverpod then calls `onCancel`; it starts again on `onResume`:
 ///
 /// ```dart
 /// final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
 ///
 /// class ChangeTick extends RefetchSignal {
+///   Timer? _timer;
+///
+///   void _start() => _timer ??= Timer.periodic(
+///     const Duration(milliseconds: 100),
+///     (_) => fire(),
+///   );
+///
+///   void _stop() {
+///     _timer?.cancel();
+///     _timer = null;
+///   }
+///
 ///   @override
 ///   int build() {
-///     final timer = Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
-///     ref.onDispose(timer.cancel);
+///     _start();
+///     ref.onCancel(_stop);
+///     ref.onResume(_start);
+///     ref.onDispose(_stop);
 ///     return 0;
 ///   }
 /// }
@@ -221,7 +240,9 @@ final class ChangeBudget {
   const ChangeBudget(this.tick);
 
   /// What ends a period: a new value (a `RefetchSignal`'s `fire()`). Every budgeted key watches
-  /// it, so an auto-dispose tick lives exactly while one is watched.
+  /// it, so an auto-dispose tick is created by the first budgeted key watched and disposed with
+  /// the last; a timer that is started in `build` and stopped in `onCancel` (and started again in
+  /// `onResume`) does not run while every budgeted key is paused.
   final ProviderListenable<Object?> tick;
 }
 

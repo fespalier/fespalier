@@ -419,8 +419,9 @@ void main() {
 
 - The codecs are top-level, so their counts add up across a test file: assert on what `decode` returns, not on `unknownCount`
   or `errorCount`.
-- A batch is a burst: a watcher rebuilds at most once for it, and one that no event of the batch concerns does not rebuild
-  (since 0.21.0).
+- A batch is a burst: a watcher rebuilds at most once for it while another watched key is not concerned, or something watches
+  `changes.latest`, and one that no event of the batch concerns does not rebuild (since 0.21.0). A key watched alone takes the
+  events of a batch one per turn and reloads once for each that concerns it, unless its topic has a budget (below).
 - A heartbeat is a batch of none: `split` returns nothing, so there is no event and no skip.
 - `ReceivePort` and protobuf are fragments, not built, the same as in `docs/data.md` (they need your generated classes and your
   FFI call):
@@ -458,13 +459,20 @@ Why, measured in the package's tests (a debug build, fake time):
   concerns it one event per turn. With no topic watched at all, the stream is paused too and holds what the core sends; a
   shell banner that watches `changes.latest.select((v) => v.hasError)` keeps it flowing.
 
-The first event after a tick moves the key at once; the next ones are held; the next tick moves it once if anything was held.
+A key that has not moved since the last tick moves at once on the first event that concerns it; the next ones are held; the next
+tick moves it once if anything was held. That move opens the next period: an event right after a tick that released a held change
+is held for the tick after it, and only a tick that moved nothing lets the next event through at once.
 Nothing is dropped (a held change waits for the next tick, however long the core stays quiet), a tick moves only the keys that
 hold a change, and a held key does not rebuild, so the burst goes through in one turn. With a 16 ms tick, 5,000 events a second
 are 61 reloads; with the slow `data()`, 40 of 60 frames show a loaded value (50 ms: 21, 100 ms: 11).
 
 The package has no clock (`test/no_timers_test.dart`), so the tick is the app's: a `RefetchSignal` it fires from a timer of its
-own, auto-dispose so that it runs only while a budgeted key is watched. One tick serves every budgeted topic. `changes.any` has no
+own, auto-dispose so that it is created by the first budgeted key watched and disposed with the last. Disposal alone does not stop
+the timer while the page is hidden: Riverpod pauses the watchers of a page that an opaque route covers or of a tab that is not shown,
+and a paused watcher keeps its provider alive, so a timer that is only cancelled in `onDispose` fires every 100 ms for a page
+nobody sees (600 fires in a minute with the only budgeted key paused, measured with fake time). The recipe starts the timer in
+`build`, stops it in `onCancel` and starts it again in `onResume`; a held change of a paused key waits for the page to be shown
+again and for the next tick after that. One tick serves every budgeted topic. `changes.any` has no
 budget: `changes.topic<Null>((_, _) => true, budget: ...)(null)` is a budgeted "anything changed" that counts moves.
 
 ```dart
@@ -476,14 +484,25 @@ import 'package:fespalier_frb/fespalier_frb.dart';
 import 'package:my_app/core/changes.dart';
 import 'package:my_app/core/core.dart';
 
-/// Fires every 100 ms while a budgeted key is watched: the app's timer, not the package's.
+/// Fires every 100 ms while a budgeted key is watched and active: the app's timer, not the package's.
 final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
 
 class ChangeTick extends RefetchSignal {
+  Timer? _timer;
+
+  void _start() => _timer ??= Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
   @override
   int build() {
-    final timer = Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
-    ref.onDispose(timer.cancel);
+    _start();
+    ref.onCancel(_stop); // every budgeted key is paused (a covered page, a hidden tab): no timer
+    ref.onResume(_start);
+    ref.onDispose(_stop);
     return 0;
   }
 }
@@ -531,7 +550,7 @@ void main() {
 
     source.emit(const OrderChanged(42));
     await container.pump();
-    expect(moves, [1]); // the first event after a tick: at once
+    expect(moves, [1]); // nothing moved since the start: at once
 
     for (var i = 0; i < 100; i++) {
       source.emit(const OrderChanged(42));
@@ -547,7 +566,7 @@ void main() {
 ```
 
 - **A tick that never fires holds a change for ever.** In a test that is what you want (fire it by hand); in the app, the tick's
-  timer runs while a budgeted key is watched, which is why it is auto-dispose.
+  timer runs while a budgeted key is watched and active, which is why it is auto-dispose and stops in `onCancel`.
 - **Pick the period from the screen**: 100 ms is ten updates a second; a key with a slow `data()` wants a period longer than one
   load.
 

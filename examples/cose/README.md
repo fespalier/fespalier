@@ -51,7 +51,7 @@ flutter create --empty . --platforms=android,ios   # adds the platform folders, 
 flutter pub get
 flutter run \
   --dart-define=COSE_SERVER_JWK='{"crv":"P-256","kty":"EC","x":"...","y":"..."}' \
-  --dart-define=COSE_SERVER_URL=http://127.0.0.1:8787   # 10.0.2.2 from the Android emulator
+  --dart-define=COSE_SERVER_URL=http://127.0.0.1:8787   # on Android, see below
 ```
 
 ### On an Android emulator or a phone
@@ -69,13 +69,23 @@ flutter run --dart-define=COSE_SERVER_URL=http://127.0.0.1:8787 ...
 flutter run --dart-define=COSE_SERVER_URL=http://192.168.1.248:8787 ...
 ```
 
-The server must listen where the device can reach it: `--listen 0.0.0.0:8787`, not the default
-`127.0.0.1:8787` (which only accepts the machine's own loopback). Flutter's debug manifest already
-lets a debug build use plain HTTP, so nothing else is needed for a `flutter run` build.
+Option 2, the LAN address, needs the server to listen where the phone can reach it: `--listen 0.0.0.0:8787`, not the
+`127.0.0.1:8787` of the command above, which only accepts the machine's own loopback. Option 1 (`adb reverse`) ends at the
+machine's own loopback, so `--listen 127.0.0.1:8787` should be enough there. That is UNCHECKED on a device
+([#255](https://github.com/fespalier/fespalier/issues/255)).
+
+Plain HTTP needs a look too. `flutter create --empty . --platforms=android` (Flutter 3.47.7) writes a debug manifest that
+has the INTERNET permission and no `usesCleartextTraffic`, and the example commits no Android folder, so it adds none.
+Android blocks cleartext by default for an app that targets API 28 or higher, and a Flutter 3.47 app targets API 36
+(`flutter.targetSdkVersion`). Flutter's engine refuses plain `http` only when the engine's network policy disallows it,
+and Flutter 3.47's Android loader sets no cleartext policy, so the call is expected to work. Whether the app's Dart HTTP
+call is refused on a device is UNCHECKED ([#255](https://github.com/fespalier/fespalier/issues/255)): the Dart HTTP client
+may not go through Android's check at all. If an Android build does refuse it, a `usesCleartextTraffic` for the debug
+build or a `network_security_config` for the address is the fix. No test here runs a phone, so neither is verified.
 
 If the app starts but the status line reads **"The server did not answer: the copy of a read that
-never happened."**, it cannot reach the server: check the address (and that the server listens on
-`0.0.0.0`). The status line reads **"Answered by the server: sealed, and verified here."** when the
+never happened."**, it cannot reach the server: check the address (and, for a LAN address, that the server
+listens on `0.0.0.0`). The status line reads **"Answered by the server: sealed, and verified here."** when the
 read really worked.
 
 Add a note. The first signed call registers the device key (a plain call), then goes out sealed. Stop the server and add
@@ -94,8 +104,8 @@ sandboxed app cannot write a keychain item without a `keychain-access-groups` en
 entitlement requires a real development certificate — an ad-hoc signed build (`CODE_SIGN_IDENTITY =
 "-"`, what `flutter create` produces) fails the build outright if you add it. Without it the key
 write fails with `OSStatus -34018`, which `startup.dart` catches and turns into a software key. The
-software key is not hardware-backed and does not survive a restart: the page shows the thumbprint,
-and a restarted app is a *new device* to the server. `lib/app/startup.dart` says all of this.
+software key is not hardware-backed and does not survive a restart: the page shows the key's `kid`,
+which changes, and a restarted app is a *new device* to the server. `lib/app/startup.dart` says all of this.
 
 ### Where the hardware key is not available
 
@@ -105,9 +115,11 @@ cannot write the keychain (above), and an iOS simulator's keychain is not a secu
 that must *require* hardware passes `requireHardware: true` and takes the failure instead of the
 fallback.
 
-The server forgets devices and notes when it
-restarts, and the app registers once per run: after a server restart, signed calls are `401` until the app is restarted too
-(see "Not built").
+The server forgets devices and notes when it restarts. The app registers its key at the first signed call of a run, so
+after a server restart the first signed call is answered `401`. That `401` makes the app forget its registration, and the
+next call registers the key again and goes through, with no restart of the app. `test/transport_test.dart` ("a server that
+forgot the device is healed by the next call") checks it in the Dart tests, not on a device (see
+[#133](https://github.com/fespalier/fespalier/issues/133) and [#255](https://github.com/fespalier/fespalier/issues/255)).
 
 ## What is in it
 
@@ -205,8 +217,9 @@ normalises (`normalizeLowS`), and the opener refuses a high one, like the server
 
 A request signed by a key the server does not know is a `401`, so the key has to arrive first, and it arrives **unsigned**:
 `procedure.registerDevice` takes plain CBOR `{"args": {"x", "y"}}` (the JWK coordinates) and answers plain
-`{"kid", "thumbprint"}` as lowercase hex. `DeviceRegistrar` sends it before the first signed call of a run, checks that the
-thumbprint is its own, and shares one request between callers that arrive together.
+`{"kid", "thumbprint"}` as lowercase hex. `DeviceRegistrar` sends it before the first signed call of a run, and again
+after an unsigned `401`, checks that the thumbprint is its own, and shares one request between callers that arrive
+together.
 
 That call **proves nothing about who holds the key**, on purpose: registering a key you do not hold gains the caller
 nothing, because a signature is only worth what the server lets a registered key do, and here a key reads and writes its
@@ -230,7 +243,8 @@ stateDiagram-v2
     Unmade --> Made: first use of the signer (Secure Enclave, AndroidKeyStore)
     Made --> Registered: registerDevice answers with this key's thumbprint
     Registered --> Registered: a signed call is answered (sealed, opened)
-    Registered --> Registered: a 401 or no answer: the call is sent again, sealed anew
+    Registered --> Registered: no answer, so the call is sent again, sealed anew
+    Registered --> Made: an unsigned 401 (the server forgot the key), so the next signed call registers again
     Registered --> Unmade: the key is deleted (deleteKey, a reinstall)
     Unmade --> [*]
 ```
@@ -253,7 +267,7 @@ sequenceDiagram
     Q->>T: send(RpcCall addNote, idempotencyKey)
     T->>S: POST registerDevice, plain CBOR {x, y} (first call of the run)
     S-->>T: 200 plain {kid, thumbprint}
-    T->>T: payload = CBOR {args}; binding = audience, POST, op, digest, idempotency key
+    T->>T: payload = CBOR {args}, binding = audience, POST, op, digest, idempotency key
     T->>K: sign(Sig_structure(protected{alg, kid, iat, cti}, binding, payload))
     K-->>T: r||s (made low-s)
     T->>S: POST /rpc/procedure.addNote, application/cose sign1, Cratestack-Contract
@@ -311,7 +325,8 @@ server does not say which check failed. `Accept: application/json` on a signed c
   layer shows the race.
 - **No registration proof, rotation or revocation** (above), and the registry and notes are in memory.
 - **Plain HTTP on a local network.** The demo server speaks `http://`. The signature protects the messages, not their
-  privacy: put a real server behind TLS, and Android needs a cleartext allowance for `10.0.2.2` in debug.
+  privacy: put a real server behind TLS. The example adds no cleartext allowance for Android (see "On an Android
+  emulator or a phone"), and whether a build needs one is UNCHECKED ([#255](https://github.com/fespalier/fespalier/issues/255)).
 - **Ed25519.** The sealer speaks ESP256 only (pointycastle has no Ed25519); the vector tests use a test-only Ed25519
   verifier to check the header and binding rules for those vectors.
 - **The local store is in memory** (`InMemoryLocalStore`, the package's default): intents survive the transport's

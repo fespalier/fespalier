@@ -37,6 +37,18 @@ flutter run
 - Resize the window (or open the page on a wide screen): from 840 pixels the bar becomes a rail, and from 1200 pixels
   a drawer. The tab you are on keeps its state through the change.
 
+## State restoration
+
+Restoration is off here: `main.dart` gives neither the router nor the `MaterialApp` a `restorationScopeId`. So when the
+OS kills the app in the background, the next launch starts at `/` and the selected tab and each tab's stack are gone.
+Keeping a tab's state while the app runs (above) is a different thing. To turn restoration on, give both a scope id, as
+[State restoration](../../docs/layouts.md#state-restoration) shows: `AppRoutes.router(restorationScopeId: 'router')` and
+`MaterialApp.router(restorationScopeId: 'app', ...)`. `test/restoration_test.dart` gives both ids and checks what comes back
+after `restartAndRestore`.
+
+The Books counter is hook state (`useState` in `books/page.dart`), which restoration does not save. The search page's
+counter is a `RestorableInt`, which it does.
+
 ## Test it
 
 ```sh

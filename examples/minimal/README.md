@@ -99,6 +99,8 @@ A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-scr
 ## Run it
 
 ```sh
+cd examples/minimal
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run
 ```

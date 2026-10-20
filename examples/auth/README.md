@@ -27,6 +27,17 @@ runs and is tested with no network.
 
 A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots auth`).
 
+## Run it
+
+```sh
+cd examples/auth
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
+flutter pub get
+flutter run
+```
+
+The commands in the sections below run in this folder, after these steps.
+
 ## Tests
 
 `test/` runs against the demo server on the test's fake clock: `guards_test.dart` (`fakeAuth`),
@@ -91,6 +102,7 @@ in-process demo, which accepts the tokens it cannot check.
 - The Keycloak check of `OidcBackend` (sign-in, rotation, the `invalid_grant` descriptions,
   revocation, end session) is `packages/fespalier_auth/test/keycloak_live_test.dart`, skipped unless
   `FESPALIER_KEYCLOAK_URL` names a running Keycloak with this realm.
+
 Against Keycloak with DPoP, use the client that requires it:
 
 ```sh

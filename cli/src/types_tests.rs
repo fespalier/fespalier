@@ -606,7 +606,6 @@ struct Case {
 }
 
 const PROBE_IDS: &str = "import '../../models/ids.dart';\n";
-const PROBE_PRODUCT: &str = "import '../../models/product.dart';\n";
 const PROBE_BOTH: &str = "import '../../models/ids.dart';\nimport '../../models/product.dart';\n";
 
 fn probe_cases() -> Vec<Case> {

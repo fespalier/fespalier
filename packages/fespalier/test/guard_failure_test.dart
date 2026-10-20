@@ -2,6 +2,7 @@
 // debug report and the retry. The zone tests stand in for go_router 17.2.3 to 18.1.0, which ran a
 // redirect in an error zone of their own; the widget tests run on every go_router.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
@@ -325,6 +326,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('NOT FOUND /inbox'), findsOneWidget);
       expect(tester.takeException(), isA<StateError>());
+    });
+
+    test('the report does not depend on the build mode', () {
+      // `kDebugMode` is a constant, so no test can build in release: the report is in every build
+      // mode as long as the file that makes it names no build mode. SentryFlutter.init hears it
+      // through FlutterError.onError there.
+      final source = File('lib/src/guards.dart').readAsStringSync();
+      expect(source, isNot(contains('kDebugMode')));
+      expect(source, isNot(contains('kReleaseMode')));
+      expect(source, isNot(contains('assert(')));
     });
 
     testWidgets('the report is one FlutterErrorDetails, and a second build of '

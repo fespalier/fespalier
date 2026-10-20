@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart'
-    show ErrorDescription, FlutterError, FlutterErrorDetails, kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -340,8 +338,8 @@ final guardRefreshHooks = Expando<void Function(void Function() refresh)>(
 /// The generated `redirect:` runs its guards through [runRedirect], which hands go_router this
 /// exception in place of the failure. go_router passes a [GoException] on as it is, so the router's
 /// error route has it as `GoRouterState.error` (and `onException` gets it): the generated
-/// `AppRoutes.errorPage` reports it once in a debug build and shows the route's `error.dart`, or its
-/// not-found view. [error] and [stackTrace] are what the guard threw, unwrapped from Riverpod's
+/// `AppRoutes.errorPage` reports it once, in every build mode, and shows the route's `error.dart`, or
+/// its not-found view. [error] and [stackTrace] are what the guard threw, unwrapped from Riverpod's
 /// `ProviderException`: they are what a crash reporter should see, not this wrapper.
 final class GuardFailure extends GoException {
   /// Wraps [error], which a guard or a `redirect.dart` threw with [stackTrace].
@@ -434,11 +432,12 @@ const _guardFailureContext = 'while running a guard or redirect.dart';
 /// `AppRoutes.errorPage` calls it with the app's `notFound` and, when some route can show a failed
 /// guard, its `guardError`.
 ///
-/// When `state.error` is a [GuardFailure], it is reported once, in a debug build, with
-/// `FlutterError.reportError` (library `fespalier`, what the guard threw and its stack trace, so a
-/// widget test fails unless it calls `tester.takeException()`), and [guardError] builds the view of
-/// the route at `state.uri` with a retry that runs the navigation again, only while the router still
-/// shows this failure. Without a view, [notFound] shows. Any other error (no route matched, a
+/// When `state.error` is a [GuardFailure], it is reported once, in every build mode, with
+/// `FlutterError.reportError` (library `fespalier`, what the guard threw and its stack trace): a
+/// widget test fails unless it calls `tester.takeException()`, and in a release build
+/// `FlutterError.onError` hears it, which is where `SentryFlutter.init` listens. [guardError] builds
+/// the view of the route at `state.uri` with a retry that runs the navigation again, only while the
+/// router still shows this failure. Without a view, [notFound] shows. Any other error (no route matched, a
 /// redirect loop, too many redirects) is [notFound]. It makes no `Future` and starts no timer.
 ///
 /// The failure reaches the error route in one of two places. After `go`, a link or the first
@@ -463,7 +462,7 @@ Widget routerErrorPage(
 }) {
   final failure = state.error;
   if (failure is! GuardFailure) return notFound(state.uri);
-  if (kDebugMode && !failure._reported) {
+  if (!failure._reported) {
     failure._reported = true;
     FlutterError.reportError(
       FlutterErrorDetails(

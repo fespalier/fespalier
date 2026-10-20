@@ -34,7 +34,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '04f04699856a3de1';
+  static const String _version = '8052dd6c4ecf342a';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
     'NoteEditRoute.data': '3ce6da8f',
@@ -202,13 +202,13 @@ abstract final class AppRoutes {
 
   static Widget notFound(Uri uri) => DefaultNotFound(uri);
 
-/// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
-/// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
-/// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once in
-/// a debug build, then the nearest error.dart of its route shows when that one takes only `error`,
-/// `stackTrace` and `retry` (its retry runs the navigation again), else [notFound]. Any other error
-/// (no route, a redirect loop) shows [notFound].
-static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound);
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound);
 
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).

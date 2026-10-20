@@ -480,17 +480,17 @@ abstract final class AppRoutes {
   static Widget notFound(Uri uri) => {{ not_found }};
 {% endif %}
 
-/// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
-/// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
-/// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once in
-/// a debug build, then the nearest error.dart of its route shows when that one takes only `error`,
-/// `stackTrace` and `retry` (its retry runs the navigation again), else [notFound]. Any other error
-/// (no route, a redirect loop) shows [notFound].
-static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound{{ ", guardError: _guardErrorAt" if guard_errors }});
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound{{ ", guardError: _guardErrorAt" if guard_errors }});
 {% if guard_errors %}
 
-/// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
-static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry{{ ", caseSensitive: false" if not case_sensitive }});
+  /// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
+  static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry{{ ", caseSensitive: false" if not case_sensitive }});
 {% endif %}
 
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes

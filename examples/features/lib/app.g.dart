@@ -229,7 +229,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '1da2ab2109655ade';
+  static const String _version = '02ab944db255934d';
   static const Map<String, String> _kept = {
     '(router)': '7dcfa259',
     'BrowseRoute.data': '30ba4ab7',
@@ -1466,16 +1466,16 @@ abstract final class AppRoutes {
         caseSensitive: false,
       );
 
-/// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
-/// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
-/// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once in
-/// a debug build, then the nearest error.dart of its route shows when that one takes only `error`,
-/// `stackTrace` and `retry` (its retry runs the navigation again), else [notFound]. Any other error
-/// (no route, a redirect loop) shows [notFound].
-static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound, guardError: _guardErrorAt);
+  /// What go_router's error route shows (since 0.21.0): [router] passes it as `errorBuilder`, and an
+  /// app that mounts the tree in a GoRouter of its own passes `errorBuilder: AppRoutes.errorPage`. A
+  /// guard or redirect.dart that threw, or whose Future failed, is a [GuardFailure]: reported once, in
+  /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
+  /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
+  /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound, guardError: _guardErrorAt);
 
-/// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
-static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry, caseSensitive: false);
+  /// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
+  static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry, caseSensitive: false);
 
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).

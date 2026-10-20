@@ -548,6 +548,8 @@ mod freshness_tests;
 #[cfg(test)]
 mod graph_tests;
 #[cfg(test)]
+mod guard_error_tests;
+#[cfg(test)]
 mod incremental_tests;
 #[cfg(test)]
 mod leave_tests;

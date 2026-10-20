@@ -641,7 +641,8 @@ fn the_extra_type_comes_from_wherever_the_page_gets_it() {
     let p = "import 'package:flutter/widgets.dart';\nclass TextPage extends StatelessWidget { const TextPage({super.key, this.extra}); final String? extra; }";
     let c = code(&[("text/page.dart", p)]);
     has(&c, &["{String? extra, String? locale}"]);
-    lacks(&c, &["show", "undefined_shown_name"]);
+    // A `show` combinator (the doc comment of `errorPage` says "shows"): the word, spaced.
+    lacks(&c, &[" show ", "undefined_shown_name"]);
 }
 
 #[test]

@@ -79,7 +79,7 @@ fn example_app_generates_cleanly() {
             "static final data = _i10.data;",
             "(Ref ref, int id) => traceData(ref, 'dProductsId', id, _i13.data(ref, id: id)),",
             "Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);",
-            "redirect: (context, state) => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false))),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false)))),",
             "String get location => joinLocation(AppRoutes.base, '/products/$id');",
             "'/greet/${Uri.encodeComponent(name)}'",
         ],
@@ -582,7 +582,7 @@ fn layouts_get_child_and_segments_above_them() {
         &c,
         &[
             "pageBuilder: (context, state, child) => namedPage('/:shop', () => layoutPage(\n          context,\n          state,\n          'layout:\\$shop/',\n          buildWithParams(\n            () => _layout1(state),\n            (v) => _i1.ShopLayout(child: child, shop: v.shop),",
-            "redirect: (context, state) => traceGuard(state, 'g1@1', guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@1', guardWithParams(\n              () => _params1(state),\n              (v) => _i2.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),",
             "path: joinLocation(at, '/:shop')",
         ],
     );
@@ -1637,7 +1637,7 @@ fn a_tab_holds_nested_routes_data_guards_and_transitions() {
             "path: joinLocation(at, '/shop'),",
             // Nested inside the tab, relative to the page, static before dynamic.
             "path: 'cart',",
-            "redirect: (context, state) => traceGuard(state, 'g6@6', _i11.guard(ProviderScope.containerOf(context, listen: false))),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g6@6', _i11.guard(ProviderScope.containerOf(context, listen: false)))),",
             "path: ':id',",
             "data: (d) => _i9.ItemPage(data: d),",
             "data: (d) => _i6.ShopPage(d),",
@@ -2188,7 +2188,10 @@ fn guards_run_outermost_first() {
         ),
         ("(members)/team/lead/page.dart", &page("Lead")),
     ]);
-    let first = at(&c, "redirect: (context, state) => firstRedirect([");
+    let first = at(
+        &c,
+        "redirect: (context, state) => runRedirect(() => firstRedirect([",
+    );
     let call = |file: &str| at(&c[first..], &format!("{}.guard(", imp(&c, file)));
     let (group, team, lead) = (
         call("(members)/guard.dart"),
@@ -2210,7 +2213,7 @@ fn a_folders_own_guard_and_page_keep_todays_output_plus_inherited_ones() {
     has(
         &alone,
         &[&format!(
-            "redirect: (context, state) => traceGuard(state, 'g1@1', {g}.guard(ProviderScope.containerOf(context, listen: false))),"
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@1', {g}.guard(ProviderScope.containerOf(context, listen: false)))),"
         )],
     );
     assert!(!alone.contains("firstRedirect"), "{alone}");
@@ -2253,7 +2256,7 @@ fn inherited_guards_read_segments_at_their_folder_and_query_by_name() {
         &[
             // Its own parse function: only what the guard asks for.
             "({String shop, String? ref}) _guard1(GoRouterState s) => (shop: Segment.asString(s, 'shop'), ref: Query.asString(s, 'ref'));",
-            "redirect: (context, state) => traceGuard(state, 'g1@3', guardWithParams(\n          () => _guard1(state),\n          (v) => _i0.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop, ref: v.ref, uri: state.uri),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@3', guardWithParams(\n          () => _guard1(state),\n          (v) => _i0.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop, ref: v.ref, uri: state.uri),",
         ],
     );
     // `?ref` belongs to the guard: it doesn't become a field of the routes below.
@@ -2276,7 +2279,7 @@ fn a_guard_can_take_only_the_uri() {
     has(
         &c,
         &[
-            "redirect: (context, state) => traceGuard(state, 'g0@1', _i0.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri)),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g0@1', _i0.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri))),",
         ],
     );
     assert!(!c.contains("_guard0"), "{c}");
@@ -2296,7 +2299,7 @@ fn a_guard_that_takes_a_ref_runs_through_ref_guard() {
     has(
         &c,
         &[&format!(
-            "redirect: (context, state) => traceGuard(state, 'g0@1', refGuard(context, 'g0@1', (ref) => {g}.guard(ref, uri: state.uri))),"
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g0@1', refGuard(context, 'g0@1', (ref) => {g}.guard(ref, uri: state.uri)))),"
         )],
     );
     assert!(!c.contains("containerOf"), "{c}");
@@ -2408,8 +2411,8 @@ fn a_redirect_that_takes_a_ref_evaluates_once() {
     has(
         &c,
         &[
-            "redirect: (context, state) => traceGuard(state, 'r1', refRedirect(context, (ref) => _i0.redirect(ref))),",
-            "redirect: (context, state) => traceGuard(state, 'r2', refRedirect(context, (ref) => _i1.redirect(ref, uri: state.uri))),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'r1', refRedirect(context, (ref) => _i0.redirect(ref)))),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'r2', refRedirect(context, (ref) => _i1.redirect(ref, uri: state.uri)))),",
             "(v) => refRedirect(context, (ref) => _i2.redirect(ref, id: v.id)),",
         ],
     );
@@ -2428,7 +2431,7 @@ fn a_redirect_route_chains_a_ref_guard_above_it_and_its_own_ref() {
         ("(members)/inbox/page.dart", &page("Inbox")),
     ]);
     let old = at(&c, "path: joinLocation(at, '/old')");
-    let chain = &c[old..old + c[old..].find("]),\n").unwrap()];
+    let chain = &c[old..old + c[old..].find("])),\n").unwrap()];
     assert!(
         chain.contains("firstRedirect([")
             && chain.contains("refGuard(context, 'g1@")
@@ -2522,7 +2525,7 @@ fn only_a_guard_that_reads_params_is_skipped_for_an_unparsable_segment() {
     has(
         &c,
         &[
-            "redirect: (context, state) => traceGuard(state, 'g2@2', _i1.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri)),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g2@2', _i1.guard(ProviderScope.containerOf(context, listen: false), uri: state.uri))),",
             "(v) => _i3.guard(ProviderScope.containerOf(context, listen: false), id: v.id),",
         ],
     );
@@ -2645,7 +2648,8 @@ fn guards_above_a_tab_layout_cover_every_tab() {
     let shell = at(&c, "StatefulShellRoute");
     let branches = at(&c, "branches:");
     assert!(
-        c[shell..branches].contains("redirect: (context, state) => traceGuard(state, 'g1@"),
+        c[shell..branches]
+            .contains("redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@"),
         "{c}"
     );
     assert!(!c[branches..].contains("redirect:"), "{c}");
@@ -2689,7 +2693,9 @@ fn a_guard_inside_a_shell_stays_on_the_page_routes() {
     let route = at(&c, "GoRoute(");
     assert!(!c[shell..route].contains("redirect:"), "{c}");
     assert!(
-        c[route..].contains("redirect: (context, state) => traceGuard(state, 'g1@2', _i1.guard("),
+        c[route..].contains(
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@2', _i1.guard("
+        ),
         "{c}"
     );
 }
@@ -2710,7 +2716,7 @@ fn redirect_dart_makes_a_route_that_only_redirects() {
         &[
             "//   /old/:id  OldIdRoute  old/$id/redirect.dart  (redirect)",
             "path: 'old/:id',",
-            "redirect: (context, state) => traceGuard(state, 'r2', guardWithParams(",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'r2', guardWithParams(",
             "(v) => _i1.redirect(id: v.id),",
             // A typed route, so links to the old URL stay typed.
             "/// `/old/:id` → old/$id/redirect.dart\nfinal class OldIdRoute extends TypedLocation {",
@@ -2754,8 +2760,8 @@ fn a_redirect_takes_an_optional_container_and_the_uri() {
     has(
         &c,
         &[
-            "redirect: (context, state) => traceGuard(state, 'r1', _i0.redirect()),",
-            "redirect: (context, state) => traceGuard(state, 'r2', _i1.redirect(ProviderScope.containerOf(context, listen: false), uri: state.uri)),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'r1', _i0.redirect())),",
+            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'r2', _i1.redirect(ProviderScope.containerOf(context, listen: false), uri: state.uri))),",
         ],
     );
 }
@@ -2771,7 +2777,7 @@ fn a_redirect_route_starts_with_the_guards_above_it() {
         ("(members)/inbox/page.dart", &page("Inbox")),
     ]);
     let old = at(&c, "path: joinLocation(at, '/old')");
-    let chain = &c[old..old + c[old..].find("]),\n").unwrap()];
+    let chain = &c[old..old + c[old..].find("])),\n").unwrap()];
     let (g, r) = (
         imp(&c, "(members)/guard.dart"),
         imp(&c, "(members)/old/redirect.dart"),

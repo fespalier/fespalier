@@ -961,7 +961,7 @@ fn the_router_builds_on_a_routing_config() {
             "final router = GoRouter.routingConfig(",
             "routingConfig: routing,",
             "routing.follow(router);",
-            "errorBuilder: (context, state) => routing.notFound(state.uri),",
+            "errorBuilder: (context, state) => routing.errorPage(context, state),",
             "static RoutingConfig _config(List<RouteBase> routes) => RoutingConfig(",
             "final class _AppRoutesReload extends RoutesReload {",
         ],

@@ -587,6 +587,10 @@ pub struct Route {
     pub actions: Vec<Action>,
     pub loading: Option<Widget>,
     pub error: Option<Widget>,
+    /// The view of a failed guard or redirect.dart of this route (since 0.21.0): its nearest
+    /// error.dart, when a guard.dart at or above it or its own redirect.dart can fail and that
+    /// error.dart takes nothing but `error`, `stackTrace` and `retry` (anything else optional).
+    pub guard_error: Option<Widget>,
     pub layout: Option<Widget>,
     pub guard: Option<Guard>,
     /// This folder's own `observe.dart`, when it has a valid one.
@@ -981,6 +985,8 @@ struct Inherited {
     freshness: Option<String>,
     /// The folders above whose observe.dart applies to every page below, outermost first.
     observers: Vec<usize>,
+    /// Whether a guard.dart at or above this folder guards it (since 0.21.0).
+    guarded: bool,
 }
 
 /// What a `nest = false` takes a route out of: the page above it, and the folders between.
@@ -1181,6 +1187,7 @@ impl Resolver<'_> {
             actions: vec![],
             loading: None,
             error: None,
+            guard_error: None,
             layout: None,
             guard: None,
             observe: None,
@@ -1431,6 +1438,7 @@ impl Resolver<'_> {
             deferred,
             freshness: freshness.clone(),
             observers: up.observers.clone(),
+            guarded: up.guarded,
         };
         // A page is what a route below can leave; so is the layout of a folder between.
         let layout_file = node
@@ -1558,6 +1566,7 @@ impl Resolver<'_> {
         let guard = modules
             .get(&Kind::Guard)
             .and_then(|m| self.guard(m, node, &segs, id));
+        here.guarded |= guard.is_some();
         let observe = modules
             .get(&Kind::Observe)
             .and_then(|m| self.observe(m, node, &segs, id));
@@ -1639,6 +1648,13 @@ impl Resolver<'_> {
 
         let has_page = page.is_some();
         let has_route = has_page || redirect.is_some();
+        // A failed guard shows the route's nearest error.dart when that one can be built from the
+        // error alone (since 0.21.0).
+        let guard_error = if has_route && (here.guarded || redirect.is_some()) {
+            here.error.as_ref().and_then(|f| self.guard_error_view(f))
+        } else {
+            None
+        };
         // A section keyed by a query parameter makes every route below it depend on it: it is
         // one of the route's query parameters too, so its typed route can write it.
         if has_route {
@@ -1660,6 +1676,7 @@ impl Resolver<'_> {
             }
         }
         self.app.routes[id].page_span = page_span;
+        self.app.routes[id].guard_error = guard_error;
         self.app.routes[id].not_found = not_found;
         self.app.routes[id].meta = modules
             .get(&Kind::Meta)
@@ -2720,6 +2737,65 @@ impl Resolver<'_> {
             found.push((Bind::Section(s.id), format!("the section's {}", s.file)));
         }
         found
+    }
+
+    /// The nearest error.dart, `f`, as the view of a failed guard (since 0.21.0). The router's error
+    /// route can give it the error, its stack trace and a retry, so it is used only when every
+    /// parameter it requires binds to one of them (by name or by type, as for data) with a type
+    /// that fits; an optional one is left to its default. It reports nothing and declares
+    /// nothing: a route's typed class and its data bindings are what they were.
+    fn guard_error_view(&self, f: &Fallback) -> Option<Widget> {
+        let cx = BindCx {
+            role: Role::Error,
+            segs: &[],
+            data: None,
+            data_file: None,
+            sections: &[],
+            file: &f.file,
+            covering: None,
+            scope: None,
+        };
+        let mut args = vec![];
+        let mut gap = false;
+        for p in &f.class.params {
+            if p.is_super {
+                if p.required && p.name != "key" {
+                    return None;
+                }
+                continue;
+            }
+            let bind = if !p.named && gap {
+                None
+            } else {
+                by_name(&p.name, &cx)
+                    .or_else(|| by_type(p.ty.as_ref()?, &cx))
+                    .or_else(|| self.by_expanded_type(p, &cx))
+            };
+            let Some(bind) = bind else {
+                if p.required {
+                    return None;
+                }
+                gap |= !p.named;
+                continue;
+            };
+            if p.ty
+                .as_ref()
+                .is_some_and(|ty| self.mismatch_of(&p.name, &bind, ty, &f.file).is_some())
+            {
+                return None;
+            }
+            args.push(Arg {
+                name: p.name.clone(),
+                named: p.named,
+                bind,
+            });
+        }
+        Some(Widget {
+            import: f.import,
+            class: f.class.name.clone(),
+            args,
+            is_const: f.class.is_const,
+        })
     }
 
     /// `by_type` for the type a typedef of it expands to, when that is a type `by_type` knows:

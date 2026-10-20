@@ -1088,6 +1088,25 @@ fn follows_typedefs_as_the_analyzer_does() {
         analyzer_same: true,
     });
     let dir = probe_project(&cases);
+    // fsp's column, through the same canonical form the resolver uses: it needs no dart, so it is
+    // asserted on every machine.
+    let app = dir.path().join("lib/app");
+    let libs = crate::enums::Libs::for_app(&app, &Config::default());
+    let mut fsp_says = vec![];
+    for c in &cases {
+        if c.n == 23 {
+            fsp_says.push(false);
+            continue;
+        }
+        let file = format!("c{}/page.dart", c.n);
+        let src = probe_page(c);
+        let fsp_same = libs.canonical(&file, &src, c.a).key == libs.canonical(&file, &src, c.b).key;
+        assert_eq!(fsp_same, c.fsp_same, "case {}: fsp's verdict", c.n);
+        // fsp never says "same" where the analyzer says "different" (as the table has it).
+        assert!(!fsp_same || c.analyzer_same, "case {}", c.n);
+        fsp_says.push(fsp_same);
+    }
+    // The analyzer's column, for the cases it decides, and fsp against what it really says.
     let Some(compiles) = analyzer_verdicts(dir.path(), &cases) else {
         let required = std::env::var("FSP_REQUIRE_DART").is_ok_and(|v| v == "1");
         assert!(
@@ -1096,8 +1115,7 @@ fn follows_typedefs_as_the_analyzer_does() {
         );
         return;
     };
-    // The analyzer's column, for the cases it decides.
-    for (c, same) in cases.iter().zip(&compiles) {
+    for ((c, same), fsp_same) in cases.iter().zip(&compiles).zip(&fsp_says) {
         if c.n == 23 {
             assert!(same, "case 23 must compile");
             continue;
@@ -1107,16 +1125,10 @@ fn follows_typedefs_as_the_analyzer_does() {
             "case {}: the analyzer's verdict",
             c.n
         );
-    }
-    // fsp's column, through the same canonical form the resolver uses.
-    let app = dir.path().join("lib/app");
-    let libs = crate::enums::Libs::for_app(&app, &Config::default());
-    for c in cases.iter().filter(|c| c.n != 23) {
-        let file = format!("c{}/page.dart", c.n);
-        let src = probe_page(c);
-        let fsp_same = libs.canonical(&file, &src, c.a).key == libs.canonical(&file, &src, c.b).key;
-        assert_eq!(fsp_same, c.fsp_same, "case {}: fsp's verdict", c.n);
-        // fsp never says "same" where the analyzer says "different".
-        assert!(!fsp_same || c.analyzer_same, "case {}", c.n);
+        assert!(
+            !fsp_same || *same,
+            "case {}: fsp says same, the analyzer says different",
+            c.n
+        );
     }
 }

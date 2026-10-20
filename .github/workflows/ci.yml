@@ -310,7 +310,11 @@ jobs:
         working-directory: cli
         env:
           FSP_REQUIRE_DART: "1"
-        run: cargo test --quiet types_tests::follows_typedefs_as_the_analyzer_does
+        run: |
+          out=$(cargo test --quiet types_tests::follows_typedefs_as_the_analyzer_does 2>&1) || { printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          # A test that was renamed matches nothing and passes: exactly one must have run.
+          grep -q 'test result: ok\. 1 passed;' <<<"$out" || { echo 'the typedef test did not run (renamed?)'; exit 1; }
       - name: Scaffold every file kind into the features example
         working-directory: examples/features
         run: |

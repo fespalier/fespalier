@@ -156,8 +156,10 @@ parameter, trying these rules in order:
    the child, its `StatefulNavigationShell` gets the tab shell, and not-found's `Uri` gets the URI.
    Since 0.21.0 a type is what it names: `typedef ProductView = Product;` in `lib/models/ids.dart` is
    a `Product`, so `required ProductView product` gets the data that yields `Product`, and `m.Product`
-   (with an import prefix) is the same type as `Product`. Only the app's own files are followed, and a
-   typedef of another package is still compared as spelled ([Known limitations](troubleshooting.md#known-limitations)).
+   (with an import prefix) is the same type as `Product`. The spelling is tried first: a parameter typed
+   with a `typedef` of a query type (rule 2) is the data, not a query parameter, when `data.dart` yields
+   that type spelled the same. Only the app's own files are followed, and a typedef of another package is
+   still compared as spelled ([Known limitations](troubleshooting.md#known-limitations)).
 4. **Otherwise**, a required parameter is a generator error pointing at it. An optional one is left to
    its default.
 

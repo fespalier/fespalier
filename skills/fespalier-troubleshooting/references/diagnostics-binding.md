@@ -44,9 +44,13 @@ defaults, run `fsp routes --json` and read `params` (`in: path` or `query`).
 Types are compared by what they name (since 0.21.0): a `typedef` of a type declared in the app's own
 files, and an import prefix, are followed, so `ProductView` and `Product` are one type. A `typedef` of
 another package, a generic `typedef`, and `List<int>` against `List<num>` are still compared as spelled.
-When two types differ and one of their names could not be followed, the message ends with that name, and
-the four messages that compare types (a parameter against its `data.dart`, against a section's, a form's
-return against its input, and an `extra` that clashes) may end with that hint.
+When two types differ and a name in one of them could not be followed, the four messages that compare
+types (a parameter against its `data.dart`, against a section's, a form's return against its input, and an
+`extra` that clashes) end with a hint that names it. With one name it reads
+``; fsp follows typedefs in this package's files only, and found no declaration of `JsonMap` there, so it compares it as spelled``;
+with two or more, ``…found no declaration of `A` or `B` there, so it compares them as spelled`` (three:
+`` `A`, `B` or `C` ``). A name both sides leave unfollowed is not named: it is not why they differ.
+Two classes of one name from two other packages (`api.User` and `db.User`) are two types, and get no hint.
 
 ## Enums
 

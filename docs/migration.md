@@ -29,9 +29,11 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.21.0
 
-0.21.0 breaks an app only where a parameter is spelled with a `typedef` of a type the app already had. Only an app that has one regenerates a different `app.g.dart`; nothing else changes.
+0.21.0 changes what an app generates only where a parameter's type is written as a `typedef` or with an import prefix instead of as the type itself, and only an app that has one regenerates a different `app.g.dart`: a type spelled the same everywhere it is compared (a page and its `data.dart`, a guard and its page) generates what 0.20.0 did.
 
-- **A typedef of a query type is a query parameter, and a typedef of a data type gets the data.** An _optional_ parameter of a page or layout whose type is a `typedef`, declared in the app's own files, of a query type (`String?`, `int?`, `double?`, `bool?`, a `List` of them, or an enum) is now a query parameter, where it was left to its default, so its typed route gains that optional argument. A page or layout parameter spelled with a `typedef` or an import prefix of what a `data.dart` yields now gets the data by type. [Known limitations](troubleshooting.md#known-limitations) says which types are followed.
+- **A typedef of a query type is a query parameter.** An _optional_ parameter of a page or layout whose type is a `typedef`, declared in the app's own files, of a query type (`String?`, `int?`, `double?`, `bool?`, a `List` of them, or an enum) is now a query parameter, where it was left to its default, so its typed route gains that optional argument. The one exception is a type that the route's `data.dart` yields spelled the same (`Future<Tags>` and `final Tags tags;` with `typedef Tags = List<String>;`): that is the data, as it was. [Known limitations](troubleshooting.md#known-limitations) says which types are followed.
+- **A typedef or an import prefix of a data type gets the data.** A page or layout parameter spelled with a `typedef` or an import prefix (`m.Product`) of what a `data.dart` yields now gets the data by type, where an optional one was left to its default. The exact spelling is tried first, so a parameter that spells the data's type as the `data.dart` does is bound as before.
+- **A typedef of a type that is filled by type is filled too.** A parameter whose type is a `typedef` of one of the types the generator fills by type is bound like that type: an _optional_ `Kid footer` with `typedef Kid = Widget;` in a layout gets the page, as an optional `Widget footer` always did, next to the layout's `child`, so the page is built twice. The same goes for `typedef Failure = Object;` in an error view (the error) and `typedef Retry = void Function();` (the retry).
 
 ### 0.20.0
 

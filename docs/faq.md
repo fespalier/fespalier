@@ -126,8 +126,9 @@ copy of the matcher. The cost of a syntax tree is that `fsp` can't know that `co
 Since 0.21.0 `fsp` treats a `typedef` of a type in your own files as that type, and an import prefix as the
 library it names: `ProductView` and the `Product` it names are one type, and so are `m.Product` and `Product`.
 It reads the files it already reads (the app folder, the relative imports, and the `package:` imports of your
-own package, through `export`s and `show`/`hide`), and it compares spellings first, so an app whose spellings
-agree gets the same code as before.
+own package, through `export`s and `show`/`hide`), and it compares spellings first, so an app that spells each
+type the same wherever it is compared gets the same code as before. Where a `typedef` or a prefix changes what is
+generated, the [0.21.0 migration notes](migration.md#0210) list it.
 
 It does not ask the Dart analyzer, because the analyzer needs the package configuration that `pub get` writes,
 so its answer would depend on the pub cache, and `fsp check` must give the same answer before and after

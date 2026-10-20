@@ -14,9 +14,11 @@ it ships.
 
 ## Later
 
-- **Types resolved, not compared by spelling.** The generator reads a syntax tree, so a `typedef`
-  and the type it names count as different types (see docs/troubleshooting.md, "Known limitations"). Resolving them needs the
-  Dart analyzer, as a sidecar or through the analysis server.
+- **Typedefs of other packages.** Since 0.21.0 `fsp` follows the typedefs and import prefixes of the app's own
+  files (docs/troubleshooting.md, "Known limitations"); a typedef from another package is still compared as spelled.
+  Reading `path:` dependencies the same way keeps the output a function of the files and the pubspec; a hosted package
+  needs the Dart analyzer (a sidecar took 18-20 s per file without its cache when measured), so it could only add a
+  hint, never change the output.
 - **Dashboards beyond the local stack.** The same dashboard spec rendered for hosted OpenObserve
   and Grafana Cloud.
 

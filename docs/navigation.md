@@ -147,7 +147,7 @@ GuardResult guard(Ref ref, {Note? extra}) =>
 
 A layout or a guard sees the extra of _every_ route it covers, so its type has to fit theirs, or it's an error at its parameter, with a code frame that lists the routes:
 
-- A guard or layout takes `Object?` (or `dynamic`) to accept anything, or **the type of the routes it covers** (`Note?` above pages that take `Note?`). Nullability aside, the names have to match. A route that takes no extra puts no condition on it.
+- A guard or layout takes `Object?` (or `dynamic`) to accept anything, or **the type of the routes it covers** (`Note?` above pages that take `Note?`). Nullability aside, the names have to match; since 0.21.0 a `typedef` counts as the type it names (`NoteRef? extra` with `typedef NoteRef = Note;` fits a page that takes `Note?`). A route that takes no extra puts no condition on it.
 - So a layout above routes with different extra types must take `Object?`; otherwise the routes that don't fit are listed:
 
   ```text

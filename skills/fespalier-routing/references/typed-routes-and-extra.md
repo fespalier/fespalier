@@ -348,8 +348,10 @@ A layout or guard sees the extra of **every** route it covers, so its type must
 fit theirs:
 
 - Take `Object?` (or `dynamic`) to accept anything, or **the type of the routes
-  it covers** (`Note?` above pages that take `Note?`). A route that takes no
-  extra puts no condition on it.
+  it covers** (`Note?` above pages that take `Note?`). Since 0.21.0 a `typedef` is
+  the type it names, so `NoteRef?` fits a page that takes `Note?` when
+  `typedef NoteRef = Note;` is in the app's files. A route that takes no extra
+  puts no condition on it.
 - A layout above routes with **different** extra types must take `Object?`, or
   it is an error at its parameter, with a code frame that lists the routes:
   `` `extra` is `String?` here, but the routes it covers take other types: `/n/a` (n/a/page.dart takes `int?`); ... ``

@@ -3,8 +3,8 @@
 As of 0.8.1 (`cli/src/telemetry_stack.rs` for the command, `cli/templates/telemetry/openobserve/import.py` for the
 importer). Messages are quoted as they are printed: the `fsp telemetry` ones from `fsp` (to stderr, exit 1), the
 `fespalier:` ones from the `dashboards` container (`docker compose logs dashboards` in the stack folder, which is
-`~/.fespalier/telemetry` unless `--dir` or `FSP_TELEMETRY_DIR` says otherwise), and the two OpenObserve lines from
-OpenObserve itself. The user documentation is the docs page
+`~/.fespalier/telemetry` unless `--dir` or `FSP_TELEMETRY_DIR` says otherwise), and the OpenObserve lines from
+OpenObserve's own log (`docker compose logs openobserve`). The user documentation is the docs page
 [Dashboards on your computer](https://github.com/fespalier/fespalier/blob/main/docs/telemetry-dashboards.md);
 the use is in `fespalier-testing`, `references/observability.md`.
 
@@ -51,7 +51,7 @@ exits 0 or 1. Each line starts with `fespalier:`, then:
 | `{title}: changed in OpenObserve since fsp telemetry wrote it, left alone; delete it to get the new version`                           | Someone edited the dashboard in OpenObserve and a newer `fsp` has a new version: yours is kept. Delete the dashboard in OpenObserve and run `fsp telemetry`.                                       |
 | `{title}: removed (fsp telemetry no longer ships it)`                                                                                  | A dashboard an earlier `fsp` wrote and this one does not ship, deleted because nobody edited it. Not a problem.                                                                                    |
 | `{title}: no longer shipped, but changed in OpenObserve since fsp telemetry wrote it, left alone; delete it when you are done with it` | As above, but someone edited it, so it stays (and this line prints on every run). Delete it in OpenObserve when you are done with it.                                                              |
-| `OpenObserve did not answer at {url} within {seconds}s ({last error}).`                                                                | Exit 1. OpenObserve is down or restarting. `docker compose logs openobserve`. The usual cause is the password line below. A slow machine can raise `FSP_O2_WAIT` (seconds, default 180) in `.env`. |
+| `OpenObserve did not answer at {url} within {seconds}s ({last error}).`                                                                | Exit 1. OpenObserve is down or restarting. `docker compose logs openobserve` says why: a weak password or a migration error, below. A slow machine can raise `FSP_O2_WAIT` (seconds, default 180). |
 | `the {traces\|logs} stream: OpenObserve answered HTTP {status}: {body}`                                                                | Exit 1. OpenObserve refused to create or read the stream; the body says why (a 401 is a wrong password: it was set on the first start, see below).                                                 |
 | `could not create the fespalier folder: HTTP {status} {body}`                                                                          | Exit 1. As above, for the dashboard folder.                                                                                                                                                        |
 | `could not list the fespalier dashboards: HTTP {status} {body}`                                                                        | Exit 1. As above.                                                                                                                                                                                  |
@@ -66,8 +66,25 @@ ZO_ROOT_USER_PASSWORD is too weak: Password must be 8-128 characters and contain
 
 `FSP_O2_PASSWORD` in `.env` is too weak. OpenObserve creates its root user on the **first start only**, so after
 fixing `.env` run `fsp telemetry --reset` (it deletes the stack's data) and then `fsp telemetry`. The importer
-meanwhile prints `OpenObserve did not answer at http://openobserve:5080 within 180s (<urlopen error [Errno -2] Name
-does not resolve>).` and `fsp telemetry` the "dashboards were not imported" line.
+prints `OpenObserve did not answer at http://openobserve:5080 within 180s (<urlopen error [Errno -2] Name
+does not resolve>).` meanwhile (it prints it for the next case too, so read OpenObserve's log to tell them apart)
+and `fsp telemetry` the "dashboards were not imported" line.
+
+The OpenObserve container also prints, exits and starts again (`docker compose ps` says `Restarting`) on:
+
+```text
+db init failed: Custom Error: Migration file of version 'm20260813_000001_create_oncall_unavailability' is missing, this migration has been applied but its file is missing
+Migration file of version 'm20260901_000001_reset_anomaly_detection_retries' is missing, this migration has been applied but its file is missing
+Error: backend job init failed, exiting
+```
+
+(There is one `Migration file of version` line per migration, with other names, between the first and the last.)
+The stack's OpenObserve is v1.1.2 since 0.21.0, and it migrates its database on its first start. An `fsp telemetry`
+before 0.21.0, from an app that still uses an older `fsp`, wrote the v1.0.4 file back over it, and v1.0.4 cannot open a
+migrated database. Run `fsp telemetry` again with an `fsp` of 0.21.0 or later (it needs no project): it writes v1.1.2
+back and OpenObserve starts on the same data (a seeded session was still there when this was checked). `--reset` is
+only for starting over: it deletes the data. While apps on one computer use different versions of `fsp`, run
+`fsp telemetry` with the newest.
 
 ## The report (`fsp telemetry --report`)
 
@@ -91,3 +108,4 @@ does not resolve>).` and `fsp telemetry` the "dashboards were not imported" line
 | **Tiles are grey and say _Not enough data yet_**                | Fewer than 20 samples in the time range (since 0.8.1), so a "slowest 5 %" or a percentage would mislead. Use the app longer, or widen the range. Not a fault. Before 0.21.0 a Grafana percentage tile was grey too when every call in the range failed (OpenObserve said 100 %).                                                                                                                                                                                                                                                                                                                                                             |
 | A Grafana percentile differs from OpenObserve's                 | By design: Grafana interpolates within histogram buckets. Counts are the same.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | A changed OpenObserve password is not taken                     | The root user is created on the first start. `fsp telemetry --reset`, then `fsp telemetry`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **OpenObserve restarts in a loop** after an older `fsp`         | Another app's `fsp` before 0.21.0 wrote the OpenObserve v1.0.4 file back over v1.1.2's migrated data: `Migration file of version '…' is missing` in its log (see the importer section above). Run `fsp telemetry` again with an `fsp` of 0.21.0 or later; the data stays.                                                                                                                                                                                                                                                                                                                                                                    |

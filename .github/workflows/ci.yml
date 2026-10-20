@@ -1105,3 +1105,8 @@ jobs:
         run: node scripts/skills/verify-coverage.mjs
       - name: Formatted (prettier)
         run: npx --yes prettier@3.8.1 --check README.md "docs/*.md" "skills/**/*.{md,json}"
+      # The examples' README screenshots: every shot of ci/web-routes/examples.json is in
+      # docs/images/examples/, of its size, within the byte budget, and shown by its README. The
+      # recipe is `just example-images`; `just example-screenshots` makes them (not in CI).
+      - name: Example screenshots are there and shown
+        run: node ci/web-routes/example-images.mjs

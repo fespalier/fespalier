@@ -109,11 +109,7 @@ abstract final class AppRoutes {
     _matchers = _allMatchers();
     _deferred = _allDeferred();
     DeferredLibrary.register(deferred);
-    if (kFespalierDevTools)
-      devToolsRegister(
-          tree: _devToolsTree,
-          matchUrl: matchUrl,
-          providers: _devToolsProviders);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return _config(_routes(_base));
   }
 
@@ -133,11 +129,7 @@ abstract final class AppRoutes {
     DeferredLibrary.register(deferred);
     // pubspec `semantics_ids`: on the web, a driver like Maestro sees nothing without the semantics tree.
     ensureWebSemantics();
-    if (kFespalierDevTools)
-      devToolsRegister(
-          tree: _devToolsTree,
-          matchUrl: matchUrl,
-          providers: _devToolsProviders);
+    if (kFespalierDevTools) devToolsRegister(tree: _devToolsTree, matchUrl: matchUrl, providers: _devToolsProviders);
     return _routes(at);
   }
 
@@ -146,138 +138,88 @@ abstract final class AppRoutes {
   static List<RouteBase> _routes(String at) {
     return [
       ShellRoute(
-        pageBuilder: (context, state, child) => namedPage(
-            '/',
-            () => _i3.transition(
-                  const ValueKey<String>('layout:/'),
-                  _i4.AppLayout(child: child),
-                )),
+        pageBuilder: (context, state, child) => namedPage('/', () => _i3.transition(
+          const ValueKey<String>('layout:/'),
+          _i4.AppLayout(child: child),
+        )),
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
-            pageBuilder: (context, state) => namedPage(
-                '/',
-                () => _i3.transition(
-                      state.pageKey,
-                      Semantics(
-                          identifier: 'route:/',
-                          container: true,
-                          explicitChildNodes: true,
-                          child: const _i0.HomePage()),
-                    )),
+            pageBuilder: (context, state) => namedPage('/', () => _i3.transition(
+              state.pageKey,
+              Semantics(identifier: 'route:/', container: true, explicitChildNodes: true, child: const _i0.HomePage()),
+            )),
             routes: [
               GoRoute(
                 path: 'cart',
-                pageBuilder: (context, state) => namedPage(
-                    '/cart',
-                    () => _i3.transition(
-                          state.pageKey,
-                          Semantics(
-                              identifier: 'route:/cart',
-                              container: true,
-                              explicitChildNodes: true,
-                              child: const _i6.CartPage()),
-                        )),
+                pageBuilder: (context, state) => namedPage('/cart', () => _i3.transition(
+                  state.pageKey,
+                  Semantics(identifier: 'route:/cart', container: true, explicitChildNodes: true, child: const _i6.CartPage()),
+                )),
               ),
               GoRoute(
                 path: 'checkout',
-                redirect: (context, state) => runRedirect(() => traceGuard(
-                    state,
-                    'g2@2',
-                    _i8.guard(
-                        ProviderScope.containerOf(context, listen: false)))),
-                pageBuilder: (context, state) => namedPage(
-                    '/checkout',
-                    () => _i3.transition(
-                          state.pageKey,
-                          DeferredView(
-                            library: _libCheckout,
-                            page: () => Semantics(
-                                identifier: 'route:/checkout',
-                                container: true,
-                                explicitChildNodes: true,
-                                child: _pageCheckout.CheckoutPage()),
-                            loading: () => const _i1.RootLoading(),
-                            error: (e, st, retry) =>
-                                _i2.RootError(error: e, retry: retry),
-                          ),
-                        )),
+                redirect: (context, state) => runRedirect(() => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false)))),
+                pageBuilder: (context, state) => namedPage('/checkout', () => _i3.transition(
+                  state.pageKey,
+                  DeferredView(
+                    library: _libCheckout,
+                    page: () => Semantics(identifier: 'route:/checkout', container: true, explicitChildNodes: true, child: _pageCheckout.CheckoutPage()),
+                    loading: () => const _i1.RootLoading(),
+                    error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
+                  ),
+                )),
               ),
               GoRoute(
                 path: 'products',
-                pageBuilder: (context, state) => namedPage(
-                    '/products',
-                    () => _i3.transition(
-                          state.pageKey,
-                          buildWithParams(
-                            () => _params5(state),
-                            (v) => DataView(
-                              watch: (ref) =>
-                                  watchData(ref, 'dProducts', _i10.data),
-                              refresh: (ref) => ref.invalidate(_i10.data),
-                              data: (d) => Semantics(
-                                  identifier: 'route:/products',
-                                  container: true,
-                                  explicitChildNodes: true,
-                                  child: _i11.ProductsPage(
-                                      products: d, sort: v.sort, page: v.page)),
-                              loading: () => const _i12.ProductsLoading(),
-                              error: (e, st, retry) =>
-                                  _i2.RootError(error: e, retry: retry),
-                              keepPrevious: true,
-                            ),
-                            () => notFound(state.uri),
-                          ),
-                        )),
+                pageBuilder: (context, state) => namedPage('/products', () => _i3.transition(
+                  state.pageKey,
+                  buildWithParams(
+                    () => _params5(state),
+                    (v) => DataView(
+                      watch: (ref) => watchData(ref, 'dProducts', _i10.data),
+                      refresh: (ref) => ref.invalidate(_i10.data),
+                      data: (d) => Semantics(identifier: 'route:/products', container: true, explicitChildNodes: true, child: _i11.ProductsPage(products: d, sort: v.sort, page: v.page)),
+                      loading: () => const _i12.ProductsLoading(),
+                      error: (e, st, retry) => _i2.RootError(error: e, retry: retry),
+                      keepPrevious: true,
+                    ),
+                    () => notFound(state.uri),
+                  ),
+                )),
                 routes: [
                   GoRoute(
                     path: ':id',
-                    pageBuilder: (context, state) => namedPage(
-                        '/products/:id',
-                        () => _i3.transition(
-                              state.pageKey,
-                              buildWithParams(
-                                () => _params6(state),
-                                (v) => DataView(
-                                  watch: (ref) => watchData(ref, 'dProductsId',
-                                      _dataProductsId(v.id)),
-                                  refresh: (ref) =>
-                                      ref.invalidate(_dataProductsId(v.id)),
-                                  data: (d) => Semantics(
-                                      identifier: 'route:/products/:id',
-                                      container: true,
-                                      explicitChildNodes: true,
-                                      child: _pageProductsId.ProductPage(
-                                          product: d)),
-                                  loading: () => const _i12.ProductsLoading(),
-                                  error: (e, st, retry) => _i15.ProductError(
-                                      id: v.id, error: e, retry: retry),
-                                  keepPrevious: true,
-                                  keepDataOnError: true,
-                                  library: _libProductsId,
-                                ),
-                                () => notFound(state.uri),
-                              ),
-                            )),
+                    pageBuilder: (context, state) => namedPage('/products/:id', () => _i3.transition(
+                      state.pageKey,
+                      buildWithParams(
+                        () => _params6(state),
+                        (v) => DataView(
+                          watch: (ref) => watchData(ref, 'dProductsId', _dataProductsId(v.id)),
+                          refresh: (ref) => ref.invalidate(_dataProductsId(v.id)),
+                          data: (d) => Semantics(identifier: 'route:/products/:id', container: true, explicitChildNodes: true, child: _pageProductsId.ProductPage(product: d)),
+                          loading: () => const _i12.ProductsLoading(),
+                          error: (e, st, retry) => _i15.ProductError(id: v.id, error: e, retry: retry),
+                          keepPrevious: true,
+                          keepDataOnError: true,
+                          library: _libProductsId,
+                        ),
+                        () => notFound(state.uri),
+                      ),
+                    )),
                   ),
                 ],
               ),
               GoRoute(
                 path: 'greet/:name',
-                pageBuilder: (context, state) => namedPage(
-                    '/greet/:name',
-                    () => _i3.transition(
-                          state.pageKey,
-                          buildWithParams(
-                            () => _params4(state),
-                            (v) => Semantics(
-                                identifier: 'route:/greet/:name',
-                                container: true,
-                                explicitChildNodes: true,
-                                child: _i9.GreetPage(name: v.name)),
-                            () => notFound(state.uri),
-                          ),
-                        )),
+                pageBuilder: (context, state) => namedPage('/greet/:name', () => _i3.transition(
+                  state.pageKey,
+                  buildWithParams(
+                    () => _params4(state),
+                    (v) => Semantics(identifier: 'route:/greet/:name', container: true, explicitChildNodes: true, child: _i9.GreetPage(name: v.name)),
+                    () => notFound(state.uri),
+                  ),
+                )),
               ),
             ],
           ),
@@ -296,43 +238,32 @@ abstract final class AppRoutes {
   /// every build mode, through `FlutterError.onError`, then the nearest error.dart of its route shows
   /// when that one takes only `error`, `stackTrace` and `retry` (its retry runs the navigation again),
   /// else [notFound]. Any other error (no route, a redirect loop) shows [notFound].
-  static Widget errorPage(BuildContext context, GoRouterState state) =>
-      routerErrorPage(context, state, notFound, guardError: _guardErrorAt);
+  static Widget errorPage(BuildContext context, GoRouterState state) => routerErrorPage(context, state, notFound, guardError: _guardErrorAt);
 
   /// The error.dart that shows a failed guard of the route at [uri] (since 0.21.0), or null: see [errorPage].
-  static Widget? _guardErrorAt(
-          Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) =>
-      guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry);
+  static Widget? _guardErrorAt(Uri uri, Object error, StackTrace stackTrace, VoidCallback retry) => guardErrorRoutes(uri, base, _matchers, error, stackTrace, retry);
 
   /// Every route as [matchUrl] tries it, most specific first. A hot reload in a debug build makes
   /// them again (since 0.19.0).
   static List<RouteMatcher> _matchers = _allMatchers();
 
   static List<RouteMatcher> _allMatchers() => [
-        RouteMatcher(
-            [], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
-        RouteMatcher(['cart'],
-            (s) => UrlMatch(s.uri, const CartRoute(), const {}, const [])),
-        RouteMatcher(['checkout'],
-            (s) => UrlMatch(s.uri, const CheckoutRoute(), const {}, const []),
-            guardError: (e, st, retry) =>
-                _i2.RootError(error: e, retry: retry)),
-        RouteMatcher(['products'], (s) {
-          final p = _params5(s);
-          return UrlMatch(s.uri, ProductsRoute(sort: p.sort, page: p.page),
-              {'sort': p.sort, 'page': p.page}, [_i10.data]);
-        }),
-        RouteMatcher(['greet', ':name'], (s) {
-          final p = _params4(s);
-          return UrlMatch(
-              s.uri, GreetRoute(name: p.name), {'name': p.name}, const []);
-        }),
-        RouteMatcher(['products', ':id'], (s) {
-          final p = _params6(s);
-          return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id},
-              [_dataProductsId(p.id)]);
-        }),
-      ];
+    RouteMatcher([], (s) => UrlMatch(s.uri, const HomeRoute(), const {}, const [])),
+    RouteMatcher(['cart'], (s) => UrlMatch(s.uri, const CartRoute(), const {}, const [])),
+    RouteMatcher(['checkout'], (s) => UrlMatch(s.uri, const CheckoutRoute(), const {}, const []), guardError: (e, st, retry) => _i2.RootError(error: e, retry: retry)),
+    RouteMatcher(['products'], (s) {
+      final p = _params5(s);
+      return UrlMatch(s.uri, ProductsRoute(sort: p.sort, page: p.page), {'sort': p.sort, 'page': p.page}, [_i10.data]);
+    }),
+    RouteMatcher(['greet', ':name'], (s) {
+      final p = _params4(s);
+      return UrlMatch(s.uri, GreetRoute(name: p.name), {'name': p.name}, const []);
+    }),
+    RouteMatcher(['products', ':id'], (s) {
+      final p = _params6(s);
+      return UrlMatch(s.uri, ProductRoute(id: p.id), {'id': p.id}, [_dataProductsId(p.id)]);
+    }),
+  ];
 
   /// [uri] matched to its route: the typed route, the parameters parsed from the URL and
   /// the providers of its data. Null when no route fits, or a segment doesn't parse (the
@@ -345,16 +276,13 @@ abstract final class AppRoutes {
   /// of `/products/42` is `[ProductRoute.data(42)]`), so warming them, with
   /// `ref.prefetchAll(AppRoutes.dataAt(uri) ?? [])`, warms the page. Empty for a route
   /// without data; null when no route fits or a segment doesn't parse.
-  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) =>
-      matchUrl(uri)?.data;
+  static List<ProviderListenable<AsyncValue<Object?>>>? dataAt(Uri uri) => matchUrl(uri)?.data;
 
   /// Starts loading everything the page at [uri] reads, and its code when it is a deferred route:
   /// `matchUrl(uri)?.route.preload(ref)`. One handle keeps the data alive until it is closed (or
   /// `keepFor` passes); code, once loaded, stays. A location that matches no route gets a closed
   /// handle. It never navigates and runs no guard.
-  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) =>
-      matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ??
-      ref.prefetchAll(const [], keepFor: keepFor);
+  static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ?? ref.prefetchAll(const [], keepFor: keepFor);
 
   /// The code of each deferred route (`const deferred = true;` in a route.dart, or `deferred: true`
   /// in pubspec.yaml): its page.dart, imported `deferred as` and loaded the first time the page is
@@ -406,8 +334,7 @@ final class _AppRoutesReload extends RoutesReload {
   Widget notFound(Uri uri) => AppRoutes.notFound(uri);
 
   @override
-  Widget errorPage(BuildContext context, GoRouterState state) =>
-      AppRoutes.errorPage(context, state);
+  Widget errorPage(BuildContext context, GoRouterState state) => AppRoutes.errorPage(context, state);
 }
 
 /// What `fsp gen` knows about every route: its typed route, path template,
@@ -490,12 +417,10 @@ final class HomeRoute extends TypedLocation {
 
   /// The HomeRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static HomeRoute of(BuildContext context) =>
-      routeOf<HomeRoute>(context, AppRoutes.matchUrl);
+  static HomeRoute of(BuildContext context) => routeOf<HomeRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static HomeRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
+  static HomeRoute? maybeOf(BuildContext context) => maybeRouteOf<HomeRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/cart` → cart/page.dart
@@ -507,12 +432,10 @@ final class CartRoute extends TypedLocation {
 
   /// The CartRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static CartRoute of(BuildContext context) =>
-      routeOf<CartRoute>(context, AppRoutes.matchUrl);
+  static CartRoute of(BuildContext context) => routeOf<CartRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static CartRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<CartRoute>(context, AppRoutes.matchUrl);
+  static CartRoute? maybeOf(BuildContext context) => maybeRouteOf<CartRoute>(context, AppRoutes.matchUrl);
 }
 
 /// `/checkout` → checkout/page.dart
@@ -524,12 +447,10 @@ final class CheckoutRoute extends TypedLocation {
 
   /// The CheckoutRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static CheckoutRoute of(BuildContext context) =>
-      routeOf<CheckoutRoute>(context, AppRoutes.matchUrl);
+  static CheckoutRoute of(BuildContext context) => routeOf<CheckoutRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static CheckoutRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<CheckoutRoute>(context, AppRoutes.matchUrl);
+  static CheckoutRoute? maybeOf(BuildContext context) => maybeRouteOf<CheckoutRoute>(context, AppRoutes.matchUrl);
 
   /// Starts loading this page's code (checkout/page.dart is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.
   @override
@@ -546,17 +467,14 @@ final class GreetRoute extends TypedLocation {
   final String name;
 
   @override
-  String get location =>
-      joinLocation(AppRoutes.base, '/greet/${Uri.encodeComponent(name)}');
+  String get location => joinLocation(AppRoutes.base, '/greet/${Uri.encodeComponent(name)}');
 
   /// The GreetRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static GreetRoute of(BuildContext context) =>
-      routeOf<GreetRoute>(context, AppRoutes.matchUrl);
+  static GreetRoute of(BuildContext context) => routeOf<GreetRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static GreetRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<GreetRoute>(context, AppRoutes.matchUrl);
+  static GreetRoute? maybeOf(BuildContext context) => maybeRouteOf<GreetRoute>(context, AppRoutes.matchUrl);
 
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
@@ -578,28 +496,22 @@ final class ProductsRoute extends TypedLocation {
   static final data = _i10.data;
 
   @override
-  String get location => withQuery(
-      joinLocation(AppRoutes.base, '/products'), {'sort': sort, 'page': page});
+  String get location => withQuery(joinLocation(AppRoutes.base, '/products'), {'sort': sort, 'page': page});
 
   /// The ProductsRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static ProductsRoute of(BuildContext context) =>
-      routeOf<ProductsRoute>(context, AppRoutes.matchUrl);
+  static ProductsRoute of(BuildContext context) => routeOf<ProductsRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static ProductsRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<ProductsRoute>(context, AppRoutes.matchUrl);
+  static ProductsRoute? maybeOf(BuildContext context) => maybeRouteOf<ProductsRoute>(context, AppRoutes.matchUrl);
 
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
   /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
-  ProductsRoute Function({_i11.Sort? sort, int? page}) get copyWith =>
-      _copyWith;
+  ProductsRoute Function({_i11.Sort? sort, int? page}) get copyWith => _copyWith;
 
   ProductsRoute _copyWith({Object? sort = _keep, Object? page = _keep}) =>
-      ProductsRoute(
-          sort: _kept<_i11.Sort?>(sort, this.sort),
-          page: _kept<int?>(page, this.page));
+      ProductsRoute(sort: _kept<_i11.Sort?>(sort, this.sort), page: _kept<int?>(page, this.page));
 
   /// Watches products/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref) => ref.watch(data);
@@ -608,16 +520,14 @@ final class ProductsRoute extends TypedLocation {
   static final read = (WidgetRef ref) => ref.readData(data);
 
   /// Starts loading products/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
-  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) =>
-      ref.prefetchData(data, keepFor: keepFor);
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data, keepFor: keepFor);
 
   /// Re-runs products/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data.future);
 
   /// Starts loading everything this page reads (the data of each section above it, then its own: `AppRoutes.dataAt(location)`), kept alive until the handle is closed (or `keepFor` passes). Never navigates, runs no guard.
   @override
-  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) =>
-      ref.prefetchAll([_i10.data], keepFor: keepFor);
+  PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_i10.data], keepFor: keepFor);
 }
 
 /// `/products/:id` → products/$id/page.dart
@@ -634,12 +544,10 @@ final class ProductRoute extends TypedLocation {
 
   /// The ProductRoute the route around [context] is at, parsed from its location by [AppRoutes.matchUrl].
   /// Throws a [StateError] when that is another route.
-  static ProductRoute of(BuildContext context) =>
-      routeOf<ProductRoute>(context, AppRoutes.matchUrl);
+  static ProductRoute of(BuildContext context) => routeOf<ProductRoute>(context, AppRoutes.matchUrl);
 
   /// Like [of], or null when the route around [context] is another one.
-  static ProductRoute? maybeOf(BuildContext context) =>
-      maybeRouteOf<ProductRoute>(context, AppRoutes.matchUrl);
+  static ProductRoute? maybeOf(BuildContext context) => maybeRouteOf<ProductRoute>(context, AppRoutes.matchUrl);
 
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
@@ -650,16 +558,13 @@ final class ProductRoute extends TypedLocation {
       ProductRoute(id: _kept<int>(id, this.id));
 
   /// Watches products/$id/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
-  static final watch =
-      (WidgetRef ref, {required int id}) => ref.watch(data(id));
+  static final watch = (WidgetRef ref, {required int id}) => ref.watch(data(id));
 
   /// Reads products/$id/data.dart once, keeping it alive until it completes.
-  static final read =
-      (WidgetRef ref, {required int id}) => ref.readData(data(id));
+  static final read = (WidgetRef ref, {required int id}) => ref.readData(data(id));
 
   /// Starts loading products/$id/data.dart before navigating; kept alive until the handle is closed (or `keepFor` passes).
-  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) =>
-      ref.prefetchData(data(id), keepFor: keepFor);
+  PrefetchHandle prefetch(WidgetRef ref, {Duration? keepFor}) => ref.prefetchData(data(id), keepFor: keepFor);
 
   /// Re-runs products/$id/data.dart; completes with the fresh value.
   Future<void> refresh(WidgetRef ref) => ref.refresh(data(id).future);
@@ -680,30 +585,22 @@ final class _Keep {
 
 const _keep = _Keep();
 
-T _kept<T>(Object? value, T current) =>
-    identical(value, _keep) ? current : value as T;
+T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : value as T;
 
-({String name}) _params4(GoRouterState s) =>
-    (name: Segment.asString(s, 'name'));
+({String name}) _params4(GoRouterState s) => (name: Segment.asString(s, 'name'));
 
-({_i11.Sort? sort, int? page}) _params5(GoRouterState s) => (
-      sort: Query.asEnum(s, 'sort', _i11.Sort.values),
-      page: Query.asInt(s, 'page')
-    );
+({_i11.Sort? sort, int? page}) _params5(GoRouterState s) => (sort: Query.asEnum(s, 'sort', _i11.Sort.values), page: Query.asInt(s, 'page'));
 
 ({int id}) _params6(GoRouterState s) => (id: Segment.asInt(s, 'id'));
 
 /// checkout/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _libCheckout =
-    DeferredLibrary(_pageCheckout.loadLibrary, 'checkout/page.dart');
+final _libCheckout = DeferredLibrary(_pageCheckout.loadLibrary, 'checkout/page.dart');
 
 /// products/$id/page.dart, imported `deferred as`: loaded the first time the page is built, or ahead of time.
-final _libProductsId =
-    DeferredLibrary(_pageProductsId.loadLibrary, 'products/\$id/page.dart');
+final _libProductsId = DeferredLibrary(_pageProductsId.loadLibrary, 'products/\$id/page.dart');
 
 final _dataProductsId = cachedDataFamily(
-  (Ref ref, int id) =>
-      traceData(ref, 'dProductsId', id, _i13.data(ref, id: id)),
+  (Ref ref, int id) => traceData(ref, 'dProductsId', id, _i13.data(ref, id: id)),
   cache: _i13.dataCache,
   name: 'products/\$id',
   keyParts: (int id) => [id],
@@ -721,5 +618,4 @@ Map<Object, String> _devToolsProviders() => {
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() =>
-    '{"protocol":1,"package":"shop","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/cart","route":"CartRoute","file":"cart/page.dart","folder":"cart","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/checkout","route":"CheckoutRoute","file":"checkout/page.dart","folder":"checkout","markers":["guard","deferred"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/products","route":"ProductsRoute","file":"products/page.dart","folder":"products","markers":["data"],"params":[{"name":"sort","type":"Sort?","in":"query"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data","fresh","cached","deferred"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/greet/:name","route":"GreetRoute","file":"greet/\$name/page.dart","folder":"greet/\$name","markers":[],"params":[{"name":"name","type":"String","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"dProducts":{"kind":"data","file":"products/data.dart","route":"ProductsRoute","section":null,"traced":false},"dProductsId":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":true},"g2@2":{"kind":"guard","file":"checkout/guard.dart","route":"CheckoutRoute","pattern":"/checkout"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"shop","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/cart","route":"CartRoute","file":"cart/page.dart","folder":"cart","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/checkout","route":"CheckoutRoute","file":"checkout/page.dart","folder":"checkout","markers":["guard","deferred"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/products","route":"ProductsRoute","file":"products/page.dart","folder":"products","markers":["data"],"params":[{"name":"sort","type":"Sort?","in":"query"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[{"type":"route","pattern":"/products/:id","route":"ProductRoute","file":"products/\$id/page.dart","folder":"products/\$id","markers":["data","fresh","cached","deferred"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/greet/:name","route":"GreetRoute","file":"greet/\$name/page.dart","folder":"greet/\$name","markers":[],"params":[{"name":"name","type":"String","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"dProducts":{"kind":"data","file":"products/data.dart","route":"ProductsRoute","section":null,"traced":false},"dProductsId":{"kind":"data","file":"products/\$id/data.dart","route":"ProductRoute","section":null,"traced":true},"g2@2":{"kind":"guard","file":"checkout/guard.dart","route":"CheckoutRoute","pattern":"/checkout"}}}';

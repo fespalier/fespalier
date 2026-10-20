@@ -624,7 +624,7 @@
           "path": "/orders/42",
           "expect": "Order 42",
           "title": "`/orders/42`",
-          "alt": "Order 42: an app bar with a back arrow and the title Order 42, and an empty page below it."
+          "alt": "Order 42: an app bar with a back arrow and the title Order 42, and the line Order 42 has shipped in the middle of the page."
         },
         {
           "file": "login.png",

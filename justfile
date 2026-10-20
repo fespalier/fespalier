@@ -105,7 +105,7 @@ floor_dirs := members + "examples/minimal"
 # temporary copy outside the workspace (scripts/floor_copy.py), so the checkout's resolution and test assets
 # are left as they were.
 #
-# The declared floor as CI's `floor` job runs it, `just floor <sdk dir>` or FLUTTER_FLOOR=<sdk dir>: pub downgrade, analyze, test (not part of `just ci`)
+# The declared floor as CI's `floor` and `floor-app` jobs run it, `just floor <sdk dir>` or FLUTTER_FLOOR=<sdk dir>: pub downgrade, analyze, test for each package, then one app with every package (scripts/floor_app.py) at its lowest versions (not part of `just ci`)
 floor sdk=env("FLUTTER_FLOOR", ""):
     #!/usr/bin/env bash
     set -euo pipefail
@@ -130,6 +130,10 @@ floor sdk=env("FLUTTER_FLOOR", ""):
         echo "==> $d (Flutter $have, lowest dependencies)"
         (cd "$work/tree/$d" && flutter pub downgrade && flutter analyze && flutter test)
     done
+    # One app with every package, at its lowest versions together: the packages meet there (scripts/floor_app.py).
+    python3 scripts/floor_app.py "$work/tree" "$work/app" > /dev/null
+    echo "==> the app with every package (Flutter $have, lowest dependencies)"
+    (cd "$work/app" && flutter pub downgrade && flutter test)
 
 # Rebuild the DevTools extension into packages/fespalier/extension/devtools/build (needs Flutter)
 devtools-build:

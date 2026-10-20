@@ -287,6 +287,34 @@ jobs:
       - run: flutter test
         working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}
 
+  # One app that depends on every package at its lowest versions together (scripts/floor_app.py). Each package
+  # above resolves alone, and the packages meet only in an app: a floor that passes per package can still fail
+  # where two of them share a resolution (`platform` 3.0.0 does not compile on Dart 3).
+  floor-app:
+    name: Floor app (Flutter 3.35, every package at its lowest versions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}
+          cache: true
+      - run: flutter --version
+      - name: Copy each package out of the workspace and write the app (scripts/floor_copy.py, scripts/floor_app.py)
+        run: |
+          python3 scripts/floor_copy.py "$RUNNER_TEMP/floor-app/tree"
+          python3 scripts/floor_app.py "$RUNNER_TEMP/floor-app/tree" "$RUNNER_TEMP/floor-app/app"
+      - run: flutter pub downgrade
+        working-directory: ${{ runner.temp }}/floor-app/app
+      - run: flutter test
+        working-directory: ${{ runner.temp }}/floor-app/app
+
   devtools:
     name: DevTools extension (built output is current)
     runs-on: ubuntu-latest

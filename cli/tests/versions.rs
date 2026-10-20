@@ -1318,6 +1318,120 @@ fn the_floor_copies_override_what_each_package_reaches() {
 }
 
 #[test]
+fn the_floor_app_depends_on_every_workspace_package() {
+    // scripts/floor_app.py writes the app the floor runs last: a path dependency and an override for each
+    // workspace package (the names come from the root pubspec, which the script reads too) and an import of
+    // each one's main library. Read back here, so a member the app leaves out fails this test.
+    use std::collections::BTreeSet;
+    let dest = tempfile::tempdir().unwrap();
+    let tree = dest.path().join("tree");
+    let app = dest.path().join("app");
+    let copied = match Command::new("python3")
+        .arg(root().join("scripts/floor_copy.py"))
+        .arg(&tree)
+        .output()
+    {
+        Ok(out) => out,
+        Err(e) => {
+            eprintln!(
+                "skipping: no python3 to run scripts/floor_app.py ({e}); CI runs it on Linux"
+            );
+            return;
+        }
+    };
+    assert!(
+        copied.status.success(),
+        "floor_copy.py failed: {}",
+        String::from_utf8_lossy(&copied.stderr)
+    );
+    let out = Command::new("python3")
+        .arg(root().join("scripts/floor_app.py"))
+        .arg(&tree)
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "floor_app.py failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let names: BTreeSet<String> = workspace_members()
+        .iter()
+        .map(|d| d.rsplit('/').next().unwrap().to_string())
+        .collect();
+    let pubspec: serde_yaml_ng::Value =
+        serde_yaml_ng::from_str(&fs::read_to_string(app.join("pubspec.yaml")).unwrap()).unwrap();
+    for section in ["dependencies", "dependency_overrides"] {
+        let map = pubspec[section]
+            .as_mapping()
+            .unwrap_or_else(|| panic!("the app's {section} is a map"));
+        let got: BTreeSet<String> = map
+            .keys()
+            .filter_map(serde_yaml_ng::Value::as_str)
+            .filter(|k| names.contains(*k))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            got, names,
+            "the app's {section} is not every workspace package"
+        );
+        for name in &names {
+            let path = pubspec[section][name.as_str()]["path"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{section}: {name} is a path dependency"));
+            assert_eq!(
+                app.join(path).canonicalize().unwrap(),
+                tree.join("packages").join(name).canonicalize().unwrap(),
+                "{section}: {name} is not its copy in the tree"
+            );
+        }
+    }
+    let test = fs::read_to_string(app.join("test/imports_test.dart")).unwrap();
+    for name in &names {
+        assert!(
+            test.contains(&format!("import 'package:{name}/{name}.dart';")),
+            "the app's test does not import {name}"
+        );
+    }
+}
+
+#[test]
+fn the_floor_app_job_writes_the_app_and_runs_it_on_the_floor() {
+    // CI's floor-app job and `just floor` run the same app, on the floor's Flutter, after the packages.
+    let ci = read(".github/workflows/ci.yml");
+    let job = ci
+        .split_once("\n  floor-app:\n")
+        .expect("ci.yml has a floor-app job")
+        .1;
+    let job = job.split_once("\n  devtools:\n").map_or(job, |(j, _)| j);
+    assert!(
+        job.contains("flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}"),
+        "the floor-app job installs the floor's Flutter"
+    );
+    assert!(
+        job.contains(
+            "python3 scripts/floor_app.py \"$RUNNER_TEMP/floor-app/tree\" \"$RUNNER_TEMP/floor-app/app\""
+        ),
+        "the floor-app job writes the app from the copies"
+    );
+    assert_eq!(
+        job.matches("working-directory: ${{ runner.temp }}/floor-app/app")
+            .count(),
+        2,
+        "the floor-app job downgrades and tests the app"
+    );
+    let justfile = read("justfile");
+    assert!(
+        justfile.contains("python3 scripts/floor_app.py \"$work/tree\" \"$work/app\""),
+        "`just floor` writes the app from the copies"
+    );
+    assert!(
+        justfile.contains("(cd \"$work/app\" && flutter pub downgrade && flutter test)"),
+        "`just floor` downgrades and tests the app"
+    );
+}
+
+#[test]
 fn the_pinned_checksums_are_none_or_belong_to_a_version_up_to_this_one() {
     // `release_checksums.dart` is written by the `release-pins` workflow (scripts/pin_checksums.py)
     // onto the release-please PR branch. Whatever state `main` or a release PR is in, the pins

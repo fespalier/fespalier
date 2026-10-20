@@ -135,7 +135,14 @@ class LoginPage extends ConsumerWidget {
   - **Don't `ref.keepAlive()`** in a guard: it keeps one provider alive per navigation.
   - **A guard that throws never refreshes the router**: on a navigation the error reaches
     go_router as any redirect's does; when a later run throws, the page you are on stays
-    until the next navigation. The guard's provider does not retry.
+    until the next navigation. The guard's provider does not retry. On a navigation, a guard
+    that throws before it returns ends it in go_router's error route (`errorBuilder` and
+    `onException` get a `GoException`; the generated app shows its not-found view at the asked
+    address), and so does one that fails after an `await` **from go_router 18.1.1**. Before
+    18.1.1 that failure was an uncaught `GoException`, `errorBuilder` and `onException` never
+    got it, and the navigation never ended: the router stayed on the page it was on. Test it
+    by the error route (`router.routerDelegate.currentConfiguration.error`) on 18.1.1 and by
+    the zone's uncaught error before it, never by the exception's message.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

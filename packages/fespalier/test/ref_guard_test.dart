@@ -520,7 +520,20 @@ void main() {
         r.go('/inbox');
         await tester.pumpAndSettle();
       }, (error, _) => errors.add(error));
-      expect(errors, hasLength(1));
+      if (beforeGoRouter1811) {
+        // go_router reports it as an uncaught error, once, and the router stays where it was.
+        expect(errors, hasLength(1));
+        expect('${errors.single}', contains('boom'));
+        expect(r.routerDelegate.currentConfiguration.uri.path, '/other');
+        expect(find.text('OTHER'), findsOneWidget);
+      } else {
+        // go_router 18.1.1 hands it to the error route (errorBuilder, onException). Nothing is
+        // uncaught.
+        expect(errors, isEmpty);
+        final error = r.routerDelegate.currentConfiguration.error;
+        expect(error, isNotNull);
+        expect('$error', contains('boom'));
+      }
       expect(open, 0);
     });
 

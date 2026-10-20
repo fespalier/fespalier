@@ -28,6 +28,9 @@ final forbidden = <RegExp, String>{
   RegExp(r'\baddListener\s*\('): 'a listener outlives the call that made it',
   RegExp(r'\baddPostFrameCallback\b'): 'a frame nobody asked for',
   RegExp(
+    r'\bstate\s*(=(?![=>])|\+\+|--|[-+*/]=)',
+  ): 'a revision moves by returning its number from build: setting state is a listener',
+  RegExp(
     r'\bRandom\s*\(\s*\)',
   ): 'ids come from Random.secure(): a seeded generator makes an idempotency key guessable',
 };
@@ -205,6 +208,9 @@ void main() {
       'binding.addPostFrameCallback(f);',
       'final r = Random();',
       'final r = Random( );',
+      'state = 1;',
+      'state++;',
+      'state += 2;',
       'final t = 1;/* hidden */ Timer(d, f);',
       'foo(); //no space\nTimer(d, f);'.split('\n').last,
     ]) {
@@ -233,6 +239,9 @@ void main() {
       'await Future.wait<int>([a, b]);',
       'final f = Future.sync(() => 1);',
       'final url = "https://example.com";',
+      'if (state == 1) return;',
+      'final s = state;',
+      'int get state => 1;',
     ]) {
       expect(violations('f.dart', [line]), isEmpty, reason: line);
     }

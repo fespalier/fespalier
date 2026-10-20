@@ -6,6 +6,7 @@ import 'dart:async';
 export 'package:fespalier_frb/fespalier_frb.dart'
     show
         Change,
+        ChangeBudget,
         ChangeCodec,
         ChangeFeed,
         InvalidationRule,

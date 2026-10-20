@@ -147,6 +147,10 @@ abstract final class FespalierConventions {
   /// A newer navigation started before this one committed.
   static const String outcomeSuperseded = 'superseded';
 
+  /// A guard or a `redirect.dart` failed, and the router shows the error view (since 0.21.0). The
+  /// span has the status `Error` and no exception: the guard's span has it.
+  static const String outcomeError = 'error';
+
   // Attributes of a `guard` and a `redirect` span.
 
   /// What the guard decided.

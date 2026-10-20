@@ -103,13 +103,15 @@ GoRouter router({String initial = '/home'}) {
       GoRoute(path: '/login', builder: (_, _) => page('login')),
       GoRoute(
         path: '/old',
-        redirect: (_, state) =>
-            traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'r4', '/other', telemetry: redirectSite),
+        ),
       ),
       GoRoute(
         path: '/checkout',
-        redirect: (_, state) =>
-            traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+        redirect: (_, state) => runRedirect(
+          () => traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
+        ),
         builder: (_, _) => page('checkout'),
       ),
     ],
@@ -297,6 +299,31 @@ void main() {
       );
       expect(nav.attributes.getString('fespalier.route'), isNull);
       expect(nav.status, SpanStatusCode.Unset);
+    });
+
+    testWidgets('a guard that fails ends its navigation as error, with the '
+        'exception on the guard', (tester) async {
+      checkout = () => Future<String?>.error(StateError('boom'));
+      final r = router();
+      await pumpRouter(tester, r);
+      exporter.clear();
+      await runZonedGuarded(() async {
+        r.go('/checkout');
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+      }, (error, _) {});
+      final nav = only('navigate');
+      expect(nav.attributes.getString('fespalier.navigation.outcome'), 'error');
+      expect(nav.status, SpanStatusCode.Error);
+      expect(nav.spanEvents?.map((e) => e.name), isNot(contains('exception')));
+      expect(nav.attributes.getString('fespalier.route'), isNull);
+      final guard = only('guard checkout/guard.dart');
+      expect(guard.attributes.getString('fespalier.guard.decision'), 'error');
+      expect(guard.status, SpanStatusCode.Error);
+      final exception = guard.spanEvents!.singleWhere(
+        (e) => e.name == 'exception',
+      );
+      expect(exception.attributes?.getString('exception.type'), 'StateError');
     });
 
     testWidgets('a navigation that never committed is superseded', (

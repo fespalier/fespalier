@@ -193,8 +193,9 @@ void main() {
         FespalierConventions.outcomeOk,
         FespalierConventions.outcomeNotFound,
         FespalierConventions.outcomeSuperseded,
+        FespalierConventions.outcomeError,
       ],
-      ['ok', 'not_found', 'superseded'],
+      ['ok', 'not_found', 'superseded', 'error'],
     );
     expect(
       [

@@ -296,7 +296,8 @@ final class FespalierOtel extends FespalierTelemetry {
   }
 
   /// Tells [onScreen] the page a navigation commits to, before it is built (since 0.19.0): its
-  /// pattern, null when no route matched; only for a navigation this adapter made a span for.
+  /// pattern, null when no route matched or a failing guard stopped it; only for a navigation this
+  /// adapter made a span for.
   @override
   void commit(Object? navigation, TelemetryCommit commit) {
     final hook = onScreen;

@@ -382,16 +382,21 @@ class Structure(unittest.TestCase):
                 for uid in re.findall(r"/d/(fespalier-[a-z]+)\?", text):
                     self.assertIn(uid, [f"fespalier-{i}" for i in titles])
 
-    def test_percentages_are_not_computed_with_or(self):
-        # OpenObserve's PromQL answers nothing for `X or vector(0)` when X is empty (v1.0.4).
+    def test_percentages_read_no_passed_call_as_zero(self):
+        # `X or vector(0)` is 0 when X is empty in OpenObserve's PromQL (per the release notes of
+        # v1.1.0, and it was run on v1.1.2; v1.0.4 answered nothing), so a tile where every call
+        # failed says 100 %. No other `or` is used.
         for dash in self.dashboards:
             for panel in dash["panels"]:
                 for target in panel["promql"]:
-                    self.assertNotRegex(target["expr"], r"\bor\b", f"{dash['id']}/{panel['id']}")
+                    rest = target["expr"].replace(" or vector(0)", "")
+                    self.assertNotRegex(rest, r"\bor\b", f"{dash['id']}/{panel['id']}")
                 if panel.get("unit") == "percent":
                     expr = panel["promql"][0]["expr"]
                     self.assertIn("sum_over_time", expr)
-                    self.assertRegex(expr, r"^100 \* \(sum\(.*\) - sum\(", f"{dash['id']}/{panel['id']}")
+                    self.assertRegex(
+                        expr, r"^100 \* \(sum\(.*\) - \(sum\(.*\) or vector\(0\)\)\) / sum\(", f"{dash['id']}/{panel['id']}"
+                    )
 
     def test_the_seed_expects_a_count_for_every_count_stat_and_a_rate_for_every_percentage(self):
         seed = seed_module.Seed(now=1_700_000_000)
@@ -738,7 +743,7 @@ class Compose(unittest.TestCase):
 
 
 class FakeOpenObserve:
-    """Just the endpoints import.py uses, as v1.0.4 answers them (checked against the real server)."""
+    """Just the endpoints import.py uses, as v1.0.4 and v1.1.2 answer them (checked against the real servers)."""
 
     def __init__(self, not_ready_polls=0):
         self.not_ready_polls = not_ready_polls

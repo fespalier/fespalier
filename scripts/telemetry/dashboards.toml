@@ -54,8 +54,8 @@
 #   {verdict:T|V|N}          SQL: "✓ Good · 240 ms" and friends for the value V of threshold T over N samples
 #   {label:L|C}              SQL: column C shown with the text of [labels.L]
 #   {pct_prom:D|K}           PromQL: 100 * (calls matching D - calls matching K) / calls matching D,
-#                            where K selects the calls that did not fail (OpenObserve's PromQL cannot
-#                            say `X or vector(0)`, so the failures are counted by subtraction)
+#                            where K selects the calls that did not fail; no call matching K counts
+#                            as 0 (`or vector(0)`), so a tile where every call failed says 100 %
 #   {gate_prom:S}            PromQL: "and" the number of calls matching S is at least min_samples
 
 # Status colours (the dataviz status palette). Tables use the pale pairs [background, text]; Grafana

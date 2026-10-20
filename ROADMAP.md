@@ -27,6 +27,5 @@ it ships.
 
 ## Waiting on others
 
-- **OpenObserve:** a click on a stat tile opens nothing, and PromQL's `or vector(0)` returns no
-  series (v1.0.4; v1.1.0 not checked yet). Drill-down is on the tables and charts until then, and the
-  Grafana tiles work around the second.
+- **OpenObserve:** a click on a stat tile opens nothing (v1.0.4 to v1.1.2: the copy button's overlay over
+  the value takes the click). Drill-down is on the tables and charts until then; Grafana's tiles open it.

@@ -40,18 +40,20 @@ void main() {
     final router = await boot(tester, '/checkout');
     await tester.pumpAndSettle();
 
-    // The failure is reported once, in a debug build: the test takes it.
+    // The failure is reported once, in every build mode: the test takes it.
     expect(tester.takeException(), isA<StateError>());
     final error = router.routerDelegate.currentConfiguration.error;
     expect(error, isA<GuardFailure>());
     expect(router.routerDelegate.currentConfiguration.uri.path, '/checkout');
-    expect(find.text('Bad state: the cart is unavailable'), findsOneWidget);
+    // The person sees a message of the app's, not the exception.
+    expect(find.text('Something went wrong.'), findsOneWidget);
+    expect(find.textContaining('the cart is unavailable'), findsNothing);
 
-    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.tap(find.text('Try again'));
     await tester.pumpAndSettle();
 
     // The retry ran the guard, which failed again, with a new report.
     expect(tester.takeException(), isA<StateError>());
-    expect(find.text('Bad state: the cart is unavailable'), findsOneWidget);
+    expect(find.text('Something went wrong.'), findsOneWidget);
   });
 }

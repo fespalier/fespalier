@@ -247,6 +247,26 @@ web-routes:
     cd ci/web-routes && npm ci && npx --no-install playwright install chromium
     scripts/check-web-routes.sh examples/shop
 
+# Every example (or the named ones) as a release web build in Chromium: each URL of ci/web-routes/examples.json
+# shows its text, nothing throws or logs an error, and nothing is requested but from the local server (the examples stay
+# platform-free: each is built in a throwaway copy). FSP_CHROMIUM=/path/to/chrome uses a Chromium already on disk.
+# Needs Flutter and Node; two to five minutes per example, and not part of `just ci` (CI runs it as `examples-web`)
+examples-web *names:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    (cd ci/web-routes && npm ci)
+    if [ -z "${FSP_CHROMIUM:-}" ]; then (cd ci/web-routes && npx --no-install playwright install chromium); fi
+    names="{{ names }}"
+    failed=()
+    for e in ${names:-{{ examples }}}; do
+        echo "==> examples/$e"
+        scripts/check-examples-web.sh "examples/$e" || failed+=("$e")
+    done
+    if [ "${#failed[@]}" -gt 0 ]; then
+        echo "examples-web: failed: ${failed[*]}" >&2
+        exit 1
+    fi
+
 # `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. fsp dev runs the
 # app, reloads a new route in, restarts when it must and quits with `q`: the one check of fsp against
 # flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
@@ -267,11 +287,12 @@ create-check *cases:
 codegen-interop:
     scripts/check-codegen-interop.sh
 
-# The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps that
-# have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs
-# are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages) and
-# `just web-routes` (the Maestro flows), the stack in Docker is `just telemetry-smoke`, the Flutter 3.35
-# floor is `just floor`, the cose example with its Rust server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
+# The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps
+# that have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs are `just vscode` and
+# `just intellij`, the web builds are `just web-chunks` (the deferred pages), `just web-routes` (the
+# Maestro flows) and `just examples-web` (every example's routes, one CI job each), the stack in Docker
+# is `just telemetry-smoke`, the Flutter 3.35 floor is `just floor`, the cose example with its Rust
+# server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
 ci: lint test deny check-examples flutter devtools packaging telemetry skills

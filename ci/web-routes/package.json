@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Replays the committed `fsp maestro` flows in Chromium against a release web build.",
+  "description": "Replays the committed `fsp maestro` flows in Chromium against a release web build, and opens every example's routes the same way (examples.mjs).",
   "scripts": {
     "check": "node check.mjs"
   },

@@ -2577,7 +2577,8 @@ impl Resolver<'_> {
                         // The spelling first: a type that a data.dart yields as it is spelled here is
                         // that data, so a typedef of a query type is not followed to a query parameter
                         // (since 0.21.0).
-                        let typedefs = self.yields(ty, cx, false).is_empty();
+                        let typedefs =
+                            query_type(ty).is_some() || self.yields(ty, cx, false).is_empty();
                         let QueryTy::Is(qty) = self.query_typed(ty, cx.file, None, typedefs) else {
                             return None;
                         };

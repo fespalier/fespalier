@@ -5,7 +5,8 @@
 //! import prefix resolved, they come to the same declarations. Only this package's files are read
 //! (through `enums::Libs`): a typedef of another package, a generic typedef, one in a `part` file
 //! are not followed, and their names are compared as spelled. Callers compare spellings first and
-//! ask for the canonical form only when they differ, so what matched before matches the same way.
+//! ask for the canonical form only when they differ, or when no spelling bound a parameter at all,
+//! so what matched before matches the same way.
 
 use crate::extra;
 

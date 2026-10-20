@@ -8,8 +8,8 @@ has the rest.
 
 ## Screenshots
 
-| `/profile`                                                                                                                                       | `/library/books`                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/profile`                                                                                                                                                                                                                 | `/library/books`                                                                                                                                                                              |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ![The Profile tab: an avatar, Profile, and the buttons Edit profile, Security and Settings, above a bottom navigation bar with Home, Search, Profile (selected) and Library.](../../docs/images/examples/tabs/profile.png) | ![The Library tab, itself a tab layout: Books and Authors chips at the top, a books counter, and the bottom navigation bar with Library selected.](../../docs/images/examples/tabs/books.png) |
 
 ![The same Library page in a window 1280 pixels wide: fespalier_adaptive draws the menu as a navigation drawer, with Home, Search, Profile and the Library section's Books and Authors, instead of a bottom bar.](../../docs/images/examples/tabs/books-wide.png)

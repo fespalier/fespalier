@@ -39,8 +39,8 @@ A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-scr
 
 Read it with [`fespalier-offline`](../../skills/fespalier-offline/SKILL.md) (what a write is, `serve`, intents, owned
 rows, the triggers, testing) and [`fespalier-cratestack`](../../skills/fespalier-cratestack/SKILL.md) (the transport and
-error-reader seams, `startup()`, the sign-out). `examples/cose` (coming) shows a real CrateStack server with signed
-requests; this one is the same wiring with no server to start.
+error-reader seams, `startup()`, the sign-out). [`examples/cose`](../cose/README.md) shows a real CrateStack server with
+signed requests; this one is the same wiring with no server to start.
 
 ## Run it
 

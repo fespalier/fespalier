@@ -103,6 +103,7 @@ in-process demo, which accepts the tokens it cannot check.
 - The Keycloak check of `OidcBackend` (sign-in, rotation, the `invalid_grant` descriptions,
   revocation, end session) is `packages/fespalier_auth/test/keycloak_live_test.dart`, skipped unless
   `FESPALIER_KEYCLOAK_URL` names a running Keycloak with this realm.
+
 Against Keycloak with DPoP, use the client that requires it:
 
 ```sh

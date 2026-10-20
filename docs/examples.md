@@ -137,7 +137,8 @@ reconnect, and a network that flaps loads once.
 - a full-screen route outside the tabs (`/settings`), and one that stays under `/profile` but renders on
   the root navigator (`/profile/edit`, `navigator.dart`);
 - a Cupertino `transition.dart` that also moves the tab layout itself aside when one of those opens over
-  it.
+  it, and gives every route an opaque background (a Cupertino route paints a barrier under its page, which
+  shows as grey through a page that is only a `Center`).
 
 Since 0.9.0 its bar is the menu: six `nav.dart` files, drawn by
 [`fespalier_adaptive`](layouts.md#a-bar-a-rail-or-a-drawer-fespalier_adaptive) as a bar, a rail or a

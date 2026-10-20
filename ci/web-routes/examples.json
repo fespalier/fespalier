@@ -304,7 +304,7 @@
       "urls": [
         {
           "path": "/",
-          "expect": "Home"
+          "expect": "Every tab keeps its own stack of pages."
         },
         {
           "path": "/search",
@@ -375,7 +375,7 @@
       "urls": [
         {
           "path": "/",
-          "expect": "Home"
+          "expect": "Each page you open here is a span."
         },
         {
           "path": "/orders",
@@ -387,9 +387,8 @@
         },
         {
           "path": "/settings",
-          "expect": "Settings",
-          "at": "/settings",
-          "note": "guarded and deferred"
+          "expect": "This page is guarded and loads on demand.",
+          "note": "guarded and deferred: the text is the page's own, so it shows after the chunk loaded; no redirect to /login"
         },
         {
           "path": "/login",
@@ -464,13 +463,13 @@
         },
         {
           "path": "/files/large",
-          "expect": "Refresh the files",
-          "at": "/files/large"
+          "expect": "Large file (SHA-256 checked)",
+          "note": "the app bar shows the case's title only when the id is one of the cases"
         },
         {
           "path": "/files/small",
-          "expect": "Refresh the files",
-          "at": "/files/small"
+          "expect": "Small file (SHA-256 checked)",
+          "note": "the app bar shows the case's title only when the id is one of the cases"
         }
       ]
     },

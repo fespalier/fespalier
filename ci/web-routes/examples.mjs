@@ -11,8 +11,10 @@
 // A URL works when, in a fresh browser profile with every request off this machine aborted:
 //   - Flutter starts (`flutter-view`) and, once its semantics tree is on (the harness clicks the
 //     placeholder Flutter puts in every page, so no example needs `semantics_ids`), a node's text
-//     contains `expect` within 20 s;
-//   - the address ends on `at`, when the URL names where a redirect or a guard lands;
+//     contains `expect` within 20 s. `expect` is a text of the page itself, not of its layout (a
+//     navigation label is on every page of its tab);
+//   - the address ends on `at` (the URL's own path, without its query, when the entry gives none),
+//     so a URL says where it lands: `at` is for a redirect, a guard or a path the app rewrites;
 //   - nothing threw (`pageerror`) and nothing was logged as an error: a release build draws a broken
 //     widget as a grey box and prints the exception to the console as errors, so that is where it
 //     shows. The browser's own `Failed to load resource` lines are not the app's errors;
@@ -140,6 +142,9 @@ const locationOf = (url) => {
   return hash === "" ? "/" : decodeURIComponent(hash);
 };
 
+/** A location without its query. */
+const pathOf = (location) => location.split("?")[0];
+
 /**
  * Opens one URL of the example in a fresh context and checks it. Returns the context (the caller
  * closes it), the page, what went wrong, and the texts it saw.
@@ -199,9 +204,10 @@ const open = async (browser, base, url, viewport) => {
     // An error a frame later still counts.
     await page.waitForTimeout(500);
     at = locationOf(page.url());
-    if (url.at !== undefined && at !== url.at) {
-      problems.push(`ended at ${at}, not ${url.at}`);
-    }
+    // A URL ends where it was opened unless `at` says where it lands.
+    const [want, got] =
+      url.at === undefined ? [pathOf(url.path), pathOf(at)] : [url.at, at];
+    if (got !== want) problems.push(`ended at ${at}, not ${want}`);
   } catch (error) {
     problems.push(firstLine(error.message));
   }

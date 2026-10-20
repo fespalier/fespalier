@@ -3975,12 +3975,17 @@ impl Resolver<'_> {
                 .map(|d| d.ty.clone())
                 .unwrap_or_default()
         };
-        // What a data.dart gives is compared as that file spells it (since 0.21.0).
+        // The spelling first, over every candidate; then (since 0.21.0) the first that gives the
+        // same type as its own file spells it.
         let data_file = |t: usize| format!("{}data.dart", folder_prefix(&self.app.routes[t].dir));
         let target = order
             .iter()
             .copied()
-            .find(|&t| self.same_type(&gives(t), &data_file(t), &o.ty, file));
+            .find(|&t| gives(t) == o.ty)
+            .or_else(|| {
+                (order.iter().copied())
+                    .find(|&t| self.same_type(&gives(t), &data_file(t), &o.ty, file))
+            });
         if target.is_none() {
             let (name, action, ty) = (&o.function, &a.name, &o.ty);
             let msg = if order.is_empty() {

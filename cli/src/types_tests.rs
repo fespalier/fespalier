@@ -556,6 +556,54 @@ fn companions_compare_through_typedefs() {
 }
 
 #[test]
+fn an_optimistic_patch_goes_to_the_data_that_spells_its_type_before_one_that_means_it() {
+    // Two data.dart files that the action invalidates give one type, `Product` (b/ as it is
+    // spelled in action.dart) and `m.Product` (a/, the same class through a prefix). The patch
+    // goes to the exact spelling, b/, as before 0.21.0, and not to the first of the two.
+    let (a_page, b_page) = (
+        "class APage extends StatelessWidget { const APage({super.key}); }",
+        "class BPage extends StatelessWidget { const BPage({super.key}); }",
+    );
+    let a_data = "import '../../models/product.dart' as m;\nFuture<m.Product> data(Ref ref) async => m.Product();";
+    let b_data =
+        "import '../../models/product.dart';\nFuture<Product> data(Ref ref) async => Product();";
+    let action = "import 'package:demo/app.g.dart';\nimport '../../models/product.dart';\n\
+        const invalidates = [ARoute, BRoute];\n\
+        Product optimistic(Product current, String input) => current;\n\
+        Future<void> action(Ref ref, {required String input}) async {}\n";
+    let c = code(&with_models(&[
+        ("page.dart", HOME),
+        ("a/page.dart", a_page),
+        ("a/data.dart", a_data),
+        ("a/action.dart", action),
+        ("b/page.dart", b_page),
+        ("b/data.dart", b_data),
+    ]));
+    has(&c, &["final _optimisticB = optimisticLayer(_dataB);"]);
+    lacks(&c, &["_optimisticA"]);
+    // With no exact spelling, the first that means it is the target.
+    let only_prefixed = c_without_exact([a_page, b_page], a_data, action);
+    has(
+        &only_prefixed,
+        &["final _optimisticA = optimisticLayer(_dataA);"],
+    );
+}
+
+/// The same app with b/ yielding a typedef of `Product`, so no data.dart spells it as action.dart does.
+fn c_without_exact(pages: [&str; 2], a_data: &str, action: &str) -> String {
+    let b_data =
+        "import '../../models/ids.dart';\nFuture<ProductView> data(Ref ref) async => throw 0;";
+    code(&with_models(&[
+        ("page.dart", HOME),
+        ("a/page.dart", pages[0]),
+        ("a/data.dart", a_data),
+        ("a/action.dart", action),
+        ("b/page.dart", pages[1]),
+        ("b/data.dart", b_data),
+    ]))
+}
+
+#[test]
 fn a_retry_typed_with_a_typedef_fits() {
     let error = "import '../../models/ids.dart';\nclass ShopError extends StatelessWidget { const ShopError({super.key, required this.error, required this.retry}); final Object error; final Retry retry; }";
     let layout = "import '../../models/ids.dart';\nclass ShopLayout extends StatelessWidget { const ShopLayout({super.key, required this.content}); final Kid content; }";

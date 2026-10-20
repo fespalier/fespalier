@@ -32,7 +32,7 @@ dependencies:
   # 1.5.0: abortable requests, which the foreground backend aborts a pause or a cancel with.
   http: ^1.5.0
   # The SHA-256 of a finished file (3.0.6 is the first release whose floor is Dart 3.4).
-  crypto: ">=3.0.6 <4.0.0"
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_lints: ^6.0.0

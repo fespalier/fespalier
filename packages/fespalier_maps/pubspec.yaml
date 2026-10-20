@@ -41,8 +41,8 @@ dependencies:
   # File packs download with an http.Client the app provides (so its timeouts, proxy and
   # certificates apply). 1.5.0 is the first http release with abortable requests (Dart 3.4), and
   # crypto 3.0.6 the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
-  http: ">=1.5.0 <2.0.0"
-  crypto: ">=3.0.6 <4.0.0"
+  http: ^1.5.0
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:

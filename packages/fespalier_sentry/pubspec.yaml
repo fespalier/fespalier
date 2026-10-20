@@ -30,7 +30,9 @@ dependencies:
 
 dev_dependencies:
   flutter_lints: ^6.0.0
-  # `MockClient`, under the `SentryHttpClient` of the HTTP span tests.
+  # `MockClient`, under the `SentryHttpClient` of the HTTP span tests. Down to 0.13.0, the one spelling of
+  # http that differs in this repository (cli/tests/versions.rs, SPELLING_EXCEPTIONS): from 1.0 the floor
+  # job's downgrade picks package_info_plus 4.0.2 and win32 4.0.0, which does not compile on Dart 3.9.
   http: ">=0.13.0 <2.0.0"
   flutter_test:
     sdk: flutter

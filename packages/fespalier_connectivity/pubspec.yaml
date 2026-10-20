@@ -26,6 +26,10 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.20.0 # x-release-please-version
+  # Not imported. connectivity_plus 6.0.1 allows web 0.3.0, whose JS interop does not compile for the web on
+  # Dart 3.9 (`The type 'JSObject' can't be used as supertype`): an app's `flutter pub downgrade` picks it and
+  # a web build fails. Depending on it steers every app's resolution to 0.4.0 or newer.
+  web: ">=0.4.0 <2.0.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0

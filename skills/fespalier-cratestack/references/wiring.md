@@ -147,9 +147,16 @@ Future<List<Override>> startup() async {
 ```yaml
 # pubspec.yaml dependencies
   dio: ^5.7.0
+  file: ">=6.1.3 <8.0.0"
   path_provider: ^2.1.0
+  platform: ^3.1.4
 ```
 
+- **`file` and `platform` are not imported.** At the lowest versions `path_provider` allows `platform` 3.0.0
+  (`Platform.packageRoot` is gone from Dart 3) and `file` 6.0.0 (`File.create` has no `exclusive:` on Dart 3.9),
+  and an app that lists `path_provider` does not build with them. `fespalier_storage` and `fespalier_auth` carry both
+  constraints, as `fespalier_cratestack`, `fespalier_dio` and `fespalier_auth` carry `dio_web_adapter` for `dio`; an
+  app that lists `path_provider` without one of them (`fsp create --features download`) lists the two itself.
 - **The order of the readers is the rule**: the app's reader for its generated exception first, then
   `DioFailures.read` for what Dio throws. An error neither knows is `null`, and is rethrown by a read and kept as
   `Queued` by a `submit`.

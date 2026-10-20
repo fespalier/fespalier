@@ -66,10 +66,10 @@ build (so a store build never sends to a laptop); `http://10.0.2.2:4318` on Andr
 | An Android phone on USB                  | `adb reverse tcp:4318 tcp:4318`, then `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`    |
 | A changed `FSP_OTLP_HTTP_PORT`           | Pass the define; `endpoint()` always says 4318                                                             |
 
-**On the web, do not run the app inside `otel_zone`'s `runGuarded`** (checked on `otel_zone` v0.5.0): it
-opens a `ReceivePort` from `dart:isolate` before the body, the web has none, and the app stays blank with
-nothing printed. `start()` works on the web. Use
-`kIsWeb ? body() : observability.runGuarded(body)`. A page served over `https` cannot post to
+**On the web, `otel_zone` before v0.8.1 does not run the app inside its `runGuarded`** (checked on `otel_zone`
+v0.5.0): it opens a `ReceivePort` from `dart:isolate` before the body, the web has none, and the app stays blank
+with nothing printed. `start()` works on the web. From v0.8.1 the zone runs on the web; on an older one, call
+the body directly when `kIsWeb` is true. A page served over `https` cannot post to
 `http://localhost`.
 
 ## Which dashboard answers what
@@ -78,18 +78,20 @@ All in OpenObserve's folder `fespalier` (and Grafana's, where **App health** is 
 range is the last hour, and the **App** variable starts on the first app. Every title is a question, and the
 ⓘ next to it (Grafana: (i)) says what the panel shows, what good looks like and which file to open.
 
-| Question                                                     | Dashboard                | Panel                                                                   |
-| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------------------- |
-| Is the app fast, and does it work?                           | `fespalier · App health` | Eight tiles; _Verdicts, in words_ (OpenObserve)                         |
-| Do screens open quickly? Does content load quickly?          | App health               | _Do screens open quickly?_; _Does content load quickly?_                |
-| Which screen is slow?                                        | `fespalier · Screens`    | _How long does each screen take?_; _Are screens getting slower?_        |
-| Which `data.dart` fails or is slow?                          | Screens                  | _Which data.dart files are slow or failing?_                            |
-| Which guard sends users away, throws, or keeps them waiting? | Screens                  | _Do checks slow screens down?_; _Where were people sent instead?_       |
-| Is a route the app links to missing?                         | Screens                  | _How often does a link lead nowhere?_                                   |
-| How long does a deferred page's code take?                   | Screens                  | _How long does a deferred page's code take to arrive?_                  |
-| Which action fails, and how slow is it?                      | `fespalier · Actions`    | _Which actions are slow or failing?_                                    |
-| What failed, where, with which message and trace?            | `fespalier · Errors`     | _What failed, and where?_; _What failed last?_ (OpenObserve)            |
-| Did the app crash or hit an uncaught error?                  | Errors (and App health)  | _Did anything throw an uncaught error?_; _Did the app crash or freeze?_ |
+| Question                                                     | Dashboard                | Panel                                                                                                                                  |
+| ------------------------------------------------------------ | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Is the app fast, and does it work?                           | `fespalier · App health` | Eight tiles; _Verdicts, in words_ (OpenObserve)                                                                                        |
+| Do screens open quickly? Does content load quickly?          | App health               | _Do screens open quickly?_; _Does content load quickly?_                                                                               |
+| Which screen is slow?                                        | `fespalier · Screens`    | _How long does each screen take?_; _Are screens getting slower?_                                                                       |
+| Which `data.dart` fails or is slow?                          | Screens                  | _Which data.dart files are slow or failing?_                                                                                           |
+| Which guard sends users away, throws, or keeps them waiting? | Screens                  | _Do checks slow screens down?_; _Where were people sent instead?_                                                                      |
+| Is a route the app links to missing?                         | Screens                  | _How often does a link lead nowhere?_                                                                                                  |
+| How long does a deferred page's code take?                   | Screens                  | _How long does a deferred page's code take to arrive?_                                                                                 |
+| Which action fails, and how slow is it?                      | `fespalier · Actions`    | _Which actions are slow or failing?_                                                                                                   |
+| Do loads retry, or show saved content first?                 | Screens                  | _How many loads were automatic retries?_; _How many loads showed saved content at once?_                                               |
+| Are optimistic updates undone, or does validation stop runs? | `fespalier · Actions`    | _How many optimistic updates were undone?_; _How many runs did validation stop?_                                                       |
+| What failed, where, with which message and trace?            | `fespalier · Errors`     | _What failed, and where?_; _What failed last?_ (OpenObserve)                                                                           |
+| Did the app crash or hit an uncaught error?                  | Errors (and App health)  | _Did anything throw an uncaught error?_; _Did the app crash or freeze?_; _Which screen was the app on when it crashed?_ (since 0.19.0) |
 
 Guards, `data.dart` and deferred pages are on **Screens**, not on dashboards of their own, because a developer
 thinks "this screen is slow". Clicking a row of an OpenObserve table (a tile in Grafana) opens the dashboard that
@@ -116,8 +118,9 @@ reason for each.
 A tile that rests on **fewer than 20 samples is grey and says _Not enough data yet_** (the verdict table says _Too
 few to judge_). Colour is not the only signal: OpenObserve's _Verdicts, in words_ says each answer as text.
 
-Panels for retries, cache hits, optimistic rollbacks and submits stopped by validation exist only when
-the telemetry conventions emit those attributes (they are not in contract v1).
+Since 0.18.0 the Screens and Actions dashboards have panels for retries, saved copies shown, optimistic
+updates undone and runs validation stopped. An app on an older fespalier sends none of those attributes,
+so those panels read 0.
 
 ## A summary without a browser: `--report` (since 0.8.1)
 
@@ -154,6 +157,8 @@ rest). Two options since 0.9.0:
   (`#1 start navigate /orders/42 source=notification`); an unmarked one has none.
 - `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what
   runs inside a `data()` or an action. It is off by default so a log written before 0.9.0 reads the same.
+- `RecordingTelemetry(recordCommits: true)` (since 0.19.0) also writes `#n commit ok route=/orders/:id` (or
+  `#n commit not_found`) when a navigation commits, before its `page` lines and its end. It is off by default too.
 
 To run two sinks in a test, `FespalierTelemetry.combine([recording, other])`; a sink that throws is isolated
 and printed once per sink (`fespalier telemetry: <error> in <Sink> (not shown again)`), so a test that
@@ -162,7 +167,7 @@ asserts on `debugPrint` sees one line.
 ## Traps
 
 - **Empty dashboards** is almost always the app: telemetry not switched on or installed, a web app inside
-  `runGuarded`, a phone without `--lan`, or a release build without the define. See the symptom table in
+  `runGuarded` (`otel_zone` before v0.8.1), a phone without `--lan`, or a release build without the define. See the symptom table in
   `diagnostics-telemetry.md`.
 - **The password is set on the first start.** A changed `FSP_O2_PASSWORD` needs `fsp telemetry --reset`
   (it deletes the data), and OpenObserve refuses a weak one.

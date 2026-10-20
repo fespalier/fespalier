@@ -21,7 +21,14 @@
 library;
 
 export 'src/authorizer.dart'
-    show AuthAttempt, Authorizer, authBaseClient, authReplayKey, authorizer;
+    show
+        AuthAttempt,
+        Authorizer,
+        authBaseClient,
+        authRefusedKey,
+        authReplayKey,
+        authWantedKey,
+        authorizer;
 export 'src/backend.dart';
 export 'src/config.dart'
     show AuthConfig, authConfig, authInitialState, restoreAuth;

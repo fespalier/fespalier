@@ -14,10 +14,14 @@ refused) and its own `observe.dart`, a guarded and deferred settings page, and a
   `appRunner`, `otel_zone` and both sinks in the one slot
   (`FespalierTelemetry.combine([FespalierSentry(), FespalierOtel(...)])`). It stays a hand-written
   `main()`; a generated entrypoint (`zone()` in `lib/app/startup.dart`) can take its place. Sentry is the
-  outermost zone, so `OtelZone.runGuarded` is not used (it would hide uncaught async errors from Sentry,
-  and it leaves a web app blank). `SENTRY_DSN` is empty by default: nothing is sent; run it with
+  outermost zone, so `OtelZone.runGuarded` is not used (it would hide uncaught async errors from Sentry).
+  `SENTRY_DSN` is empty by default: nothing is sent; run it with
   `--dart-define=SENTRY_DSN=...` for events in your project. A failure while the app starts arrives
   through `FlutterError.reportError`.
+- `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.19.0) names the page the app shows
+  for every navigation, so a native crash record carries `otel_zone.crashed.screen`, and the Errors
+  dashboard has a table of crashes by screen. It needs `otel_zone` v0.7.0 or later (the pin in
+  `pubspec.yaml`), and the platform's limits are in otel_zone's README, "Which screen it died on".
 - `test/telemetry_test.dart` runs the app on the SDK's in-memory exporter and reads the spans:
   a navigation with its guard, data load and page events as children and events, an action, and a
   deferred load.
@@ -42,5 +46,5 @@ samples are in). `fsp telemetry --report` prints the same answers in the termina
 
 _Sample data from `scripts/telemetry/seed.py --showcase`._
 
-This is the one example on go_router 17: `otel_zone` depends on `otel_go_router`, which declares
-`go_router: ^17.0.0`.
+It resolves go_router 18 like the other examples: since `otel_zone` moved to the dartastic rc.4 line,
+its `otel_go_router` accepts go_router 17 and 18 (the pin in `pubspec.yaml` is the commit of its v0.8.1).

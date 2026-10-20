@@ -1,5 +1,104 @@
 # Changelog
 
+## [0.20.0](https://github.com/fespalier/fespalier/compare/v0.19.0...v0.20.0) (2026-10-19)
+
+
+### Features
+
+* **fsp:** adding or removing a deferred route hot reloads too ([#242](https://github.com/fespalier/fespalier/issues/242)) ([587bb82](https://github.com/fespalier/fespalier/commit/587bb8288b5c46ac81a57b54b7a5b1fe6e79f58d))
+* **fsp:** generated names follow the route, not its position, so inserting a route hot reloads ([#239](https://github.com/fespalier/fespalier/issues/239)) ([c8eb2ac](https://github.com/fespalier/fespalier/commit/c8eb2ac8d6bc85690337265cc518874f7ab9fa0d))
+
+
+### Documentation
+
+* **examples:** a wire-sizes example, what a call costs in bytes as JSON, CBOR and COSE_Sign1 ([#241](https://github.com/fespalier/fespalier/issues/241)) ([af86642](https://github.com/fespalier/fespalier/commit/af866422a187b82049d7acc3acc806a69f3386d6))
+
+## [0.19.0](https://github.com/fespalier/fespalier/compare/v0.18.0...v0.19.0) (2026-10-18)
+
+
+### Features
+
+* **biometrics:** an idle lock, from a ticker the app fires and the first touch after the limit ([#219](https://github.com/fespalier/fespalier/issues/219)) ([d9f8cee](https://github.com/fespalier/fespalier/commit/d9f8cee7c6b0d3080fbe2f1a2b80633e1d1b7743))
+* **biometrics:** BiometricLockScreen, an unlock page that prompts only when tapped ([#221](https://github.com/fespalier/fespalier/issues/221)) ([c0402af](https://github.com/fespalier/fespalier/commit/c0402aff525032d5b21d06693034876567d5a4d1))
+* **biometrics:** secrets behind the biometric, a BiometricSecrets port with a flutter_secure_storage recipe ([#223](https://github.com/fespalier/fespalier/issues/223)) ([61ba641](https://github.com/fespalier/fespalier/commit/61ba641664ce0f96a0b9de46e864a9f17161ddf9))
+* **dev:** a hot reload swaps in the regenerated route table and keeps the app's state ([#234](https://github.com/fespalier/fespalier/issues/234)) ([e4fd503](https://github.com/fespalier/fespalier/commit/e4fd503a10b8aca48673ced8c551de26209eca2b))
+* **dev:** fsp dev hot reloads after a regeneration when the running app can swap its routes ([#238](https://github.com/fespalier/fespalier/issues/238)) ([ea34321](https://github.com/fespalier/fespalier/commit/ea343215461e0a9fe8bb187e126d7782ccceddc1))
+* **otel:** native crash records name the screen, through FespalierOtel onScreen ([#204](https://github.com/fespalier/fespalier/issues/204)) ([e72bdd1](https://github.com/fespalier/fespalier/commit/e72bdd1fcb7b5e11afdd41f9b23393e0f4c8cdd9))
+* **otel:** the generated main() starts otel_zone and installs FespalierOtel with otel: true ([#209](https://github.com/fespalier/fespalier/issues/209)) ([a84f9d2](https://github.com/fespalier/fespalier/commit/a84f9d29c9b810229c5f138057b4e8a94eaf0274))
+* **sentry:** HTTP spans under the data span with traceLifecycle stream ([#215](https://github.com/fespalier/fespalier/issues/215)) ([1012db8](https://github.com/fespalier/fespalier/commit/1012db804ecee2a512cbc09c695508b5dd2f1e61))
+* **sentry:** the scope is named at the commit, so an error in a page's first frame names that page ([#232](https://github.com/fespalier/fespalier/issues/232)) ([e34a3d9](https://github.com/fespalier/fespalier/commit/e34a3d9b428e597d860b0c4f0ccf91d041003b06))
+* **sentry:** tracing: true streams spans when Sentry's traceLifecycle is stream ([#213](https://github.com/fespalier/fespalier/issues/213)) ([3a19cdb](https://github.com/fespalier/fespalier/commit/3a19cdb2a3c65b32e1dcec93b9eddc8a77a876ba))
+* **telemetry:** sinks hear the page at the commit, so onScreen names a page whose first frame crashes ([#207](https://github.com/fespalier/fespalier/issues/207)) ([b9d92e6](https://github.com/fespalier/fespalier/commit/b9d92e60db05ace0ca6729ae745d3245281b0396))
+* **transitions:** every Transitions page and RouteHero honour the system's reduced motion ([#227](https://github.com/fespalier/fespalier/issues/227)) ([98cc4ce](https://github.com/fespalier/fespalier/commit/98cc4ce288b5bf17f18e9a06ad70db1188ccbde1))
+* **transitions:** Transitions.custom, Transitions.restorationIdOf and the PageMotion tag, with testing helpers ([#225](https://github.com/fespalier/fespalier/issues/225)) ([bac73a8](https://github.com/fespalier/fespalier/commit/bac73a8330183dfb46d05ee1704c5e19af17bfc1))
+* **transitions:** Transitions.sharedAxis and Transitions.fadeThrough, Material motion from widgets alone ([#229](https://github.com/fespalier/fespalier/issues/229)) ([82154b8](https://github.com/fespalier/fespalier/commit/82154b83605a95c2ca3fdd5b5bab16dc53c2051b))
+
+
+### Bug Fixes
+
+* **auth:** a request whose session was refused or ended is not sent again without it, under a retrier ([#217](https://github.com/fespalier/fespalier/issues/217)) ([65fba78](https://github.com/fespalier/fespalier/commit/65fba7836b6062dff7e3f370f595c5d7270c0d79))
+* **cose:** build the device registrar without a circular dependency ([#236](https://github.com/fespalier/fespalier/issues/236)) ([265411f](https://github.com/fespalier/fespalier/commit/265411f392ef8b0e791e7c2f8fd36ff5f1709ac4))
+* **otel:** the generated main runs the app in otel_zone's zone on the web too ([#237](https://github.com/fespalier/fespalier/issues/237)) ([f86ea40](https://github.com/fespalier/fespalier/commit/f86ea40db4dc4aac68d966923dba8bee486f2194))
+
+
+### Refactoring
+
+* **sentry:** make the sink's spans through one internal seam ([#211](https://github.com/fespalier/fespalier/issues/211)) ([a1eb658](https://github.com/fespalier/fespalier/commit/a1eb658cade9b44c1bce5d5481ce713b8ebd0eb5))
+
+
+### Documentation
+
+* coming from Uber's RIBs, a comparison page and a README section ([#208](https://github.com/fespalier/fespalier/issues/208)) ([96d07b4](https://github.com/fespalier/fespalier/commit/96d07b4f53b9963bd544cfacf4f84bf32e27427b))
+
+
+### Tests
+
+* **dio:** SessionInterceptor under dio_smart_retry, a new DPoP proof per send and one replay per 401 ([#216](https://github.com/fespalier/fespalier/issues/216)) ([5a847e2](https://github.com/fespalier/fespalier/commit/5a847e20de18626e2c972d08713b10b1466925de))
+* **sign_keypair:** real DPoP proofs under SessionInterceptor and dio_smart_retry ([#218](https://github.com/fespalier/fespalier/issues/218)) ([ac67521](https://github.com/fespalier/fespalier/commit/ac675218af8626ff412742d541633907cab1cb42))
+
+
+### Build System
+
+* **otel:** the dartastic rc.4 line, and examples/telemetry on go_router 18 ([#212](https://github.com/fespalier/fespalier/issues/212)) ([2e9a360](https://github.com/fespalier/fespalier/commit/2e9a360a67b152ef1aa8af587a639ef1454cfa16))
+* **telemetry:** OpenTelemetry Collector 0.162.0 ([#231](https://github.com/fespalier/fespalier/issues/231)) ([f4b1835](https://github.com/fespalier/fespalier/commit/f4b18359042f8e0508a67e07ed666f3809f724f5))
+
+## [0.18.0](https://github.com/fespalier/fespalier/compare/v0.17.2...v0.18.0) (2026-10-15)
+
+
+### Features
+
+* **frb:** ChangeCodec decodes a core's raw or batched events ([#203](https://github.com/fespalier/fespalier/issues/203)) ([88a9829](https://github.com/fespalier/fespalier/commit/88a9829f111c6a9d2e255e895530a40f30519bbb))
+* **launch:** shortcut and home-screen widget taps open typed routes ([#201](https://github.com/fespalier/fespalier/issues/201)) ([a7437c1](https://github.com/fespalier/fespalier/commit/a7437c12b736832f55e08232bc41af29e0592fb5))
+* **telemetry:** fespalier.data.attempt, data.source, action.rolled_back and action.invalid, with their dashboard tiles ([#200](https://github.com/fespalier/fespalier/issues/200)) ([b4c05bb](https://github.com/fespalier/fespalier/commit/b4c05bb14d6452da73d01780b5286c68dcd8adbe))
+
+
+### Documentation
+
+* the roadmap without what has shipped ([#195](https://github.com/fespalier/fespalier/issues/195)) ([836544d](https://github.com/fespalier/fespalier/commit/836544d000fa0c76922422abc7cb24eed12f3bff))
+
+
+### Build System
+
+* Flutter 3.47.7 ([#198](https://github.com/fespalier/fespalier/issues/198)) ([f2b35e8](https://github.com/fespalier/fespalier/commit/f2b35e85c87947b29938f0d20eb07c8f62f5e5f1))
+* rustls 0.23.46 in the cose server (RUSTSEC-2026-0349) ([#196](https://github.com/fespalier/fespalier/issues/196)) ([84d824c](https://github.com/fespalier/fespalier/commit/84d824c5f32b47ad988ca2ee0a34be64c9a9d456))
+
+## [0.17.2](https://github.com/fespalier/fespalier/compare/v0.17.1...v0.17.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **release:** a manual recovery path for a release PR merged before its pins ([#191](https://github.com/fespalier/fespalier/issues/191)) ([1719c69](https://github.com/fespalier/fespalier/commit/1719c69b64ef0757efbe3a0eb20ee9b8672f335b))
+
+
+### Documentation
+
+* **skills:** the skill samples build again: merged pubspec blocks and the leaving-a-page sample ([#190](https://github.com/fespalier/fespalier/issues/190)) ([a99d132](https://github.com/fespalier/fespalier/commit/a99d132f446f45b68d7cfcf17c202ffd51e7e7cc))
+
+
+### Continuous Integration
+
+* report Markdown lint findings instead of pushing autofixes ([#192](https://github.com/fespalier/fespalier/issues/192)) ([54c8c76](https://github.com/fespalier/fespalier/commit/54c8c76202ee59dc76fe0f5af8bf8eec5e7b441e))
+
 ## [0.17.1](https://github.com/fespalier/fespalier/compare/v0.17.0...v0.17.1) (2026-10-14)
 
 

@@ -12,10 +12,18 @@
 //   - A fenced ```dart block whose FIRST line is `// lib/<path>` or
 //     `// test/<path>` (nothing else on the line) is written to that path in a
 //     scratch app. A ```yaml block whose first line is `# pubspec.yaml` is
-//     appended to the scratch app's pubspec.yaml, and one whose first line is
+//     merged into the scratch app's pubspec.yaml, and one whose first line is
 //     `# pubspec.yaml dependencies` has its lines merged under `dependencies:`
 //     (a recipe's plugin: firebase_auth, supabase_flutter, flutter_web_auth_2;
 //     since 0.9.0). Every other block is a fragment and is not built.
+//   - Several `# pubspec.yaml` blocks of one page often carry the same top-level section (a page
+//     on the CLI shows `fespalier:` once per command: links, maestro, size, tasks, the defaults),
+//     which YAML refuses as a duplicate key. So the blocks are merged in page order, a mapping
+//     section they share key by key. A block that cannot join the pubspec so far (it sets a key an
+//     earlier block already set, like the defaults listing's `semantics_ids: false` after a maestro
+//     sample's `true`, or its section is not a block mapping indented like the other one) is not
+//     dropped: it is built on its own, in a copy of the base app (`fsp gen`, `flutter analyze`),
+//     and the output says so.
 //   - A page with a block that imports `package:fespalier_<name>/` (since 0.9.0), for
 //     every `packages/fespalier_<name>/pubspec.yaml` of this checkout (fespalier_auth,
 //     fespalier_sign_keypair, fespalier_adaptive, fespalier_flags, ...: generic, so a new
@@ -215,6 +223,94 @@ function blocks(text) {
   return out;
 }
 
+// The top-level sections of a pubspec fragment: [{ key, rest, lines }], `key` the text before the
+// colon of a line that starts in column 0 (null for the lines before the first one), `rest` what
+// follows the colon on that line and `lines` the lines under it, up to the next section.
+function pubspecSections(text) {
+  const out = [];
+  let cur = null;
+  for (const line of text.split("\n")) {
+    const m = /^([A-Za-z_][\w-]*):(.*)$/.exec(line);
+    if (m) {
+      cur = { key: m[1], rest: m[2], lines: [] };
+      out.push(cur);
+    } else if (cur) {
+      cur.lines.push(line);
+    } else {
+      cur = { key: null, rest: "", lines: [line] };
+      out.push(cur);
+    }
+  }
+  for (const s of out) while (s.lines.length && s.lines.at(-1).trim() === "") s.lines.pop();
+  return out;
+}
+
+// What merging a section into another needs to know: it is a block mapping (`key:` and nothing
+// else on the line, indented keys under it), the indent of those keys, and their names. Anything
+// else (`name: my_app`, `fespalier: {a: 1}`, a list) is `null`: it can only stand alone.
+function mappingOf(section) {
+  if (!/^\s*(#.*)?$/.test(section.rest)) return null;
+  const body = section.lines.filter((l) => l.trim() !== "" && !/^\s*#/.test(l));
+  const indent = /^ */.exec(body[0] ?? "")[0].length;
+  if (indent === 0 || body[0].trimStart().startsWith("- ")) return null;
+  const keys = new Set();
+  for (const l of body) {
+    const m = /^( *)([A-Za-z_][\w.-]*):(?:\s|$)/.exec(l);
+    if (m && m[1].length === indent) keys.add(m[2]);
+  }
+  return { indent, keys };
+}
+
+// Merges the `# pubspec.yaml` blocks of a page, in order, into one pubspec fragment. Returns the
+// fragment and the blocks that could not join it, each with the reason: [{ text, why }].
+function mergePubspecBlocks(texts) {
+  const merged = [];
+  const alone = [];
+  for (const text of texts) {
+    const sections = pubspecSections(text);
+    let why = null;
+    for (const s of sections) {
+      const have = s.key && merged.find((m) => m.key === s.key);
+      if (!have) continue;
+      const a = mappingOf(have);
+      const b = mappingOf(s);
+      if (!a || !b) why = `\`${s.key}:\` is set by an earlier block and is not a block mapping`;
+      else if (a.indent !== b.indent) {
+        why = `\`${s.key}:\` is indented differently from an earlier block`;
+      } else {
+        const dup = [...b.keys].find((k) => a.keys.has(k));
+        if (dup) why = `\`${s.key}.${dup}\` is already set by an earlier block`;
+      }
+      if (why) break;
+    }
+    if (why) {
+      alone.push({ text, why });
+      continue;
+    }
+    for (const s of sections) {
+      const have = s.key && merged.find((m) => m.key === s.key);
+      if (have) have.lines.push(...s.lines);
+      else merged.push(s);
+    }
+  }
+  const text = merged
+    .map((s) => (s.key === null ? [] : [`${s.key}:${s.rest}`]).concat(s.lines).join("\n"))
+    .join("\n");
+  return { text, alone };
+}
+
+// Runs the steps (`[name, command, args]`) in the app; the failure as log lines, or null.
+function runSteps(app, steps, what = "") {
+  for (const [name, cmd, args] of steps) {
+    const r = run(cmd, args, app);
+    if (r.status !== 0) {
+      const tail = (r.stdout + r.stderr).split("\n").slice(-40);
+      return `  ✗ ${what}${name} (exit ${r.status})\n${tail.map((l) => "      " + l).join("\n")}`;
+    }
+  }
+  return null;
+}
+
 let failed = 0;
 let built = 0;
 let skipped = 0;
@@ -290,7 +386,8 @@ for (const file of files) {
     lines.splice(at + 1, 0, ...depLines);
     writeFileSync(path, lines.join("\n"));
   }
-  if (pubs.length) appendFileSync(join(app, "pubspec.yaml"), "\n" + pubs.join("\n"));
+  const { text: pubText, alone } = mergePubspecBlocks(pubs);
+  if (pubs.length) appendFileSync(join(app, "pubspec.yaml"), "\n" + pubText + "\n");
   if (companions.length) {
     const overrides = ["dependency_overrides:", "  fespalier:", `    path: ${pkg}`];
     for (const name of closure) {
@@ -309,22 +406,43 @@ for (const file of files) {
   let ok = problems.length === 0;
   const log = problems.map((p) => `  ✗ ${p}`);
   if (ok) {
-    for (const [name, cmd, args] of steps) {
-      const r = run(cmd, args, app);
-      if (r.status !== 0) {
+    const failure = runSteps(app, steps);
+    if (failure) {
+      ok = false;
+      log.push(failure);
+    }
+  }
+  // The blocks that could not join the page's pubspec (see the header): each in a copy of the
+  // base app, where `fsp gen` and `flutter analyze` read it as the whole of the config.
+  const notes = [];
+  if (problems.length === 0) {
+    for (const [i, { text, why }] of alone.entries()) {
+      const solo = join(scratch, `app-${built + failed}-alone-${i}`);
+      cpSync(base, solo, { recursive: true, verbatimSymlinks: true });
+      appendFileSync(join(solo, "pubspec.yaml"), "\n" + text + "\n");
+      const soloSteps = [];
+      if (pubspecSections(text).some((s) => s.key !== null && s.key !== "fespalier")) {
+        soloSteps.push(["pub get", FLUTTER, ["pub", "get"]]);
+      }
+      soloSteps.push(["fsp gen", FSP, ["gen", "--project", solo]]);
+      soloSteps.push(["flutter analyze", FLUTTER, ["analyze", "--no-fatal-infos"]]);
+      const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
+      const name = `pubspec block ${pubs.indexOf(text) + 1} (${first.trim()})`;
+      notes.push(`  note: ${name} on its own, because ${why}`);
+      const failure = runSteps(solo, soloSteps, `${name} on its own: `);
+      if (failure) {
         ok = false;
-        const tail = (r.stdout + r.stderr).split("\n").slice(-40);
-        log.push(`  ✗ ${name} (exit ${r.status})\n${tail.map((l) => "      " + l).join("\n")}`);
-        break;
+        log.push(failure);
       }
     }
   }
   if (ok) {
     built++;
     console.log(`✓ ${label} (${written.size} file${written.size === 1 ? "" : "s"})`);
+    for (const n of notes) console.log(n);
   } else {
     failed++;
-    console.log(`✗ ${label}\n${log.join("\n")}`);
+    console.log(`✗ ${label}\n${[...notes, ...log].join("\n")}`);
   }
 }
 

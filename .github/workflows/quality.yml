@@ -82,19 +82,26 @@ jobs:
   lint:
     name: lint
     needs: changes
-    # PR-only: its `fix` input defaults to true, and on a push
-    # github.event.pull_request.head.repo.full_name is empty, so the
-    # reusable workflow's own "commit fixes onto the PR branch" step runs
-    # `git checkout -q -B superlinter-fixes ""` and fails. Linting is a
-    # PR-time concern anyway; the scanners are what need default-branch
-    # coverage.
+    # PR-only: linting is a PR-time concern (super-linter checks the files a
+    # PR changed), and the scanners are what need default-branch coverage.
+    # Keep it PR-only even though `fix` is off below: with the input's default
+    # (true), a push has an empty github.event.pull_request.head.repo.full_name
+    # and the reusable workflow's "commit fixes onto the PR branch" step runs
+    # `git checkout -q -B superlinter-fixes ""` and fails.
     if: github.event_name == 'pull_request' && needs.changes.outputs.any == 'true'
     permissions:
       contents: read
       statuses: write
     uses: vaam-apps/.github/.github/workflows/lint.yml@01d7a15ee827152447d3b3b7031fdc8a02d98dd7 # vaam-apps/.github main
     with:
-      # Generated or byte-compared files the fixers would rewrite: the DevTools extension's build
+      # Report findings, never push fixes. The reusable workflow's `fix` input (default true) has
+      # super-linter apply markdownlint's autofixes and a bot push them onto the PR branch, and
+      # MD038 (no-space-in-code) mangles a code span that contains backticks: a source line like
+      # one `fespalier_push is listed under `fespalier: adapters:` but ...` came back as
+      # `fespalier_push is listed under`fespalier: adapters:`but ...`. A finding still fails the
+      # PR; it is fixed by hand, and the bot no longer moves the head of a PR under its author.
+      fix: false
+      # Generated or byte-compared files the linters would flag: the DevTools extension's build
       # (scripts/build-devtools-extension.sh checks it byte for byte), the generator's goldens
       # (cli/tests/golden, compared byte for byte), the broken trees of the diagnostics test
       # (cli/tests/fixtures/diagnostics/<case>/: wrong on purpose, with goldens beside them; the

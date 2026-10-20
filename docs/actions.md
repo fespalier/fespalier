@@ -108,6 +108,8 @@ Future<Profile> action(Ref ref, {required NicknameFields input}) => …;
 - **A check that needs the server** belongs in the action, which throws a `FieldErrors`. The [HTTP package](http.md) maps a server's validation answer to one.
 - **A form** (`form()`, `useForm`, typed fields, a pending state) shows each message under its field. It moved to the `fespalier_forms` package in 0.11.0: see [Forms](forms.md).
 
+**Telemetry** (since 0.18.0): an action that `validate()` refused, or that threw `FieldErrors`, ends its span with `fespalier.action.invalid` set to `true`, and its `fespalier.action.result` stays `error`. A form that stops a submit before the action runs makes no span. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
+
 ### Optimistic updates: `optimistic()`
 
 Since 0.8.1. `T optimistic(T current, Input input)` is what the page shows of one `data.dart` from the moment a write starts until the server's answer is in:
@@ -126,3 +128,5 @@ Future<void> addMember(Ref ref, {required String teamId, required String input})
 - **Which reads are patched.** `DataView`, `SectionView` (the layout and every page that takes the section's data by type) and the typed `XRoute.watch` / `XSection.watch` show the patched value. `XRoute.data` (the provider), `read`, `refresh`, `prefetch`, `preload` and `AppRoutes.dataAt` give the server's value. A dependency-triggered reload (`AsyncLoading` with a value) is returned unpatched by `watch`, and still patched in `DataView`.
 - **The patch holds until the data loads again, even to an equal value**: the reload ends it, not a comparison. A patch that throws is reported through `FlutterError.reportError` (context `while applying an optimistic() patch`) and skipped; it never turns into `error.dart`.
 - If the page leaves in the middle of a write, the write still finishes and still invalidates.
+
+**Telemetry** (since 0.18.0): when the write fails and its patch is taken back, the action's span says `fespalier.action.rolled_back` is `true`; a write that works says `false`. An action with no shown patch has no such attribute.

@@ -18,14 +18,15 @@
 /// Since 0.9.0 several sinks share the one slot ([FespalierTelemetry.combine],
 /// [FespalierTelemetry.add]), a sink can make the span of a `data()` or an action current while
 /// it runs ([FespalierTelemetry.within]), and a navigation can say where it came from
-/// ([navigateFrom]).
+/// ([navigateFrom]). Since 0.19.0 a sink hears each navigation's commit, before the page it shows
+/// is built ([FespalierTelemetry.commit]).
 library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:go_router/go_router.dart';
-import 'package:hooks_riverpod/hooks_riverpod.dart' show Ref;
+import 'package:hooks_riverpod/hooks_riverpod.dart' show ProviderContainer, Ref;
 
 import 'lifecycle.dart' show RouterWatch;
 
@@ -55,10 +56,10 @@ abstract class FespalierTelemetry {
   /// One sink that tells each of [sinks] everything, in order (since 0.9.0): OpenTelemetry,
   /// Sentry and analytics side by side, though [install] holds one sink.
   ///
-  /// Each sink gets the token it returned itself, at [end], [page] and [within], and as the
-  /// [TelemetryStart.parent] of what runs under one of its navigations: no sink ever sees another
-  /// sink's token. A sink that throws is isolated: the others and the app go on, its error is
-  /// printed once (`fespalier telemetry: <error> in <Sink> (not shown again)`), and it is called
+  /// Each sink gets the token it returned itself, at [end], [page], [commit] and [within], and as
+  /// the [TelemetryStart.parent] of what runs under one of its navigations: no sink ever sees
+  /// another sink's token. A sink that throws is isolated: the others and the app go on, its error
+  /// is printed once (`fespalier telemetry: <error> in <Sink> (not shown again)`), and it is called
   /// again next time. A combined sink in [sinks] is flattened; `combine([])` reports nothing, and
   /// `combine([sink])` is [sink].
   static FespalierTelemetry combine(List<FespalierTelemetry> sinks) {
@@ -140,6 +141,18 @@ abstract class FespalierTelemetry {
   /// A page was entered, focused or left at the end of the navigation [navigation] (the token
   /// [start] returned for it).
   void page(Object? navigation, TelemetryPage page) {}
+
+  /// The navigation [navigation] (the token [start] returned for it) committed (since 0.19.0): the
+  /// router holds a new configuration, and [commit] says which page it puts on screen.
+  ///
+  /// It is called synchronously from the router's notification, before the new page's `initState`
+  /// and first `build`, so before the navigation's [page] events and its [end]. The first location
+  /// commits while the `Router` widget is being built: like every call into a sink, it returns at
+  /// once and never navigates, calls `setState` or changes a provider. A superseded navigation
+  /// never commits. One that commits again before its first frame (a guard that changed its
+  /// answer) is told again, and, while the same sink stays installed, [end] reports the last
+  /// [TelemetryCommit.route]. The default ignores it.
+  void commit(Object? navigation, TelemetryCommit commit) {}
 
   /// Runs [body] inside the operation [token] came from (since 0.9.0). fespalier calls it around a
   /// `data()` and an action's function, so a sink can make that operation's span current while
@@ -242,6 +255,7 @@ final class TelemetryStart {
     this.uri,
     this.parent,
     this.keyed = false,
+    this.dataAttempt,
     this.authStep,
     this.authBackend,
     this.authTrigger,
@@ -276,6 +290,10 @@ final class TelemetryStart {
   /// data: whether the provider is a family (keyed by segments or query parameters). The key
   /// itself is never reported.
   final bool keyed;
+
+  /// data (since 0.18.0): which try this load is, 1, or n + 1 when Riverpod ran the provider again
+  /// on its own after try n failed; null for other operations. A `Stream` load is always 1.
+  final int? dataAttempt;
 
   /// auth (since 0.9.0): which step, `restore`, `sign_in`, `refresh` or `sign_out`.
   final String? authStep;
@@ -322,6 +340,7 @@ final class TelemetryStart {
     uri: uri,
     parent: parent,
     keyed: keyed,
+    dataAttempt: dataAttempt,
     authStep: authStep,
     authBackend: authBackend,
     authTrigger: authTrigger,
@@ -353,6 +372,23 @@ abstract final class NavigationSource {
 
   /// Every value, in this order.
   static const List<String> values = [notification, shortcut, widget, link];
+}
+
+/// Where a data load's content came from (since 0.18.0): the values of [TelemetryEnd.dataSource]
+/// and of `fespalier.data.source`. Telemetry conventions, contract version 1.
+abstract final class TelemetryDataSource {
+  /// The saved copy of a `dataCache` was on screen before the fetch settled: this load restored it,
+  /// or an earlier load did and fetched data has not replaced it since (a retry or a reload after
+  /// an offline start).
+  static const String cache = 'cache';
+
+  /// The value came from the fetch: no saved copy was on screen. Also for a data.dart whose
+  /// `dataCache` has no `dataCacheStorage`, where nothing is saved, and for one whose `data()`
+  /// returns its value at once, which replaces the copy before a frame can show it.
+  static const String fetch = 'fetch';
+
+  /// Every value, in this order.
+  static const List<String> values = [cache, fetch];
 }
 
 final RegExp _customName = RegExp(
@@ -551,6 +587,9 @@ final class TelemetryEnd {
     this.depth = 0,
     this.imageStatus,
     this.attributes,
+    this.dataSource,
+    this.actionRolledBack,
+    this.actionInvalid = false,
   });
 
   /// One of the [TelemetryOutcome] values.
@@ -568,7 +607,9 @@ final class TelemetryEnd {
   /// navigate: the committed location; guard and redirect: where it redirected to.
   final String? location;
 
-  /// navigate: the pattern of the page that is on screen (null when not found).
+  /// navigate: the pattern of the page that is on screen (null when not found). For a committed
+  /// navigation, while the same sink stays installed, it is the [TelemetryCommit.route] of its last
+  /// [FespalierTelemetry.commit] (since 0.19.0).
   final String? route;
 
   /// navigate: the pattern of the page that was on top before (null at the start).
@@ -586,6 +627,19 @@ final class TelemetryEnd {
 
   /// image (since 0.9.0): the HTTP status of a failed load, when the error carries one.
   final int? imageStatus;
+
+  /// data (since 0.18.0): where the content came from, a [TelemetryDataSource] value; null for a
+  /// data.dart with no `dataCache`.
+  final String? dataSource;
+
+  /// action (since 0.18.0): an `optimistic()` patch was shown for this run and then undone (true)
+  /// or kept (false); null when no patch was shown. A failed run whose state is no longer mounted
+  /// keeps its patch, so it is false there.
+  final bool? actionRolledBack;
+
+  /// action (since 0.18.0): the run ended with [FieldErrors], which `validate()` or the action's own
+  /// code threw. Only a run that ended with [TelemetryOutcome.error] can be invalid.
+  final bool actionInvalid;
 
   /// custom (since 0.11.0): the operation's own result attributes. Values are `String`, `int`,
   /// `double` or `bool`; each key starts with the prefix of the start's [TelemetryStart.name]
@@ -619,6 +673,21 @@ final class TelemetryPage {
 
   /// On a leave: how long the page was entered, covered time included.
   final Duration? duration;
+}
+
+/// What a navigation committed (since 0.19.0), told to [FespalierTelemetry.commit] before the page
+/// it puts on screen is built. A class, not a bare string, so that a later field needs no new
+/// method.
+final class TelemetryCommit {
+  /// A commit with [outcome] that puts the page [route] on screen.
+  const TelemetryCommit(this.outcome, {this.route});
+
+  /// [TelemetryOutcome.ok], or [TelemetryOutcome.notFound] when the location matched no route.
+  final String outcome;
+
+  /// The pattern of the page on screen after the commit (`/orders/:id`); null when not found. Never
+  /// a location, a segment or a query value.
+  final String? route;
 }
 
 /// Where a generated call site is: `const` in `app.g.dart`, so naming it costs nothing at run
@@ -705,6 +774,18 @@ void telemetryPageEvent(Object? navigation, TelemetryPage page) {
   if (sink == null) return;
   try {
     sink.page(navigation, page);
+  } catch (e) {
+    _report(e);
+  }
+}
+
+/// Tells the installed sink that the navigation [navigation] committed to [commit] (since 0.19.0).
+/// Called from the router's notification, so it creates no `Future` and schedules nothing.
+void telemetryNavigationCommit(Object? navigation, TelemetryCommit commit) {
+  final sink = FespalierTelemetry._current;
+  if (sink == null) return;
+  try {
+    sink.commit(navigation, commit);
   } catch (e) {
     _report(e);
   }
@@ -869,39 +950,172 @@ TelemetryEnd _guardEnd(String? location, bool isAsync) => TelemetryEnd(
 /// (since 0.9.0), which starts it before.
 void telemetryDataTrace(
   Ref ref,
+  String site,
   TelemetrySite telemetry,
-  bool keyed,
+  Object? key,
   Object? result,
 ) {
   if (FespalierTelemetry._current == null) return;
   try {
-    telemetryDataEnd(ref, telemetryDataStart(telemetry, keyed), result);
+    telemetryDataEnd(
+      ref,
+      telemetryDataStart(ref, site, telemetry, key),
+      result,
+    );
   } catch (e) {
     _report(e);
   }
 }
 
 /// A data load starts, before `data()` runs (since 0.9.0): returns its token, null with no sink
-/// (or when the sink threw).
-Object? telemetryDataStart(TelemetrySite telemetry, bool keyed) {
+/// (or when the sink threw). Since 0.18.0 it also says which try the load is
+/// ([TelemetryStart.dataAttempt]), so [ref], [site] and [key] are what the provider was built with.
+Object? telemetryDataStart(
+  Ref ref,
+  String site,
+  TelemetrySite telemetry,
+  Object? key,
+) {
   if (FespalierTelemetry._current == null) return null;
   return telemetryBegin(
     TelemetryStart(
       TelemetryOp.data,
       site: telemetry,
-      keyed: keyed,
+      keyed: key != null,
       parent: _pendingNavigation,
+      dataAttempt: _dataAttempt(ref, site, key),
     ),
   );
 }
 
 /// `data()` threw before it returned (since 0.9.0): the span [token] came from ends with an error.
-void telemetryDataThrew(Object? token, Object error, StackTrace stackTrace) {
+/// Since 0.18.0 the failure counts for the next try, and the end says where the content came from.
+void telemetryDataThrew(
+  Ref ref,
+  Object? token,
+  Object error,
+  StackTrace stackTrace,
+) {
   if (FespalierTelemetry._current == null) return;
+  _dataSettled(ref, failed: true);
   telemetryFinish(
     token,
-    TelemetryEnd(TelemetryOutcome.error, error: error, stackTrace: stackTrace),
+    TelemetryEnd(
+      TelemetryOutcome.error,
+      error: error,
+      stackTrace: stackTrace,
+      dataSource: _dataSource(ref),
+    ),
   );
+}
+
+/// One load of a data provider, as the try counter sees it (since 0.18.0).
+final class _DataRun {
+  _DataRun(this.attempt, this.runs, this.id);
+
+  /// Which try this load is, from 1.
+  final int attempt;
+
+  /// The container's table of runs this one is in, and its key there.
+  final Map<(String, Object?), _DataRun> runs;
+  final (String, Object?) id;
+
+  /// The load failed: the next build of the provider, when Riverpod runs it again, is the next try.
+  bool failed = false;
+}
+
+/// The runs of each container's data providers, by the provider's site and key (since 0.18.0). An
+/// entry stays only while the last load of its provider failed, and the provider is not disposed,
+/// so it is small: a success removes it, and so does disposing the provider (every generated data
+/// provider is autoDispose, so each family key leaves when its page does).
+final Expando<Map<(String, Object?), _DataRun>> _dataRuns = Expando(
+  'fespalier data runs',
+);
+
+/// How many data providers of [container] have a failed load on record (since 0.18.0): the size of
+/// the try counter's table. For tests that pin that a disposed provider leaves nothing behind.
+@visibleForTesting
+int debugDataRunCount(ProviderContainer container) =>
+    _dataRuns[container]?.length ?? 0;
+
+/// The run of each data provider's build, by its [Ref] (since 0.18.0).
+final Expando<_DataRun> _runOf = Expando('fespalier data run');
+
+/// Which try a data load is (since 0.18.0): the try after the last load of the same provider when
+/// that load failed, and the provider was neither invalidated by hand nor rebuilt for a dependency
+/// change or a first build; otherwise 1. Riverpod keeps its own retry count private, so fespalier
+/// counts the tries itself: a rebuild that Riverpod's `retry:` starts after a failure is the next
+/// try. Synchronous, with one `onManualInvalidation` callback per build and no timer. Null when it
+/// threw (printed once).
+int? _dataAttempt(Ref ref, String site, Object? key) {
+  try {
+    final runs = _dataRuns[ref.container] ??= {};
+    final id = (site, key);
+    final last = runs[id];
+    final attempt =
+        last != null && last.failed && !ref.isFirstBuild && !ref.isReload
+        ? last.attempt + 1
+        : 1;
+    final run = _DataRun(attempt, runs, id);
+    runs[id] = run;
+    _runOf[ref] = run;
+    // A life-cycle callback of this build, dropped by Riverpod when the build is replaced. It is
+    // experimental in Riverpod 3.3 (present since the floor): the one API that tells a manual
+    // invalidation (`invalidate`, `refresh`, `invalidateSelf`) from a retry. The run is forgotten
+    // then, so the next build is a fresh start, and a provider that nobody listens to any more
+    // leaves nothing behind either (Riverpod runs its dispose callbacks at the invalidation, while
+    // it is still mounted, and disposes it later without running them again).
+    // ignore: experimental_member_use
+    ref.onManualInvalidation(() {
+      if (identical(runs[id], run)) runs.remove(id);
+    });
+    // Disposing the provider forgets its run, a failed one too (a sync throw reaches no other
+    // handler). Riverpod marks the ref unmounted before it runs the callbacks of a real dispose,
+    // and a rebuild (Riverpod's retry, a dependency change) runs them while it is still mounted,
+    // so a retry finds the run and counts on.
+    ref.onDispose(() {
+      if (!ref.mounted && identical(runs[id], run)) runs.remove(id);
+    });
+    return attempt;
+  } catch (e) {
+    _report(e);
+    return null;
+  }
+}
+
+/// A data load of [ref] ended (since 0.18.0): [failed] for an error, which the next try counts from;
+/// anything else forgets the run, so the next build starts at 1. It is called from a callback of
+/// the provider's build too (its dispose), so it uses no [Ref] API.
+void _dataSettled(Ref ref, {required bool failed}) {
+  final run = _runOf[ref];
+  if (run == null) return;
+  if (failed) {
+    run.failed = true;
+  } else if (identical(run.runs[run.id], run)) {
+    run.runs.remove(run.id);
+  }
+}
+
+/// The saved copy a `dataCache` provider shows during a build, as [CachedData] tells it (since
+/// 0.18.0): [shown] says whether it became the state during that build. Read when the load ends.
+/// Reports nothing itself.
+final Expando<bool Function()> _savedCopy = Expando('fespalier dataCache');
+
+/// Tells telemetry how [ref]'s `dataCache` shows its saved copy (since 0.18.0). Called only while a
+/// sink is installed.
+void telemetryDataCache(Ref ref, bool Function() shown) {
+  _savedCopy[ref] = shown;
+}
+
+/// Where the content of [ref]'s data load came from, read now (since 0.18.0): `cache` or `fetch`
+/// for a provider with a `dataCache`, null for one without. A value that [synchronous] `data()`
+/// returned replaces the saved copy in the same build, before a frame can show it: `fetch`.
+String? _dataSource(Ref ref, {bool synchronous = false}) {
+  final shown = _savedCopy[ref];
+  if (shown == null) return null;
+  return !synchronous && shown()
+      ? TelemetryDataSource.cache
+      : TelemetryDataSource.fetch;
 }
 
 /// `data()` returned [result]: a value ends the span [token] came from at once, a `Future` ends it
@@ -911,32 +1125,42 @@ void telemetryDataEnd(Ref ref, Object? token, Object? result) {
   try {
     if (result is Future<Object?>) {
       var ended = false;
-      void end(TelemetryEnd e) {
+      void end(String outcome, {Object? error, StackTrace? stack}) {
         if (ended) return;
         ended = true;
-        telemetryFinish(token, e);
+        _dataSettled(ref, failed: outcome == TelemetryOutcome.error);
+        telemetryFinish(
+          token,
+          TelemetryEnd(
+            outcome,
+            isAsync: true,
+            error: error,
+            stackTrace: stack,
+            dataSource: _dataSource(ref),
+          ),
+        );
       }
 
       unawaited(
         result.then<void>(
-          (_) => end(const TelemetryEnd(TelemetryOutcome.data, isAsync: true)),
-          onError: (Object error, StackTrace stack) => end(
-            TelemetryEnd(
-              TelemetryOutcome.error,
-              isAsync: true,
-              error: error,
-              stackTrace: stack,
-            ),
-          ),
+          (_) => end(TelemetryOutcome.data),
+          onError: (Object error, StackTrace stack) =>
+              end(TelemetryOutcome.error, error: error, stack: stack),
         ),
       );
-      ref.onDispose(
-        () => end(const TelemetryEnd(TelemetryOutcome.disposed, isAsync: true)),
-      );
+      ref.onDispose(() => end(TelemetryOutcome.disposed));
     } else if (result is Stream<Object?>) {
+      _dataSettled(ref, failed: false);
       telemetryFinish(token, const TelemetryEnd(TelemetryOutcome.stream));
     } else {
-      telemetryFinish(token, const TelemetryEnd(TelemetryOutcome.data));
+      _dataSettled(ref, failed: false);
+      telemetryFinish(
+        token,
+        TelemetryEnd(
+          TelemetryOutcome.data,
+          dataSource: _dataSource(ref, synchronous: true),
+        ),
+      );
     }
   } catch (e) {
     _report(e);
@@ -950,12 +1174,17 @@ Object? telemetryActionStart(TelemetrySite telemetry) {
 }
 
 /// The action run [token] ended, with [error] when it failed.
+///
+/// Since 0.18.0 [rolledBack] says whether an `optimistic()` patch was shown and then undone (null when
+/// none was shown), and [invalid] whether the run ended with `FieldErrors`.
 void telemetryActionEnd(
   Object? token, {
   required bool isAsync,
   bool failed = false,
   Object? error,
   StackTrace? stackTrace,
+  bool? rolledBack,
+  bool invalid = false,
 }) {
   if (FespalierTelemetry._current == null) return;
   telemetryFinish(
@@ -965,6 +1194,8 @@ void telemetryActionEnd(
       isAsync: isAsync,
       error: error,
       stackTrace: stackTrace,
+      actionRolledBack: rolledBack,
+      actionInvalid: invalid,
     ),
   );
 }
@@ -1116,6 +1347,18 @@ final class _Combined extends FespalierTelemetry {
       final child = _children[i];
       try {
         child.sink.page(_own(navigation, i), page);
+      } catch (e) {
+        child.failed(e);
+      }
+    }
+  }
+
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    for (var i = 0; i < _children.length; i++) {
+      final child = _children[i];
+      try {
+        child.sink.commit(_own(navigation, i), commit);
       } catch (e) {
         child.failed(e);
       }

@@ -49,14 +49,10 @@ abstract final class AppManifest {
   ];
 
   /// Each route by its typed-route class: `AppManifest.byType[ProductRoute]`.
-  static final Map<Type, RouteInfo<Object?>> byType = Map.unmodifiable({
-    for (final r in all) r.type: r,
-  });
+  static Map<Type, RouteInfo<Object?>> get byType => routeIndex(all).byType;
 
   /// Each route by its path template: `AppManifest.byPath['/products/:id']`.
-  static final Map<String, RouteInfo<Object?>> byPath = Map.unmodifiable({
-    for (final r in all) r.path: r,
-  });
+  static Map<String, RouteInfo<Object?>> get byPath => routeIndex(all).byPath;
 
   /// The route [state] is at, or null when it is not one of these (a not-found
   /// page, say). Handy in a layout: `AppManifest.of(GoRouterState.of(context))`.

@@ -35,8 +35,18 @@ END = "      # END generated"
 
 # Columns OpenObserve gives every span or log record, or that come from OTLP rather than from
 # fespalier's conventions. The queries may name them; the importer creates the Utf8 ones.
+# otel_zone_crashed_screen is otel_zone's crash attribute, `otel_zone.crashed.screen` (since 0.19.0,
+# when the app names its screen): it is not one of fespalier's conventions, and it is OTLP's name.
 TRACE_COLUMNS = ["service_name", "operation_name", "span_status", "status_message", "trace_id"]
-LOG_COLUMNS = ["service_name", "severity", "exception_type", "exception_message", "event_name", "body"]
+LOG_COLUMNS = [
+    "service_name",
+    "severity",
+    "exception_type",
+    "exception_message",
+    "event_name",
+    "body",
+    "otel_zone_crashed_screen",
+]
 BUILTIN_SQL = {"_timestamp", "duration"} | set(TRACE_COLUMNS) | set(LOG_COLUMNS)
 METRICS = {
     "fespalier_calls",
@@ -65,6 +75,8 @@ BOOLEAN_ATTRS = {
     "fespalier.data.keyed",
     "fespalier.auth.dpop",
     "fespalier.image.preload",
+    "fespalier.action.rolled_back",
+    "fespalier.action.invalid",
 }
 # A constant named `<prefix><Value>` is a value of the attribute on the right; one named
 # `result<Value>` is a value of both result attributes.
@@ -79,6 +91,7 @@ VALUE_OF = {
     "state": ["fespalier.data.state"],
     "result": ["fespalier.action.result", "fespalier.deferred.result", "fespalier.image.result"],
     "source": ["fespalier.navigation.source"],
+    "dataSource": ["fespalier.data.source"],
 }
 DART_CONST = re.compile(r"^\s*static const String (\w+) = '([^']*)';", re.M)
 
@@ -93,7 +106,7 @@ class Conventions:
         self.event_attrs = set(SEMCONV_EVENT_ATTRS)
         values = {}  # attribute key -> its values, in declaration order
         for name, value in DART_CONST.findall(text):
-            prefix = re.match(r"(authOp|authResult|authTrigger|op|kind|outcome|decision|state|result|source)[A-Z]", name)
+            prefix = re.match(r"(authOp|authResult|authTrigger|op|kind|outcome|decision|state|result|source|dataSource)[A-Z]", name)
             if name in ("version", "scope", "spanNavigateNotFound"):
                 continue
             if prefix:
@@ -257,11 +270,13 @@ class Context:
 
     @staticmethod
     def call_pct_prom(den, ok):
-        # OpenObserve's PromQL answers nothing for `X or vector(0)` when X is empty, so the failures
-        # are the calls minus the ones that did not fail: 0 when nothing failed.
+        # The failures are the calls minus the ones that did not fail. `or vector(0)` reads "none
+        # passed" as 0 (OpenObserve's PromQL answers it per the release notes of v1.1.0, and it was
+        # run on v1.1.2; v1.0.4 answered nothing), so a tile where every call failed says 100 %, not
+        # "Not enough data yet".
         total = f"sum(sum_over_time(fespalier_calls{{{den}}}[$__range]))"
         passed = f"sum(sum_over_time(fespalier_calls{{{ok}}}[$__range]))"
-        return f"100 * ({total} - {passed}) / {total}"
+        return f"100 * ({total} - ({passed} or vector(0))) / {total}"
 
     def call_gate_prom(self, selector):
         return f"and on() (sum(sum_over_time(fespalier_calls{{{selector}}}[$__range])) >= {self.min_samples})"
@@ -515,7 +530,8 @@ def oo_panel(panel, ordinal, layout, style, titles):
             {"name": "good", "type": "yAxis", "value": number(limits["good_below"])},
             {"name": "bad", "type": "yAxis", "value": number(limits["bad_from"])},
         ]
-    # A click on a stat tile does nothing in OpenObserve (checked on v1.0.4); a table row opens it.
+    # A click on a stat tile does nothing in OpenObserve (checked on v1.0.4 and v1.1.2: the value's
+    # copy-button overlay takes the click); a table row opens it.
     if panel["drilldown"] and panel["type"] != "stat":
         title = titles[panel["drilldown"]]
         config["drilldown"] = [

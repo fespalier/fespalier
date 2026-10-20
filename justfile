@@ -6,7 +6,7 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
 # The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_download_background packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose"
+dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_download_background packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod packages/fespalier_launch examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose"
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
 examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose"
@@ -86,7 +86,7 @@ flutter:
     done
 
 # What CI's `floor` job runs: the package, its companions that claim Flutter 3.35 and examples/minimal.
-floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod examples/minimal"
+floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod packages/fespalier_launch examples/minimal"
 
 # Needs a Flutter 3.35 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
 # `git clone --depth 1 -b 3.35.7 https://github.com/flutter/flutter ~/flutter-3.35`. Each pubspec.lock
@@ -151,12 +151,13 @@ telemetry-dashboards:
 telemetry-smoke:
     python3 scripts/telemetry/smoke.py
 
-# The Homebrew/Scoop rendering, checksum pinning and release staging tests
+# The Homebrew/Scoop rendering, checksum pinning, release staging and manual-release tests
 packaging:
     python3 scripts/test_packaging.py
     python3 scripts/test_pin_checksums.py
     python3 scripts/test_verify_staged.py
     python3 scripts/test_release_assets.py
+    python3 scripts/test_release_dispatch.py
 
 # The agent skills in skills/ match the code: coverage, frontmatter, stamps, links (needs Node)
 skills:
@@ -222,6 +223,22 @@ cose: cose-server
     flutter analyze
     COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
 
+# The wire-sizes example's server (examples/wire-sizes/server, a standalone Rust crate on cratestack-api 0.15.3):
+# fmt, clippy, tests (the runner drives the router in process, and tests/socket.rs checks one request over a
+# real socket), a locked build and cargo-deny, then the report regenerated and compared with the committed
+# REPORT.md, so a stale report fails. A cold build compiles cratestack and takes a couple of minutes, so it
+# is not part of `just ci`.
+[working-directory: 'examples/wire-sizes/server']
+wire-sizes:
+    cargo fmt --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+    cargo build --locked
+    cargo deny --config deny.toml check
+    # `cargo test` already compares REPORT.md with a fresh measurement; this proves the binary the
+    # README tells a reader to run produces the same text.
+    diff <(cargo run --locked --quiet --bin wire-sizes-report) REPORT.md
+
 # The committed Maestro flows of examples/shop open their routes in Chromium (Playwright, pinned in
 # ci/web-routes/package-lock.json) against a release web build; every non-local request is blocked.
 # Needs Flutter and Node; about two minutes, and not part of `just ci` (CI runs it as `web-routes`)
@@ -229,10 +246,10 @@ web-routes:
     cd ci/web-routes && npm ci && npx --no-install playwright install chromium
     scripts/check-web-routes.sh examples/shop
 
-# `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. It waits for the
-# app, adds a route (a hot restart), edits a page (a hot reload) and quits with `q`: the one check of fsp
-# against flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
-# names one that is not on the path); about a minute, and not part of `just ci`
+# `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. fsp dev runs the
+# app, reloads a new route in, restarts when it must and quits with `q`: the one check of fsp against
+# flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
+# names one that is not on the path); a few minutes, and not part of `just ci`
 dev-e2e:
     scripts/check-dev-e2e.sh
 

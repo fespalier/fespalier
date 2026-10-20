@@ -66,7 +66,7 @@ Flutter 3.32). go_router 18 needs Flutter 3.44 or newer.
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 ```
 
-It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.17.1` <!-- x-release-please-version -->
+It puts `fsp` in `~/.local/bin` and checks the download's SHA-256. Set `FSP_VERSION=v0.20.0` <!-- x-release-please-version -->
 to pick a release (the default is the latest). On Windows, in PowerShell:
 
 ```powershell
@@ -78,7 +78,7 @@ With Rust installed, on any platform:
 <!-- x-release-please-start-version -->
 
 ```sh
-cargo install --git https://github.com/fespalier/fespalier --tag v0.17.1 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.20.0 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -103,7 +103,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -133,7 +133,7 @@ Future<void> main() => AppMain.run();
 **4. Day to day.**
 
 ```sh
-fsp dev                                   # the app, regenerated and hot restarted on every save
+fsp dev                                   # the app, regenerated and hot reloaded on every save
 fsp new 'orders/[id]' --data --loading    # the folder orders/$id: page, data.dart, loading.dart
 ```
 
@@ -141,6 +141,24 @@ Next: [Installation and setup](docs/getting-started.md) (CI, committing `app.g.d
 [Configuration](docs/configuration.md), and [Migration](docs/migration.md) if you already have a `GoRouter`.
 
 ![fsp dev: a header with the app, the device and the DevTools link; a tab per process; the flutter log; a status line with the route count, the last generation and the last hot restart; the keys.](docs/images/fsp-dev.svg)
+
+## Coming from RIBs
+
+If your team knows Uber's [RIBs](https://github.com/uber/RIBs), most of a RIB has a counterpart here, usually a file
+instead of a class:
+
+| RIBs                             | fespalier                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| Router (attach, detach children) | `guard.dart`, which runs again when the state it watches changes                      |
+| Interactor                       | `data.dart` (loads), `action.dart` (writes) and `observe.dart` (`onEnter`, `onLeave`) |
+| Builder and Component            | the generated `lib/app.g.dart`, and Riverpod providers                                |
+| View                             | `page.dart`, a plain widget                                                           |
+| Viewless RIB                     | a `(group)` folder that holds a guard, a layout or section data                       |
+| Workflow (a deep link)           | a URL: one navigation builds the whole stack, and guards gate it                      |
+
+The difference is what drives the tree. In RIBs it is business logic; here it is the location, and state reaches it
+through guards. [Coming from RIBs](docs/coming-from-ribs.md) has the full mapping, the RIBs tutorial's signed-in and
+signed-out app as folders, and how to move a feature over.
 
 ## Packages
 
@@ -173,6 +191,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 | `fespalier_tolgee`              | translations from Tolgee or your own server, offline-safe (since 0.10.0)                          | [Translations](docs/i18n-tolgee.md)                                                |
 | `fespalier_push`                | notification taps open typed routes, cold start and warm (since 0.13.0)                           | [Push notifications](docs/push.md)                                                 |
 | `fespalier_analytics`           | screen views by route pattern, sent only with consent (since 0.13.0)                              | [Analytics](docs/analytics.md)                                                     |
+| `fespalier_launch`              | shortcut and home-screen widget taps open typed routes, cold start and warm (since 0.18.0)        | [Shortcuts and widgets](docs/launch.md)                                            |
 | DevTools extension              | routes, guards, data and actions in Flutter DevTools                                              | [DevTools extension](docs/devtools.md)                                             |
 | Editor plugins                  | `fsp` diagnostics in VS Code and IntelliJ                                                         | [Editor plugins](docs/cli.md#editor-plugins)                                       |
 
@@ -187,6 +206,7 @@ dependency at the same release tag ([Companion packages](docs/getting-started.md
 - [Configuration](docs/configuration.md)
 - <a name="file-kinds"></a><a name="function-views"></a><a name="file-names"></a><a name="how-parameters-are-filled"></a>[File kinds](docs/file-kinds.md)
 - [Migration](docs/migration.md)
+- [Coming from RIBs](docs/coming-from-ribs.md)
 
 ### Routing
 
@@ -244,7 +264,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/tabs`](examples/tabs): a bottom navigation bar built as a tab layout.
 - [`examples/telemetry`](examples/telemetry): the route lifecycle, OpenTelemetry and Sentry.
 - [`examples/auth`](examples/auth): `fespalier_auth` on an in-process demo API, with a Keycloak realm.
-- [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`) through `fespalier: adapters:`.
+- [`examples/plugins`](examples/plugins): notification taps (`fespalier_push`) and screen views with consent (`fespalier_analytics`), and home-screen shortcut and widget taps (`fespalier_launch`) through `fespalier: adapters:`.
 - [`examples/downloads`](examples/downloads): `fespalier_download` on a phone or a desktop: a list of downloads with start, pause, resume, retry, cancel and remove, a detail page a notification tap opens, and one button per case a device tester tries.
 - [`examples/cose`](examples/cose): a full stack. A `fespalier_cratestack` app and a Rust CrateStack server that signs both ways: every request a COSE_Sign1 message from a device key, every answer sealed by the server.
 - [`examples/i18n`](examples/i18n): translated routes with `fespalier_tolgee`: a `$lang` segment, bundled catalogs, a language switch, ICU plurals.

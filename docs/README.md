@@ -8,6 +8,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Configuration](configuration.md)                                  | Every `fespalier:` key of `pubspec.yaml`, and `route.dart`                                            |
 | [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, exports and receives                                              |
 | [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed per release                                   |
+| [Coming from RIBs](coming-from-ribs.md)                            | What a RIB's router, interactor, builder and workflows become, and moving a feature over              |
 | [Routing](routing.md)                                              | Segments, enums, catch-alls, query parameters, case, localized paths, groups, not-found, the manifest |
 | [Navigation](navigation.md)                                        | Typed navigation, `of` and `copyWith`, `remount`, `extra`, `RouteLink`, deferred routes               |
 | [Layouts](layouts.md)                                              | Tab layouts, menus, adaptive navigation, transitions, state and scroll restoration                    |
@@ -25,6 +26,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 | [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, status, engine, restarts, background |
 | [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens              |
 | [Analytics](analytics.md)                                          | Screen views by route pattern with consent, `fespalier_analytics`: sink, backends, testing            |
+| [Shortcuts and widgets](launch.md)                                 | Shortcuts and home-screen widgets open typed routes with `fespalier_launch`: cold start, warm taps    |
 | [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |
 | [Telemetry conventions](telemetry-conventions.md)                  | Span, event and attribute names: contract version 1                                                   |
 | [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana                                                              |
@@ -50,7 +52,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [guards.md](guards.md): Guards · `redirect.dart` · Sending people back · Feature flags: fespalier_flags · Where flag values come from · Testing flagged routes · Biometric unlock: fespalier_biometrics · The unlock page · Actions that ask again · Relock when the app comes back · Testing an unlock
 - [observability.md](observability.md): Route lifecycle: `observe.dart` · Telemetry · Turning it on · OpenTelemetry with otel_zone · Sentry: fespalier_sentry · What Sentry gets from fespalier · Wiring Sentry · One transaction per screen · Sentry defaults and privacy · Testing with Sentry · Crashlytics · Several sinks: combine and add · Spans around data() and actions · Where a navigation came from: navigateFrom · Operations of your own: TelemetryOp.custom · Testing telemetry · What it costs
 - [navigation.md](navigation.md): The root navigator (`navigator.dart`) · `present.dart`: a page of your own · The URL as state: `of` and `copyWith` · Remounting a page: `remount` · Typed `extra` · Restoring `extra` on the web · Links: `RouteLink` · Preloading the data behind a link · Deferred routes: a page's code on demand
-- [data.md](data.md): `data.dart`: a function, a selector or a provider · Retries and reloads · Freshness: `staleTime`, resume and reconnect · Reconnects: fespalier_connectivity · A cache that survives a restart: `dataCache` · A cache on disk: fespalier_storage · A Rust core's changes: fespalier_frb · Providers per page instance: fespalier_riverpod · Typed helpers on the route · From a location to its data · Section data
+- [data.md](data.md): `data.dart`: a function, a selector or a provider · Retries and reloads · Freshness: `staleTime`, resume and reconnect · Reconnects: fespalier_connectivity · A cache that survives a restart: `dataCache` · A cache on disk: fespalier_storage · A Rust core's changes: fespalier_frb · Decoding a core's events: `ChangeCodec` · Providers per page instance: fespalier_riverpod · Typed helpers on the route · From a location to its data · Section data
 - [actions.md](actions.md): `action.dart`: typed writes · `validate()` and `FieldErrors` · Optimistic updates: `optimistic()`
 - [forms.md](forms.md): Forms: `form()` and `validate()` (form() since 0.11.0; validate() is in actions.md)
 - [http.md](http.md): HTTP clients: fespalier_http and fespalier_dio · Cancelling a load whose page is gone · Server validation errors on forms · Writes are never retried, over HTTP too · One seam for any client · The wrapping order · Credentials for clients that are not an http.Client
@@ -58,6 +60,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [adapters.md](adapters.md): Adapters in the generated `main()`
 - [push.md](push.md): Push notifications: fespalier_push · Install · Configure · Mapping a payload · Cold start and taps · Tokens and permission · Testing
 - [analytics.md](analytics.md): Analytics: fespalier_analytics · Install · Screen names · Consent · Time on screen · Backends · Testing
+- [launch.md](launch.md): Shortcuts and home-screen widgets: fespalier_launch · Install · Configure · Mapping an action · Cold start and taps · Widgets and platform links · Testing
 - [route-tests.md](route-tests.md): Maestro flows (`fsp maestro`) · Route smoke tests (`fsp test`)
 - [auth.md](auth.md): Authentication · Installing fespalier_auth · The session · Restoring at startup · Guarding signed-in routes · Signing in and out · Calling your API · OpenID Connect and Keycloak · Firebase, Supabase and your own API · Device-bound tokens: DPoP with fespalier_sign_keypair · Testing signed-in routes
 - [telemetry-conventions.md](telemetry-conventions.md): Telemetry conventions

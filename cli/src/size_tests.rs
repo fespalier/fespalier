@@ -14,14 +14,14 @@ use crate::size::{self, Report, Table, Unreadable, parse_table};
 use crate::{analyze, build};
 
 /// The release text of the table, verbatim from a build of `examples/shop`.
-const MINIFIED: &str = r#"deferredLibraryParts:{_i7:[0,1],_i14:[0,2]},
+const MINIFIED: &str = r#"deferredLibraryParts:{_pageCheckout:[0,1],_pageProductsId:[0,2]},
 deferredPartUris:["main.dart.js_2.part.js","main.dart.js_1.part.js","main.dart.js_3.part.js"],
 deferredPartHashes:["bubiL8EZQZtYrGwZbSp7fiNxg8Y=","ZjjiGRXq0tw0DeMz4JyzRuAgLLY=","WKqwSmeoYm2VbjxW0TniJ47ghXU="],"#;
 
 /// The profile build's text of the same table (not minified).
 const PROFILE: &str = r#"    deferredLibraryParts: {
-      _i7: [0, 1],
-      _i14: [0, 2]
+      _pageCheckout: [0, 1],
+      _pageProductsId: [0, 2]
     },
     deferredPartUris: ["main.dart.js_2.part.js", "main.dart.js_1.part.js", "main.dart.js_3.part.js"],
     deferredPartHashes: ["a", "b", "c"],
@@ -45,7 +45,10 @@ fn table() -> Table {
             "main.dart.js_1.part.js".into(),
             "main.dart.js_3.part.js".into(),
         ],
-        libs: vec![("_i7".into(), vec![0, 1]), ("_i14".into(), vec![0, 2])],
+        libs: vec![
+            ("_pageCheckout".into(), vec![0, 1]),
+            ("_pageProductsId".into(), vec![0, 2]),
+        ],
     }
 }
 
@@ -308,8 +311,8 @@ fn the_json_lines_are_main_routes_then_every_part() {
 #[test]
 fn a_part_no_route_loads_is_listed_as_other() {
     let js = fixture_js().replace(
-        "deferredLibraryParts:{_i7:[0,1],_i14:[0,2]}",
-        "deferredLibraryParts:{_i7:[0,1],_i14:[0,2],other:[3]}",
+        "deferredLibraryParts:{_pageCheckout:[0,1],_pageProductsId:[0,2]}",
+        "deferredLibraryParts:{_pageCheckout:[0,1],_pageProductsId:[0,2],other:[3]}",
     );
     let js = js.replace(
         "\"main.dart.js_3.part.js\"]",
@@ -364,19 +367,41 @@ fn a_build_without_deferred_code_is_fine_for_an_app_without_deferred_routes() {
 
 #[test]
 fn a_build_missing_a_route_is_an_error() {
-    let js = fixture_js().replace("_i7:[0,1],", "");
+    let js = fixture_js().replace("_pageCheckout:[0,1],", "");
     assert_eq!(
         error_of(&js),
-        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as `_i14`, and the routes now defer `_i7` (checkout/page.dart), `_i14` (products/$id/page.dart); run `flutter build web` again"
+        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as `_pageProductsId`, and the routes now defer `_pageCheckout` (checkout/page.dart), `_pageProductsId` (products/$id/page.dart); run `flutter build web` again"
     );
 }
 
 #[test]
 fn a_build_with_an_extra_route_is_an_error() {
-    let js = fixture_js().replace("_i14:[0,2]", "_i14:[0,2],_i9:[0]");
+    let js = fixture_js().replace(
+        "_pageProductsId:[0,2]",
+        "_pageProductsId:[0,2],_pageAbout:[0]",
+    );
     assert_eq!(
         error_of(&js),
-        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as `_i7`, `_i14`, `_i9`, and the routes now defer `_i7` (checkout/page.dart), `_i14` (products/$id/page.dart); run `flutter build web` again"
+        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as `_pageCheckout`, `_pageProductsId`, `_pageAbout`, and the routes now defer `_pageCheckout` (checkout/page.dart), `_pageProductsId` (products/$id/page.dart); run `flutter build web` again"
+    );
+    // A numbered key is fespalier's too: it is a load id that no route defers.
+    let js = fixture_js().replace("_pageProductsId:[0,2]", "_pageProductsId:[0,2],_i9:[0]");
+    assert_eq!(
+        error_of(&js),
+        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as `_pageCheckout`, `_pageProductsId`, `_i9`, and the routes now defer `_pageCheckout` (checkout/page.dart), `_pageProductsId` (products/$id/page.dart); run `flutter build web` again"
+    );
+}
+
+#[test]
+fn a_build_made_before_0_20_is_stale() {
+    // The load ids of a build older than 0.20.0 are `_i7` and `_i14`: the build is reported
+    // as stale, not ignored, so `flutter build web` is run again.
+    let js = fixture_js()
+        .replace("_pageCheckout:[0,1],", "_i7:[0,1],")
+        .replace("_pageProductsId:[0,2]", "_i14:[0,2]");
+    assert_eq!(
+        error_of(&js),
+        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as `_i7`, `_i14`, and the routes now defer `_pageCheckout` (checkout/page.dart), `_pageProductsId` (products/$id/page.dart); run `flutter build web` again"
     );
 }
 
@@ -384,7 +409,7 @@ fn a_build_with_an_extra_route_is_an_error() {
 fn a_build_with_no_table_where_routes_are_deferred_is_an_error() {
     assert_eq!(
         error_of("var main = 1;"),
-        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as nothing, and the routes now defer `_i7` (checkout/page.dart), `_i14` (products/$id/page.dart); run `flutter build web` again"
+        "build/web/main.dart.js was built from another lib/app.g.dart: it loads deferred code as nothing, and the routes now defer `_pageCheckout` (checkout/page.dart), `_pageProductsId` (products/$id/page.dart); run `flutter build web` again"
     );
 }
 

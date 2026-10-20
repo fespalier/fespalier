@@ -63,6 +63,7 @@ fn fresh(device: Device, width: u16, height: u16) -> DevState {
         plain: false,
         output: "lib/app.g.dart".into(),
         device: Some(device),
+        stamp: None,
     });
     s.started(FLUTTER);
     s.started(2);
@@ -99,6 +100,10 @@ fn report(wrote: bool, errors: usize, first_error: Option<FirstError>) -> GenRep
         first: false,
         ok: errors == 0,
         wrote,
+        // No stamp: a write restarts, as before 0.19.0.
+        main_changed: false,
+        stamp: None,
+        swaps: false,
         routes: (errors == 0).then_some(14),
         errors,
         first_error,

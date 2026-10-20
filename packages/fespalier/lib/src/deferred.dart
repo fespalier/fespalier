@@ -14,7 +14,7 @@ import 'telemetry.dart' show telemetryDeferredEnd, telemetryDeferredStart;
 /// on demand; elsewhere the code is already in the binary and loading it takes one turn of
 /// the event loop.
 final class DeferredLibrary {
-  /// The library behind a deferred import: pass its `loadLibrary` (`_i7.loadLibrary`) and
+  /// The library behind a deferred import: pass its `loadLibrary` (`_pageCheckout.loadLibrary`) and
   /// the [file] it stands for. The generated code builds these.
   DeferredLibrary(
     Future<void> Function() loadLibrary,
@@ -117,7 +117,9 @@ final class DeferredLibrary {
   }
 
   /// Remembers [libraries], so [loadAll] without arguments (what `pumpRouter` calls)
-  /// loads them. The generated `AppRoutes.mount()` registers its own.
+  /// loads them. The generated `AppRoutes.mount()` registers its own. A hot reload that
+  /// swaps the routes registers the list it makes again (since 0.20.0); a library is never
+  /// forgotten, so a route the reload removed stays registered until a restart.
   static void register(Iterable<DeferredLibrary> libraries) =>
       _registered.addAll(libraries);
 

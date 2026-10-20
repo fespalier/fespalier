@@ -32,6 +32,8 @@ final observability = OtelZone(
 );
 ```
 
+Since 0.19.0, `otel: true` writes that `OtelZone` for you, in the generated `main()` ([OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main)), with the same endpoint.
+
 It returns, in this order:
 
 1. what `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` (or `--dart-define-from-file`) says, when it says anything;
@@ -61,9 +63,11 @@ Each dashboard has an **App** variable (the resource's `service.name`, so apps a
 | Dashboard                | Answers                                                                                                                                                                                                                                                                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `fespalier · App health` | Start here. Eight tiles: Do screens open quickly? Does content load quickly? Do actions finish quickly? How many screens were viewed? How often does content fail to load? How often do actions fail? Did anything throw an uncaught error? Did the app crash or freeze? Then the same checks in words, the slowest screens, and what fails most. |
-| `fespalier · Screens`    | Where people go and how fast each screen opens: its checks (`guard.dart` and `redirect.dart`), its content (`data.dart`) and its code (deferred pages), which screens are busiest, where people go next, and how often a link leads nowhere.                                                                                                      |
-| `fespalier · Actions`    | What people do (each function in an `action.dart`): how many runs, how often they fail, how long they take, and when.                                                                                                                                                                                                                             |
-| `fespalier · Errors`     | What broke, where and with which error: failed checks, loads, actions and code downloads, uncaught errors, and native crashes and ANRs.                                                                                                                                                                                                           |
+| `fespalier · Screens`    | Where people go and how fast each screen opens: its checks (`guard.dart` and `redirect.dart`), its content (`data.dart`) and its code (deferred pages), which screens are busiest, where people go next, and how often a link leads nowhere, how many loads were automatic retries, and how many showed saved content first.                      |
+| `fespalier · Actions`    | What people do (each function in an `action.dart`): how many runs, how often they fail, how long they take, when, how many optimistic updates were undone, and how many runs validation stopped.                                                                                                                                                  |
+| `fespalier · Errors`     | What broke, where and with which error: failed checks, loads, actions and code downloads, uncaught errors, native crashes and ANRs, and which screen each native crash happened on (since 0.19.0).                                                                                                                                                |
+
+The retry, saved-copy, undone and validation tiles and columns (since 0.18.0) read 0 for an app before 0.18.0, which sends none of those attributes.
 
 ![The Screens dashboard in OpenObserve: each route with its typical and slowest open and content-load times, the slowest cells coloured, and open time over time with the good and bad lines.](images/telemetry/openobserve-screens.png)
 
@@ -114,7 +118,7 @@ Since 0.8.1. A tile is **green** when the answer is good, **amber** when it need
 
 Run from inside an app (or with `--project`), a start also checks that app: when its `fespalier:` section has `telemetry` off, which is the default, `fsp telemetry` prints ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, "Telemetry")`` after the import and before the summary, and still exits 0. It says nothing outside a project, and not for `--no-start`, `--stop` or `--reset`.
 
-**Where the files go.** One folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app, so `flutter clean` cannot delete them. The Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`.
+**Where the files go.** One folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app, so `flutter clean` cannot delete them. The Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`. Since 0.21.0 it pins OpenObserve v1.1.2, which migrates its database on its first start: an `fsp` before 0.21.0 writes v1.0.4 back, and OpenObserve then restarts in a loop (`Migration file of version '…' is missing`), so on a computer whose apps use different versions of `fsp`, run `fsp telemetry` with the newest. Running the newer one again recovers it with the data kept; `--reset` is not needed.
 
 **Settings** go in `.env` in that folder, written from `env.example` on the first run and never overwritten. Every value has the same default in `compose.yaml`, so the stack also runs with no `.env` at all, as `docker compose up -d` in that folder:
 
@@ -163,11 +167,13 @@ The mark and the word are the colour, in words. The SQL is read from the generat
 
 A web app posts OTLP/HTTP to the collector from another origin (`http://localhost:<port>` to `http://localhost:4318`), which needs CORS: the collector allows `http://localhost:*` and `http://127.0.0.1:*`, plus `FSP_OTLP_CORS_ORIGIN`. A page served over `https` cannot post to `http://localhost` (mixed content); use `flutter run -d chrome` in development.
 
-**`otel_zone`'s `runGuarded` does not run its body on the web** (checked with `otel_zone` v0.5.0). Inside the zone, before the body, it opens a `ReceivePort` from `dart:isolate`, which the web does not have, and the zone's own handler swallows the error: the app stays blank and nothing is printed. `start()` itself works on the web. Until `otel_zone` guards that call, do not use the zone on the web:
+**`otel_zone`'s `runGuarded` runs its body on the web since v0.8.1.** Before it (checked with `otel_zone` v0.5.0), the zone opened a `ReceivePort` from `dart:isolate` ahead of the body, which the web does not have, and the zone's own handler swallowed the error: the app stayed blank and nothing was printed. `start()` works on the web either way. With `otel: true` the generated `main()` wraps the app in the zone on the web too (its `observability` is `AppMain.observability`), so that app's fix is to bump `otel_zone` to v0.8.1. The snippet below is for an app wired by hand on an older `otel_zone`, which must not use the zone on the web:
 
 ```dart
-Future<void> zone(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+Future<void> zone(Future<void> Function() body) {
+  if (kIsWeb) return body();
+  return observability.runGuarded(body);
+}
 ```
 
 ## OpenObserve and Grafana show the same numbers
@@ -177,7 +183,7 @@ One spec, `scripts/telemetry/dashboards.toml`, generates both: `fsp` embeds the 
 - Grafana's percentiles are interpolated within histogram buckets (1, 2, 5, 10, 16, 33, 50, 100, 250, 500 ms, 1, 2.5, 5, 10 s); OpenObserve's are computed from the raw durations.
 - Span metrics are stamped when the collector receives a span. A batch that a phone replays later counts at the time it arrives in Grafana, and at its own time in OpenObserve.
 - Grafana has no error messages or trace ids: its _What failed last?_ is a count table with a link to OpenObserve, and _What was uncaught last?_ exists in OpenObserve only. _Verdicts, in words_ and _Where do people go next?_ exist in OpenObserve only too.
-- The percentage tiles agree (the smoke test compares them within 0.05), and a tile that rests on fewer than 20 samples says _Not enough data yet_ in both.
+- The percentage tiles agree (the smoke test compares them within 0.05), and a tile that rests on fewer than 20 samples says _Not enough data yet_ in both. Since 0.21.0 the percentage tiles agree also when every call failed (before, Grafana's tile said _Not enough data yet_).
 - Grafana shows no words for the colours, because PromQL cannot return a sentence.
 
 ![The same App health tiles in Grafana, with the same colours and numbers.](images/telemetry/grafana-app-health.png)
@@ -196,4 +202,4 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 - Grafana's dashboards are read-only (provisioned): save a copy to change one.
 - A dashboard that a newer `fsp` no longer ships is deleted from OpenObserve when nobody edited it, and Grafana drops its file; `fsp telemetry` deletes the stale files in its folder too.
 
-Images are pinned by tag and digest (collector `0.161.0`, OpenObserve `v1.0.4`, Grafana `13.2.3`), for `amd64` and `arm64`. The collector comes from `ghcr.io`, the rest from `mirror.gcr.io`, Google's mirror of Docker Hub (the same images and digests), so a pull does not count against the anonymous limits of Docker Hub or Amazon ECR Public, which a shared network or a CI runner can exhaust.
+Images are pinned by tag and digest (collector `0.162.0`, OpenObserve `v1.1.2`, Grafana `13.2.3`), for `amd64` and `arm64`. The collector comes from `ghcr.io`, the rest from `mirror.gcr.io`, Google's mirror of Docker Hub (the same images and digests), so a pull does not count against the anonymous limits of Docker Hub or Amazon ECR Public, which a shared network or a CI runner can exhaust.

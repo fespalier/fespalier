@@ -4,7 +4,8 @@ Maintainers only. Releases are cut with release-please, the convention of every 
 vaam-apps organization. Its guide, `docs/releasing.md` in `vaam-apps/.github`, lists the ways this has
 failed silently and is worth reading before changing anything here.
 
-Nobody bumps a version by hand, edits `.release-please-manifest.json`, or runs a workflow to publish.
+Nobody bumps a version by hand, edits `.release-please-manifest.json`, or runs a workflow to publish
+(the one exception is the recovery for a release PR merged before its pins, below).
 
 **The flow.**
 
@@ -33,8 +34,10 @@ Nobody bumps a version by hand, edits `.release-please-manifest.json`, or runs a
      workflow then runs again on the new head. It recognises its own commit and does not loop.
    - The `fsp` build reads only `cli/`, never `release_checksums.dart`, so the pin commit does not
      change the binaries.
-   - Wait for the `Release pins gate` check before merging (make it required in the `main` ruleset;
-     other pull requests pass it by skipping).
+   - **Never merge the release PR before the `Release pins gate` check is green on its head**, and make
+     that check required on `main` (see "Repository settings" below). The pin commit lands minutes
+     after the PR opens, and a PR merged before it is tagged without its pins (v0.17.1: see "The
+     release PR was merged before its pins"). Other pull requests pass the check by skipping.
    - The archives wait in a _staging_ draft release named `fsp-staging` (visible to maintainers,
      replaced by every build, deleted after the release), not in workflow artifacts, which expire.
 4. **Merge the release PR.** release-please (as the org's GitHub App, so that the tag raises a workflow
@@ -70,11 +73,61 @@ does not move): fix the cause and re-run the failed jobs.
 
 - The usual causes are a `cli/` change that reached `main` after the last build (the release PR was
   merged before its head was rebuilt: make `Release pins gate` required and the branch up to date before
-  merging), or staged binaries that were replaced or deleted.
+  merging), staged binaries that were replaced or deleted, or a release PR merged before its pins
+  (next).
 - If the merged commit cannot be made to match, delete the draft and the tag and fix forward with the
   next release.
-- A manual run of `Release` (_Run workflow_) only builds the five targets and renders the Homebrew and
-  Scoop files as a smoke test; it publishes nothing.
+- A manual run of `Release` (_Run workflow_) is the recovery below, not a smoke test: it needs a `tag`
+  and a `pins` commit and publishes that tag's release. (It used to build the five targets and publish
+  nothing; a release PR's `Release pins` run builds them now.)
+
+**The release PR was merged before its pins.** This is what happened to v0.17.1. `Release pins` builds
+the five binaries on the release PR, stages them in `fsp-staging` and only then pushes
+`chore: pin fsp X.Y.Z checksums` to the release branch, which takes many minutes. release-please opened
+the PR for 0.17.1 and it was merged a minute later, so the tag was made at a commit whose
+`release_checksums.dart` still pinned 0.17.0; the binaries were staged thirteen minutes after the merge
+and the pin commit pushed to the release branch after that. Nothing can be re-run into shape: the tag
+is fixed, and the tag's `Release` run either failed at "Fetch the binaries staged on the release PR"
+(`no staging draft 'fsp-staging'`, because nothing was staged yet) or, once staged, fails the third
+check of `scripts/verify-staged.sh` (the tag pins 0.17.0, not 0.17.1). The pin commit exists, for exactly
+the tagged `cli/`, and the staging draft holds the archives it pins. So publish the tag against that
+commit:
+
+1. Wait for the `Release pins` run on the release PR's last head to finish. It stages the archives and
+   pushes the pin commit; the staging draft `fsp-staging` is then among the repository's releases (drafts
+   are visible to maintainers).
+2. Find the pin commit's **full** SHA. `git fetch origin release-please--branches--main`, then
+   `git log origin/release-please--branches--main --grep '^chore: pin fsp X.Y.Z checksums$' --format=%H`.
+   If release-please has since rewritten the branch for the next release, the commit is gone from that
+   log but its SHA still fetches: the `Release pins` run's summary ("Pinned fsp X.Y.Z") shows its
+   abbreviated hash.
+3. _Actions_, _Release_, _Run workflow_, **Use workflow from: `main`** (any other branch is refused:
+   the workflow definition must be the default branch's), with
+   - `tag`: the existing tag, `vX.Y.Z`;
+   - `pins`: that 40-character lowercase SHA.
+
+   For v0.17.1 these are `v0.17.1` and `2c606fd9381d9ebb25c9ce24f0a482b923bdd358`.
+
+The run is the tag push's run with two differences, both in its `guard` and `publish` jobs. The guard
+refuses it unless the tag exists, the tag equals the Cargo, pubspec, manifest and lockfile versions,
+`pins` is the commit `chore: pin fsp X.Y.Z checksums` for the tag's version, **its `cli/` tree equals the
+tag's** (so the pins were made for exactly the tagged source) and its `release_checksums.dart` pins X.Y.Z.
+And the staged archives are verified against that commit's `release_checksums.dart` instead of the
+tag's: the log says so (`archives are verified against the pins in <sha>, not against the pins in the
+tag`), also when the tag's own pins happen to be right. The other two checks stay: `build-info.json` must say X.Y.Z and carry the tag's
+`cli/` tree. The workflow file is `main`'s, but everything it runs after the guard (the verification,
+the rendering, the release scripts) is the tag's own tree. From the verification on it is the tag push
+again: it attaches, publishes the draft Release release-please made for the tag, drops the staging
+draft and updates Homebrew and Scoop. It shares the concurrency group of the tag's push run.
+
+A package at such a tag has pins for another version: v0.17.1's `release_checksums.dart` says
+`pinnedVersion = '0.17.0'`, so `dart run fespalier` finds no pins for its own version and falls back to
+the release's `.sha256` file with a warning, as for a development build (the comment at the top of that
+file). The release itself is complete and its archives are the pinned ones. The next release's pin commit
+writes the file again; until then `main` carries the older pins, which `cli/tests/versions.rs` accepts.
+
+To prevent it: make `Release pins gate` a required status check on `main` (below), and only merge a
+release PR whose head is the pin commit.
 
 **The post-publish smoke.** Once the Release is public, the `post-publish-smoke` workflow (its own file,
 started by the `release: published` event that the publish step raises with the App token) installs the
@@ -97,8 +150,12 @@ checkout before.
 
 **Repository settings** (not enforceable from a workflow): squash merging only, with the squash commit
 title set to the pull request title and the message to the commit messages; merge commits and rebase
-merges off. The release-please GitHub App must be installed on this repository, and on the tap and the
-bucket if you set `HOMEBREW_TAP` or `SCOOP_BUCKET`.
+merges off. **`Release pins gate` must be a required status check on `main`** (_Settings_, _Rules_,
+the `main` ruleset, _Require status checks to pass_): without it nothing stops a release PR from being
+merged before `Release pins` has pinned its head, which is how v0.17.1 was tagged with 0.17.0's pins and
+needed the manual recovery above. Every other pull request passes that check by skipping its jobs, so
+it costs nothing elsewhere. The release-please GitHub App must be installed on this repository, and on
+the tap and the bucket if you set `HOMEBREW_TAP` or `SCOOP_BUCKET`.
 
 **The Homebrew tap and the Scoop bucket are optional.** A release publishes without them, with `fsp.rb`
 and `fsp.json` attached as assets. Each is its own job in the `Release` workflow, gated on a repository

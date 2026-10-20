@@ -677,6 +677,106 @@
           }
         },
         {
+          "id": "panel_retries",
+          "type": "metric",
+          "title": "How many loads were automatic retries?",
+          "description": "Loads that ran again on their own after the first try failed (Riverpod's retry). A reload you asked for is not counted. Many retries usually mean a flaky server or a slow network.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS retries FROM \"default\" WHERE fespalier_operation = 'data' AND fespalier_data_attempt <> '1' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "retries",
+                    "alias": "retries",
+                    "column": "retries",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 0,
+            "y": 58,
+            "w": 48,
+            "h": 8,
+            "i": 10
+          }
+        },
+        {
+          "id": "panel_cache_hits",
+          "type": "metric",
+          "title": "How many loads showed saved content at once?",
+          "description": "Loads where the saved copy of a dataCache was on screen before the fresh data arrived. Only data.dart files with a dataCache count.",
+          "config": {
+            "show_legends": false,
+            "legends_position": null,
+            "unit": null,
+            "decimals": 0
+          },
+          "queryType": "sql",
+          "queries": [
+            {
+              "query": "SELECT COUNT(*) AS cache_hits FROM \"default\" WHERE fespalier_operation = 'data' AND fespalier_data_source = 'cache' AND service_name = '$service'",
+              "vrlFunctionQuery": "",
+              "customQuery": true,
+              "fields": {
+                "stream": "default",
+                "stream_type": "traces",
+                "x": [],
+                "y": [
+                  {
+                    "label": "cache_hits",
+                    "alias": "cache_hits",
+                    "column": "cache_hits",
+                    "color": null
+                  }
+                ],
+                "z": [],
+                "breakdown": [],
+                "filter": {
+                  "filterType": "group",
+                  "logicalOperator": "AND",
+                  "conditions": []
+                }
+              },
+              "config": {
+                "promql_legend": ""
+              }
+            }
+          ],
+          "layout": {
+            "x": 48,
+            "y": 58,
+            "w": 48,
+            "h": 8,
+            "i": 11
+          }
+        },
+        {
           "id": "panel_by_data",
           "type": "table",
           "title": "Which data.dart files are slow or failing?",
@@ -752,6 +852,30 @@
               {
                 "field": {
                   "matchBy": "name",
+                  "value": "retries"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
+                  "value": "from_cache"
+                },
+                "config": [
+                  {
+                    "type": "field_type",
+                    "value": "text"
+                  }
+                ]
+              },
+              {
+                "field": {
+                  "matchBy": "name",
                   "value": "p50_ms"
                 },
                 "config": [
@@ -807,7 +931,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, 100.0 * SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN 1 ELSE 0 END), 0) AS failed_pct, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'data' AND service_name = '$service' GROUP BY file, route ORDER BY p95_ms DESC NULLS LAST",
+              "query": "SELECT fespalier_file AS file, fespalier_route AS route, COUNT(*) AS loads, 100.0 * SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state = 'error' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN 1 ELSE 0 END), 0) AS failed_pct, SUM(CASE WHEN fespalier_data_state = 'disposed' THEN 1 ELSE 0 END) AS abandoned, SUM(CASE WHEN fespalier_data_attempt <> '1' THEN 1 ELSE 0 END) AS retries, SUM(CASE WHEN fespalier_data_source = 'cache' THEN 1 ELSE 0 END) AS from_cache, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.5) / 1000.0 AS p50_ms, approx_percentile_cont(CASE WHEN fespalier_operation = 'data' AND fespalier_data_state IN ('data', 'error') THEN duration END, 0.95) / 1000.0 AS p95_ms FROM \"default\" WHERE fespalier_operation = 'data' AND service_name = '$service' GROUP BY file, route ORDER BY p95_ms DESC NULLS LAST",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -847,6 +971,18 @@
                     "color": null
                   },
                   {
+                    "label": "Retries",
+                    "alias": "retries",
+                    "column": "retries",
+                    "color": null
+                  },
+                  {
+                    "label": "Saved copy shown",
+                    "alias": "from_cache",
+                    "column": "from_cache",
+                    "color": null
+                  },
+                  {
                     "label": "Typical",
                     "alias": "p50_ms",
                     "column": "p50_ms",
@@ -874,10 +1010,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 58,
+            "y": 66,
             "w": 192,
             "h": 16,
-            "i": 10
+            "i": 12
           }
         },
         {
@@ -1025,10 +1161,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 74,
+            "y": 82,
             "w": 96,
             "h": 16,
-            "i": 11
+            "i": 13
           }
         },
         {
@@ -1082,10 +1218,10 @@
           ],
           "layout": {
             "x": 96,
-            "y": 74,
+            "y": 82,
             "w": 96,
             "h": 16,
-            "i": 12
+            "i": 14
           }
         },
         {
@@ -1215,10 +1351,10 @@
           ],
           "layout": {
             "x": 0,
-            "y": 90,
+            "y": 98,
             "w": 96,
             "h": 16,
-            "i": 13
+            "i": 15
           }
         },
         {
@@ -1272,10 +1408,10 @@
           ],
           "layout": {
             "x": 96,
-            "y": 90,
+            "y": 98,
             "w": 96,
             "h": 16,
-            "i": 14
+            "i": 16
           }
         }
       ]

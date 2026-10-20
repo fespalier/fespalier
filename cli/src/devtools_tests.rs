@@ -229,9 +229,12 @@ fn the_sites_are_the_ones_the_generated_code_names() {
             assert!(ids.contains(site), "{name}: guard site {site}");
             assert_eq!(tree["sites"][site]["kind"], "guard");
         }
-        // `final _data37 = …`: a provider fespalier wraps.
+        // `final _dataX = …`: a provider fespalier wraps, whose site is `dX` (since 0.20.0 `X` is a stem).
         for def in code.split("\nfinal _data").skip(1) {
-            let n: String = def.chars().take_while(char::is_ascii_digit).collect();
+            let n: String = def
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
             let site = format!("d{n}");
             assert!(ids.contains(site.as_str()), "{name}: {site}");
             assert!(
@@ -239,11 +242,11 @@ fn the_sites_are_the_ones_the_generated_code_names() {
                 "{name}: {def:.40}"
             );
         }
-        // `final _action37_0 = …`.
+        // `final _actionX_fn = …`, whose site is `aX_fn`.
         for def in code.split("\nfinal _action").skip(1) {
             let n: String = def
                 .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '_')
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                 .collect();
             assert!(ids.contains(format!("a{n}").as_str()), "{name}: a{n}");
         }
@@ -318,6 +321,64 @@ fn guards_redirects_data_and_actions_are_sites_with_their_files() {
     assert_eq!(actions[0].1["file"], "orders/$id/action.dart");
     assert_eq!(actions[0].1["name"], "action");
     assert_eq!(actions[0].1["route"], "OrderRoute");
+}
+
+#[test]
+fn a_data_or_action_site_is_named_after_its_folder_and_function() {
+    let dir = files_project(&[
+        ("page.dart", &page("Home")),
+        ("account/page.dart", &page("Account")),
+        ("account/guard.dart", "GuardResult guard(Ref ref) => null;"),
+        ("old/redirect.dart", "String redirect() => '/account';"),
+        (
+            "orders/$id/page.dart",
+            "class OrderPage extends StatelessWidget { const OrderPage({super.key, required this.id, required this.data}); final int id; final String data; }",
+        ),
+        (
+            "orders/$id/data.dart",
+            "Future<String> data(Ref ref, {required int id}) async => '';",
+        ),
+        (
+            "orders/$id/action.dart",
+            "Future<void> action(Ref ref, {required int id, required String input}) async {}\nFuture<void> cancel(Ref ref, {required int id, required String input}) async {}\n",
+        ),
+    ]);
+    let (cfg, app, code) = analyzed(dir.path());
+    let tree = devtools::tree(&app, &cfg);
+    assert_eq!(tree["sites"]["dOrdersId"]["file"], "orders/$id/data.dart");
+    assert_eq!(tree["sites"]["aOrdersId_action"]["name"], "action");
+    assert_eq!(tree["sites"]["aOrdersId_cancel"]["name"], "cancel");
+    assert!(code.contains("final _dataOrdersId = "), "{code}");
+    assert!(code.contains("final _actionOrdersId_cancel = "), "{code}");
+    for (id, site) in sites(&tree) {
+        let kind = site["kind"].as_str().unwrap();
+        let letter = match kind {
+            "guard" => 'g',
+            "redirect" => 'r',
+            "data" => 'd',
+            "action" => 'a',
+            other => panic!("{other}"),
+        };
+        assert!(id.starts_with(letter), "{id} is not a {kind} site");
+        for key in site.as_object().unwrap().keys() {
+            assert!(
+                [
+                    "kind", "file", "route", "pattern", "section", "traced", "name"
+                ]
+                .contains(&key.as_str()),
+                "{id} has {key}, which protocol 1 does not know"
+            );
+        }
+    }
+    // A route added before them renames none of their sites.
+    let before = tree["sites"].clone();
+    fs::create_dir_all(dir.path().join("lib/app/aaa")).unwrap();
+    fs::write(dir.path().join("lib/app/aaa/page.dart"), page("Aaa")).unwrap();
+    let (cfg, app, _) = analyzed(dir.path());
+    let after = devtools::tree(&app, &cfg);
+    for site in ["dOrdersId", "aOrdersId_action", "aOrdersId_cancel"] {
+        assert_eq!(after["sites"][site], before[site], "{site}");
+    }
 }
 
 #[test]
@@ -501,13 +562,14 @@ fn the_generated_file_registers_and_attaches_only_under_the_const() {
             )),
             "{name}"
         );
+        // The mount, the reload that registers again (since 0.19.0), and the function itself.
         assert_eq!(
             code.matches("_devToolsProviders").count(),
-            if providers.is_empty() { 0 } else { 2 },
+            if providers.is_empty() { 0 } else { 3 },
             "{name}"
         );
         assert!(
-            code.contains("      final router = GoRouter(\n")
+            code.contains("      final router = GoRouter.routingConfig(\n")
                 && code.contains(
                     "      if (kFespalierDevTools) devToolsAttach(router);\n      return router;\n"
                 ),
@@ -515,8 +577,10 @@ fn the_generated_file_registers_and_attaches_only_under_the_const() {
         );
         // Nothing else of DevTools is reachable but through that constant: the tree function is
         // only a tear-off passed to `devToolsRegister`.
-        assert_eq!(code.matches("_devToolsTree").count(), 2, "{name}");
-        assert_eq!(code.matches("devToolsRegister(").count(), 1, "{name}");
+        // Registered by `mount` and again by the hot reload's `_reload` (since 0.19.0), each under
+        // the same constant.
+        assert_eq!(code.matches("_devToolsTree").count(), 3, "{name}");
+        assert_eq!(code.matches("devToolsRegister(").count(), 2, "{name}");
         assert_eq!(code.matches("devToolsAttach(").count(), 1, "{name}");
         assert!(code.ends_with(";\n"), "{name}");
         let tail = code.lines().last().unwrap();
@@ -640,12 +704,12 @@ fn the_wrappers_pass_their_argument_through_and_change_nothing_else() {
     );
     // The data provider's body: the same call, as `traceData`'s last argument, with the key.
     assert!(
-        code.contains("(Ref ref, int id) => traceData(ref, 'd5', id, _i"),
+        code.contains("(Ref ref, int id) => traceData(ref, 'dOrdersId', id, _i"),
         "{code}"
     );
     // The action: the site is the only thing added to the factory's arguments.
     assert!(
-        code.contains(">[_data5(id)],\n  site: 'a5_0',\n);"),
+        code.contains(">[_dataOrdersId(id)],\n  site: 'aOrdersId_action',\n);"),
         "{code}"
     );
     // Nothing is wrapped twice.
@@ -752,7 +816,7 @@ fn every_data_dart_is_listed_for_prefetches_except_a_selector_with_keys() {
     let tree = devtools::tree(&app, &cfg);
     let site = |file: &str| site_of(&tree, file);
     let listed = listed_providers(&code);
-    let mut want = vec![
+    let want = vec![
         (
             format!("_data{}", &site("a/data.dart")[1..]),
             site("a/data.dart"),
@@ -771,8 +835,7 @@ fn every_data_dart_is_listed_for_prefetches_except_a_selector_with_keys() {
             site("e/$id/data.dart"),
         ),
     ];
-    // Folder order, which is the order of the sites' numbers.
-    want.sort_by_key(|(_, site)| site[1..].parse::<usize>().unwrap());
+    // Folder order: `a`, `b`, `c`, then `e` (the selector with keys of `d` is left out).
     assert_eq!(listed, want, "{code}");
     assert!(
         !listed.iter().any(|(_, s)| *s == site("d/$id/data.dart")),

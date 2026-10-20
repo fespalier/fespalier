@@ -68,6 +68,8 @@ A provider that failed and is being retried is `AsyncLoading` with its error sti
 
 **A route with a `freshness` or a `dataCache`** (since 0.8.1) keeps its data when a reload fails, whatever `keep_previous` says: `error.dart` only shows when there is nothing to show (see [Freshness](#freshness-staletime-resume-and-reconnect)). And `DataView` shows a value that Riverpod's offline persistence restored (`isFromCache`) while the fresh one loads, with `keep_previous: false` too.
 
+**Telemetry** (since 0.18.0): the data span says which try a load is (`fespalier.data.attempt`). A retry that Riverpod runs on its own after a failure is try 2, 3 and so on, and a reload the app asks for is try 1 again. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
+
 ### Freshness: `staleTime`, resume and reconnect
 
 Since 0.8.1 a `data.dart` can say when its value is old enough to load again. It is opt in: a route without the declaration loads once and keeps the value for as long as something watches it.
@@ -146,12 +148,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_connectivity:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_connectivity
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -253,6 +255,8 @@ The key a value is saved under is `fespalier:<folder>` plus the route's keys in 
 
 Don't write an optimistic value with `state =` on this provider's notifier: Riverpod saves every `AsyncData` it sets, so the guess would be saved. Keep optimistic values in a layer above the data provider.
 
+**Telemetry** (since 0.18.0): the data span says whether the saved copy was on screen before the fresh data arrived (`fespalier.data.source` is `cache`), or not (`fetch`). A retry after an offline start still has the copy on screen, so it says `cache`; once fetched data has replaced the copy, a reload says `fetch`. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the names.
+
 **Testing.** With no `dataCacheStorage` override, nothing is saved. To test the cache, share a `MemoryDataStorage` between two `pumpRouter` calls, which stands in for a restart:
 
 ```dart
@@ -279,12 +283,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_storage:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_storage
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -364,12 +368,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_frb:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_frb
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -434,6 +438,81 @@ expect(fake.listenCount, 1);
 
 A widget test never runs `startup()` (`pumpRouter` does not), so it needs no `RustLib.init` and no native library: the fake core is a provider override.
 
+### Decoding a core's events: `ChangeCodec`
+
+Since 0.18.0. flutter_rust_bridge mirrors a Rust enum as Dart classes and decodes them inside the `Stream` it returns, so a feed over typed events needs nothing here; a core that sends a `Vec<CoreEvent>` per message is `changes().expand((batch) => batch)`. Some cores send **raw messages** instead:
+
+- a `StreamSink<String>` or `StreamSink<Vec<u8>>` (a `Uint8List`) of JSON, CBOR, protobuf or bincode, because one schema also serves a Swift or Kotlin shell;
+- a `ReceivePort` of plain `dart:ffi`;
+- a socket to a sidecar;
+- a core updated apart from the app.
+
+`ChangeCodec` is the decoder between that stream and the feed. It is a `StreamTransformer`, so it goes into `open` and nothing else changes: the feed numbers what it decodes, and topics, `changes.any`, the 64-event log and `InvalidationTable` see typed events.
+
+```dart
+// lib/core/changes.dart
+CoreEvent eventFromJson(Map<String, Object?> json) => switch (json['type']) {
+  'OrderChanged' => OrderChanged(json['id'] as int),
+  'CartCleared' => const CartCleared(),
+  _ => throw const UnknownChange(), // a variant a newer core added
+};
+
+final coreCodec = ChangeCodec<String, CoreEvent>(
+  (raw) => eventFromJson(jsonDecode(raw) as Map<String, Object?>),
+);
+
+final changes = ChangeFeed<CoreEvent>(
+  (ref) => ref.watch(coreProvider).rawChanges().transform(coreCodec),
+  name: 'core',
+);
+```
+
+The Rust side is `#[serde(tag = "type")]` on the enum and `serde_json::to_string(&event)` into a `StreamSink<String>`.
+
+**A bad message is skipped, not fatal.** The codec catches what your decoder throws (a `FormatException`, a failed cast, a `RangeError`). The next message decodes as usual, `changes.latest` keeps its last change (one bad message is not a stopped core, so it is no `AsyncError`), and the skipped message gets no `Change.seq` and moves no topic. This is what decoding in Dart buys: `flutter_rust_bridge` 2.13 reads its stream in an `async*` that stops at the first throw, so a message it cannot decode, or an error the core adds, ends a typed stream _(read in its source, not run by a test here)_. An error of the stream itself still reaches `changes.latest` as an `AsyncError`.
+
+**Batches.** `ChangeCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a batch is a burst, so a watcher rebuilds once for it, and a batch longer than the 64-event log makes every watcher rebuild once, because it cannot see the events it missed. A failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
+
+```dart
+final batchCodec = ChangeCodec.batch<String, Object?, CoreEvent>(
+  (raw) => jsonDecode(raw) as List<Object?>,
+  (item) => eventFromJson(item as Map<String, Object?>),
+);
+```
+
+**Unknown events.** Throw `UnknownChange` from the decoder: the event is skipped and counted apart from failures. If such an event should still refresh something, return an event of your own (a `SomethingChanged()` that the topics which care accept, or `changes.any` counts): a rebuild too many is safe.
+
+**What is reported.**
+
+- `onSkipped(reason, stackTrace)`, if you pass it, runs once per skip, inside the delivery: log it and return. What it throws becomes an `AsyncError` of `changes.latest`, and the rest of that message's events are dropped with it (a batch's items decoded before it, and those after it).
+- `unknownCount` and `errorCount` count the skips of each codec object, across its feeds and containers. Each subscription decodes on its own, so a codec shared by a broadcast source that two containers watch counts one bad message twice, calls `onSkipped` twice and makes the span twice.
+- The span `fespalier.frb.decode` ends `skipped` with `fespalier.frb.result` `unknown`, or `error` with `error`, and carries `fespalier.frb.skipped`, the count of that kind so far. It is a root span: a message is decoded in the zone of whoever first watched the feed, so the span is not made a child of whatever was running there.
+- It is reported at the 1st, 2nd, 4th, 8th... skip of each kind, so a thousand unknown events make ten spans, never a thousand.
+- It never carries the message, the variant's name or the error's text.
+- A decoded event reports nothing, and without a telemetry sink a skip costs a counter.
+
+**Other formats and sources.** The decoder and its package are yours: none of them is a dependency of `fespalier_frb`. The two below are fragments (they need your generated classes and your FFI call), not compiled code:
+
+```dart
+// A protobuf message, with the generated `pb` library of your schema.
+CoreEvent eventFromProto(Uint8List bytes) {
+  final event = pb.Event.fromBuffer(bytes);
+  return switch (event.whichKind()) {
+    pb.Event_Kind.orderChanged => OrderChanged(event.orderChanged.id.toInt()), // an int64 is an Int64
+    pb.Event_Kind.cartCleared => const CartCleared(),
+    pb.Event_Kind.notSet => throw const UnknownChange(), // an unknown oneof member reads as notSet
+  };
+}
+
+// A ReceivePort fed by plain dart:ffi (allo-isolate): the port is a stream of raw messages.
+final port = ReceivePort('core changes');
+ref.onDispose(port.close);
+ref.watch(coreProvider).subscribe(port.sendPort.nativePort);
+return port.transform(ChangeCodec<Object?, CoreEvent>((raw) => eventFromProto(raw as Uint8List)));
+```
+
+**Testing.** `FakeChangeSource<String>` (or `<Uint8List>`) is the raw stream. `codec.decode(raw)` is the codec without a stream (empty when the message is skipped), and it is also how an app that owns its subscription feeds an `InvalidationTable`: `for (final e in coreCodec.decode(raw)) table.apply(e, container.invalidate);`. A test can check a skip directly: `final before = coreCodec.unknownCount;`, then `expect(coreCodec.decode('{"type":"OrderArchived","id":42}'), isEmpty);` and `expect(coreCodec.unknownCount, before + 1);`. A top-level codec's counters never reset, so they add up across the tests of a run: compare with a count taken before, or assert on what `decode` returns alone.
+
 ### Providers per page instance: fespalier_riverpod
 
 Since 0.13.0. A `data.dart` is keyed by a **location**: `/c/1` is one provider however many times it is on screen. State that belongs to **one page on a navigator** (a draft being typed, a selection, a filter sheet's choice, a form step) is not that: `/c/1` pushed twice is two pages and should be two states, while `/c/1?q=2` after `/c/1`, or a [remount](navigation.md#remounting-a-page-remount) of the page, is the same page and keeps its state. `package:fespalier_riverpod` keys a provider by the page instance, using the identity core already computes for the route lifecycle (`pageInstanceId`, the same string as `RouteScope.id`). It adds no key, command or file kind, starts no timer and listens to nothing. Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
@@ -446,12 +525,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_riverpod:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_riverpod
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->

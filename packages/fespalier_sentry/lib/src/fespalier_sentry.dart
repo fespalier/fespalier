@@ -21,13 +21,10 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import 'keys.dart';
 import 'options.dart';
 import 'scrub.dart' as scrub;
+import 'spans.dart';
+import 'static_spans.dart';
+import 'stream_spans.dart';
 import 'tokens.dart';
-
-/// Printed once when `tracing: true` meets `traceLifecycle: stream` (M-S2).
-const String streamLifecycleMessage =
-    "fespalier_sentry: Sentry's traceLifecycle is stream, which this version "
-    'makes no spans for. Errors and breadcrumbs are still sent; use '
-    'SentryTraceLifecycle.static for screen transactions.';
 
 /// Printed once when `tracing: true` meets an SDK that samples nothing (M-S3).
 const String tracingOffMessage =
@@ -47,12 +44,16 @@ const String tracingOffMessage =
 /// per page change**; and, because the SDK owns them, release health and the crash itself. When
 /// `fespalier_otel` runs next to it (`FespalierTelemetry.combine`), each event also carries the
 /// OpenTelemetry trace id and span id of the screen or the call it came from (`otel.trace_id`,
-/// `otel.span_id`), so an error links to its trace.
+/// `otel.span_id`), so an error links to its trace. Since 0.19.0 the scope is named when a
+/// navigation commits, before the page's `initState` and first `build` and not after that frame, so
+/// what reads the scope in that frame (an event captured with `withScope`, the page's own code)
+/// finds the page's names.
 ///
 /// Performance is opt-in, for Sentry-only teams: `FespalierSentry(tracing: true)` turns each
 /// navigation into a `ui.load` transaction named by the route pattern, with spans for guards,
 /// redirects, data loads, deferred loads and actions, and time to initial and to full display. Pass
-/// `tracing: true` to [configure] too, so the SDK samples.
+/// `tracing: true` to [configure] too, so the SDK samples. With Sentry's `traceLifecycle` set to
+/// `stream` (since 0.19.0) the same tree is streamed as spans: one segment per screen.
 ///
 /// Install it after `SentryFlutter.init` (in `startup()`, or in `zone()`'s `appRunner`) and before
 /// the router is built. It returns at once, never throws, starts no timer and reads no provider; a
@@ -81,12 +82,16 @@ final class FespalierSentry extends FespalierTelemetry {
   final SentryDisplay? Function(Hub hub) _currentDisplay;
   final TargetPlatform? _platform;
 
+  /// Where the spans are made: the static API, until [_spansOn] finds that the SDK streams.
+  late Spans _backend = StaticSpans(_hub);
+
   static SentryDisplay? _sentryDisplay(Hub hub) =>
       SentryFlutter.currentDisplay(hub: hub);
 
-  /// Whether each navigation becomes a `ui.load` transaction named by the route pattern, with
-  /// child spans for the guards, redirects, data loads, deferred loads and actions that ran in it,
-  /// and time to initial and to full display. Off by default: errors, breadcrumbs and release
+  /// Whether each navigation becomes a `ui.load` transaction (a segment, when Sentry's
+  /// `traceLifecycle` is `stream`) named by the route pattern, with child spans for the guards,
+  /// redirects, data loads, deferred loads and actions that ran in it, and time to initial and to
+  /// full display. Off by default: errors, breadcrumbs and release
   /// health need none of it. For a team that has only Sentry (with `fespalier_otel` the traces are
   /// there already). Needs the SDK to sample: pass `tracing: true` to [configure] too.
   final bool tracing;
@@ -105,9 +110,11 @@ final class FespalierSentry extends FespalierTelemetry {
   /// and a repeated error become breadcrumbs.
   final bool breadcrumbs;
 
-  /// Whether each committed navigation names the scope after its screen: the scope's transaction
-  /// (the name events are grouped and searched by in Sentry) and the tag `fespalier.route`, so that
-  /// every later event, a crash included, says which screen it happened on.
+  /// Whether each navigation names the scope after its screen when it commits (since 0.19.0: before
+  /// the new page's `initState` and first `build`; before, once that frame was built): the scope's
+  /// transaction (the name events are grouped and searched by in Sentry) and the tag
+  /// `fespalier.route`, so that every later event, a crash and the new page's first frame included,
+  /// says which screen it happened on.
   final bool routeTag;
 
   /// Whether a transaction carries the committed path (`url.path`) and a guard span the path it
@@ -140,11 +147,12 @@ final class FespalierSentry extends FespalierTelemetry {
   /// to false (a screenshot or a widget tree can show user data); `enableAutoSessionTracking` to
   /// true (release health); `tracePropagationTargets` to [propagateTraceTo] (empty: no trace header
   /// leaves the app, where Sentry's default sends `baggage`, with the release and the environment,
-  /// to every host); and `beforeBreadcrumb`, `beforeSend` and `beforeSendTransaction` to drop query
-  /// and fragment values from Sentry's own HTTP breadcrumbs, events and spans ([recordQueries]
-  /// keeps them) and navigations that a newer one superseded. `SentryNavigatorObserver`'s own
-  /// breadcrumbs are dropped, since this sink's say the same with the route pattern
-  /// ([observerBreadcrumbs] keeps them).
+  /// to every host); and `beforeBreadcrumb`, `beforeSend`, `beforeSendTransaction` and, since
+  /// 0.19.0, `beforeSendSpan` to drop query and fragment values from Sentry's own HTTP
+  /// breadcrumbs, events and spans ([recordQueries] keeps them) and navigations that a newer one
+  /// superseded (a streamed segment cannot be dropped: it is sent, marked superseded).
+  /// `SentryNavigatorObserver`'s own breadcrumbs are dropped, since this sink's say the same with
+  /// the route pattern ([observerBreadcrumbs] keeps them).
   ///
   /// Tracing is off unless asked for: [tracesSampleRate] sets it, and [tracing] without a rate
   /// samples 1.0 in debug and profile builds and 0.1 in release (an `options.tracesSampleRate` set
@@ -188,40 +196,91 @@ final class FespalierSentry extends FespalierTelemetry {
 
     final beforeBreadcrumb = options.beforeBreadcrumb;
     options.beforeBreadcrumb = (breadcrumb, hint) {
-      final kept = beforeBreadcrumb == null
-          ? breadcrumb
-          : beforeBreadcrumb(breadcrumb, hint);
+      final Breadcrumb? kept;
+      try {
+        kept = beforeBreadcrumb == null
+            ? breadcrumb
+            : beforeBreadcrumb(breadcrumb, hint);
+      } catch (_) {
+        // The SDK keeps the breadcrumb it gave the callback when the callback fails: scrub that.
+        if (!recordQueries && breadcrumb != null) {
+          scrub.breadcrumbScrubbedInPlace(breadcrumb);
+        }
+        rethrow;
+      }
       if (kept == null) return null;
       if (!observerBreadcrumbs && scrub.isObserverBreadcrumb(kept)) return null;
       return recordQueries ? kept : scrub.breadcrumbWithoutQueries(kept, hint);
     };
     final beforeSend = options.beforeSend;
     options.beforeSend = (event, hint) => _after<SentryEvent>(
-      beforeSend == null ? event : beforeSend(event, hint),
+      event,
+      () => beforeSend == null ? event : beforeSend(event, hint),
       (kept) => recordQueries ? kept : scrub.eventWithoutQueries(kept, hint),
+      () {
+        if (!recordQueries) scrub.eventWithoutQueries(event, hint);
+      },
     );
     final beforeSendTransaction = options.beforeSendTransaction;
-    options.beforeSendTransaction = (transaction, hint) =>
-        _after<SentryTransaction>(
-          beforeSendTransaction == null
-              ? transaction
-              : beforeSendTransaction(transaction, hint),
-          (kept) => recordQueries
-              ? (scrub.isSuperseded(kept) ? null : kept)
-              : scrub.transactionWithoutQueries(kept, hint),
-        );
+    options.beforeSendTransaction = (t, hint) => _after<SentryTransaction>(
+      t,
+      () => beforeSendTransaction == null ? t : beforeSendTransaction(t, hint),
+      (kept) => recordQueries
+          ? (scrub.isSuperseded(kept) ? null : kept)
+          : scrub.transactionWithoutQueries(kept, hint),
+      // A superseded one cannot be dropped from here: the callback failed, so it is sent,
+      // scrubbed.
+      () {
+        if (!recordQueries) scrub.transactionWithoutQueries(t, hint);
+      },
+    );
+    final beforeSendSpan = options.beforeSendSpan;
+    options.beforeSendSpan = (span) {
+      void scrubbed() {
+        if (!recordQueries) scrub.spanWithoutQueries(span);
+      }
+
+      // The SDK sends the span even when the app's callback fails, so the scrub runs whatever it
+      // does, and its error still reaches the SDK. A sync callback stays sync.
+      final FutureOr<void> earlier;
+      try {
+        earlier = beforeSendSpan?.call(span);
+      } catch (_) {
+        scrubbed();
+        rethrow;
+      }
+      return earlier is Future<void>
+          ? earlier.whenComplete(scrubbed)
+          : scrubbed();
+    };
   }
 
-  /// [then] on what an earlier callback returned, which may be a `Future`: a sync callback stays
-  /// sync, and one that dropped the event (null) stays dropped.
+  /// [then] on what [earlier] returns, which may be a `Future`: a sync callback stays sync, and one
+  /// that dropped the event (null) stays dropped. The SDK sends [original] when the callback fails,
+  /// so [scrubOriginal] runs whatever [earlier] does, and its error still reaches the SDK.
   static FutureOr<T?> _after<T extends SentryEvent>(
-    FutureOr<T?> earlier,
+    T original,
+    FutureOr<T?> Function() earlier,
     T? Function(T kept) then,
+    void Function() scrubOriginal,
   ) {
-    if (earlier is Future<T?>) {
-      return earlier.then((kept) => kept == null ? null : then(kept));
+    final FutureOr<T?> result;
+    try {
+      result = earlier();
+    } catch (_) {
+      scrubOriginal();
+      rethrow;
     }
-    return earlier == null ? null : then(earlier);
+    if (result is Future<T?>) {
+      return result.then(
+        (kept) => kept == null ? null : then(kept),
+        onError: (Object error, StackTrace stackTrace) {
+          scrubOriginal();
+          Error.throwWithStackTrace(error, stackTrace);
+        },
+      );
+    }
+    return result == null ? null : then(result);
   }
 
   /// A `SentryNavigatorObserver` that makes no transaction (`enableAutoTransactions: false`): it
@@ -241,6 +300,12 @@ final class FespalierSentry extends FespalierTelemetry {
   /// [event] without the query and the fragment of its request; what [configure] installs.
   static SentryEvent? eventWithoutQueries(SentryEvent event, Hint hint) =>
       scrub.eventWithoutQueries(event, hint);
+
+  /// [span], a streamed one, without the query and fragment values Sentry's HTTP integrations put
+  /// on it (`http.query`, `http.fragment`, and the query of `url`), in place (since 0.19.0); what
+  /// [configure] installs.
+  static void spanWithoutQueries(SentrySpanV2 span) =>
+      scrub.spanWithoutQueries(span);
 
   /// [transaction] without query and fragment values on the data of its spans, or null for a
   /// navigation that a newer one superseded (it never showed a screen); what [configure] installs.
@@ -268,44 +333,26 @@ final class FespalierSentry extends FespalierTelemetry {
   final Map<String, DateTime> _lastCapture = {};
 
   bool _sawNavigation = false;
-  bool _saidStream = false;
   bool _saidNoTracing = false;
 
-  /// Whether this sink makes spans: [tracing], on an SDK that samples and is not streaming.
+  /// Whether this sink makes spans: [tracing], on an SDK that samples.
   bool _spansOn() {
     final known = _spans;
     if (known != null) return known;
     if (!tracing) return _spans = false;
     final reads = _reads = readHub(_hub, platform: _platform);
-    if (reads.stream) {
-      _say(streamLifecycleMessage, stream: true);
-      return _spans = false;
-    }
     if (!reads.tracingOn) {
-      _say(tracingOffMessage, stream: false);
+      _say(tracingOffMessage);
       return _spans = false;
     }
+    if (reads.stream) _backend = StreamSpans(_hub);
     return _spans = true;
   }
 
-  void _say(String message, {required bool stream}) {
-    if (stream ? _saidStream : _saidNoTracing) return;
-    if (stream) {
-      _saidStream = true;
-    } else {
-      _saidNoTracing = true;
-    }
+  void _say(String message) {
+    if (_saidNoTracing) return;
+    _saidNoTracing = true;
     if (kDebugMode) debugPrint(message);
-  }
-
-  /// [result] of an SDK call, fired and forgotten: an error of the SDK is dropped, so none is ever
-  /// unhandled.
-  static void _fire(Object? result) {
-    if (result is Future<Object?>) {
-      unawaited(
-        result.then<void>((_) {}, onError: (Object _, StackTrace _) {}),
-      );
-    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -345,17 +392,7 @@ final class FespalierSentry extends FespalierTelemetry {
     if (first && (_reads?.appStartOwnsFirstScreen ?? false)) {
       return NavToken(NavKind.appStart);
     }
-    // No `waitForChildren` and no `autoFinishAfter`: Sentry starts no timer for this. It ends when
-    // the screen's data has arrived, or when the next navigation starts.
-    final tx = _hub.startTransactionWithContext(
-      SentryTransactionContext(
-        'navigate',
-        SentryKeys.uiLoad,
-        transactionNameSource: SentryTransactionNameSource.route,
-        origin: SentryKeys.navigationOrigin,
-      ),
-      bindToScope: true,
-    );
+    final tx = _backend.startScreen();
     return NavToken(NavKind.transaction, tx);
   }
 
@@ -368,13 +405,13 @@ final class FespalierSentry extends FespalierTelemetry {
   OpToken _startChild(TelemetryStart s, bool spans) {
     final screen = _screenOf(s);
     if (!spans) return OpToken(s, screen: screen);
-    ISentrySpan? parent;
+    SpanHandle? parent;
     if (screen != null) {
       // Observer mode and the app-start screen make no guard, redirect, deferred or image span:
       // those run before the transaction of the screen exists.
       parent = screen.kind == NavKind.transaction ? screen.tx : null;
     } else if (s.op != TelemetryOp.image && transactions) {
-      parent = _hub.getSpan();
+      parent = _backend.active();
     }
     return OpToken(
       s,
@@ -386,21 +423,19 @@ final class FespalierSentry extends FespalierTelemetry {
   OpToken _startData(TelemetryStart s, bool spans) {
     final screen = _screenOf(s);
     if (!spans) return OpToken(s, screen: screen);
-    ISentrySpan? parent;
+    SpanHandle? parent;
     if (screen == null) {
-      parent = transactions ? null : _hub.getSpan();
+      parent = transactions ? null : _backend.active();
     } else {
       parent = switch (screen.kind) {
         NavKind.transaction => screen.tx,
-        NavKind.observer => _hub.getSpan(),
+        NavKind.observer => _backend.active(),
         NavKind.appStart || NavKind.light => null,
       };
     }
-    final token = OpToken(
-      s,
-      screen: screen,
-      span: _child(parent, 'fespalier.data', s),
-    );
+    final token = _backend.runsInside
+        ? OpToken(s, screen: screen, runs: _runs(parent, 'fespalier.data', s))
+        : OpToken(s, screen: screen, span: _child(parent, 'fespalier.data', s));
     if (screen != null && screen.kind != NavKind.light && fullDisplay) {
       screen.openData++;
       token.counted = true;
@@ -411,37 +446,58 @@ final class FespalierSentry extends FespalierTelemetry {
 
   OpToken _startAction(TelemetryStart s, bool spans) {
     if (!spans) return OpToken(s);
-    final bound = _hub.getSpan();
-    if (bound != null && !bound.finished) {
-      return OpToken(s, span: _child(bound, 'fespalier.action', s));
+    final bound = _backend.active();
+    final open = bound != null && !bound.finished;
+    if (_backend.runsInside) {
+      // Made around the action's function, a segment of its own when no screen is open.
+      return OpToken(
+        s,
+        runs: _runs(open ? bound : null, 'fespalier.action', s, always: true),
+      );
     }
+    if (open) return OpToken(s, span: _child(bound, 'fespalier.action', s));
     // No screen is open: the action is a transaction of its own, so the HTTP calls it makes
     // have a parent.
     final site = s.site;
-    final tx = _hub.startTransactionWithContext(
-      SentryTransactionContext(
-        'action ${site?.file}#${site?.name}',
-        SentryKeys.actionOp,
-        transactionNameSource: SentryTransactionNameSource.component,
-        origin: SentryKeys.navigationOrigin,
-      ),
-      bindToScope: true,
-    );
+    final tx = _backend.startAction('action ${site?.file}#${site?.name}');
     _describeStart(tx, s);
     return OpToken(s, span: tx, ownsTransaction: true);
   }
 
   OpToken _startAuth(TelemetryStart s, bool spans) {
     if (!spans) return OpToken(s);
-    final bound = _hub.getSpan();
+    final bound = _backend.active();
     final parent = bound == null || bound.finished ? null : bound;
     return OpToken(s, span: _child(parent, 'fespalier.auth', s));
   }
 
+  /// How the span of [s] is made around the code it runs, as a child of [parent]; null when it has
+  /// no parent and [always] is false (a data load outside any screen makes no span). With
+  /// [always], no parent makes a segment of its own.
+  void Function(void Function(SpanHandle span))? _runs(
+    SpanHandle? parent,
+    String operation,
+    TelemetryStart s, {
+    bool always = false,
+  }) {
+    if (parent == null && !always) return null;
+    final startedAt = _backend.now();
+    return (inside) => _backend.runIn(
+      parent: parent,
+      op: operation,
+      description: _describe(s),
+      startedAt: startedAt,
+      inside: (span) {
+        _describeStart(span, s);
+        inside(span);
+      },
+    );
+  }
+
   /// A child of [parent] for [s], with what the start says; null when there is no parent.
-  ISentrySpan? _child(ISentrySpan? parent, String operation, TelemetryStart s) {
+  SpanHandle? _child(SpanHandle? parent, String operation, TelemetryStart s) {
     if (parent == null) return null;
-    final span = parent.startChild(operation, description: _describe(s));
+    final span = parent.child(operation, _describe(s));
     _describeStart(span, s);
     return span;
   }
@@ -464,33 +520,33 @@ final class FespalierSentry extends FespalierTelemetry {
   }
 
   /// The data every span of [s] starts with: the conventions' keys, never a value.
-  void _describeStart(ISentrySpan span, TelemetryStart s) {
+  void _describeStart(SpanHandle span, TelemetryStart s) {
     final site = s.site;
     final route = site?.route ?? s.route;
     final file = site?.file ?? s.file;
-    span.setData(SentryKeys.operation, s.op.name);
-    if (route != null) span.setData(SentryKeys.route, route);
-    if (file != null) span.setData(SentryKeys.file, file);
+    span.set(SentryKeys.operation, s.op.name);
+    if (route != null) span.set(SentryKeys.route, route);
+    if (file != null) span.set(SentryKeys.file, file);
     switch (s.op) {
       case TelemetryOp.data:
-        span.setData(SentryKeys.keyed, s.keyed);
+        span.set(SentryKeys.keyed, s.keyed);
       case TelemetryOp.action:
         final name = site?.name;
-        if (name != null) span.setData(SentryKeys.action, name);
+        if (name != null) span.set(SentryKeys.action, name);
       case TelemetryOp.auth:
         final step = s.authStep;
         final backend = s.authBackend;
         final trigger = s.authTrigger;
-        if (step != null) span.setData(SentryKeys.authOperation, step);
-        if (backend != null) span.setData(SentryKeys.authBackend, backend);
-        if (trigger != null) span.setData(SentryKeys.authTrigger, trigger);
-        span.setData(SentryKeys.authDpop, s.authDpop);
+        if (step != null) span.set(SentryKeys.authOperation, step);
+        if (backend != null) span.set(SentryKeys.authBackend, backend);
+        if (trigger != null) span.set(SentryKeys.authTrigger, trigger);
+        span.set(SentryKeys.authDpop, s.authDpop);
       case TelemetryOp.image:
         final width = s.imageWidth;
         final cdn = s.imageCdn;
-        if (cdn != null) span.setData(SentryKeys.imageCdn, cdn);
-        if (width != null) span.setData(SentryKeys.imageWidth, width);
-        span.setData(SentryKeys.imagePreload, s.imagePreload);
+        if (cdn != null) span.set(SentryKeys.imageCdn, cdn);
+        if (width != null) span.set(SentryKeys.imageWidth, width);
+        span.set(SentryKeys.imagePreload, s.imagePreload);
       // A custom operation's own attributes are never sent: only its name (the span's
       // description) and the operation.
       case TelemetryOp.navigate ||
@@ -515,6 +571,66 @@ final class FespalierSentry extends FespalierTelemetry {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // within
+
+  /// With `traceLifecycle: stream` (since 0.19.0), makes the span of a data load or an action here
+  /// and runs [body] inside it, so that the HTTP spans Sentry's own integrations make while it runs,
+  /// after an `await` too, are its children. It stays open until [end], which is the span's own
+  /// outcome and attributes; nothing here awaits [body]'s result. Anything else runs [body] as it
+  /// is.
+  @override
+  void within(Object? token, Object? Function() body) {
+    final runs = token is OpToken ? token.runs : null;
+    if (runs == null) {
+      body();
+      return;
+    }
+    try {
+      runs((span) {
+        (token as OpToken)
+          ..span = span
+          ..runs = null;
+        body();
+      });
+    } catch (_) {
+      // A failing SDK costs the span: core runs the body after this returns if it did not.
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // commit
+
+  /// Names the scope after the page [navigation] commits to (since 0.19.0), before that page's
+  /// `initState` and first `build`, so that an event from them says that page ([_name]). Nothing
+  /// else happens here: the page's breadcrumb comes with its first frame ([page]; a commit is not
+  /// yet a page the user saw, and a second commit before the frame replaces it), and what a
+  /// transaction measures, and its end, stay at [end]. The first commit comes while the `Router`
+  /// builds: this only sets the SDK's scope, synchronously, and fires and forgets what it returns.
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    if (navigation is! NavToken) return;
+    try {
+      final notFound = commit.outcome == TelemetryOutcome.notFound;
+      _name(navigation, notFound ? null : commit.route, notFound: notFound);
+    } catch (_) {
+      // A failing SDK costs the names, never the navigation.
+    }
+  }
+
+  /// Names [nav] after the page it shows, [route] (`navigate (not found)` when [notFound]): its
+  /// screen's transaction or segment ([ScreenSpan.named]) and the scope ([_nameScope]). It runs at
+  /// each commit (a second one before the frame renames: the last wins) and again at the end, with
+  /// the same route, which writes nothing new. With `traceLifecycle: stream`, a commit made while
+  /// any span is active (the span of a data load or an action around a `go()`, or an idle span of
+  /// Sentry's own: a traced tap, the app start) finds it active, so the scope's transaction is set
+  /// at the end, as before 0.19.0, and its tag at the commit.
+  void _name(NavToken nav, String? route, {required bool notFound}) {
+    nav.name = notFound ? 'navigate (not found)' : (route ?? 'navigate');
+    nav.tx?.named(nav.name);
+    _nameScope(nav, route);
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // end
 
   @override
@@ -536,15 +652,16 @@ final class FespalierSentry extends FespalierTelemetry {
     if (e.outcome == TelemetryOutcome.superseded) {
       // A newer navigation started before this one committed: it never showed a screen.
       if (tx != null) {
-        tx.setTag(SentryKeys.navigationOutcome, TelemetryOutcome.superseded);
-        _fire(tx.finish(status: const SpanStatus.cancelled()));
+        tx.tag(SentryKeys.navigationOutcome, TelemetryOutcome.superseded);
+        tx.finish(const SpanStatus.cancelled());
       }
       return;
     }
     final notFound = e.outcome == TelemetryOutcome.notFound;
     final route = notFound ? null : e.route;
-    nav.name = notFound ? 'navigate (not found)' : (route ?? 'navigate');
-    _nameScope(nav, route);
+    // Named at its commit already (since 0.19.0); again here, with the same route, which writes
+    // nothing new.
+    _name(nav, route, notFound: notFound);
     switch (nav.kind) {
       case NavKind.transaction:
         _endTransaction(nav, e);
@@ -571,18 +688,20 @@ final class FespalierSentry extends FespalierTelemetry {
   }
 
   /// Names the scope after the screen: its transaction, the tag `fespalier.route`, and the
-  /// OpenTelemetry trace of the navigation, so that every later event, a crash included, says
-  /// which screen it happened on and links to the trace that opened it.
+  /// OpenTelemetry trace of the navigation, so that every event from its commit on (since 0.19.0),
+  /// a crash and the new page's first frame included, says which screen it happened on and links
+  /// to the trace that opened it.
   void _nameScope(NavToken nav, String? route) {
     final trace = nav.trace;
-    _fire(
+    fire(
       _hub.configureScope((scope) {
-        final span = scope.span;
-        final ours = nav.tx != null && identical(span, nav.tx);
+        final ours = nav.tx?.boundTo(scope) ?? false;
         // Only a transaction that is ours, or none: never rename Sentry's own. Ours is renamed
         // whatever `routeTag` says (it is the screen's transaction); the scope keeps the name
         // only with `routeTag`.
-        if (ours || (routeTag && span == null)) scope.transaction = nav.name;
+        if (ours || (routeTag && _backend.unbound(scope))) {
+          scope.transaction = nav.name;
+        }
         if (routeTag) {
           _tag(scope, SentryKeys.route, route);
         } else if (ours) {
@@ -598,39 +717,33 @@ final class FespalierSentry extends FespalierTelemetry {
   /// changes it, since each call is told to the native SDK.
   static void _tag(Scope scope, String key, String? value) {
     if (scope.tags[key] == value) return;
-    _fire(value == null ? scope.removeTag(key) : scope.setTag(key, value));
+    fire(value == null ? scope.removeTag(key) : scope.setTag(key, value));
   }
 
   void _endTransaction(NavToken nav, TelemetryEnd e) {
     final tx = nav.tx!;
-    tx.setTag(SentryKeys.navigationOutcome, e.outcome);
+    tx.tag(SentryKeys.navigationOutcome, e.outcome);
     final kind = e.kind;
-    if (kind != null) tx.setTag(SentryKeys.navigationKind, kind);
+    if (kind != null) tx.tag(SentryKeys.navigationKind, kind);
     final trace = nav.trace;
     if (trace != null) {
       tx
-        ..setTag(SentryKeys.otelTraceId, trace.traceId)
-        ..setTag(SentryKeys.otelSpanId, trace.spanId);
+        ..tag(SentryKeys.otelTraceId, trace.traceId)
+        ..tag(SentryKeys.otelSpanId, trace.spanId);
     }
     final from = e.from;
-    if (from != null) tx.setData(SentryKeys.navigationFrom, from);
+    if (from != null) tx.set(SentryKeys.navigationFrom, from);
     tx
-      ..setData(SentryKeys.navigationRedirected, e.redirected)
-      ..setData(SentryKeys.navigationDepth, e.depth);
+      ..set(SentryKeys.navigationRedirected, e.redirected)
+      ..set(SentryKeys.navigationDepth, e.depth);
     final location = e.location;
     if (recordLocations && location != null) {
-      tx.setData(SentryKeys.urlPath, Uri.parse(location).path);
+      tx.set(SentryKeys.urlPath, Uri.parse(location).path);
     }
     final ok = e.outcome == TelemetryOutcome.ok;
     nav.shown = ok;
     if (ok) {
-      final ttid = tx.startChild(
-        SentryKeys.initialDisplayOp,
-        description: '${nav.name} initial display',
-        startTimestamp: tx.startTimestamp,
-      );
-      _fire(ttid.finish(status: const SpanStatus.ok()));
-      _measure(tx, SentryKeys.ttidMeasurement, ttid.endTimestamp);
+      tx.initialDisplay(nav.name);
     }
     if (!fullDisplay || nav.openData == 0 || !ok) {
       _displayed(nav);
@@ -642,16 +755,6 @@ final class FespalierSentry extends FespalierTelemetry {
     }
   }
 
-  /// Sets the measurement [name] of [tx]: the time from its start to [end].
-  void _measure(ISentrySpan tx, String name, DateTime? end) {
-    if (end == null) return;
-    tx.setMeasurement(
-      name,
-      end.difference(tx.startTimestamp).inMilliseconds,
-      unit: DurationSentryMeasurementUnit.milliSecond,
-    );
-  }
-
   /// The screen [nav] has its data (or never waited for any).
   void _displayed(NavToken nav) {
     if (identical(_waiting, nav)) _waiting = null;
@@ -661,7 +764,7 @@ final class FespalierSentry extends FespalierTelemetry {
       case NavKind.appStart || NavKind.observer:
         final display = nav.display;
         nav.display = null;
-        if (display != null) _fire(display.reportFullyDisplayed());
+        if (display != null) fire(display.reportFullyDisplayed());
       case NavKind.light:
         break;
     }
@@ -676,7 +779,7 @@ final class FespalierSentry extends FespalierTelemetry {
       op.done = true;
       final span = op.span;
       if (span != null) {
-        _fire(span.finish(status: const SpanStatus.deadlineExceeded()));
+        span.finish(const SpanStatus.deadlineExceeded(), failed: true);
       }
     }
     screen.open.clear();
@@ -691,33 +794,23 @@ final class FespalierSentry extends FespalierTelemetry {
     final tx = screen.tx;
     if (tx == null) return;
     if (fullDisplay && screen.shown) {
-      final span = tx.startChild(
-        SentryKeys.fullDisplayOp,
-        description: '${screen.name} full display',
-        startTimestamp: tx.startTimestamp,
-      );
-      _fire(
-        span.finish(
-          status: deadline
-              ? const SpanStatus.deadlineExceeded()
-              : const SpanStatus.ok(),
-        ),
-      );
-      if (!deadline) {
-        _measure(tx, SentryKeys.ttfdMeasurement, span.endTimestamp);
-      }
+      tx.fullDisplay(screen.name, deadline: deadline);
     }
-    _fire(tx.finish(status: const SpanStatus.ok()));
+    tx.finish(const SpanStatus.ok());
   }
 
   void _endOp(OpToken t, TelemetryEnd e) {
     if (t.done) return;
     t.done = true;
     final s = t.start;
+    // An operation that ended without `within` (an adapter's `begin` and `finish`): its span is
+    // made now, from its start to this end.
+    t.runs?.call((span) => t.span = span);
+    t.runs = null;
     final span = t.span;
     if (span != null) {
       _describeEnd(span, s, e);
-      _fire(span.finish(status: _status(s, e)));
+      span.finish(_status(s, e), failed: _failed(e));
     }
     if (e.outcome == TelemetryOutcome.error) _error(t, e);
     if (breadcrumbs) _opCrumb(t, e);
@@ -730,7 +823,7 @@ final class FespalierSentry extends FespalierTelemetry {
   }
 
   /// What an operation's end says, on its span: the outcome keys of the conventions.
-  void _describeEnd(ISentrySpan span, TelemetryStart s, TelemetryEnd e) {
+  void _describeEnd(SpanHandle span, TelemetryStart s, TelemetryEnd e) {
     final outcomeKey = switch (s.op) {
       TelemetryOp.guard || TelemetryOp.redirect => SentryKeys.guardDecision,
       TelemetryOp.data => SentryKeys.dataState,
@@ -741,21 +834,26 @@ final class FespalierSentry extends FespalierTelemetry {
       TelemetryOp.custom => SentryKeys.customResult,
       TelemetryOp.navigate => null,
     };
-    if (outcomeKey != null) span.setData(outcomeKey, e.outcome);
+    if (outcomeKey != null) span.set(outcomeKey, e.outcome);
     if (s.op != TelemetryOp.deferred &&
         s.op != TelemetryOp.image &&
         s.op != TelemetryOp.navigate) {
-      span.setData(SentryKeys.isAsync, e.isAsync);
+      span.set(SentryKeys.isAsync, e.isAsync);
     }
     final location = e.location;
     if (recordLocations &&
         location != null &&
         (s.op == TelemetryOp.guard || s.op == TelemetryOp.redirect)) {
-      span.setData(SentryKeys.guardLocation, Uri.parse(location).path);
+      span.set(SentryKeys.guardLocation, Uri.parse(location).path);
     }
     final status = e.imageStatus;
-    if (status != null) span.setData(SentryKeys.imageStatus, status);
+    if (status != null) span.set(SentryKeys.imageStatus, status);
   }
+
+  /// Whether an operation's end is a failure, which is all a streamed span says: a [FieldErrors]
+  /// is a validation answer, not a failure.
+  static bool _failed(TelemetryEnd e) =>
+      e.outcome == TelemetryOutcome.error && e.error is! FieldErrors;
 
   /// The span status an operation's end maps to.
   static SpanStatus _status(TelemetryStart s, TelemetryEnd e) {
@@ -830,7 +928,7 @@ final class FespalierSentry extends FespalierTelemetry {
     final trace = t.trace;
     // `withScope` runs on a clone, so the global scope keeps no per-error tags. The callback runs
     // before `captureException` first suspends, so what it sets is what is sent.
-    _fire(
+    fire(
       _hub.captureException(
         ThrowableMechanism(
           Mechanism(type: 'fespalier.${s.op.name}', handled: true),
@@ -866,7 +964,7 @@ final class FespalierSentry extends FespalierTelemetry {
               });
           }
           final span = t.span;
-          if (span != null) scope.span = span;
+          if (span != null) span.attachTo(scope);
         },
       ),
     );
@@ -925,7 +1023,7 @@ final class FespalierSentry extends FespalierTelemetry {
     }
   }
 
-  void _crumb(Breadcrumb breadcrumb) => _fire(_hub.addBreadcrumb(breadcrumb));
+  void _crumb(Breadcrumb breadcrumb) => fire(_hub.addBreadcrumb(breadcrumb));
 
   // ---------------------------------------------------------------------------------------------
   // page

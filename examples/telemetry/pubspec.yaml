@@ -15,20 +15,21 @@ dependencies:
     path: ../../packages/fespalier_otel
   fespalier_sentry:
     path: ../../packages/fespalier_sentry
-  # Not on pub.dev: a git dependency, pinned to a commit (v0.5.0). It is a Flutter plugin (native
-  # crash capture on Android and iOS). It depends on otel_go_router, which declares
-  # `go_router: ^17.0.0`, so this is the one example on go_router 17.
+  # Not on pub.dev: a git dependency, pinned to the commit of otel_zone v0.8.1 (on the dartastic
+  # rc.4 line, and its runGuarded runs on the web). It is a Flutter plugin (native crash capture on
+  # Android and iOS). Its otel_go_router accepts go_router 17 and 18, so this example resolves
+  # go_router 18 like the others.
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
-      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+      ref: 64c4661ac6cd09718141864d528892916677cc38
   # Sentry's SDK: fespalier_sentry re-exports nothing of it, and `SentryFlutter.init` is the app's.
   # 9.26.0 is the oldest the package supports (it reads `enableStandaloneAppStartTracing`).
   sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
   # The SDK's in-memory exporter, which the tests read the spans from.
-  dartastic_opentelemetry: ^1.1.0-beta.15
+  dartastic_opentelemetry: ^1.1.0-beta.17
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

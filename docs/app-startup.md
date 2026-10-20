@@ -18,7 +18,7 @@ lib/app/
   splash.dart    shown while an async startup() or ready() runs, and when either fails
 ```
 
-All three are optional. With none of them, `main: auto` (the default) writes nothing and your own `main()` keeps working. Any one of them makes `fsp` write `lib/app.main.g.dart`, and so does an [`adapters:`](adapters.md) list (since 0.9.0). `app.g.dart` is the same bytes whether or not they exist.
+All three are optional. With none of them, `main: auto` (the default) writes nothing and your own `main()` keeps working. Any one of them makes `fsp` write `lib/app.main.g.dart`, and so do an [`adapters:`](adapters.md) list (since 0.9.0) and `otel: true` (since 0.19.0). `app.g.dart` is the same bytes whether or not they exist.
 
 **`app.dart`** is a view file: one public widget class (of any kind: a `ConsumerWidget` to read a
 theme-mode provider is the point) or a function `Widget app({required GoRouter router})`. It gets the
@@ -88,7 +88,7 @@ List<NavigatorObserver> get routerObservers => [];
 Duration? retry(int retryCount, Object error) => null;
 ```
 
-`startup.dart` needs at least one of these exports. `startup()` runs **before the router exists**: the router is built once, after `startup()`, and disposed with the app. That is also why `usePathUrlStrategy()` belongs in `startup()`.
+`startup.dart` needs at least one of these exports. `startup()` runs **before the router exists**: the router is built once, after `startup()`, and disposed with the app (a hot reload in a debug build may swap its route table: [CLI reference](cli.md#a-hot-reload-after-a-regeneration), since 0.19.0). That is also why `usePathUrlStrategy()` belongs in `startup()`.
 
 **`ready()` and `attach()` (since 0.12.0): work on the app's own container.** `startup()` runs before any `ProviderContainer` exists, so it can only return overrides. An app that must `await container.read(storeProvider.future)` before the first route (a native init, a store to open, a session to restore), read providers eagerly, or install a `container.listen` that lives as long as the app, exports `ready()`; one that needs the router as well (a notification tap, a post-frame step) exports `attach()`. Each is optional and independent of the other, and of `startup()`:
 
@@ -191,15 +191,20 @@ No timer is involved. A `startup()` that throws is reported with `FlutterError.r
 `retry`. Without a `splash.dart` it shows a plain "Couldn't start the app." with the error (in debug
 builds) and "Try again".
 
-**`zone()` has to work on the web.** It runs on every platform, so a zone implementation that needs `dart:io` or an isolate (a crash reporter's `runGuarded`, say) must behave on the web as well. The telemetry SDK `otel_zone` does not yet: its `runGuarded` never runs its body in a browser, which leaves the app blank. Until that is fixed, write this (`kIsWeb` is in `package:flutter/foundation.dart`):
+**`zone()` has to work on the web.** It runs on every platform, so a zone implementation that needs `dart:io` or an isolate (a crash reporter's `runGuarded`, say) must behave on the web as well. The telemetry SDK `otel_zone` does since v0.8.1, so its `runGuarded` can wrap `main()` as it is. An older `otel_zone` does not run its body in a browser, which leaves the app blank: there, write this (`kIsWeb` is in `package:flutter/foundation.dart`):
 
 ```dart
-Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observability.runGuarded(body);
+Future<void> zone(Future<void> Function() body) {
+  if (kIsWeb) return body();
+  return observability.runGuarded(body);
+}
 ```
+
+Since 0.19.0, `otel: true` writes the `runGuarded` zone for you, on the web too, in the generated `main()` (it needs `otel_zone` v0.8.1 or later: [OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main)); a `zone()` of your own replaces it.
 
 **`main:` in the pubspec** (see [Config](configuration.md#main)) is `auto`, `generated` or `manual`. With `manual`, `fsp` writes no `main()` and reads none of the three files (each one that is there gets a warning saying so). Use it for an app that keeps its own `main()` or its own `GoRouter`, or when a file called `app.dart` at the root of the app folder is something else. Since 0.11.0 `adapters:` still works with it: `lib/app.g.dart` defines `AppAdapters`, which your `main()` calls ([With `main: manual`](adapters.md#with-main-manual-appadapters)).
 
-**What is generated.** `AppMain` has three members:
+**What is generated.** `AppMain` has three members, and a fourth with `otel: true` (since 0.19.0):
 
 - `AppMain.run()`: what `lib/main.dart` calls. Inside `zone()` (if any): the binding, the code of the
   [deferred routes](navigation.md#deferred-routes-a-pages-code-on-demand) (loaded before the first frame,
@@ -208,6 +213,7 @@ Future<void> zone(Future<void> Function() body) => kIsWeb ? body() : observabili
   `startup()`, `splash.dart`, then a `ProviderScope` with the overrides, observers and retry around
   `app.dart` (with a `ready()`, a container the gate makes and hosts instead, see above). `router` builds the router (default: app.dart's `router()`, else `AppRoutes.router`).
 - `AppMain.app(router)`: `app.dart`'s widget around a router, for tests (see [Testing](testing.md)).
+- `AppMain.observability` (since 0.19.0, with `otel: true` only): the OpenTelemetry SDK that `run()` starts before the app, see [OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main).
 
 **From a 0.7 app.** Nothing changes until you opt in. To move the code of a hand-written `main()` (the full upgrade notes are in [Migration](migration.md#081)):
 

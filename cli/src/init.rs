@@ -77,7 +77,7 @@ pub fn run(project: &Path) -> Result<()> {
     if !pubspec.has_dependency {
         next("Add the dependency to pubspec.yaml, then run `flutter pub get`:");
         eprintln!(
-            "\n   dependencies:\n     fespalier:\n       git:\n         url: https://github.com/fespalier/fespalier\n         path: packages/fespalier\n         ref: v0.17.1" // x-release-please-version
+            "\n   dependencies:\n     fespalier:\n       git:\n         url: https://github.com/fespalier/fespalier\n         path: packages/fespalier\n         ref: v0.20.0" // x-release-please-version
         );
     }
     if cfg.main == MainMode::Manual {
@@ -104,7 +104,7 @@ pub fn run(project: &Path) -> Result<()> {
         );
     }
     next(
-        "Run `fsp dev` to start the app: it regenerates on every save and hot restarts (or `fsp watch` next to `flutter run`).",
+        "Run `fsp dev` to start the app: it regenerates on every save, and hot reloads or hot restarts the app (or `fsp watch` next to `flutter run`).",
     );
     Ok(())
 }

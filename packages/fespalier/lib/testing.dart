@@ -22,6 +22,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
 import 'src/deferred.dart';
+import 'src/page_motion.dart';
 import 'src/telemetry.dart';
 
 /// Riverpod's `Override`, the type of the list `overrides` and `pumpRouter(overrides:)` take
@@ -164,6 +165,104 @@ String currentLocation(WidgetTester tester) {
   return router.routeInformationProvider.value.uri.toString();
 }
 
+/// The route around the widget [of] finds, or the root navigator's top route without [of].
+///
+/// `popUntil` with a predicate that accepts the first route it is shown pops nothing: it is the
+/// public way to read the top of a navigator. A route that is already popping is not the top.
+Route<dynamic> _route(WidgetTester tester, Finder? of) {
+  if (of != null) {
+    final found = of.evaluate().toList();
+    if (found.length != 1) {
+      throw StateError(
+        'motionOf and pumpTransition need `of` to find exactly one widget, '
+        '${of.describeMatch(Plurality.many)} found ${found.length}',
+      );
+    }
+    final route = ModalRoute.of(found.single);
+    if (route == null) {
+      throw StateError(
+        '${of.describeMatch(Plurality.many)} is not inside a route',
+      );
+    }
+    return route;
+  }
+  late Route<dynamic> top;
+  tester.state<NavigatorState>(find.byType(Navigator).first).popUntil((route) {
+    top = route;
+    return true;
+  });
+  return top;
+}
+
+/// Which motion the top page plays (since 0.19.0): the [PageMotion] its `Transitions.*` call
+/// tagged it with, or null for a page `Transitions` did not build (go_router's own, a
+/// `MaterialPage` of the app's) and for a route with no page (`showDialog`).
+///
+/// It reads the top route of the app's root navigator. Pass [of], a finder for a widget on the
+/// page you mean, to read that page's route instead (a page inside a tab or a layout, which a
+/// nested navigator holds).
+///
+/// ```dart
+/// await pumpRouter(tester, AppRoutes.router(initialLocation: '/photo/1'));
+/// expect(motionOf(tester), PageMotion.dialog);
+/// ```
+PageMotion? motionOf(WidgetTester tester, {Finder? of}) {
+  final settings = _route(tester, of).settings;
+  return settings is Page<dynamic> ? PageMotion.of(settings) : null;
+}
+
+/// Runs the transition the last navigation started to its end, or to a fraction of it (since
+/// 0.19.0), with no `pumpAndSettle`: [at] is how far into the transition to stop, `1` (the
+/// default) for the end and `0.5` for the middle, of the route's `transitionDuration` (its
+/// `reverseTransitionDuration` while it is popping).
+///
+/// It pumps once, so that the route exists and its animation starts, then pumps `at` times the
+/// duration, so the clock is the test's and the frame it ends on is exact (the end is one
+/// millisecond past the duration, where Flutter's controller reports `completed`). Anything else
+/// the page schedules is left alone, which is the point of a mid-flight assertion.
+///
+/// The route is the root navigator's top route, or the one around the widget [of] finds. A
+/// route that is popping is no longer the top: pass [of] for the page that is leaving. A route
+/// that does not animate (a plain `Route`) only gets the first pump.
+///
+/// ```dart
+/// router.go('/products/2');
+/// await pumpTransition(tester, at: 0.5); // halfway: the route is still animating
+/// expect(find.byType(FadeTransition), findsWidgets);
+/// ```
+///
+/// Under `FakeAccessibilityFeatures(disableAnimations: true)` Flutter plays a transition at a
+/// twentieth of its duration, so `at: 0.5` lands after the end: use a small fraction such as
+/// `at: 0.02`.
+///
+/// Call it right after the navigation, once per transition: it starts from the transition's
+/// first frame. To finish a transition it stopped halfway, `pumpAndSettle`.
+Future<void> pumpTransition(
+  WidgetTester tester, {
+  double at = 1,
+  Finder? of,
+}) async {
+  assert(at >= 0 && at <= 1, 'at is a fraction of the transition: 0 to 1');
+  await tester.pump();
+  // go_router before 17.4 builds the page of a `go` a frame late: look once more before
+  // reporting that `of` finds nothing.
+  if (of != null && of.evaluate().isEmpty) await tester.pump();
+  final route = _route(tester, of);
+  if (route is! TransitionRoute<dynamic>) return;
+  final reversing = route.animation?.status == AnimationStatus.reverse;
+  final duration = reversing
+      ? route.reverseTransitionDuration
+      : route.transitionDuration;
+  assert(
+    duration == Duration.zero || (route.animation?.isAnimating ?? false),
+    'the route pumpTransition found is not animating: a page inside a layout '
+    'or a tab is on a nested navigator, so pass `of:` a finder for a widget on it',
+  );
+  await tester.pump(
+    at == 1 ? duration + const Duration(milliseconds: 1) : duration * at,
+  );
+}
+
 /// A [FespalierTelemetry] that keeps what it is told, as lines a test can compare (since 0.8.1).
 ///
 /// Install it with `FespalierTelemetry.install(recording)` in `setUp` and
@@ -181,12 +280,13 @@ String currentLocation(WidgetTester tester) {
 /// The grammar of a line:
 ///
 /// ```text
-/// #n start OP WHAT [keyed] [parent=#m]
+/// #n start OP WHAT [keyed] [attempt=N] [parent=#m]
 /// #n start navigate LOCATION [source=S]
 /// #n start auth STEP backend=NAME [trigger=T] [dpop]
 /// #n start image CDN w=WIDTH [preload]
-/// #n end OP OUTCOME [async] [-> LOCATION] [status=N] [error=TEXT]
+/// #n end OP OUTCOME [async] [-> LOCATION] [status=N] [source=S] [rolled_back=B] [invalid] [error=TEXT]
 /// #n end navigate OUTCOME [route=P] [kind=K] [from=P] [redirected] [depth=N] [at=LOCATION]
+/// #n commit OUTCOME [route=P]
 /// #n page enter|focus|leave PATTERN
 /// #n within enter|exit
 /// ```
@@ -201,16 +301,30 @@ String currentLocation(WidgetTester tester) {
 /// a failed image's end line has `status=N` when the error carried an HTTP status. It never has
 /// the URL.
 ///
+/// Since 0.18.0 a data start line says `attempt=N` when the load is the Nth try of a retry (N above
+/// 1; a first try has none), a data end line says `source=cache` or `source=fetch` for a
+/// `dataCache` provider, and an action end line says `rolled_back=true` or `rolled_back=false` when
+/// an `optimistic()` patch was shown, and `invalid` when the run ended with `FieldErrors`.
+///
 /// With [recordWithin] (since 0.9.0) the recorder also writes `within enter` and `within exit`
 /// around what runs inside a `data()` or an action ([FespalierTelemetry.within]), so a test can
 /// see that a call ran within its operation: add a line to [log] from the code under test, and
 /// the order says it. It is off by default, so a log written before 0.9.0 reads the same.
+///
+/// With [recordCommits] (since 0.19.0) the recorder writes `#n commit ok route=P` (or
+/// `#n commit not_found`) when a navigation commits, before its `page` lines and its end: the
+/// page the router puts on screen, before that page is built. The end's `route` is the last
+/// commit's. It is off by default, so a log written before 0.19.0 reads the same.
 final class RecordingTelemetry extends FespalierTelemetry {
-  /// Creates a recorder with an empty [log]. [recordWithin] adds the `within` lines.
-  RecordingTelemetry({this.recordWithin = false});
+  /// Creates a recorder with an empty [log]. [recordWithin] adds the `within` lines and
+  /// [recordCommits] the `commit` lines.
+  RecordingTelemetry({this.recordWithin = false, this.recordCommits = false});
 
   /// Whether `within enter` and `within exit` lines are written (since 0.9.0).
   final bool recordWithin;
+
+  /// Whether `commit` lines are written, one for each commit of a navigation (since 0.19.0).
+  final bool recordCommits;
 
   /// What happened, in order.
   final List<String> log = [];
@@ -236,7 +350,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
         '${start.imageCdn} w=${start.imageWidth}'
             '${start.imagePreload ? ' preload' : ''}',
       TelemetryOp.custom => _custom(start.name, start.attributes),
-      _ => '${start.site?.file}${start.keyed ? ' keyed' : ''}',
+      _ =>
+        '${start.site?.file}${start.keyed ? ' keyed' : ''}'
+            '${(start.dataAttempt ?? 1) > 1 ? ' attempt=${start.dataAttempt}' : ''}',
     };
     final parent = start.parent == null ? '' : ' parent=#${start.parent}';
     log.add('#$id start ${start.op.name} $what$parent');
@@ -260,6 +376,9 @@ final class RecordingTelemetry extends FespalierTelemetry {
         if (end.location != null) 'at=${end.location}',
       ],
       if (end.imageStatus != null) 'status=${end.imageStatus}',
+      if (end.dataSource != null) 'source=${end.dataSource}',
+      if (end.actionRolledBack != null) 'rolled_back=${end.actionRolledBack}',
+      if (end.actionInvalid) 'invalid',
       if (op == TelemetryOp.custom &&
           end.attributes != null &&
           end.attributes!.isNotEmpty)
@@ -272,6 +391,16 @@ final class RecordingTelemetry extends FespalierTelemetry {
   @override
   void page(Object? navigation, TelemetryPage page) {
     log.add('#$navigation page ${page.kind.name} ${page.route}');
+  }
+
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    if (!recordCommits) return;
+    final route = commit.route;
+    log.add(
+      '#$navigation commit ${commit.outcome}'
+      '${route == null ? '' : ' route=$route'}',
+    );
   }
 
   @override

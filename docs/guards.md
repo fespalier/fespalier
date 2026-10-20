@@ -88,12 +88,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_flags:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_flags
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -211,12 +211,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_biometrics:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_biometrics
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -253,10 +253,69 @@ FilledButton(
 )
 ```
 
+Since 0.19.0 that button is also ready-made: [A ready-made unlock page](#a-ready-made-unlock-page).
+
 - **`unlock(reason)` is single-flight and never throws.** While a sheet is up, a second call (a double tap, two buttons) gets the same `Future`. A prompt that throws is `BiometricOutcome.failed`. Anything but a success leaves the state as it was before the call.
 - **The guard watches only whether the app is unlocked.** A prompt coming and going (`Unlocking`) and a second `Unlocked` stamp do not run it again, so a re-run is never a re-prompt; a `lock()` or a relock does run it, and the router leaves the page. A prompt over an unlocked page (an action's) does not send the page away: `Unlocking` carries whether the app was unlocked, and the guard keeps its answer.
 - **`maxAge:`** also requires the unlock to be younger than that by `package:clock`. It is evaluated when the guard runs or when `isFresh(maxAge:)` is asked, that is at the next navigation (or any re-run of the guard), never by itself: there is no timer, so a page left open stays open.
 - **`biometricAvailable`** is a `FutureProvider<bool>` for the unlock page, which can offer "Use your passcode" instead of a button that cannot work. It asks the prompt once: one that throws is an `AsyncError`, and since 0.16.0 nothing retries it (Riverpod's default re-asked the plugin up to ten times over about 50 seconds, with a `Timer`); `ref.invalidate(biometricAvailable)` asks again.
+
+### A ready-made unlock page
+
+Since 0.19.0, `package:fespalier_biometrics/material.dart` has `BiometricLockScreen`, the body of the unlock page above with the button, the words and the "cannot ask" case written once. It is the only library of the package that imports Material, a library-boundary rule as in `fespalier_adaptive`: `fespalier_biometrics.dart` and `lib/src/` import none, so an app that draws its own page builds on a model with no widget set in it.
+
+```dart
+// lib/app/unlock/page.dart
+BiometricLockScreen(
+  reason: 'Unlock your vault', // what the platform's sheet says
+  onUnlocked: () => context.go(returnTo(from)),
+  title: const Text('Vault'), // optional
+  unavailable: (context) => const Text('Use your passcode'), // optional: shown instead of the button
+  messages: const BiometricLockScreenMessages(unlock: 'Deverrouiller'), // optional: another language
+)
+```
+
+- **It prompts when the button is tapped and never otherwise.** Not in `build`, because a rebuild is never a prompt, and not after the first frame either: the package schedules no frame and starts no timer. A double tap is one sheet (`unlock()` is single-flight) and one `onUnlocked`.
+- **The button is disabled while a sheet is up.** A `failed` try shows `messages.failed` ("Not recognised. Try again."), a `lockedOut` one `messages.lockedOut`, and a `cancelled` one nothing, because the person chose it; the button stays for another try.
+- **`unavailable`** replaces the button when `biometricAvailable` answers `false`, or when a tap ends `unavailable`; without a builder it shows `messages.unavailable` as a `Text`. While the answer is still pending, or if the plugin threw, the button stays and a tap reports what happened.
+- **It opens no dialog, route, menu, sheet or snack bar.** The platform's own sheet is the prompt.
+- **Rejected on purpose: a `BiometricGate` that overlays the whole app when it is locked.** It would be a second way to say "locked" beside the guard, and a subtree parked under an overlay keeps its state, and so its secrets, in memory.
+
+**To ask as soon as the page opens**, use the unlock folder's own [`observe.dart`](observability.md#route-lifecycle-observedart) `onEnter`, which fespalier runs after the frame and never in `build`. It sits in the same `lib/app/unlock/` folder as the page the guard redirects to, and it **replaces** the tap-only page above: the hook prompts on every entry, so a redirect to the unlock page asks. A hook has no `BuildContext`, so the page leaves when the app is unlocked, whoever asked:
+
+```dart
+// lib/app/unlock/observe.dart
+void onEnter(Ref ref) {
+  if (ref.read(biometricUnlock) is Locked) {
+    ref.read(biometricUnlock.notifier).unlock('Unlock your vault');
+  }
+}
+```
+
+```dart
+// lib/app/unlock/page.dart
+class UnlockPage extends ConsumerWidget {
+  const UnlockPage({super.key, this.from});
+
+  final String? from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(biometricUnlock, (_, next) {
+      if (next is Unlocked) context.go(returnTo(from));
+    });
+    return const BiometricLockScreen(reason: 'Unlock your vault', onUnlocked: _stay);
+  }
+}
+
+void _stay() {} // the listener above leaves the page
+```
+
+- **The screen shows the outcome of a prompt it started.** A prompt the hook started that ends `failed`, `lockedOut` or `unavailable` shows no message and does not switch to the `unavailable` builder; the button is the way to try again, and a tap during the hook's sheet joins it (`unlock()` is single-flight), so it is still one sheet.
+- **Built already unlocked** (a URL visit), the screen shows the button and a tap prompts again (`Unlocking(wasUnlocked: true)`); the hook above skips an unlocked app.
+- **After a relock** the guard sends the person to the unlock page and the hook prompts right then; whether iOS accepts a prompt at that moment is unchecked, like the cold start.
+
+Unchecked on a device: an `onEnter` prompt on a cold start and right after a relock on resume (iOS may refuse a prompt while the app is not yet active), the grace with the sheet hiding the app, and VoiceOver and TalkBack on the screen.
 
 ### Actions that ask again
 
@@ -280,6 +339,62 @@ biometricPolicy.overrideWithValue(const BiometricPolicy(resumeGrace: Duration.ze
 **The default grace is 10 seconds, and that is a trade-off.** The platform's sheet and some system overlays can hide the app and show it just after the sheet's answer, so with `Duration.zero` the sheet could undo its own unlock. The price is a window of 10 seconds after each unlock in which putting the app in the background and bringing it back asks nothing: on a borrowed phone, that is the time someone has. An app that guards something worth more sets a shorter grace, or zero, and checks on a device that the platform's sheet does not lock it. Switching apps through the iOS app switcher without the app being hidden is not a return either. A return while a sheet is up never drops the prompt, and one past the grace still relocks when the sheet ends without a success (`persistAcrossBackgrounding`). A clock set back counts as expired, so winding the clock back does not keep an unlock. Locking does not clear the data providers that loaded a secret; invalidate them when `biometricUnlock` goes to `Locked` if that matters.
 
 Each prompt is reported as one `fespalier.biometrics.prompt` operation with `fespalier.biometrics.result` set to the outcome's name, to an installed [telemetry](observability.md#telemetry) sink. Never the reason text.
+
+### Idle lock
+
+Since 0.19.0 an app can lock itself after a stretch without a touch, so a phone left unlocked on a table does not keep the vault on screen. It is off by default (`idleTimeout` is null), and the package still starts no timer: **the app fires a ticker, and the package measures time**.
+
+```dart
+// lib/app/startup.dart: lock after two minutes without a touch or a hardware key
+biometricPolicy.overrideWithValue(const BiometricPolicy(idleTimeout: Duration(minutes: 2))),
+```
+
+Three things do the work, and each reads `clock.now()`:
+
+- **Activity.** Put `BiometricActivity` in `MaterialApp.router(builder: (context, child) => BiometricActivity(child: child!))`. Every pointer down, pointer signal (a mouse wheel), trackpad pan or zoom start and hardware key event that reaches it calls `BiometricUnlock.touch()`, which writes a field and not state, so a touch rebuilds nothing. Key events are seen only when a widget below holds the focus, and they are never handled here. **Typing on a soft keyboard is not activity**: it reaches Flutter through `TextInput`, not as key events, so a long message typed for `idleTimeout` would be locked on the next tick. A text field that people type in for a while tells the unlock:
+
+  ```dart
+  TextField(onChanged: (_) => ref.read(biometricUnlock.notifier).touch())
+  ```
+
+  The idle age counts from the later of the unlock and the last touch; a clock set back counts as idle, like the grace.
+
+- **The ticker.** `biometricIdleTicker` is a signal that never fires by itself, the shape of `fespalier_cratestack`'s `syncTicker`. The app fires it from its own `Timer.periodic`, `ref.read(biometricIdleTicker.notifier).fire()`, at most `idleTimeout / 4` apart and **stopped while the app is hidden**; on a tick `BiometricUnlock` goes to `Locked` when the unlock has been idle for `idleTimeout`, and the guard sends the person to the unlock page. The period, the pause and the test (`fire()`) are the app's, which is why core and this package stay timer-free. The lock waits for the first tick after the limit, so any setup locks up to one period late; a period of at most `idleTimeout / 4` bounds that. The fespalier-guards skill has the ticker as a compiled recipe.
+- **The first touch after the limit.** When the limit has already passed, `BiometricActivity` **absorbs** the next touch: it is hit-tested to a box above the page and not to the page, so the button under the finger is not pressed, and it locks. While the unlock is idle, mouse hover effects and cursors on the page drop out until the next click, and the first touch is absorbed on a page that no guard covers too (it locks; the page stays where it is). This is time-based, so it is right even when the ticker is late or the app has none (the idle lock then locks on the first touch). Pointer routes are fixed when a touch is hit-tested, so locking from a pointer-down callback alone would let that touch through.
+
+`requireUnlocked` and `isFresh` also treat an unlock that has been idle for `idleTimeout` as locked, so the next navigation lands on the unlock page with no tick at all. `isIdle()` answers the same question for your own code. A touch that comes after the limit never brings the unlock back, and a tick during a prompt keeps the prompt; a lock that was due applies when the prompt ends without a success.
+
+Use a positive `idleTimeout`; `BiometricUnlock` asserts it in debug builds.
+
+Unchecked on a device: the app's periodic timer while the app is hidden, the first touch absorbed on a real screen, and a hardware keyboard.
+
+### Secrets behind the biometric
+
+Since 0.19.0 a value the person must unlock to read (a card number, a recovery phrase, a token) can be kept behind the biometric. **The gate is the keystore's**, not Dart's: a value merely hidden behind `unlock()` is plain data in memory or on disk, readable by any code that skips the guard. An item written with the OS's access control cannot be decrypted without the check: iOS asks as part of the keychain read, and Android's key is created to require the person's presence. So the package depends on no plugin: you write a `BiometricSecrets` once (the `flutter_secure_storage` recipe in the fespalier-guards skill is about 60 lines), and `biometricSecrets.overrideWithValue(...)` in `startup()` gives it to the app. Unconfigured, reading `biometricSecrets` throws a `StateError` that says so.
+
+```dart
+// in an event handler (never in build or a guard)
+final secret = await ref.read(biometricUnlock.notifier).readSecret('card', 'Show the card number');
+switch (secret) {
+  case SecretFound(:final value):
+    showCard(value);
+  case SecretMissing():
+    askForTheCardAgain();
+  case SecretRefused(:final outcome):
+    showWhy(outcome);
+}
+```
+
+- `readSecret(key, reason)` answers `SecretFound(value)`, `SecretMissing()` (nothing stored, or the keystore made the item unreadable, such as an iOS item bound to `biometryCurrentSet` after a new finger was enrolled) or `SecretRefused(outcome)` with the same `BiometricOutcome` as a prompt. It never throws for a refusal, and a store that throws is `SecretRefused(failed)`. `writeSecret(key, value, reason)` answers a `BiometricOutcome`, and `deleteSecret(key)` removes one (it needs no sheet). A store that fails makes `deleteSecret`'s `Future` fail (the secret may still be there): a failed delete at sign-out must not be silent. `SecretFound.toString()` hides the value.
+- **One sheet at a time.** A read that comes while `unlock()`'s sheet is up waits for it (and the other way round), two reads of one key share one `Future` and one sheet, and reads of two keys are two sheets in order. No timer is involved: the package keeps a line of `Future`s. An `unlock()` that queues behind a read's sheet is `Unlocking` from the call, so a lock screen's button is disabled for the whole read sheet. **A store must always answer**: one that never does blocks every later `unlock()` and secret operation until the app restarts, because the package may not time it out.
+- **A read does not unlock the app.** The state stays `Locked` (or whatever it was) and tells no listener: Android's `biometricOrDeviceCredential` accepts a PIN, and a read is consent to one value, not proof that the owner is holding the phone. Unlock first (`unlock()`) when the page needs it.
+- **The value goes to the caller only.** No provider holds it, and telemetry never sees it. `lock()` leaves stored secrets alone, so delete an account's secrets at sign-out.
+
+Each operation is one `fespalier.biometrics.secret` operation with `fespalier.biometrics.secret_op` (`read`, `write` or `delete`) and `fespalier.biometrics.result` (`found`, `missing`, `success`, `cancelled`, `failed`, `lockedOut` or `unavailable`) to an installed [telemetry](observability.md#telemetry) sink: constants only, never the key, the value, the reason or the store's error (its text can name the key). A store that threw ends as `error` without the error object.
+
+In tests, `FakeBiometricSecrets` (a stored map, an outcomes queue, `reads`, `writes` and `deletes` counts, `hold()` and `release()`) goes in with `biometricTestOverrides(prompt, secrets: fake)`.
+
+Unchecked on a device: Face ID, Touch ID and fingerprint reads, cancel and lockout, a newly enrolled finger with `biometryCurrentSet`, and Android `strongBiometricOnly` against `biometricOrDeviceCredential`.
 
 ### Testing an unlock
 

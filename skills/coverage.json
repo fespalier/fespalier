@@ -280,7 +280,12 @@
         "docs/troubleshooting.md#Things to know",
         "docs/troubleshooting.md#Known limitations",
         "docs/troubleshooting.md#Symptoms",
-        "kind:leave.dart"
+        "kind:leave.dart",
+        "docs/configuration.md#otel",
+        "cli/src/otel.rs",
+        "packages/fespalier/lib/src/routes_reload.dart",
+        "cli/src/reload.rs",
+        "docs/cli.md#A hot reload after a regeneration"
       ]
     },
     "fespalier-routing": {
@@ -372,7 +377,18 @@
         "kind:leave.dart",
         "docs/navigation.md#Leaving a page: `leave.dart`",
         "packages/fespalier/lib/src/leave.dart",
-        "cli/templates/new/leave.dart.jinja"
+        "cli/templates/new/leave.dart.jinja",
+        "docs/launch.md",
+        "docs/launch.md#Install",
+        "docs/launch.md#Configure",
+        "docs/launch.md#Mapping an action",
+        "docs/launch.md#Cold start and taps",
+        "docs/launch.md#Widgets and platform links",
+        "docs/launch.md#Testing",
+        "packages/fespalier_launch/README.md",
+        "packages/fespalier_launch/lib/fespalier_launch.dart",
+        "packages/fespalier_launch/lib/fespalier_adapter.dart",
+        "packages/fespalier_launch/lib/testing.dart"
       ]
     },
     "fespalier-data": {
@@ -438,6 +454,8 @@
         "docs/data.md#A Rust core's changes: fespalier_frb",
         "packages/fespalier_frb/README.md",
         "packages/fespalier_frb/lib/fespalier_frb.dart",
+        "docs/data.md#Decoding a core's events: `ChangeCodec`",
+        "packages/fespalier_frb/lib/src/codec.dart",
         "docs/data.md#Providers per page instance: fespalier_riverpod",
         "packages/fespalier_riverpod/README.md",
         "packages/fespalier_riverpod/lib/fespalier_riverpod.dart",
@@ -496,7 +514,10 @@
         "config:scroll_restoration",
         "packages/fespalier/lib/src/platform_page.dart",
         "packages/fespalier/lib/src/tab_options.dart",
+        "packages/fespalier/lib/src/page_motion.dart",
+        "packages/fespalier/lib/src/reduced_motion.dart",
         "packages/fespalier/lib/src/transitions.dart",
+        "packages/fespalier/lib/src/motion.dart",
         "packages/fespalier/lib/src/scroll_memory.dart",
         "docs/layouts.md#A bar, a rail or a drawer: fespalier_adaptive",
         "packages/fespalier_adaptive/README.md",
@@ -540,8 +561,12 @@
         "docs/guards.md#The unlock page",
         "docs/guards.md#Actions that ask again",
         "docs/guards.md#Relock when the app comes back",
+        "docs/guards.md#A ready-made unlock page",
+        "docs/guards.md#Idle lock",
+        "docs/guards.md#Secrets behind the biometric",
         "docs/guards.md#Testing an unlock",
         "packages/fespalier_biometrics/lib/testing.dart",
+        "packages/fespalier_biometrics/lib/material.dart",
         "packages/fespalier_biometrics/README.md",
         "packages/fespalier_biometrics/lib/fespalier_biometrics.dart"
       ]
@@ -675,6 +700,10 @@
         "docs/getting-started.md#go_router 18 and Material",
         "docs/migration.md#Adopting fespalier in a go_router app",
         "docs/migration.md#Upgrading",
+        "docs/migration.md#0.21.0",
+        "docs/migration.md#0.20.0",
+        "docs/migration.md#0.19.0",
+        "docs/migration.md#0.18.0",
         "docs/migration.md#0.17.0",
         "docs/migration.md#0.16.0",
         "docs/migration.md#0.15.0",
@@ -687,7 +716,16 @@
         "docs/migration.md#0.7.0",
         "docs/migration.md#0.5.0",
         "docs/examples.md#adopt",
-        "examples/adopt"
+        "examples/adopt",
+        "README.md#Coming from RIBs",
+        "docs/coming-from-ribs.md",
+        "docs/coming-from-ribs.md#The short version",
+        "docs/coming-from-ribs.md#Part by part",
+        "docs/coming-from-ribs.md#Signed in or out: the tutorial, as folders",
+        "docs/coming-from-ribs.md#Deep links instead of workflows",
+        "docs/coming-from-ribs.md#State that outlives a page",
+        "docs/coming-from-ribs.md#Where the two differ",
+        "docs/coming-from-ribs.md#Moving a feature over"
       ]
     },
     "fespalier-observability": {
@@ -717,9 +755,11 @@
         "docs/observability.md#What Sentry gets from fespalier",
         "docs/observability.md#Wiring Sentry",
         "docs/observability.md#One transaction per screen",
+        "docs/observability.md#Span streaming",
         "docs/observability.md#Sentry defaults and privacy",
         "docs/observability.md#Testing with Sentry",
         "docs/observability.md#Crashlytics",
+        "docs/observability.md#The screen a native crash happened on",
         "packages/fespalier_sentry/README.md",
         "packages/fespalier_sentry/lib/fespalier_sentry.dart",
         "packages/fespalier_sentry/lib/testing.dart",
@@ -727,6 +767,9 @@
         "packages/fespalier_sentry/lib/src/keys.dart",
         "packages/fespalier_sentry/lib/src/options.dart",
         "packages/fespalier_sentry/lib/src/scrub.dart",
+        "packages/fespalier_sentry/lib/src/spans.dart",
+        "packages/fespalier_sentry/lib/src/static_spans.dart",
+        "packages/fespalier_sentry/lib/src/stream_spans.dart",
         "packages/fespalier_sentry/lib/src/tokens.dart",
         "docs/observability.md",
         "docs/telemetry-conventions.md",
@@ -741,7 +784,9 @@
         "packages/fespalier_analytics/lib/fespalier_analytics.dart",
         "packages/fespalier_analytics/lib/fespalier_adapter.dart",
         "packages/fespalier_analytics/lib/testing.dart",
-        "packages/fespalier_analytics/lib/src/sink.dart"
+        "packages/fespalier_analytics/lib/src/sink.dart",
+        "config:otel",
+        "docs/observability.md#OpenTelemetry from the generated main()"
       ]
     },
     "fespalier-images": {
@@ -881,6 +926,8 @@
         "examples/offline",
         "docs/examples.md#cose",
         "examples/cose",
+        "docs/examples.md#wire-sizes",
+        "examples/wire-sizes",
         "packages/fespalier_cratestack/README.md",
         "packages/fespalier_cratestack/lib/dio.dart",
         "packages/fespalier_cratestack/lib/src/dio/cancel.dart",

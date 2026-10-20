@@ -19,11 +19,11 @@ the same** whether or not these files exist.
 
 `fespalier: main:` in `pubspec.yaml`:
 
-| Value       | `lib/app.main.g.dart`                                                                                                                                                  |
-| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package; otherwise nothing is written |
-| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                            |
-| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                          |
+| Value       | `lib/app.main.g.dart`                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package, or, since 0.19.0, when `otel: true` is set; otherwise nothing is written |
+| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                                                                        |
+| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                                                                      |
 
 The path is `output` with `.main.g.dart` in place of `.g.dart`, in the same folder
 (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`); there is no key for it.
@@ -161,6 +161,7 @@ class Splash extends StatelessWidget {
 
 - `AppMain.run()`: what `main()` calls.
 - `AppMain.root({router})`: the widget `runApp` gets (`StartupGate` from `package:fespalier/startup.dart`).
+- StartupGate passes a hot reload to the router (`reloadRoutes`, since 0.19.0): its `reassemble` swaps in a regenerated route table in a debug build, and does nothing otherwise.
   Tests pump it to boot everything.
 - `AppMain.app(router)`: `app.dart`'s widget around a router; `pumpRouter(tester, router, app: AppMain.app)`
   (see `fespalier-testing`).
@@ -168,6 +169,7 @@ class Splash extends StatelessWidget {
   startup.dart's `routerObservers`. An app.dart `router()` passes it on (below).
 - `AppMain.launch` (since 0.11.0, only with `adapters:`): the `InboundLaunch?` the adapters answered, asked once in `run()`
   (null on the web); an app.dart `router()` passes it on as `launch:` (below).
+- `AppMain.observability` (since 0.19.0, only with `otel: true`): the `OtelZone` that `run()` starts, see the section below.
 
 ## Adapters: `fespalier: adapters:` (since 0.9.0)
 
@@ -270,13 +272,26 @@ the generated one, all inside `AppAdapters.zone(() async { ... })`:
 Forgetting `AppRoutes.attach(router, container)` means no adapter's `attach` runs (calling it twice is safe).
 Full example: `docs/adapters.md`, "With main: manual: AppAdapters".
 
+## OpenTelemetry: `otel: true` (since 0.19.0)
+
+With `fespalier: otel: true` in pubspec.yaml, and `telemetry: true`, `fespalier_otel` and `otel_zone` under `dependencies:`,
+`app.main.g.dart` declares `AppMain.observability` (an `OtelZone` named after the pubspec's `name`, exporting to
+`FespalierOtel.endpoint()`) and starts it first in `_main()`, with `FespalierOtel.serviceVersion()` and
+`FespalierOtel.buildId()`. It adds `FespalierOtel` as a sink with `FespalierTelemetry.add` (so a sink an adapter or
+`startup()` adds stays), passes the Riverpod and route observers, and wraps `main()` in `runGuarded` on every platform (the web too, since 0.19.0, with otel_zone v0.8.1 or later): the
+innermost zone, inside the adapters' zones, and not used when startup.dart has a `zone()`. `lib/main.dart` is
+`Future<void> main() => AppMain.run();`, and `app.g.dart` is unchanged. It is not an adapter, and `main: manual` refuses it.
+The version is the build name (`FLUTTER_BUILD_NAME`, Flutter 3.47 and later; `unknown` before), and no version is
+written into the file. Details and the errors: `fespalier-observability` (`references/telemetry.md`, "Wire it with
+`otel: true`").
+
 ## Gotchas
 
 - **`usePathUrlStrategy()` goes in `startup()`.** The router is built after it, which is in time
   (checked in a release web build, with an async `startup()`). It needs `flutter_web_plugins` in `pubspec.yaml`.
 - **`zone()` runs on the web.** A zone that needs `dart:io` or an isolate must behave there:
-  `otel_zone`'s `runGuarded` never runs its body in a browser and leaves the app blank, so write
-  `kIsWeb ? body() : observability.runGuarded(body)`.
+  `otel_zone` before v0.8.1 never ran its `runGuarded` body in a browser and left the app blank: there, call
+  the body directly when `kIsWeb` is true. From v0.8.1 the zone runs on the web.
 - **Adapters do nothing unless `lib/main.dart` is `Future<void> main() => AppMain.run();` (or calls `AppAdapters`).** `fsp` does not
   read `lib/main.dart`: an app whose own `main()` still calls `runApp` by hand ignores them, without a message.
 - **An app.dart `router()` must pass `observers: AppMain.routerObservers()` and `launch: AppMain.launch`** to

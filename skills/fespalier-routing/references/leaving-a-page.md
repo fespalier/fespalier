@@ -9,6 +9,7 @@ call in progress. `fsp gen` emits it as the `onExit` of the folder's `GoRoute`, 
 // lib/app/orders/$id/edit/leave.dart
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
+import 'package:my_app/discard_sheet.dart';
 
 /// Asked before /orders/:id/edit goes. True lets it go; false keeps it.
 LeaveResult leave(BuildContext context, Ref ref, {required int id, required PageLeave page}) async {
@@ -18,7 +19,37 @@ LeaveResult leave(BuildContext context, Ref ref, {required int id, required Page
 }
 ```
 
-`fsp new 'orders/[id]/edit' --leave` writes it.
+`fsp new 'orders/[id]/edit' --leave` writes it. The folder needs its `page.dart` (see "The file" below), and
+`DiscardSheet` is any widget that pops a `bool`:
+
+```dart
+// lib/app/orders/$id/edit/page.dart
+import 'package:flutter/material.dart';
+
+class EditOrderPage extends StatelessWidget {
+  const EditOrderPage({super.key, required this.id});
+
+  final int id;
+
+  @override
+  Widget build(BuildContext context) => Text('edit order $id');
+}
+```
+
+```dart
+// lib/discard_sheet.dart
+import 'package:flutter/material.dart';
+
+class DiscardSheet extends StatelessWidget {
+  const DiscardSheet({super.key});
+
+  @override
+  Widget build(BuildContext context) => TextButton(
+    onPressed: () => Navigator.pop(context, true),
+    child: const Text('Discard changes'),
+  );
+}
+```
 
 ## The file
 
@@ -95,6 +126,11 @@ skips the leaf's `leave()` (fixed in 17.4.0).
    `FlutterError.reportError` (context `while running leave() of <file>`) and the page goes: a broken `leave()` never traps
    the user. A segment that does not parse lets the page go (it shows not-found).
 5. A synchronous answer stays synchronous: no `Future`, no microtask of fespalier's.
+
+A swap never asks `leave()` for a page that stays (since 0.19.0, debug builds only): after a hot reload regenerates the route
+table, go_router's restore runs `onExit` for every page, and `leaveExit` answers `true` for a page the restore still holds at
+the same place, built from a route object the router did not have before. A pop or a `refresh()` restore keeps the route
+objects, so a page that really leaves (a second pop in the same frame, a redirect after a pop) is asked as usual.
 
 ## The back gestures
 

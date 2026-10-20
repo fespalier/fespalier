@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_frb:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_frb
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -52,6 +52,7 @@ Future<void> startup() => initRustCore(RustLib.init);
 - `ChangeFeed.latest` is the one subscription (never auto-disposed, cancelled with the container); `topic(key)` moves only on a
   matching event (none of a burst is lost: the feed logs the last 64); `any` counts every event.
 - `InvalidationTable` is the pure form, for an app that owns its subscription: `table.apply(event, container.invalidate)`.
+- `ChangeCodec` (since 0.18.0) decodes a core that sends raw messages (JSON, bytes, a batch per message) in `open`: `(ref) => core.rawChanges().transform(codec)`. A message or item that does not decode, or whose decoder throws `UnknownChange` (a variant a newer core added), is skipped, counted and never numbered, and the feed goes on; `fespalier.frb.decode` reports it with constants and a count, never its text.
 - `initRustCore` reports `fespalier.frb.init` (`ok` or `error`; not the error, its text or its stack trace) and rethrows, so `startup()` shows
   `splash.dart`'s error and can retry.
 - `package:fespalier_frb/testing.dart` has `FakeChangeSource`, a stream the test feeds.

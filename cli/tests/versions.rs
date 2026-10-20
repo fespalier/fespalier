@@ -262,7 +262,7 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 22] = [
+const COMPANIONS: [&str; 23] = [
     "packages/fespalier_otel/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
@@ -285,6 +285,7 @@ const COMPANIONS: [&str; 22] = [
     "packages/fespalier_analytics/pubspec.yaml",
     "packages/fespalier_frb/pubspec.yaml",
     "packages/fespalier_riverpod/pubspec.yaml",
+    "packages/fespalier_launch/pubspec.yaml",
 ];
 
 #[test]
@@ -434,6 +435,7 @@ fn the_readmes_pin_this_version() {
         "packages/fespalier_analytics/README.md",
         "packages/fespalier_frb/README.md",
         "packages/fespalier_riverpod/README.md",
+        "packages/fespalier_launch/README.md",
     ]
     .map(String::from)
     .to_vec();
@@ -509,6 +511,8 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier_frb/README.md",
         "packages/fespalier_riverpod/pubspec.yaml",
         "packages/fespalier_riverpod/README.md",
+        "packages/fespalier_launch/pubspec.yaml",
+        "packages/fespalier_launch/README.md",
         // the agent skills' install pins (skills/README.md, "Versions")
         "skills/fespalier/SKILL.md",
         "skills/fespalier-migration/references/go-router-adoption.md",
@@ -919,6 +923,34 @@ fn the_cose_example_server_builds_with_the_generators_rust() {
             ci.contains(needle),
             "the cose job must mention `{needle}`: it builds the server with the pinned toolchain \
              and requires the end-to-end test to run against it"
+        );
+    }
+}
+
+#[test]
+fn the_wire_sizes_example_server_builds_with_the_generators_rust() {
+    // Same as the cose server: a crate of its own with its own rust-toolchain.toml, which the
+    // `wire-sizes` job reads, so it must not drift from cli/rust-toolchain.toml.
+    assert_eq!(
+        toolchain_channel("examples/wire-sizes/server/rust-toolchain.toml"),
+        toolchain_channel("cli/rust-toolchain.toml"),
+        "examples/wire-sizes/server/rust-toolchain.toml (left) and cli/rust-toolchain.toml (right) \
+         differ"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("\n  wire-sizes:\n"),
+        "ci.yml has no `wire-sizes` job (examples/wire-sizes)"
+    );
+    for needle in [
+        "examples/wire-sizes/server/rust-toolchain.toml",
+        // The report is generated, and the job has to prove the committed one is fresh rather
+        // than trusting it: `wire-sizes-report` writes the very text REPORT.md holds.
+        "wire-sizes-report",
+    ] {
+        assert!(
+            ci.contains(needle),
+            "the wire-sizes job must mention `{needle}`"
         );
     }
 }

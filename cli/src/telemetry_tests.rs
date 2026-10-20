@@ -311,8 +311,8 @@ fn a_data_provider_calls_data_inside_a_closure() {
     has(
         &c,
         &[
-            "final _data2 = FutureProvider.autoDispose.family(",
-            "(Ref ref, int id) => traceDataCall(ref, 'd2', id, () => _i1.data(ref, id: id), telemetry: const TelemetrySite('items/\\$id/data.dart', route: '/items/:id')),",
+            "final _dataItemsId = FutureProvider.autoDispose.family(",
+            "(Ref ref, int id) => traceDataCall(ref, 'dItemsId', id, () => _i1.data(ref, id: id), telemetry: const TelemetrySite('items/\\$id/data.dart', route: '/items/:id')),",
         ],
     );
     assert!(!c.contains("traceData("), "{c}");
@@ -342,8 +342,8 @@ fn a_provider_with_no_key_and_one_with_a_record_key_do_too() {
     has(
         &c,
         &[
-            "(Ref ref) => traceDataCall(ref, 'd1', null, () => _i1.data(ref), telemetry: const TelemetrySite('motd/data.dart', route: '/motd')),",
-            "(Ref ref, ({String shop, int id}) k) => traceDataCall(ref, 'd5', k, () => _i3.data(ref, shop: k.shop, id: k.id), telemetry: const TelemetrySite('shops/\\$shop/items/\\$id/data.dart', route: '/shops/:shop/items/:id')),",
+            "(Ref ref) => traceDataCall(ref, 'dMotd', null, () => _i1.data(ref), telemetry: const TelemetrySite('motd/data.dart', route: '/motd')),",
+            "(Ref ref, ({String shop, int id}) k) => traceDataCall(ref, 'dShopsShopItemsId', k, () => _i3.data(ref, shop: k.shop, id: k.id), telemetry: const TelemetrySite('shops/\\$shop/items/\\$id/data.dart', route: '/shops/:shop/items/:id')),",
         ],
     );
 }
@@ -373,9 +373,9 @@ fn freshness_and_a_data_cache_keep_the_closure() {
     has(
         &c,
         &[
-            "(Ref ref, int id) => freshData(ref, _i1.freshness, traceDataCall(ref, 'd2', id, () => _i1.data(ref, id: id), telemetry: const TelemetrySite('items/\\$id/data.dart', route: '/items/:id'))),",
-            "final _data3 = cachedData(",
-            "(Ref ref) => traceDataCall(ref, 'd3', null, () => _i3.data(ref), telemetry: const TelemetrySite('motd/data.dart', route: '/motd')),",
+            "(Ref ref, int id) => freshData(ref, _i1.freshness, traceDataCall(ref, 'dItemsId', id, () => _i1.data(ref, id: id), telemetry: const TelemetrySite('items/\\$id/data.dart', route: '/items/:id'))),",
+            "final _dataMotd = cachedData(",
+            "(Ref ref) => traceDataCall(ref, 'dMotd', null, () => _i3.data(ref), telemetry: const TelemetrySite('motd/data.dart', route: '/motd')),",
         ],
     );
     assert!(!c.contains("traceData("), "{c}");
@@ -394,7 +394,7 @@ fn off_keeps_trace_data_around_the_value() {
     let off = code_with(false, files);
     has(
         &off,
-        &["(Ref ref) => traceData(ref, 'd1', null, _i1.data(ref)),"],
+        &["(Ref ref) => traceData(ref, 'dMotd', null, _i1.data(ref)),"],
     );
     assert!(!off.contains("traceDataCall"), "{off}");
     assert!(!off.contains("TelemetrySite"), "{off}");

@@ -139,7 +139,10 @@ fn router_assigns_the_url_reflection_explicitly() {
     lacks(&c, &[&format!("{assign}false;")]);
     // The assignment comes before the router is built, in `router()` only.
     assert_eq!(c.matches(assign).count(), 1, "{c}");
-    assert!(c.find(assign) < c.find("final router = GoRouter("), "{c}");
+    assert!(
+        c.find(assign) < c.find("final router = GoRouter.routingConfig("),
+        "{c}"
+    );
 }
 
 #[test]
@@ -221,7 +224,7 @@ fn data_retry_none_gives_providers_a_null_retry() {
     has(
         &c,
         &[
-            "final _data2 = FutureProvider.autoDispose(\n  (Ref ref) => traceData(ref, 'd2', null, _i2.data(ref)),\n);",
+            "final _dataA = FutureProvider.autoDispose(\n  (Ref ref) => traceData(ref, 'dA', null, _i2.data(ref)),\n);",
         ],
     );
 
@@ -239,7 +242,7 @@ fn data_retry_none_gives_providers_a_null_retry() {
     has(
         &c,
         &[
-            "final _data2 = FutureProvider.autoDispose(\n  (Ref ref) => traceData(ref, 'd2', null, _i2.data(ref)),\n  // No automatic retry: error.dart and its Retry button are the retry UX.\n  retry: (retryCount, error) => null,\n);",
+            "final _dataA = FutureProvider.autoDispose(\n  (Ref ref) => traceData(ref, 'dA', null, _i2.data(ref)),\n  // No automatic retry: error.dart and its Retry button are the retry UX.\n  retry: (retryCount, error) => null,\n);",
             "= StreamProvider.autoDispose.family(",
         ],
     );
@@ -274,8 +277,8 @@ fn a_list_query_parameter_keys_data_by_value() {
         &c,
         &[
             // The family key holds a QueryList; data() gets it as the List it is.
-            "(Ref ref, ({String? q, QueryList<String> tags}) k) => traceData(ref, 'd1', k, _i0.data(ref, q: k.q, tags: k.tags)),",
-            "watch: (ref) => watchData(ref, 'd1', _data1((q: v.q, tags: QueryList(v.tags)))),",
+            "(Ref ref, ({String? q, QueryList<String> tags}) k) => traceData(ref, 'dSearch', k, _i0.data(ref, q: k.q, tags: k.tags)),",
+            "watch: (ref) => watchData(ref, 'dSearch', _dataSearch((q: v.q, tags: QueryList(v.tags)))),",
             "data: (d) => _i1.SearchPage(results: d, q: v.q, tags: v.tags),",
             "/// search/data.dart as a Riverpod provider keyed by `(q, tags)`.",
             // The typed helpers take the plain list (empty by default) and wrap it.
@@ -318,8 +321,8 @@ fn a_lone_list_key_and_other_element_types() {
     has(
         &c,
         &[
-            "(Ref ref, QueryList<int> ids) => traceData(ref, 'd1', ids, _i0.data(ref, ids: ids)),",
-            "watchData(ref, 'd1', _data1(QueryList(v.ids)))",
+            "(Ref ref, QueryList<int> ids) => traceData(ref, 'dA', ids, _i0.data(ref, ids: ids)),",
+            "watchData(ref, 'dA', _dataA(QueryList(v.ids)))",
             "/// a/data.dart as a Riverpod provider keyed by `ids`.",
             "static final watch = (WidgetRef ref, {List<int> ids = const []}) => ref.watch(data(QueryList(ids)));",
         ],

@@ -42,6 +42,29 @@ const _all = <RouteInfo<Object?>>[
 ];
 
 void main() {
+  group('routeIndex (since 0.19.0)', () {
+    test('is the same object for the same list, each time', () {
+      final first = routeIndex(_all);
+      expect(identical(routeIndex(_all), first), isTrue);
+      expect(first.byType[ProductRoute], same(_all.first));
+      expect(first.byPath['/orders/:id/refund/confirm'], same(_all[1]));
+    });
+
+    test('a second list gets its own maps, with its own entries', () {
+      final first = routeIndex(_all);
+      const other = <RouteInfo<Object?>>[
+        RouteInfo(type: String, path: '/x', folder: 'x'),
+      ];
+      final second = routeIndex(other);
+      expect(identical(second, first), isFalse);
+      expect(identical(second.byType, first.byType), isFalse);
+      expect(second.byType.keys.toList(), [String]);
+      expect(second.byType[String], same(other.single));
+      expect(second.byPath.keys.toList(), ['/x']);
+      expect(() => second.byPath['/y'] = other.single, throwsUnsupportedError);
+    });
+  });
+
   group('RouteInfo', () {
     test('holds what the manifest lists, and is const', () {
       final info = _all.first;

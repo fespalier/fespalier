@@ -13,11 +13,24 @@ no transaction. Performance (`tracing: true`) is the opt-in, for a team that has
   action, `fespalier.action`; the fingerprint is `['{{ default }}', file]` (grouped by the file, not by the
   Riverpod frames on top of the stack); the context `fespalier` repeats them, with `fespalier.async` and, for
   data, `fespalier.data.keyed`.
-- **The screen names the scope.** At each committed navigation the scope's transaction name is the route
-  pattern (`navigate (not found)` for a location that matched no route) and the tag `fespalier.route` is set,
-  so a crash that no fespalier operation reported, caught by Sentry's own integrations, says which screen it
-  happened on. A transaction that is Sentry's own (its app start, its navigator observer) is never renamed:
-  the tag is still set.
+- **The screen names the scope.** When each navigation commits (since 0.19.0, before the new page's `initState`
+  and first `build`, through `FespalierTelemetry.commit`; before, once that frame was built) the scope's
+  transaction name is the route pattern (`navigate (not found)` for a location that matched no route) and the
+  tag `fespalier.route` is set, so a crash that no fespalier operation reported, caught by Sentry's own
+  integrations, says which screen it happened on. What the commit changes is what reads the scope during the
+  first frame: an event captured on a copy of it (`withScope`: the app's own, and fespalier's own, whose
+  transaction name moves; their `fespalier.route` and `otel.*` only for an operation with no route or trace of
+  its own, such as a `custom` one) and a page's `initState` that reads `scope.transaction` or the tags. Sentry's
+  own capture of an exception reads the live scope after the frame, so it already named the new page, and a
+  guard, `data()` or action error takes its `fespalier.route` from its call site. The reverse holds from the
+  commit until the first frame: an event from the page being left names the destination (a `captureException`
+  right after `router.go(...)` in the same handler, an action that navigates and then fails: its transaction
+  name, not its `fespalier.route`). A navigation that commits twice before its first frame is named twice, and
+  the last stays; the page's breadcrumb still comes with its first frame. With `traceLifecycle: stream`, a
+  commit made while a span is active (a `go()` inside a data load's or an action's span, or an idle span of
+  Sentry's own: a traced tap, the app start) sets the tag at the commit and the transaction name at the end.
+  A transaction that is Sentry's own (its app start, its navigator observer) is never renamed: the tag is still
+  set. UNCHECKED: a native crash or an ANR in `initState` carrying the tag on Android and iOS.
 - **One breadcrumb per page change**: type `navigation`, `from` and `to` patterns. A page being left makes
   none, so a go is one. A guard redirect, an action's result (never its input), an auth step and an image
   failure are breadcrumbs too.
@@ -101,7 +114,7 @@ The order rules:
    `runZonedGuarded`, so uncaught errors go to that zone. Nothing calls
    `WidgetsFlutterBinding.ensureInitialized()` before it.
 2. **No `OtelZone.runGuarded` next to Sentry**: its zone sends an uncaught async error to Talker only, and Sentry
-   would never see it (it is also blank on the web). Pass Sentry's `body` and start the SDK with
+   would never see it. Pass Sentry's `body` and start the SDK with
    `observability.start()`.
 3. **Install the sink before the router exists**, in `startup()` or `appRunner`; with `fespalier_auth`'s
    `restoreAuth`, install first so the restore is reported.
@@ -135,12 +148,30 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   `SentryFlutter.currentDisplay()?.reportFullyDisplayed()` when its data is in. Its guard and data spans are not
   recorded. `enableStandaloneAppStartTracing: true` (9.26.0, experimental) makes the first screen an ordinary
   one: recommended. Web and desktop: ordinary.
-- **An HTTP span made in `data()`** is a child of the screen's transaction (Sentry's integrations parent to the
-  scope's span), beside the data span, not under it. Under `fespalier_otel` it is under the data span.
-- **`traceLifecycle: stream`** is not supported in this version: the sink prints once (in a debug build)
-  `fespalier_sentry: Sentry's traceLifecycle is stream, which this version makes no spans for. Errors and
-breadcrumbs are still sent; use SentryTraceLifecycle.static for screen transactions.` and makes no spans.
-  Errors and breadcrumbs are unaffected.
+- **An HTTP span made in `data()`** is, with `traceLifecycle: static`, a child of the screen's transaction (Sentry's
+  integrations parent to the scope's span), beside the data span, not under it (a transaction cannot be made
+  current without binding it to the one global scope, which two loads at once share). Under `fespalier_otel` it is
+  under the data span, and with `traceLifecycle: stream` it is too (below).
+- **`traceLifecycle: stream`** (since 0.19.0; Sentry 9.26.0 has it): the same tree is streamed through
+  `Hub.startInactiveSpan`. A screen is a root span (a segment, `sentry.op` `ui.load`, named at the commit) and its
+  guards, redirects, data, deferred loads, images, auth steps and actions are children with an explicit parent;
+  `ui.load.initial_display` and `.full_display` carry `app.vitals.ttid.value` and `app.vitals.ttfd.value`
+  instead of measurements. A streamed span's status is `ok` or `error` only (`error`: a failure that is not a
+  `FieldErrors`, and a screen's data and full display when the next navigation starts first). A superseded
+  navigation **cannot be dropped**: it is sent with `fespalier.navigation.outcome` `superseded`, named `navigate`.
+  An error is linked to its span through `contexts.trace`. **The sink never uses an idle span** (a timer) and ends
+  every span itself; a span that ends before the route is known waits for it, so it carries the segment's name.
+  Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s
+  transactions are; `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews it on each
+  navigation, and the SDK does after a stay in the background when no navigator observer exists (whether Sentry's
+  views are right with one trace for many screens is UNCHECKED). **HTTP spans are under the data span** (since 0.19.0): the sink's `within` makes the
+  span of a `data()` or an action with `Hub.startSpan` around the code it runs, so `SentryHttpClient` and `sentry_dio`
+  (which parent to the zone's active span) make children of it, after an `await` too, and two loads at once keep
+  their own. The span still ends with fespalier's outcome and attributes, when `data()` settles, the load is
+  disposed or the next navigation starts first (status `error`); the body's `Future` is never what ends it. An action with no screen open is a segment, and its requests
+  are its children. A request that ends before the navigation commits carries `sentry.segment.name` `navigate`
+  (Sentry's own spans cannot be held for the route's name, the sink's can). `configure` installs `beforeSendSpan` (the app's first) that takes
+  `http.query`, `http.fragment` and the query of `url` off (`FespalierSentry.spanWithoutQueries`).
 - `tracing: true` on an SDK that samples nothing prints once (debug) `fespalier_sentry: tracing: true needs
 Sentry to sample transactions, and tracesSampleRate is not set, so no transaction is sent. Pass tracing: true
   to FespalierSentry.configure, or set options.tracesSampleRate.`
@@ -171,9 +202,13 @@ await tester.pump(); // the SDK hands an event to its transport a few microtasks
 expect(await sentry.lines(), ['event StateError operation=data route=/items/:id file=items/$id/data.dart']);
 ```
 
-`lines()` is one line per transaction, span and event, without timestamps or ids; `sent()` is the JSON the SDK
-built (tags, fingerprint, contexts, measurements); `breadcrumbs`, `rawBreadcrumbs`, `tags` and
-`transactionName` read the scope. Traps:
+`lines()` is one line per transaction, span and event, without timestamps or ids, then (since 0.19.0, with
+`traceLifecycle: stream`) `segment <op> <name> status=<ok|error>[ ttid][ ttfd]` and its indented `span` lines;
+`spans` is the streamed `SentrySpanV2`s in the order they ended (recorded in `beforeSendSpan`, after `configure`'s);
+`sent()` is the JSON the SDK built (tags, fingerprint, contexts, measurements); `breadcrumbs`, `rawBreadcrumbs`,
+`tags` and `transactionName` read the scope. A test of streaming sets `options.traceLifecycle =
+SentryTraceLifecycle.stream` in `RecordingSentry(configure:)`. `tags` and `transactionName` name a page from its commit (since 0.19.0): read
+them right after `router.go(...)` or in a page's `initState`. Traps:
 
 - **Pump before reading** (`await tester.pump()`), or use a plain `test()` and a real zero delay.
 - **A `ProviderContainer` read inside `testWidgets` leaves a Riverpod timer pending**: use `test()` for a

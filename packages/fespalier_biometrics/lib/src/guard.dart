@@ -26,7 +26,9 @@ bool _open(UnlockState state) => switch (state) {
 ///
 /// With [maxAge] the unlock must also be younger than that, by `package:clock`, when the guard runs:
 /// an expiry takes effect when the guard next runs (the next navigation, or a re-run because what it
-/// watches changed), never by itself: there is no timer, so a page already open stays open.
+/// watches changed), never by itself: there is no timer, so a page already open stays open. The same
+/// goes for the policy's `idleTimeout` (since 0.19.0): an unlock idle for that long is locked at the
+/// next navigation, with no tick needed; `biometricIdleTicker` and `BiometricActivity` lock an open page.
 GuardResult requireUnlocked(
   Ref ref,
   Uri uri, {
@@ -34,9 +36,9 @@ GuardResult requireUnlocked(
   Duration? maxAge,
 }) {
   final open = ref.watch(biometricUnlock.select(_open));
+  // `isFresh` also says no to an unlock that has been idle for the policy's `idleTimeout`, so the
+  // next navigation after the limit lands on the unlock page without waiting for a tick.
   final fresh =
-      open &&
-      (maxAge == null ||
-          ref.read(biometricUnlock.notifier).isFresh(maxAge: maxAge));
+      open && ref.read(biometricUnlock.notifier).isFresh(maxAge: maxAge);
   return fresh ? null : unlock(uri.toString()).location;
 }

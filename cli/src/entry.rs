@@ -17,7 +17,9 @@ use crate::scan::{Kind, Node};
 use crate::templates;
 
 /// What other features add to the generated `main()`. `fespalier: adapters:` fills it (since
-/// 0.9.0, see `adapters.rs`); with every field empty the output is what the root files alone say.
+/// 0.9.0, see `adapters.rs`) and so does `fespalier: otel: true` (since 0.19.0, see `otel.rs`: the
+/// SDK, its sink, its zone and its two observers); with every field empty the output is what the
+/// root files alone say.
 #[derive(Debug, Default)]
 pub struct MainHooks {
     /// Calls that wrap `main()`, outermost first, each a `Future<void> Function(Future<void> Function())`
@@ -43,9 +45,165 @@ pub struct MainHooks {
     /// `AppMain` asks `AppAdapters.launch()` once, before the router, and gives it to
     /// `AppRoutes.router(launch:)` (since 0.11.0).
     pub launch: bool,
+    /// A wrapper used only when startup.dart exports no `zone()` (since 0.19.0), innermost of
+    /// the wrappers: `otel_zone`'s guarded zone, which an app's own zone (Sentry's) replaces.
+    pub weak_wrapper: Option<String>,
+    /// `otel: true` (since 0.19.0): the `service.name` of `AppMain.observability`. The template
+    /// then declares it, starts it first in `_main()` and adds its `FespalierOtel` sink (`otel.rs`).
+    pub otel: Option<String>,
+}
+
+impl MainHooks {
+    /// Adds `other`'s hooks after these, so `other`'s wrappers are inside these (since 0.19.0).
+    /// The first `weak_wrapper` and `otel` wins.
+    pub fn extend(&mut self, other: MainHooks) {
+        self.wrappers.extend(other.wrappers);
+        self.before_run.extend(other.before_run);
+        self.provider_observers.extend(other.provider_observers);
+        self.overrides.extend(other.overrides);
+        self.router_observers.extend(other.router_observers);
+        self.root_wrappers.extend(other.root_wrappers);
+        self.attach |= other.attach;
+        self.launch |= other.launch;
+        if self.weak_wrapper.is_none() {
+            self.weak_wrapper = other.weak_wrapper;
+        }
+        if self.otel.is_none() {
+            self.otel = other.otel;
+        }
+    }
 }
 
 const ROOT_FILES: [Kind; 3] = [Kind::App, Kind::Startup, Kind::Splash];
+
+/// Where the lexer of [`without_comments`] is: in code (inside an interpolation, `braces` counts
+/// the `{` opened since its `${`) or in a string literal.
+#[derive(Clone, Copy)]
+enum Lex {
+    Code {
+        braces: usize,
+    },
+    Str {
+        quote: char,
+        triple: bool,
+        raw: bool,
+    },
+}
+
+/// `src` with its Dart comments taken out (since 0.19.0): `// ...` to the end of the line and
+/// `/* ... */`, which nest in Dart, each replaced by one space so the code around it does not
+/// join. String literals are kept whole, so the `//` of `'https://x'` is not a comment: single,
+/// triple and raw strings, escapes, and an interpolation (`'${a['b']}'`) that holds strings and
+/// comments of its own. It is for looking for a call in a file without being fooled by a note
+/// about it; it does not parse Dart.
+pub(crate) fn without_comments(src: &str) -> String {
+    let c: Vec<char> = src.chars().collect();
+    let mut out = String::with_capacity(src.len());
+    let mut stack = vec![Lex::Code { braces: 0 }];
+    let mut i = 0;
+    while i < c.len() {
+        let top = stack.last().copied().unwrap_or(Lex::Code { braces: 0 });
+        match top {
+            Lex::Code { braces } => match (c[i], c.get(i + 1).copied()) {
+                ('/', Some('/')) => {
+                    while i < c.len() && c[i] != '\n' {
+                        i += 1;
+                    }
+                    out.push(' ');
+                }
+                ('/', Some('*')) => {
+                    let mut depth = 0;
+                    while i < c.len() {
+                        match (c[i], c.get(i + 1).copied()) {
+                            ('/', Some('*')) => {
+                                depth += 1;
+                                i += 2;
+                            }
+                            ('*', Some('/')) => {
+                                depth -= 1;
+                                i += 2;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => i += 1,
+                        }
+                    }
+                    out.push(' ');
+                }
+                (quote @ ('\'' | '"'), _) => {
+                    // `r'...'` is a raw string, unless the `r` ends a longer word.
+                    let raw = out.strip_suffix('r').is_some_and(|before| {
+                        !before
+                            .chars()
+                            .next_back()
+                            .is_some_and(|p| p.is_alphanumeric() || p == '_' || p == '$')
+                    });
+                    let triple = c.get(i + 1) == Some(&quote) && c.get(i + 2) == Some(&quote);
+                    let width = if triple { 3 } else { 1 };
+                    out.extend(std::iter::repeat_n(quote, width));
+                    i += width;
+                    stack.push(Lex::Str { quote, triple, raw });
+                }
+                ('{', _) => {
+                    if let Some(Lex::Code { braces }) = stack.last_mut() {
+                        *braces += 1;
+                    }
+                    out.push('{');
+                    i += 1;
+                }
+                ('}', _) => {
+                    if braces > 0 {
+                        if let Some(Lex::Code { braces }) = stack.last_mut() {
+                            *braces -= 1;
+                        }
+                    } else if stack.len() > 1 {
+                        // The `}` that ends an interpolation: back in the string.
+                        stack.pop();
+                    }
+                    out.push('}');
+                    i += 1;
+                }
+                (ch, _) => {
+                    out.push(ch);
+                    i += 1;
+                }
+            },
+            Lex::Str { quote, triple, raw } => match c[i] {
+                '\\' if !raw => {
+                    out.push('\\');
+                    if let Some(&escaped) = c.get(i + 1) {
+                        out.push(escaped);
+                    }
+                    i += 2;
+                }
+                '$' if !raw && c.get(i + 1) == Some(&'{') => {
+                    out.push_str("${");
+                    i += 2;
+                    stack.push(Lex::Code { braces: 0 });
+                }
+                // A single-line string that is not closed ends with its line.
+                '\n' if !triple => {
+                    stack.pop();
+                }
+                ch if ch == quote
+                    && (!triple
+                        || (c.get(i + 1) == Some(&quote) && c.get(i + 2) == Some(&quote))) =>
+                {
+                    let width = if triple { 3 } else { 1 };
+                    out.extend(std::iter::repeat_n(quote, width));
+                    i += width;
+                    stack.pop();
+                }
+                ch => {
+                    out.push(ch);
+                    i += 1;
+                }
+            },
+        }
+    }
+    out
+}
 
 /// Whether `lib/app.main.g.dart` is written: always with `main: generated`, never with
 /// `main: manual`, and with `main: auto` when the app folder's root has one of the three files or
@@ -55,9 +213,47 @@ pub fn wanted(root: &Node, cfg: &Config) -> bool {
         MainMode::Generated => true,
         MainMode::Manual => false,
         MainMode::Auto => {
-            !cfg.adapters.is_empty() || ROOT_FILES.iter().any(|k| root.files.contains_key(k))
+            cfg.otel
+                || !cfg.adapters.is_empty()
+                || ROOT_FILES.iter().any(|k| root.files.contains_key(k))
         }
     }
+}
+
+/// Whether a hot reload can swap the routes the running app holds (since 0.19.0). It can when the
+/// generated main is written, so that `StartupGate` holds the router and calls `reloadRoutes` on
+/// reassemble (`packages/fespalier/lib/src/startup.dart`), and when `app.dart` leaves the router to
+/// the generated `AppRoutes.router()`: a `router()` that builds it another way (`buildRouter()`),
+/// or that mounts the routes into its own router (`AppRoutes.mount(...)`), is not swapped, and
+/// neither is `main: manual`, whose `main()` the generator does not write. This reads the text
+/// only, so it cannot see whether `lib/main.dart` calls `AppMain.run()`: every scaffold and every
+/// example does, and the docs say that the swap needs it.
+#[must_use]
+pub fn swaps(root: &Node, cfg: &Config) -> bool {
+    if !wanted(root, cfg) {
+        return false;
+    }
+    let Some(src) = root.files.get(&Kind::App) else {
+        return true;
+    };
+    let module = crate::parse_cache::parse(src);
+    let Some(f) = function(&module, "router") else {
+        return true;
+    };
+    let code = without_comments(src.get(f.extent.clone()).unwrap_or_default());
+    code.contains("AppRoutes.router(") && !calls(&code, "mount(")
+}
+
+/// Whether `code` holds `call` (a name and its opening parenthesis) as a whole identifier: not as the
+/// end of a longer one, so `mount(` is found in `AppRoutes.mount(` and `mount(at: '/x')` but not in
+/// `amount(` or `unmount(`.
+fn calls(code: &str, call: &str) -> bool {
+    code.match_indices(call).any(|(at, _)| {
+        !code[..at]
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$')
+    })
 }
 
 /// The generated main for the app, or `None` when none is wanted (see [`wanted`]). Reads the
@@ -119,7 +315,11 @@ pub fn emit(
         && let Some(text) = src.get(f.extent.clone())
     {
         if !hooks.router_observers.is_empty() && !text.contains("routerObservers") {
-            let msg = "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there";
+            let msg = if cfg.adapters.is_empty() {
+                "app.dart's router() builds the router itself, so OpenTelemetry's route observer (`otel: true`) is not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"
+            } else {
+                "app.dart's router() builds the router itself, so the adapters' router observers are not added: pass `observers: AppMain.routerObservers()` to `AppRoutes.router(...)` there"
+            };
             diags.warn(&root.rel(Kind::App), Some(&f.span), msg);
         }
         if hooks.launch && !text.contains("launch") {
@@ -135,6 +335,22 @@ pub fn emit(
         (Some(m), Some(_)) => read_startup(root, m, own_router, diags),
         _ => StartupExports::default(),
     };
+    // `otel: true` has the generated main() start the SDK and install its sink: a startup.dart
+    // that does either again would run a second SDK, or replace the sink (since 0.19.0).
+    // A comment that mentions either (a note about the old wiring) is not a call.
+    if hooks.otel.is_some()
+        && let Some(src) = root.files.get(&Kind::Startup)
+    {
+        let code = without_comments(src);
+        if code.contains("OtelZone(") {
+            let msg = "`otel: true` makes the generated main() start otel_zone (`AppMain.observability`), and startup.dart builds an `OtelZone` of its own: remove that wiring (the OtelZone, its start(), the FespalierOtel sink and the two observers), or remove `otel: true`";
+            diags.warn(&root.rel(Kind::Startup), None, msg);
+        }
+        if code.contains("FespalierTelemetry.install(") {
+            let msg = "startup.dart calls `FespalierTelemetry.install`, which replaces the OpenTelemetry sink the generated main() installed (`otel: true`): add the sink once instead, with `if (!FespalierTelemetry.contains(sink)) FespalierTelemetry.add(sink);` (Retry runs startup() again)";
+            diags.warn(&root.rel(Kind::Startup), None, msg);
+        }
+    }
 
     // splash.dart: shown while an async startup() runs, and when it fails.
     let splash_file = module(Kind::Splash);
@@ -166,7 +382,15 @@ pub fn emit(
         Some(Zone::Or) => format!("Future<void>.sync(() => {sx}.zone(_main))"),
         None => "_main()".to_string(),
     };
-    let run = hooks.wrappers.iter().rev().fold(zone_call, |inner, wrap| {
+    // otel_zone's guarded zone (`otel: true`) is the innermost wrapper, and only when startup.dart
+    // has no zone(): an app's own zone (Sentry's) wins, as the docs say (since 0.19.0).
+    let otel_zone = startup.zone.is_none() && hooks.weak_wrapper.is_some();
+    let wrappers: Vec<&String> = hooks
+        .wrappers
+        .iter()
+        .chain(hooks.weak_wrapper.iter().filter(|_| otel_zone))
+        .collect();
+    let run = wrappers.iter().rev().fold(zone_call, |inner, wrap| {
         if inner == "_main()" {
             format!("{wrap}(_main)")
         } else {
@@ -225,11 +449,17 @@ pub fn emit(
         let parts: Vec<String> = hooks.overrides.iter().map(|o| format!("...{o}")).collect();
         format!("[{}]", parts.join(", "))
     });
-    let zone_note = match (hooks.wrappers.is_empty(), startup.zone.is_some()) {
-        (true, true) => "everything runs inside startup.dart's `zone()`: ",
-        (true, false) => "",
-        (false, true) => "everything runs inside the adapters' zones and startup.dart's `zone()`: ",
-        (false, false) => "everything runs inside the adapters' zones: ",
+    let zone_note = match (hooks.wrappers.is_empty(), startup.zone.is_some(), otel_zone) {
+        (true, true, _) => "everything runs inside startup.dart's `zone()`: ",
+        (true, false, false) => "",
+        (false, true, _) => {
+            "everything runs inside the adapters' zones and startup.dart's `zone()`: "
+        }
+        (false, false, false) => "everything runs inside the adapters' zones: ",
+        (true, false, true) => "everything runs inside otel_zone's guarded zone: ",
+        (false, false, true) => {
+            "everything runs inside the adapters' zones and otel_zone's guarded zone: "
+        }
     };
     let cx = FileCx {
         app_dir: &cfg.app_dir,
@@ -245,6 +475,8 @@ pub fn emit(
                 .iter()
                 .any(|r| r.page.is_some() && !r.observers.is_empty()),
         launch: hooks.launch,
+        otel: hooks.otel.as_deref(),
+        otel_zone,
         imports: &imports,
         zone_note,
         run,
@@ -291,6 +523,10 @@ struct FileCx<'a> {
     attach: bool,
     /// `AppMain.launch`: the adapters' answer, asked before the router is built.
     launch: bool,
+    /// `otel: true`: the service name of `AppMain.observability`, and the SDK's start and sink.
+    otel: Option<&'a str>,
+    /// `otel_zone`'s guarded zone wraps `_main` (`_otelZone`), on every platform.
+    otel_zone: bool,
     imports: &'a [ImportCx],
     /// How the doc comment of `run` says what runs inside the zones: startup.dart's `zone()` and
     /// the adapters', or nothing.

@@ -90,12 +90,12 @@ dependencies:
   otel_zone:
     git:
       url: https://github.com/vaam-apps/flutter-otel-zone
-      ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21
+      ref: 64c4661ac6cd09718141864d528892916677cc38
   path_provider: "^2.1.0"
   sentry_flutter: ">=9.26.0 <10.0.0"
 
 dev_dependencies:
-  dartastic_opentelemetry: "^1.1.0-beta.15"
+  dartastic_opentelemetry: "^1.1.0-beta.17"
   flutter_secure_storage: ">=10.0.0 <12.0.0"
   flutter_lints: ^6.0.0
   flutter_test:
@@ -109,6 +109,7 @@ flutter:
 # Read by the `fsp` generator; docs/configuration.md lists every key.
 fespalier:
   telemetry: true
+  otel: true
   test:
     # /translations needs the translation scope: test/i18n_test.dart opens it through the app's own App.
     # /headlines needs an http client: test/http_test.dart serves it from a FakeHttpClient.
@@ -179,39 +180,15 @@ import 'package:fespalier_connectivity/fespalier_connectivity.dart';
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_flags/fespalier_flags.dart';
 import 'package:fespalier_image/fespalier_image.dart';
-import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:fespalier_sentry/fespalier_sentry.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/widgets.dart' show WidgetsFlutterBinding;
 import 'package:http/http.dart' as http;
 import 'package:my_app/auth_setup.dart';
 import 'package:my_app/images.dart';
-import 'package:otel_zone/otel_zone.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
-
-/// The name spans carry as `service.name`.
-const String serviceName = 'my_app';
-
-/// The OpenTelemetry SDK. A release build without an endpoint exports nothing: pass
-/// --dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://... to send spans to a collector.
-final OtelZone observability = OtelZone(
-  OtelZoneConfig(serviceName: serviceName, endpoint: FespalierOtel.endpoint()),
-);
-
-/// Brings the SDK up (it never throws), then runs [body]. This is the start of the process, not
-/// of the app: a test that builds the app does not start the SDK, and the sink that startup()
-/// installs reports once it is up.
-Future<void> startObservability(Future<void> Function() body) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await observability.start(
-    serviceVersion: '0.1.0',
-    resourceAttributes: {...FespalierOtel.resourceAttributes},
-  );
-  await body();
-}
 
 /// Where each base folder of a download is on this device. fespalier_download names no
 /// plugin for it, so the app does (docs/downloads.md, "The foreground backend").
@@ -221,6 +198,9 @@ Future<String> appBases(DownloadBase base) async => switch (base) {
   DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,
 };
 
+/// Made once: startup() runs again on Retry, and `add` would append a second sink.
+final _sentry = FespalierSentry();
+
 /// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
 /// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
 /// --dart-define=SENTRY_DSN=https://... sends events to your project.
@@ -229,19 +209,14 @@ Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
     options,
     dsn: const String.fromEnvironment('SENTRY_DSN'),
   ),
-  appRunner: () => startObservability(body),
+  appRunner: body,
 );
 
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
 /// overridden in the app's ProviderScope, so the first frame already has them.
 Future<List<Override>> startup() async {
-  // One slot for every sink, before the router exists so the first navigation is reported.
-  FespalierTelemetry.install(
-    FespalierTelemetry.combine([
-      FespalierOtel(isReady: () => observability.isReady),
-      FespalierSentry(),
-    ]),
-  );
+  // Before the router exists, beside the generated main()'s OpenTelemetry sink; once (Retry runs this again).
+  if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);
   return [
     // fespalier_auth: reads the stored session, with no network, so the first guard is synchronous.
     ...await restoreAuth(authSetup()),
@@ -273,12 +248,7 @@ Future<List<Override>> startup() async {
   ];
 }
 
-List<ProviderObserver> get providerObservers => [
-  ?observability.riverpodObserver(),
-];
-
 List<NavigatorObserver> get routerObservers => [
-  ?observability.routeObserver(),
   if (kIsWeb) FespalierSentry.navigatorObserver(),
 ];
 
@@ -718,6 +688,7 @@ import 'package:fespalier/testing.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/app.g.dart';
+import 'package:my_app/app.main.g.dart';
 
 // The SDK with an in-memory exporter: what a collector would receive, with no network.
 final InMemorySpanExporter exporter = InMemorySpanExporter();
@@ -755,6 +726,12 @@ void main() {
     expect(spans.single.spanEvents?.map((e) => e.name), [
       'fespalier.page.enter',
     ]);
+  });
+
+  test('AppMain.observability: named after the app, never started', () {
+    const name = 'my_app';
+    expect(AppMain.observability.config.serviceName, name);
+    expect(AppMain.observability.isReady, isFalse);
   });
 }
 

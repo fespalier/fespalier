@@ -1,5 +1,6 @@
 cli/target/
 examples/cose/server/target/
+examples/wire-sizes/server/target/
 .dart_tool/
 build/
 .packages

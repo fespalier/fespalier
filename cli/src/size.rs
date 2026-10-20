@@ -5,22 +5,22 @@
 //! which part into `main.dart.js` itself, in every build mode:
 //!
 //! ```text
-//! deferredLibraryParts:{_i7:[0,1],_i14:[0,2]},deferredPartUris:["main.dart.js_2.part.js","main.dart.js_1.part.js","main.dart.js_3.part.js"]
+//! deferredLibraryParts:{_pageCheckout:[0,1],_pageProductsId:[0,2]},deferredPartUris:["main.dart.js_2.part.js","main.dart.js_1.part.js","main.dart.js_3.part.js"]
 //! ```
 //!
 //! The keys are the load ids, which are the import prefixes of the generated `app.g.dart`
-//! (`import 'app/checkout/page.dart' deferred as _i7;`), and a page's prefix is `_i{n}` for the
-//! `n` its `Widget.import` carries, the same `n` the template writes. The values index
-//! `deferredPartUris`, whose order is not the file numbering.
+//! (`import 'app/checkout/page.dart' deferred as _pageCheckout;`, since 0.20.0; `_i7` before), and a
+//! page's prefix is `_page` and its route's stem (`emit::deferred_prefix`), the name the template
+//! writes. The values index `deferredPartUris`, whose order is not the file numbering.
 //!
 //! A route's **own** bytes are the parts only it loads, its **shared** bytes the parts other
 //! deferred routes load too, and its **total** is both: what a first visit downloads when nothing
 //! else is loaded. Sizes are bytes on disk, uncompressed, which is deterministic for one Flutter
 //! version. Code of routes that are not deferred is in `main.dart.js`.
 //!
-//! A build made from other routes than the ones on disk is caught two ways: the `_iN` keys of the
-//! table must be exactly the prefixes the routes defer now (an error), and `main.dart.js` older
-//! than the generated file is a warning.
+//! A build made from other routes than the ones on disk is caught two ways: the load-id keys of the
+//! table (`_page…`, or `_i…` from a build older than 0.20.0) must be exactly the prefixes the routes
+//! defer now (an error), and `main.dart.js` older than the generated file is a warning.
 //!
 //! Like `fsp links` and `fsp maestro`, this reads its own config section (`size:`) and checks it
 //! only when the command runs, so a mistake in it never stops `fsp gen`.
@@ -33,7 +33,7 @@ use anyhow::{Result, bail};
 use serde_json::json;
 
 use crate::config::{Config, DEFAULT_SIZE_BUILD, Size};
-use crate::emit::rel;
+use crate::emit::{deferred_prefix, rel};
 use crate::resolve::{self, App};
 use crate::scan::Kind;
 use crate::{analyze, diag, plural};
@@ -465,19 +465,27 @@ fn pad(rows: &[Vec<String>]) -> Vec<String> {
         .collect()
 }
 
-/// The deferred routes of `app` with the load id (`_i7`) their page's import has.
+/// The deferred routes of `app` with the load id (`_pageCheckout`) their page's import has.
 pub(crate) fn deferred_routes(app: &App) -> Vec<(String, &resolve::Route)> {
     app.routes
         .iter()
         .filter(|r| r.is_route() && r.defers_page())
-        .filter_map(|r| r.page.as_ref().map(|p| (format!("_i{}", p.import), r)))
+        .filter_map(|r| r.page.as_ref().map(|_| (deferred_prefix(r), r)))
         .collect()
 }
 
-/// `_i7`, `_i14`: a load id fespalier gives (`_i` and digits).
+/// `_pageCheckout`: a load id fespalier gives since 0.20.0 (`_page` and a capital, then letters,
+/// digits and `_`), or `_i7` from a build older than that (`_i` and digits). The older form is
+/// still a load id, so a build made before 0.20.0 is reported as stale and not ignored.
 fn is_prefix(key: &str) -> bool {
-    key.strip_prefix("_i")
-        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+    let page = key.strip_prefix("_page").is_some_and(|n| {
+        n.starts_with(|c: char| c.is_ascii_uppercase())
+            && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    });
+    let numbered = key
+        .strip_prefix("_i")
+        .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
+    page || numbered
 }
 
 /// Checks the budgets' routes against the app: each `routes` key is a deferred route.

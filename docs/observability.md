@@ -114,7 +114,7 @@ fespalier:
 - passes a `const TelemetrySite('products/$id/data.dart', route: '/products/:id')` to each guard, `data.dart` provider and action;
 - gives each deferred library its page's pattern;
 - has `AppRoutes.attach` follow the router (`AppRoutes.router()` calls it; an app that mounts the tree in a `GoRouter` of its own calls `AppRoutes.attach(router)` once with that router);
-- since 0.9.0, makes each data provider call `data()` inside a closure, `traceDataCall(ref, 'd4', id, () => data(ref, id: id), ...)`, so a sink can [run it inside the span](#spans-around-data-and-actions). That costs one closure per provider build.
+- since 0.9.0, makes each data provider call `data()` inside a closure, `traceDataCall(ref, 'dOrdersId', id, () => data(ref, id: id), ...)`, so a sink can [run it inside the span](#spans-around-data-and-actions). That costs one closure per provider build.
 
 A value that is not a bool is an error. Without the key nothing is generated for telemetry.
 
@@ -126,9 +126,36 @@ FespalierTelemetry.install(sink); // null uninstalls
 
 A sink is called synchronously from the router, a provider or an action, so it must return at once, not throw (fespalier catches it and prints `fespalier telemetry: <error> (not shown again)` once) and not navigate or read a provider. There is one slot: a second `install` replaces the first. To report to several sinks, [combine them](#several-sinks-combine-and-add) (since 0.9.0).
 
+### OpenTelemetry from the generated main()
+
+Since 0.19.0. With `otel: true`, `fsp gen` writes the OpenTelemetry wiring into `lib/app.main.g.dart`, so `lib/main.dart` is `Future<void> main() => AppMain.run();` and the app writes no OpenTelemetry code. Add `fespalier_otel` and `otel_zone` under `dependencies:` as [the next section](#opentelemetry-with-otel_zone) shows, then in `pubspec.yaml`:
+
+```yaml
+fespalier:
+  telemetry: true
+  otel: true
+```
+
+`otel: true` needs `telemetry: true`, both packages under `dependencies:` (not `dev_dependencies:`), and not `main: manual`, which writes no `main()` at all. [`otel`](configuration.md#otel) lists the errors `fsp` gives for each. The generated file then has:
+
+- `static final OtelZone observability`, with `serviceName` the pubspec's `name` and `endpoint: FespalierOtel.endpoint()`. A release build without `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` exports nothing.
+- In `_main()`, right after `WidgetsFlutterBinding.ensureInitialized()` and before the deferred routes, the adapters' `beforeRun` and `runApp`: `observability.start(...)` with the version and the build, then `FespalierTelemetry.add(FespalierOtel(isReady: ..., onScreen: observability.setCrashScreen))`. It is `add`, not `install`, so a sink that an adapter or your `startup()` adds stays.
+- The Riverpod observer and the route observer, which are null until the SDK is up: they reach `ProviderScope(observers:)` and `AppRoutes.router(observers:)` through the same hooks the [adapters](adapters.md) use.
+- The zone: `observability.runGuarded` around all of `main()`, on every platform. Since 0.19.0 that includes the web, which needs `otel_zone` v0.8.1 or later: an older one leaves a web build blank, so bump its pin. It is the innermost zone, inside the [adapters' zones](adapters.md), and a `zone()` in startup.dart replaces it, so Sentry's zone wins ([Wiring Sentry](#wiring-sentry)).
+
+**The version and the build.** `serviceVersion` is the build name: `FLUTTER_BUILD_NAME`, which Flutter passes from 3.47 on (`1.4.0` of `version: 1.4.0+12`, or `--build-name`). An older Flutter passes none, and `service.version` is `unknown`, which `otel_zone` takes (it refuses an empty one). `buildId` is `FLUTTER_BUILD_NUMBER` (the `12`), or none. Neither is written into the file, so a version bump does not change the generated code. `FespalierOtel.serviceVersion()` and `FespalierOtel.buildId()` read them.
+
+**What does not change.** `lib/app.g.dart` is the same bytes as without the key. An app's own sink goes in `startup()` with `FespalierTelemetry.add(sink)`, **once**: `install` would replace the OpenTelemetry one, and `fsp gen` says so, and `startup()` runs again on Retry after an async step failed, while `add` appends a sink each time it is called. Keep the sink in a top-level `final _sink = ...;` and write `if (!FespalierTelemetry.contains(_sink)) FespalierTelemetry.add(_sink);` (`fsp create --features otel,sentry` writes it so). A `startup.dart` that builds its own `OtelZone` is warned about too, because the SDK would start twice.
+
+**`AppMain.observability`** is the SDK for what the app adds itself, such as `AppMain.observability.setEndUser(id)` after sign-in. `isReady` says whether it is up. A test that pumps `AppMain.root()` never starts it: the start is in `main()`, not in the widget tree.
+
+**What it does not configure.** The rest of `OtelZoneConfig`: `deploymentEnvironmentName`, `exportFloor`, `redact` and the spool. An app that needs them keeps the hand wiring of [the next section](#opentelemetry-with-otel_zone) and leaves `otel: true` out. That works under `main: auto`, with no `main: manual`: write it in `lib/app/startup.dart` (the `OtelZone`, its `start()`, the sink and the observers, and a `zone()` for `runGuarded`), or in a `lib/main.dart` of your own that does not call `AppMain.run()`, as `examples/telemetry` does.
+
+**Checked, and not checked.** CI's `create` jobs build `fsp create --features otel`, `telemetry` and `all` and run their tests, and the generator's tests check the emitted `main()`. No CI job runs the SDK on a phone or in a browser. **Seen by hand on the web**, once, in headless Chromium with Flutter 3.47.7: an `fsp create --features otel --platforms web` app rendered in a release build (dart2js and `--wasm`) and in a debug build (DDC); with `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` set to a local collector its logs and spans arrived, and so did an uncaught async error and a framework error; a release build without the define sent nothing; and the same app on the previous `otel_zone` pin stayed blank. That run is not a test. **UNCHECKED on a device:** the spans arrive with `service.name` set to the app, `service.version` the build name and `app.build_id` the build number (Android, iOS, Flutter 3.47 and later); a native crash names its screen ([above](#the-screen-a-native-crash-happened-on)); and with `sentry` and a DSN an uncaught async error reaches Sentry with `otel.trace_id`.
+
 ### OpenTelemetry with otel_zone
 
-`otel_zone` is not on pub.dev: depend on it by git, pinned to a commit. Add `fespalier_otel` next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
+By hand, for your own `main()` and the options `otel: true` does not take (the [generated wiring](#opentelemetry-from-the-generated-main) is the default since 0.19.0). `otel_zone` is not on pub.dev: depend on it by git, pinned to a commit. Add `fespalier_otel` next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
 
 <!-- x-release-please-start-version -->
 
@@ -138,12 +165,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -152,10 +179,10 @@ dependencies:
 otel_zone:
   git:
     url: https://github.com/vaam-apps/flutter-otel-zone
-    ref: a9648533f6f8f0a6bfb341b368e8be0747b7dc21 # a commit, not a tag
+    ref: 64c4661ac6cd09718141864d528892916677cc38 # v0.8.1, a commit, not a tag
 ```
 
-`otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`, so an app with it resolves go_router 17 (fespalier accepts 17 and 18). An app that needs 18 adds `dependency_overrides: go_router: ^18.0.0`, as `otel_zone`'s README says. `examples/telemetry` is on go_router 17.
+Since 0.19.0, `otel_zone` v0.8.1 (commit `64c4661ac6cd09718141864d528892916677cc38`) is on the dartastic rc.4 line, and its `otel_go_router` accepts go_router 17 and 18, so pub resolves go_router 18 on a Flutter that has it and no override is needed; `fespalier_otel` follows the same line (`dartastic_opentelemetry` 1.1.0-beta.17, API 1.0.0-rc.4). An app that stays on an `otel_zone` before the rc.4 line (up to v0.7.0) still gets `otel_go_router: ^0.2.0`, which asks for `go_router: ^17.0.0`: it resolves go_router 17, and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18, as `otel_zone`'s README says. `examples/telemetry` is on go_router 18.
 
 The wiring, in `main.dart` (`examples/telemetry` is this, inside Sentry's zone):
 
@@ -170,7 +197,12 @@ Future<void> main() => guarded(() async {
     serviceVersion: '1.4.0',
     resourceAttributes: {...FespalierOtel.resourceAttributes},
   );
-  FespalierTelemetry.install(FespalierOtel(isReady: () => observability.isReady));
+  FespalierTelemetry.install(
+    FespalierOtel(
+      isReady: () => observability.isReady,
+      onScreen: observability.setCrashScreen,
+    ),
+  );
   runApp(ProviderScope(
     observers: [?observability.riverpodObserver()],
     child: MaterialApp.router(
@@ -180,7 +212,7 @@ Future<void> main() => guarded(() async {
 });
 
 Future<void> guarded(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+    observability.runGuarded(body);
 ```
 
 `otel_zone` owns the zone that `WidgetsFlutterBinding.ensureInitialized()` and `runApp` run in, so both go inside `runGuarded`. A failure while the app starts arrives through `FlutterError.reportError`.
@@ -189,7 +221,31 @@ Future<void> guarded(Future<void> Function() body) =>
 - `recordLocations: true` adds the committed location and a guard's redirect target to the spans (segment and query values are app data, so it is off).
   `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there is one. Without it a debug build exports to `http://10.0.2.2:4318` on Android (the emulator's host) and `http://localhost:4318` elsewhere; a release build gets `''`, which `otel_zone` takes as "telemetry off", so a store build never sends to a developer's computer.
 
-**Known limitation on the web (since 0.8.1).** `OtelZone.runGuarded` never runs its body there, so the app stays blank: it builds a `ReceivePort`, which `dart:isolate` does not support on the web (`start()` works). Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does; the error hooks `runGuarded` installs are then missing there.
+**On the web (since otel_zone v0.8.1).** `OtelZone.runGuarded` runs its body in a browser from v0.8.1 on, so `guarded` above needs no `kIsWeb` branch. An older `otel_zone` never ran it there: it built a `ReceivePort`, which `dart:isolate` does not support on the web, so the app stayed blank (`start()` works). On an older one, return the body without `runGuarded` when `kIsWeb` is true. On the web the zone reports framework errors and uncaught async errors; there is no isolate error listener, because a browser has no isolates. In a release web build those errors go to `otel_zone`'s sink only (its console printing and Flutter's own error dump are on in debug only), so without `OTEL_EXPORTER_OTLP_ENDPOINT` they are seen nowhere, as on mobile.
+
+### The screen a native crash happened on
+
+Since 0.19.0. A native crash or an ANR that `otel_zone` records can say which screen the app was showing when it died: the record carries `otel_zone.crashed.screen`, and the Errors dashboard has a table of crashes and freezes by screen, "Which screen was the app on when it crashed?". The app does not write the call itself: `FespalierOtel` makes it on every committed navigation when it is given `onScreen`.
+
+```dart
+FespalierTelemetry.install(
+  FespalierOtel(
+    isReady: () => observability.isReady,
+    onScreen: observability.setCrashScreen,
+  ),
+);
+```
+
+It needs `otel_zone` v0.7.0 or later; the pin above is the commit that carries the call.
+
+- **What it is told:** the route **pattern** of the page on screen, `/orders/:id`, the value of `fespalier.route`. It is `null` after a navigation that matched no route, and a superseded navigation tells nothing, because the one that replaced it does. Only navigations that have a span tell it, so it is called only while the SDK is up. It never receives a location, a segment or a query value.
+- **When it is told:** when the navigation commits, before the new page's `initState` and first `build`, so a crash or an ANR while that page opens (a plugin call in `initState`, a heavy synchronous first build) is recorded with that page. A navigation that commits twice before its first frame (a guard that changed its answer) tells both, and the second stays. While a guard or a `redirect.dart` is still deciding nothing has committed, so a crash then names the page the user still sees. A navigation made in the background is told at once, though its span ends after the app resumes. `otel_zone` keeps the value once its one message reaches the platform (sent at once, or as soon as the previous one has landed, on a background queue), so a crash in that same instant can still name the page before.
+- **What it costs without `onScreen`:** nothing. The call is not made, and nothing is sent to the platform.
+- **What the platform keeps:** a screen is trimmed, and kept only if it is at most 64 UTF-8 bytes with no control character. Anything else is `null`: it clears the previous value and is never cut to fit. On Android the screen is part of the 128-byte process state summary, and it is the first field dropped when the summary is full. `otel_zone`'s `redact` scrubs it at export, as it does every attribute, so a pattern a redactor would mangle reaches the collector mangled.
+- **Where each kind of record gets its screen:** an Android JVM crash from memory; a native crash, an ANR, a signal or a low-memory kill from the process state summary, on Android 11 (API 30) and later, so below API 30 only the JVM crashes carry it; an iOS `NSException` from memory; an iOS MetricKit crash from a small per-run file matched by process id, on iOS 17 and later, and only when exactly one run matches. An iOS hang never carries one, because the process lived on. An Android ANR carries the last screen the platform received, because the frozen main thread cannot navigate, and a kill in the background carries the screen the app was left on.
+- **What it is not:** a recovered crash is not stamped with the screen the app shows now, because it happened in an earlier launch. A crash that names no screen is `unknown` in the table, never a guess.
+
+The platform details are in [`otel_zone`'s README](https://github.com/vaam-apps/flutter-otel-zone#which-screen-it-died-on), which lists the summary's layout and the cost of a change. **UNCHECKED on a device:** no fespalier test reads a native crash record. `otel_zone`'s own CI checks the screen on Android emulators (a JVM crash, a native crash and an ANR each carry `/home`), but nothing has run on a phone, and the Errors table has not been seen with a real crash. Whether each platform above names the screen it should, on a real phone or simulator, is a device run, not something this package has verified. Nor has a crash in a new page's `initState` been seen to name that page on a device.
 
 ### Several sinks: combine and add
 
@@ -206,10 +262,11 @@ FespalierTelemetry.install(
 
 `FespalierTelemetry.add(sink)` is `install(combine([?current, sink]))`: use it where two places each install a sink (a package's setup and the app's `startup()`, say), so neither replaces the other. `install` replaces everything and `install(null)` removes everything; a second `install` that was meant to add is the usual mistake.
 
-**Each sink has its own tokens.** The token a sink returns from `start` is what only that sink gets back at `end`, at `page`, in `within` and as the `TelemetryStart.parent` of what runs during its navigations. One sink's spans never become another's parents, and `FespalierOtel` keeps its navigation as the parent of its guard, data and deferred spans behind a `combine`.
+**Each sink has its own tokens.** The token a sink returns from `start` is what only that sink gets back at `end`, at `page`, at `commit`, in `within` and as the `TelemetryStart.parent` of what runs during its navigations. One sink's spans never become another's parents, and `FespalierOtel` keeps its navigation as the parent of its guard, data and deferred spans behind a `combine`.
 **Each sink is isolated.** A sink that throws does not stop the others or the app: its error is printed once per sink (`fespalier telemetry: <error> in <Sink> (not shown again)`) and it is called again at the next operation. A sink with no token for an operation (`start` returned null) is still told the end, with null.
 **Nesting.** A combined sink in the list is flattened, `combine([])` reports nothing and `combine([sink])` is `sink`. For [`within`](#spans-around-data-and-actions) the first sink is the outermost.
 **Trace links.** A sink that makes OpenTelemetry spans overrides `traceOf(token)` to return a `TelemetryTrace(traceId, spanId)` (32 and 16 lowercase hex digits). `combine` then tells every other sink with `linkTrace(token, trace)`, with that sink's own token, once per operation, after every sink started it and before `within` and `end`. `FespalierOtel` answers `traceOf` with the span it made, and [`fespalier_sentry`](#sentry-fespalier_sentry) tags its events with `otel.trace_id` and `otel.span_id`. List order does not matter; with no sink that answers, nothing is called.
+**Commits** (since 0.19.0). `commit(navigation, commit)` tells a sink, with its own token, that a navigation committed. The `TelemetryCommit` gives its `outcome` (`ok`, or `not_found`) and the `route` pattern of the page it puts on screen (null when not found). It comes synchronously from the router, before the new page's `initState` and first `build`, so before the navigation's `page` events and `end`. The first one comes while the `Router` widget is built, so never navigate, call `setState` or change a provider in it. A superseded navigation never commits. One that commits twice before its first frame is told twice, and, while the same sink stays installed, the last `route` is what `end` reports. The default does nothing; `FespalierOtel` passes it to [`onScreen`](#the-screen-a-native-crash-happened-on), and `FespalierSentry` names its scope there ([When the scope is named](#what-sentry-gets-from-fespalier)). A sink that implements `FespalierTelemetry` instead of extending it adds the method, and a member already named `commit` with another signature must be renamed.
 
 ### Spans around data() and actions
 
@@ -232,6 +289,8 @@ data() and actions run outside it (use runZoned with zoneValues, not runZonedGua
 `FespalierTelemetry.run(token, body)` is the same for an adapter package that starts operations of its own with `FespalierTelemetry.begin`: `body` runs once, synchronously, and what it returns or throws comes back (with no sink or a null token, it is `body()`).
 
 The data span starts **before** `data()` runs, so its duration includes the synchronous part, and a `data()` that throws before it returns has a `data` span with `fespalier.data.state = error` and `fespalier.async = false`.
+
+Since 0.18.0 a sink also reads what the span of a load and of an action say about itself: `TelemetryStart.dataAttempt` (which try the load is: `1`, or n + 1 when Riverpod ran a failed provider again on its own), `TelemetryEnd.dataSource` (`cache` or `fetch`, for a data.dart with a `dataCache`), and, on an action's end, `TelemetryEnd.actionRolledBack` and `TelemetryEnd.actionInvalid`. [Telemetry conventions](telemetry-conventions.md#telemetry-conventions) has the attribute names.
 
 ### Where a navigation came from: navigateFrom
 
@@ -308,6 +367,8 @@ Each operation is `#n`, which ties its `start` line to its `end` line and names 
 
 - `RecordingTelemetry(recordWithin: true)` also writes `#n within enter` and `#n within exit` around what runs inside a `data()` or an action, so a test can see a call run within its operation.
 - An `image` operation (since 0.9.0) is `#4 start image emgr w=640 preload` and, when it ends, `#4 end image ok async` or `#5 end image error async status=404`: the builder's name and the width, never the URL.
+- Since 0.18.0 a line can also say `attempt=N` (a data start that is the Nth try of a retry), `source=cache` or `source=fetch` (a data end of a `dataCache`), `rolled_back=true` or `rolled_back=false` (an action end with an optimistic patch shown), and `invalid` (an action that ended with `FieldErrors`).
+- Since 0.19.0 `RecordingTelemetry(recordCommits: true)` also writes `#n commit ok route=/orders/:id` (`#n commit not_found` when no route matched) when a navigation commits, before its `page` lines and its end. It is off by default, so a log written before 0.19.0 reads the same.
 
 To see real spans, initialise the SDK in `setUpAll` with `SimpleSpanProcessor` and `InMemorySpanExporter` from `package:dartastic_opentelemetry/testing.dart`, install `FespalierOtel()`, and read the exporter after a `pump()`: a span is exported when it ends. `OTel.initialize` runs once per isolate, so once per test file. `examples/telemetry/test/` does both.
 
@@ -321,13 +382,17 @@ With a sink installed, fespalier never creates a `Future`, a microtask or a time
 - an async one is reported through a side listener on the very `Future` (which handles its own error, so it cannot make an unhandled one);
 - the wrappers return the very object they were given.
 
+Since 0.18.0, with a sink, each data load also registers one `ref.onManualInvalidation` callback and one `ref.onDispose` callback, which Riverpod drops when the provider rebuilds, and keeps one small entry per provider whose last load failed; the next load that succeeds removes it, and so does disposing the provider (or invalidating it by hand), so a page that is gone leaves nothing behind.
+
 What does schedule microtasks is the OpenTelemetry SDK itself, whose span processors are `async` methods: they run when a span starts or ends, never in the path of a value the app gets. A backgrounded app draws no frames, so a navigation made in the background ends its span at the next frame after the app resumes.
+
+Since 0.19.0, with a sink, each commit walks the router's configuration once more to name its page (a few small objects per navigation), and tells the sink in the same call stack.
 
 ## Sentry: fespalier_sentry
 
 Since 0.9.0. `package:fespalier_sentry` is the `FespalierTelemetry` sink for [Sentry](https://sentry.io), and it is **errors first**: out of the box it sends what a team that debugs a production app asks for, and leaves performance monitoring to the teams that want it.
 
-- **Every error and crash, with where it happened.** An error that a guard, a `data.dart`, an action or a deferred load threw is a Sentry event tagged with the route pattern (`/products/:id`, never the URL), the app file (`products/$id/data.dart`) and, for an action, its function name. Events are grouped by that file and not by the Riverpod frames on top of the stack. The screen is also the scope's _transaction_ name, which Sentry's issue list groups and searches by, so a crash that no fespalier operation reported says which screen it happened on too.
+- **Every error and crash, with where it happened.** An error that a guard, a `data.dart`, an action or a deferred load threw is a Sentry event tagged with the route pattern (`/products/:id`, never the URL), the app file (`products/$id/data.dart`) and, for an action, its function name. Events are grouped by that file and not by the Riverpod frames on top of the stack. The screen is also the scope's _transaction_ name, which Sentry's issue list groups and searches by, so a crash that no fespalier operation reported says which screen it happened on too. Since 0.19.0 the scope names a page when the navigation to it commits, before the page's `initState` and first `build` and not after that frame (see "When the scope is named" below).
 - **One breadcrumb per page change**, from the pattern of the page that was left to the pattern of the page that is shown, so a report reads as the path the user took.
 - **Release health.** Sessions, crash-free users and crash-free sessions are the SDK's; a handled error marks its session _errored_.
 - **A link to the OpenTelemetry trace.** Next to `fespalier_otel` (installed together with [`FespalierTelemetry.combine`](#several-sinks-combine-and-add)), each event carries `otel.trace_id` and `otel.span_id`: the trace of the span the failing call made, or, for a crash, of the navigation that opened the screen. Search the trace id in your OpenTelemetry backend to see what the app did.
@@ -344,12 +409,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_sentry:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sentry
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -397,6 +462,12 @@ The keys are the telemetry conventions' names (contract version 1), so a search 
 
 **Never sent:** segment values, query values (`recordLocations: true` adds only the committed **path**), family keys, `extra`, action inputs and results, data values, and a `FieldErrors`. What is sent is route patterns, app file paths, action function names, enum-like outcomes, durations, and the exception with its type and stack. Exception **text** is the app's: Sentry sends it as it is, so redact what your app knows to be sensitive in `options.beforeSend`, as with any Sentry app.
 
+**When the scope is named** (since 0.19.0). The scope is named when the navigation commits (`FespalierTelemetry.commit`), before the new page's `initState` and first `build`; before 0.19.0, once that frame was built. Most events read the same either way: an exception that Sentry's own integrations capture in the first frame reads the live scope after an `await`, once the frame has ended, and an event for a guard, a `data()` or an action takes its `fespalier.route` from its call site. What changes is what reads the scope during the first frame. An event captured on a copy of the scope (`captureException(..., withScope: ...)` in your code, and fespalier's own events: their transaction name changes, and their `fespalier.route` and `otel.*` tags only for an operation with no route or trace of its own, such as a `custom` one) now names the page being opened, and so does code that reads `scope.transaction` or the tags, such as a page's `initState`. UNCHECKED: that a native crash or an ANR in `initState` carries the tag on Android and iOS (the native SDK hears it through Sentry's scope sync).
+
+The same rule has a reverse: from the commit until the first frame, an event from the page being left names the destination. A `captureException` right after `router.go('/other')` in the same handler, with a copy of the scope or without, has the transaction name `/other`, where before 0.19.0 it had the name of the page on screen, and so has an action that navigates and then fails; the action's `fespalier.route` stays its own page's, from the call site.
+
+A navigation that commits twice before its first frame is named twice, and the second stays. A superseded one never names it. While a guard or a `redirect.dart` decides, the page on screen stays named. The page's breadcrumb still comes with its first frame, so such an event has the page before as its last breadcrumb. The end names it again, which sends nothing new. With `traceLifecycle: stream`, a commit made while a span is active (a `go()` inside the span of a data load or an action, or an idle span of Sentry's own: the one it starts for a tap, or for a route or the app start) sets the tag at the commit and the transaction name at the end.
+
 ### Wiring Sentry
 
 Sentry starts first: its `appRunner` runs the binding, `startup()` and `runApp`, so crashes are Sentry's. In `lib/app/startup.dart`:
@@ -420,7 +491,7 @@ List<NavigatorObserver> get routerObservers => [
 ];
 ```
 
-Next to OpenTelemetry (`otel_zone`), install both in the one slot. Do **not** also use `OtelZone.runGuarded`: its zone sends an uncaught async error to Talker only, and Sentry would never see it (it is also blank on the web). Start the SDK with `observability.start()` in `startup()` instead:
+Next to OpenTelemetry (`otel_zone`), install both in the one slot. Do **not** also use `OtelZone.runGuarded`: its zone sends an uncaught async error to Talker only, and Sentry would never see it. Start the SDK with `observability.start()` in `startup()` instead:
 
 ```dart
 Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
@@ -438,6 +509,8 @@ Future<void> startup() async {
   await observability.start(serviceVersion: '1.4.0', resourceAttributes: {...FespalierOtel.resourceAttributes});
 }
 ```
+
+Since 0.19.0, `otel: true` writes the OpenTelemetry half of that second snippet for you: the generated `main()` starts the SDK and adds `FespalierOtel` before `startup()` runs, and `zone()` stays Sentry's, so nothing wraps the app in `runGuarded`. Then `startup()` needs only the first snippet's `FespalierTelemetry.add(FespalierSentry())`, written once (`final _sentry = FespalierSentry();` at the top level and `if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);`, because Retry runs `startup()` again and `add` appends a sink each time), and the Sentry half is the same. [Generated `main()`](#opentelemetry-from-the-generated-main) has the details.
 
 The order rules:
 
@@ -463,7 +536,7 @@ FespalierSentry.configure(options, dsn: dsn, tracing: true); // tracesSampleRate
 FespalierTelemetry.install(FespalierSentry(tracing: true));
 ```
 
-Each navigation is then a `ui.load` transaction named by the route pattern, started as `navigate` (so the HTTP calls made during it have a parent) and renamed when the page is on screen.
+Each navigation is then a `ui.load` transaction named by the route pattern, started as `navigate` (so the HTTP calls made during it have a parent) and renamed when the navigation commits (since 0.19.0; before, when the page was on screen).
 
 - Guards, redirects, data loads, deferred loads and actions are its child spans.
 - The first frame is the transaction's _time to initial display_ (`ui.load.initial_display`) and the arrival of the screen's last data load its _time to full display_ (`ui.load.full_display`): the two spans and measurements that Sentry's Screen Loads view reads.
@@ -476,7 +549,32 @@ Each navigation is then a `ui.load` transaction named by the route pattern, star
 
 **The first screen.** On Android and iOS it has a transaction already: with tracing on and Sentry's defaults, its own app start is the first screen's `ui.load` (from the process start to the first frame, with the native spans). The sink opens none for that screen, and tells it when the screen's data is in (`SentryFlutter.currentDisplay()?.reportFullyDisplayed()`); that screen's guard and data spans are not recorded. With `enableStandaloneAppStartTracing: true` (Sentry 9.26.0, experimental) app start is a trace of its own, and the first screen is an ordinary one with all its spans: **recommended** with `tracing: true`. On the web and on the desktop the first screen is an ordinary one.
 
-An HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it parents them to the data span.)
+With `traceLifecycle: static`, an HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it parents them to the data span.)
+
+### Span streaming
+
+Since 0.19.0. Sentry's `traceLifecycle` is `static` by default: a screen is a _transaction_ and the SDK sends it when it finishes. Set `options.traceLifecycle = SentryTraceLifecycle.stream` (Sentry 9.26.0 has it) and the SDK sends _spans_ one by one, as each ends, with no transaction. `FespalierSentry(tracing: true)` follows the setting: it reads it at the first navigation and makes the same tree through Sentry's streaming API.
+
+```dart
+await SentryFlutter.init((options) {
+  FespalierSentry.configure(options, dsn: dsn, tracing: true);
+  options.traceLifecycle = SentryTraceLifecycle.stream;
+}, appRunner: () => runApp(...));
+FespalierTelemetry.install(FespalierSentry(tracing: true));
+```
+
+- Each navigation is a **segment** (a root span, `sentry.op` `ui.load`, named by the route pattern, started as `navigate`). Guards, redirects, data loads, deferred loads, images, auth steps and actions are its children, with the parent given: two screens that overlap stay apart.
+- Initial and full display are child spans (`ui.load.initial_display`, `ui.load.full_display`) with the attributes `app.vitals.ttid.value` and `app.vitals.ttfd.value` (milliseconds), where a transaction has measurements.
+- A span's status is `ok` or `error`, the only two a streamed span has. `error` is a failure (a validation answer, a `FieldErrors`, is `ok`: the span's `fespalier.action.result` says `error`), and a screen whose data had not arrived when the next navigation started: its data span and its full display are `error`, the full display with no value. What a static span says with another status (`cancelled`, `unauthenticated`) is in the span's `fespalier.*` attributes.
+- A navigation that a newer one superseded **cannot be dropped**: Sentry has no way to discard a streamed span. It is sent, named `navigate`, with `fespalier.navigation.outcome` `superseded`; filter on it in Sentry.
+- An error in a streamed `data()` or action is an event whose `contexts.trace` is that span's, so Sentry links the two. An action with no screen open is a segment of its own, and an auth step with no span open makes none.
+- On Android and iOS the first screen is still Sentry's app start (see above).
+- The sink never uses an idle span (it starts a timer) and ends every span itself, when the screen's data arrives or the next navigation starts. A span that ends before the route is known waits for it, so each carries the segment's name (`sentry.segment.name`); Sentry's span buffer and its flush are the SDK's.
+- `FespalierSentry.configure` also installs `beforeSendSpan` (the app's first), which takes `http.query`, `http.fragment` and the query of `url` off a span (`recordQueries: true` keeps them). `FespalierSentry.spanWithoutQueries` is the same function.
+
+Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s transactions are: a screen is not a trace of its own. `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews the trace on each navigation, and so does the SDK after the app has been in the background, when no navigator observer exists. UNCHECKED: whether Sentry's Screen Loads and trace views are right with one trace for many screens.
+
+**HTTP spans are under the data span** (since 0.19.0). Sentry's HTTP integrations (`SentryHttpClient`, `sentry_dio`) parent to the _active_ span of the running zone. With `tracing: true` on a streaming SDK the sink makes the span of a `data()` and of an action around the code it runs (`within`, see "Several sinks"), so a request made there, after an `await` too, is a child of it, and two loads at once keep their own. The span still ends with fespalier's own outcome and attributes (`fespalier.data.state`, `fespalier.action.result`), when `data()`'s `Future` settles, the load is disposed or the next navigation starts before the screen has its data (then with status `error`), never earlier. An action with no screen open is a segment, and its requests are its children. A request that ends before the navigation commits carries `sentry.segment.name` `navigate`: Sentry ends its span, and only the spans the sink makes wait for the route's name. The `static` lifecycle is unchanged: its HTTP spans stay under the screen's transaction, because a transaction can only be made current by binding it to the one global scope, which two loads at once would share.
 
 ### Sentry defaults and privacy
 
@@ -494,12 +592,13 @@ An HTTP span made inside `data()` is a child of the screen's transaction, beside
 | `beforeBreadcrumb`                        | the app's, then the query and fragment taken off HTTP breadcrumbs (`recordQueries: true` keeps them), then `SentryNavigatorObserver`'s own breadcrumbs dropped (`observerBreadcrumbs: true` keeps them) | none              | `sentry_dio` and `SentryHttpClient` breadcrumbs carry `http.query`; this sink's page breadcrumbs say the same with the pattern |
 | `beforeSend`                              | the app's, then the query and fragment taken off the event's request                                                                                                                                    | none              | a request carries `queryString`                                                                                                |
 | `beforeSendTransaction`                   | the app's, then the query taken off span data (`recordQueries: true` keeps it), and a superseded navigation dropped                                                                                     | none              | HTTP spans carry `http.query`; a superseded navigation never showed a screen                                                   |
+| `beforeSendSpan` (since 0.19.0)           | the app's, then the query and fragment taken off the streamed span's attributes (`recordQueries: true` keeps them)                                                                                      | none              | the same HTTP spans with `traceLifecycle: stream`, which cannot drop a superseded navigation: it is sent, marked               |
 
 Not touched: `environment`, `release`, `dist` (Sentry derives `name@version+build`), `captureFailedRequests` and session replay (off by default).
 
-Two lines are printed in a debug build, once: with `tracing: true` on an SDK whose `traceLifecycle` is `stream` (this version makes no spans for it; the events and breadcrumbs are still sent), and with `tracing: true` on an SDK that samples nothing (no transaction is sent). A `tracesSampleRate` outside 0 to 1 throws an `ArgumentError`.
+One line is printed in a debug build, once: with `tracing: true` on an SDK that samples nothing (no transaction is sent). Before 0.19.0 a second one said that `traceLifecycle: stream` made no spans. A `tracesSampleRate` outside 0 to 1 throws an `ArgumentError`.
 
-**What it costs.** Installed, every call is synchronous and returns at once, a sync guard or `data()` stays sync, it starts no timer and no listener (the SDK's own timers belong to the SDK, and `tracing: true` never asks for one), and every SDK call is inside a `try`, so a failing SDK costs an event, never a feature.
+**What it costs.** Installed, every call is synchronous and returns at once, a sync guard or `data()` stays sync, it starts no timer and no listener (the SDK's own timers belong to the SDK, and `tracing: true` never asks for one), and every SDK call is inside a `try`, so a failing SDK costs an event, never a feature. Since 0.19.0 the scope's names are set inside the call that commits (`go()`, a pop, a guard's answer, the `Router`'s first build) instead of after the frame: at most three tags, each told to the native SDK only when it changes. With `traceLifecycle: stream` the commit also ends the guard, redirect and deferred spans that waited for the route's name, inside `go()` or the `Router`'s first build: only the synchronous start of Sentry's `captureSpan` runs there, and `beforeSendSpan` runs after an `await`.
 
 ### Testing with Sentry
 
@@ -521,19 +620,19 @@ testWidgets('a refused refund is an event on its route and its file', (tester) a
 });
 ```
 
-`lines()` is one line per transaction, span and event without timestamps or ids (`transaction ui.load /orders/:id status=ok ttid ttfd`, then one indented `span fespalier.data ...` line for each of its spans, and `event StateError operation=data ...`).
+`lines()` is one line per transaction, span and event without timestamps or ids (`transaction ui.load /orders/:id status=ok ttid ttfd`, then one indented `span fespalier.data ...` line for each of its spans, and `event StateError operation=data ...`). With `traceLifecycle: stream` (since 0.19.0) a streamed screen reads the same way after them, as `segment ui.load /orders/:id status=ok ttid ttfd` and its children, and `spans` holds the `SentrySpanV2`s themselves, in the order they ended (each is recorded in `beforeSendSpan`: no flush and no timer; pump a frame first).
 
 - `sent()` is the JSON the SDK built, for the tags, the fingerprint and the contexts.
-- `breadcrumbs`, `tags` and `transactionName` read the scope.
+- `breadcrumbs`, `tags` and `transactionName` read the scope; since 0.19.0 they name a page from its commit: right after `router.go(...)`, before a pump, and in the page's `initState`.
 - `RecordingSentry(configure: (options) => ...)` runs after the test defaults (a made-up DSN, `tracesSampleRate` 1.0): run `FespalierSentry.configure` in it to test the defaults.
 - A test of `tracing: true` navigates after the first screen, because on Android and iOS Sentry's app start owns that one (pass `platform: TargetPlatform.linux` to `FespalierSentry`, a `@visibleForTesting` parameter, to avoid it).
 
 ## Crashlytics
 
-There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
+There is no `fespalier_crashlytics` package, on purpose (since 0.9.0). Crashlytics has no spans: its integration is three calls (`recordError`, `log`, `setCustomKey`). A native crash that `otel_zone` records already names the screen it happened on (since 0.19.0): see [The screen a native crash happened on](#the-screen-a-native-crash-happened-on). The policy (skip a `FieldErrors`; tag the route and the file) is a few lines in a `FespalierTelemetry` subclass of your own:
 
 - `end` records a non-fatal error;
 - `page` logs the page change;
-- a navigation's end sets the route as a custom key.
+- a navigation's `commit` (since 0.19.0) sets the route as a custom key, so a crash while the page opens names it.
 
 Write it with `if` chains, not a `switch` over `TelemetryOp`, so an operation added later never breaks the app's build. `FespalierTelemetry.combine([FespalierSentry(), yourSink])` sends to both.

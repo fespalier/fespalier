@@ -81,17 +81,20 @@ export 'src/route_link.dart';
 export 'src/route_match.dart';
 export 'src/route_navigator.dart';
 export 'src/route_data.dart';
+export 'src/routes_reload.dart' show RoutesReload, ShellKeys;
 export 'src/scroll_memory.dart';
 export 'src/segments.dart';
 export 'src/selected_data.dart';
 export 'src/tab_options.dart';
 // Telemetry (since 0.8.1): a sink an adapter implements, and what a generated app.g.dart passes
 // (`NavigationSource`, `navigateFrom` and `TelemetryTrace` since 0.9.0, `telemetryFollows` since
-// 0.12.0).
+// 0.12.0), `TelemetryDataSource` since 0.18.0, `TelemetryCommit` since 0.19.0.
 export 'src/telemetry.dart'
     show
         FespalierTelemetry,
         NavigationSource,
+        TelemetryCommit,
+        TelemetryDataSource,
         TelemetryEnd,
         TelemetryOp,
         TelemetryOutcome,
@@ -103,6 +106,13 @@ export 'src/telemetry.dart'
         navigateFrom,
         telemetryAttach,
         telemetryFollows;
+export 'src/motion.dart'
+    show
+        FadeThroughPageTransition,
+        MotionFill,
+        SharedAxis,
+        SharedAxisPageTransition;
+export 'src/page_motion.dart' show PageMotion;
 export 'src/transitions.dart';
 export 'src/url_state.dart';
 export 'src/version.dart';

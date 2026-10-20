@@ -296,7 +296,154 @@ void main() {
 - **A test that feeds the fake after the container is disposed** gets nothing: disposal cancels the subscription
   (`source.hasListener` is false, `cancelCount` is 1).
 
+## A core that sends raw messages: `ChangeCodec`
+
+Since 0.18.0. A typed flutter_rust_bridge stream needs none of this: FRB decodes the enum into the Dart classes, and a core
+that sends a `Vec<CoreEvent>` per message is `changes().expand((batch) => batch)`. `ChangeCodec` is for a core that sends
+**raw messages** (a `StreamSink<String>` of JSON, a `Vec<u8>` of CBOR, protobuf or bincode, a `ReceivePort` of plain
+`dart:ffi`, a socket to a sidecar, or a core updated apart from the app) and decodes them in Dart, where one bad message
+can be contained. It is a `StreamTransformer`: `ref.watch(core).rawChanges().transform(codec)` in the feed's `open` is the
+whole change; `ChangeCodec.batch(split, decode)` takes a message that carries several events.
+
+A message or batch item whose decoder throws is **skipped and never numbered**: no `Change.seq`, no topic moved, and the
+feed goes on, with `latest` keeping its last change. Only an error of the source itself is an `AsyncError`. A decoder throws
+`UnknownChange` for a variant a newer core added: it is skipped and counted apart from failures (`unknownCount` against
+`errorCount`). `onSkipped(reason, stackTrace)` logs each skip, and what it throws becomes an `AsyncError` and drops the rest of
+that message's events (a batch's items decoded before it, and those after it). Each subscription decodes on its own, so a codec
+shared by a broadcast source that two containers watch counts one bad message twice, and calls `onSkipped` and makes the span
+twice. With a telemetry sink, the 1st, 2nd, 4th, 8th... skip of each kind is one span, `fespalier.frb.decode`, a root span
+(not under whatever was running), ending `skipped` (`unknown`) or `error`, with a count: constants only, never the message, a
+name from the wire or the error's text. A decoded event reports nothing.
+
+```dart
+// lib/core/wire.dart
+import 'dart:convert';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_frb/fespalier_frb.dart';
+import 'package:my_app/core/core.dart';
+
+/// A core that sends its events as JSON text (a Rust `StreamSink<String>` of `serde_json::to_string`).
+abstract class WireCore {
+  Stream<String> events();
+}
+
+class RustWireCore implements WireCore {
+  @override
+  Stream<String> events() => const Stream.empty();
+}
+
+final wireCoreProvider = Provider<WireCore>((ref) => RustWireCore());
+
+/// One event from its JSON object; a variant this app does not know is an UnknownChange.
+CoreEvent eventFromJson(Map<String, Object?> json) => switch (json['type']) {
+  'OrderChanged' => OrderChanged(json['id'] as int),
+  'CartCleared' => const CartCleared(),
+  _ => throw const UnknownChange(),
+};
+
+/// One event per message.
+final wireCodec = ChangeCodec<String, CoreEvent>(
+  (raw) => eventFromJson(jsonDecode(raw) as Map<String, Object?>),
+);
+
+/// Several events per message: an unknown or broken item is skipped alone.
+final batchCodec = ChangeCodec.batch<String, Object?, CoreEvent>(
+  (raw) => jsonDecode(raw) as List<Object?>,
+  (item) => eventFromJson(item as Map<String, Object?>),
+);
+
+/// The feed over the raw messages: the codec is the only difference.
+final wireChanges = ChangeFeed<CoreEvent>(
+  (ref) => ref.watch(wireCoreProvider).events().transform(wireCodec),
+  name: 'wire',
+);
+
+final wireOrderChanged = wireChanges.topic<int>(
+  (event, id) => event is OrderChanged && event.id == id,
+);
+```
+
+```dart
+// test/wire_test.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_frb/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/core/core.dart';
+import 'package:my_app/core/wire.dart';
+
+class FakeWireCore implements WireCore {
+  final source = FakeChangeSource<String>(broadcast: false);
+
+  @override
+  Stream<String> events() => source.stream;
+}
+
+void main() {
+  test('a bad or unknown message is skipped, and the feed goes on', () async {
+    final core = FakeWireCore();
+    final container = ProviderContainer(
+      overrides: [wireCoreProvider.overrideWithValue(core)],
+    );
+    addTearDown(container.dispose);
+    final revisions = <int>[];
+    container.listen(wireOrderChanged(42), (_, next) => revisions.add(next));
+    await container.pump();
+
+    core.source.emit('{"type":"OrderChanged","id":42}');
+    await container.pump();
+    core.source.emit('not json');
+    core.source.emit('{"type":"OrderArchived","id":42}'); // newer than this app
+    await container.pump();
+    core.source.emit('{"type":"OrderChanged","id":42}');
+    await container.pump();
+
+    expect(revisions, [1, 2]);
+    expect(container.read(wireChanges.latest).value!.seq, 2);
+    expect(core.source.listenCount, 1);
+  });
+
+  test('a batch is its events; an unknown item is skipped alone', () {
+    final events = batchCodec.decode(
+      '[{"type":"OrderChanged","id":7},{"type":"OrderArchived"},{"type":"CartCleared"}]',
+    );
+    expect(events, hasLength(2));
+    expect(events.first, isA<OrderChanged>());
+    expect(events.last, isA<CartCleared>());
+  });
+}
+```
+
+- The codecs are top-level, so their counts add up across a test file: assert on what `decode` returns, not on `unknownCount`
+  or `errorCount`.
+- A batch is a burst: a watcher rebuilds once for it. A batch longer than the 64-event log makes every watcher rebuild once,
+  which is safe.
+- A heartbeat is a batch of none: `split` returns nothing, so there is no event and no skip.
+- `ReceivePort` and protobuf are fragments, not built, the same as in `docs/data.md` (they need your generated classes and your
+  FFI call):
+
+```dart
+// A protobuf message, with the generated `pb` library of your schema.
+CoreEvent eventFromProto(Uint8List bytes) {
+  final event = pb.Event.fromBuffer(bytes);
+  return switch (event.whichKind()) {
+    pb.Event_Kind.orderChanged => OrderChanged(event.orderChanged.id.toInt()), // an int64 is an Int64
+    pb.Event_Kind.cartCleared => const CartCleared(),
+    pb.Event_Kind.notSet => throw const UnknownChange(), // an unknown oneof member reads as notSet
+  };
+}
+
+// A ReceivePort fed by plain dart:ffi (allo-isolate): the port is a stream of raw messages.
+final port = ReceivePort('core changes');
+ref.onDispose(port.close);
+ref.watch(coreProvider).subscribe(port.sendPort.nativePort);
+return port.transform(ChangeCodec<Object?, CoreEvent>((raw) => eventFromProto(raw as Uint8List)));
+```
+
 ## Not built
 
-A `flutter_rust_bridge` dependency (the generated bindings own it); a typed event codec; a budget or a batching window for a
-core that emits thousands of events a second (that would be a timer: emit coarser events, or apply an `InvalidationTable` yourself).
+A `flutter_rust_bridge` dependency (the generated bindings own it); a codec per format in the package (JSON is `jsonDecode`
+and a `switch`; protobuf, CBOR and bincode would be dependencies, and their generated types are per app: the codec takes your
+decoder); a provider that counts skips (`unknownCount`, `errorCount` and `onSkipped` are enough); a budget or a batching window
+for a core that emits thousands of events a second (that would be a timer: emit coarser events, or apply an `InvalidationTable`
+yourself).

@@ -107,7 +107,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -129,7 +129,7 @@ Get `fsp` one of these ways (details in
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 dart run fespalier <command>      # installs nothing: downloads the matching release, SHA-256 pinned
-cargo install --git https://github.com/fespalier/fespalier --tag v0.17.1 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.20.0 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -139,7 +139,7 @@ fsp create my_app                          # a new app with fespalier in it, gen
 fsp init                                   # starter layout/page/not_found/transition, then gen
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
-fsp dev [-- <flutter run args>]            # the app, regenerated and hot restarted on every save (0.9.0)
+fsp dev [-- <flutter run args>]            # the app, regenerated and hot reloaded on every save (0.9.0)
 fsp build <target> [-- <args>]             # fsp gen, then flutter build <target>, with the hooks of `tasks: build:` (0.9.0)
 fsp run [task]                             # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0)
 fsp check                                  # CI: non-zero on errors, writes nothing
@@ -189,6 +189,7 @@ and the reserved names.
 | A screen or a write that works offline, queued writes, sync, offline banners, pending changes (`fespalier_cratestack`, since 0.10.0)                                                                            | `fespalier-offline`                             |
 | A CrateStack backend: the generated client, its transport and errors, its Dio, idempotency (`fespalier_cratestack`, since 0.10.0)                                                                               | `fespalier-cratestack`                          |
 | A notification tap or a push payload that opens a typed route (`fespalier_push`, since 0.13.0)                                                                                                                  | `fespalier-routing`                             |
+| A home-screen shortcut or widget tap that opens a typed route (`fespalier_launch`, since 0.18.0)                                                                                                                | `fespalier-routing`                             |
 | A file download, its status and path, a download notification that opens a route (`fespalier_download`, `fespalier_download_background`, since 0.15.0; engine, backends, uploads, tap adapter)                  | `fespalier-downloads`                           |
 | A place picked on a map, a pin picker, a geocoder, the device position, MapLibre (`fespalier_maps`, since 0.13.0)                                                                                               | `fespalier-maps`                                |
 | `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1)                                                                                                        | `fespalier-observability`                       |
@@ -200,6 +201,7 @@ and the reserved names.
 | An `fsp` error, a stale `app.g.dart`, a route that does not show                                                                                                                                                | `fespalier-troubleshooting`                     |
 | Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                                                                                                                                 | `fespalier-troubleshooting` (its DevTools page) |
 | Upgrading from any release since 0.2 (the notes run 0.2 to 0.3 up to 0.12 to 0.13), or adopting fespalier in a go_router app                                                                                    | `fespalier-migration`                           |
+| Coming from Uber's RIBs: what a router, an interactor, a builder, a viewless RIB or a workflow becomes                                                                                                          | `fespalier-migration`                           |
 
 ## Where the truth is
 

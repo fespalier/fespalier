@@ -118,6 +118,42 @@ GoRouter router({String initial = '/home'}) {
   return r;
 }
 
+/// A page that calls [read] in its `initState`, the first thing that runs when the page is built.
+class ScreenProbe extends StatefulWidget {
+  const ScreenProbe(this.read, {super.key});
+
+  /// Called once, from `initState`.
+  final void Function() read;
+
+  @override
+  State<ScreenProbe> createState() => _ScreenProbeState();
+}
+
+class _ScreenProbeState extends State<ScreenProbe> {
+  @override
+  void initState() {
+    super.initState();
+    widget.read();
+  }
+
+  @override
+  Widget build(BuildContext context) => page('probe');
+}
+
+/// A router with `/home` and `/probe` (whose page is a [ScreenProbe] calling [read]), attached to
+/// telemetry.
+GoRouter probeRouter(void Function() read, {String initial = '/home'}) {
+  final r = GoRouter(
+    initialLocation: initial,
+    routes: [
+      GoRoute(path: '/home', builder: (_, _) => page('home')),
+      GoRoute(path: '/probe', builder: (_, _) => ScreenProbe(read)),
+    ],
+  );
+  telemetryAttach(r, base: () => '/');
+  return r;
+}
+
 /// The string attribute [key] of [span].
 String? a(Span span, String key) => span.attributes.getString(key);
 
@@ -285,6 +321,216 @@ void main() {
       expect(superseded, hasLength(1));
       answer.complete(null);
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('onScreen (since 0.19.0)', () {
+    testWidgets(
+      'is told the pattern of a committed navigation, never the location',
+      (tester) async {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        final r = router();
+        await pumpRouter(tester, r);
+        screens.clear();
+        r.go('/items/7?tab=2');
+        await tester.pumpAndSettle();
+        expect(screens, ['/items/:id']);
+        for (final screen in screens) {
+          expect(screen, isNot(contains('7')));
+          expect(screen, isNot(contains('?')));
+        }
+      },
+    );
+
+    testWidgets('a pop tells the page below again', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/other');
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/login'));
+      await tester.pumpAndSettle();
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(screens, ['/other', '/login', '/other']);
+    });
+
+    testWidgets('a navigation that matched no route tells null', (
+      tester,
+    ) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/nowhere');
+      await tester.pumpAndSettle();
+      expect(screens, [null]);
+    });
+
+    testWidgets('a superseded navigation tells nothing', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final answer = Completer<String?>();
+      checkout = () => answer.future;
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/checkout');
+      await tester.pump();
+      r.go('/items/2');
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
+    });
+
+    testWidgets('a throwing onScreen costs nothing', (tester) async {
+      // Core prints the first error a sink lets out, once, and then keeps every later diagnostic
+      // quiet: an `onScreen` that throws must stay inside `FespalierOtel.commit`.
+      final printed = <String?>[];
+      final saved = debugPrint;
+      debugPrint = (message, {wrapWidth}) => printed.add(message);
+      try {
+        FespalierTelemetry.install(
+          FespalierOtel(onScreen: (_) => throw StateError('x')),
+        );
+        final r = router();
+        await pumpRouter(tester, r);
+        exporter.clear();
+        r.go('/items/7');
+        await tester.pumpAndSettle();
+      } finally {
+        debugPrint = saved;
+      }
+      expect(
+        only('navigate /items/:id').attributes.getString('fespalier.route'),
+        '/items/:id',
+      );
+      expect(tester.takeException(), isNull);
+      expect(printed, isEmpty);
+    });
+
+    test(
+      'a commit told for another operation than a navigation is not heard',
+      () {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        const commit = TelemetryCommit(TelemetryOutcome.ok, route: '/x');
+        final data = FespalierTelemetry.begin(
+          const TelemetryStart(TelemetryOp.data, site: dataSite),
+        );
+        FespalierTelemetry.current!.commit(data, commit);
+        FespalierTelemetry.finish(
+          data,
+          const TelemetryEnd(TelemetryOutcome.ok),
+        );
+        expect(screens, isEmpty);
+        // The same call for a navigation's token is heard: the check above is the operation's.
+        final navigation = FespalierTelemetry.begin(
+          TelemetryStart(TelemetryOp.navigate, uri: Uri.parse('/x')),
+        );
+        FespalierTelemetry.current!.commit(navigation, commit);
+        FespalierTelemetry.finish(
+          navigation,
+          const TelemetryEnd(TelemetryOutcome.ok, route: '/x'),
+        );
+        expect(screens, ['/x']);
+      },
+    );
+
+    testWidgets('without the SDK it is not called', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(
+        FespalierOtel(isReady: () => false, onScreen: screens.add),
+      );
+      final r = router();
+      await pumpRouter(tester, r);
+      r.go('/items/7');
+      await tester.pumpAndSettle();
+      expect(screens, isEmpty);
+    });
+
+    testWidgets('is told at the commit, inside go(), once', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/items/7');
+      // No pump: the commit of a synchronous location is inside go().
+      expect(screens, ['/items/:id']);
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
+    });
+
+    testWidgets('the new page\'s initState already sees its own screen', (
+      tester,
+    ) async {
+      final screens = <String?>[];
+      final seen = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = probeRouter(() => seen.add(screens.lastOrNull));
+      await pumpRouter(tester, r);
+      r.go('/probe');
+      await tester.pumpAndSettle();
+      expect(seen, ['/probe']);
+    });
+
+    testWidgets('the first page\'s initState sees its own screen too', (
+      tester,
+    ) async {
+      final screens = <String?>[];
+      final seen = <String?>[];
+      FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+      final r = probeRouter(
+        () => seen.add(screens.lastOrNull),
+        initial: '/probe',
+      );
+      await pumpRouter(tester, r);
+      expect(seen, ['/probe']);
+      expect(screens, ['/probe']);
+    });
+
+    testWidgets(
+      'two commits before one frame tell both, and the span names the last',
+      (tester) async {
+        final screens = <String?>[];
+        FespalierTelemetry.install(FespalierOtel(onScreen: screens.add));
+        final r = router();
+        await pumpRouter(tester, r);
+        screens.clear();
+        checkout = () => null;
+        r.go('/checkout');
+        checkout = () => '/login';
+        r.refresh();
+        await tester.pumpAndSettle();
+        expect(screens, ['/checkout', '/login']);
+        expect(
+          only('navigate /login').attributes.getString('fespalier.route'),
+          '/login',
+        );
+      },
+    );
+
+    testWidgets('behind a combine it still hears the commit', (tester) async {
+      final screens = <String?>[];
+      FespalierTelemetry.install(
+        FespalierTelemetry.combine([
+          RecordingTelemetry(),
+          FespalierOtel(onScreen: screens.add),
+        ]),
+      );
+      final r = router();
+      await pumpRouter(tester, r);
+      screens.clear();
+      r.go('/items/7');
+      await tester.pumpAndSettle();
+      expect(screens, ['/items/:id']);
     });
   });
 
@@ -907,6 +1153,135 @@ void main() {
     expect(exporter.spanNames, ['action items/\$id/action.dart#rename']);
   });
 
+  group('retries, saved copies, rollbacks and validation (since 0.18.0)', () {
+    test('a data span has its attempt', () async {
+      var calls = 0;
+      final p = FutureProvider.autoDispose<int>(
+        (ref) => traceDataCall(ref, 'd3', null, () async {
+          calls++;
+          if (calls == 1) throw StateError('try 1');
+          return calls;
+        }, telemetry: dataSite),
+      );
+      final c = ProviderContainer(
+        retry: (n, _) => n == 0 ? Duration.zero : null,
+      );
+      addTearDown(c.dispose);
+      c.listen(p, (_, _) {}, onError: (_, _) {});
+      for (var i = 0; i < 10; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final spans = exporter.findSpansByName('data items/\$id/data.dart');
+      expect(
+        [for (final s in spans) s.attributes.getInt('fespalier.data.attempt')],
+        [1, 2],
+      );
+    });
+
+    test('a data span has its source when it is told one', () {
+      final told = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.data, site: dataSite),
+      );
+      FespalierTelemetry.finish(
+        told,
+        const TelemetryEnd(
+          TelemetryOutcome.data,
+          isAsync: true,
+          dataSource: TelemetryDataSource.cache,
+        ),
+      );
+      final untold = FespalierTelemetry.begin(
+        const TelemetryStart(TelemetryOp.data, site: dataSite),
+      );
+      FespalierTelemetry.finish(
+        untold,
+        const TelemetryEnd(TelemetryOutcome.data, isAsync: true),
+      );
+      final spans = exporter.findSpansByName('data items/\$id/data.dart');
+      expect(spans, hasLength(2));
+      expect(
+        spans.first.attributes.getString('fespalier.data.source'),
+        'cache',
+      );
+      expect(
+        spans.last.attributes.keys,
+        isNot(contains('fespalier.data.source')),
+      );
+    });
+
+    test('an optimistic action that fails says rolled_back true, one that '
+        'works false', () async {
+      final data = FutureProvider.autoDispose<int>((ref) async => 1);
+      final layer = optimisticLayer(data);
+      final save = actionProvider<int, int>(
+        (ref, input) async {
+          if (input < 0) throw StateError('no');
+          return input;
+        },
+        invalidates: () => const [],
+        optimistic: () => layer.patch((int v, int input) => input),
+        telemetry: actionSite,
+      );
+      final c = ProviderContainer(retry: (_, _) => null);
+      addTearDown(c.dispose);
+      c.listen(data, (_, _) {});
+      c.listen(layer, (_, _) {});
+      c.listen(save, (_, _) {});
+      await expectLater(
+        Future.value(c.read(save.notifier).call(-1)),
+        throwsStateError,
+      );
+      await c.read(save.notifier).call(5);
+      final spans = exporter.findSpansByName(
+        'action items/\$id/action.dart#rename',
+      );
+      expect(spans, hasLength(2));
+      expect(
+        spans.first.attributes.getBool('fespalier.action.rolled_back'),
+        true,
+      );
+      expect(
+        spans.last.attributes.getBool('fespalier.action.rolled_back'),
+        false,
+      );
+      expect(spans.last.attributes.getBool('fespalier.action.invalid'), isNull);
+    });
+
+    test('an action refused by validate() is invalid, a StateError is not, a '
+        'success has neither', () async {
+      final rename = actionProvider<String, String>(
+        (ref, input) => input.toUpperCase(),
+        invalidates: () => const [],
+        validate: (input) =>
+            input.isEmpty ? const FieldErrors({'name': 'Required'}) : null,
+        telemetry: actionSite,
+      );
+      final boom = actionProvider<String, String>(
+        (ref, input) => throw StateError('no'),
+        invalidates: () => const [],
+        telemetry: actionSite,
+      );
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      c.listen(rename, (_, _) {});
+      c.listen(boom, (_, _) {});
+      expect(
+        () => c.read(rename.notifier).call(''),
+        throwsA(isA<FieldErrors>()),
+      );
+      expect(() => c.read(boom.notifier).call('a'), throwsStateError);
+      expect(c.read(rename.notifier).call('a'), 'A');
+      final spans = exporter.findSpansByName(
+        'action items/\$id/action.dart#rename',
+      );
+      expect(spans, hasLength(3));
+      expect(spans[0].attributes.getBool('fespalier.action.invalid'), true);
+      expect(spans[1].attributes.getBool('fespalier.action.invalid'), false);
+      expect(spans[2].attributes.getBool('fespalier.action.invalid'), isNull);
+      expect(spans[2].attributes.getString('fespalier.action.result'), 'ok');
+    });
+  });
+
   // Last in the file: by now every operation has run. This is the golden list of what fespalier
   // emits, contract version 1. A name that is not in it was added (add it here, and to the
   // docs/telemetry-conventions.md); one that is gone was renamed or removed, which is version 2.
@@ -942,8 +1317,12 @@ void main() {
       'fespalier.guard.location',
       'fespalier.data.state',
       'fespalier.data.keyed',
+      'fespalier.data.attempt',
+      'fespalier.data.source',
       'fespalier.action.name',
       'fespalier.action.result',
+      'fespalier.action.rolled_back',
+      'fespalier.action.invalid',
       'fespalier.deferred.result',
       'fespalier.auth.operation',
       'fespalier.auth.result',

@@ -40,8 +40,12 @@ connectors:
       - name: fespalier.navigation.redirected
       - name: fespalier.guard.decision
       - name: fespalier.data.state
+      - name: fespalier.data.attempt
+      - name: fespalier.data.source
       - name: fespalier.action.name
       - name: fespalier.action.result
+      - name: fespalier.action.rolled_back
+      - name: fespalier.action.invalid
       - name: fespalier.deferred.result
       # END generated
   count:
@@ -60,6 +64,8 @@ connectors:
           - log.attributes["event.name"] == "device.anr"
         attributes:
           - key: event.name
+          - key: otel_zone.crashed.screen
+            default_value: unknown
 
 processors:
   batch: {}

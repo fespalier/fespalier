@@ -33,6 +33,10 @@ cargo run --locked -- --listen 127.0.0.1:8787
 It prints one JSON line when it listens. `server_public_jwk` is the key every answer is sealed with: the app **pins** it in
 its build, and never learns it from the network.
 
+Paste **the inner `server_public_jwk` object** into `COSE_SERVER_JWK`, not the whole line (the whole line works too, but it
+is the object the app pins). Passing the line's `addr` instead is the easy mistake: it parses as JSON and then fails as
+"not a P-256 EC key", which names the wrong thing.
+
 ```sh
 cd examples/cose
 flutter create . --platforms=android,ios   # adds platform folders only
@@ -42,11 +46,58 @@ flutter run \
   --dart-define=COSE_SERVER_URL=http://127.0.0.1:8787   # 10.0.2.2 from the Android emulator
 ```
 
+### On an Android emulator or a phone
+
+`127.0.0.1` inside the emulator is the emulator, not your machine, so pass an address the device
+reaches the host at. The emulator's usual `10.0.2.2` alias **does not always work** (a Wi-Fi-emulating
+emulator routes it out `wlan0` and it goes nowhere); the reliable options, best first:
+
+```sh
+# 1. Tunnel: the device's own 127.0.0.1:8787 -> your machine's 8787. No address to guess.
+adb reverse tcp:8787 tcp:8787
+flutter run --dart-define=COSE_SERVER_URL=http://127.0.0.1:8787 ...
+
+# 2. Your machine's LAN address (both sides on the same network).
+flutter run --dart-define=COSE_SERVER_URL=http://192.168.1.248:8787 ...
+```
+
+The server must listen where the device can reach it: `--listen 0.0.0.0:8787`, not the default
+`127.0.0.1:8787` (which only accepts the machine's own loopback). Flutter's debug manifest already
+lets a debug build use plain HTTP, so nothing else is needed for a `flutter run` build.
+
+If the app starts but the status line reads **"The server did not answer: the copy of a read that
+never happened."**, it cannot reach the server: check the address (and that the server listens on
+`0.0.0.0`). The status line reads **"Answered by the server: sealed, and verified here."** when the
+read really worked.
+
 Add a note. The first signed call registers the device key (a plain call), then goes out sealed. Stop the server and add
 another: the page says it kept the note under its key; start the server again and tap **Send waiting**.
 
-`startup.dart` opens a `SignKeypairSigner`, which the web, Windows and Linux do not have; for those a build passes a
-`SoftwareDpopSigner` (the key lives in memory and is lost at reload). The server forgets devices and notes when it
+### On macOS
+
+macOS runs, and it needs one thing beyond the defaults: `flutter create . --platforms=macos` makes a
+sandboxed app whose entitlements allow `network.server` (the Dart VM service) but **not
+`network.client`**, so every outbound request is blocked and the app only shows its "the server did
+not answer" copy. `macos/Runner/{DebugProfile,Release}.entitlements` add
+`com.apple.security.network.client`; without it the app talks to nothing.
+
+The device key falls back to `SoftwareDpopSigner`. The Secure Enclave path cannot work here: a
+sandboxed app cannot write a keychain item without a `keychain-access-groups` entitlement, and that
+entitlement requires a real development certificate — an ad-hoc signed build (`CODE_SIGN_IDENTITY =
+"-"`, what `flutter create` produces) fails the build outright if you add it. Without it the key
+write fails with `OSStatus -34018`, which `startup.dart` catches and turns into a software key. The
+software key is not hardware-backed and does not survive a restart: the page shows the thumbprint,
+and a restarted app is a *new device* to the server. `lib/app/startup.dart` says all of this.
+
+### Where the hardware key is not available
+
+`startup.dart` opens a `SignKeypairSigner` and falls back to a `SoftwareDpopSigner` when the keystore
+refuses: the web, Windows and Linux have no keystore, a macOS sandbox without a signing certificate
+cannot write the keychain (above), and an iOS simulator's keychain is not a secure element. A build
+that must *require* hardware passes `requireHardware: true` and takes the failure instead of the
+fallback.
+
+The server forgets devices and notes when it
 restarts, and the app registers once per run: after a server restart, signed calls are `401` until the app is restarted too
 (see "Not built").
 

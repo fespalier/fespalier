@@ -53,6 +53,15 @@ Breadcrumb? breadcrumbWithoutQueries(Breadcrumb? breadcrumb, Hint hint) {
   );
 }
 
+/// [breadcrumb] without the query and fragment values of an HTTP request, in place: what the SDK
+/// keeps when a callback before this one fails.
+void breadcrumbScrubbedInPlace(Breadcrumb breadcrumb) {
+  final data = breadcrumb.data;
+  if (data == null) return;
+  final copy = Map<String, dynamic>.of(data);
+  if (_scrub(copy)) breadcrumb.data = copy;
+}
+
 /// [event] without the query and fragment of its request.
 SentryEvent? eventWithoutQueries(SentryEvent event, Hint hint) {
   final request = event.request;
@@ -83,4 +92,17 @@ SentryTransaction? transactionWithoutQueries(
     _scrub(span.data);
   }
   return transaction;
+}
+
+/// [span] without the query and the fragment of the request it measures, in place: the attributes
+/// `SentryHttpClient` and `sentry_dio` write on a streamed span.
+void spanWithoutQueries(SentrySpanV2 span) {
+  for (final key in _queryKeys) {
+    span.removeAttribute(key);
+  }
+  final url = span.attributes['url']?.value;
+  if (url is String) {
+    final clean = withoutQuery(url);
+    if (clean != url) span.setAttribute('url', SentryAttribute.string(clean));
+  }
 }

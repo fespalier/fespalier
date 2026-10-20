@@ -31,7 +31,7 @@ class MyToolsAdapter extends FespalierAdapter {
 ```
 
 The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notification and shortcut
-launches, ...) are packages of this kind; `fespalier_push` (since 0.13.0) is the first, see [Push notifications](push.md), `fespalier_analytics` is a sink installed in `beforeRun`, see [Analytics](analytics.md), and `fespalier_download` (since 0.15.0) opens a typed route from a download's notification tap, see [Notification taps](downloads.md#notification-taps). `FespalierAdapter` has nine members, each with a default that
+launches, ...) are packages of this kind; `fespalier_push` (since 0.13.0) is the first, see [Push notifications](push.md), `fespalier_analytics` is a sink installed in `beforeRun`, see [Analytics](analytics.md), and `fespalier_download` (since 0.15.0) opens a typed route from a download's notification tap, see [Notification taps](downloads.md#notification-taps), and `fespalier_launch` (since 0.18.0) opens a typed route from a home-screen shortcut or widget tap, see [Shortcuts and widgets](launch.md). `FespalierAdapter` has nine members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 
 | Member                      | When it runs                                                                                                   | What it is for                                                                                                                                     |
@@ -48,6 +48,8 @@ adds nothing, so an adapter overrides what it needs:
 
 Write adapters with `extends FespalierAdapter`, never `implements`: a member added later (`attach` is
 one, since 0.11.0) has a default for a subclass and breaks a class that implements all of them.
+
+**`otel: true` is not an adapter (since 0.19.0).** It is a key in the pubspec, and `fsp` writes the OpenTelemetry wiring into the generated `main()` ([OpenTelemetry from the generated main()](observability.md#opentelemetry-from-the-generated-main)). Its zone is the innermost of the generated zones, inside the adapters' `zone`, and its `start` and its sink come before their `beforeRun`, so an adapter's `beforeRun` finds the SDK up.
 
 **`onEnter` is a getter that answers a function (since 0.16.0).** An adapter that has something to say about a
 navigation overrides the `onEnter` getter and returns a `FespalierEnter`, a function of the `InboundNavigation`; every
@@ -115,7 +117,7 @@ abstract final class AppAdapters {
 
 // AppRoutes.attach(router, [container]) also runs each adapter's attach(router, container)
 // AppRoutes.onEnter(context, current, next, router) forwards to _all.onEnter (since 0.11.0), and
-// AppRoutes.router(launch:, ...) passes GoRouter(onEnter: AppAdapters.handlesEnter ? onEnter : null)
+// AppRoutes.router(launch:, ...) passes RoutingConfig(onEnter: AppAdapters.handlesEnter ? onEnter : null)
 ```
 
 `AppRoutes.router` takes `launch:` (an `InboundLaunch`), with or without adapters, and `AppRoutes.onEnter` exists only
@@ -270,7 +272,7 @@ Future<void> main() => AppAdapters.zone(() async {
 
 _Since 0.12.0 (a pattern; it needs nothing new in fespalier)._ The pubspec carries no per-adapter options, and
 `launch()` runs before any `ProviderScope` exists, so a provider override cannot hand an adapter the app's own code:
-a push adapter needs your mapping from a payload to a route, a download adapter its backend, store and the mapping from a notification tap, an analytics adapter its backend, a bridge its generated
+a push adapter needs your mapping from a payload to a route, a launch adapter your sources of shortcut and widget taps and the mapping to a route, a download adapter its backend, store and the mapping from a notification tap, an analytics adapter its backend, a bridge its generated
 client. The one place that runs before the adapters is your `main()`. So an adapter that needs app code is configured
 there, with one static call, before `AppMain.run()`:
 
@@ -284,7 +286,7 @@ Future<void> main() {
 
 Every package that does this has the same shape, so that a second one holds no surprise:
 
-- **`configure` is a static method on an `abstract final class`** (`FespalierPush`, `FespalierAnalytics`, `FespalierDownload`), and the
+- **`configure` is a static method on an `abstract final class`** (`FespalierPush`, `FespalierAnalytics`, `FespalierDownload`, and `FespalierLaunch` since 0.18.0), and the
   adapter in `fespalier_adapter.dart` reads what it stored. Nothing else is global.
 - **Calling it twice replaces.** A hot restart runs `main()` again, and the second call wins.
 - **An unconfigured adapter says so once and does nothing.** It reports one `FlutterError.reportError` that names the

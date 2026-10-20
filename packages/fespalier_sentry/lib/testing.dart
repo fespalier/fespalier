@@ -30,7 +30,23 @@ final class RecordingSentry {
       ..transport = transport
       ..tracesSampleRate = 1.0;
     configure?.call(options);
+    // After `configure`'s own, so a span is recorded as the SDK would send it.
+    final earlier = options.beforeSendSpan;
+    options.beforeSendSpan = (span) {
+      final scrubbed = earlier?.call(span);
+      return scrubbed is Future<void>
+          ? scrubbed.then((_) => _spans.add(span))
+          : _spans.add(span);
+    };
     hub = Hub(options);
+    if (options.traceLifecycle == SentryTraceLifecycle.stream) {
+      // What `Sentry.init` installs in a streaming SDK (its setup integration is not exported), and
+      // a plain `Hub` never runs integrations: without it `SentryHttpClient` and `sentry_dio`
+      // make no span in a test (since 0.19.0). `StreamingInstrumentationSpanFactory` and
+      // `SentryOptions.spanFactory` are `@internal`, and exist unchanged from 9.26.0.
+      // ignore: invalid_use_of_internal_member
+      options.spanFactory = StreamingInstrumentationSpanFactory(hub);
+    }
   }
 
   /// The options the hub was built with.
@@ -39,9 +55,17 @@ final class RecordingSentry {
   /// The transport: it keeps every envelope.
   final RecordingTransport transport;
 
-  /// The hub to give `FespalierSentry(hub:)`, `FespalierSentry.navigatorObserver(hub:)` or
-  /// `dio.addSentry(hub:)`.
+  /// The hub to give `FespalierSentry(hub:)`, `FespalierSentry.navigatorObserver(hub:)`,
+  /// `SentryHttpClient(hub:)` or `dio.addSentry(hub:)`. With `traceLifecycle` set to `stream` in
+  /// [RecordingSentry.new]'s `configure`, the HTTP clients make streamed spans (since 0.19.0).
   late final Hub hub;
+
+  final List<SentrySpanV2> _spans = [];
+
+  /// The spans of `traceLifecycle: stream` that ended, in the order they ended (since 0.19.0), as
+  /// they stand after `beforeSendSpan`: a span is recorded there, so nothing is flushed and no
+  /// timer runs. The SDK gets to it a few microtasks after the span ends: pump a frame first.
+  List<SentrySpanV2> get spans => List.unmodifiable(_spans);
 
   /// What was sent so far, each event and transaction decoded to its JSON map, oldest first.
   /// A transaction has `"type": "transaction"`.
@@ -67,6 +91,12 @@ final class RecordingSentry {
   ///     transaction <op> <name> status=<status>[ ttid][ ttfd]
   ///       span <op> <description> status=<status>
   ///     event <exception type>[ operation=<op>][ route=<route>][ file=<file>][ action=<name>]
+  ///
+  /// Streamed spans (since 0.19.0) follow, one line per segment and per child of it, each segment
+  /// in the order it ended and its children in the order they ended:
+  ///
+  ///     segment <sentry.op> <name> status=<ok|error>[ ttid][ ttfd]
+  ///       span <sentry.op> <name> status=<ok|error>
   Future<List<String>> lines() async {
     final lines = <String>[];
     for (final item in await sent()) {
@@ -102,6 +132,38 @@ final class RecordingSentry {
           '${part('file', 'fespalier.file')}'
           '${part('action', 'fespalier.action')}',
         );
+      }
+    }
+    return [...lines, ..._streamedLines()];
+  }
+
+  List<String> _streamedLines() {
+    String op(SentrySpanV2 s) => '${s.attributes['sentry.op']?.value}';
+    String status(SentrySpanV2 s) => 'status=${s.status.value}';
+    SentrySpanV2 segmentOf(SentrySpanV2 s) {
+      var top = s;
+      for (var up = top.parentSpan; up != null; up = top.parentSpan) {
+        top = up;
+      }
+      return top;
+    }
+
+    final lines = <String>[];
+    for (final segment in _spans.where((s) => s.parentSpan == null)) {
+      final children = _spans
+          .where(
+            (s) => s.parentSpan != null && identical(segmentOf(s), segment),
+          )
+          .toList();
+      bool has(String key) =>
+          children.any((c) => c.attributes.containsKey(key));
+      lines.add(
+        'segment ${op(segment)} ${segment.name} ${status(segment)}'
+        '${has('app.vitals.ttid.value') ? ' ttid' : ''}'
+        '${has('app.vitals.ttfd.value') ? ' ttfd' : ''}',
+      );
+      for (final child in children) {
+        lines.add('  span ${op(child)} ${child.name} ${status(child)}');
       }
     }
     return lines;

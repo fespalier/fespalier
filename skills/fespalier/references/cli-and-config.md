@@ -15,7 +15,7 @@ above; pass --project`).
 | `fsp gen [--format] [--json]`                                | Checks `lib/app/` and writes `lib/app.g.dart`; `--format` pipes it through `dart format`                                                                                                                                                                                                                       |
 | `fsp check [--json]`                                         | The same checks, string paths in `lib/` included (since 0.7.0); **writes nothing** and never runs `dart`; non-zero exit on errors. What CI runs                                                                                                                                                                |
 | `fsp watch`                                                  | `gen` once, then again on every relevant change; keep it next to `flutter run`, or use `fsp dev`                                                                                                                                                                                                               |
-| `fsp dev [-- <args>] [--no-tui] [--dry-run]`                 | `fsp watch` and `flutter run --machine` in one terminal, in a full-screen view: hot restart when `lib/app.g.dart` changed, hot reload on any other save, the `tasks: dev:` hooks (since 0.9.0); see below                                                                                                      |
+| `fsp dev [-- <args>] [--no-tui] [--dry-run]`                 | `fsp watch` and `flutter run --machine` in one terminal, in a full-screen view: hot reload when `lib/app.g.dart` changed and the app can swap its routes, hot restart when it cannot, hot reload on any other save, the `tasks: dev:` hooks (since 0.9.0); see below                                           |
 | `fsp build <target> [-- <args>] [--dry-run]`                 | `fsp gen`, then `flutter build <target>` with the hooks of `tasks: build:` (since 0.9.0)                                                                                                                                                                                                                       |
 | `fsp run [task] [-- <args>] [--dry-run]`                     | Runs a task of `tasks:` in pubspec.yaml; with no name, lists them on stdout (since 0.9.0)                                                                                                                                                                                                                      |
 | `fsp routes [--json]`                                        | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                                  |
@@ -99,9 +99,11 @@ then `[possible values: mermaid, dot, json]`; before 0.7.0 only the first two).
 (`pattern`, `route`, `file`, `folder`, `markers`, `params` as in `routes --json`, `spellings` only for a
 localized route, `redirect`, `children`), a `shell` (a `layout.dart`, with its `items`) or `tabs` (with `branches`);
 `file` and `folder` are relative to the app folder. `sites` names each guard (`g5@6`), `redirect.dart`
-(`r32`), `data.dart` (`d37`, with `traced: false` when the file returns or selects a provider) and action
-(`a37_0`) by the string the generated code uses (since 0.8.1 the views name it too: `watchData(ref, 'd37', …)`,
-and `app.g.dart` lists the providers by site in `_devToolsProviders`). It is what the DevTools extension reads, and
+(`r32`), `data.dart` (`dProductsId`, with `traced: false` when the file returns or selects a provider) and action
+(`aNotesId_edit`) by the string the generated code uses (since 0.8.1 the views name it too: `watchData(ref, 'dProductsId', …)`,
+and `app.g.dart` lists the providers by site in `_devToolsProviders`). Since 0.20.0 a `data.dart`'s site is `d` and its folder's
+stem, and an action's is `a`, its stem, `_` and the function, so they stay when a route is added; guards and `redirect.dart`s keep
+`g5@6` and `r32`. Read a site as an opaque key. It is what the DevTools extension reads, and
 `app.g.dart` embeds it (see the DevTools page of `fespalier-troubleshooting`).
 
 ### `fsp links` (since 0.5.0)
@@ -290,9 +292,9 @@ fespalier:
       /checkout: 8 KB
 ```
 
-- **How it attributes.** dart2js writes `deferredLibraryParts:{_i7:[0,1],_i14:[0,2]}` and
+- **How it attributes.** dart2js writes `deferredLibraryParts:{_pageCheckout:[0,1],_pageProductsId:[0,2]}` and
   `deferredPartUris:["main.dart.js_2.part.js", ...]` into `main.dart.js`. The keys are the import prefixes
-  of the generated `app.g.dart` (`deferred as _i7`), so `fsp size` matches them to the routes whose
+  of the generated `app.g.dart` (`deferred as _pageCheckout`, since 0.20.0; `_i7` before), so `fsp size` matches them to the routes whose
   `page.dart` has that prefix, and adds up the part files' sizes on disk. The index into
   `deferredPartUris` is **not** the file number. No flag and no `--dump-info` build are needed.
 - **Own, shared, total.** **Own** is the parts only this route loads, **shared** the parts other deferred
@@ -437,17 +439,20 @@ process. `fsp test` needs no `test:` key, so there is no hand-written test.
   an `action()` and a page on `ContactRoute.useForm`; the test uses `isFieldErrors`) and `flags`
   (`fespalier_flags`; `lib/flags.dart`, a `flagGuard` in `lib/app/labs/guard.dart`, `flagSource` from
   `--dart-define=LABS=true` in `startup()`; the test uses `FakeFlags`). The `forms` and `flags` pages have a
-  `Scaffold` of their own and are opened by URL. Also since 0.15.0: `otel` (`fespalier_otel` and `otel_zone` by
-  commit, `telemetry: true`; `startup()` installs `FespalierOtel(isReady:)` (sync), the `zone()` starts the SDK first
-  (`startObservability(body)`, inside `runGuarded` except on the web), so a test that builds the app does not
-  start it, plus `providerObservers` and `routerObservers`;
+  `Scaffold` of their own and are opened by URL. Also since 0.15.0, and since 0.19.0 with no `startup.dart` of its own:
+  `otel` (`fespalier_otel` and `otel_zone` by commit, `telemetry: true` and `otel: true`; the generated `main()` starts
+  the SDK and adds `FespalierOtel`, inside `runGuarded` on every platform, so a test that builds the app does not start
+  it, plus the Riverpod and route observers in `app.main.g.dart`;
   the test reads spans from `dartastic_opentelemetry`'s in-memory exporter; Flutter 3.35 or newer,
   because `otel_zone` needs Dart 3.9: the floor since 0.16.0, so `all` on 3.32 left it out and naming it was refused
   before) and `sentry`
   (`fespalier_sentry` and `sentry_flutter` `>=9.26.0 <10.0.0`, `telemetry: true`; `zone()` is `SentryFlutter.init`
   with `FespalierSentry.configure` and `SENTRY_DSN`, empty meaning off; the test uses `RecordingSentry`). With both,
-  the composer makes one `FespalierTelemetry.install(FespalierTelemetry.combine([...]))` and keeps Sentry's
-  `zone()`: `otel`'s is a fallback used only when no other feature has one (docs/observability.md "Wiring
+  the composer keeps Sentry's `zone()`, and `startup()` adds Sentry's sink with `FespalierTelemetry.add`, once (a
+  top-level `final _sentry = FespalierSentry();` and `if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);`,
+  because Retry runs `startup()` again and `add` appends a sink each time), next to the OpenTelemetry one the generated
+  `main()` installs (since 0.19.0; before, one `install` of a `combine`). The generated
+  zone is a fallback used only when no other feature has one (docs/observability.md "Wiring
   Sentry" says why). Those shared files (`pubspec.yaml`, `lib/app/startup.dart`,
   `lib/app/app.dart`, `lib/main.dart`) are never written by one feature but composed from all of them
   (`cli/src/create/compose.rs`): imports sorted and deduplicated, startup steps in a fixed order (telemetry
@@ -524,11 +529,28 @@ tag different from the `fsp` now installed it says to update the refs of fespali
 and it works the same on Windows), and keeps `lib/app.g.dart` current while it runs. It needs no
 configuration; everything after `--` goes to `flutter run` (`fsp dev -- -d chrome --flavor dev`).
 
-**The rule an agent needs: a regeneration restarts, a save reloads.** The router is built once, so a hot
-reload keeps the old route table: a pass of the generator that **wrote** an output (a new, removed or edited
-route, a new `data.dart`) sends `app.restart` with `fullRestart: true`; any other save under `lib/` sends a
-hot reload; a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R` do it by hand;
-`hot_reload: false` turns the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
+**A hot reload after a regeneration (since 0.19.0).** In a debug build a hot reload swaps in the regenerated route table when the
+generated file's version changed and no name it keeps (a provider, a deferred library, a router setting) changed; a refused swap
+prints a message and keeps the old routes until `R`. Since 0.20.0 a route added, removed or renamed anywhere swaps, and so does a deferred route added or removed beside another (`AppRoutes.deferred` is a getter a reload lists again): the names a reload keeps follow the folders, not the order of `fsp routes`, so a route put before one with a `data()` function, an action or a deferred page renames nothing (in the shop example `zz/page.dart` and `about/page.dart` both swap). Still refused: a changed `data()` or action, a moved folder that has a `data.dart` or an `action.dart` (also the second of two folders whose names share a stem, added or removed, when a renamed name is a `data.dart`'s provider or an action: it renames the first one's names once, or back; two deferred pages alone swap, and a page of the renamed library on screen loads again through its loading view), an `import ... as m` pointed at another library (an action's input, a data route's enum segment), and a router setting; a restart (`R`) brings those in. Only the generated
+`main()` swaps (`StartupGate`): `main: manual` apps, even with `AppRoutes.router()`, keep their routes. `fsp dev` uses it (next paragraph). Profile and release builds never
+swap. See
+[the CLI reference](https://github.com/fespalier/fespalier/blob/main/docs/cli.md#a-hot-reload-after-a-regeneration).
+
+**The rule an agent needs: a save reloads; a regeneration reloads when the app can swap its routes, and restarts
+otherwise.** A hot reload swaps the route table only when the generated main was written and not rewritten, the app's
+`router()` is the generated one, and the file's `_version` and `_kept` (read back from `lib/app.g.dart`) swap in: no name
+both keep has another hash (`Stamp::swaps_to`, the rule of `RoutesReload`). A pass of the generator that **wrote** an
+output sends `app.restart` with `fullRestart: false` when it can swap, and with `fullRestart: true` otherwise: when
+`lib/app.main.g.dart` was rewritten, when the routes do not swap in, when the file has no stamp, before `app.start`, with
+no baseline (also after a save found a `router()` of your own), when the last hot result failed, when a reload still in flight
+does not swap to the new routes either, or when a restart is under way. A reload that a regeneration asked for and
+that flutter refuses is followed by one restart; the app printing its refusal of a swap is answered with one too (heard as an
+`app.log` event or, where flutter prints the app's output as plain lines, on the web, as one, and only after a reload went out
+since the last restart). The
+lines are `hot reload: lib/app.g.dart changed`, `hot restart: lib/app.g.dart changed`, `hot restart: lib/app.g.dart changed
+and the hot reload failed` and `hot restart: the app kept its old routes`. Any other save under `lib/` sends a hot reload;
+a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R` do it by hand; `hot_reload: false` turns
+the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
 
 ```yaml
 # pubspec.yaml
@@ -653,6 +675,7 @@ fespalier:
   semantics_ids: false      # since 0.7.0
   scroll_restoration: false # since 0.8.1
   telemetry: false          # since 0.8.1
+  otel: false               # since 0.19.0; `true` needs telemetry, fespalier_otel and otel_zone under dependencies, and not `main: manual`
   main: auto                # since 0.8.1; `generated` | `manual`
   # meta_unique: [code]
   # output_manifest: lib/app.routes.g.dart
@@ -683,6 +706,7 @@ fespalier:
 | `links`              | a map (keys above)                               | What `fsp links` writes; only that command checks the values, though `fsp gen` reads the first of `domains` for `AppRoutes.urlOf` (since 0.5.0; `urlOf` since 0.16.0)                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `lints`              | a map: `unknown_path: off` / `warning` / `error` | Since 0.7.0. How a **string path that matches no route** is reported (default `warning`; `off` skips the check). `error` makes `check` exit 1 with ``1 error(s) in string paths (`lints: unknown_path: error`)`` and `gen` and `watch` too, after writing the output (`...; lib/app.g.dart is up to date`). A bad value: ``invalid pubspec.yaml: fespalier.lints.unknown_path: unknown variant `warn`, expected one of `off`, `warning`, `error` ``; a key of its own: ``invalid pubspec.yaml: fespalier.lints: unknown field `nope`, expected `unknown_path` ``. See `fespalier-routing` |
 | `semantics_ids`      | `true` / `false`                                 | Since 0.7.0. `true` wraps each page in `Semantics(identifier: 'route:<pattern>')` and makes `mount()` call `ensureWebSemantics()`; `fsp maestro` needs it. See `fsp maestro` above                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `otel`               | `true` / `false`                                 | Since 0.19.0. `true` has the generated `main()` start otel_zone (`AppMain.observability`, the version from `FLUTTER_BUILD_NAME`) and add `FespalierOtel` as a sink, with the Riverpod and route observers, so `startup.dart` writes none of it. Needs `telemetry: true`, `fespalier_otel` and `otel_zone` under `dependencies:`, and not `main: manual`; see `fespalier-observability`                                                                                                                                                                                                    |
 | `telemetry`          | `true` / `false`                                 | Since 0.8.1. `true` makes `app.g.dart` pass a `const TelemetrySite` to each guard, data provider, action and deferred page and follow the router (`telemetryAttach`); nothing is reported until the app installs a sink. A value that is not a bool is an error. See `fespalier-observability`                                                                                                                                                                                                                                                                                            |
 | `scroll_restoration` | `true` / `false`                                 | Since 0.8.1. `true` wraps each page's view in `RouteScrollMemory`, a `PageStorage` per history entry that the browser's back and forward hand back: a scrollable under a `PageStorageKey` returns to its offset, a `go` starts at the top. Off, `app.g.dart` is unchanged. See `fespalier-layouts`. Not a bool: `invalid pubspec.yaml: fespalier.scroll_restoration: invalid type: string "sometimes", expected a boolean at line 3 column 23`                                                                                                                                            |
 | `maestro`            | a map (keys above)                               | What `fsp maestro` writes flows for; only that command checks the values (since 0.7.0)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

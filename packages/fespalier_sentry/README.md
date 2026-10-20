@@ -8,6 +8,8 @@ trace id of the screen or the call each event came from, so an error links to it
 transactions, spans for guards, data loads and actions, and time to full display are opt-in
 (`FespalierSentry(tracing: true)`), for a team that has only Sentry.
 
+Since 0.19.0 the scope is named when a navigation commits, before the page's `initState` and first `build` and not after that frame, so what reads the scope in that frame (an event captured with `withScope`, the page's own code) finds the page's names.
+
 fespalier itself has no Sentry dependency: it tells a `FespalierTelemetry` sink what happened, and this
 package is the sink that turns it into Sentry's events, breadcrumbs and, on request, transactions.
 `SentryFlutter.init` still starts the SDK, which owns crash capture, sessions, native integrations and the
@@ -29,12 +31,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_sentry:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_sentry
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -102,8 +104,20 @@ Each navigation is then a `ui.load` transaction named by its route pattern, with
 redirects, data loads, deferred loads and actions, and time to initial and to full display. Use this
 **or** a plain `SentryNavigatorObserver()` for transactions, never both.
 
+With Sentry's `options.traceLifecycle = SentryTraceLifecycle.stream` (since 0.19.0) the same tree is
+streamed as spans: each screen is a root span (a segment), with the same children, and time to initial and to
+full display are attributes of their spans. A superseded navigation cannot be discarded, so it is sent with
+`fespalier.navigation.outcome` `superseded`. In that mode the HTTP spans Sentry's own integrations make
+(`SentryHttpClient`, `sentry_dio`) inside a `data()` or an action are children of its span (since 0.19.0); one that
+ends before the navigation commits carries the segment name `navigate`. See
+the docs' [Span streaming](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#span-streaming).
+
 ## Tests
 
 `package:fespalier_sentry/testing.dart` has `RecordingSentry`: a real Sentry hub whose transport keeps what
 it would send, so a test reads the events, breadcrumbs and transactions the SDK built, with no
 `SentryFlutter.init`, no native SDK, no timer and no network.
+
+With `traceLifecycle` set to `stream` in `RecordingSentry(configure:)` (since 0.19.0) it also installs the SDK's
+streaming span factory, so a `SentryHttpClient(hub: sentry.hub)` over an `http` `MockClient` makes the HTTP spans a
+real app gets (`sentry.spans`).

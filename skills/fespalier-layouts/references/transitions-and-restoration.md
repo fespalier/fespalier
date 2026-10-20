@@ -33,16 +33,49 @@ is never remounted.
 `Transitions` has ready-made ones; each gives the page a `restorationId` from its
 key:
 
-| Helper                                        | What it does                                                        |
-| --------------------------------------------- | ------------------------------------------------------------------- |
-| `fade(key, child, {duration, heroes})`        | cross-fades (250 ms by default)                                     |
-| `slide(key, child, {from, duration, heroes})` | slides in from an `AxisDirection` edge (default `right`, 300 ms)    |
-| `none(key, child, {heroes})`                  | swaps instantly                                                     |
-| `material(key, child, {heroes})`              | the platform-default Material transition                            |
-| `cupertino(key, child, {heroes})`             | the iOS slide plus edge-swipe back                                  |
-| `dialog(key, child, {...})`                   | opens as a Material dialog over the previous page                   |
-| `sheet(key, child, {...})`                    | opens as a modal bottom sheet over the previous page                |
-| `fullscreenDialog(key, child, {heroes})`      | a Material page that slides up, with a close button in its `AppBar` |
+| Helper                                                   | What it does                                                                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fade(key, child, {duration, heroes})`                   | cross-fades (250 ms by default)                                                                                                               |
+| `slide(key, child, {from, duration, heroes})`            | slides in from an `AxisDirection` edge (default `right`, 300 ms); a cross-fade under reduced motion                                           |
+| `none(key, child, {heroes})`                             | swaps instantly                                                                                                                               |
+| `material(key, child, {heroes})`                         | the platform-default Material transition; fades in place under reduced motion                                                                 |
+| `cupertino(key, child, {heroes})`                        | the iOS slide plus edge-swipe back; fades in place under reduced motion                                                                       |
+| `sharedAxis(key, child, {axis, duration, fill, heroes})` | Material 3 shared axis (since 0.19.0): 30 dp slide on `SharedAxis.x`/`y`, scale on `z`, with fades; 300 ms; a cross-fade under reduced motion |
+| `fadeThrough(key, child, {duration, fill, heroes})`      | Material 3 fade through (since 0.19.0): out, then in with a 0.92 scale; 300 ms; a cross-fade under reduced motion                             |
+| `dialog(key, child, {...})`                              | opens as a Material dialog over the previous page                                                                                             |
+| `sheet(key, child, {...})`                               | opens as a modal bottom sheet over the previous page                                                                                          |
+| `fullscreenDialog(key, child, {heroes})`                 | a Material page that slides up, with a close button in its `AppBar`; fades in place under reduced motion                                      |
+
+`custom(key, child, {transitionsBuilder, duration, reverseDuration, heroes, opaque, fullscreenDialog, barrier..., motion})`
+(since 0.19.0) is a `CustomTransitionPage` named by `Transitions.pageName`, with the restoration id of
+`Transitions.restorationIdOf(key)` (the key's value for a `ValueKey<String>`, else null) and `heroes:` like
+the presets. Use it, or `restorationIdOf` on a `Page` of your own, instead of building the name and id by hand.
+Every `Transitions.*` page carries a `PageMotion` tag (`fade`, `slide`, `none`, `material`, `cupertino`,
+`dialog`, `sheet`, `fullscreenDialog`, `custom`, `sharedAxis`, `fadeThrough`; `PageMotion.of(page)`), which changes nothing on screen and
+which `motionOf` reads in a test (`fespalier-testing`).
+
+**Shared axis and fade through (since 0.19.0)** are written over widgets alone (`lib/src/motion.dart`: no Material, no
+`animations` package). The outgoing half is driven by the covered page's `secondaryAnimation`, so the page below fades
+and moves only when it is itself a `sharedAxis`/`fadeThrough` page and the page above is an opaque page route (a
+see-through `custom(opaque: false)`, a dialog or a sheet leaves it as it was). The fill behind the pages is the
+preset's `fill:`, else a `MotionFill` set once in `MaterialApp.router(builder:)`, else transparent; without one the
+middle of the transition shows what is under the Navigator (a `Scaffold` fades with its page), so set `MotionFill`. `SharedAxis.x` mirrors in RTL; reduced motion makes both a
+cross-fade. `SharedAxisPageTransition` and `FadeThroughPageTransition` are the public widgets for a `Transitions.custom`.
+
+**Predictive back (since 0.19.0, UNCHECKED per Android version).** `Transitions.material` gets Android's peek from the
+theme (default on Flutter 3.38+; on 3.35 to 3.37 add `PredictiveBackPageTransitionsBuilder` to `pageTransitionsTheme`; the
+manifest needs `android:enableOnBackInvokedCallback="true"`). Every `CustomTransitionPage` preset pops on release with its
+reverse transition, no peek. `Heroes(onBackGesture: true)` covers heroes for `material`/`cupertino` (a custom preset has no gesture in progress); #228. Do not wrap presets in
+`PredictiveBackPageTransitionsBuilder`: it replaces them with Material's peek.
+
+**Reduced motion (since 0.19.0), on by default and with no opt-out switch.** When `MediaQuery.disableAnimations`
+is true (read from the route's own context, never a provider; `accessibleNavigation` is ignored): `slide` becomes a
+cross-fade of the same `transitionDuration`, which Flutter itself plays at a twentieth while animations are disabled; `material`, `cupertino` and `fullscreenDialog` stay `MaterialPage<void>` and
+`CupertinoPage<void>` (so the Cupertino back swipe stays; predictive back should too, UNCHECKED on a device, #226) and fade in place, the page below keeping still; `dialog` and `sheet` open with
+`AnimationStyle.noAnimation` unless an `animationStyle:` is given (read once when they open: an open one keeps its style, and closes at once); a `RouteHero` stops flying. `fade`, `none` and the
+`PageMotion` tag do not change. `Transitions.custom`'s builder is the caller's own: it reads
+`MediaQuery.maybeDisableAnimationsOf(context) == true` itself. A page that wants motion anyway builds its own `Page`.
+This changed every app's `slide` on upgrading to 0.19.0.
 
 `heroes:` (0.8.1) is covered under "Shared elements (heroes)" below; `dialog` and `sheet` have none.
 
@@ -383,14 +416,18 @@ routes deep in a stack), and so does everything below:
   form field or a scroll offset) comes back if the page has a `restorationId`.
   go_router's own pages have one; the ones `Transitions.*` build take it from the
   page key; **a `Page` you build in a `transition.dart` must pass
-  `restorationId: key.value` too**, or its state is not restored:
+  `restorationId: Transitions.restorationIdOf(key)` too**, or its state is not restored:
 
   ```dart
   // lib/app/custom/transition.dart
+  import 'package:fespalier/fespalier.dart';
   import 'package:flutter/material.dart';
 
-  Page<void> transition(ValueKey<String> key, Widget child) =>
-      MaterialPage<void>(key: key, restorationId: key.value, child: child);
+  Page<void> transition(LocalKey key, Widget child) => MaterialPage<void>(
+    key: key,
+    restorationId: Transitions.restorationIdOf(key),
+    child: child,
+  );
   ```
 
 - **`extra`** passed with `context.go(..., extra: ...)` is saved with the location if

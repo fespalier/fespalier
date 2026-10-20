@@ -1,6 +1,8 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import 'spans.dart';
+
 /// What a navigation makes in Sentry.
 enum NavKind {
   /// Nothing but the scope's route name and tag, and a breadcrumb: every navigation without
@@ -27,7 +29,7 @@ final class NavToken {
   final NavKind kind;
 
   /// Its transaction, for [NavKind.transaction].
-  final ISentrySpan? tx;
+  final ScreenSpan? tx;
 
   /// The OpenTelemetry span of this navigation, when `fespalier_otel` runs next to this sink.
   TelemetryTrace? trace;
@@ -41,7 +43,8 @@ final class NavToken {
   /// Whether it ended with a page on screen (outcome `ok`).
   bool shown = false;
 
-  /// What the screen is called once it is known: the pattern, or `navigate (not found)`.
+  /// What the screen is called once its navigation commits (since 0.19.0): the pattern, or
+  /// `navigate (not found)`.
   String name = 'navigate';
 
   /// The display to report time to full display to, for [NavKind.appStart] and
@@ -55,13 +58,25 @@ final class NavToken {
 /// The token of an operation other than a navigation.
 final class OpToken {
   /// An operation that started as [start]; [span] is what it made in Sentry, if anything.
-  OpToken(this.start, {this.span, this.screen, this.ownsTransaction = false});
+  OpToken(
+    this.start, {
+    this.span,
+    this.screen,
+    this.ownsTransaction = false,
+    this.runs,
+  });
 
   /// What started.
   final TelemetryStart start;
 
-  /// The span (or, for an action, the transaction) it made, with `tracing: true`.
-  final ISentrySpan? span;
+  /// The span (or, for an action, the transaction) it made, with `tracing: true`. For an
+  /// operation with [runs], it is there once the sink's `within` (or its end) made it.
+  SpanHandle? span;
+
+  /// Makes the span around the code the operation runs (`traceLifecycle: stream`): calls its
+  /// argument, once and synchronously, with the span current. Null once the span exists, and for
+  /// every operation that made its span at its start.
+  void Function(void Function(SpanHandle span) inside)? runs;
 
   /// The navigation a data load belongs to.
   final NavToken? screen;

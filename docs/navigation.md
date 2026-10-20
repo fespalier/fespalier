@@ -166,7 +166,7 @@ A layout or a guard sees the extra of _every_ route it covers, so its type has t
 
 go_router keeps a navigation's `extra` for the browser's history and for state restoration, but can only save JSON. Without help, an object with a `toJson()` comes back as the `Map` that `jsonEncode` made of it, and any other object is dropped (go_router logs a warning). Neither is your type, so a page that asks for a `Note?` gets `null` in release builds and, for the `Map`, an assertion in debug builds. To get the object back, give the router an `extraCodec`.
 
-Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a `const`, a `final` or a getter; `fsp` only looks for the name). The generated `AppRoutes.router()` passes it as `GoRouter(extraCodec: …)`:
+Put a top-level `extraCodec` in `lib/app/extra_codec.dart`, at the root of the app folder (a `const`, a `final` or a getter; `fsp` only looks for the name). The generated `AppRoutes.router()` passes it as `GoRouter.routingConfig(extraCodec: …)` (since 0.19.0; `GoRouter(extraCodec: …)` before):
 
 ```dart
 // lib/app/extra_codec.dart
@@ -430,7 +430,7 @@ InboundLaunch.to(OrderRoute(id: 42), source: NavigationSource.shortcut, extra: p
 `launchRouter(launch, (launch) => GoRouter(...), links: true)` builds the router. `make` receives the launch that applies
 (null on the web, where the address bar is the launch and a launch is never used). A launch wins over the platform's
 initial route (go_router lets a cold-start deep link beat `initialLocation`, unless `overridePlatformDefaultLocation` is
-set, which a launch sets) and the first navigation is marked with `launch.source`.
+set, which a launch sets) and the first navigation is marked with `launch.source`. `fespalier_launch` (since 0.18.0) answers `launch()` for a home-screen shortcut or a widget tap, see [Shortcuts and widgets](launch.md).
 
 **A platform link.** With `links: true` (an app with telemetry, or with an adapter that has an `onEnter`, since 0.16.0),
 `launchRouter` registers one binding observer before go_router's provider does, launch or not. Each link the running app receives is marked
@@ -638,7 +638,7 @@ A `redirect.dart` route has no page, so it is never deferred.
 **Preloading the code.** It goes with the data:
 
 - `XRoute(...).preload(ref)` (and so a [`RouteLink`](#links-routelink) with `preload`, and `AppRoutes.preload(ref, uri)`) also starts the page's code. A route that reads no data returns a closed handle; the code, once loaded, stays loaded, so closing a handle only drops the data. A typed route preloads its own page's code, not the pages `go` stacks under it.
-- `AppRoutes.deferred` lists the `DeferredLibrary` of each deferred route, and `AppRoutes.loadDeferred()` loads them all, which is the "once the app is idle" strategy: call it after the first frame. There is no `const preload = true;`, and no limit on how many load at once (each loads once, and the browser dedups).
+- `AppRoutes.deferred` lists the `DeferredLibrary` of each deferred route (a getter since 0.20.0, which a hot reload's swap lists again), and `AppRoutes.loadDeferred()` loads them all, which is the "once the app is idle" strategy: call it after the first frame. There is no `const preload = true;`, and no limit on how many load at once (each loads once, and the browser dedups). A deferred route a hot reload adds loads on its first visit there too (since 0.20.0).
 - `RouteLink` with a `uri:` and a `RouteLinkScope.match` preloads through the matched route's `preload`.
 
 **Platforms.** On the web each deferred page is a `main.dart.js_N.part.js`. Elsewhere the code is in the binary already, but `loadLibrary()` still takes a turn of the event loop, so a page shows its `loading.dart` for about a frame on its first visit unless it was preloaded. Load them before `runApp` there: it costs no I/O, and keeps a deferred page's restorable state working on Android and iOS.

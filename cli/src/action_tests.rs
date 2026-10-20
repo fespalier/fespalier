@@ -96,11 +96,11 @@ fn an_action_gets_a_provider_a_helper_and_a_hook_on_the_typed_route() {
         &c,
         &[
             // The route's members: the provider, `submit` and the hook, keyed by the segment.
-            "static final action = _action2_0;",
+            "static final action = _actionOrdersId_action;",
             "static final submit = (WidgetRef ref, {required int id, required RefundInput input}) => ref.runAction(action(id), input);",
             "static final useAction = (WidgetRef ref, {required int id}) => ref.watchAction(action(id));",
             // The provider runs the function, with the key and the input.
-            "final _action2_0 = actionFamily(",
+            "final _actionOrdersId_action = actionFamily(",
             "(Ref ref, int id, RefundInput input) => _i1.action(ref, id: id, input: input),",
             // Nothing to invalidate: the route has no data.dart and there is no section.
             "invalidates: (int id) => const <ProviderListenable<AsyncValue<Object?>>>[],",
@@ -135,8 +135,8 @@ fn the_input_type_is_named_through_the_imports_of_the_file() {
     has(
         &c,
         &[
-            "import 'package:m/m.dart' as _ea2_action_m;",
-            "List<_ea2_action_m.Item> input",
+            "import 'package:m/m.dart' as _e19a273a4_m;",
+            "List<_e19a273a4_m.Item> input",
         ],
     );
 }
@@ -164,13 +164,13 @@ fn a_function_called_action_has_the_plain_names_any_other_its_own() {
     has(
         &c,
         &[
-            "static final action = _action2_0;",
+            "static final action = _actionOrdersId_action;",
             "static final submit = ",
             "static final useAction = ",
-            "static final approveAction = _action2_1;",
+            "static final approveAction = _actionOrdersId_approve;",
             "static final approve = ",
             "static final useApprove = ",
-            "static final rejectAction = _action2_2;",
+            "static final rejectAction = _actionOrdersId_reject;",
             "static final reject = ",
             "static final useReject = ",
         ],
@@ -185,7 +185,7 @@ fn private_functions_and_helpers_that_take_no_ref_are_not_actions() {
          int twice(int n) => n * 2;\n\
          Future<void> action(Ref ref, {required int id, required Object input}) async {}",
     )]));
-    assert_eq!(c.matches("final _action2_").count(), 1, "{c}");
+    assert_eq!(c.matches("final _actionOrdersId_").count(), 1, "{c}");
     lacks(&c, &["twice", "_log"]);
 }
 
@@ -225,10 +225,10 @@ fn a_route_without_keys_gets_a_plain_provider() {
     has(
         &c,
         &[
-            "static final action = _action0_0;",
+            "static final action = _actionRoot_action;",
             "static final submit = (WidgetRef ref, {required String input}) => ref.runAction(action, input);",
             "static final useAction = (WidgetRef ref) => ref.watchAction(action);",
-            "final _action0_0 = actionProvider(",
+            "final _actionRoot_action = actionProvider(",
             "(Ref ref, String input) => _i0.action(ref, input: input),",
             "invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],",
         ],
@@ -293,7 +293,7 @@ fn a_success_invalidates_the_routes_data_and_the_sections_above_it() {
     has(
         &c,
         &[
-            "invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data1, _data3(id)],",
+            "invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataShop, _dataShopOrdersId(id)],",
         ],
     );
 }
@@ -330,7 +330,7 @@ fn a_sections_data_keyed_by_a_segment_is_invalidated_for_the_actions_key() {
     has(
         &c,
         &[
-            "invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data2(teamId)],",
+            "invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_dataTeamsTeamId(teamId)],",
         ],
     );
     // A record key is spelled out field by field.
@@ -364,7 +364,7 @@ fn a_sections_data_keyed_by_a_segment_is_invalidated_for_the_actions_key() {
     has(
         &c,
         &[
-            "invalidates: (({String shop, int id}) k) => <ProviderListenable<AsyncValue<Object?>>>[_data2(k.shop), _data4((shop: k.shop, id: k.id))],",
+            "invalidates: (({String shop, int id}) k) => <ProviderListenable<AsyncValue<Object?>>>[_dataShopsShop(k.shop), _dataShopsShopItemsId((shop: k.shop, id: k.id))],",
         ],
     );
 }
@@ -392,7 +392,7 @@ fn a_provider_written_by_hand_and_a_selected_one_are_invalidated_too() {
             "Future<void> action(Ref ref, {required int id, required Object input}) async {}",
         ),
     ]));
-    has(&c, &["[_data2(id)],"]);
+    has(&c, &["[_dataOrdersId(id)],"]);
 }
 
 #[test]
@@ -420,14 +420,17 @@ fn invalidates_replaces_the_default_set() {
     ));
     has(
         &c,
-        &["invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data2(id)],"],
+        &["invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersId(id)],"],
     );
-    lacks(&c, &["_data4(id)"]);
+    lacks(
+        &c,
+        &["invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersIdRefund"],
+    );
     // Both, in the order written; a name listed twice counts once.
     let c = code(&files(
         "const invalidates = [RefundRoute, OrderRoute, RefundRoute,];\nFuture<void> action(Ref ref, {required int id, required Object input}) async {}",
     ));
-    has(&c, &["[_data3(id), _data2(id)],"]);
+    has(&c, &["[_dataOrdersIdRefund(id), _dataOrdersId(id)],"]);
     // An empty list leaves everything alone.
     let c = code(&files(
         "const invalidates = <Object>[];\nFuture<void> action(Ref ref, {required int id, required Object input}) async {}",
@@ -468,7 +471,7 @@ fn invalidates_can_name_a_section_and_a_route_elsewhere() {
             "const invalidates = [TeamsTeamIdSection, StatsRoute];\nFuture<void> action(Ref ref, {required String teamId, required Object input}) async {}",
         ),
     ]);
-    has(&c, &["[_data3(teamId), _data1],"]);
+    has(&c, &["[_dataTeamsTeamId(teamId), _dataStats],"]);
 }
 
 #[test]
@@ -500,11 +503,11 @@ fn a_section_with_data_gets_typed_action_members_on_its_handle() {
         &c,
         &[
             "abstract final class TeamsTeamIdSection {",
-            "static final data = _data2;",
-            "static final renameAction = _action2_0;",
+            "static final data = _dataTeamsTeamId;",
+            "static final renameAction = _actionTeamsTeamId_rename;",
             "static final rename = (WidgetRef ref, {required String teamId, required String input}) => ref.runAction(renameAction(teamId), input);",
             "static final useRename = (WidgetRef ref, {required String teamId}) => ref.watchAction(renameAction(teamId));",
-            "invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data2(teamId)],",
+            "invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_dataTeamsTeamId(teamId)],",
         ],
     );
 }
@@ -528,7 +531,7 @@ fn a_section_without_data_still_gets_a_handle_for_its_actions() {
         &[
             "abstract final class ShopSection {",
             "Typed access to the action.dart of the section `(shop)/` wraps",
-            "static final clearAction = _action1_0;",
+            "static final clearAction = _actionShop_clear;",
         ],
     );
     // No data: none of the data members, and nothing to invalidate.
@@ -572,7 +575,7 @@ fn a_sections_query_parameters_key_its_actions() {
         &c,
         &[
             "static final publish = (WidgetRef ref, {String? period, required Object input}) => ref.runAction(publishAction(period), input);",
-            "invalidates: (String? period) => <ProviderListenable<AsyncValue<Object?>>>[_data1(period)],",
+            "invalidates: (String? period) => <ProviderListenable<AsyncValue<Object?>>>[_dataReports(period)],",
         ],
     );
 }
@@ -1035,10 +1038,10 @@ fn no_companions_generate_what_0_7_0_did() {
         &c,
         &[
             // The three members of an action, on the route and on the section handle.
-            "  static final action = _action2_0;\n",
+            "  static final action = _actionOrdersId_action;\n",
             "  static final submit = (WidgetRef ref, {required int id, required RefundInput input}) => ref.runAction(action(id), input);\n",
             "  static final useAction = (WidgetRef ref, {required int id}) => ref.watchAction(action(id));\n}\n",
-            "  static final addMemberAction = _action4_0;\n",
+            "  static final addMemberAction = _actionTeamsTeamId_addMember;\n",
             "  static final addMember = (WidgetRef ref, {required String teamId, required String input}) => ref.runAction(addMemberAction(teamId), input);\n",
             "  static final useAddMember = (WidgetRef ref, {required String teamId}) => ref.watchAction(addMemberAction(teamId));\n}\n",
             // The typed `watch` of the data an action invalidates.
@@ -1046,28 +1049,28 @@ fn no_companions_generate_what_0_7_0_did() {
             "  static final watch = (WidgetRef ref, {required String teamId}) => ref.watch(data(teamId));\n",
             // The two provider definitions, whole.
             "/// `action()` of orders/$id/action.dart: its state, and what it invalidates after a success.\n\
-             final _action2_0 = actionFamily(\n\
+             final _actionOrdersId_action = actionFamily(\n\
              \x20 (Ref ref, int id, RefundInput input) => _i2.action(ref, id: id, input: input),\n\
-             \x20 invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_data2(id)],\n\
-             \x20 site: 'a2_0',\n\
+             \x20 invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersId(id)],\n\
+             \x20 site: 'aOrdersId_action',\n\
              );\n",
             "/// `addMember()` of teams/$teamId/action.dart: its state, and what it invalidates after a success.\n\
-             final _action4_0 = actionFamily(\n\
+             final _actionTeamsTeamId_addMember = actionFamily(\n\
              \x20 (Ref ref, String teamId, String input) => _i5.addMember(ref, teamId: teamId, input: input),\n\
-             \x20 invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_data4(teamId)],\n\
-             \x20 site: 'a4_0',\n\
+             \x20 invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_dataTeamsTeamId(teamId)],\n\
+             \x20 site: 'aTeamsTeamId_addMember',\n\
              );\n",
             // The read sites: `DataView` and `SectionView` as they were.
             "(v) => DataView(\n\
-             \x20               watch: (ref) => watchData(ref, 'd2', _data2(v.id)),\n\
-             \x20               refresh: (ref) => ref.invalidate(_data2(v.id)),\n\
+             \x20               watch: (ref) => watchData(ref, 'dOrdersId', _dataOrdersId(v.id)),\n\
+             \x20               refresh: (ref) => ref.invalidate(_dataOrdersId(v.id)),\n\
              \x20               data: (d) => _i3.OrderPage(id: v.id, order: d),\n\
              \x20               loading: () => const DefaultLoading(),\n\
              \x20               error: (e, st, retry) => DefaultError(error: e, retry: retry),\n\
              \x20               keepPrevious: true,\n\
              \x20             ),\n",
             "(v) => SectionView(\n\
-             \x20                   watch: (ref) => watchData(ref, 'd4', _data4(v.teamId)),\n\
+             \x20                   watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),\n\
              \x20                   data: (s4) => _i7.MembersPage(team: s4, teamId: v.teamId),\n\
              \x20                 ),\n",
         ],
@@ -1092,8 +1095,8 @@ fn no_companions_generate_what_0_7_0_did() {
     has(
         &c,
         &[
-            "(Ref ref, int id) => traceData(ref, 'd2', id, _i1.data(ref, id: id)),",
-            "(Ref ref, String teamId) => traceData(ref, 'd4', teamId, _i4.data(ref, teamId: teamId)),",
+            "(Ref ref, int id) => traceData(ref, 'dOrdersId', id, _i1.data(ref, id: id)),",
+            "(Ref ref, String teamId) => traceData(ref, 'dTeamsTeamId', teamId, _i4.data(ref, teamId: teamId)),",
         ],
     );
 }

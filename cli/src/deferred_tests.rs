@@ -248,7 +248,7 @@ fn a_route_dart_with_only_deferred_is_not_empty_and_sits_beside_the_others() {
         ),
         ("shop/page.dart", &page("Shop")),
     ]);
-    has(&c, &["import 'app/shop/page.dart' deferred as _i0;"]);
+    has(&c, &["import 'app/shop/page.dart' deferred as _pageShop;"]);
 }
 
 // ---- what is generated ----
@@ -264,17 +264,17 @@ fn a_deferred_page_is_imported_deferred_and_built_in_a_deferred_view() {
         &c,
         &[
             "import 'app/page.dart' as _i0;",
-            "import 'app/a/page.dart' deferred as _i1;",
-            "DeferredView( library: _lib1, page: () => _i1.APage(), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), )",
+            "import 'app/a/page.dart' deferred as _pageA;",
+            "DeferredView( library: _libA, page: () => _pageA.APage(), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), )",
             // The eager page is as before.
             "builder: (context, state) => const _i0.HomePage(),",
         ],
     );
     // A deferred class can't be named in a constant expression.
-    lacks(&c, &["const _i1.APage()"]);
+    lacks(&c, &["const _pageA.APage()"]);
     has(
         &c,
-        &["final _lib1 = DeferredLibrary(_i1.loadLibrary, 'a/page.dart');"],
+        &["final _libA = DeferredLibrary(_pageA.loadLibrary, 'a/page.dart');"],
     );
 }
 
@@ -320,7 +320,7 @@ fn a_deferred_data_page_hands_its_library_to_the_data_view() {
     has(
         &c,
         &[
-            "DataView( watch: (ref) => watchData(ref, 'd1', _data1), refresh: (ref) => ref.invalidate(_data1), data: (d) => _i1.APage(n: d), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), keepPrevious: true, library: _lib1, )",
+            "DataView( watch: (ref) => watchData(ref, 'dA', _dataA), refresh: (ref) => ref.invalidate(_dataA), data: (d) => _pageA.APage(n: d), loading: () => const DefaultLoading(), error: (e, st, retry) => DefaultError(error: e, retry: retry), keepPrevious: true, library: _libA, )",
         ],
     );
     lacks(&c, &["DeferredView("]);
@@ -339,9 +339,11 @@ fn app_routes_registers_lists_and_loads_the_deferred_pages() {
         &c,
         &[
             "DeferredLibrary.register(deferred);",
-            "static final List<DeferredLibrary> deferred = [_lib1, _lib3];",
+            "static List<DeferredLibrary> get deferred => _deferred;",
+            "static List<DeferredLibrary> _deferred = _allDeferred();",
+            "static List<DeferredLibrary> _allDeferred() => [_libA, _libBId];",
             "static Future<void> loadDeferred() => DeferredLibrary.loadAll(deferred);",
-            "final _lib3 = DeferredLibrary(_i2.loadLibrary, 'b/\\$id/page.dart');",
+            "final _libBId = DeferredLibrary(_pageBId.loadLibrary, 'b/\\$id/page.dart');",
         ],
     );
 }
@@ -364,9 +366,9 @@ fn preload_loads_the_code_of_a_deferred_route() {
         &[
             // A route with no data: it had no override; now it loads its code.
             "/// Starts loading this page's code (a/page.dart is deferred); it reads no data, so the handle holds nothing. Never navigates, runs no guard.",
-            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _lib1.preload(); return ref.prefetchAll(const [], keepFor: keepFor); }",
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _libA.preload(); return ref.prefetchAll(const [], keepFor: keepFor); }",
             // A route with data keeps its providers.
-            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _lib2.preload(); return ref.prefetchAll([_data2], keepFor: keepFor); }",
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) { _libB.preload(); return ref.prefetchAll([_dataB], keepFor: keepFor); }",
             // The app-wide one goes through the matched route.
             "static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => matchUrl(uri)?.route.preload(ref, keepFor: keepFor) ?? ref.prefetchAll(const [], keepFor: keepFor);",
         ],
@@ -404,7 +406,7 @@ fn a_section_page_nests_the_deferred_view_in_its_section_view() {
     has(
         &c,
         &[
-            "SectionView( watch: (ref) => watchData(ref, 'd1', _data1), data: (s1) => DeferredView( library: _lib2, page: () => _i2.CartPage(shop: s1),",
+            "SectionView( watch: (ref) => watchData(ref, 'dShop', _dataShop), data: (s1) => DeferredView( library: _libShopCart, page: () => _pageShopCart.CartPage(shop: s1),",
         ],
     );
     // The layout is never deferred.
@@ -515,7 +517,7 @@ fn function_views_are_deferred_too() {
         ("route.dart", DEFER),
         ("a/page.dart", "Widget page() => const SizedBox();"),
     ]);
-    has(&c, &["page: () => _i0.page(),"]);
+    has(&c, &["page: () => _pageA.page(),"]);
 }
 
 #[test]
@@ -531,7 +533,7 @@ fn a_transition_wraps_the_deferred_view() {
     has(
         &c,
         &[
-            "pageBuilder: (context, state) => namedPage('/a', () => _i0.transition( state.pageKey, DeferredView( library: _lib1, page: () => _i1.APage(),",
+            "pageBuilder: (context, state) => namedPage('/a', () => _i0.transition( state.pageKey, DeferredView( library: _libA, page: () => _pageA.APage(),",
         ],
     );
 }
@@ -633,7 +635,10 @@ fn an_enum_declared_in_a_deferred_page_is_an_error_that_says_what_to_do() {
             "import 'package:demo/models/sort.dart';\nclass ProductsPage extends StatelessWidget { const ProductsPage({super.key, this.sort}); final Sort? sort; }",
         ),
     ]);
-    has(&c, &["import 'app/products/page.dart' deferred as _i0;"]);
+    has(
+        &c,
+        &["import 'app/products/page.dart' deferred as _pageProducts;"],
+    );
     // And the other: say it is not deferred.
     let c = code(&[
         ("products/route.dart", KEEP),
@@ -671,7 +676,10 @@ fn a_type_of_a_page_that_is_not_deferred_is_fine_for_its_deferred_child() {
         ("shop/$id/route.dart", DEFER),
         ("shop/$id/page.dart", child),
     ]);
-    has(&c, &["import 'app/shop/\\$id/page.dart' deferred as _i1;"]);
+    has(
+        &c,
+        &["import 'app/shop/\\$id/page.dart' deferred as _pageShopId;"],
+    );
 }
 
 #[test]
@@ -687,13 +695,14 @@ fn an_enum_in_a_file_of_its_own_is_fine() {
             "import 'package:demo/models/category.dart';\nclass ShopPage extends StatelessWidget { const ShopPage({super.key, required this.category}); final Category category; }",
         ),
     ]);
-    has(&c, &["deferred as _i0;"]);
+    has(&c, &["deferred as _pageShopCategory;"]);
 }
 
 #[test]
 fn a_prefix_is_not_a_token_so_i1_is_not_i11() {
-    // Twelve pages, in folder order: `a1` is `_i1` and deferred, `b1` is `_i11` and eager, and
-    // declares the enum its own query parameter has: `_i11.Sort?` has `_i1` in it, not `_i1.`.
+    // Twelve pages, in folder order: `a1` is deferred, so it is `_pageA1` (since 0.20.0), and `b1`
+    // is `_i11` and eager, and declares the enum its own query parameter has: `_i11.Sort?` is spelled
+    // through `_i11`, which an `_i1.` search must not find.
     let mut files: Vec<(String, String)> = vec![("a1/route.dart".into(), DEFER.into())];
     for name in [
         "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "b0",
@@ -711,7 +720,7 @@ fn a_prefix_is_not_a_token_so_i1_is_not_i11() {
     has(
         &c,
         &[
-            "import 'app/a1/page.dart' deferred as _i1;",
+            "import 'app/a1/page.dart' deferred as _pageA1;",
             "import 'app/b1/page.dart' as _i11;",
         ],
     );

@@ -88,8 +88,8 @@ fn every_route_is_listed_with_what_the_generator_knows() {
             "type: ProductRoute,\n      path: '/products/:id',\n      folder: '(buyer)/products/\\$id',\n      groups: ['(buyer)'],\n      layouts: ['(buyer)'],\n      segments: [RouteParam('id', 'int')],\n      query: [RouteParam('tab', 'String?')],\n      dataKeys: ['id'],\n    ),",
             // A redirect.dart route says so.
             "type: OldRoute,\n      path: '/old',\n      folder: 'old',\n      presentation: RoutePresentation.redirect,\n    ),",
-            "static final Map<Type, RouteInfo<Object?>> byType",
-            "static final Map<String, RouteInfo<Object?>> byPath",
+            "static Map<Type, RouteInfo<Object?>> get byType => routeIndex(all).byType;",
+            "static Map<String, RouteInfo<Object?>> get byPath => routeIndex(all).byPath;",
             "static RouteInfo<Object?>? of(GoRouterState state)",
             // AppRoutes forwards to it, so `AppRoutes.byType[...]` works.
             "static List<RouteInfo<Object?>> get all => AppManifest.all;",
@@ -514,7 +514,7 @@ fn the_router_takes_a_restoration_scope_id() {
         &c,
         &[
             "String? restorationScopeId,\n    GlobalKey<NavigatorState>? navigatorKey,\n  }) {",
-            "restorationScopeId: restorationScopeId,\n        navigatorKey: rootNavigatorKey,\n        routes: routes,",
+            "restorationScopeId: restorationScopeId,\n        navigatorKey: rootNavigatorKey,\n        errorBuilder: (context, state) => routing.notFound(state.uri),",
         ],
     );
 }

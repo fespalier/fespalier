@@ -29,6 +29,8 @@ void main() {
       expect(find.text('Ceramic mug'), findsOneWidget);
       expect(find.text('Add to cart'), findsOneWidget);
       expect(AppRoutes.deferred, hasLength(2));
+      expect(identical(AppRoutes.deferred, AppRoutes.deferred), isTrue,
+          reason: 'one list until a hot reload swaps the routes');
       expect(AppRoutes.deferred.every((l) => l.isLoaded), isTrue);
     });
 

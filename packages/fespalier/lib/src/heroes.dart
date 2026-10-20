@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'location.dart';
+import 'reduced_motion.dart';
 
 /// The tag of a shared element: the route it shows, by its path (the location without the
 /// query, mount prefix included), and a name (since 0.8.1).
@@ -153,7 +154,7 @@ class RouteHero extends StatelessWidget {
     // ignore: deprecated_member_use
     final shown = TickerMode.of(context);
     return HeroMode(
-      enabled: shown,
+      enabled: shown && !reducedMotion(context),
       child: Hero(
         tag: tag,
         transitionOnUserGestures: onBackGesture ?? heroes.onBackGesture,

@@ -39,9 +39,44 @@ dependencies:
 ```
 
 Use the **same `url` spelling (no `.git`) and the same `ref`** (the tag your app pins; `v0.13.0` here) for both, or pub fails with `Because ...
-depends on fespalier from git ... is forbidden`. `otel_zone` pulls `otel_go_router`, which declares
-`go_router: ^17.0.0`: the app resolves go_router 17.5.0 (fespalier accepts 17 and 18), and an app that
-needs 18 adds `dependency_overrides: go_router: ^18.0.0`.
+depends on fespalier from git ... is forbidden`. Since 0.19.0 `fespalier_otel` is on the dartastic rc.4 line (SDK 1.1.0-beta.17), which is
+`otel_zone` v0.8.1 (commit `64c4661ac6cd09718141864d528892916677cc38`); that `otel_zone`'s
+`otel_go_router` accepts go_router 17 and 18, so the app resolves 18 with no override. An older
+`otel_zone` (up to v0.7.0) pulls `otel_go_router` ^0.2.0, which declares `go_router: ^17.0.0` (the app
+resolves 17.5.0 and adds `dependency_overrides: go_router: ^18.0.0` to stay on 18), and it cannot resolve
+beside `fespalier_otel` since 0.19.0: move it to v0.8.1.
+
+## Wire it with `otel: true` (since 0.19.0)
+
+With the packages of [Install with otel_zone](#install-with-otel_zone) and this in pubspec.yaml, `fsp gen` writes the
+wiring into `lib/app.main.g.dart`:
+
+```yaml
+fespalier:
+  telemetry: true
+  otel: true
+```
+
+- `static final OtelZone observability`, with `serviceName` the pubspec's `name` and `endpoint: FespalierOtel.endpoint()`.
+  A release build without `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT` exports nothing.
+- In `_main()`, right after `WidgetsFlutterBinding.ensureInitialized()` and before the adapters' `beforeRun` and `runApp`:
+  `observability.start(serviceVersion: FespalierOtel.serviceVersion(), buildId: FespalierOtel.buildId(), resourceAttributes: ...)`,
+  then `FespalierTelemetry.add(FespalierOtel(isReady: ..., onScreen: observability.setCrashScreen))`. It is `add`, not
+  `install`, so a sink of your own added in `startup()` (or by an adapter) stays. Add it once: `startup()` runs again on
+  Retry and `add` appends each time, so keep the sink in a top-level `final` and guard the add with
+  `if (!FespalierTelemetry.contains(sink)) FespalierTelemetry.add(sink);`.
+- The Riverpod and route observers, null until the SDK is up, through `ProviderScope(observers:)` and `AppRoutes.router(observers:)`.
+- The zone: `observability.runGuarded` around `main()`, on every platform (the web too, since 0.19.0, with otel_zone
+  v0.8.1 or later), the innermost zone (inside the adapters' zones). A `zone()` in startup.dart replaces it, so
+  Sentry's zone wins.
+
+The version is the build name, `FLUTTER_BUILD_NAME` (Flutter 3.47 and later; `unknown` before, which `otel_zone` takes),
+and the build is `FLUTTER_BUILD_NUMBER` (or none). A test that pumps `AppMain.root()` never starts the SDK, and
+`AppMain.observability.isReady` is false there. The errors are in `fespalier-troubleshooting` (`diagnostics-app-main.md`,
+`otel:`). The options `OtelZoneConfig` takes beyond the service name and the endpoint are not reachable this way: an app
+that needs them writes the wiring below by hand and leaves `otel: true` out. That works under `main: auto`, with no
+need for `main: manual`: in startup.dart (the `OtelZone`, `start()`, the sink, the observers and a `zone()` for
+`runGuarded`) or in a `lib/main.dart` of its own that does not call `AppMain.run()`, as `examples/telemetry` does.
 
 ## Wire it
 
@@ -61,7 +96,7 @@ Future<void> main() => guarded(() async {
 });
 
 Future<void> guarded(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+    observability.runGuarded(body);
 ```
 
 - `WidgetsFlutterBinding.ensureInitialized()` **and** `runApp` run inside the zone `runGuarded` opens
@@ -70,6 +105,13 @@ Future<void> guarded(Future<void> Function() body) =>
   resource is fixed when the SDK starts, so they go into `start()`.
 - `FespalierOtel(recordLocations: true)` adds `url.path`, `url.query` and `fespalier.guard.location`.
   It is off because segment and query values are app data.
+- `FespalierOtel(onScreen: observability.setCrashScreen)` (since 0.19.0, with `otel_zone` v0.7.0 or later) tells
+  `otel_zone` the route **pattern** of each committed navigation, `null` after a navigation that matched no route
+  and nothing after a superseded one, only while the SDK is up. It is told when the navigation commits, before the
+  new page's `initState` and first `build`, so a crash while that page opens names that page. A native crash record then carries
+  `otel_zone.crashed.screen`, and the Errors dashboard counts crashes by it. Never a location, a segment or a query
+  value. The platform limits (64 bytes, the Android summary, iOS hangs without one) are in
+  [`docs/observability.md`](../../../docs/observability.md#the-screen-a-native-crash-happened-on).
 - A failure while the app starts arrives through `FlutterError.reportError`.
 
 ### `FespalierOtel.endpoint()`
@@ -80,13 +122,16 @@ debug and profile, `http://10.0.2.2:4318` on Android (the emulator's address for
 as "telemetry off" (a store build never sends to a developer's computer). A physical phone needs the
 define.
 
-### Known limitation: `otel_zone` `runGuarded` on web
+### `otel_zone` `runGuarded` on the web
 
-Since 0.8.1: on the web `OtelZone.runGuarded` **never runs its body** and the app stays blank (it builds a
-`ReceivePort`, which `dart:isolate` does not support there; nothing is printed). `start()` works on the
-web, and spans and logs are exported. Run the body as it is on the web (the `guarded` helper above); the
-error hooks `runGuarded` installs are then not installed there. `OtelZoneConfig` and everything else is
-unchanged.
+Since otel_zone v0.8.1, `OtelZone.runGuarded` runs its body on the web. Before it, the zone **never ran its body**
+there and the app stayed blank (it built a `ReceivePort`, which `dart:isolate` does not support; nothing was
+printed). `start()` works on the web, and spans and logs are exported. On an older `otel_zone`, return the body
+without `runGuarded` when `kIsWeb` is true; the error hooks `runGuarded` installs are then not installed there.
+`OtelZoneConfig` and everything else is unchanged. In a release web build the zone's errors go to `otel_zone`'s sink
+only (its console printing and Flutter's error dump are on in debug only), so without `OTEL_EXPORTER_OTLP_ENDPOINT`
+they are seen nowhere, as on mobile. Seen by hand, not by CI: a created `otel` web app rendered and exported in
+headless Chromium (release, `--wasm` and debug), and a release build without the define sent nothing.
 
 ## Several sinks: `combine` and `add` (since 0.9.0)
 
@@ -106,7 +151,7 @@ a sink (a package's setup and the app's `startup()`) so neither replaces the oth
 everything and `install(null)` removes everything.
 
 - **Each sink has its own tokens.** What a sink returned from `start` is what it, and only it, gets back at
-  `end`, `page` and `within`, and as the `TelemetryStart.parent` of what runs under one of its
+  `end`, `page`, `commit` (since 0.19.0) and `within`, and as the `TelemetryStart.parent` of what runs under one of its
   navigations. One sink's spans therefore cannot become another sink's parents, and `FespalierOtel` behind
   a `combine` still parents its guard, data and deferred spans under its own navigation span.
 - **Each sink is isolated.** One that throws costs only its own report: the others and the app go on, and
@@ -122,6 +167,14 @@ token)` to say which trace an operation is in (`FespalierOtel` does: the trace a
   ([sentry.md](sentry.md)). The order of the list does not matter; a sink that throws from either is
   isolated like from any call. A sink of your own that has a member named `traceOf` or `linkTrace` with
   another signature must rename it.
+- **Commits** (since 0.19.0). `commit(navigation, TelemetryCommit commit)` tells a sink, with its own token, that a
+  navigation committed: `outcome` is `ok` or `not_found`, and `route` is the pattern of the page it puts on screen
+  (null when not found). It is synchronous, from the router's notification, before the new page's `initState` and
+  first `build`, so before that navigation's `page` events and `end`; the first one comes while the `Router` is
+  built, so never navigate, call `setState` or change a provider in it. A superseded navigation never commits, and
+  one that commits twice before its first frame is told twice, with `end` naming the last `route` while the same sink stays installed. The default does
+  nothing. `FespalierSentry` names its scope there ([sentry.md](sentry.md)). A sink that `implements FespalierTelemetry` (rather than extending it) adds the method, and renames a
+  member already named `commit` with another signature.
 
 ## `within`: the data and action span is current (since 0.9.0)
 
@@ -155,8 +208,8 @@ span. The rules for a sink of your own:
   code). `FespalierTelemetry.run(token, body)` is the same for an adapter package that starts operations
   of its own with `FespalierTelemetry.begin`.
 
-An app made with `telemetry: true` gets `traceDataCall(ref, 'd4', id, () => data(ref, id: id), telemetry: ...)`
-in `app.g.dart` instead of `traceData(ref, 'd4', id, data(ref, id: id), telemetry: ...)`: **regenerate with
+An app made with `telemetry: true` gets `traceDataCall(ref, 'dOrdersId', id, () => data(ref, id: id), telemetry: ...)`
+in `app.g.dart` instead of `traceData(ref, 'dOrdersId', id, data(ref, id: id), telemetry: ...)`: **regenerate with
 `fsp gen`**. The data span now starts before `data()` runs (its duration includes the sync part), and a
 `data()` that throws before it returns now has a `data` span (`fespalier.data.state = error`,
 `fespalier.async = false`). An app without `telemetry: true` is unchanged. A sink that already had a member
@@ -230,6 +283,10 @@ operation. An `image` operation (since 0.9.0, `fespalier_image`) is `#4 start im
 Image spans follow the installed sink and need no `telemetry: true`, like `auth` spans.
 A `custom` operation (since 0.11.0) is `#6 start custom fespalier.push.open fespalier.push.kind=alert`, then
 `#6 end custom ok fespalier.push.fresh=true`: the attributes sorted by key.
+Since 0.19.0 `RecordingTelemetry(recordCommits: true)` also writes `#n commit ok route=/orders/:id` (or
+`#n commit not_found`) when a navigation commits, before its `page` lines and its end. It is off by default, so a log
+written before 0.19.0 reads the same.
+
 Two sinks next to each other, and a sink of your own that makes its operation current:
 
 ```dart

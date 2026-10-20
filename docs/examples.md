@@ -146,8 +146,8 @@ tab's stack and a page's state after a simulated restart.
 
 - three tabs, an order page with a `data.dart`, an `action.dart` and an `observe.dart`, and a guarded
   and deferred settings page;
-- `telemetry: true`, and a `main.dart` that wires `otel_zone` (on go_router 17, which `otel_zone`
-  requires);
+- `telemetry: true`, and a `main.dart` that wires `otel_zone` (`otel_zone` from the v0.8.1
+  commit, so the example resolves go_router 18 like the others since 0.19.0);
 - tests that read the hooks' log and the spans from an in-memory exporter.
 
 Since 0.9.0 that `main.dart` also starts Sentry (`SENTRY_DSN` is empty, so nothing is sent), an order
@@ -172,12 +172,14 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 
 ## plugins
 
-`examples/plugins` (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics):
+`examples/plugins` (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics), and [`fespalier_launch`](../packages/fespalier_launch) (since 0.18.0) for home-screen shortcuts and widgets:
 
-- `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics]`; `main.dart` calls `FespalierPush.configure(...)` and `FespalierAnalytics.configure(...)` before `AppMain.run()`;
+- `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics, fespalier_launch]`; `main.dart` calls `FespalierPush.configure(...)`, `FespalierAnalytics.configure(...)` and `FespalierLaunch.configure(...)` (since 0.18.0) before `AppMain.run()`;
 - a `FakePushSource` in place of Firebase Messaging, and debug buttons on the home page that simulate a tap on a notification, a `RecordingAnalytics` in place of the analytics SDK, and the consent buttons of a banner (`analyticsConsent`);
 - an order page, a page behind a session guard and a login page that sends the person back;
+- two `FakeLaunchSource`s, one for shortcuts and one for widget taps (since 0.18.0), and debug buttons on the home page that simulate a shortcut (`last_order`, order 42) and a widget tap (`plugins:///orders/7`, order 7), mapped by `launchRoute` in `lib/launch.dart`;
 - tests through `AppMain.root()`: a cold start from a notification, a tap while the app runs, a guard on a tapped page, a foreign link refused, a tap delivered twice and the token and revocation callbacks, with `source=notification` read from `RecordingTelemetry`.
+- launch tests through `AppMain.root()` (since 0.18.0, [Shortcuts and widgets](launch.md)): a cold start from a shortcut or a widget, a tap while the app runs and one while it starts, a signed-out shortcut to a guarded page, a URI and a shortcut the app does not map, and the two home-page buttons, with `source=shortcut` or `source=widget` read from `RecordingTelemetry`;
 - analytics tests through `AppMain.root()` ([Analytics](analytics.md)): the first screen as a view named by `screenName`, nothing sent while undecided or after a refusal, a notification tap as a view with its source, a screen named `null` skipped, and no segment value in anything the backend is given.
 
 ## downloads
@@ -215,6 +217,23 @@ just cose                                                                   # th
 ```
 
 `SignKeypairSigner` (the hardware key) is not run by any test: they use a software key.
+
+## wire-sizes
+
+[`examples/wire-sizes`](../examples/wire-sizes) is a **measurement**, not an app: one CrateStack schema served as JSON, plain CBOR and `COSE_Sign1` CBOR, with every call weighed by a layer in the server that handles it: the request line, headers and body of each request and the status line, headers and body of each response, as the server's handler stack sees them. That is a count of the HTTP message, not a capture of a socket: `host`, `content-length`, hyper's `date` and TCP/TLS framing are not in it, so totals are lower bounds. It answers the question [`examples/cose`](../examples/cose) raises: what does signing a call actually cost?
+
+- a Rust server (`examples/wire-sizes/server`, no database, its own `Cargo.lock`) whose `--variant json|cbor|cose` picks the codec, and whose outermost middleware records each exchange before any inner layer can refuse it;
+- a runner that drives the same scenario through all three variants **in process** (`tower`'s `oneshot`, no socket), so it can read the server's own log back; `tests/socket.rs` sends the same requests over a real socket and pins what that adds;
+- an attributed `cose` overhead: the payload, the protected header, the 64-byte signature and the external AAD are separated, so the delta is explained rather than reported;
+- a **generated** `REPORT.md`, with a test that fails when the committed report is stale.
+
+```sh
+cd examples/wire-sizes/server && cargo run --locked -- --variant cbor --listen 127.0.0.1:8787
+cd examples/wire-sizes/server && cargo run --locked --quiet --bin wire-sizes-report    # the tables
+just wire-sizes                                                                        # fmt, clippy, tests, deny, and the report compared with REPORT.md
+```
+
+The scenario's payloads are tens of bytes, so its totals are mostly headers; the sweeps go to 300 KB, where JSON's overhead over CBOR depends on whether the text needs escaping. The `Bearer` baseline is realistic in _size_ but not verified, which the report says.
 
 ## i18n
 

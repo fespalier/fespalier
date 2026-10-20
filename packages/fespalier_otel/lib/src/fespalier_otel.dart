@@ -28,7 +28,9 @@ import 'conventions.dart';
 ///
 /// Since 0.9.0 a data span and an action span are the current span while `data()` or the action
 /// runs ([within]), so the spans that `otel_http` and `otel_dio` make inside them, after an
-/// `await` too, are their children. Next to another sink (Sentry, analytics), install both with
+/// `await` too, are their children. Since 0.19.0 [onScreen] hears the page of each committed
+/// navigation when it commits, before that page is built, so a native crash record can name its
+/// screen. Next to another sink (Sentry, analytics), install both with
 /// `FespalierTelemetry.combine` or `FespalierTelemetry.add`.
 final class FespalierOtel extends FespalierTelemetry {
   /// [isReady] says whether the SDK is up: pass `() => observability.isReady` with `otel_zone`.
@@ -36,14 +38,39 @@ final class FespalierOtel extends FespalierTelemetry {
   ///
   /// [recordLocations] adds `url.path`, `url.query` and `fespalier.guard.location`: segment and
   /// query values are app data, so it is off.
-  FespalierOtel({bool Function()? isReady, this.recordLocations = false})
-    : _isReady = isReady;
+  ///
+  /// [onScreen] (since 0.19.0) is called with the route pattern of the page each navigation this
+  /// adapter makes a span for commits to, before that page is built: pass
+  /// `observability.setCrashScreen` with `otel_zone` (v0.7.0 or later), and a native crash record
+  /// names its screen.
+  FespalierOtel({
+    bool Function()? isReady,
+    this.recordLocations = false,
+    this.onScreen,
+  }) : _isReady = isReady;
 
   final bool Function()? _isReady;
 
   /// Whether spans carry the committed location (`url.path`, `url.query`) and where a guard
   /// redirected to (`fespalier.guard.location`).
   final bool recordLocations;
+
+  /// Told the route pattern of the page on screen when a navigation commits, for every navigation
+  /// this adapter makes a span for, so only while the SDK is up (since 0.19.0). It is called with
+  /// `null` when the location matched no route, and not at all for a superseded navigation, which
+  /// never commits. It never receives a location, a segment or a query value. A callback that
+  /// throws costs nothing but itself.
+  ///
+  /// The call comes from the router's commit, before the new page's `initState` and first `build`,
+  /// so a crash while that page opens (a plugin call in `initState`, a heavy synchronous first
+  /// build that blocks the platform thread) names that page. A navigation that commits twice before
+  /// its first frame calls it twice; the last value is the span's `fespalier.route`. The first call
+  /// can come while the `Router` widget is being built: return at once, and never navigate, call
+  /// `setState` or change a provider.
+  ///
+  /// `otel_zone`'s `setCrashScreen` is the intended callback: `FespalierOtel(onScreen:
+  /// observability.setCrashScreen)`. Null by default, which costs nothing.
+  final void Function(String? route)? onScreen;
 
   Tracer? _tracer;
 
@@ -84,6 +111,34 @@ final class FespalierOtel extends FespalierTelemetry {
     }
     return 'http://localhost:4318';
   }
+
+  /// The app's version for `start(serviceVersion:)` (since 0.19.0): the build name Flutter compiles
+  /// in, the pubspec's `version:` before the `+` or `--build-name`. Flutter 3.47 and later pass it
+  /// (`FLUTTER_BUILD_NAME`); an older Flutter does not, and then it is `'unknown'` (otel_zone refuses
+  /// an empty version) unless the build passes `--dart-define=FLUTTER_BUILD_NAME=...`.
+  static String serviceVersion() => resolveServiceVersion(
+    const bool.hasEnvironment('FLUTTER_BUILD_NAME')
+        ? const String.fromEnvironment('FLUTTER_BUILD_NAME')
+        : null,
+  );
+
+  /// The build number for `start(buildId:)`, `app.build_id` (since 0.19.0): `FLUTTER_BUILD_NUMBER`,
+  /// the pubspec's `version:` after the `+` or `--build-number` (Flutter 3.47 and later); null without.
+  static String? buildId() => resolveBuildId(
+    const bool.hasEnvironment('FLUTTER_BUILD_NUMBER')
+        ? const String.fromEnvironment('FLUTTER_BUILD_NUMBER')
+        : null,
+  );
+
+  /// [serviceVersion]'s rule with its input given, for tests.
+  @visibleForTesting
+  static String resolveServiceVersion(String? defined) =>
+      (defined == null || defined.isEmpty) ? 'unknown' : defined;
+
+  /// [buildId]'s rule with its input given, for tests.
+  @visibleForTesting
+  static String? resolveBuildId(String? defined) =>
+      (defined == null || defined.isEmpty) ? null : defined;
 
   /// The tracer, once the SDK is up; null before. Resolved on the first use and kept.
   Tracer? _resolve() {
@@ -131,6 +186,7 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.route: ?site?.route,
             FespalierConventions.file: ?site?.file,
             FespalierConventions.dataKeyed: start.keyed,
+            FespalierConventions.dataAttempt: ?start.dataAttempt,
           },
         ),
         TelemetryOp.action => (
@@ -188,9 +244,13 @@ final class FespalierOtel extends FespalierTelemetry {
       final parent = start.parent;
       final span = tracer.startSpan(
         name,
-        // A navigation is a root span, whatever is current.
-        context: start.op == TelemetryOp.navigate ? Context.root : null,
-        parentSpan: parent is _Running ? parent.span : null,
+        // A navigation is a root span, whatever is current; anything else is a child of the
+        // start's parent when it has one (beta.17 takes the parent through the context alone).
+        context: start.op == TelemetryOp.navigate
+            ? Context.root
+            : parent is _Running
+            ? Context.current.withSpan(parent.span)
+            : null,
         attributes: OTel.attributesFromMap(attributes),
       );
       return _Running(span, start.op, prefix: _customPrefix(start));
@@ -232,6 +292,23 @@ final class FespalierOtel extends FespalierTelemetry {
       );
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Tells [onScreen] the page a navigation commits to, before it is built (since 0.19.0): its
+  /// pattern, null when no route matched; only for a navigation this adapter made a span for.
+  @override
+  void commit(Object? navigation, TelemetryCommit commit) {
+    final hook = onScreen;
+    if (hook == null ||
+        navigation is! _Running ||
+        navigation.op != TelemetryOp.navigate) {
+      return;
+    }
+    try {
+      hook(commit.outcome == TelemetryOutcome.notFound ? null : commit.route);
+    } catch (_) {
+      // The app's callback costs only itself: the span is still described and ended.
     }
   }
 
@@ -300,12 +377,32 @@ final class FespalierOtel extends FespalierTelemetry {
           end.outcome,
         );
         span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+        final source = end.dataSource;
+        if (source != null) {
+          span.setStringAttribute<String>(
+            FespalierConventions.dataSource,
+            source,
+          );
+        }
       case TelemetryOp.action:
         span.setStringAttribute<String>(
           FespalierConventions.actionResult,
           end.outcome,
         );
         span.setBoolAttribute(FespalierConventions.isAsync, end.isAsync);
+        final rolledBack = end.actionRolledBack;
+        if (rolledBack != null) {
+          span.setBoolAttribute(
+            FespalierConventions.actionRolledBack,
+            rolledBack,
+          );
+        }
+        if (end.outcome == TelemetryOutcome.error) {
+          span.setBoolAttribute(
+            FespalierConventions.actionInvalid,
+            end.actionInvalid,
+          );
+        }
       case TelemetryOp.deferred:
         span.setStringAttribute<String>(
           FespalierConventions.deferredResult,

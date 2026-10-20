@@ -416,7 +416,7 @@ expect(await sentry.lines(), [
 expect(sentry.breadcrumbs, ['navigation enter /orders/:id']);
 ```
 
-`sent()` is the JSON (tags, fingerprint, contexts, measurements); `tags`, `transactionName` and `rawBreadcrumbs` read the scope.
+`sent()` is the JSON (tags, fingerprint, contexts, measurements); `tags`, `transactionName` and `rawBreadcrumbs` read the scope. Since 0.19.0 `tags` and `transactionName` name a page from its commit: read them right after `router.go(...)` or in a page's `initState`.
 By default the sink sends no transaction, so a test of `tracing: true` navigates after the first screen (on Android and
 iOS, which is what `defaultTargetPlatform` says in a test, Sentry's app start owns the first one; pass
 `platform: TargetPlatform.linux` to `FespalierSentry`). A container-only test (an action, `data()`) is a plain `test()`:

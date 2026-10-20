@@ -16,17 +16,17 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_http:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 
 <!-- x-release-please-end -->
@@ -256,7 +256,7 @@ ref.abortable(RetryClient(WriteGuardClient(SessionClient(ref.watch(authorizer), 
 
 With it a 401 comes back to the caller after the refresh (the next request works, and a `data.dart` that retries reloads it). The test pins both orders, so neither changes silently.
 
-For Dio the same promises are interceptors and nothing to order by hand: `WriteGuard.install(dio)` goes **last** (it runs first), after the retrier and `SessionInterceptor`.
+For Dio the same promises are interceptors and nothing to order by hand: `WriteGuard.install(dio)` goes **last** (it runs first), after the retrier and `SessionInterceptor`. `packages/fespalier_dio/test/session_retry_test.dart` runs the real `SessionInterceptor` under `dio_smart_retry` in both orders of the two: every send makes a new proof, a 401 is replayed once, and a request is never sent without the session it was made with (since 0.19.0): when the refresh was refused, or the user signed out or in as someone else between two sends, the retry is not sent and the caller gets a `DioException` whose `error` is an `AuthRejected`. `packages/fespalier_sign_keypair/test/dio_retry_test.dart` runs the same stack with a real DPoP proof, and its fake server checks every send with `verifyDpopProof`: a `jti` never seen before on each retry, the `ath` of the refreshed token on a replay, the server's nonce after a challenge, and no stale proof after a sign-out. The same cannot hold for `package:http`, in either order. With the retrier **outside** the session (the DPoP order), `RetryClient` makes a new `StreamedRequest` for each attempt, so `SessionClient` has nothing per request to carry a mark on: a send made as ada, then a 503, then a sign-out, makes the next attempt go out unauthenticated, or as bob after a sign-in (and likewise after an `AuthUnavailable`). A refused refresh is not retried (an `AuthRejected` is not a `ClientException`); an unavailable one is, and each attempt asks again. With the retrier **inside** the session (the default, non-DPoP order), a 503, a sign-out in the server's answer and then the retry re-send the stale `Bearer` token. What stops both is the abort: with `ref.abortable(...)` outermost and a `data.dart` that watches `authUserId` (or a guarded page), a sign-out disposes the build, its trigger completes, and `RetryClient` checks `aborted` before every attempt. `SessionClient`'s own replay after a 401 is refused when the user signed out meanwhile (since 0.19.0).
 
 ## Credentials for clients that are not an http.Client
 

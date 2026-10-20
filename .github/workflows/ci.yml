@@ -12,9 +12,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The Flutter the examples and the package are built and tested with (Dart 3.13.4). Exact, so a
+  # The Flutter the examples and the package are built and tested with (Dart 3.13.5). Exact, so a
   # new stable release cannot turn CI red on its own; bump it here, deliberately.
-  FLUTTER_VERSION: 3.47.5
+  FLUTTER_VERSION: 3.47.7
   # The oldest Flutter the package declares (`flutter: ">=3.35.0"` in its pubspec, "Flutter 3.35 or
   # newer" in the READMEs): the `floor` job builds and tests on it, and `just floor` reads its minor
   # from here. Exact, like FLUTTER_VERSION: the last 3.35 patch release (Dart 3.9.2).
@@ -147,6 +147,7 @@ jobs:
           - packages/fespalier_analytics
           - packages/fespalier_frb
           - packages/fespalier_riverpod
+          - packages/fespalier_launch
           - examples/shop
           - examples/features
           - examples/tabs
@@ -237,6 +238,7 @@ jobs:
           - packages/fespalier_analytics
           - packages/fespalier_frb
           - packages/fespalier_riverpod
+          - packages/fespalier_launch
           - examples/minimal
     defaults:
       run:
@@ -604,12 +606,15 @@ jobs:
           flutter pub get
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier --version
           FSP_BINARY="$PWD/../../cli/target/debug/fsp" dart run fespalier routes
-      # `fsp dev` against the real flutter (since 0.9.0): a fresh web app in headless Chrome. It
-      # waits for the app, adds a route (a hot restart), edits a page (a hot reload) and quits with
-      # `q`. Every other test of `fsp dev` talks to a fake flutter; this is the one that notices when
-      # flutter changes its `--machine` protocol. The script is `just dev-e2e`.
-      - name: fsp dev runs the app, restarts on a new route and reloads on an edit
-        timeout-minutes: 10
+      # `fsp dev` against the real flutter (since 0.9.0): a fresh web app in headless Chrome. fsp dev
+      # runs the app, reloads a new route in, restarts when it must and quits with `q`. Every other
+      # test of `fsp dev` talks to a fake flutter; this is the one that notices when flutter changes
+      # its `--machine` protocol. The script is `just dev-e2e`. The step may run 14 minutes: the
+      # script gives `fsp dev` 10 (`timeout 600`) after `flutter create`, `pub add` and `fsp init`,
+      # and a slow runner should fail in the script, with the log of `fsp dev`, before Actions kills
+      # the step.
+      - name: fsp dev runs the app, reloads a new route in, restarts when it must and quits
+        timeout-minutes: 14
         env:
           FSP_BIN: ${{ github.workspace }}/cli/target/debug/fsp
         run: scripts/check-dev-e2e.sh
@@ -798,6 +803,56 @@ jobs:
           FSP_REQUIRE_COSE_SERVER: "1"
         run: flutter test
 
+  # examples/wire-sizes: a CrateStack server (a Rust crate of its own, examples/wire-sizes/server) that
+  # serves one schema as JSON, CBOR and COSE_Sign1 CBOR with every call measured as the handler stack
+  # sees it (a count of the HTTP message, not of bytes on a socket), and the runner that drives it in
+  # process. There is no app: the measurement is the product, and its report is committed.
+  # The last step is the point of the job — the report is generated, so a committed REPORT.md that was not
+  # regenerated after a code change fails here instead of being believed. It is not in the `floor` job:
+  # nothing here is a Flutter package. `just wire-sizes` runs the same steps.
+  wire-sizes:
+    name: wire-sizes example (the measurement and its report)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server crate pins its own toolchain (cli/tests/versions.rs checks it equals the
+      # generator's); this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/wire-sizes/server/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/wire-sizes/server
+      # `cargo test` includes the one that compares the committed REPORT.md with a fresh measurement.
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/wire-sizes/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      # Licences, advisories, sources: examples/wire-sizes/server/deny.toml (cratestack's graph brings a
+      # few more licences than the generator's).
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/wire-sizes/server/Cargo.toml
+          command: check
+      # The binary the README tells a reader to run, checked against the committed report: a report that
+      # only the test library can reproduce would not be reproducible by the reader it is written for.
+      - name: The report binary reproduces REPORT.md
+        working-directory: examples/wire-sizes/server
+        run: diff <(cargo run --locked --quiet --bin wire-sizes-report) REPORT.md
+
   web:
     name: Deferred routes split on the web
     runs-on: ubuntu-latest
@@ -927,6 +982,8 @@ jobs:
         run: python3 scripts/test_verify_staged.py
       - name: Stage, fetch, attach and publish release assets (fake GitHub API)
         run: python3 scripts/test_release_assets.py
+      - name: Recover a release PR merged before its pins (manual Release run)
+        run: python3 scripts/test_release_dispatch.py
 
   telemetry:
     name: Telemetry stack files and dashboards

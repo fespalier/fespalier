@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.17.1
+      ref: v0.20.0
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.17.1
+      ref: v0.20.0
 ```
 <!-- x-release-please-end -->
 
@@ -39,6 +39,19 @@ fespalier:
 ```
 
 ## Wire it
+
+### With the generated main(): `otel: true` (since 0.19.0)
+
+Add `telemetry: true` and `otel: true` under `fespalier:` in pubspec.yaml, with `fespalier_otel` and
+`otel_zone` under `dependencies:` as below. `fsp gen` then writes the wiring into
+`lib/app.main.g.dart`, and `lib/main.dart` is `Future<void> main() => AppMain.run();`.
+[`docs/observability.md`](../../docs/observability.md) ("OpenTelemetry from the generated main()")
+has the rest: the zone, the service's name and version, and what is not configured this way.
+
+`FespalierOtel.serviceVersion()` is the build name (`FLUTTER_BUILD_NAME`, Flutter 3.47 and later,
+else `unknown`) and `FespalierOtel.buildId()` the build number (`FLUTTER_BUILD_NUMBER`, or null).
+
+### By hand, in your own main()
 
 With `otel_zone` (a git dependency, pinned to a commit: it is not on pub.dev), in `main.dart`:
 
@@ -69,9 +82,9 @@ Future<void> main() => guarded(() async {
   );
 });
 
-/// `runGuarded` leaves a Flutter web app blank (see below): run the body as it is there.
+/// Since otel_zone v0.8.1 the zone runs on the web too: no `kIsWeb` branch.
 Future<void> guarded(Future<void> Function() body) =>
-    kIsWeb ? body() : observability.runGuarded(body);
+    observability.runGuarded(body);
 ```
 
 `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when set.
@@ -80,6 +93,16 @@ its host) and `http://localhost:4318` elsewhere, and a release build gets `''`, 
 takes as "telemetry off", so a store build never sends to a developer's computer.
 
 An app that starts the SDK itself (`OTel.initialize`) leaves `isReady` out.
+
+### The screen a native crash happened on (since 0.19.0)
+
+Pass `onScreen` and a native crash record names the page the app was on: `FespalierOtel(isReady: () => observability.isReady, onScreen: observability.setCrashScreen)`.
+It needs `otel_zone` v0.7.0 or later. `onScreen` is told the route pattern (`/orders/:id`, the value of `fespalier.route`)
+after each committed navigation, `null` when no route matched, and nothing for a superseded one. It is told when the
+navigation commits, before the new page's `initState` and first `build`, so a crash while that page opens names the page.
+It is never told a location, a segment or a query value, and a callback that throws costs nothing but itself. Without `onScreen` nothing changes. The
+docs' [The screen a native crash happened on](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#the-screen-a-native-crash-happened-on)
+have the platform limits.
 
 ### Next to another sink, and HTTP spans under `data()` (since 0.9.0)
 
@@ -106,27 +129,31 @@ open quickly?") in green, amber or red, and `fsp telemetry --report` says the sa
 
 _Sample data from `scripts/telemetry/seed.py --showcase`._
 
-## Known limitation: `otel_zone` `runGuarded` on the web
+## `runGuarded` on the web
 
-Since 0.8.1, known limitation: on the web, `OtelZone.runGuarded` never runs its body, so the app
-stays blank. Inside the zone, before the body, it builds a `ReceivePort`, which `dart:isolate` does
-not support there. `OtelZone.start()` itself works on the web, so spans and logs are exported.
-Until `otel_zone` guards that call, run the body as it is on the web, as `guarded` above does. The
-hooks `runGuarded` installs (`FlutterError.onError` and `PlatformDispatcher.onError` forwarding to
-`otel_zone`'s sink) are then not installed on the web: errors there are not exported unless the app
-forwards them itself.
+Since otel_zone v0.8.1, `OtelZone.runGuarded` runs its body on the web. Before it, the zone built a
+`ReceivePort` ahead of the body, which `dart:isolate` does not support there, so the app stayed blank.
+`OtelZone.start()` works on the web either way, so spans and logs are exported. On an older
+`otel_zone`, return the body without `runGuarded` on the web (when `kIsWeb` is true):
+the hooks `runGuarded` installs (`FlutterError.onError` and `PlatformDispatcher.onError` forwarding to
+`otel_zone`'s sink) are then missing there, and errors are not exported unless the app forwards them
+itself. On v0.8.1 the web gets framework errors and uncaught async errors, but no isolate listener,
+because a browser has no isolates.
 
 ## go_router
 
-`otel_zone` depends on `otel_go_router`, which declares `go_router: ^17.0.0`. fespalier accepts 17
-and 18, so an app with `otel_zone` resolves go_router 17. An app that needs 18 adds
-`dependency_overrides: go_router: ^18.0.0`, as `otel_zone`'s README says.
+Since 0.19.0 this package follows the dartastic rc.4 line (`dartastic_opentelemetry` 1.1.0-beta.17,
+API 1.0.0-rc.4), which starts at `otel_zone` v0.8.0. This repository pins v0.8.1 (commit
+`64c4661ac6cd09718141864d528892916677cc38`), the first whose `runGuarded` runs on the web. That
+`otel_zone`'s `otel_go_router` accepts go_router 17 and 18: pub resolves 18 where Flutter has it, with
+no override. An `otel_zone` before the rc.4 line (up to v0.7.0) is on the rc.3 line and cannot resolve
+beside this package at all; it also pins `go_router: ^17.0.0`, so move it to v0.8.1 first.
 
 ## Startup failures
 
-A failure while the app starts arrives through `FlutterError.reportError`. Outside the web,
-`runGuarded` has pointed `FlutterError.onError` at `otel_zone`'s sink, so it is exported; nothing
-here needs to catch it.
+A failure while the app starts arrives through `FlutterError.reportError`. `runGuarded` points
+`FlutterError.onError` at `otel_zone`'s sink on the web too (since otel_zone v0.8.1), so it is exported;
+nothing here needs to catch it.
 
 ## Tests
 

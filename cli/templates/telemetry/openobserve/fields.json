@@ -17,8 +17,12 @@
     "fespalier_guard_location",
     "fespalier_data_state",
     "fespalier_data_keyed",
+    "fespalier_data_attempt",
+    "fespalier_data_source",
     "fespalier_action_name",
     "fespalier_action_result",
+    "fespalier_action_rolled_back",
+    "fespalier_action_invalid",
     "fespalier_deferred_result",
     "fespalier_auth_operation",
     "fespalier_auth_result",
@@ -44,6 +48,7 @@
     "exception_type",
     "exception_message",
     "event_name",
-    "body"
+    "body",
+    "otel_zone_crashed_screen"
   ]
 }

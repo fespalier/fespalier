@@ -164,10 +164,10 @@ fn a_matcher_lists_the_data_the_route_watches() {
         &c,
         &[
             // The same expression the page's DataView watches, with the key built from `p`.
-            "ItemRoute(id: p.id, q: p.q), {'id': p.id, 'q': p.q}, [_data1((id: p.id, q: p.q))])",
-            "watch: (ref) => watchData(ref, 'd1', _data1((id: v.id, q: v.q))),",
+            "ItemRoute(id: p.id, q: p.q), {'id': p.id, 'q': p.q}, [_dataId((id: p.id, q: p.q))])",
+            "watch: (ref) => watchData(ref, 'dId', _dataId((id: v.id, q: v.q))),",
             // A list is the QueryList the provider is keyed by, as in the page.
-            "[_data3(QueryList(p.tags))])",
+            "[_dataTags(QueryList(p.tags))])",
             // No data: an empty list, which is not null.
             "RouteMatcher(['plain'], (s) => UrlMatch(s.uri, const PlainRoute(), const {}, const [])),",
         ],
@@ -198,7 +198,7 @@ fn data_that_selects_a_provider_and_provider_files_are_listed_as_they_are() {
     has(
         &c,
         &[
-            "[_data3(p.productId)])",
+            "[_dataProductsProductId(p.productId)])",
             "const CounterRoute(), const {}, [_i0.data])",
         ],
     );
@@ -235,9 +235,9 @@ fn section_data_comes_before_the_routes_own_and_needs_no_layout_parse() {
             // A page with no data.dart of its own still has its section's.
             "RouteMatcher(['teams', ':teamId', 'settings'], (s) {",
             "SettingsRoute(teamId: p.teamId)",
-            "[_data2(p.teamId)])",
+            "[_dataTeamsTeamId(p.teamId)])",
             // Outermost first, then its own.
-            "[_data2(p.teamId), _data4(p.member)])",
+            "[_dataTeamsTeamId(p.teamId), _dataTeamsTeamIdMembersMember(p.member)])",
         ],
     );
 }
@@ -315,7 +315,7 @@ fn a_typed_catch_all_is_parsed_by_the_matcher_like_the_page_does() {
             "(ids: Segment.asIntRest(s, 'ids'))",
             "RouteMatcher(['compare', '*ids'], (s) {",
             // A part that isn't an int throws BadSegment in the parser: matchRoutes turns it into null.
-            "CompareRoute(ids: p.ids), {'ids': p.ids}, [_data2(restKey(p.ids))])",
+            "CompareRoute(ids: p.ids), {'ids': p.ids}, [_dataCompareIds(restKey(p.ids))])",
         ],
     );
 }
@@ -323,7 +323,14 @@ fn a_typed_catch_all_is_parsed_by_the_matcher_like_the_page_does() {
 #[test]
 fn an_app_without_routes_still_generates_an_empty_matcher_list() {
     let (c, _) = generated("", &[("layout.dart", LAYOUT)]);
-    has(&c, &["static final List<RouteMatcher> _matchers = [\n  ];"]);
+    // The matchers are built by `_allMatchers` (since 0.19.0), so a hot reload can build them again.
+    has(
+        &c,
+        &[
+            "static List<RouteMatcher> _matchers = _allMatchers();",
+            "static List<RouteMatcher> _allMatchers() => [\n  ];",
+        ],
+    );
 }
 
 #[test]
@@ -379,7 +386,7 @@ fn a_section_gets_a_typed_handle_named_after_its_folder() {
         &c,
         &[
             "abstract final class TeamsTeamIdSection {",
-            "static final data = _data2;",
+            "static final data = _dataTeamsTeamId;",
             "static final watch = (WidgetRef ref, {required String teamId}) => ref.watch(data(teamId));",
             "static final read = (WidgetRef ref, {required String teamId}) => ref.readData(data(teamId));",
             "static PrefetchHandle prefetch(WidgetRef ref, {required String teamId, Duration? keepFor}) => ref.prefetchData(data(teamId), keepFor: keepFor);",
@@ -447,7 +454,7 @@ fn a_section_selector_gets_the_selected_helpers() {
     has(
         &c,
         &[
-            "static final data = _data2;",
+            "static final data = _dataTeamsTeamId;",
             "ref.readSelected(data(teamId))",
             "static Future<void> refresh(WidgetRef ref, {required String teamId}) => ref.refreshSelected(data(teamId));",
         ],
@@ -476,13 +483,13 @@ fn a_section_can_be_keyed_by_query_parameters() {
         &[
             // The section's layout reads them from the URL, as any layout's query parameters.
             "({String? period, List<String> tags}) _layout1(GoRouterState s) => (period: Query.asString(s, 'period'), tags: Query.asStringList(s, 'tags'));",
-            "watch: (ref) => watchData(ref, 'd1', _data1((period: v.period, tags: QueryList(v.tags)))),",
+            "watch: (ref) => watchData(ref, 'dReports', _dataReports((period: v.period, tags: QueryList(v.tags)))),",
             // Every route below is keyed by them too, so its typed route can write them.
             "const MonthlyRoute({this.period, this.tags = const []});",
             "const YearlyRoute({this.period, this.tags = const []});",
             "withQuery(joinLocation(AppRoutes.base, '/reports/monthly'), {'period': period, 'tags': tags})",
             // dataAt reads them from the location.
-            "MonthlyRoute(period: p.period, tags: p.tags), {'period': p.period, 'tags': p.tags}, [_data1((period: p.period, tags: QueryList(p.tags)))])",
+            "MonthlyRoute(period: p.period, tags: p.tags), {'period': p.period, 'tags': p.tags}, [_dataReports((period: p.period, tags: QueryList(p.tags)))])",
             // The typed handle takes them as named parameters.
             "static final watch = (WidgetRef ref, {String? period, List<String> tags = const []}) => ref.watch(data((period: period, tags: QueryList(tags))));",
         ],
@@ -519,9 +526,9 @@ fn a_route_preloads_its_own_data_and_its_sections() {
         &c,
         &[
             // The section's provider, then the route's own: what `dataAt` lists.
-            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data2(teamId), _data4((teamId: teamId, week: week))], keepFor: keepFor);",
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTeamsTeamId(teamId), _dataTeamsTeamIdStats((teamId: teamId, week: week))], keepFor: keepFor);",
             // A route that only has the section's data still starts it.
-            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_data2(teamId)], keepFor: keepFor);",
+            "PrefetchHandle preload(WidgetRef ref, {Duration? keepFor}) => ref.prefetchAll([_dataTeamsTeamId(teamId)], keepFor: keepFor);",
             // By location.
             "static PrefetchHandle preload(WidgetRef ref, Uri uri, {Duration? keepFor}) => ref.prefetchAll(dataAt(uri) ?? const [], keepFor: keepFor);",
         ],
@@ -529,7 +536,7 @@ fn a_route_preloads_its_own_data_and_its_sections() {
     // The matcher and `preload` list the same providers.
     has(
         &c,
-        &["[_data2(p.teamId), _data4((teamId: p.teamId, week: p.week))])"],
+        &["[_dataTeamsTeamId(p.teamId), _dataTeamsTeamIdStats((teamId: p.teamId, week: p.week))])"],
     );
     // HomeRoute has no data: it inherits the base's no-op.
     assert_eq!(

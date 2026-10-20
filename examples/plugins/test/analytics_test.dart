@@ -4,12 +4,14 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_analytics/fespalier_analytics.dart';
 import 'package:fespalier_analytics/testing.dart';
+import 'package:fespalier_launch/fespalier_launch.dart';
 import 'package:fespalier_push/fespalier_push.dart';
 import 'package:fespalier_push/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:plugins/analytics.dart';
 import 'package:plugins/app.g.dart';
 import 'package:plugins/app.main.g.dart';
+import 'package:plugins/launch.dart';
 import 'package:plugins/push.dart';
 
 void main() {
@@ -19,6 +21,7 @@ void main() {
   setUp(() {
     FespalierAnalytics.debugReset();
     FespalierPush.debugReset();
+    FespalierLaunch.debugReset();
     analytics = demoAnalytics..clear();
     push = FakePushSource();
   });
@@ -26,6 +29,7 @@ void main() {
     FespalierTelemetry.install(null);
     FespalierAnalytics.debugReset();
     FespalierPush.debugReset();
+    FespalierLaunch.debugReset();
   });
 
   /// main() on the way to runApp: the adapters' beforeRun() and launch(), then the app around the
@@ -36,6 +40,7 @@ void main() {
   }) async {
     addTearDown(push.close);
     FespalierPush.configure(source: push, route: pushRoute);
+    FespalierLaunch.configure(sources: const [], route: launchRoute);
     FespalierAnalytics.configure(
       analytics,
       screenName: screenName,

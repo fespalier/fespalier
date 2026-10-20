@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show Override;
 
+import 'routes_reload.dart' show reloadRoutes;
+
 /// Runs the app's `startup()` and shows `splash.dart` meanwhile, then builds a `ProviderScope`
 /// with the overrides it returned around [app] and the router [router] makes. What the
 /// generated `AppMain.root()` returns (since 0.8.1).
@@ -442,6 +444,15 @@ class _RouterHostState extends State<_RouterHost> {
         ),
       );
     }
+  }
+
+  /// A hot reload (debug builds only, since 0.19.0): the router swaps in the regenerated route table
+  /// of a generated app, when its file changed and what it keeps did not (`reloadRoutes`). A
+  /// release or profile build never reassembles, so this costs nothing there.
+  @override
+  void reassemble() {
+    super.reassemble();
+    reloadRoutes(_router);
   }
 
   @override

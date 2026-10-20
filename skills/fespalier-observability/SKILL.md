@@ -1,6 +1,6 @@
 ---
 name: fespalier-observability
-description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, and, since 0.11.0, the page instance's RouteScope that onEnter takes with hold and onLeave, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, the web limitation of runGuarded), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace; and, since 0.13.0, fespalier_analytics (screen views by route pattern to an analytics backend of yours, only with consent: nothing sent or kept while undecided or denied, no replay on grant, screenName from meta.dart, time on screen, the AnalyticsBackend interface with Firebase Analytics, PostHog, Mixpanel and Amplitude as compiled recipes, configure before AppMain.run, telemetry: true required, RecordingAnalytics for tests). Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
+description: "Observing a fespalier app (since 0.8.1) — observe.dart (onEnter, onFocus and onLeave hooks for analytics, logging and titles: which pages they run for, in which order, when they fire after the frame, parked tabs, the Ref a hook gets, and, since 0.11.0, the page instance's RouteScope that onEnter takes with hold and onLeave, errors), the telemetry config key and FespalierTelemetry, the fespalier_otel adapter on otel_zone and OpenTelemetry (install, wiring, FespalierOtel.endpoint, runGuarded on the web before otel_zone v0.8.1), the telemetry conventions (contract version 1: every span, event and attribute name), RecordingTelemetry for tests, and what telemetry costs; and, since 0.9.0, several sinks in the one slot (FespalierTelemetry.combine and add, per-sink tokens, isolation), the within hook that makes a data or action span current so HTTP spans nest under it (traceDataCall, the error-zone rule), and navigateFrom with fespalier.navigation.source; and, since 0.9.0, fespalier_sentry (Sentry, errors first: every error and crash tagged with the route pattern, the app file and the action, one breadcrumb per page change, release health, the OpenTelemetry trace id on each event next to fespalier_otel; screen-load transactions and spans on request with tracing: true; RecordingSentry for tests) and FespalierTelemetry.traceOf and linkTrace; and, since 0.13.0, fespalier_analytics (screen views by route pattern to an analytics backend of yours, only with consent: nothing sent or kept while undecided or denied, no replay on grant, screenName from meta.dart, time on screen, the AnalyticsBackend interface with Firebase Analytics, PostHog, Mixpanel and Amplitude as compiled recipes, configure before AppMain.run, telemetry: true required, RecordingAnalytics for tests). Load before adding an observe.dart, turning on telemetry, wiring otel_zone or Sentry, adding a second sink, building a dashboard on the spans, or when a hook never fires, fires twice or throws."
 ---
 
 # fespalier-observability
@@ -48,12 +48,27 @@ fespalier:
   telemetry: true # since 0.8.1; run `fsp gen` after
 ```
 
-Then, in `main.dart`, **before the router is built**: `FespalierTelemetry.install(sink)`. With
+Since 0.19.0, `otel: true` under the same key has the generated `main()` start otel_zone and install `FespalierOtel`
+for you, in `app.main.g.dart`, so `lib/main.dart` is `AppMain.run()` and there is no hand wiring to write. It needs
+`fespalier_otel` and `otel_zone` under `dependencies:`, and it is refused with `main: manual`:
+
+```yaml
+fespalier:
+  telemetry: true
+  otel: true
+```
+
+By hand, without `otel: true`, in `main.dart`, **before the router is built**: `FespalierTelemetry.install(sink)`. With
 `otel_zone`, the sink is `FespalierOtel(isReady: () => observability.isReady)` from `package:fespalier_otel`
 (a git dependency next to fespalier, **same `url`, same `ref`**). Nothing is reported until a sink is
 installed. Read [`references/telemetry.md`](references/telemetry.md) for the install and wiring,
-`FespalierOtel.endpoint()`, **the web limitation of `OtelZone.runGuarded`**, go_router 17, and testing with
+`FespalierOtel.endpoint()`, **`OtelZone.runGuarded` on the web** (before otel_zone v0.8.1), go_router 17 and 18, and testing with
 `RecordingTelemetry`.
+
+Since 0.19.0, `FespalierOtel(onScreen: observability.setCrashScreen)` names the page a native crash happened on, as
+`otel_zone.crashed.screen` (otel_zone v0.7.0 or later; the pattern only; it is set when the navigation commits,
+before the new page is built, so a crash while a page opens names that page; any sink hears the commit through
+`FespalierTelemetry.commit`). See [`references/telemetry.md`](references/telemetry.md), "Wire it".
 
 Since 0.9.0, three more things, all in that page:
 
@@ -90,13 +105,13 @@ or removing is version 2.
 
 `package:fespalier_sentry` is the sink for Sentry, and it is **errors first**. By default it sends every error and
 crash tagged with the route pattern, the app file and the action (`fespalier.route`, `.file`, `.operation`,
-`.action`; fingerprint = default + the file), names the scope after the screen (its transaction and the tag
+`.action`; fingerprint = default + the file), names the scope after the screen (as soon as a navigation commits, before the page is built, since 0.19.0; its transaction and the tag
 `fespalier.route`, so a crash caught by Sentry's own integrations says which screen it was on), makes **one
 breadcrumb per page change**, and leaves release health to the SDK. **Next to `fespalier_otel`** in a
 `FespalierTelemetry.combine`, each event carries `otel.trace_id` and `otel.span_id`, so an error links to its
 trace. **No transaction is sent by default**: screen-load transactions, spans and TTID/TTFD are the opt-in,
 `FespalierSentry(tracing: true)` plus `tracing: true` in `FespalierSentry.configure`, for a team that has only
-Sentry.
+Sentry. With Sentry's `traceLifecycle: stream` the same opt-in streams the spans instead (since 0.19.0).
 
 ```dart
 FespalierTelemetry.add(FespalierSentry()); // in startup(), before the router; add keeps an adapter's sink (analytics); Sentry starts in zone()
@@ -150,10 +165,11 @@ Read [`references/analytics.md`](references/analytics.md) for the wiring, consen
 zoneValues: {...})`.
 - **`fespalier` and `fespalier_otel` must be the same git dependency** (same `url`, same `ref`), or pub
   refuses to resolve; see [fespalier-troubleshooting](../fespalier-troubleshooting/SKILL.md) (its observe.dart and telemetry page).
-- **`otel_zone` forces go_router 17** in an app that uses it (`otel_go_router` caps it); fespalier accepts
-  17 and 18.
-- **`OtelZone.runGuarded` leaves a Flutter web app blank.** Run the body as it is on the web
-  (`kIsWeb ? body() : observability.runGuarded(body)`). Since 0.8.1, known limitation.
+- **`otel_zone` before the rc.4 line (up to v0.7.0) forces go_router 17** in an app that uses it
+  (`otel_go_router` ^0.2.0 caps it) and is on the rc.3 dartastic line, which `fespalier_otel` no longer
+  resolves with since 0.19.0. From v0.8.1 (`64c4661`) it accepts go_router 17 and 18; fespalier accepts both.
+- **`OtelZone.runGuarded` left a Flutter web app blank before otel_zone v0.8.1.** From v0.8.1 it runs its body
+  on the web. On an older one, return the body without `runGuarded` when `kIsWeb` is true, and bump the ref.
 
 ## Where the code is
 
@@ -168,4 +184,4 @@ zoneValues: {...})`.
   (`traceOf` and `linkTrace` in `telemetry.dart` are how the two share a trace).
 - Analytics (since 0.13.0): `packages/fespalier_analytics/` (`lib/src/sink.dart` the sink and `FespalierAnalytics`, `lib/fespalier_adapter.dart`, `lib/testing.dart`).
 - Scaffold: `fsp new 'orders/[id]' --observe` writes `observe.dart`.
-- The example is `examples/telemetry`: lifecycle tests and span tests, on go_router 17.
+- The example is `examples/telemetry`: lifecycle tests and span tests, on go_router 18 since 0.19.0.

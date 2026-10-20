@@ -304,3 +304,24 @@ fn adding_an_error_view_above_a_guarded_page_still_swaps() {
     let after = read_stamp(&after).expect("a stamp");
     assert!(before.swaps_to(&after), "a new error view must swap");
 }
+
+#[test]
+fn only_a_page_under_a_redirect_is_held_back() {
+    // A guarded folder, a page below it, and the pages that have no guard anywhere.
+    let c = code(&[
+        ("inbox/guard.dart", CONTAINER_GUARD),
+        ("inbox/page.dart", &page("Inbox")),
+        ("inbox/detail/page.dart", &page("Detail")),
+        ("docs/page.dart", &page("Docs")),
+        ("about/page.dart", &page("About")),
+    ]);
+    // The guarded page and the page below its guard are held back; the two others are not.
+    assert_eq!(count(&c, "refusedView(context, state) ?? "), 2, "{c}");
+    has(&c, &["refusedView(context, state) ?? "]);
+    // An app without a guard keeps the code it had: no gate, no `refusedView` at all.
+    let plain = code(&[
+        ("docs/page.dart", &page("Docs")),
+        ("about/page.dart", &page("About")),
+    ]);
+    lacks(&plain, &["refusedView"]);
+}

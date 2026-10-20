@@ -692,6 +692,23 @@ void main() {
       },
     );
 
+    testWidgets(
+      'signing back in brings the pushed page back from its login page',
+      (tester) async {
+        final r = router(initial: '/other');
+        final c = await pumpRouter(tester, r);
+        unawaited(r.push<void>('/inbox'));
+        await tester.pumpAndSettle();
+        c.read(session.notifier).set(false);
+        await tester.pumpAndSettle();
+        expect(currentLocation(tester), '/login?from=/inbox');
+        c.read(session.notifier).set(true);
+        await tester.pumpAndSettle();
+        expect(currentLocation(tester), '/inbox');
+        expect(find.text('INBOX'), findsOneWidget);
+      },
+    );
+
     testWidgets('uncovered by the system back, the guard runs too', (
       tester,
     ) async {

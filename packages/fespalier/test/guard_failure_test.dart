@@ -711,6 +711,24 @@ void main() {
       },
     );
 
+    testWidgets('a refresh after a push from a tab holds the failed page too', (
+      tester,
+    ) async {
+      inbox = (ref) => throw StateError('boom');
+      final r = router(initial: '/t2');
+      await pumpRouter(tester, r);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      r.refresh();
+      await tester.pumpAndSettle();
+      expect(inboxRuns, 2);
+      expect(inboxBuilt, 0);
+      expect(find.textContaining('INBOX'), findsNothing);
+      expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+      expect(tester.takeException(), isA<StateError>());
+    });
+
     testWidgets('a pushed failure enters nothing and leaves nothing: the page '
         'under the error view stays', (tester) async {
       inbox = (ref) => throw StateError('boom');

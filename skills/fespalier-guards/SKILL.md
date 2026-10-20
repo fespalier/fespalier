@@ -109,7 +109,10 @@ never stays on screen.
   again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
   the guard **twice** (Riverpod recomputes it, then the router asks), without
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it
-  leaks a provider per navigation. A guard that throws never moves the router.
+  leaks a provider per navigation. A guard that throws never moves the router: on a
+  navigation it ends in go_router's error route (the not-found view), after an `await` too
+  from go_router 18.1.1; before that, a failure after an `await` was an uncaught
+  `GoException` and the router stayed on the page it was on.
   Details and a compiled sample: [`references/auth-patterns.md`](references/auth-patterns.md).
 - **DevTools shows each decision (since 0.7.0).** Its **Guards** tab lists every guard and
   `redirect.dart` that answered, with `pass`, `redirect` (and where to), `pending` or `error` for an

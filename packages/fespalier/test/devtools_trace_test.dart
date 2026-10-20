@@ -17,6 +17,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hooks_riverpod/misc.dart' show ProviderException;
 
+import 'support/floor.dart';
+
 const _tree = {
   'protocol': 1,
   'package': 'shop',
@@ -295,20 +297,28 @@ void main() {
       );
       devToolsAttach(failing);
       await pumpRouter(tester, failing);
-      Object? uncaught;
+      final uncaught = <Object>[];
       await runZonedGuarded(() async {
         failing.go('/boom');
         await tester.pump(const Duration(milliseconds: 1));
         await tester.pump();
-      }, (error, _) => uncaught = error);
+      }, (error, _) => uncaught.add(error));
       final record = (await snapshot()).guards.single;
       expect(record.result, GuardOutcome.error);
       expect(record.error, contains('nope'));
       expect(record.isAsync, isTrue);
-      // go_router saw the failure, as it does without DevTools, and it is the only one: the
-      // side `then` has an `onError` of its own, so it adds no unhandled error.
-      expect(uncaught, isA<GoException>());
-      expect('$uncaught', contains('nope'));
+      // go_router got the failure, as it does without DevTools, and it is the only one: the
+      // side `then` has an `onError` of its own, so it adds no unhandled error. Before go_router
+      // 18.1.1 it reports it as an uncaught error; from 18.1.1 it is the error route's.
+      if (beforeGoRouter1811) {
+        expect(uncaught, hasLength(1));
+        expect('${uncaught.single}', contains('nope'));
+      } else {
+        expect(uncaught, isEmpty);
+        final error = failing.routerDelegate.currentConfiguration.error;
+        expect(error, isNotNull);
+        expect('$error', contains('nope'));
+      }
       expect(find.text('BOOM'), findsNothing);
     });
 

@@ -314,7 +314,7 @@ Since 0.19.0. In a debug build of an app that uses the generated `main()` (an `a
   Added or removed names do not refuse it. A hot restart (`R`) brings in the new routes. If building the regenerated routes throws, the error is reported (`while building the routes again after a hot reload`), the old routes stay, and the next hot reload tries the same file again.
 
 - **The limits.**
-  - A tab that is not on screen starts over at its first page, and the `observe.dart` pages it held run `onLeave`.
+  - The tab on screen keeps its stack. Before go_router 18.1.1 a tab that is not on screen starts over at its first page, and the `observe.dart` pages it held run `onLeave`: go_router kept the state of a branch by its `StatefulShellBranch` object, which the regenerated table makes again. From go_router 18.1.1 a tab that was loaded keeps its stack, because the state is kept by the branch's navigator key, which the generated routes reuse, and its pages run no `onLeave`. fespalier allows both (`>=17.2.3 <19.0.0`), so the tab you left behind is either kept or reset, by the go_router the app resolved.
   - On go_router 17 (Flutter below 3.44), a page pushed inside a layout is lost by a swap. Pushed pages on the root navigator are kept on both.
   - The swap is a navigation to where the user is: the guards, the `redirect`s and the adapters' `onEnter` run again, as they do for `refresh()`.
   - With `telemetry: true`, a swap that keeps the location starts no navigation. A guard that moves the user is a navigation like any other. The DevTools history gets one entry for each commit, the swap's included.

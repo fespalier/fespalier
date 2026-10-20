@@ -3,6 +3,7 @@
 // next tick, which moves the key once if anything waited. Nothing is lost.
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_frb/fespalier_frb.dart';
 import 'package:fespalier_frb/testing.dart';
@@ -30,6 +31,52 @@ class TimerTick extends RefetchSignal {
   @override
   int build() {
     final timer = Timer.periodic(period, (_) => fire());
+    ref.onDispose(timer.cancel);
+    return 0;
+  }
+}
+
+/// The tick of `docs/data.md` and of [ChangeBudget]'s dartdoc: the timer starts in `build`, stops
+/// when the last active watcher is gone or paused, and starts again when one comes back.
+class RecipeTick extends RefetchSignal {
+  RecipeTick(this.onFire);
+
+  final void Function() onFire;
+  Timer? _timer;
+
+  void _start() =>
+      _timer ??= Timer.periodic(const Duration(milliseconds: 100), (_) {
+        onFire();
+        fire();
+      });
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  int build() {
+    _start();
+    ref.onCancel(_stop);
+    ref.onResume(_start);
+    ref.onDispose(_stop);
+    return 0;
+  }
+}
+
+/// The recipe as it was first written: the timer is cancelled on dispose only.
+class DisposeOnlyTick extends RefetchSignal {
+  DisposeOnlyTick(this.onFire);
+
+  final void Function() onFire;
+
+  @override
+  int build() {
+    final timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      onFire();
+      fire();
+    });
     ref.onDispose(timer.cancel);
     return 0;
   }
@@ -192,6 +239,76 @@ void main() {
     fire();
     await container.pump();
     expect(values, [1, 2]);
+  });
+
+  group('the tick timer while the only budgeted key is paused (fake time)', () {
+    /// A page watching one budgeted key, hidden (its watcher paused) for a minute, then shown.
+    ({int firesWhilePaused, int buildsAfterResume}) hidden(
+      NotifierProvider<RefetchSignal, int> Function(void Function() onFire)
+      makeTick,
+    ) {
+      late int firesWhilePaused;
+      late int buildsAfterResume;
+      fakeAsync((async) {
+        var fires = 0;
+        final source = FakeChangeSource<CoreEvent>(broadcast: false);
+        final feed = ChangeFeed<CoreEvent>((ref) => source.stream);
+        final topic = feed.topic<int>(
+          (e, id) => e is OrderChanged && e.id == id,
+          budget: ChangeBudget(makeTick(() => fires++)),
+        );
+        var builds = 0;
+        final data = FutureProvider.autoDispose<int>((ref) async {
+          ref.watch(topic(42));
+          return ++builds;
+        }, retry: (_, _) => null);
+        final container = ProviderContainer();
+        final sub = container.listen(data, (_, _) {});
+        async.elapse(const Duration(milliseconds: 1));
+        source.emit(const OrderChanged(42)); // at once
+        async.elapse(const Duration(milliseconds: 1));
+        source.emit(const OrderChanged(42)); // held for the next tick
+        async.elapse(const Duration(milliseconds: 1));
+        expect(builds, 2);
+        sub.pause(); // a route covers the page, or its tab is hidden
+        async.elapse(const Duration(milliseconds: 1));
+        final before = fires;
+        async.elapse(const Duration(minutes: 1));
+        firesWhilePaused = fires - before;
+        sub.resume();
+        async.elapse(const Duration(milliseconds: 250));
+        buildsAfterResume = builds;
+        container.dispose();
+        async.flushTimers();
+      });
+      return (
+        firesWhilePaused: firesWhilePaused,
+        buildsAfterResume: buildsAfterResume,
+      );
+    }
+
+    test(
+      'a timer cancelled only on dispose keeps firing for a page nobody sees',
+      () {
+        final r = hidden(
+          (onFire) => NotifierProvider.autoDispose<RefetchSignal, int>(
+            () => DisposeOnlyTick(onFire),
+          ),
+        );
+        expect(r.firesWhilePaused, greaterThan(500));
+      },
+    );
+
+    test('the recipe fires nothing while paused, and still releases the held '
+        'change shortly after the page is shown again', () {
+      final r = hidden(
+        (onFire) => NotifierProvider.autoDispose<RefetchSignal, int>(
+          () => RecipeTick(onFire),
+        ),
+      );
+      expect(r.firesWhilePaused, 0);
+      expect(r.buildsAfterResume, 3);
+    });
   });
 
   group('one simulated second of a busy core (fake time, 60 frames)', () {

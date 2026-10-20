@@ -241,6 +241,8 @@ fn model_files() -> Vec<(&'static str, &'static str)> {
              typedef PageNo = int;\n\
              typedef Count = int;\n\
              typedef Tags = List<String>;\n\
+             typedef Ids = List<int>;\n\
+             typedef Cats = List<Category>;\n\
              typedef Json = Map<String, Object?>;\n\
              typedef Cat = Category;\n\
              typedef PayFields = ({int amount, String note});\n\
@@ -392,6 +394,49 @@ fn a_segment_typed_with_a_typedef_of_an_enum_is_the_enum() {
         ("shop/$category/data.dart", data),
     ]);
     assert_eq!(messages(&files), Vec::<String>::new());
+}
+
+#[test]
+fn a_catch_all_typed_with_a_typedef_of_a_list_is_that_list() {
+    let page = |ty: &str| {
+        product_page(
+            "import '../../../models/ids.dart';",
+            ", required this.ids",
+            &format!("final {ty} ids;"),
+        )
+    };
+    let data = "Future<int> data(Ref ref, {required List<int> ids}) async => ids.length;";
+    let (by_typedef, by_list) = (page("Ids"), page("List<int>"));
+    let with_typedef = with_models(&[
+        ("c/$$ids/page.dart", &by_typedef),
+        ("c/$$ids/data.dart", data),
+    ]);
+    assert_eq!(messages(&with_typedef), Vec::<String>::new());
+    let c = code(&with_typedef);
+    // The typedef is the list it names: the typed route's field and the parser are the list's.
+    let spelled = code(&with_models(&[
+        ("c/$$ids/page.dart", &by_list),
+        ("c/$$ids/data.dart", data),
+    ]));
+    has(&c, &["final List<int> ids;", "Segment.asIntRest(s, 'ids')"]);
+    lacks(&c, &["final Ids", "Ids ids"]);
+    assert_eq!(
+        c.lines()
+            .filter(|l| !l.contains("_version"))
+            .collect::<Vec<_>>(),
+        spelled
+            .lines()
+            .filter(|l| !l.contains("_version"))
+            .collect::<Vec<_>>()
+    );
+    // A typedef of a list of an enum is not a catch-all type fsp can parse: the old error.
+    let cats = page("Cats");
+    let e = messages(&with_models(&[("c/$$ids/page.dart", &cats)]));
+    assert!(
+        e.iter()
+            .any(|m| m.starts_with("`Cats ids`: a catch-all segment is the rest of the path")),
+        "{e:?}"
+    );
 }
 
 #[test]

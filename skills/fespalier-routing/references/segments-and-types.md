@@ -158,8 +158,10 @@ class ShopPage extends StatelessWidget {
   Since 0.21.0 a `typedef` of an enum (`typedef Cat = Category;`) is followed to
   the enum in the same way, and a `show` or `hide` decides what an import brings
   in. A `typedef` of a plain type (`typedef ProductId = int;`) is that type for a
-  segment or a query parameter, and a typedef of a `List` of an enum is not a
-  catch-all type: it keeps the error.
+  segment or a query parameter, and for a catch-all too (`List<ProductId>`, or a
+  typedef of the whole list, `typedef Ids = List<int>;` with `required Ids ids`,
+  is a `List<int>`); a typedef of a `List` of an enum is not a catch-all type: it
+  keeps the error.
   `dart:` and other packages are not read. A type it finds no enum for is an
   error that suggests taking a `String` and parsing it in the page, and a
   **private** enum (`_Mode`) is an error too.

@@ -4832,10 +4832,13 @@ impl Resolver<'_> {
             } else {
                 (Some(text), &SEGMENT_TYPES)
             };
-            // A typedef of a plain type is that type (since 0.21.0), spelled as the typedef expands.
-            let by_typedef = item
-                .filter(|i| !plain.contains(i))
-                .and_then(|_| self.plain_segment(&c.file, text, catch_all));
+            // A typedef of a plain type is that type (since 0.21.0), spelled as the typedef expands:
+            // `ProductId`, and for a catch-all `List<ProductId>` or a whole `typedef Ids = List<int>`.
+            let by_typedef = if item.is_none_or(|i| !plain.contains(&i)) {
+                self.plain_segment(&c.file, text, catch_all)
+            } else {
+                None
+            };
             let typed = if let Some(t) = by_typedef {
                 t
             } else {

@@ -111,13 +111,15 @@ never stays on screen.
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it
   leaks a provider per navigation. A guard that throws never moves the router: on a
   navigation its failure shows the route's error.dart (or the not-found view), reported once in
-  debug, on every go_router (since 0.21.0).
+  every build mode through `FlutterError.onError`, on every go_router (since 0.21.0).
   Details and a compiled sample: [`references/auth-patterns.md`](references/auth-patterns.md).
 - **DevTools shows each decision (since 0.7.0).** Its **Guards** tab lists every guard and
   `redirect.dart` that answered, with `pass`, `redirect` (and where to), `pending` or `error` for an
   async guard, or `skipped` when a segment did not parse; a redirect chain is one history entry.
-  The generated `redirect:` wraps each call in `traceGuard`, inside `runRedirect` (since 0.21.0), which returns the guard's own result, so
-  a sync guard stays sync (`fespalier-troubleshooting`, its DevTools page).
+  The generated `redirect:` wraps each call in `traceGuard`, which returns the guard's own result, so
+  a sync guard stays sync (`fespalier-troubleshooting`, its DevTools page); since 0.21.0 that sits inside
+  `runRedirect`, which returns a sync answer as it is (the very object, still sync) and, for an async guard,
+  a new `Future` with the same value, or with the failure as a `GuardFailure`.
 
 - **A menu runs your guards too (since 0.8.1).** `AppMenu.watch(ref)` (generated from `nav.dart`
   files) asks the guards that run for each guarded entry, with the entry's own location, to list,

@@ -223,7 +223,9 @@ that one is for a page-less folder that is no flow (`action.dart` with `const st
   `not_found.dart`; you should never see it unless you call `Segment.asInt` yourself.
 - **`══╡ EXCEPTION CAUGHT BY FESPALIER ╞══`, then `The following StateError was thrown while running a guard or redirect.dart:`** (since 0.21.0).
   A guard, a `redirect.dart`, or the `Future` one returned, threw. The report is the guard's own exception, library `fespalier`, with its
-  stack, and it is printed once per failure, in a debug build only. The router's error is a `GuardFailure` (its `toString` is
-  `GuardFailure: <error>`; its message is `a guard or redirect.dart failed with <type>`), and the route's error view, or the not-found view,
-  shows. The cause is in the guard: a value it did not expect, a provider it reads that throws, a store that is down. Fix the guard, or
-  make it answer (a `null`, a location) instead of throwing. A widget test that expects the failure calls `tester.takeException()`.
+  stack, and it is reported once per failure, in every build mode (`FlutterError.onError` hears it, where `SentryFlutter.init` listens).
+  The router's error is a `GuardFailure` (its `toString` is `GuardFailure: <error>`; its message is
+  `a guard or redirect.dart failed with <type>`), in `currentConfiguration.error` after `go`; after a `push` it is in the pushed entry and
+  `currentConfiguration.error` is `null`. The route's error view, or the not-found view, shows. The cause is in the guard: a value it did not
+  expect, a provider it reads that throws, a store that is down. Fix the guard, or make it answer (a `null`, a location) instead of throwing.
+  A widget test that expects the failure calls `tester.takeException()`.

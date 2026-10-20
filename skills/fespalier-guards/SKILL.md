@@ -104,8 +104,7 @@ never stays on screen.
   `ref.watch`es the session runs again when it changes, with `AppRoutes.router()` and
   with a router of your own built from `AppRoutes.mount()`, with no
   `refreshListenable`. Three limits: a guard **under a pushed page** does not react
-  until you pop back to it (the push dropped its subscription, popping runs the guard
-  again); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
+  until that page is uncovered, then runs again (a guard on the page on top reacts itself); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
   again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
   the guard **twice** (Riverpod recomputes it, then the router asks), without
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it

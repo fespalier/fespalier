@@ -35,21 +35,24 @@ void onLeave(Ref ref, {required int id}) => ref.read(log).info('left product $id
 
 `onEnter` and `onLeave` come in pairs, and `onFocus` falls between them. On one frame the `onLeave`s run first, newest first, then the `onEnter` or `onFocus` of the page on top.
 
-| Navigation                             | Events                                                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| boot at `/a`                           | enter `/a`                                                                                        |
-| `go('/a/1')`, a nested page            | enter `/a/:id`; `/a` is covered, not left                                                         |
-| `go('/a/2')` from there                | leave `/a/1`, enter `/a/2`                                                                        |
-| `refresh()`, a rebuild, a query change | nothing                                                                                           |
-| switch to another tab, and back        | enter its page (the first tab's page is parked), then focus                                       |
-| `push('/x')`, then `pop()`             | enter `/x`; then leave `/x`, focus the page below                                                 |
-| `replace('/y')` on a pushed page       | leave the old, enter the new                                                                      |
-| `replace()` on a tree page             | the same page key: a query-only replace is no transition; another segment value leaves and enters |
-| `pushReplacement('/y')`                | leave the page, enter `/y`                                                                        |
-| a `go` that a guard redirects          | only the final location's events: the redirected-from one never ran                               |
-| a `go` out of a tab layout             | leave every entered page of every tab, newest first, then enter                                   |
-| a deep link to `/products/1`           | enter `/products/1` only; `/products` enters the first time it shows                              |
-| a location with no route               | no hooks; the previous page leaves                                                                |
+| Navigation                                                | Events                                                                                            |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| boot at `/a`                                              | enter `/a`                                                                                        |
+| `go('/a/1')`, a nested page                               | enter `/a/:id`; `/a` is covered, not left                                                         |
+| `go('/a/2')` from there                                   | leave `/a/1`, enter `/a/2`                                                                        |
+| a guard's re-run of the pushed page on top (since 0.21.0) | nothing when the guard passes again; a `replace` when it moves the page, as above                 |
+| `refresh()`, a rebuild, a query change                    | nothing                                                                                           |
+| switch to another tab, and back                           | enter its page (the first tab's page is parked), then focus                                       |
+| `push('/x')`, then `pop()`                                | enter `/x`; then leave `/x`, focus the page below                                                 |
+| `replace('/y')` on a pushed page                          | leave the old, enter the new                                                                      |
+| `replace()` on a tree page                                | the same page key: a query-only replace is no transition; another segment value leaves and enters |
+| `pushReplacement('/y')`                                   | leave the page, enter `/y`                                                                        |
+| a `go` that a guard redirects                             | only the final location's events: the redirected-from one never ran                               |
+| a `go` out of a tab layout                                | leave every entered page of every tab, newest first, then enter                                   |
+
+A guard's re-run of a pushed page is one navigation in telemetry and DevTools, of kind `refresh` (the same location) or `replace`. A page that its guard holds back commits as an `error` with no route, as a failed `push` does (since 0.21.0).
+| a deep link to `/products/1` | enter `/products/1` only; `/products` enters the first time it shows |
+| a location with no route | no hooks; the previous page leaves |
 
 A pushed navigation whose guard fails (since 0.21.0) enters nothing: its error view covers the page below, which gets no `onFocus` while the view shows and gets it when the view closes. `pushReplacement` and `replace` over other pages removed the page they replaced before the guard ran, so that page leaves when the navigation fails ([When a guard fails](guards.md#when-a-guard-fails)).
 

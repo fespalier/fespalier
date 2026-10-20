@@ -128,8 +128,7 @@ class LoginPage extends ConsumerWidget {
     watches through `.future`: `await ref.watch(currentUser.future) == null`.
   - **One subscription per guard and route**, kept while the committed location runs
     it, dropped when a navigation commits without it, and closed with the app. A guarded
-    page **under a pushed page** does not react until you pop back to it (the push
-    dropped its subscription; popping runs the guard again).
+    page **under a pushed page** does not react until it is uncovered, and then runs again; a guard on the page on top reacts too (since 0.21.0).
   - **A change that does not change the answer does nothing.** A **sign-out runs the
     guard twice**: Riverpod recomputes it, then the router asks again.
   - **Don't `ref.keepAlive()`** in a guard: it keeps one provider alive per navigation.
@@ -154,17 +153,10 @@ class LoginPage extends ConsumerWidget {
     `GuardFailure`; after `push` it is `null`, so look at the error view), never by the exception's message.
   - **After `push`, `pushReplacement` and `replace` over other pages** go_router keeps the failed list in
     an entry on top of the stack, and the router's own `error` stays `null`. The error view, the report and
-    the outcome `error` are the same. `retry` closes that entry and pushes the same location and `extra`
-    again; the `Future` of the failed `push` completes with `null` when the entry closes, and the pushed page
-    of the retry has no `Future` that anyone awaits. A retry pressed from a dialog or a sheet over the error
+    the outcome `error` are the same. `retry` replaces that entry with the same location and `extra`, keeping its page key (since 0.21.0); the `Future` of the failed navigation completes with the result of the page in its place when that page pops. A retry pressed from a dialog or a sheet over the error
     view closes it first (since 0.21.0), so the retry replaces the error view and not the dialog. A retry held
     after the entry closed, or while a page is pushed over it, does nothing.
-  - **A refresh after a pushed failure skips the guard** (go_router, fespalier/fespalier#258): a later
-    `GoRouter.refresh()` restores the pushed location without running its redirect and the guarded page
-    shows. A plain `GoRouter` does the same on 17.2.3 to 18.1.1; fespalier does not work around it, and
-    `retry` does not refresh. Since 0.21.0 fespalier's own re-evaluation no longer triggers it after a
-    failed push: the guards a failed navigation ran are closed as it commits, so a sign-out does not
-    refresh the router. An app's own `refresh()` or `refreshListenable` still does.
+  - **A refresh after a pushed failure** (since 0.21.0): fespalier runs the guard of the pushed page on top again, and holds the page back until the guard passes (fespalier/fespalier#258). go_router restores a pushed page without its redirect (flutter/flutter#133985). A pushed page with no guard is not held, and its `Future` does not complete after a refresh (flutter/flutter#128122).
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

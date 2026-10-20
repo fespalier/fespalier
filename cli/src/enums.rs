@@ -28,6 +28,8 @@ pub struct Found {
     pub decl: String,
     /// The enum's constants, in declaration order.
     pub values: Vec<String>,
+    /// It was reached through a typedef (`typedef Cat = Category;`), not by its own name (since 0.21.0).
+    pub via_typedef: bool,
 }
 
 impl Found {
@@ -206,6 +208,7 @@ impl Libs {
                 name: name.to_string(),
                 decl: path.to_string(),
                 values,
+                via_typedef: false,
             });
         }
         let typedef = lib.module.typedefs.iter().find(|t| t.name == name)?;
@@ -214,6 +217,10 @@ impl Libs {
         }
         let (prefix, target) = split(&typedef.ty.text);
         self.find_from(path, prefix, target, depth + 1)
+            .map(|found| Found {
+                via_typedef: true,
+                ..found
+            })
     }
 
     /// The enum `name` that the library at `path` or one of the libraries it exports declares.

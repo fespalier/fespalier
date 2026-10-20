@@ -225,6 +225,8 @@ fn model_files() -> Vec<(&'static str, &'static str)> {
              typedef ProductView = Product;\n\
              typedef ProductId = int;\n\
              typedef PageNo = int;\n\
+             typedef Count = int;\n\
+             typedef Tags = List<String>;\n\
              typedef Json = Map<String, Object?>;\n\
              typedef Cat = Category;\n\
              typedef PayFields = ({int amount, String note});\n\
@@ -395,6 +397,54 @@ fn an_optional_page_parameter_typed_with_a_typedef_of_int_is_a_query_parameter()
     let files = with_models(&[("shop/page.dart", page)]);
     let c = code(&files);
     has(&c, &["int? page"]);
+}
+
+/// A page and a data.dart under `shop/`, the page with the constructor and fields given and the
+/// data yielding `yields`.
+fn shop(ctor: &str, fields: &str, yields: &str) -> Vec<(&'static str, String)> {
+    let imports = "import '../../models/ids.dart';\nimport '../../models/product.dart';\n";
+    let page = format!("{imports}{}", widget("ShopPage", fields, ctor));
+    let data = format!("{imports}Future<{yields}> data(Ref ref) async => throw 0;");
+    vec![("shop/page.dart", page), ("shop/data.dart", data)]
+}
+
+fn borrowed<'a>(files: &'a [(&'static str, String)]) -> Vec<(&'static str, &'a str)> {
+    files.iter().map(|(p, s)| (*p, s.as_str())).collect()
+}
+
+#[test]
+fn a_page_that_spells_what_its_data_yields_gets_the_data_not_a_query_parameter() {
+    // Rule 1, spelling first: a page and its data.dart that spell one type alike are bound by
+    // that spelling, as before 0.21.0, even when the type is a typedef of a query type. (The
+    // typedef is followed to a query parameter only when no spelling binds.)
+    for (ctor, fields, yields, param) in [
+        (", this.tags = const []", "final Tags tags;", "Tags", "tags"),
+        (", this.count", "final Count? count;", "Count?", "count"),
+        (", this.cat", "final Cat? cat;", "Cat?", "cat"),
+    ] {
+        let files = shop(ctor, fields, yields);
+        let files = with_models(&borrowed(&files));
+        assert_eq!(
+            crate::action_tests::diags(&files),
+            Vec::<String>::new(),
+            "{yields}"
+        );
+        let c = code(&files);
+        has(&c, &[&format!(".ShopPage({param}: d)")]);
+        lacks(
+            &c,
+            &[&format!("RouteParam('{param}'"), &format!("v.{param}")],
+        );
+    }
+}
+
+#[test]
+fn an_enum_spelled_as_it_is_declared_is_still_a_query_parameter_before_the_data() {
+    // Unchanged from before 0.21.0: an enum found by its own name is a query parameter, even when
+    // data.dart yields it.
+    let files = shop(", this.category", "final Category? category;", "Category?");
+    let c = code(&with_models(&borrowed(&files)));
+    has(&c, &["RouteParam('category'"]);
 }
 
 #[test]

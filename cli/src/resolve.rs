@@ -2574,7 +2574,11 @@ impl Resolver<'_> {
                         // Optional, and nullable or a List: it comes from the query. (Of a type that isn't
                         // a plain one, it is when that is an enum: other optional parameters are left alone.)
                         let (scope, ty) = (cx.scope.filter(|_| !p.required)?, p.ty.as_ref()?);
-                        let QueryTy::Is(qty) = self.query_typed(ty, cx.file, None) else {
+                        // The spelling first: a type that a data.dart yields as it is spelled here is
+                        // that data, so a typedef of a query type is not followed to a query parameter
+                        // (since 0.21.0).
+                        let typedefs = self.yields(ty, cx, false).is_empty();
+                        let QueryTy::Is(qty) = self.query_typed(ty, cx.file, None, typedefs) else {
                             return None;
                         };
                         self.declare_query(scope, &p.name, *qty, cx.file, &p.span)
@@ -2746,18 +2750,28 @@ impl Resolver<'_> {
 
     /// A query parameter's type: a plain one, or an enum's (`Sort?`, `List<Sort>`). With `strict`
     /// (the parameter and where to point at: a `data()`'s or a guard's, which can't be anything
-    /// else) a type that should be an enum but can't be found is an error.
-    fn query_typed(&mut self, ty: &Ty, file: &str, strict: Option<(&Span, &str)>) -> QueryTy {
+    /// else) a type that should be an enum but can't be found is an error. With `typedefs` a
+    /// typedef of a query type, or of an enum, is one too (since 0.21.0); without, only the type
+    /// as it is spelled.
+    fn query_typed(
+        &mut self,
+        ty: &Ty,
+        file: &str,
+        strict: Option<(&Span, &str)>,
+        typedefs: bool,
+    ) -> QueryTy {
         if let Some(q) = query_type(ty) {
             return QueryTy::Is(Box::new(Typed::plain(q)));
         }
         // A typedef of a plain query type (`typedef PageNo = int;`) is that query type (since 0.21.0).
-        if let Some(q) = self.plain_expansion(file, &ty.text).and_then(|e| {
-            query_type(&Ty {
-                text: e,
-                record: None,
+        if typedefs
+            && let Some(q) = self.plain_expansion(file, &ty.text).and_then(|e| {
+                query_type(&Ty {
+                    text: e,
+                    record: None,
+                })
             })
-        }) {
+        {
             return QueryTy::Is(Box::new(Typed {
                 spelled: q.clone(),
                 key: q,
@@ -2793,6 +2807,7 @@ impl Resolver<'_> {
             file,
             err.as_ref()
                 .map(|(s, d, w, f)| (*s, d.as_str(), *w, f.as_str())),
+            typedefs,
         ) {
             Some(t) => QueryTy::Is(Box::new(t)),
             None if strict.is_some() => QueryTy::Broken,
@@ -2802,16 +2817,21 @@ impl Resolver<'_> {
 
     /// The enum `base` as the file `file` names it, as the type `whole` (`base`, nullable or in a
     /// list). `None` when it isn't one fsp can find or name; `err` (where to point at, the
-    /// parameter as written, what it is, what to write instead) says so, when given.
+    /// parameter as written, what it is, what to write instead) says so, when given. With
+    /// `typedefs` false an enum that `base` only reaches through a typedef is not found (since 0.21.0).
     fn enum_typed(
         &mut self,
         base: &str,
         whole: &str,
         file: &str,
         err: Option<(&Span, &str, &str, &str)>,
+        typedefs: bool,
     ) -> Option<Typed> {
         let src = *self.sources.get(file)?;
-        let lookup = self.libs.find(file, src, base);
+        let lookup = match self.libs.find(file, src, base) {
+            Lookup::Found(found) if !typedefs && found.via_typedef => Lookup::Missing,
+            lookup => lookup,
+        };
         if let Lookup::Found(found) = lookup {
             let import = self.import(file);
             let spelled = extra::extra_type(whole, src, file, import);
@@ -2918,7 +2938,7 @@ impl Resolver<'_> {
                 .ty
                 .as_ref()
                 .filter(|_| !p.required)
-                .map(|t| self.query_typed(t, file, Some((&p.span, &p.name))))
+                .map(|t| self.query_typed(t, file, Some((&p.span, &p.name)), true))
             {
                 Some(QueryTy::Is(t)) => *t,
                 Some(QueryTy::Broken) => return None,
@@ -3674,7 +3694,7 @@ impl Resolver<'_> {
         if !enums::is_candidate(base) {
             return None;
         }
-        let typed = self.enum_typed(base, ty, file, None)?;
+        let typed = self.enum_typed(base, ty, file, None, true)?;
         self.use_type(&typed);
         let spelled = enums::enum_base(&typed.spelled)?;
         let call = if optional { "optionalEnumOf" } else { "enumOf" };
@@ -4831,6 +4851,7 @@ impl Resolver<'_> {
                             text,
                             &c.file,
                             Some((&c.span, &decl, what, &fallback)),
+                            true,
                         ) {
                             Some(t) => t,
                             None => continue,

@@ -118,7 +118,7 @@ Since 0.8.1. A tile is **green** when the answer is good, **amber** when it need
 
 Run from inside an app (or with `--project`), a start also checks that app: when its `fespalier:` section has `telemetry` off, which is the default, `fsp telemetry` prints ``⚠ this app sends no fespalier spans yet: set `telemetry: true` under `fespalier:` in pubspec.yaml and install FespalierOtel (docs/observability.md, "Telemetry")`` after the import and before the summary, and still exits 0. It says nothing outside a project, and not for `--no-start`, `--stop` or `--reset`.
 
-**Where the files go.** One folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app, so `flutter clean` cannot delete them. The Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`.
+**Where the files go.** One folder per user, `~/.fespalier/telemetry` (`%USERPROFILE%` on Windows), not into the app, so `flutter clean` cannot delete them. The Docker project name is fixed (`fespalier-telemetry`), so every app on your computer shares one stack. Running `fsp telemetry` again rewrites any file that differs (an upgrade of `fsp` upgrades the stack) and never touches `.env`. Since 0.21.0 it pins OpenObserve v1.1.2, which migrates its database on its first start: an `fsp` before 0.21.0 writes v1.0.4 back, and OpenObserve then restarts in a loop (`Migration file of version '…' is missing`), so on a computer whose apps use different versions of `fsp`, run `fsp telemetry` with the newest. Running the newer one again recovers it with the data kept; `--reset` is not needed.
 
 **Settings** go in `.env` in that folder, written from `env.example` on the first run and never overwritten. Every value has the same default in `compose.yaml`, so the stack also runs with no `.env` at all, as `docker compose up -d` in that folder:
 
@@ -183,7 +183,7 @@ One spec, `scripts/telemetry/dashboards.toml`, generates both: `fsp` embeds the 
 - Grafana's percentiles are interpolated within histogram buckets (1, 2, 5, 10, 16, 33, 50, 100, 250, 500 ms, 1, 2.5, 5, 10 s); OpenObserve's are computed from the raw durations.
 - Span metrics are stamped when the collector receives a span. A batch that a phone replays later counts at the time it arrives in Grafana, and at its own time in OpenObserve.
 - Grafana has no error messages or trace ids: its _What failed last?_ is a count table with a link to OpenObserve, and _What was uncaught last?_ exists in OpenObserve only. _Verdicts, in words_ and _Where do people go next?_ exist in OpenObserve only too.
-- The percentage tiles agree (the smoke test compares them within 0.05), and a tile that rests on fewer than 20 samples says _Not enough data yet_ in both.
+- The percentage tiles agree (the smoke test compares them within 0.05), and a tile that rests on fewer than 20 samples says _Not enough data yet_ in both. Since 0.21.0 the percentage tiles agree also when every call failed (before, Grafana's tile said _Not enough data yet_).
 - Grafana shows no words for the colours, because PromQL cannot return a sentence.
 
 ![The same App health tiles in Grafana, with the same colours and numbers.](images/telemetry/grafana-app-health.png)
@@ -202,4 +202,4 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 - Grafana's dashboards are read-only (provisioned): save a copy to change one.
 - A dashboard that a newer `fsp` no longer ships is deleted from OpenObserve when nobody edited it, and Grafana drops its file; `fsp telemetry` deletes the stale files in its folder too.
 
-Images are pinned by tag and digest (collector `0.162.0`, OpenObserve `v1.0.4`, Grafana `13.2.3`), for `amd64` and `arm64`. The collector comes from `ghcr.io`, the rest from `mirror.gcr.io`, Google's mirror of Docker Hub (the same images and digests), so a pull does not count against the anonymous limits of Docker Hub or Amazon ECR Public, which a shared network or a CI runner can exhaust.
+Images are pinned by tag and digest (collector `0.163.1`, OpenObserve `v1.1.2`, Grafana `13.2.4`), for `amd64` and `arm64`. The collector comes from `ghcr.io`, the rest from `mirror.gcr.io`, Google's mirror of Docker Hub (the same images and digests), so a pull does not count against the anonymous limits of Docker Hub or Amazon ECR Public, which a shared network or a CI runner can exhaust.

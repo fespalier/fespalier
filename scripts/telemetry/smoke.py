@@ -7,7 +7,9 @@
    `fespalier-telemetry-smoke`, pulling the pinned images (3 attempts).
 2. Waits for the one-shot `dashboards` importer to exit 0.
 3. Sends the seeded session (seed.py) to the collector.
-4. Waits until the span metrics have all seeded spans.
+4. Waits until the span metrics have all seeded spans, then asks OpenObserve's PromQL two questions an
+   empty series answers: `X or vector(0)` is 0 when X is empty, and a percentage whose every call
+   failed is 100 (v1.0.4 answered both with nothing).
 5. Runs every OpenObserve panel's SQL and every Grafana target's PromQL: no errors.
 6. Counts: the SQL value == the PromQL value == the seed's expected count; percentages: within 0.05
    of the seed's rate; quantiles: not null. The verdict table returns one row of eight verdicts.
@@ -122,6 +124,27 @@ class Smoke:
         base = f"{self.args.openobserve}/api/default/prometheus/api/v1/query"
         query = urllib.parse.urlencode({"query": expr, "time": at or time.time()})
         return self.request(f"{base}?{query}", self.o2_auth)
+
+    def check_empty_series(self):
+        self.step("PromQL: an empty side of `or vector(0)` reads as 0")
+        nobody = 'service_name="fespalier-smoke-nobody"'
+        den = f'fespalier_operation="action", service_name="{self.service}"'
+        never = f'{den}, fespalier_action_result="fespalier-smoke-never"'
+        empty = f"sum(sum_over_time(fespalier_calls{{{nobody}}}[1h])) or vector(0)"
+        all_failed = build_dashboards.Context.call_pct_prom(den, never).replace("$__range", "1h")
+        probes = (
+            ("`X or vector(0)` with X empty", empty, 0),
+            ("a percentage whose every call failed", all_failed, 100),
+        )
+        for what, expr, want in probes:
+            status, body = self.o2_query(expr)
+            try:
+                result = body["data"]["result"]
+                value = float(result[0]["value"][1]) if len(result) == 1 else None
+            except (TypeError, KeyError, IndexError, ValueError):
+                value = None
+            if status != 200 or value != want:
+                self.fail(f"{what}: expected {want}, OpenObserve answered HTTP {status}: {str(body)[:300]}")
 
     def wait_for_grafana(self):
         self.step("wait for Grafana")
@@ -317,6 +340,7 @@ class Smoke:
                 if status != 200:
                     self.fail(f"{path} answered HTTP {status}")
             self.wait_for_metrics(generated.span_count())
+            self.check_empty_series()
             self.wait_for_grafana()
             self.check_provisioned()
             self.check_panels(self.dashboards, generated.expected(), generated.rates())

@@ -55,9 +55,13 @@ matches the package your `pubspec.lock` resolved.
 4. **Errors leave `app.g.dart` untouched.** While `fsp` reports an error the old
    file stays, so a stale `app.g.dart` with a red `fsp gen` is a generator
    error to fix in `lib/app/`, not a file to patch.
-5. **The generator reads syntax, not types.** `Product` and a `typedef` of it are
-   different types to `fsp`; the Dart compiler still has the last word on the
-   generated code. An enum is the one type it looks up.
+5. **The generator reads syntax, and follows typedefs and import prefixes of your own
+   files (since 0.21.0).** `ProductView` and the `Product` it names are one type to `fsp`, and
+   so are `m.Product` and `Product`: a `typedef` is followed through the app's files, their
+   relative and own-package imports, `export`s and `show`/`hide`, and an enum is found through
+   a typedef of it. Not followed: a `typedef` of another package, a generic `typedef`, one in a
+   `part` file; those are compared as spelled, and the message names the one it could not
+   follow. The Dart compiler still has the last word on the generated code.
 6. **Typed routes are preferred, string paths are allowed.** `context.go('/products/2')` is
    fine when a route matches it; since 0.7.0 `fsp gen`, `check` and `watch` warn about a
    string path in `lib/` that matches **no** route:

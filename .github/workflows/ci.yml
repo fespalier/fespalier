@@ -305,6 +305,16 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      # fsp's typedef following agrees with the Dart analyzer; FSP_REQUIRE_DART=1 fails the test instead of skipping.
+      - name: Typedefs are followed as the analyzer follows them
+        working-directory: cli
+        env:
+          FSP_REQUIRE_DART: "1"
+        run: |
+          out=$(cargo test --quiet types_tests::follows_typedefs_as_the_analyzer_does 2>&1) || { printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          # A test that was renamed matches nothing and passes: exactly one must have run.
+          grep -q 'test result: ok\. 1 passed;' <<<"$out" || { echo 'the typedef test did not run (renamed?)'; exit 1; }
       - name: Scaffold every file kind into the features example
         working-directory: examples/features
         run: |

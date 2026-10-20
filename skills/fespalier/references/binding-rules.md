@@ -8,6 +8,13 @@ fills each parameter in this order. The first rule that applies wins.
 2. **As a query parameter.** The parameter is **optional** and its type is
    nullable or a `List`.
 3. **By type.** The type is what a `data.dart` yields (or a known framework type).
+   Since 0.21.0 a type is what it names: the spelling is tried first, and a `typedef`
+   (or an import prefix) of the type in the app's own files is followed only when
+   that finds nothing, so `required ProductView product` gets the data that yields
+   `Product`. The same goes for rule 2: an optional parameter typed with a `typedef`
+   of a query type is a query parameter, unless the route's `data.dart` yields the
+   type spelled the same, which is rule 3. A typedef of another package is compared
+   as spelled.
 4. **Otherwise**, a **required** parameter is a generator error that points at
    it, and an **optional** one is left to its default. (After an optional
    positional parameter is left to its default, every later positional one is

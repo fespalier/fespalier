@@ -429,14 +429,14 @@ fn f3_a_form_returns_the_input_type() {
 
 #[test]
 fn f4a_the_input_must_be_a_record_declared_here() {
-    let msg = "the form of `action()` needs the fields of its input, and `String` is not a record type declared here: take `input` as a record with named fields (`required ({int amount, String note}) input`), or as a typedef of one declared in action.dart";
+    let msg = "the form of `action()` needs the fields of its input, and `String` is not a record type fsp can read: take `input` as a record with named fields (`required ({int amount, String note}) input`), or as a typedef of one declared in action.dart or in a file of this package it imports";
     action_error(
         "String form(Profile profile) => x;\nFuture<void> action(Ref ref, {required String input}) async {}\n",
         1,
         msg,
     );
-    // A typedef that is not declared in this file is not read.
-    let msg = "the form of `action()` needs the fields of its input, and `Fields` is not a record type declared here: take `input` as a record with named fields (`required ({int amount, String note}) input`), or as a typedef of one declared in action.dart";
+    // A typedef that fsp finds nowhere is not read.
+    let msg = "the form of `action()` needs the fields of its input, and `Fields` is not a record type fsp can read: take `input` as a record with named fields (`required ({int amount, String note}) input`), or as a typedef of one declared in action.dart or in a file of this package it imports";
     action_error(
         "Fields form(Profile profile) => x;\nFuture<void> action(Ref ref, {required Fields input}) async {}\n",
         1,

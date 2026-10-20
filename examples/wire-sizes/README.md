@@ -239,9 +239,10 @@ and every total is a lower bound.
 [`server/tests/socket.rs`](server/tests/socket.rs) pins this against hyper. It sends the request the
 runner builds over a TCP connection to the same router, served by `axum::serve`, with `host` and
 `content-length` added as any HTTP/1.1 client adds them. It does this for `registerDevice` in all
-three variants and for `listNotes` in JSON and CBOR (a sealed call needs the device key, which the
-runner keeps to itself, so the `cose` server is exercised through its plain `registerDevice`). It
-asserts that:
+three variants, for `listNotes` in JSON and CBOR, and, on the `cose` server, for a sealed `addNote`
+and `listNotes` after a plain `registerDevice`. The three `cose` calls go over one connection. Their
+seal comes from the same device the runner uses (`runner::Device`), so a sealed call is built the way
+the runner builds it. It asserts that:
 
 - the exchange's request count equals the number of bytes written to the socket, so the rebuilt
   request line is exact;
@@ -250,7 +251,9 @@ asserts that:
 - hyper adds two response headers to what the stack set, `content-length` and `date`, and no others,
   and the status line is the one the exchange rebuilds;
 - JSON against CBOR for the same call differs over a socket from the in-process difference by the
-  digits of `content-length` and by nothing else, on both sides.
+  digits of `content-length` and by nothing else, on both sides;
+- a sealed answer is a `COSE_Sign1` message that opens under the server's key, bound to the request
+  it answers, and the note the scenario wrote comes back in it.
 
 Per call, a socket adds:
 

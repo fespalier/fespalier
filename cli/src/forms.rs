@@ -193,7 +193,9 @@ fn closes_at_end(s: &str, open: char, close: char) -> bool {
 }
 
 /// The `(name, type)` of each field of an action's input, in order: the input is written as
-/// a record type, or as the name of a `typedef` declared in the same file.
+/// a record type, or as the name of a `typedef` declared in the same file. A typedef of another
+/// file of the package (since 0.21.0) is read by the resolver, through `enums::Libs`, and its
+/// record is passed here as the input.
 pub fn record_fields(
     input: &Ty,
     typedefs: &[Typedef],

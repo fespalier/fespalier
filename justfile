@@ -32,7 +32,8 @@ lint:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
 
-# Needs `dart` on PATH for the tests that compare with `dart format`; they skip without it.
+# Needs `dart` on PATH for the tests that compare with `dart format` and for the one that checks typedefs
+# against the analyzer (`types_tests::follows_typedefs_as_the_analyzer_does`); they skip without it.
 #
 # The generator's unit and integration tests, incl. the version checks
 [working-directory: 'cli']

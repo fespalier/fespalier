@@ -27,9 +27,14 @@ final forbidden = <RegExp, String>{
       'a listener outlives the call that made it: watch, so Riverpod rebuilds',
   RegExp(r'\baddListener\s*\('): 'a listener outlives the call that made it',
   RegExp(r'\baddPostFrameCallback\b'): 'a frame nobody asked for',
+  // Every way Dart assigns to `state`: `=`, a compound assignment (including `??=`, `~/=` and the
+  // shifts), and `++`/`--` on either side. `==`, `=>`, `<=`, `>=` and `!=` are not assignments.
   RegExp(
-    r'\bstate\s*(=(?![=>])|\+\+|--|[-+*/]=)',
+    r'(\+\+|--)\s*state\b|\bstate\s*(=(?![=>])|\+\+|--|(?:[-+*/%&|^]|~/|<<|>>>?|\?\?)=)',
   ): 'a revision moves by returning its number from build: setting state is a listener',
+  RegExp(
+    r'\b(invalidateSelf|notifyListeners)\s*\(',
+  ): 'a revision moves by returning its number from build: invalidating itself is a listener',
   RegExp(
     r'\bRandom\s*\(\s*\)',
   ): 'ids come from Random.secure(): a seeded generator makes an idempotency key guessable',
@@ -209,8 +214,28 @@ void main() {
       'final r = Random();',
       'final r = Random( );',
       'state = 1;',
+      'this.state = 1;',
       'state++;',
+      '++state;',
+      'state--;',
+      '--state;',
       'state += 2;',
+      'state -= 2;',
+      'state *= 2;',
+      'state /= 2;',
+      'state %= 2;',
+      'state ~/= 2;',
+      'state &= 1;',
+      'state |= 1;',
+      'state ^= 1;',
+      'state <<= 1;',
+      'state >>= 1;',
+      'state >>>= 1;',
+      'state ??= 1;',
+      'ref.invalidateSelf();',
+      'invalidateSelf ();',
+      'notifyListeners();',
+      'ref.notifyListeners();',
       'final t = 1;/* hidden */ Timer(d, f);',
       'foo(); //no space\nTimer(d, f);'.split('\n').last,
     ]) {
@@ -240,8 +265,17 @@ void main() {
       'final f = Future.sync(() => 1);',
       'final url = "https://example.com";',
       'if (state == 1) return;',
+      'if (state != 1) return;',
+      'if (state <= 1 || state >= 3) return;',
+      'if (state < 1 && state > 3) return;',
       'final s = state;',
+      'final t = state ?? 1;',
       'int get state => 1;',
+      'final s = x - -state;',
+      'final u = _state++;',
+      'foo(state: 1);',
+      'void notify() {}',
+      'final invalidateSelfNot = 1;',
     ]) {
       expect(violations('f.dart', [line]), isEmpty, reason: line);
     }

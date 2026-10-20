@@ -69,9 +69,16 @@ flutter run --dart-define=COSE_SERVER_URL=http://127.0.0.1:8787 ...
 flutter run --dart-define=COSE_SERVER_URL=http://192.168.1.248:8787 ...
 ```
 
-The server must listen where the device can reach it: `--listen 0.0.0.0:8787`, not the default
-`127.0.0.1:8787` (which only accepts the machine's own loopback). Flutter's debug manifest already
-lets a debug build use plain HTTP, so nothing else is needed for a `flutter run` build.
+Option 2, the LAN address, needs the server to listen where the phone can reach it: `--listen 0.0.0.0:8787`, not the
+default `127.0.0.1:8787`, which only accepts the machine's own loopback. Option 1 (`adb reverse`) ends at the machine's
+own loopback, so the default should be enough there. That is UNCHECKED on a device ([#255](https://github.com/fespalier/fespalier/issues/255)).
+
+Plain HTTP needs a look too. `flutter create --empty . --platforms=android` (Flutter 3.47.7) writes a debug manifest that
+has the INTERNET permission and no `usesCleartextTraffic`, and the example commits no Android folder, so it adds none.
+Android blocks cleartext by default for an app that targets API 28 or higher, and Flutter targets 36. Whether the app's
+Dart HTTP call is refused on a device is UNCHECKED ([#255](https://github.com/fespalier/fespalier/issues/255)): the Dart
+HTTP client may not go through that check. If an Android build does refuse it, a `usesCleartextTraffic` for the debug build or a `network_security_config` for the
+address is the fix. No test here runs a phone, so neither is verified.
 
 If the app starts but the status line reads **"The server did not answer: the copy of a read that
 never happened."**, it cannot reach the server: check the address (and that the server listens on
@@ -105,9 +112,10 @@ cannot write the keychain (above), and an iOS simulator's keychain is not a secu
 that must *require* hardware passes `requireHardware: true` and takes the failure instead of the
 fallback.
 
-The server forgets devices and notes when it
-restarts, and the app registers once per run: after a server restart, signed calls are `401` until the app is restarted too
-(see "Not built").
+The server forgets devices and notes when it restarts. The app registers its key once per run, so after a server restart the
+first signed call is answered `401`. That `401` makes the app forget its registration, and the next call registers the key
+again and goes through, with no restart of the app. `test/transport_test.dart` ("a server that forgot the device is healed
+by the next call") checks it in the Dart tests, not on a device (see [#133](https://github.com/fespalier/fespalier/issues/133) and [#255](https://github.com/fespalier/fespalier/issues/255)).
 
 ## What is in it
 
@@ -311,7 +319,8 @@ server does not say which check failed. `Accept: application/json` on a signed c
   layer shows the race.
 - **No registration proof, rotation or revocation** (above), and the registry and notes are in memory.
 - **Plain HTTP on a local network.** The demo server speaks `http://`. The signature protects the messages, not their
-  privacy: put a real server behind TLS, and Android needs a cleartext allowance for `10.0.2.2` in debug.
+  privacy: put a real server behind TLS. The example adds no cleartext allowance for Android (see "On an Android
+  emulator or a phone"), and whether a build needs one is UNCHECKED ([#255](https://github.com/fespalier/fespalier/issues/255)).
 - **Ed25519.** The sealer speaks ESP256 only (pointycastle has no Ed25519); the vector tests use a test-only Ed25519
   verifier to check the header and binding rules for those vectors.
 - **The local store is in memory** (`InMemoryLocalStore`, the package's default): intents survive the transport's

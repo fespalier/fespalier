@@ -87,7 +87,8 @@ fn reads_enums_and_exports() {
     );
     let names: Vec<&str> = m.enums.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, ["Category", "Mode", "_Private"]);
-    assert_eq!(m.exports, ["b.dart", "c.dart"]);
+    let uris: Vec<&str> = m.exports.iter().map(|e| e.uri.as_str()).collect();
+    assert_eq!(uris, ["b.dart", "c.dart"]);
 }
 
 #[test]

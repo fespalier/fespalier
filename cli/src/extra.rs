@@ -14,11 +14,15 @@
 
 use std::ops::Range;
 
+use crate::dart;
+
 /// One `import '...' [as prefix]` line of a Dart file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Import {
     pub uri: String,
     pub prefix: Option<String>,
+    /// What the import lets through: `show`, `hide` (since 0.21.0).
+    pub combinators: dart::Combinators,
 }
 
 /// The type of an `extra` parameter, ready for the generated file.
@@ -103,16 +107,21 @@ pub fn imports(src: &str) -> Vec<Import> {
             continue;
         };
         let uri = stmt[1..=close].to_string();
-        let tail: Vec<&str> = stmt[close + 2..]
+        let tail = &stmt[close + 2..];
+        let words: Vec<&str> = tail
             .split(|c: char| c.is_whitespace() || c == ',')
             .filter(|t| !t.is_empty())
             .collect();
-        let prefix = tail
+        let prefix = words
             .iter()
             .position(|t| *t == "as")
-            .and_then(|i| tail.get(i + 1))
+            .and_then(|i| words.get(i + 1))
             .map(std::string::ToString::to_string);
-        out.push(Import { uri, prefix });
+        out.push(Import {
+            uri,
+            prefix,
+            combinators: dart::Combinators::parse(tail),
+        });
     }
     out
 }
@@ -343,6 +352,18 @@ mod tests {
         );
         assert_eq!(i[2].prefix.as_deref(), Some("m"));
         assert_eq!(i[1].prefix, None);
+    }
+
+    #[test]
+    fn imports_keep_their_combinators() {
+        let i = imports(
+            "import 'a.dart' as m show A, B hide C;\nimport 'b.dart' show B;\nimport 'c.dart' hide D;\n",
+        );
+        assert_eq!(i[0].prefix.as_deref(), Some("m"));
+        assert!(i[0].combinators.admits("A") && !i[0].combinators.admits("D"));
+        assert!(!i[0].combinators.admits("C") && !i[0].combinators.admits("Z"));
+        assert_eq!(i[1].combinators.show, Some(vec!["B".to_string()]));
+        assert!(!i[2].combinators.admits("D"));
     }
 
     #[test]

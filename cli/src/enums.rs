@@ -139,7 +139,7 @@ impl Libs {
         let mut seen = HashSet::new();
         for import in extra::imports(src)
             .iter()
-            .filter(|i| i.prefix.as_deref() == prefix)
+            .filter(|i| i.prefix.as_deref() == prefix && i.combinators.admits(name))
         {
             let Some(path) = self.locate(&from, &import.uri) else {
                 continue;
@@ -168,7 +168,8 @@ impl Libs {
         module
             .exports
             .iter()
-            .find_map(|uri| self.declared_in(&self.locate(path, uri)?, name, seen))
+            .filter(|e| e.combinators.admits(name))
+            .find_map(|e| self.declared_in(&self.locate(path, &e.uri)?, name, seen))
     }
 
     fn module(&self, path: &str) -> Option<Rc<Module>> {

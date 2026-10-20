@@ -27,8 +27,9 @@ pub struct Module {
     pub enums: Vec<EnumDecl>,
     /// Top-level `typedef X = T;` (not the old function-typedef syntax, nor a generic one).
     pub typedefs: Vec<Typedef>,
-    /// The libraries it re-exports: `export 'category.dart';`, as written.
-    pub exports: Vec<String>,
+    /// The libraries it re-exports: `export 'category.dart' show Category;`, as written, with the
+    /// names it lets through (since 0.21.0).
+    pub exports: Vec<Export>,
     /// Where the grammar first gave up on the file (an ERROR or MISSING node),
     /// after primary constructors were read separately. The file may still be
     /// valid Dart the grammar is too old for; the declarations above are read
@@ -42,6 +43,84 @@ pub struct Typedef {
     pub name: String,
     /// The aliased type; a record type has its fields in `ty.record`.
     pub ty: Ty,
+}
+
+/// What an `import` or `export` lets through: `show A, B hide C` (since 0.21.0).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Combinators {
+    /// `show`: only these names; `None` when there is no `show`. Two `show`s keep what both list.
+    pub show: Option<Vec<String>>,
+    /// `hide`: never these.
+    pub hide: Vec<String>,
+}
+
+impl Combinators {
+    /// Whether a library with these combinators lets the name `name` through.
+    pub fn admits(&self, name: &str) -> bool {
+        self.show
+            .as_ref()
+            .is_none_or(|shown| shown.iter().any(|n| n == name))
+            && !self.hide.iter().any(|n| n == name)
+    }
+
+    /// Reads the words after an import's or export's URI: `as m show A, B hide C;`, `deferred as d`,
+    /// `if (dart.library.io) 'b.dart' show A`. A word the grammar doesn't name a combinator for
+    /// (`as`'s prefix, a condition) is skipped; a `show` after a condition still counts.
+    pub fn parse(tail: &str) -> Combinators {
+        #[derive(PartialEq)]
+        enum Mode {
+            Nothing,
+            Show,
+            Hide,
+        }
+        let mut mode = Mode::Nothing;
+        let mut skip_next = false;
+        let mut shows: Vec<Vec<String>> = vec![];
+        let mut hide = vec![];
+        let words = tail.split(|c: char| c.is_whitespace() || c == ',' || c == ';');
+        for word in words.filter(|w| !w.is_empty()) {
+            if std::mem::take(&mut skip_next) {
+                continue;
+            }
+            match word {
+                "show" => {
+                    mode = Mode::Show;
+                    shows.push(vec![]);
+                }
+                "hide" => mode = Mode::Hide,
+                "as" => {
+                    mode = Mode::Nothing;
+                    skip_next = true;
+                }
+                "deferred" | "if" => mode = Mode::Nothing,
+                w if w.starts_with(['(', '\'', '"']) => mode = Mode::Nothing,
+                name => match mode {
+                    Mode::Show => {
+                        if let Some(last) = shows.last_mut() {
+                            last.push(name.to_string());
+                        }
+                    }
+                    Mode::Hide => hide.push(name.to_string()),
+                    Mode::Nothing => {}
+                },
+            }
+        }
+        let show = shows.split_first().map(|(first, rest)| {
+            first
+                .iter()
+                .filter(|n| rest.iter().all(|list| list.contains(n)))
+                .cloned()
+                .collect()
+        });
+        Combinators { show, hide }
+    }
+}
+
+/// `export 'a.dart' show A;`: the library and what the export lets through (since 0.21.0).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Export {
+    pub uri: String,
+    pub combinators: Combinators,
 }
 
 /// A top-level enum and its constants, in declaration order.
@@ -556,11 +635,19 @@ impl Reader<'_> {
         })
     }
 
-    /// `export 'a.dart' show A;` → `a.dart`. A conditional export (`if (...) 'b.dart'`) is
-    /// its first library.
-    fn export(&self, n: Node) -> Option<String> {
+    /// `export 'a.dart' show A;` → `a.dart` and `show A`. A conditional export (`if (...) 'b.dart'`)
+    /// is its first library. The combinators are read from the text after the URI (not by byte
+    /// offsets: the source may be the primary-constructor-patched text).
+    fn export(&self, n: Node) -> Option<Export> {
         let uri = first_named(first_named(n, "configurable_uri")?, "uri")?;
-        string_value(self.text(uri))
+        let tail = self
+            .text(n)
+            .split_once(self.text(uri))
+            .map_or("", |(_, t)| t);
+        Some(Export {
+            uri: string_value(self.text(uri))?,
+            combinators: Combinators::parse(tail),
+        })
     }
 
     fn getter(&self, n: Node) -> Option<Getter> {
@@ -1287,6 +1374,65 @@ fn leaves<'t>(n: Node<'t>, f: &mut impl FnMut(Node<'t>)) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn combinators_read_show_and_hide() {
+        let show = |names: &[&str]| Some(names.iter().map(|n| n.to_string()).collect::<Vec<_>>());
+        assert_eq!(
+            Combinators::parse(" show B;"),
+            Combinators {
+                show: show(&["B"]),
+                hide: vec![]
+            }
+        );
+        assert_eq!(
+            Combinators::parse(" as m show A, B hide C"),
+            Combinators {
+                show: show(&["A", "B"]),
+                hide: vec!["C".into()]
+            }
+        );
+        assert_eq!(
+            Combinators::parse(" hide Json"),
+            Combinators {
+                show: None,
+                hide: vec!["Json".into()]
+            }
+        );
+        // Two `show`s keep what both list: `show A show B` admits nothing.
+        assert_eq!(
+            Combinators::parse(" show A show B"),
+            Combinators {
+                show: show(&[]),
+                hide: vec![]
+            }
+        );
+        assert!(!Combinators::parse(" show A show B").admits("A"));
+        assert!(Combinators::parse(" show A, B show B, C").admits("B"));
+        // A conditional import: the first library is the import's, the `show` after its condition counts.
+        assert_eq!(
+            Combinators::parse(" if (dart.library.io) 'b.dart' show X"),
+            Combinators {
+                show: show(&["X"]),
+                hide: vec![]
+            }
+        );
+        // `deferred as d` has no combinator.
+        assert_eq!(Combinators::parse(" deferred as d"), Combinators::default());
+        assert!(Combinators::parse(" hide C").admits("A"));
+        assert!(!Combinators::parse(" hide C").admits("C"));
+    }
+
+    #[test]
+    fn exports_keep_their_combinators() {
+        let m = parse("export 'b.dart' show B;\nexport 'c.dart' hide Json;\nexport \"d.dart\";\n");
+        assert_eq!(m.exports.len(), 3);
+        assert_eq!(m.exports[0].uri, "b.dart");
+        assert_eq!(m.exports[0].combinators.show, Some(vec!["B".to_string()]));
+        assert!(!m.exports[1].combinators.admits("Json"));
+        assert!(m.exports[1].combinators.admits("Other"));
+        assert!(m.exports[2].combinators.admits("Anything"));
+    }
 
     #[test]
     fn reads_widget_constructor() {

@@ -42,6 +42,9 @@ void main() {
   testWidgets('starts on the first tab', (tester) async {
     await boot(tester, '/');
     expect(find.text('Home'), findsWidgets);
+    // The line the browser check (ci/web-routes/examples.json) waits for: not the tab's label.
+    expect(
+        find.text('Every tab keeps its own stack of pages.'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(selected(tester), 0);
     expect(location, '/');

@@ -948,7 +948,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT fespalier_operation AS operation, fespalier_file AS file, fespalier_route AS route, error_type AS type, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY operation, file, route, type ORDER BY n DESC LIMIT 5",
+              "query": "SELECT fespalier_operation AS operation, fespalier_file AS file, fespalier_route AS route, error_type AS type, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND fespalier_operation <> 'navigate' AND service_name = '$service' GROUP BY operation, file, route, type ORDER BY n DESC LIMIT 5",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {

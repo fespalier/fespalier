@@ -82,7 +82,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum(sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum(sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false
@@ -350,7 +350,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_operation) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__interval]))",
+          "expr": "sum by (fespalier_operation) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__interval]))",
           "legendFormat": "{{fespalier_operation}}",
           "instant": false,
           "range": true
@@ -516,7 +516,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,
@@ -820,7 +820,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range]))",
+          "expr": "sum by (fespalier_operation, fespalier_route, fespalier_file, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,

@@ -876,7 +876,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "topk(5, sum by (fespalier_operation, fespalier_file, fespalier_route, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__range])))",
+          "expr": "topk(5, sum by (fespalier_operation, fespalier_file, fespalier_route, error_type) (sum_over_time(fespalier_calls{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\", fespalier_operation!=\"navigate\"}[$__range])))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,

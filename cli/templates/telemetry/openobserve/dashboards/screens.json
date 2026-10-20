@@ -243,7 +243,7 @@
           "id": "panel_dead_ends",
           "type": "metric",
           "title": "How often does a link lead nowhere?",
-          "description": "Share of navigations that matched no route and showed not_found.dart. Good: under 1 %. If not: check the links you build by hand; typed routes (AppRoutes) cannot go wrong.",
+          "description": "Share of navigations that matched no route and showed not_found.dart. Good: under 1 %. If not: check the links you build by hand; typed routes (AppRoutes) cannot go wrong. A guard that failed is not counted here.",
           "config": {
             "show_legends": false,
             "legends_position": null,

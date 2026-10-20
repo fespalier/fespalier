@@ -84,7 +84,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service'",
+              "query": "SELECT COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND fespalier_operation <> 'navigate' AND service_name = '$service'",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -330,7 +330,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT histogram(_timestamp) AS t, CASE fespalier_operation WHEN 'navigate' THEN 'Screen open' WHEN 'guard' THEN 'Check (guard.dart)' WHEN 'redirect' THEN 'Redirect (redirect.dart)' WHEN 'data' THEN 'Content load (data.dart)' WHEN 'action' THEN 'Action (action.dart)' WHEN 'deferred' THEN 'Code download (deferred page)' WHEN 'auth' THEN 'Session (sign-in, refresh, sign-out)' WHEN 'image' THEN 'Image load' WHEN 'custom' THEN 'Package operation' ELSE fespalier_operation END AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY t, operation ORDER BY t",
+              "query": "SELECT histogram(_timestamp) AS t, CASE fespalier_operation WHEN 'navigate' THEN 'Screen open' WHEN 'guard' THEN 'Check (guard.dart)' WHEN 'redirect' THEN 'Redirect (redirect.dart)' WHEN 'data' THEN 'Content load (data.dart)' WHEN 'action' THEN 'Action (action.dart)' WHEN 'deferred' THEN 'Code download (deferred page)' WHEN 'auth' THEN 'Session (sign-in, refresh, sign-out)' WHEN 'image' THEN 'Image load' WHEN 'custom' THEN 'Package operation' ELSE fespalier_operation END AS operation, COUNT(*) AS failed FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND fespalier_operation <> 'navigate' AND service_name = '$service' GROUP BY t, operation ORDER BY t",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -441,7 +441,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' GROUP BY operation, route, file, type ORDER BY n DESC",
+              "query": "SELECT fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, COUNT(*) AS n FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND fespalier_operation <> 'navigate' AND service_name = '$service' GROUP BY operation, route, file, type ORDER BY n DESC",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {
@@ -677,7 +677,7 @@
           "queryType": "sql",
           "queries": [
             {
-              "query": "SELECT _timestamp AS time, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, status_message AS message, trace_id FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND service_name = '$service' ORDER BY _timestamp DESC LIMIT 50",
+              "query": "SELECT _timestamp AS time, fespalier_operation AS operation, fespalier_route AS route, fespalier_file AS file, error_type AS type, status_message AS message, trace_id FROM \"default\" WHERE span_status = 'ERROR' AND fespalier_operation IS NOT NULL AND fespalier_operation <> 'navigate' AND service_name = '$service' ORDER BY _timestamp DESC LIMIT 50",
               "vrlFunctionQuery": "",
               "customQuery": true,
               "fields": {

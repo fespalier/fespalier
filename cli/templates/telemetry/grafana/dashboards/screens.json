@@ -279,7 +279,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "100 * (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) - sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"ok\"}[$__range]))) / sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) >= 20)",
+          "expr": "100 * (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) - (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome=\"ok\"}[$__range])) or vector(0))) / sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"navigate\", service_name=\"$service\", fespalier_navigation_outcome!=\"superseded\"}[$__range])) >= 20)",
           "legendFormat": "__auto",
           "instant": true,
           "range": false

@@ -241,53 +241,82 @@ void main() {
     expect(find.text('count 2'), findsOneWidget);
   });
 
-  testWidgets('the tab on screen keeps its stack, the others start over', (
-    tester,
-  ) async {
-    final keys = ShellKeys();
-    GoRoute tab(String name) => GoRoute(
-      path: '/$name',
-      builder: (_, _) => Text('$name root'),
-      routes: [GoRoute(path: 'child', builder: (_, _) => Text('$name child'))],
-    );
-    List<RouteBase> tabs({bool more = false}) => [
-      StatefulShellRoute.indexedStack(
-        key: keys.shell('tabs:/'),
-        pageBuilder: (context, state, shell) =>
-            layoutPage(context, state, 'tabs:/', Scaffold(body: shell)),
-        branches: [
-          StatefulShellBranch(
-            navigatorKey: keys.navigator('tab:a'),
-            routes: [tab('a')],
-          ),
-          StatefulShellBranch(
-            navigatorKey: keys.navigator('tab:b'),
-            routes: [tab('b')],
+  testWidgets(
+    'the tab on screen keeps its stack, and the others do from go_router 18.1.1',
+    (tester) async {
+      final keys = ShellKeys();
+      GoRoute tab(String name) => GoRoute(
+        path: '/$name',
+        builder: (_, _) => Text('$name root'),
+        routes: [
+          GoRoute(path: 'child', builder: (_, _) => Text('$name child')),
+        ],
+      );
+      List<RouteBase> tabs({bool more = false}) => [
+        StatefulShellRoute.indexedStack(
+          key: keys.shell('tabs:/'),
+          pageBuilder: (context, state, shell) =>
+              layoutPage(context, state, 'tabs:/', Scaffold(body: shell)),
+          branches: [
+            StatefulShellBranch(
+              navigatorKey: keys.navigator('tab:a'),
+              routes: [tab('a')],
+            ),
+            StatefulShellBranch(
+              navigatorKey: keys.navigator('tab:b'),
+              routes: [tab('b')],
+            ),
+          ],
+        ),
+        if (more) GoRoute(path: '/c', builder: (_, _) => const Text('C page')),
+      ];
+
+      final reload = _Reload(tabs());
+      final router = _routerOf(reload, initialLocation: '/b/child');
+      // The hooks an observe.dart gives every page: what each one saw, in order.
+      final seen = <String>[];
+      observeAttach(
+        router,
+        (uri) => [
+          RouteHooks(
+            'observe.dart',
+            onEnter: (ref, _) => seen.add('enter ${uri.path}'),
+            onLeave: (ref) => seen.add('leave ${uri.path}'),
+            onFocus: (ref) => seen.add('focus ${uri.path}'),
           ),
         ],
-      ),
-      if (more) GoRoute(path: '/c', builder: (_, _) => const Text('C page')),
-    ];
+      );
+      await tester.pumpWidget(StartupGate(router: () => router, app: app));
+      expect(find.text('b child'), findsOneWidget);
+      router.go('/a/child');
+      await pumpNavigation(tester);
+      expect(find.text('a child'), findsOneWidget);
 
-    final reload = _Reload(tabs());
-    final router = _routerOf(reload, initialLocation: '/b/child');
-    await tester.pumpWidget(StartupGate(router: () => router, app: app));
-    expect(find.text('b child'), findsOneWidget);
-    router.go('/a/child');
-    await pumpNavigation(tester);
-    expect(find.text('a child'), findsOneWidget);
+      seen.clear();
+      reload.fileVersion = 'v2';
+      reload.table = tabs(more: true);
+      await hotReload(tester);
+      expect(reload.rebuilds, 1);
+      expect(find.text('a child'), findsOneWidget);
+      // A tab that starts over runs the onLeave of the page it held; one that keeps its stack
+      // does not.
+      expect(seen, beforeGoRouter1811 ? ['leave /b/child'] : isEmpty);
 
-    reload.fileVersion = 'v2';
-    reload.table = tabs(more: true);
-    await hotReload(tester);
-    expect(reload.rebuilds, 1);
-    expect(find.text('a child'), findsOneWidget);
-
-    keys.shell('tabs:/').currentState!.goBranch(1);
-    await pumpNavigation(tester);
-    expect(find.text('b root'), findsOneWidget);
-    expect(find.text('b child'), findsNothing);
-  });
+      keys.shell('tabs:/').currentState!.goBranch(1);
+      await pumpNavigation(tester);
+      // Before go_router 18.1.1 only the branch on screen survives a new table (its state is
+      // keyed by the StatefulShellBranch, which the new table makes again); from 18.1.1 a
+      // branch that was loaded keeps its stack (keyed by its navigator key, which is reused).
+      if (beforeGoRouter1811) {
+        expect(find.text('b root'), findsOneWidget);
+        expect(find.text('b child'), findsNothing);
+      } else {
+        expect(find.text('b child'), findsOneWidget);
+        expect(find.text('b root'), findsNothing);
+        expect(router.routerDelegate.currentConfiguration.uri.path, '/b/child');
+      }
+    },
+  );
 
   testWidgets('a pushed page survives', (tester) async {
     GoRoute pushed() =>

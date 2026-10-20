@@ -8,6 +8,8 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/floor.dart';
+
 const TelemetrySite guardSite = TelemetrySite(
   'checkout/guard.dart',
   route: '/checkout',
@@ -288,18 +290,34 @@ void main() {
         checkout = () => Future<String?>.error(StateError('boom'));
         final r = await boot(tester);
         rec.log.clear();
-        Object? uncaught;
+        final uncaught = <Object>[];
         await runZonedGuarded(() async {
           r.go('/checkout');
           await tester.pump(const Duration(milliseconds: 1));
           await tester.pump();
-        }, (error, _) => uncaught = error);
+        }, (error, _) => uncaught.add(error));
         expect(
           rec.log,
           contains('#3 end guard error async error=Bad state: boom'),
         );
-        // Only go_router's own report: the side listener adds no unhandled error.
-        expect(uncaught, isA<GoException>());
+        final ended = rec.log.where(
+          (line) => line.startsWith('#2 end navigate'),
+        );
+        if (beforeGoRouter1811) {
+          // go_router reports it as an uncaught error, once (the side listener adds none), and the
+          // navigation never ends: the router stays where it was.
+          expect(uncaught, hasLength(1));
+          expect('${uncaught.single}', contains('boom'));
+          expect(ended, isEmpty);
+        } else {
+          // go_router 18.1.1 hands it to the error route, where errorBuilder and onException get it,
+          // and the navigation ends there. Nothing is uncaught.
+          expect(uncaught, isEmpty);
+          final error = r.routerDelegate.currentConfiguration.error;
+          expect(error, isNotNull);
+          expect('$error', contains('boom'));
+          expect(ended, hasLength(1));
+        }
       },
     );
 

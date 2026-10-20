@@ -56,7 +56,7 @@
           "path": "/",
           "expect": "Browse products",
           "title": "`/`",
-          "alt": "The shop's home page: an app bar with Products and a cart, and links to browse the products, the most expensive first, and gift cards."
+          "alt": "The shop's home page: an app bar titled Shop with Products and a cart, and three buttons: Browse products, Most expensive first and Gift cards."
         },
         {
           "file": "products.png",
@@ -70,7 +70,7 @@
           "path": "/products/1",
           "expect": "Add to cart",
           "title": "`/products/1`",
-          "alt": "A product page, loaded as a deferred chunk: the product's initial in a large circle, Coffee beans, 500 g at 9.50 euros, a quantity stepper and Add to cart."
+          "alt": "A product page: the product's initial in a large circle, Coffee beans, 500 g at 9.50 euros, a quantity stepper and Add to cart."
         }
       ]
     },
@@ -347,7 +347,7 @@
           "path": "/photos/share",
           "expect": "Share photos",
           "title": "`/photos/share`",
-          "alt": "A route presented as a bottom sheet over the photos page: Share photos, Terms and Done."
+          "alt": "A route presented as a bottom sheet over the dimmed photos page: Share photos, Terms and Done."
         }
       ]
     },

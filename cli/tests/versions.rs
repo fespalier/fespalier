@@ -756,6 +756,80 @@ fn job_matrix(ci: &str, job: &str) -> Vec<String> {
         .collect()
 }
 
+/// The Flutter the floor job installs, as `ci.yml` spells it (`FLUTTER_FLOOR_VERSION:`, a
+/// `major.minor.patch`): the one place the floor is written for CI, and what the packages that claim
+/// it are matched against.
+fn floor_version(ci: &str) -> String {
+    ci.lines()
+        .find_map(|l| l.trim().strip_prefix("FLUTTER_FLOOR_VERSION:"))
+        .map(|v| v.split('#').next().unwrap_or("").trim().to_string())
+        .filter(|v| !v.is_empty())
+        .expect("ci.yml has no `FLUTTER_FLOOR_VERSION:` line")
+}
+
+/// The `(major, minor)` of the floor in `ci.yml`.
+fn floor_minor(ci: &str) -> (u64, u64) {
+    let floor = floor_version(ci);
+    assert!(
+        looks_like_a_version(&floor),
+        "FLUTTER_FLOOR_VERSION is `{floor}`, not major.minor.patch"
+    );
+    let (major, minor, _) = triple(&floor);
+    (major, minor)
+}
+
+/// The `(major, minor)` of the lower bound of `environment.flutter` in `<dir>/pubspec.yaml`, or
+/// `None` when it states none. See `flutter_claim_in`.
+fn flutter_claim(dir: &str) -> Option<(u64, u64)> {
+    flutter_claim_in(&format!("{dir}/pubspec.yaml"), &pubspec_of(dir))
+}
+
+/// The same for a parsed pubspec, named `file` in a failure. The claim is parsed, not matched as text,
+/// so a quoting style (`'>=3.35.0'`) does not hide a package from the workspace and the floor. The one
+/// spelling read is `">=X.Y.Z"` (what every package writes): any other (`^3.35.0`, `">=3.35.0 <4.0.0"`,
+/// a number) fails here, naming the file, instead of being taken for a package that claims nothing.
+fn flutter_claim_in(file: &str, pubspec: &serde_yaml_ng::Value) -> Option<(u64, u64)> {
+    let claim = pubspec.get("environment")?.get("flutter")?;
+    let Some(bound) = claim
+        .as_str()
+        .and_then(|spelled| spelled.strip_prefix(">="))
+        .filter(|bound| looks_like_a_version(bound))
+    else {
+        panic!(
+            "{file}: environment.flutter is `{claim:?}`; write it as `\">=X.Y.Z\"`, the only spelling \
+             cli/tests/versions.rs reads"
+        );
+    };
+    let (major, minor, _) = triple(bound);
+    Some((major, minor))
+}
+
+#[test]
+fn the_flutter_claim_is_read_as_yaml_and_only_one_spelling_is_accepted() {
+    let claim = |flutter: &str| {
+        let pubspec =
+            serde_yaml_ng::from_str(&format!("environment:\n  flutter: {flutter}\n")).unwrap();
+        std::panic::catch_unwind(|| flutter_claim_in("p/pubspec.yaml", &pubspec)).ok()
+    };
+    // However the string is quoted, it is the same claim.
+    assert_eq!(claim("\">=3.35.0\""), Some(Some((3, 35))));
+    assert_eq!(claim("'>=3.35.0'"), Some(Some((3, 35))));
+    assert_eq!(claim("'>=3.44.2'  # a comment"), Some(Some((3, 44))));
+    let no_claim = serde_yaml_ng::from_str("environment:\n  sdk: ^3.9.0\n").unwrap();
+    assert_eq!(flutter_claim_in("p/pubspec.yaml", &no_claim), None);
+    // Anything else is an error, not a package that claims nothing.
+    for spelled in [
+        "^3.35.0",
+        "\">=3.35.0 <4.0.0\"",
+        "\">3.35.0\"",
+        "\">=3.35\"",
+        "3.35",
+        "\"3.35.0\"",
+    ] {
+        assert_eq!(claim(spelled), None, "`{spelled}` must fail, not parse");
+    }
+}
+
 /// The `dir:` entries of the matrix of ci.yml's `floor` job, in order.
 fn floor_matrix(ci: &str) -> Vec<String> {
     let dirs = job_matrix(ci, "floor");
@@ -769,18 +843,9 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
     // out for CI (`just floor` reads it from there). What the pubspecs and READMEs claim must be
     // that minor, or the job proves a floor nobody states.
     let ci = read(".github/workflows/ci.yml");
-    let floor = ci
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("FLUTTER_FLOOR_VERSION:"))
-        .map(|v| v.split('#').next().unwrap_or("").trim().to_string())
-        .filter(|v| !v.is_empty())
-        .expect("ci.yml has no `FLUTTER_FLOOR_VERSION:` line");
-    let minor = floor.rsplit_once('.').map(|(minor, _)| minor).unwrap();
-    assert_eq!(
-        minor.matches('.').count(),
-        1,
-        "FLUTTER_FLOOR_VERSION is `{floor}`, not major.minor.patch"
-    );
+    let floor = floor_version(&ci);
+    let floor_mm = floor_minor(&ci);
+    let minor = format!("{}.{}", floor_mm.0, floor_mm.1);
     assert!(
         ci.contains("flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}"),
         "the floor job must install Flutter from FLUTTER_FLOOR_VERSION, not a second spelling"
@@ -819,16 +884,10 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
         justfile.contains("(cd \"$work/tree/$d\" && flutter pub downgrade"),
         "`just floor` runs in the copy"
     );
-    let claim = format!("flutter: \">={minor}.0\"");
-    let mut claiming: Vec<String> = fs::read_dir(root().join("packages"))
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-        .filter(|name| name != "fespalier_devtools")
-        .map(|name| format!("packages/{name}"))
-        .filter(|dir| {
-            fs::read_to_string(root().join(dir).join("pubspec.yaml"))
-                .is_ok_and(|pubspec| pubspec.contains(&claim))
-        })
+    let mut claiming: Vec<String> = dart_folders()
+        .into_iter()
+        .filter(|dir| dir.starts_with("packages/") && dir != "packages/fespalier_devtools")
+        .filter(|dir| flutter_claim(dir) == Some(floor_mm))
         .collect();
     claiming.sort();
     let mut run: Vec<String> = matrix
@@ -839,8 +898,8 @@ fn the_floor_job_runs_the_flutter_the_packages_claim() {
     run.sort();
     assert_eq!(
         run, claiming,
-        "the floor job's packages (left) are not the packages that claim `{claim}` (right): add a \
-         new one to the root pubspec.yaml's `workspace:` and to the floor matrix in ci.yml"
+        "the floor job's packages (left) are not the packages that claim `flutter: \">={minor}.0\"` \
+         (right): add a new one to the root pubspec.yaml's `workspace:` and to the floor matrix in ci.yml"
     );
     for readme in [
         "README.md",
@@ -910,14 +969,30 @@ fn the_workspace_is_the_packages_that_claim_the_floor() {
         sorted(members.clone()),
         "keep the root pubspec.yaml's `workspace:` sorted"
     );
+    let floor = floor_minor(&read(".github/workflows/ci.yml"));
+    // Every claim is parsed (a spelling that is not `">=X.Y.Z"` fails here, naming the file), and none
+    // is below the floor, which would promise a Flutter that no job runs.
+    for dir in dart_folders() {
+        if let Some(claim) = flutter_claim(&dir) {
+            assert!(
+                claim >= floor,
+                "{dir}/pubspec.yaml claims Flutter {}.{}, below the floor job's {}.{}",
+                claim.0,
+                claim.1,
+                floor.0,
+                floor.1
+            );
+        }
+    }
     let claiming: Vec<String> = dart_folders()
         .into_iter()
         .filter(|d| d.starts_with("packages/") && d != "packages/fespalier_devtools")
-        .filter(|d| read(&format!("{d}/pubspec.yaml")).contains("flutter: \">=3.35.0\""))
+        .filter(|d| flutter_claim(d) == Some(floor))
         .collect();
     assert_eq!(
         members, claiming,
-        "the root pubspec.yaml's `workspace:` (left) is not the packages that claim Flutter 3.35 (right)"
+        "the root pubspec.yaml's `workspace:` (left) is not the packages that claim the floor's Flutter, {}.{} (right)",
+        floor.0, floor.1
     );
     let root = pubspec_of(".");
     let core = pubspec_of("packages/fespalier");

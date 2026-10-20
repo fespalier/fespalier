@@ -909,6 +909,58 @@ jobs:
       - name: Each committed flow's route shows on the web
         run: scripts/check-web-routes.sh examples/shop
 
+  examples-web:
+    name: Example ${{ matrix.example }} opens its routes on the web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # The justfile's `examples` list, in its order (cli/tests/examples_web.rs checks it).
+        example:
+          - shop
+          - features
+          - tabs
+          - minimal
+          - telemetry
+          - auth
+          - plugins
+          - downloads
+          - i18n
+          - maps
+          - adopt
+          - offline
+          - cose
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ci/web-routes/package-lock.json
+      # Playwright and the Chromium it pins, from ci/web-routes/package-lock.json (as web-routes).
+      - name: Install the browser check
+        working-directory: ci/web-routes
+        run: |
+          npm ci
+          npx --no-install playwright install --with-deps chromium
+      # A release web build of the example (no CDN) in a throwaway copy, served locally with every other
+      # request blocked; each URL of its entry in ci/web-routes/examples.json must show its text with no
+      # uncaught error and no error in the console. The script is `just examples-web <example>`.
+      - name: Every route of the example opens in Chromium
+        env:
+          EXAMPLE: ${{ matrix.example }}
+        run: scripts/check-examples-web.sh "examples/$EXAMPLE"
+
   vscode:
     name: VS Code extension
     runs-on: ubuntu-latest

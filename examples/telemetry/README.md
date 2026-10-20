@@ -42,8 +42,12 @@ A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-scr
 ## See it
 
 ```sh
+cd examples/telemetry
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
+flutter pub get
+git checkout analysis_options.yaml   # pub get added the platform folders to analyzer: exclude:; this takes that back
 fsp telemetry          # starts the stack and prints the addresses
-flutter run -d chrome  # in this folder; open the app's routes a few times
+flutter run -d chrome  # open the app's routes a few times
 ```
 
 Open `http://localhost:5080` (`dev@fespalier.local` / `Fespalier-local-1`), then Dashboards, folder

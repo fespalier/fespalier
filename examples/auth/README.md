@@ -27,6 +27,18 @@ runs and is tested with no network.
 
 A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots auth`).
 
+## Run it
+
+```sh
+cd examples/auth
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
+flutter pub get
+git checkout analysis_options.yaml   # pub get added the platform folders to analyzer: exclude:; this takes that back
+flutter run
+```
+
+The commands in the sections below run in this folder, after these steps.
+
 ## Tests
 
 `test/` runs against the demo server on the test's fake clock: `guards_test.dart` (`fakeAuth`),

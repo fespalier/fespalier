@@ -77,8 +77,8 @@ Plain HTTP needs a look too. `flutter create --empty . --platforms=android` (Flu
 has the INTERNET permission and no `usesCleartextTraffic`, and the example commits no Android folder, so it adds none.
 Android blocks cleartext by default for an app that targets API 28 or higher, and Flutter targets 36. Whether the app's
 Dart HTTP call is refused on a device is UNCHECKED ([#255](https://github.com/fespalier/fespalier/issues/255)): the Dart
-HTTP client may not go through that check. If an Android build does refuse it, a `usesCleartextTraffic` for the debug build or a `network_security_config` for the
-address is the fix. No test here runs a phone, so neither is verified.
+HTTP client may not go through that check. If an Android build does refuse it, a `usesCleartextTraffic` for the debug
+build or a `network_security_config` for the address is the fix. No test here runs a phone, so neither is verified.
 
 If the app starts but the status line reads **"The server did not answer: the copy of a read that
 never happened."**, it cannot reach the server: check the address (and that the server listens on

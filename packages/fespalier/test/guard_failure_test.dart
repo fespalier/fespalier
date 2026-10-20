@@ -79,6 +79,18 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
   initialLocation: initial,
   routes: [
     GoRoute(path: '/other', builder: (_, _) => const Text('OTHER')),
+    GoRoute(path: '/under', builder: (_, _) => const Text('UNDER')),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, shell) => shell,
+      branches: [
+        StatefulShellBranch(
+          routes: [GoRoute(path: '/t1', builder: (_, _) => const Text('T1'))],
+        ),
+        StatefulShellBranch(
+          routes: [GoRoute(path: '/t2', builder: (_, _) => const Text('T2'))],
+        ),
+      ],
+    ),
     GoRoute(
       path: '/inbox',
       redirect: (context, state) => runRedirect(
@@ -91,7 +103,9 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
           }),
         ),
       ),
-      builder: (_, _) => const Text('INBOX'),
+      builder: (_, state) => Text(
+        'INBOX${state.extra == null ? '' : ' ${state.uri.query} ${state.extra}'}',
+      ),
     ),
     GoRoute(
       path: '/plain',
@@ -419,6 +433,228 @@ void main() {
       await tester.pumpAndSettle();
       expect(leaves, ['/other']);
       expect(tester.takeException(), isA<StateError>());
+    });
+  });
+  // go_router keeps a navigation that failed its guard in an entry on top of the stack when it was
+  // pushed (`push`, and `pushReplacement` and `replace` over other pages): the router's own `error`
+  // stays null, and the failed list is the entry's `matches`.
+  group('a guard that fails on a pushed navigation', () {
+    Future<Object?> navigate(
+      GoRouter r,
+      String kind,
+      String location, {
+      Object? extra,
+    }) => switch (kind) {
+      'push' => r.push<Object?>(location, extra: extra),
+      'pushReplacement' => r.pushReplacement<Object?>(location, extra: extra),
+      _ => r.replace<Object?>(location, extra: extra),
+    };
+
+    /// The router with `/under` and, pushed over it, `/other`; [kind] then goes to `/inbox` with a
+    /// query and an extra.
+    Future<({GoRouter router, Future<Object?> answer, List<Object?> done})>
+    fail(WidgetTester tester, String kind) async {
+      final r = router(initial: '/under');
+      await pumpRouter(tester, r);
+      unawaited(r.push<void>('/other'));
+      await tester.pumpAndSettle();
+      final done = <Object?>[];
+      final answer = navigate(r, kind, '/inbox?x=1', extra: 'EX');
+      unawaited(answer.then(done.add));
+      await tester.pumpAndSettle();
+      return (router: r, answer: answer, done: done);
+    }
+
+    for (final kind in ['push', 'pushReplacement', 'replace']) {
+      testWidgets('$kind: the error view shows over the stack, the failure is '
+          'reported once', (tester) async {
+        inbox = (ref) => throw StateError('boom');
+        final (:router, :answer, :done) = await fail(tester, kind);
+        expect(inboxRuns, 1);
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        expect(find.text('INBOX'), findsNothing);
+        // `push` keeps the page it started from under the error view; the other two removed it.
+        expect(
+          find.text('OTHER', skipOffstage: false),
+          kind == 'push' ? findsOneWidget : findsNothing,
+        );
+        expect(tester.takeException(), isA<StateError>());
+        expect(tester.takeException(), isNull);
+        expect(done, isEmpty);
+      });
+
+      testWidgets('$kind: the retry runs the guard again and shows the page '
+          'once it passes', (tester) async {
+        var failFirst = true;
+        inbox = (ref) {
+          if (failFirst) {
+            failFirst = false;
+            throw StateError('boom');
+          }
+          return null;
+        };
+        final (:router, :answer, :done) = await fail(tester, kind);
+        expect(tester.takeException(), isA<StateError>());
+        await tester.tap(find.text('ERROR Bad state: boom'));
+        await tester.pumpAndSettle();
+        expect(inboxRuns, 2);
+        // The same location, query and extra as the navigation that failed.
+        expect(find.text('INBOX x=1 EX'), findsOneWidget);
+        expect(find.textContaining('ERROR'), findsNothing);
+        expect(tester.takeException(), isNull);
+        // The Future of the navigation that failed completes with null when its error view closes.
+        expect(done, [null]);
+        // The stack below is what it was: back to the page under the new one.
+        router.pop();
+        await tester.pumpAndSettle();
+        expect(find.text(kind == 'push' ? 'OTHER' : 'UNDER'), findsOneWidget);
+      });
+
+      testWidgets('$kind: a retry that fails again shows the error view again, '
+          'and reports it', (tester) async {
+        inbox = (ref) => throw StateError('boom');
+        final (:router, :answer, :done) = await fail(tester, kind);
+        expect(tester.takeException(), isA<StateError>());
+        await tester.tap(find.text('ERROR Bad state: boom'));
+        await tester.pumpAndSettle();
+        expect(inboxRuns, 2);
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        expect(tester.takeException(), isA<StateError>());
+        expect(done, [null]);
+      });
+
+      testWidgets('$kind: a retry held after the error view closed does '
+          'nothing', (tester) async {
+        inbox = (ref) => throw StateError('boom');
+        final (:router, :answer, :done) = await fail(tester, kind);
+        expect(tester.takeException(), isA<StateError>());
+        final held = heldRetry!;
+        router.pop();
+        await tester.pumpAndSettle();
+        expect(done, [null]);
+        final runs = inboxRuns;
+        held();
+        await tester.pumpAndSettle();
+        expect(inboxRuns, runs);
+        expect(find.text(kind == 'push' ? 'OTHER' : 'UNDER'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a retry held while another page is pushed over the error view '
+        'does nothing', (tester) async {
+      inbox = (ref) => throw StateError('boom');
+      final (:router, :answer, :done) = await fail(tester, 'push');
+      expect(tester.takeException(), isA<StateError>());
+      final held = heldRetry!;
+      unawaited(router.push<void>('/under'));
+      await tester.pumpAndSettle();
+      final runs = inboxRuns;
+      held();
+      await tester.pumpAndSettle();
+      expect(inboxRuns, runs);
+      expect(find.text('UNDER'), findsOneWidget);
+      expect(done, isEmpty);
+    });
+
+    testWidgets('a push from a tab: the retry works the same', (tester) async {
+      var failFirst = true;
+      inbox = (ref) {
+        if (failFirst) {
+          failFirst = false;
+          throw StateError('boom');
+        }
+        return null;
+      };
+      final r = router(initial: '/t2');
+      await pumpRouter(tester, r);
+      final answer = r.push<Object?>('/inbox');
+      var done = false;
+      unawaited(answer.whenComplete(() => done = true));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+      await tester.tap(find.text('ERROR Bad state: boom'));
+      await tester.pumpAndSettle();
+      expect(find.text('INBOX'), findsOneWidget);
+      expect(done, isTrue);
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(find.text('T2'), findsOneWidget);
+    });
+
+    // An existing go_router bypass, which this package does not fix (it happens without
+    // `runRedirect` too, and in a plain GoRouter): go_router restores a pushed location with
+    // `findMatch` and skips its redirect on a refresh, so the guarded page shows without its guard.
+    // Skipped until go_router fixes it: fespalier/fespalier#258.
+    testWidgets(
+      'a refresh after a pushed failure runs the guard again (go_router '
+      'bypass, fespalier/fespalier#258)',
+      (tester) async {
+        inbox = (ref) => throw StateError('boom');
+        final (:router, :answer, :done) = await fail(tester, 'push');
+        expect(tester.takeException(), isA<StateError>());
+        expect(inboxRuns, 1);
+        router.refresh();
+        await tester.pumpAndSettle();
+        expect(inboxRuns, 2);
+        expect(find.textContaining('INBOX'), findsNothing);
+      },
+      skip: true,
+    );
+
+    testWidgets('a pushed failure enters nothing and leaves nothing: the page '
+        'under the error view stays', (tester) async {
+      inbox = (ref) => throw StateError('boom');
+      final events = <String>[];
+      final r = router(initial: '/under');
+      observeAttach(
+        r,
+        (uri) => [
+          RouteHooks(
+            'observe.dart',
+            onEnter: (_, _) => events.add('enter ${uri.path}'),
+            onLeave: (_) => events.add('leave ${uri.path}'),
+            onFocus: (_) => events.add('focus ${uri.path}'),
+          ),
+        ],
+      );
+      await pumpRouter(tester, r);
+      unawaited(r.push<void>('/other'));
+      await tester.pumpAndSettle();
+      expect(events, ['enter /under', 'enter /other']);
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+      // The failed location was never a page: no enter for it, and `/other` was not left.
+      expect(events, ['enter /under', 'enter /other']);
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(events, ['enter /under', 'enter /other']);
+      expect(find.text('OTHER'), findsOneWidget);
+    });
+
+    testWidgets('pushReplacement over a single page is the router\'s own '
+        'error: the retry refreshes', (tester) async {
+      var failFirst = true;
+      inbox = (ref) {
+        if (failFirst) {
+          failFirst = false;
+          throw StateError('boom');
+        }
+        return null;
+      };
+      final r = router(initial: '/under');
+      await pumpRouter(tester, r);
+      unawaited(r.pushReplacement<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(r.routerDelegate.currentConfiguration.error, isA<GuardFailure>());
+      expect(tester.takeException(), isA<StateError>());
+      await tester.tap(find.text('ERROR Bad state: boom'));
+      await tester.pumpAndSettle();
+      expect(find.text('INBOX'), findsOneWidget);
+      expect(r.routerDelegate.currentConfiguration.error, isNull);
     });
   });
 }

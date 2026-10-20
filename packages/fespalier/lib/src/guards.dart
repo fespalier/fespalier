@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:hooks_riverpod/misc.dart' show ProviderException;
 
+import 'navigation_kind.dart' show pushedMatches;
 import 'segments.dart';
 
 /// Generated redirects call this to chain guards: they run in order and the
@@ -436,10 +437,18 @@ const _guardFailureContext = 'while running a guard or redirect.dart';
 /// When `state.error` is a [GuardFailure], it is reported once, in a debug build, with
 /// `FlutterError.reportError` (library `fespalier`, what the guard threw and its stack trace, so a
 /// widget test fails unless it calls `tester.takeException()`), and [guardError] builds the view of
-/// the route at `state.uri` with a retry that runs the navigation again (`GoRouter.refresh`, only
-/// while the router still shows this failure). Without a view, [notFound] shows. Any other error (no
-/// route matched, a redirect loop, too many redirects) is [notFound]. It makes no `Future` and starts
-/// no timer.
+/// the route at `state.uri` with a retry that runs the navigation again, only while the router still
+/// shows this failure. Without a view, [notFound] shows. Any other error (no route matched, a
+/// redirect loop, too many redirects) is [notFound]. It makes no `Future` and starts no timer.
+///
+/// The failure reaches the error route in one of two places. After `go`, a link or the first
+/// location, it is the router's own error (`GoRouter.refresh` runs the navigation again). After
+/// `push`, and `pushReplacement` and `replace` over other pages, go_router puts the failed list in an
+/// entry on top of the stack and the router's own `error` stays null: the retry then closes that
+/// entry and pushes the same location with the same `extra` again. The `Future` of the `push` that
+/// failed completes with `null` when the retry closes the entry, as it does when the user does; the
+/// page the retry pushes has no `Future` of its own that anyone waits for. A retry held after the
+/// router moved on (the entry closed, another page above it) does nothing.
 Widget routerErrorPage(
   BuildContext context,
   GoRouterState state,
@@ -467,10 +476,7 @@ Widget routerErrorPage(
   }
   final router = GoRouter.maybeOf(context);
   void retry() {
-    if (router != null &&
-        identical(router.routerDelegate.currentConfiguration.error, failure)) {
-      router.refresh();
-    }
+    if (router != null) _retry(router, failure);
   }
 
   return guardError?.call(
@@ -480,4 +486,23 @@ Widget routerErrorPage(
         retry,
       ) ??
       notFound(state.uri);
+}
+
+/// Runs again the navigation that failed with [failure], if the router still shows it: see
+/// [routerErrorPage].
+void _retry(GoRouter router, GuardFailure failure) {
+  final config = router.routerDelegate.currentConfiguration;
+  if (identical(config.error, failure)) {
+    router.refresh();
+    return;
+  }
+  // A pushed navigation: go_router keeps its failed list in the entry it pushed, which is the
+  // page on top (the last pushed entry, however deep in the shells) while the error view shows.
+  final pushed = <ImperativeRouteMatch>[];
+  pushedMatches(config.matches, pushed);
+  if (pushed.isEmpty || !identical(pushed.last.matches.error, failure)) return;
+  if (!router.canPop()) return;
+  final failed = pushed.last.matches;
+  router.pop();
+  unawaited(router.push<Object?>(failed.uri.toString(), extra: failed.extra));
 }

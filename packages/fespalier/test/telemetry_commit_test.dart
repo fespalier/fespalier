@@ -298,6 +298,21 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets('a push whose guard fails: the commit is error, with no route, '
+        'though go_router holds the error in the pushed entry', (tester) async {
+      checkout = () => throw StateError('boom');
+      final r = await boot(tester);
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      expect(r.routerDelegate.currentConfiguration.error, isNull);
+      expect(rec.log.where((l) => l.startsWith('#2 commit ')), [
+        '#2 commit error',
+      ]);
+      expect(rec.log.where((l) => l.contains('route=')), isEmpty);
+      expectCommitsMatchEnds(rec.log);
+    });
+
     testWidgets('a superseded navigation never commits', (tester) async {
       final answer = Completer<String?>();
       checkout = () => answer.future;

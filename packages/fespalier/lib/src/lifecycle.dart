@@ -103,6 +103,10 @@ final class _Walk {
   void add(List<RouteMatchBase> matches, Uri uri, List<String> branches) {
     for (final m in matches) {
       if (m is ImperativeRouteMatch) {
+        // A pushed navigation that failed its guard (since 0.21.0): go_router keeps the failed list
+        // here, with an empty path, and the page it was pushed from stays under its error view. It
+        // is no page.
+        if (m.matches.isError) continue;
         instances.add(
           _Instance(
             instanceId(m.pageKey.value, m.matchedLocation, m.matches.uri.path),
@@ -410,16 +414,26 @@ final class RouterWatch {
   String? _patternOf(_Instance i) =>
       pathTemplate(i.fullPath, _base?.call() ?? '/');
 
+  /// The list that tells what [config] shows on top (since 0.21.0): [config] itself, or, when a page
+  /// was pushed (`push`, `pushReplacement`, `replace`), the list of the page on top. go_router keeps
+  /// the error of a pushed navigation there and not in [config], whose own `error` stays null.
+  RouteMatchList _activeOf(RouteMatchList config) {
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    return activeMatches(config, pushed);
+  }
+
   /// The pattern of the page [config] shows ([visible] is the top of its walk), null when the router
-  /// shows its error route: what a navigation's commit and its end both report, so the two never
-  /// differ.
+  /// shows its error route, as its own or over a pushed navigation: what a navigation's commit and
+  /// its end both report, so the two never differ.
   String? _routeOf(RouteMatchList config, _Instance? visible) =>
-      config.error != null || visible == null ? null : _patternOf(visible);
+      _activeOf(config).isError || visible == null ? null : _patternOf(visible);
 
   /// What [config] says of its navigation (since 0.21.0): `error` when a guard or a `redirect.dart`
   /// failed and the router shows the error view ([GuardFailure]), `not_found` for any other error of
-  /// the router's (no route matched, a redirect loop), `ok` otherwise.
-  String _outcomeOf(RouteMatchList config) => switch (config.error) {
+  /// the router's (no route matched, a redirect loop), `ok` otherwise. A navigation that was pushed
+  /// says it the same way, though go_router holds its error in the pushed entry.
+  String _outcomeOf(RouteMatchList config) => switch (_activeOf(config).error) {
     null => TelemetryOutcome.ok,
     GuardFailure() => TelemetryOutcome.error,
     _ => TelemetryOutcome.notFound,
@@ -458,7 +472,9 @@ final class RouterWatch {
 
   void _endNavigation(_Nav nav, RouteMatchList config, _Instance? visible) {
     final route = _routeOf(config, visible);
-    final location = visible?.uri ?? config.uri;
+    final active = _activeOf(config);
+    // An error view is at the location that failed.
+    final location = active.isError ? active.uri : (visible?.uri ?? config.uri);
     final requested = nav.requested;
     telemetryNavigationEnd(
       nav.token,
@@ -472,7 +488,11 @@ final class RouterWatch {
         depth: nav.depth,
       ),
     );
-    _topPattern = route;
+    // The next navigation comes from the page the walk shows: for the error view of a pushed
+    // navigation, the page under it (`route` is null there, as for any error).
+    _topPattern = config.isError || visible == null
+        ? null
+        : _patternOf(visible);
   }
 
   List<RouteHooks> _bind(Uri uri) {

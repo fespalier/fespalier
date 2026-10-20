@@ -329,6 +329,49 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    for (final kind in ['push', 'pushReplacement', 'replace']) {
+      testWidgets('$kind: a guard that throws ends the navigation as error and '
+          'enters nothing', (tester) async {
+        checkout = () => throw StateError('boom');
+        final r = await boot(tester);
+        unawaited(r.push<void>('/other'));
+        await tester.pumpAndSettle();
+        rec.log.clear();
+        final Future<void> navigation = switch (kind) {
+          'push' => r.push<void>('/checkout'),
+          'pushReplacement' => r.pushReplacement<void>('/checkout'),
+          _ => r.replace<void>('/checkout'),
+        };
+        unawaited(navigation);
+        await tester.pumpAndSettle();
+        // go_router keeps the failure in the pushed entry: the router's own error is null.
+        expect(r.routerDelegate.currentConfiguration.error, isNull);
+        // The failed location is no page: nothing is entered. `push` leaves the page under the
+        // error view alone; the other two removed the page they replaced, so the one below it
+        // is the visible one again.
+        expect(rec.log, [
+          '#3 start navigate /checkout',
+          if (kind != 'push') '#3 page leave /other',
+          if (kind != 'push') '#3 page focus /home',
+          if (kind == 'push')
+            '#3 end navigate error kind=push from=/other depth=2 at=/checkout'
+          else
+            '#3 end navigate error kind=replace from=/other depth=1 at=/checkout',
+        ]);
+        rec.log.clear();
+        // Closing the error view comes from the page that was under it.
+        r.pop();
+        await tester.pumpAndSettle();
+        expect(rec.log, [
+          '#4 start navigate (commit)',
+          if (kind == 'push')
+            '#4 end navigate ok route=/other kind=pop from=/other depth=1 at=/other'
+          else
+            '#4 end navigate ok route=/home kind=pop from=/home at=/home',
+        ]);
+      });
+    }
+
     testWidgets('a guard that did not run for a bad segment is skipped', (
       tester,
     ) async {

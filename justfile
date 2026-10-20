@@ -248,7 +248,7 @@ web-routes:
     scripts/check-web-routes.sh examples/shop
 
 # Every example (or the named ones) as a release web build in Chromium: each URL of ci/web-routes/examples.json
-# shows its text, nothing throws or logs an error, and nothing is fetched from another host (the examples stay
+# shows its text, nothing throws or logs an error, and nothing is requested but from the local server (the examples stay
 # platform-free: each is built in a throwaway copy). FSP_CHROMIUM=/path/to/chrome uses a Chromium already on disk.
 # Needs Flutter and Node; two to five minutes per example, and not part of `just ci` (CI runs it as `examples-web`)
 examples-web *names:
@@ -308,11 +308,12 @@ create-check *cases:
 codegen-interop:
     scripts/check-codegen-interop.sh
 
-# The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps that
-# have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs
-# are `just vscode` and `just intellij`, the web builds are `just web-chunks` (the deferred pages),
-# `just web-routes` (the Maestro flows) and `just examples-web` (every example's routes, one CI job each), the stack in Docker is `just telemetry-smoke`, the Flutter 3.35
-# floor is `just floor`, the cose example with its Rust server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
+# The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps
+# that have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs are `just vscode` and
+# `just intellij`, the web builds are `just web-chunks` (the deferred pages), `just web-routes` (the
+# Maestro flows) and `just examples-web` (every example's routes, one CI job each), the stack in Docker
+# is `just telemetry-smoke`, the Flutter 3.35 floor is `just floor`, the cose example with its Rust
+# server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
 # The examples' README screenshots are `just example-screenshots` (not in CI at all); `just example-images` checks them.
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs

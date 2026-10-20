@@ -7,35 +7,47 @@
 // scripts/check-examples-web.sh builds the example (a throwaway copy, `--no-web-resources-cdn`) and
 // runs this. examples.json, next to this file, says per example which URLs to open and the text each
 // must show (`urls`), which routes are not opened and why (`skip`), what may be logged or fetched and
-// why (`allow`), the `--dart-define`s of its build (`defines`) and its screenshots (`shots`).
-// cli/tests/examples_web.rs keeps `urls` and `skip` in step with `fsp routes --json`, and
-// example-images.mjs keeps `shots` in step with docs/images/examples/ and the READMEs.
+// why (`allow`), the `--dart-define`s of its build (`defines`) and its screenshots (`shots`), which
+// example-images.mjs keeps in step with docs/images/examples/ and the READMEs. cli/tests/examples_web.rs keeps
+// `urls` and `skip` in step with `fsp routes --json`: a URL that no route of the tree answers says
+// why (`notFound`: the not-found page is the point; `handWritten`: a go_router route of the app's
+// own answers it), which only that test reads.
 //
-// A URL works when, in a fresh browser profile with every request off this machine aborted:
+// A URL works when, in a fresh browser profile where only the build's own server answers:
 //   - Flutter starts (`flutter-view`) and, once its semantics tree is on (the harness clicks the
 //     placeholder Flutter puts in every page, so no example needs `semantics_ids`), a node's text
-//     contains `expect` within 20 s;
-//   - the address ends on `at`, when the URL names where a redirect or a guard lands;
+//     contains `expect` within 20 s. `expect` is a text of the page itself, not of its layout (a
+//     navigation label is on every page of its tab);
+//   - the page then settles: its texts stay as they are for QUIET ms and the network is idle, so
+//     an error a moment after the first frame still counts;
+//   - the address ends on `at` (the URL's own path, without its query, when the entry gives none),
+//     so a URL says where it lands: `at` is for a redirect, a guard or a path the app rewrites;
 //   - nothing threw (`pageerror`) and nothing was logged as an error: a release build draws a broken
 //     widget as a grey box and prints the exception to the console as errors, so that is where it
 //     shows. The browser's own `Failed to load resource` lines are not the app's errors;
-//   - nothing was fetched from another host, unless `allow` says why. An `allow` entry that matches
-//     nothing in a whole run fails it, so it goes when its reason does.
+//   - nothing was requested from anywhere but the build's own server (and `data:` and `blob:`), not
+//     even another port of this machine, unless `allow` says why. Every other request is aborted
+//     whether or not it is allowed; `allow` only keeps it from being reported. An `allow` entry that
+//     matches nothing in a whole run fails it, so it goes when its reason does.
 //
-// A URL with `known` (what is broken, and the fix item or issue that fixes it) is reported but does
-// not fail the run, and fails once it passes, so the note cannot outlive the bug.
+// A URL with `known` ({ "problem": "a substring of the problem", "reason": "what is broken, and the
+// fix item or issue that fixes it" }) is reported but does not fail the run. Any other problem of
+// that URL still fails, and so does the URL once the problem is gone, so the note cannot outlive
+// the bug.
 //
 // --print also prints every text each page shows (to write an `expect`).
 //
-// A screenshot is taken once the page passes those checks and two captures 300 ms apart are the
-// same bytes (a spinner or a blinking cursor never settles: pick another screen). It is optimised
-// with a pinned oxipng (Docker; FSP_OXIPNG=/path/to/oxipng uses a local binary instead), held to
-// the byte budget, and only then are the example's images replaced in <out dir>.
+// `shots` takes a screenshot of a URL of the entry that passes these checks (a shot is one of the
+// entry's URLs: the same path and the same expect), once the page settles: two captures 300 ms apart
+// are the same bytes (a spinner or a blinking cursor never settles: pick another screen). The images
+// are optimised with a pinned oxipng (Docker; FSP_OXIPNG=/path/to/oxipng uses a local binary), held to
+// the byte budget, and only then replace the example's images in <out dir>.
 //
 // FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk; otherwise Playwright's own
 // (`npx --no-install playwright install chromium` in this folder).
 //
-// Exit codes: 0 every URL (or shot) passed, 1 one failed, 2 usage or an unknown example.
+// Exit codes: 0 every URL (or shot) passed, 1 one failed (or the example has no URL to check), 2 usage
+// or an unknown example.
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
 import {
@@ -60,11 +72,19 @@ const SPEC = JSON.parse(
     "utf8",
   ),
 );
+// How long a page has to show its text, and then to settle.
+const TIMEOUT = 20000;
+// How long a page's texts must stay as they are, after its text appeared, before it counts as settled.
+// A second is not enough: an error 2 s after a page was built comes about 1.5 s after its text can be
+// read, and a window of 1 s closes before it.
+const QUIET = 2000;
+// How long to wait for the network to go idle once the texts have settled.
+const IDLE = 5000;
+// How many 300 ms polls a screenshot waits for its screen to settle (about 10 s).
+const SETTLE_TRIES = 33;
+// The oxipng that optimises the screenshots, pinned by digest.
 const OXIPNG =
   "ghcr.io/shssoichiro/oxipng:v9.1.5@sha256:e1623b0da9f14b63b242ffb78e4eef4ba0f09c9159880d238665af4654c75b4f";
-// How long a page has to show its text, and to settle for a screenshot.
-const TIMEOUT = 20000;
-const SETTLE_TRIES = 33;
 const MIME = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -95,15 +115,28 @@ if (!entry) {
   console.error(`examples.json has no entry for ${name}`);
   process.exit(2);
 }
+if (!entry.urls?.length) {
+  console.error(`examples.json lists no URL to check for ${name}`);
+  process.exit(1);
+}
 const print = rest.includes("--print");
 
 const firstLine = (text) => String(text).split("\n")[0].slice(0, 300);
 
-const isLocal = (url) => {
+/** The first stack frame of an uncaught error (`at f (url:line:col)`), or "" when it has none. */
+const frameOf = (error) => {
+  const frame = String(error.stack ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("at "));
+  return frame ? ` ${frame.slice(0, 200)}` : "";
+};
+
+/** Whether the build's own server (`origin`), or the browser itself (`data:`, `blob:`), answers `url`. */
+const isServed = (url, origin) => {
   try {
-    const { protocol, hostname } = new URL(url);
-    if (protocol === "data:" || protocol === "blob:") return true;
-    return ["localhost", "127.0.0.1", "[::1]"].includes(hostname);
+    const { protocol, origin: requested } = new URL(url);
+    return protocol === "data:" || protocol === "blob:" || requested === origin;
   } catch {
     return false;
   }
@@ -165,6 +198,21 @@ const locationOf = (url) => {
   return hash === "" ? "/" : decodeURIComponent(hash);
 };
 
+/** A location without its query. */
+const pathOf = (location) => location.split("?")[0];
+
+/**
+ * Turns the semantics tree on while it is off: a click on the "Enable accessibility" placeholder
+ * Flutter puts in the page. The placeholder is not there before the engine has started, so this
+ * runs on every poll until the first `flt-semantics` node exists.
+ */
+const enableSemantics = (page) =>
+  page.evaluate(() => {
+    if (!document.querySelector("flt-semantics")) {
+      document.querySelector("flt-semantics-placeholder")?.click();
+    }
+  });
+
 /**
  * Opens one URL of the example in a fresh context and checks it. Returns the context (the caller
  * closes it), the page, what went wrong, and the texts it saw.
@@ -180,7 +228,7 @@ const open = async (browser, base, url, viewport) => {
   const problems = [];
   await context.route("**/*", (route) => {
     const requested = route.request().url();
-    if (isLocal(requested)) return route.continue();
+    if (isServed(requested, base)) return route.continue();
     if (!allowed("blocked", requested)) problems.push(`fetched ${requested}`);
     return route.abort();
   });
@@ -188,7 +236,7 @@ const open = async (browser, base, url, viewport) => {
   // Date.now() is fixed (a page that prints a time prints the same one every run); timers run.
   await page.clock.setFixedTime(new Date(SPEC.time));
   page.on("pageerror", (error) =>
-    problems.push(`uncaught: ${firstLine(error.message)}`),
+    problems.push(`uncaught: ${firstLine(error.message)}${frameOf(error)}`),
   );
   page.on("console", (message) => {
     if (message.type() !== "error") return;
@@ -205,14 +253,15 @@ const open = async (browser, base, url, viewport) => {
       .locator("flutter-view")
       .first()
       .waitFor({ state: "attached", timeout: 30000 });
-    // The "Enable accessibility" placeholder: a click turns the semantics tree on.
-    await page.evaluate(() =>
-      document.querySelector("flt-semantics-placeholder")?.click(),
-    );
     const deadline = Date.now() + TIMEOUT;
+    let shown = false;
     for (;;) {
+      await enableSemantics(page);
       seen = await texts(page);
-      if (seen.some((t) => t.includes(url.expect))) break;
+      if (seen.some((t) => t.includes(url.expect))) {
+        shown = true;
+        break;
+      }
       if (Date.now() > deadline) {
         problems.push(
           `"${url.expect}" did not appear within ${TIMEOUT} ms; the page shows ${JSON.stringify(seen.slice(0, 15))}`,
@@ -221,12 +270,39 @@ const open = async (browser, base, url, viewport) => {
       }
       await page.waitForTimeout(250);
     }
-    // An error a frame later still counts.
-    await page.waitForTimeout(500);
-    at = locationOf(page.url());
-    if (url.at !== undefined && at !== url.at) {
-      problems.push(`ended at ${at}, not ${url.at}`);
+    if (shown) {
+      // Settle: the texts stay as they are for QUIET ms (a page that is still loading, or that
+      // changes after its first frame, keeps changing them), then the network goes idle. An error
+      // a moment after the text appeared is therefore still in the problems.
+      const settleBy = Date.now() + TIMEOUT;
+      let last = JSON.stringify(seen);
+      let since = Date.now();
+      for (;;) {
+        await page.waitForTimeout(250);
+        seen = await texts(page);
+        const now = JSON.stringify(seen);
+        if (now !== last) {
+          last = now;
+          since = Date.now();
+        } else if (Date.now() - since >= QUIET) {
+          break;
+        }
+        if (Date.now() > settleBy) {
+          problems.push(
+            `the page was still changing ${TIMEOUT} ms after "${url.expect}" appeared; it shows ${JSON.stringify(seen.slice(0, 15))}`,
+          );
+          break;
+        }
+      }
+      await page
+        .waitForLoadState("networkidle", { timeout: IDLE })
+        .catch(() => {});
     }
+    at = locationOf(page.url());
+    // A URL ends where it was opened unless `at` says where it lands.
+    const [want, got] =
+      url.at === undefined ? [pathOf(url.path), pathOf(at)] : [url.at, at];
+    if (got !== want) problems.push(`ended at ${at}, not ${want}`);
   } catch (error) {
     problems.push(firstLine(error.message));
   }
@@ -245,6 +321,7 @@ const settle = async (page) => {
   return null;
 };
 
+/** Optimises the PNGs of `dir` in place with oxipng; false when it failed. */
 const optimise = (dir) => {
   const files = readdirSync(dir).filter((f) => f.endsWith(".png"));
   const args = ["-o", "4", "--strip", "safe", ...files];
@@ -258,6 +335,84 @@ const optimise = (dir) => {
   return run.status === 0;
 };
 
+/**
+ * The entry's screenshots. Each shot is one of its URLs (the same path and expect), opened with the
+ * checks `check` makes, and taken once the page settles. The images replace those in `out` only when
+ * every shot passed, was optimised and fits the budget. Returns whether that happened.
+ */
+const shoot = async (browser, base, out) => {
+  const shots = entry.shots ?? [];
+  if (shots.length === 0 || shots.length > SPEC.budget.perExample) {
+    console.error(
+      `${name} has ${shots.length} shots; 1 to ${SPEC.budget.perExample} are allowed`,
+    );
+    return false;
+  }
+  const temp = mkdtempSync(join(tmpdir(), "fespalier-example-shots-"));
+  try {
+    let failed = false;
+    for (const shot of shots) {
+      const url = entry.urls.find(
+        (u) => u.path === shot.path && u.expect === shot.expect,
+      );
+      if (!url || url.known) {
+        failed = true;
+        console.error(
+          `FAIL: ${name} ${shot.file}: ${shot.path} is not a URL of the entry that shows "${shot.expect}", or it is known`,
+        );
+        continue;
+      }
+      const viewport = { ...SPEC.viewport, ...(shot.viewport ?? {}) };
+      const { context, page, problems } = await open(
+        browser,
+        base,
+        url,
+        viewport,
+      );
+      if (problems.length === 0) {
+        const png = await settle(page);
+        if (png) writeFileSync(join(temp, shot.file), png);
+        else
+          problems.push(
+            "the screen did not settle within 10 s (a spinner, a cursor or an animation)",
+          );
+      }
+      await context.close();
+      if (problems.length === 0) {
+        console.log(`shot: ${name} ${shot.path} -> ${shot.file}`);
+      } else {
+        failed = true;
+        console.error(`FAIL: ${name} ${shot.path} (${shot.file})`);
+        for (const p of problems) console.error(`  ${p}`);
+      }
+    }
+    if (failed) return false;
+    if (!optimise(temp)) {
+      console.error("oxipng failed; no image was replaced");
+      return false;
+    }
+    for (const shot of shots) {
+      const size = statSync(join(temp, shot.file)).size;
+      console.log(`  ${shot.file}: ${size} bytes`);
+      if (size > SPEC.budget.perImage) {
+        console.error(
+          `${shot.file} is ${size} bytes, over the budget of ${SPEC.budget.perImage}: pick a calmer screen, never a lower scale`,
+        );
+        return false;
+      }
+    }
+    rmSync(out, { recursive: true, force: true });
+    mkdirSync(out, { recursive: true });
+    for (const shot of shots) {
+      copyFileSync(join(temp, shot.file), join(out, shot.file));
+    }
+    console.log(`wrote ${shots.length} images to ${out}`);
+    return true;
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+};
+
 const main = async () => {
   const server = await serve(buildDir);
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -269,7 +424,9 @@ const main = async () => {
   console.log(`${name}: chromium ${browser.version()}, ${base}`);
   let failed = false;
   try {
-    if (mode === "check") {
+    if (mode === "shots") {
+      failed = !(await shoot(browser, base, resolve(rest[0])));
+    } else {
       for (const url of entry.urls) {
         const { context, problems, seen, at } = await open(
           browser,
@@ -278,15 +435,24 @@ const main = async () => {
           SPEC.viewport,
         );
         await context.close();
-        if (url.known && problems.length > 0) {
-          // A failure someone is fixing elsewhere: reported, not failed.
-          console.log(`known: ${name} ${url.path} (${url.known})`);
-          for (const p of problems) console.log(`  ${p}`);
-        } else if (url.known) {
-          failed = true;
-          console.error(
-            `FAIL: ${name} ${url.path} passes now: remove its "known"`,
-          );
+        if (url.known) {
+          // A failure someone is fixing elsewhere: reported, not failed. Only the problem it names.
+          const named = problems.filter((p) => p.includes(url.known.problem));
+          const others = problems.filter((p) => !p.includes(url.known.problem));
+          if (named.length === 0) {
+            failed = true;
+            console.error(
+              `FAIL: ${name} ${url.path}: its "known" problem ${JSON.stringify(url.known.problem)} did not happen: remove the "known"`,
+            );
+          } else {
+            console.log(`known: ${name} ${url.path} (${url.known.reason})`);
+            for (const p of named) console.log(`  ${p}`);
+          }
+          if (others.length > 0) {
+            failed = true;
+            console.error(`FAIL: ${name} ${url.path}: more than it names`);
+            for (const p of others) console.error(`  ${p}`);
+          }
         } else if (problems.length === 0) {
           console.log(`ok: ${name} ${url.path} shows "${url.expect}"`);
         } else {
@@ -306,64 +472,6 @@ const main = async () => {
       }
       for (const skip of entry.skip ?? []) {
         console.log(`skipped: ${name} ${skip.pattern}: ${skip.reason}`);
-      }
-    } else {
-      const out = resolve(rest[0]);
-      const temp = mkdtempSync(join(tmpdir(), "fespalier-example-shots-"));
-      try {
-        const shots = entry.shots ?? [];
-        if (shots.length === 0 || shots.length > SPEC.budget.perExample) {
-          throw new Error(
-            `${name} has ${shots.length} shots; 1 to ${SPEC.budget.perExample} are allowed`,
-          );
-        }
-        for (const shot of shots) {
-          const viewport = { ...SPEC.viewport, ...(shot.viewport ?? {}) };
-          const { context, page, problems } = await open(
-            browser,
-            base,
-            shot,
-            viewport,
-          );
-          if (problems.length === 0) {
-            const png = await settle(page);
-            if (png) writeFileSync(join(temp, shot.file), png);
-            else
-              problems.push(
-                "the screen did not settle within 10 s (a spinner, a cursor or an animation)",
-              );
-          }
-          await context.close();
-          if (problems.length === 0)
-            console.log(`shot: ${name} ${shot.path} -> ${shot.file}`);
-          else {
-            failed = true;
-            console.error(`FAIL: ${name} ${shot.path} (${shot.file})`);
-            for (const p of problems) console.error(`  ${p}`);
-          }
-        }
-        if (failed) throw new Error("no image was replaced");
-        if (!optimise(temp))
-          throw new Error("oxipng failed; no image was replaced");
-        for (const shot of shots) {
-          const size = statSync(join(temp, shot.file)).size;
-          console.log(`  ${shot.file}: ${size} bytes`);
-          if (size > SPEC.budget.perImage) {
-            throw new Error(
-              `${shot.file} is ${size} bytes, over the budget of ${SPEC.budget.perImage}: pick a calmer screen, never a lower scale`,
-            );
-          }
-        }
-        rmSync(out, { recursive: true, force: true });
-        mkdirSync(out, { recursive: true });
-        for (const shot of shots)
-          copyFileSync(join(temp, shot.file), join(out, shot.file));
-        console.log(`wrote ${shots.length} images to ${out}`);
-      } catch (error) {
-        failed = true;
-        console.error(`FAIL: ${firstLine(error.message)}`);
-      } finally {
-        rmSync(temp, { recursive: true, force: true });
       }
     }
   } finally {

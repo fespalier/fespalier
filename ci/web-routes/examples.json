@@ -47,7 +47,14 @@
         },
         {
           "path": "/products/abc",
-          "expect": "Nothing at /products/abc"
+          "expect": "Nothing at /products/abc",
+          "notFound": true
+        }
+      ],
+      "allow": [
+        {
+          "blocked": "^http://localhost:13001/",
+          "reason": "the product photos come from an EmgR image proxy on localhost:13001 (images.dart, SHOP_IMAGES), which this check does not run: the request is aborted and the page shows the product's initial instead (the shop's tests fake the images)"
         }
       ],
       "shots": [
@@ -240,23 +247,23 @@
         },
         {
           "path": "/signup/name",
-          "expect": "Step 1 of 3"
+          "expect": "For a business"
         },
         {
           "path": "/signup/company",
-          "expect": "Step 1 of 3",
+          "expect": "For a business",
           "at": "/signup/name",
           "note": "the flow guard sends a deep link to a later step back to its first one"
         },
         {
           "path": "/signup/contact",
-          "expect": "Step 1 of 3",
+          "expect": "For a business",
           "at": "/signup/name",
           "note": "the flow guard sends a deep link to a later step back to its first one"
         },
         {
           "path": "/signup/review",
-          "expect": "Step 1 of 3",
+          "expect": "For a business",
           "at": "/signup/name",
           "note": "the flow guard sends a deep link to a later step back to its first one"
         },
@@ -355,7 +362,7 @@
       "urls": [
         {
           "path": "/",
-          "expect": "Home"
+          "expect": "Every tab keeps its own stack of pages."
         },
         {
           "path": "/search",
@@ -442,11 +449,13 @@
         {
           "path": "/items/abc",
           "expect": "Nothing at /items/abc",
+          "notFound": true,
           "note": "an int segment that does not parse is not found"
         },
         {
           "path": "/nope",
-          "expect": "Nothing at /nope"
+          "expect": "Nothing at /nope",
+          "notFound": true
         }
       ],
       "shots": [
@@ -477,12 +486,7 @@
       "urls": [
         {
           "path": "/",
-          "expect": "Home"
-        },
-        {
-          "path": "/",
-          "expect": "Each page you open here is a span.",
-          "note": "the page's own line: \"Home\" alone is also the navigation label"
+          "expect": "Each page you open here is a span."
         },
         {
           "path": "/orders",
@@ -494,9 +498,8 @@
         },
         {
           "path": "/settings",
-          "expect": "Settings",
-          "at": "/settings",
-          "note": "guarded and deferred"
+          "expect": "This page is guarded and loads on demand.",
+          "note": "guarded and deferred: the text is the page's own, so it shows after the chunk loaded; no redirect to /login"
         },
         {
           "path": "/login",
@@ -640,13 +643,13 @@
         },
         {
           "path": "/files/large",
-          "expect": "Refresh the files",
-          "at": "/files/large"
+          "expect": "Large file (SHA-256 checked)",
+          "note": "the app bar shows the case's title only when the id is one of the cases"
         },
         {
           "path": "/files/small",
-          "expect": "Refresh the files",
-          "at": "/files/small"
+          "expect": "Small file (SHA-256 checked)",
+          "note": "the app bar shows the case's title only when the id is one of the cases"
         }
       ],
       "shots": [
@@ -660,7 +663,7 @@
         {
           "file": "large.png",
           "path": "/files/large",
-          "expect": "Refresh the files",
+          "expect": "Large file (SHA-256 checked)",
           "title": "`/files/large`",
           "alt": "The detail page of the large file, the page a notification tap opens: its status, expected size and SHA-256, destination, and no file or partial file yet."
         }
@@ -693,7 +696,8 @@
         },
         {
           "path": "/xx",
-          "expect": "Nothing at /xx"
+          "expect": "Nothing at /xx",
+          "notFound": true
         }
       ],
       "shots": [
@@ -760,22 +764,26 @@
         {
           "path": "/",
           "expect": "Legacy home",
+          "handWritten": true,
           "note": "a hand-written go_router route"
         },
         {
           "path": "/legacy/orders/7",
-          "expect": "Order 7"
+          "expect": "Order 7",
+          "handWritten": true
         },
         {
           "path": "/products",
           "expect": "Teapot",
           "at": "/shop",
+          "handWritten": true,
           "note": "an old URL redirected to the typed route that replaced it"
         },
         {
           "path": "/products/2",
           "expect": "Kettle costs 39 €",
-          "at": "/shop/products/2"
+          "at": "/shop/products/2",
+          "handWritten": true
         },
         {
           "path": "/shop",
@@ -787,12 +795,15 @@
         },
         {
           "path": "/products/abc",
-          "expect": "Nothing at /products/abc"
+          "expect": "Nothing at /products/abc",
+          "handWritten": true,
+          "notFound": true
         },
         {
           "path": "/products/99",
           "expect": "Could not load the product",
-          "at": "/shop/products/99"
+          "at": "/shop/products/99",
+          "handWritten": true
         }
       ],
       "shots": [
@@ -872,6 +883,12 @@
           "path": "/",
           "expect": "The server did not answer",
           "note": "no server runs in this check: the page shows its offline copy; the JWK is the public test key of test/config_test.dart"
+        }
+      ],
+      "allow": [
+        {
+          "blocked": "^http://127\\.0\\.0\\.1:8787/",
+          "reason": "the app asks cose-demo-server on 127.0.0.1:8787 (COSE_SERVER_URL), which this check does not run: the request is aborted and the page shows its offline copy (the signed round trip is `just cose`)"
         }
       ],
       "shots": [

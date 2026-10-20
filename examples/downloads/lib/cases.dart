@@ -23,7 +23,7 @@ final class DemoCase {
     required this.path,
   });
 
-  /// The download's id (the route `/downloads/<id>` shows it).
+  /// The download's id (the route `/files/<id>` opens that download's page).
   final String id;
 
   /// The card's title.

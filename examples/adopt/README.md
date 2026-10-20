@@ -97,6 +97,8 @@ When every route has moved: mount at `/` (`AppRoutes.mount()`) or return `AppRou
 ## Run it
 
 ```sh
+cd examples/adopt
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run
 ```

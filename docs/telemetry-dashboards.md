@@ -202,4 +202,4 @@ _Sample data from `scripts/telemetry/seed.py --showcase`._
 - Grafana's dashboards are read-only (provisioned): save a copy to change one.
 - A dashboard that a newer `fsp` no longer ships is deleted from OpenObserve when nobody edited it, and Grafana drops its file; `fsp telemetry` deletes the stale files in its folder too.
 
-Images are pinned by tag and digest (collector `0.162.0`, OpenObserve `v1.0.4`, Grafana `13.2.3`), for `amd64` and `arm64`. The collector comes from `ghcr.io`, the rest from `mirror.gcr.io`, Google's mirror of Docker Hub (the same images and digests), so a pull does not count against the anonymous limits of Docker Hub or Amazon ECR Public, which a shared network or a CI runner can exhaust.
+Images are pinned by tag and digest (collector `0.162.0`, OpenObserve `v1.1.2`, Grafana `13.2.3`), for `amd64` and `arm64`. The collector comes from `ghcr.io`, the rest from `mirror.gcr.io`, Google's mirror of Docker Hub (the same images and digests), so a pull does not count against the anonymous limits of Docker Hub or Amazon ECR Public, which a shared network or a CI runner can exhaust.

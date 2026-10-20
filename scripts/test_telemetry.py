@@ -738,7 +738,7 @@ class Compose(unittest.TestCase):
 
 
 class FakeOpenObserve:
-    """Just the endpoints import.py uses, as v1.0.4 answers them (checked against the real server)."""
+    """Just the endpoints import.py uses, as v1.0.4 and v1.1.2 answer them (checked against the real servers)."""
 
     def __init__(self, not_ready_polls=0):
         self.not_ready_polls = not_ready_polls

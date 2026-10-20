@@ -210,6 +210,11 @@ struct TreeCx {
     /// For a `GoRoute`: a guard of its own, or of a page-less folder above, is in its redirects.
     #[serde(skip)]
     guarded: bool,
+    /// The page is held back until its guard has passed (since 0.21.0, fespalier/fespalier#258): a
+    /// redirect runs for it, its own or a `GoRoute`'s or a tab shell's above. Its page builder is
+    /// `refusedView(context, state) ?? <page>`, so a pushed page go_router restores without its redirect
+    /// is not built (see [`mark_gated`]).
+    gated: bool,
 }
 
 /// A `GoRoute`'s URL, page file and page class, and the localized segments of the URL.
@@ -245,6 +250,21 @@ pub fn dart_str(s: &str) -> String {
     }
     out.push('\'');
     out
+}
+
+/// Sets [`TreeCx::gated`] on every route under a redirect: `above` says whether a `GoRoute` or a tab
+/// shell above `t` has one (since 0.21.0). A route's children and its tab branches' routes are below it.
+fn mark_gated(t: &mut TreeCx, above: bool) {
+    let here = above || !t.redirects.is_empty();
+    t.gated = here;
+    for c in &mut t.routes {
+        mark_gated(c, here);
+    }
+    for b in &mut t.branches {
+        for c in &mut b.routes {
+            mark_gated(c, here);
+        }
+    }
 }
 
 /// `go_router` takes the first route that matches, so `/about` must come before
@@ -659,7 +679,10 @@ struct CacheCx {
 
 pub fn emit(app: &App, cfg: &Config, diags: &mut Diags) -> String {
     let mut fns = BTreeSet::new();
-    let tree = routes_of(app, 0, true, "", &[], false, &mut fns, cfg.semantics_ids);
+    let mut tree = routes_of(app, 0, true, "", &[], false, &mut fns, cfg.semantics_ids);
+    for t in &mut tree {
+        mark_gated(t, false);
+    }
     check_order(&tree, diags);
     check_tab_starts(&tree, diags);
     check_root_children(&tree, diags);
@@ -1218,6 +1241,7 @@ fn routes_of(
             sibling: false,
             id,
             guarded: false,
+            gated: false,
             routes: out,
         }];
     }
@@ -1813,6 +1837,7 @@ fn page_route(
         sibling: r.sibling,
         id,
         guarded: !inherited.is_empty() || (own_guard && r.guard.is_some()),
+        gated: false,
     }
 }
 
@@ -1869,6 +1894,7 @@ fn redirect_route(
         sibling: r.sibling,
         id,
         guarded: !inherited.is_empty() || r.guard.is_some(),
+        gated: false,
     }
 }
 
@@ -1980,6 +2006,7 @@ fn tab_routes(
         sibling: false,
         id,
         guarded: false,
+        gated: false,
         routes: vec![],
     }]
 }

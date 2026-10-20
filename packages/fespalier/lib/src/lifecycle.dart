@@ -16,7 +16,7 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'guards.dart' show GuardFailure;
+import 'guards.dart' show GuardFailure, refusedEntry;
 import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
@@ -90,6 +90,11 @@ final class _Instance {
 
 /// What one walk of the committed configuration found.
 final class _Walk {
+  /// The walk of [router], when a pushed page of it can be held back (since 0.21.0).
+  _Walk([this.router]);
+
+  final GoRouter? router;
+
   final List<_Instance> instances = [];
 
   /// Whether the last thing the walk found is the error view of a pushed navigation that failed
@@ -110,7 +115,10 @@ final class _Walk {
         // A pushed navigation that failed its guard (since 0.21.0): go_router keeps the failed list
         // here, with an empty path, and the page it was pushed from stays under its error view. It
         // is no page, but it covers the one below: that page is not visible until the view closes.
-        if (m.matches.isError) {
+        // A pushed page whose guard has not passed (a restored one, fespalier/fespalier#258) is held
+        // back the same way.
+        final r = router;
+        if (m.matches.isError || (r != null && refusedEntry(r, m))) {
           covered = true;
           continue;
         }
@@ -306,7 +314,7 @@ final class RouterWatch {
       return;
     }
     final config = router.routerDelegate.currentConfiguration;
-    final walk = _Walk()..add(config.matches, config.uri, const []);
+    final walk = _Walk(router)..add(config.matches, config.uri, const []);
     _endNavigation(nav, config, walk.instances.lastOrNull);
   }
 
@@ -353,7 +361,7 @@ final class RouterWatch {
     try {
       config = router.routerDelegate.currentConfiguration;
       if (config.isEmpty && config.error == null) return;
-      walk = _Walk()..add(config.matches, config.uri, const []);
+      walk = _Walk(router)..add(config.matches, config.uri, const []);
     } catch (_) {
       return;
     }
@@ -442,21 +450,37 @@ final class RouterWatch {
   /// shows its error route, as its own or over a pushed navigation: what a navigation's commit and
   /// its end both report, so the two never differ.
   String? _routeOf(RouteMatchList config, _Instance? visible) =>
-      _activeOf(config).isError || visible == null ? null : _patternOf(visible);
+      _isErrorView(config) || visible == null ? null : _patternOf(visible);
+
+  /// Whether the router shows an error view for [config] (since 0.21.0): its own error, the failed
+  /// list of a pushed navigation, or a held pushed page (whose guard has not passed: its page is not
+  /// built, see `refusedView`).
+  bool _isErrorView(RouteMatchList config) {
+    if (_activeOf(config).isError) return true;
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    return pushed.isNotEmpty && refusedEntry(router, pushed.last);
+  }
 
   /// What [config] says of its navigation (since 0.21.0): `error` when a guard or a `redirect.dart`
   /// failed and the router shows the error view ([GuardFailure]), `not_found` for any other error of
   /// the router's (no route matched, a redirect loop), `ok` otherwise. A navigation that was pushed
   /// says it the same way, though go_router holds its error in the pushed entry.
-  String _outcomeOf(RouteMatchList config) => switch (_activeOf(config).error) {
-    null => TelemetryOutcome.ok,
-    GuardFailure() => TelemetryOutcome.error,
-    _ => TelemetryOutcome.notFound,
-  };
+  String _outcomeOf(RouteMatchList config) {
+    if (_isErrorView(config) && _activeOf(config).error == null) {
+      // A held pushed page (since 0.21.0) is the error view of its navigation until its guard passes.
+      return TelemetryOutcome.error;
+    }
+    return switch (_activeOf(config).error) {
+      null => TelemetryOutcome.ok,
+      GuardFailure() => TelemetryOutcome.error,
+      _ => TelemetryOutcome.notFound,
+    };
+  }
 
   /// Tells the sink what [config] puts on screen, for [nav], at the commit (since 0.19.0).
   void _tellCommit(_Nav nav, RouteMatchList config) {
-    final walk = _Walk()..add(config.matches, config.uri, const []);
+    final walk = _Walk(router)..add(config.matches, config.uri, const []);
     telemetryNavigationCommit(
       nav.token,
       TelemetryCommit(

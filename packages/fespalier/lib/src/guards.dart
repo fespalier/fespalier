@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -115,8 +116,17 @@ FutureOr<String?> _once(
 
 final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 
-/// The guards of one router that stay subscribed: one per guard site (a route and
-/// a guard on it), replaced when that site runs again.
+/// The guards of one router that stay subscribed: one per guard site (a route and a guard on it),
+/// replaced when that site runs again.
+///
+/// Since 0.21.0 it also holds the pushed pages of the router (fespalier/fespalier#258). go_router
+/// restores a pushed page on a refresh, a restore, a pop back or a hot-reload swap without running
+/// its redirect, and a page whose redirect threw is restored as if it had passed. So this class
+/// runs the guard of the page on top again (`replace`, which runs the redirects of its entry and
+/// keeps its page key), and holds back a page whose guard has not passed in a navigation that
+/// pushed it: the router builds nothing for it (`refusedView`). A guard that a pushed page's site
+/// watches is re-run on its own page, and a guard that a navigation evaluated is bound to the page
+/// that navigation put on top.
 final class _RouterGuards {
   _RouterGuards(this._router) {
     _router.routerDelegate.addListener(_committed);
@@ -153,6 +163,31 @@ final class _RouterGuards {
 
   /// The sites evaluated since the router last committed a location.
   final _touched = <String>{};
+
+  /// The pushed pages whose redirects passed in a navigation that pushed them, by page key. A page
+  /// that is not here and has a redirect is held back ([refuses]).
+  final _passed = <String>{};
+
+  /// What the redirect of a pushed page threw, by page key: what the held page shows, nothing yet.
+  final _failures = <String, GuardFailure>{};
+
+  /// The completer each pushed page's `Future` answers to: the one of the navigation that put the
+  /// page on top. A re-run forwards its own result there, so the `Future` completes when the page
+  /// that stands in for the failed one pops.
+  final _completers = <String, Completer<Object?>>{};
+
+  /// The pages whose re-run is in flight: the commit of that one is not a navigation of the
+  /// caller's, so it keeps the completer the caller holds.
+  final _rerunning = <String>{};
+
+  /// The pages whose re-run is scheduled for after the frame.
+  final _scheduled = <String>{};
+
+  /// A re-run's navigation is in flight, until the frame after it: its `leave()` does not ask.
+  var _leaving = false;
+
+  /// The configuration the last judgment was made for: one judgment per configuration object.
+  RouteMatchList? _judged;
 
   FutureOr<String?> run(
     BuildContext context,
@@ -217,38 +252,160 @@ final class _RouterGuards {
     // The router is about to ask again, so the newest answer is the one it uses.
     live.acceptLatest();
     final hook = guardRefreshHooks[_router];
+    final owner = live.page;
+    if (owner == null) {
+      if (hook == null) {
+        _router.refresh();
+      } else {
+        hook(_router.refresh);
+      }
+      return;
+    }
+    // A guard of a pushed page: the page is run again, and only while it is on top.
+    final top = _topEntry();
+    if (top == null || top.pageKey.value != owner || top.matches.isError) {
+      _live.remove(site)?.close();
+      return;
+    }
     if (hook == null) {
-      _router.refresh();
+      _rerun(top);
     } else {
-      hook(_router.refresh);
+      hook(() => _rerun(top));
     }
   }
 
-  /// The router committed a location: guards it did not run are not its any more. When what it
-  /// committed is a guard that failed (since 0.21.0), the guards that navigation did run are not
-  /// its either: a page that never showed has nothing to keep up to date, and a refresh that one of
-  /// them asked for after a pushed failure would show the guarded page without running its guard
-  /// (go_router's own gap, fespalier/fespalier#258).
+  /// Runs the guard of the pushed page [entry] again, as a navigation that replaces the page with
+  /// the same location and `extra`: go_router runs the redirects of the entry, keeps its page key
+  /// and leaves the stack below alone. The `Future` of that navigation completes the completer the
+  /// page answers to (see [_completers]). One re-run per page at a time.
+  void _rerun(ImperativeRouteMatch entry) {
+    final key = entry.pageKey.value;
+    if (!_rerunning.add(key)) return;
+    final target = _completers[key] ?? entry.completer;
+    _leaving = true;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _leaving = false;
+      _rerunning.remove(key);
+    });
+    final Future<Object?> answer = _router.replace<Object?>(
+      entry.matches.uri.toString(),
+      extra: entry.matches.extra,
+    );
+    answer.then<void>(
+      (value) {
+        if (!target.isCompleted) target.complete(value);
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!target.isCompleted) target.completeError(error, stack);
+      },
+    );
+  }
+
+  /// Runs the re-run of [key] after the frame, once, when it is still on top then.
+  void _schedule(String key) {
+    if (!_scheduled.add(key)) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _scheduled.remove(key);
+      final top = _topEntry();
+      if (top == null || top.pageKey.value != key || top.matches.isError) {
+        return;
+      }
+      _rerun(top);
+    });
+  }
+
+  /// The router committed a location: the navigation's sites are bound to the page it put on top,
+  /// the rest are no longer watched. See [_judge].
   void _committed() {
-    final failed = _failed();
-    final stale = [
-      for (final site in _live.keys)
-        if (failed || !_touched.contains(site)) site,
-    ];
+    _judge(
+      _router.routerDelegate.currentConfiguration,
+      _isPushNavigation(_router),
+    );
+  }
+
+  /// Judges the committed [config] once (since 0.21.0). [pushPath] says whether the navigation
+  /// pushed a page (`push`, `pushReplacement`, `replace`): then its redirects ran, and a page on top
+  /// passed or failed them.
+  ///
+  /// - The sites the navigation evaluated are bound to the page on top (null for the base). A
+  ///   navigation that failed closes them all: a page that never showed has nothing to keep up to
+  ///   date (a refresh that one of them asked for would show the guarded page, #258).
+  /// - A site bound to a page stays live while that page is on top, and is closed when it is covered
+  ///   or gone. A site the navigation did not evaluate and that is bound to no page is closed.
+  /// - A pushed page that is on top and was not pushed by this navigation (a refresh, a restore, a
+  ///   pop back, a tab, a swap) runs its guard again, after the frame.
+  void _judge(RouteMatchList config, bool pushPath) {
+    if (identical(config, _judged)) return;
+    _judged = config;
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    final failed = activeMatches(config, pushed).error is GuardFailure;
+    final top = pushed.isEmpty ? null : pushed.last;
+    final shown = top != null && !top.matches.isError ? top : null;
+    final shownKey = shown?.pageKey.value;
+
+    final stale = <String>[];
+    for (final site in _live.keys) {
+      final live = _live[site]!;
+      if (failed) {
+        stale.add(site);
+      } else if (_touched.contains(site)) {
+        live.page = pushPath ? shownKey : null;
+      } else if (live.page == null || live.page != shownKey) {
+        stale.add(site);
+      }
+    }
     for (final site in stale) {
       _live.remove(site)?.close();
     }
     _touched.clear();
+
+    if (pushPath && top != null) {
+      final key = top.pageKey.value;
+      if (top.matches.isError) {
+        _passed.remove(key);
+        final error = top.matches.error;
+        if (error is GuardFailure) _failures[key] = error;
+      } else {
+        _passed.add(key);
+        _failures.remove(key);
+      }
+      // A re-run's own commit keeps the completer the caller holds; any other commit is the
+      // caller's navigation, and its completer is the one to answer.
+      if (!_rerunning.contains(key)) _completers[key] = top.completer;
+    }
+    final keys = {for (final e in pushed) e.pageKey.value};
+    _passed.removeWhere((k) => !keys.contains(k));
+    _failures.removeWhere((k, _) => !keys.contains(k));
+    _completers.removeWhere((k, _) => !keys.contains(k));
+
+    if (!pushPath && shown != null && _guarded(shown)) {
+      _schedule(shownKey!);
+    }
   }
 
-  /// Whether the router shows a guard that failed: its own error (after `go`, a link or a tab), or
-  /// the failed list in the entry on top of the stack (after `push`, and `pushReplacement` and
-  /// `replace` over other pages).
-  bool _failed() {
-    final config = _router.routerDelegate.currentConfiguration;
+  /// The pushed page on top, or null when none is pushed.
+  ImperativeRouteMatch? _topEntry() {
     final pushed = <ImperativeRouteMatch>[];
-    pushedMatches(config.matches, pushed);
-    return activeMatches(config, pushed).error is GuardFailure;
+    pushedMatches(_router.routerDelegate.currentConfiguration.matches, pushed);
+    return pushed.isEmpty ? null : pushed.last;
+  }
+
+  /// Whether [entry]'s page is held back: a page with a redirect that no navigation pushing it has
+  /// passed (a restored page, or a failed one).
+  bool _held(ImperativeRouteMatch entry) =>
+      !entry.matches.isError &&
+      !_passed.contains(entry.pageKey.value) &&
+      _guarded(entry);
+
+  /// Whether [entry] is held back: see [_held].
+  bool refusesEntry(ImperativeRouteMatch entry) => _held(entry);
+
+  /// Whether a held page of this router is at [uri]: its page builds nothing (`refusedView`).
+  bool refuses(Uri uri) {
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(_router.routerDelegate.currentConfiguration.matches, pushed);
+    return pushed.any((e) => e.matches.uri == uri && _held(e));
   }
 
   void _closeAll() {
@@ -260,12 +417,55 @@ final class _RouterGuards {
   }
 }
 
+/// Whether [entry]'s route chain has a redirect (its own, or a route or shell above it in the pushed
+/// navigation).
+bool _guarded(ImperativeRouteMatch entry) =>
+    _hasRedirect(entry.matches.matches);
+
+bool _hasRedirect(List<RouteMatchBase> matches) {
+  for (final m in matches) {
+    if (m is ImperativeRouteMatch) continue;
+    if (m is ShellRouteMatch) {
+      if (m.route.redirect != null || _hasRedirect(m.matches)) return true;
+    } else if (m is RouteMatch && m.route.redirect != null) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Whether [router] is in a navigation that pushes a page (`push`, `pushReplacement` or `replace`):
+/// the information it holds says so until the router reports the location it committed.
+bool _isPushNavigation(GoRouter router) {
+  final state = router.routeInformationProvider.value.state;
+  if (state is! RouteInformationState) return false;
+  return switch (state.type) {
+    NavigatingType.push ||
+    NavigatingType.pushReplacement ||
+    NavigatingType.replace => true,
+    _ => false,
+  };
+}
+
+/// Whether a re-run of a pushed page's guard is in flight on [router] (the page is replaced, not
+/// left): `leaveExit` does not ask then.
+bool guardRerunning(GoRouter router) => _guardsOf[router]?._leaving ?? false;
+
+/// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
+/// page the walk of `RouterWatch` treats as an error view, which covers the page below it.
+bool refusedEntry(GoRouter router, ImperativeRouteMatch entry) =>
+    _guardsOf[router]?.refusesEntry(entry) ?? false;
+
 /// One evaluation of a guard site and its subscription.
 final class _Live {
   _Live(this.context, {this.owner});
 
   /// The router's guards, told when an evaluation starts and ends.
   final _RouterGuards? owner;
+
+  /// The page key of the pushed page this guard is bound to (since 0.21.0), null for the base: the
+  /// guard runs again on that page while it is on top.
+  String? page;
 
   /// Where the guard last ran: when it is gone, so is the app.
   final BuildContext context;
@@ -397,6 +597,11 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
   final zone = Zone.current;
   final parent = zone.parent;
   final router = zone[_goRouterZoneKey];
+  // A redirect that runs for a push holds the pushed page's guard from here on (fespalier/fespalier#258):
+  // go_router will restore that page later without running the redirect.
+  if (router is GoRouter && _isPushNavigation(router)) {
+    _guardsOf[router] ??= _RouterGuards(router);
+  }
   if (router != null &&
       parent != null &&
       parent[_goRouterZoneKey] == null &&
@@ -524,13 +729,34 @@ void _retry(GoRouter router, GuardFailure failure, BuildContext inside) {
   final pushed = <ImperativeRouteMatch>[];
   pushedMatches(config.matches, pushed);
   if (pushed.isEmpty || !identical(pushed.last.matches.error, failure)) return;
-  if (!router.canPop()) return;
-  final failed = pushed.last.matches;
   // Only dialogs, sheets and other routes without a page can be over the error view now: close
-  // them first, or the pop below would close the topmost of them and leave the error view.
+  // them first, or the navigation below would leave them over the view.
   _closeRoutesOver(inside);
-  router.pop();
-  unawaited(router.push<Object?>(failed.uri.toString(), extra: failed.extra));
+  // The entry is replaced in place (its key stays), and its `Future` answers the caller's
+  // (see `_RouterGuards._rerun`).
+  (_guardsOf[router] ??= _RouterGuards(router))._rerun(pushed.last);
+}
+
+/// What a guarded route's page shows in place of its page (since 0.21.0): the generated page
+/// builder is `refusedView(context, state) ?? <page>`, so the page is not built while [state] is a
+/// pushed page that has not passed its guard (fespalier/fespalier#258). Null when the page may be
+/// built: at once for every page of a router with no pushed page.
+///
+/// A held page shows nothing (an empty box): the guard of the page is run again after the frame, and
+/// its navigation shows the error view of a failure, or the page of a pass. It makes no `Future`,
+/// and it reports nothing.
+Widget? refusedView(BuildContext context, GoRouterState state) {
+  final router = GoRouter.maybeOf(context);
+  if (router == null) return null;
+  final config = router.routerDelegate.currentConfiguration;
+  if (_guardsOf[router] == null) {
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(config.matches, pushed);
+    if (pushed.isEmpty) return null;
+  }
+  final guards = _guardsOf[router] ??= _RouterGuards(router);
+  guards._judge(config, _isPushNavigation(router));
+  return guards.refuses(state.uri) ? const SizedBox.shrink() : null;
 }
 
 /// Closes what lies over the page that [inside] is in (since 0.21.0): the routes without a `Page`

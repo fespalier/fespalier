@@ -39,7 +39,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'e9312c948ffecfb9';
+  static const String _version = '6f2092aa52f921fc';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
     'OrderRoute.data': '4c4f2fac',
@@ -150,7 +150,7 @@ abstract final class AppRoutes {
             ])),
             pageBuilder: (context, state) => namedPage('/admin', () => _i1.transition(
               state.pageKey,
-              const _i4.AdminPage(),
+              refusedView(context, state) ?? const _i4.AdminPage(),
             )),
           ),
           GoRoute(
@@ -158,7 +158,7 @@ abstract final class AppRoutes {
             redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@3', refGuard(context, 'g1@3', (ref) => _i3.guard(ref, uri: state.uri)))),
             pageBuilder: (context, state) => namedPage('/orders', () => _i1.transition(
               state.pageKey,
-              DataView(
+              refusedView(context, state) ?? DataView(
                 watch: (ref) => watchData(ref, 'dSignedInOrders', _dataSignedInOrders),
                 refresh: (ref) => ref.invalidate(_dataSignedInOrders),
                 data: (d) => _i7.OrdersPage(orders: d),
@@ -172,7 +172,7 @@ abstract final class AppRoutes {
                 path: ':id',
                 pageBuilder: (context, state) => namedPage('/orders/:id', () => _i1.transition(
                   state.pageKey,
-                  buildWithParams(
+                  refusedView(context, state) ?? buildWithParams(
                     () => _params4(state),
                     (v) => DataView(
                       watch: (ref) => watchData(ref, 'dSignedInOrdersId', _dataSignedInOrdersId(v.id)),
@@ -203,7 +203,7 @@ abstract final class AppRoutes {
             ))),
             pageBuilder: (context, state) => namedPage('/sign-in', () => _i1.transition(
               state.pageKey,
-              buildWithParams(
+              refusedView(context, state) ?? buildWithParams(
                 () => _params6(state),
                 (v) => _i12.SignInPage(from: v.from),
                 () => notFound(state.uri),

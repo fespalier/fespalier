@@ -404,7 +404,51 @@ Future<GoRouterState> anyState(WidgetTester tester) async {
   return r.routerDelegate.state;
 }
 
+/// Whether the guard of `/g` lets it through: a re-run after a change asks the guard again.
+final class _GOpen extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void set(bool value) => state = value;
+}
+
+final _gOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
+
 void main() {
+  group('a re-run of a guarded pushed page (fespalier/fespalier#258)', () {
+    testWidgets('does not ask the page to leave when its guard moves it', (
+      tester,
+    ) async {
+      asked.clear();
+      answer = (_, _) => false;
+      final r = GoRouter(
+        initialLocation: '/y',
+        navigatorKey: rootKey,
+        routes: [
+          GoRoute(path: '/y', builder: (_, _) => const Text('y')),
+          leaving(
+            '/g',
+            'g',
+            redirect: (context, state) => runRedirect(
+              () => refGuard(context, 'g1@g', (ref) {
+                return ref.watch(_gOpen) ? null : '/y';
+              }),
+            ),
+          ),
+        ],
+      );
+      final c = await pumpRouter(tester, r);
+      await push(tester, r, '/g');
+      expect(find.text('g'), findsOneWidget);
+      c.read(_gOpen.notifier).set(false);
+      await settle(tester);
+      // The guard answered '/y': the page is replaced, and nothing asked it to leave.
+      expect(asked, isEmpty);
+      expect(where(r), '/y');
+      expect(find.text('g'), findsNothing);
+    });
+  });
+
   group('go, replace, pushReplacement', () {
     testWidgets('go away from a page that refuses keeps it', (tester) async {
       final r = await boot(tester, initial: '/x');

@@ -8,7 +8,6 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 
 /// Whether a guard lets its page through, read through a provider nothing watches (a
 /// `ProviderContainer` guard).

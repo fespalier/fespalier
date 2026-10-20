@@ -64,6 +64,13 @@ var adminRuns = 0;
 VoidCallback? heldRetry;
 GoRouterState? lastErrorState;
 
+Widget _inboxPage(GoRouterState state) {
+  inboxBuilt++;
+  return Text(
+    'INBOX${state.extra == null ? '' : ' ${state.uri.query} ${state.extra}'}',
+  );
+}
+
 /// The view a failed guard of `/inbox` and `/plain` shows: its error, and a button that retries.
 final class GuardErrorView extends StatelessWidget {
   const GuardErrorView({required this.error, required this.retry, super.key});
@@ -117,12 +124,9 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
           }),
         ),
       ),
-      builder: (_, state) {
-        inboxBuilt++;
-        return Text(
-          'INBOX${state.extra == null ? '' : ' ${state.uri.query} ${state.extra}'}',
-        );
-      },
+      // The generated page builder of a guarded route: `refusedView(context, state) ?? <page>`.
+      builder: (context, state) =>
+          refusedView(context, state) ?? _inboxPage(state),
     ),
     GoRoute(
       path: '/plain',
@@ -677,7 +681,7 @@ void main() {
         router.refresh();
         await tester.pumpAndSettle();
         expect(inboxRuns, 2);
-        expect(find.text('INBOX'), findsOneWidget);
+        expect(find.text('INBOX x=1 EX'), findsOneWidget);
         expect(tester.takeException(), isNull);
         expect(done, isEmpty, reason: 'the page it started is still open');
         router.pop();

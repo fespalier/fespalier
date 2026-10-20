@@ -86,6 +86,9 @@ leaveScope(state, flowStep({{ page }}))
 leaveScope(state, {{ page }})
 {%- endif %}
 {%- endmacro %}
+{% macro gated_page(page) -%}
+refusedView(context, state) ?? {{ page }}
+{%- endmacro %}
 {% macro scroll_memory(page) -%}
 RouteScrollMemory(
   state: state,
@@ -201,6 +204,9 @@ GoRoute(
 {% if r.page %}
 {% set body = leave_scope(view(r), r.flow_step) if (r.leave or r.flow_step) else view(r) %}
 {% set page = with_segments(r.seg_fn, body, r.not_found) if r.seg_fn else body %}
+{% if r.gated %}
+{% set page = gated_page(page) %}
+{% endif %}
 {% if scroll_restoration %}
 {% set page = scroll_memory(page) %}
 {% endif %}

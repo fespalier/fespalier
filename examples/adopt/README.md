@@ -12,6 +12,14 @@ It is the example for the [`fespalier-migration`](../../skills/fespalier-migrati
 the docs are [Migration](../../docs/migration.md#adopting-fespalier-in-a-go_router-app) and
 [`main()`](../../docs/app-startup.md)).
 
+## Screenshots
+
+| `/`                                                                                                                                   | `/shop`                                                                                                                                                                  | `/shop/products/2`                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The legacy home page, titled Legacy home: All products, Featured: Kettle and Order 7.](../../docs/images/examples/adopt/legacy.png) | ![The products list at /shop, titled Products with a Home link: Teapot at 24 euros, Kettle at 39 euros and Whisk at 9 euros.](../../docs/images/examples/adopt/shop.png) | ![A product page at /shop/products/2: an app bar with a back arrow and the title Kettle, Kettle costs 39 euros, and All products.](../../docs/images/examples/adopt/product.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots adopt`).
+
 ## What it shows
 
 Two screens, a products list and a product, in two apps that open the same URLs:

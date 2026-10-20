@@ -31,6 +31,14 @@ refused) and its own `observe.dart`, a guarded and deferred settings page, and a
   a crash after opening an order says which screen it happened on; a page change is a breadcrumb; with
   `tracing: true` opening an order is a `ui.load` transaction with its data load.
 
+## Screenshots
+
+| `/`                                                                                                                                                                                                        | `/orders`                                                                                            | `/orders/1`                                                                                                                                                            |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The telemetry example's home tab: the line Home, the line Each page you open here is a span, and a bottom navigation bar with Home, Orders and Settings.](../../docs/images/examples/telemetry/home.png) | ![The Orders tab: a list with Order 1 and Order 2.](../../docs/images/examples/telemetry/orders.png) | ![The page of order 1, with its two actions, Refund and Refuse, above the bottom navigation bar with Orders selected.](../../docs/images/examples/telemetry/order.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots telemetry`).
+
 ## See it
 
 ```sh

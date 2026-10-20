@@ -9,6 +9,14 @@ This README has two audiences. [Test it on a device](#test-it-on-a-device) is fo
 downloads on a phone or a desktop and **needs no knowledge of fespalier and writes no code**. [How it is built](#how-it-is-built)
 is for a developer.
 
+## Screenshots
+
+| `/`                                                                                                                                                                                                                                 | `/files/large`                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The downloads example: one card per case of the device test (a large file, a small file and a wrong checksum), each Not started with Start and Details, and Sign out (clear all).](../../docs/images/examples/downloads/home.png) | ![The detail page of the large file, the page a notification tap opens: its status, expected size and SHA-256, destination, and no file or partial file yet.](../../docs/images/examples/downloads/large.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots downloads`).
+
 ## Test it on a device
 
 This is the manual test of issue
@@ -27,7 +35,7 @@ Android phone or iPhone and one desktop (macOS, Windows or Linux), and report wh
 
 ```sh
 cd examples/downloads
-flutter create . --platforms=android,ios,macos,linux,windows,web   # adds the platform folders only; keep the ones you test on
+flutter create --empty . --platforms=android,ios,macos,linux,windows,web   # adds the platform folders, .gitignore and .metadata; keep the ones you test on
 flutter pub get
 ```
 

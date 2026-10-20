@@ -5,6 +5,11 @@
     "deviceScaleFactor": 2
   },
   "time": "2026-01-15T10:42:00Z",
+  "budget": {
+    "perImage": 120000,
+    "total": 2000000,
+    "perExample": 3
+  },
   "examples": {
     "shop": {
       "urls": [
@@ -50,6 +55,29 @@
         {
           "blocked": "^http://localhost:13001/",
           "reason": "the product photos come from an EmgR image proxy on localhost:13001 (images.dart, SHOP_IMAGES), which this check does not run: the request is aborted and the page shows the product's initial instead (the shop's tests fake the images)"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Browse products",
+          "title": "`/`",
+          "alt": "The shop's home page: an app bar titled Shop with Products and a cart, and three buttons: Browse products, Most expensive first and Gift cards."
+        },
+        {
+          "file": "products.png",
+          "path": "/products",
+          "expect": "Page 1 of 2",
+          "title": "`/products`",
+          "alt": "The product list: sort buttons, page 1 of 2 with Next, and three products with an initial, a name and a price."
+        },
+        {
+          "file": "product.png",
+          "path": "/products/1",
+          "expect": "Add to cart",
+          "title": "`/products/1`",
+          "alt": "A product page: the product's initial in a large circle, Coffee beans, 500 g at 9.50 euros, a quantity stepper and Add to cart."
         }
       ]
     },
@@ -305,6 +333,29 @@
           "expect": "Page anything",
           "note": "the catch-all $slug page"
         }
+      ],
+      "shots": [
+        {
+          "file": "nickname.png",
+          "path": "/nickname",
+          "expect": "Hello Ann",
+          "title": "`/nickname`",
+          "alt": "The nickname page of the account group: Hello Ann, a form with Nickname, Age and a Newsletter checkbox, Save and Reset."
+        },
+        {
+          "file": "team.png",
+          "path": "/teams/core/members",
+          "expect": "Members: ann, bob",
+          "title": "`/teams/core/members`",
+          "alt": "A team section: Team CORE with Members and Settings chips, the members ann and bob, Add carol, and the breadcrumb Home, Team CORE, Members at the bottom."
+        },
+        {
+          "file": "share.png",
+          "path": "/photos/share",
+          "expect": "Share photos",
+          "title": "`/photos/share`",
+          "alt": "A route presented as a bottom sheet over the dimmed photos page: Share photos, Terms and Done."
+        }
       ]
     },
     "tabs": {
@@ -342,6 +393,34 @@
           "path": "/settings",
           "expect": "Settings"
         }
+      ],
+      "shots": [
+        {
+          "file": "profile.png",
+          "path": "/profile",
+          "expect": "Edit profile",
+          "title": "`/profile`",
+          "alt": "The Profile tab: an avatar, Profile, and the buttons Edit profile, Security and Settings, above a bottom navigation bar with Home, Search, Profile (selected) and Library."
+        },
+        {
+          "file": "books.png",
+          "path": "/library/books",
+          "expect": "Books count 0",
+          "title": "`/library/books`",
+          "alt": "The Library tab, itself a tab layout: Books and Authors chips at the top, a books counter, and the bottom navigation bar with Library selected."
+        },
+        {
+          "file": "books-wide.png",
+          "path": "/library/books",
+          "expect": "Books count 0",
+          "title": "`/library/books`, 1280 px wide",
+          "alt": "The same Library page in a window 1280 pixels wide: fespalier_adaptive draws the menu as a navigation drawer, with Home, Search, Profile and the Library section's Books and Authors, instead of a bottom bar.",
+          "viewport": {
+            "width": 1280,
+            "height": 800,
+            "deviceScaleFactor": 1
+          }
+        }
       ]
     },
     "minimal": {
@@ -378,6 +457,29 @@
           "expect": "Nothing at /nope",
           "notFound": true
         }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Hello from fespalier",
+          "title": "`/`",
+          "alt": "The minimal example's home page: an app bar titled Minimal with Home and About, Hello from fespalier, and three rows: Item 1, Item 2 (three of them) and Item 99, which does not exist."
+        },
+        {
+          "file": "item.png",
+          "path": "/items/2?qty=3",
+          "expect": "3 × Kettle (#2)",
+          "title": "`/items/2?qty=3`",
+          "alt": "The item page for /items/2?qty=3: 3 × Kettle (#2), the segment and the query parameter read by the page."
+        },
+        {
+          "file": "error.png",
+          "path": "/items/99",
+          "expect": "Couldn't load item #99",
+          "title": "`/items/99`",
+          "alt": "The item page's error.dart for an item that does not exist: Couldn't load item #99: No item #99, with a Retry button."
+        }
       ]
     },
     "telemetry": {
@@ -408,6 +510,29 @@
         {
           "blocked": "^https://browser\\.sentry-cdn\\.com/",
           "reason": "sentry_flutter loads its browser SDK from browser.sentry-cdn.com on the web even when SENTRY_DSN is empty (FespalierSentry.configure says an empty DSN sends nothing); fix item: fix(sentry): an empty DSN loads no Sentry script on the web"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Each page you open here is a span.",
+          "title": "`/`",
+          "alt": "The telemetry example's home tab: the line Home, the line Each page you open here is a span, and a bottom navigation bar with Home, Orders and Settings."
+        },
+        {
+          "file": "orders.png",
+          "path": "/orders",
+          "expect": "Order 1",
+          "title": "`/orders`",
+          "alt": "The Orders tab: a list with Order 1 and Order 2."
+        },
+        {
+          "file": "order.png",
+          "path": "/orders/1",
+          "expect": "Refuse",
+          "title": "`/orders/1`",
+          "alt": "The page of order 1, with its two actions, Refund and Refuse, above the bottom navigation bar with Orders selected."
         }
       ]
     },
@@ -441,6 +566,29 @@
           "path": "/forbidden",
           "expect": "Your account can't open that page."
         }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Signed out",
+          "title": "`/`",
+          "alt": "The auth example's public home page: Signed out, and a Sign in button."
+        },
+        {
+          "file": "sign-in.png",
+          "path": "/sign-in",
+          "expect": "User name",
+          "title": "`/sign-in`",
+          "alt": "The sign-in page: a back arrow and the title Sign in, a form with User name and Password fields, and a Sign in button."
+        },
+        {
+          "file": "guarded.png",
+          "path": "/orders",
+          "expect": "Sign in to see /orders",
+          "title": "`/orders`, signed out",
+          "alt": "The sign-in page a signed-out person gets for /orders: Sign in to see /orders above User name and Password fields and a Sign in button."
+        }
       ]
     },
     "plugins": {
@@ -460,7 +608,30 @@
         },
         {
           "path": "/orders/42",
-          "expect": "Order 42"
+          "expect": "Order 42 has shipped."
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Simulate a tap: order 42",
+          "title": "`/`",
+          "alt": "The plugins example's home page, titled Plugins: Signed out with a Sign in button, buttons that simulate a notification tap (order 42, account, a foreign link), a shortcut and a widget tap, and Analytics: undecided with Allow and Refuse buttons."
+        },
+        {
+          "file": "order.png",
+          "path": "/orders/42",
+          "expect": "Order 42 has shipped.",
+          "title": "`/orders/42`",
+          "alt": "Order 42: an app bar with a back arrow and the title Order 42, and the line Order 42 has shipped in the middle of the page."
+        },
+        {
+          "file": "login.png",
+          "path": "/account",
+          "expect": "Log in to see /account",
+          "title": "`/account`, signed out",
+          "alt": "The login page a signed-out person gets for /account: an app bar titled Log in, Log in to see /account, and a Sign in button."
         }
       ]
     },
@@ -479,6 +650,22 @@
           "path": "/files/small",
           "expect": "Small file (SHA-256 checked)",
           "note": "the app bar shows the case's title only when the id is one of the cases"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Small file (SHA-256 checked)",
+          "title": "`/`",
+          "alt": "The downloads example: one card per case of the device test (a large file, a small file and a wrong checksum), each Not started with Start and Details, and Sign out (clear all)."
+        },
+        {
+          "file": "large.png",
+          "path": "/files/large",
+          "expect": "Large file (SHA-256 checked)",
+          "title": "`/files/large`",
+          "alt": "The detail page of the large file, the page a notification tap opens: its status, expected size and SHA-256, destination, and no file or partial file yet."
         }
       ]
     },
@@ -512,6 +699,29 @@
           "expect": "Nothing at /xx",
           "notFound": true
         }
+      ],
+      "shots": [
+        {
+          "file": "en.png",
+          "path": "/en",
+          "expect": "This text comes from assets/i18n/en.arb.",
+          "title": "`/en`",
+          "alt": "The i18n example's home page in English: the title Translations, EN and FR buttons, Hello, the text from en.arb with a line only the English file has, and See the products."
+        },
+        {
+          "file": "fr.png",
+          "path": "/fr",
+          "expect": "Ce texte vient de assets/i18n/fr.arb.",
+          "title": "`/fr`",
+          "alt": "The same page in French: Traductions, Bonjour, the text from fr.arb, and the line fr.arb lacks, in English."
+        },
+        {
+          "file": "produits.png",
+          "path": "/fr/produits",
+          "expect": "1 article en stock",
+          "title": "`/fr/produits`",
+          "alt": "The products page at its French path, /fr/produits: Produits and an ICU plural, 1 article en stock."
+        }
       ]
     },
     "maps": {
@@ -529,6 +739,22 @@
         {
           "pattern": "/pick-place",
           "reason": "the map: on the web maplibre_gl loads maplibre-gl from unpkg.com and the demo style's tiles from demotiles.maplibre.org, which this check blocks (with them blocked the page throws an uncaught Error); a map is checked on a device (README, Run it)"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Where should we deliver?",
+          "title": "`/`",
+          "alt": "The maps example's home page: Where should we deliver?, No place yet, and the buttons Pick a place and Offline map."
+        },
+        {
+          "file": "offline.png",
+          "path": "/offline",
+          "expect": "Not on this device",
+          "title": "`/offline`",
+          "alt": "The offline map page: one region pack, Douala, not on this device (about 55 tiles), with a Download button."
         }
       ]
     },
@@ -579,6 +805,29 @@
           "at": "/shop/products/99",
           "handWritten": true
         }
+      ],
+      "shots": [
+        {
+          "file": "legacy.png",
+          "path": "/",
+          "expect": "Legacy home",
+          "title": "`/`",
+          "alt": "The legacy home page, titled Legacy home: All products, Featured: Kettle and Order 7."
+        },
+        {
+          "file": "shop.png",
+          "path": "/shop",
+          "expect": "Teapot",
+          "title": "`/shop`",
+          "alt": "The products list at /shop, titled Products with a Home link: Teapot at 24 euros, Kettle at 39 euros and Whisk at 9 euros."
+        },
+        {
+          "file": "product.png",
+          "path": "/shop/products/2",
+          "expect": "Kettle costs 39 €",
+          "title": "`/shop/products/2`",
+          "alt": "A product page at /shop/products/2: an app bar with a back arrow and the title Kettle, Kettle costs 39 euros, and All products."
+        }
       ]
     },
     "offline": {
@@ -600,6 +849,29 @@
           "path": "/notes/n1",
           "expect": "Rename on the other phone"
         }
+      ],
+      "shots": [
+        {
+          "file": "orders.png",
+          "path": "/orders",
+          "expect": "Order 3: Cast-iron pan (shipped)",
+          "title": "`/orders`",
+          "alt": "The offline example's orders: an Online switch and Sign out in the app bar, three orders with a Cancel button each, and the Orders and Notes tabs."
+        },
+        {
+          "file": "notes.png",
+          "path": "/notes",
+          "expect": "Groceries",
+          "title": "`/notes`",
+          "alt": "The notes this phone owns: Groceries, Milk, eggs, and New note."
+        },
+        {
+          "file": "note.png",
+          "path": "/notes/n1",
+          "expect": "Rename on the other phone",
+          "title": "`/notes/n1`",
+          "alt": "A note being edited: the copy on this phone, Title and Body fields, Save, and Rename on the other phone to make a conflicting edit."
+        }
       ]
     },
     "cose": {
@@ -617,6 +889,15 @@
         {
           "blocked": "^http://127\\.0\\.0\\.1:8787/",
           "reason": "the app asks cose-demo-server on 127.0.0.1:8787 (COSE_SERVER_URL), which this check does not run: the request is aborted and the page shows its offline copy (the signed round trip is `just cose`)"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "The server did not answer",
+          "title": "`/` with no server",
+          "alt": "The cose example's Notes page with no server running: this device's key, The server did not answer, No notes yet, and a New note field with an Add button."
         }
       ]
     }

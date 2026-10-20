@@ -26,6 +26,14 @@ lib/
 test/app_test.dart              widget tests
 ```
 
+## Screenshots
+
+| `/`                                                                                                                                                                                                                                     | `/items/2?qty=3`                                                                                                                                         | `/items/99`                                                                                                                                                            |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ![The minimal example's home page: an app bar titled Minimal with Home and About, Hello from fespalier, and three rows: Item 1, Item 2 (three of them) and Item 99, which does not exist.](../../docs/images/examples/minimal/home.png) | ![The item page for /items/2?qty=3: 3 × Kettle (#2), the segment and the query parameter read by the page.](../../docs/images/examples/minimal/item.png) | ![The item page's error.dart for an item that does not exist: Couldn't load item #99: No item #99, with a Retry button.](../../docs/images/examples/minimal/error.png) |
+
+A release web build in Chromium, 390 × 844 CSS pixels at 2× (`just example-screenshots minimal`).
+
 ## How it was made
 
 1. **Create the app.** `--empty` gives a bare `lib/main.dart`. (This repo keeps no platform

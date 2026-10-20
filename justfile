@@ -291,6 +291,28 @@ examples-web *names:
         exit 1
     fi
 
+# The README screenshots of every example (or the named ones): the shots of ci/web-routes/examples.json taken in
+# Chromium at 390 x 844 (2x) from a release web build, optimised with a pinned oxipng (Docker, or FSP_OXIPNG) and
+# held to the byte budget, into docs/images/examples/<example>/. Needs Flutter, Node and Docker; two to five
+# minutes per example; not part of `just ci` or CI (`just example-images` checks the result)
+example-screenshots *names:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    (cd ci/web-routes && npm ci)
+    if [ -z "${FSP_CHROMIUM:-}" ]; then (cd ci/web-routes && npx --no-install playwright install chromium); fi
+    names="{{ names }}"
+    for e in ${names:-{{ examples }}}; do
+        echo "==> examples/$e"
+        scripts/check-examples-web.sh "examples/$e" --shots "docs/images/examples/$e"
+    done
+    node ci/web-routes/example-images.mjs
+
+# The examples' README screenshots match ci/web-routes/examples.json: every shot is there, of its size, within the
+# byte budget, shown by its README, made from the current spec and not edited since (ci/web-routes/example-shots.lock.json),
+# and one of the URLs `just examples-web` opens (no browser, no build)
+example-images:
+    node ci/web-routes/example-images.mjs
+
 # `fsp dev` against the real flutter: a fresh web app with `fsp init` in headless Chrome. fsp dev runs the
 # app, reloads a new route in, restarts when it must and quits with `q`: the one check of fsp against
 # flutter's real `--machine` protocol. Needs Flutter with web support and Chrome (CHROME_EXECUTABLE
@@ -317,6 +339,7 @@ codegen-interop:
 # Maestro flows) and `just examples-web` (every example's routes, one CI job each), the stack in Docker
 # is `just telemetry-smoke`, the Flutter 3.35 floor is `just floor`, the cose example with its Rust
 # server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
+# The examples' README screenshots are `just example-screenshots` (not in CI at all); `just example-images` checks them.
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs
-ci: lint test deny check-examples flutter devtools packaging telemetry skills
+ci: lint test deny check-examples flutter devtools packaging telemetry skills example-images

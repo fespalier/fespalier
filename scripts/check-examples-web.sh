@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# One example's routes open in a release web build in Chromium.
+# One example's routes open in a release web build in Chromium, or (--shots) its README screenshots.
 #
 # Builds the example for the web (`flutter build web --release --no-web-resources-cdn`, so
 # CanvasKit and Roboto are bundled and nothing is fetched from a CDN) in a throwaway copy
 # (scripts/web-copy.sh), with the `--dart-define`s its entry in ci/web-routes/examples.json names,
 # and hands build/web to ci/web-routes/examples.mjs:
 #
-#   default   every URL of the entry opens, shows its text, settles, logs no error and requests
-#             nothing but the local server (`just examples-web`, CI's `examples-web` job).
-#   --print   the same, and every text each page shows (to write an `expect`).
+#   default            every URL of the entry opens, shows its text, settles, logs no error and requests
+#                      nothing but the local server (`just examples-web`, CI's `examples-web` job).
+#   --print            the same, and every text each page shows (to write an `expect`).
+#   --shots <out-dir>  the entry's screenshots, optimised and within the byte budget, replace the PNGs
+#                      in <out-dir> (`just example-screenshots`; not in CI).
 #
 # The examples stay platform-free: the `web/` folder that `flutter create` adds lives in the copy,
 # which is removed on exit.
 #
-# Usage: scripts/check-examples-web.sh <example-dir> [--print]
+# Usage: scripts/check-examples-web.sh <example-dir> [--print | --shots <out-dir>]
 #   scripts/check-examples-web.sh examples/minimal
 # Needs `npm ci` in ci/web-routes, and a Chromium: FSP_CHROMIUM=/path/to/chrome, or
 # `npx --no-install playwright install chromium` there.
@@ -22,18 +24,21 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <example-dir> [--print]" >&2
+  echo "usage: $0 <example-dir> [--print | --shots <out-dir>]" >&2
   exit 2
 }
 
 [ "$#" -ge 1 ] || usage
 dir="$1"
 shift
+out=""
 print=()
 if [ "$#" -eq 1 ] && [ "$1" = "--print" ]; then
   print=(--print)
 elif [ "$#" -gt 0 ]; then
-  usage
+  { [ "$#" -eq 2 ] && [ "$1" = "--shots" ]; } || usage
+  mkdir -p "$2"
+  out="$(cd "$2" && pwd)"
 fi
 name="$(basename "$dir")"
 
@@ -68,4 +73,8 @@ web_copy "$dir"
 # examples with large dependencies (telemetry).
 flutter build web --release --no-web-resources-cdn --no-wasm-dry-run ${defines[@]+"${defines[@]}"}
 
-node "$root/ci/web-routes/examples.mjs" check "$name" "$copy/build/web" ${print[@]+"${print[@]}"}
+if [ -n "$out" ]; then
+  node "$root/ci/web-routes/examples.mjs" shots "$name" "$copy/build/web" "$out"
+else
+  node "$root/ci/web-routes/examples.mjs" check "$name" "$copy/build/web" ${print[@]+"${print[@]}"}
+fi

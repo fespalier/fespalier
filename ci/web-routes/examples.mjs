@@ -6,7 +6,9 @@
 // runs this. examples.json, next to this file, says per example which URLs to open and the text each
 // must show (`urls`), which routes are not opened and why (`skip`), what may be logged or fetched and
 // why (`allow`) and the `--dart-define`s of its build (`defines`). cli/tests/examples_web.rs keeps
-// `urls` and `skip` in step with `fsp routes --json`.
+// `urls` and `skip` in step with `fsp routes --json`: a URL that no route of the tree answers says
+// why (`notFound`: the not-found page is the point; `handWritten`: a go_router route of the app's
+// own answers it), which only that test reads.
 //
 // A URL works when, in a fresh browser profile where only the build's own server answers:
 //   - Flutter starts (`flutter-view`) and, once its semantics tree is on (the harness clicks the
@@ -33,7 +35,8 @@
 // FSP_CHROMIUM=/path/to/chrome uses a Chromium that is already on disk; otherwise Playwright's own
 // (`npx --no-install playwright install chromium` in this folder).
 //
-// Exit codes: 0 every URL passed, 1 one failed, 2 usage or an unknown example.
+// Exit codes: 0 every URL passed, 1 one failed (or the example has no URL to check), 2 usage or an
+// unknown example.
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
@@ -81,6 +84,10 @@ const entry = SPEC.examples[name];
 if (!entry) {
   console.error(`examples.json has no entry for ${name}`);
   process.exit(2);
+}
+if (!entry.urls?.length) {
+  console.error(`examples.json lists no URL to check for ${name}`);
+  process.exit(1);
 }
 const print = rest.includes("--print");
 

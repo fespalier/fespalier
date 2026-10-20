@@ -10,12 +10,14 @@ issue_tracker: https://github.com/fespalier/fespalier/issues
 environment:
   sdk: ^3.9.0
   flutter: ">=3.35.0"
+resolution: workspace
 
 dependencies:
   # The test clock: expiry and write times follow testWidgets' fake clock (fespalier pins the same).
   clock: ^1.1.1
-  # SHA-256 of a Hive key longer than 255 UTF-8 bytes (Hive's limit).
-  crypto: ^3.0.0
+  # SHA-256 of a Hive key longer than 255 UTF-8 bytes (Hive's limit). 3.0.6 is the first release whose
+  # floor is Dart 3.4, as fespalier_download says.
+  crypto: ^3.0.6
   flutter:
     sdk: flutter
   # The same repository dependency an app writes (same url, path and ref), so the two resolve to
@@ -43,9 +45,3 @@ dev_dependencies:
   platform: ^3.1.4
   flutter_test:
     sdk: flutter
-
-# In this repository the package is built against the fespalier beside it. A dependency's
-# overrides are ignored, so apps never see this.
-dependency_overrides:
-  fespalier:
-    path: ../fespalier

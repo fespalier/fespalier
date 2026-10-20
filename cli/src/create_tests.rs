@@ -1987,3 +1987,66 @@ fn two_app_templates_are_refused_naming_both() {
         "{message}"
     );
 }
+
+/// How the repository's pubspecs (packages/*, examples/*) spell each third-party dependency they
+/// name under `dependencies` or `dev_dependencies`: a range, or `git <url> <ref>`.
+fn repository_spellings() -> std::collections::BTreeMap<String, BTreeSet<String>> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut out: std::collections::BTreeMap<String, BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    for parent in ["packages", "examples"] {
+        for entry in fs::read_dir(root.join(parent)).unwrap() {
+            let Ok(text) = fs::read_to_string(entry.unwrap().path().join("pubspec.yaml")) else {
+                continue;
+            };
+            let yaml: serde_yaml_ng::Value = serde_yaml_ng::from_str(&text).unwrap();
+            for section in ["dependencies", "dev_dependencies"] {
+                let Some(deps) = yaml.get(section).and_then(serde_yaml_ng::Value::as_mapping)
+                else {
+                    continue;
+                };
+                for (name, spec) in deps {
+                    let spelling = match spec {
+                        serde_yaml_ng::Value::String(range) => range.clone(),
+                        _ => match (spec["git"]["url"].as_str(), spec["git"]["ref"].as_str()) {
+                            (Some(url), Some(r)) => format!("git {url} {r}"),
+                            _ => continue,
+                        },
+                    };
+                    out.entry(name.as_str().unwrap().to_string())
+                        .or_default()
+                        .insert(spelling);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `fsp create` writes a third-party dependency the way the packages and examples spell it, so a
+/// `deps:upgrade` that moves them cannot leave a created app on the old range (cli/tests/versions.rs
+/// checks that the pubspecs agree with each other).
+#[test]
+fn the_recipes_spell_a_dependency_as_the_pubspecs_do() {
+    let spellings = repository_spellings();
+    let mut bad = vec![];
+    for r in RECIPES {
+        for tp in r.third_party.iter().chain(r.dev_third_party) {
+            let ours = match tp.source {
+                Source::Range(range) => range.to_string(),
+                Source::Git { url, commit } => format!("git {url} {commit}"),
+                Source::Sdk(_) => continue,
+            };
+            // One of the pubspecs' spellings: that they agree is cli/tests/versions.rs's check.
+            if let Some(theirs) = spellings.get(tp.name)
+                && !theirs.contains(&ours)
+            {
+                bad.push(format!(
+                    "{}: `{}` is `{ours}` here and {theirs:?} in the pubspecs",
+                    r.id, tp.name
+                ));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "{bad:#?}");
+}

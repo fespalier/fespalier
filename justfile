@@ -5,8 +5,16 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-# The Dart package, the DevTools extension and every example: pub get, dart format, flutter analyze, flutter test.
-dart_dirs := "packages/fespalier packages/fespalier_devtools packages/fespalier_otel packages/fespalier_auth packages/fespalier_sign_keypair packages/fespalier_adaptive packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_image packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_download_background packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod packages/fespalier_launch examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose"
+# The pub workspace's packages: the root pubspec.yaml's `workspace:` list, the packages that claim Flutter 3.35
+# (fespalier_devtools aside). They share one resolution (`melos bootstrap`).
+members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | sed 's/ *#.*//' | tr '\n' ' '`
+
+# Resolved on their own, outside the workspace: the packages that need a newer Flutter, the DevTools extension
+# (its lockfile is committed) and every example. cli/tests/versions.rs keeps this list complete.
+outside_dirs := "packages/fespalier_devtools packages/fespalier_sign_keypair packages/fespalier_download_background examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose"
+
+# Every Dart folder: the workspace's packages, then the ones outside it. pub get, dart format, flutter analyze, flutter test.
+dart_dirs := members + outside_dirs
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
 examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose"
@@ -69,12 +77,15 @@ gen-examples:
     cargo run --quiet -- maestro --project ../examples/shop
     cargo run --quiet -- test --project ../examples/shop
 
-# The package, the DevTools extension, the companion packages and every example: pub get, dart format (generated *.g.dart left out), analyze, test,
-# and the const lints on each example's generated code (scripts/check-const-lints.sh)
+# The workspace's packages (root pubspec.yaml): one resolution (`melos bootstrap`), then dart format (generated
+# *.g.dart left out), analyze and test in each (`melos run check`). Then the packages and examples outside it:
+# pub get, the same three, and the const lints on each example's generated code (scripts/check-const-lints.sh)
 flutter:
     #!/usr/bin/env bash
     set -euo pipefail
-    for d in {{ dart_dirs }}; do
+    dart run melos bootstrap
+    dart run melos run check < /dev/null
+    for d in {{ outside_dirs }}; do
         echo "==> $d"
         (cd "$d" \
             && flutter pub get \
@@ -86,13 +97,13 @@ flutter:
         case "$d" in examples/*) scripts/check-const-lints.sh "$d" ;; esac
     done
 
-# What CI's `floor` job runs: the package, its companions that claim Flutter 3.35 and examples/minimal.
-floor_dirs := "packages/fespalier packages/fespalier_otel packages/fespalier_auth packages/fespalier_adaptive packages/fespalier_image packages/fespalier_flags packages/fespalier_storage packages/fespalier_connectivity packages/fespalier_http packages/fespalier_dio packages/fespalier_cratestack packages/fespalier_sentry packages/fespalier_tolgee packages/fespalier_forms packages/fespalier_maps packages/fespalier_download packages/fespalier_push packages/fespalier_biometrics packages/fespalier_analytics packages/fespalier_frb packages/fespalier_riverpod packages/fespalier_launch examples/minimal"
+# What CI's `floor` job runs: the packages that claim Flutter 3.35 (the workspace's) and examples/minimal.
+floor_dirs := members + "examples/minimal"
 
 # Needs a Flutter 3.35 SDK, whose minor must match FLUTTER_FLOOR_VERSION in ci.yml:
-# `git clone --depth 1 -b 3.35.7 https://github.com/flutter/flutter ~/flutter-3.35`. Each pubspec.lock
-# is put back as it was afterwards (and the test assets removed), so a later `just flutter` is not left
-# on the lowest versions or on assets that another Flutter compiled.
+# `git clone --depth 1 -b 3.35.7 https://github.com/flutter/flutter ~/flutter-3.35`. The packages run in a
+# temporary copy outside the workspace (scripts/floor_copy.py), so the checkout's resolution and test assets
+# are left as they were.
 #
 # The declared floor as CI's `floor` job runs it, `just floor <sdk dir>` or FLUTTER_FLOOR=<sdk dir>: pub downgrade, analyze, test (not part of `just ci`)
 floor sdk=env("FLUTTER_FLOOR", ""):
@@ -110,23 +121,14 @@ floor sdk=env("FLUTTER_FLOOR", ""):
         exit 2
     fi
     export PATH="$sdk/bin:$PATH"
-    saved="$(mktemp -d)"
-    restore() {
-        for d in {{ floor_dirs }}; do
-            rm -f "$d/pubspec.lock"
-            # The floor's test assets (compiled shaders) do not load under another Flutter.
-            rm -rf "$d/build/unit_test_assets"
-            if [ -f "$saved/${d//\//_}" ]; then mv "$saved/${d//\//_}" "$d/pubspec.lock"; fi
-        done
-        rm -rf "$saved"
-    }
-    trap restore EXIT
-    for d in {{ floor_dirs }}; do
-        if [ -f "$d/pubspec.lock" ]; then cp "$d/pubspec.lock" "$saved/${d//\//_}"; fi
-    done
+    # Inside the workspace a pub downgrade moves every package together (one resolution): each package runs
+    # in a copy outside it, on its own (scripts/floor_copy.py), removed afterwards.
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    python3 scripts/floor_copy.py "$work/tree" > /dev/null
     for d in {{ floor_dirs }}; do
         echo "==> $d (Flutter $have, lowest dependencies)"
-        (cd "$d" && flutter pub downgrade && flutter analyze && flutter test)
+        (cd "$work/tree/$d" && flutter pub downgrade && flutter analyze && flutter test)
     done
 
 # Rebuild the DevTools extension into packages/fespalier/extension/devtools/build (needs Flutter)

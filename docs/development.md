@@ -64,6 +64,9 @@ just example-screenshots  # the examples' README screenshots, from a release web
 just example-images       # the README screenshots match examples.json and the READMEs (in `just ci`)
 just dev-e2e     # fsp dev against the real flutter in headless Chrome (needs Flutter and Chrome; CI's scaffold job runs it)
 just cose        # examples/cose: its Rust server's gates, then the app's tests against the binary it built (needs Rust, cargo-deny and Flutter; CI's cose job runs it)
+just floor <sdk dir>   # the declared floor: Flutter 3.35 in copies outside the workspace (needs that SDK; CI's floor job runs it)
+dart run melos run deps:outdated   # what is newer than the constraints allow, workspace and outside it
+dart run melos run deps:upgrade    # raise the constraints to the newest majors, every pubspec at once (then the checks it prints)
 ```
 
 [AGENTS.md](../AGENTS.md) is the contributor and agent guide: the layout, the gate commands, how to run each suite, and the conventions (Conventional Commit PR titles, squash merges, SHA-pinned actions, regenerating the examples).
@@ -72,10 +75,12 @@ just cose        # examples/cose: its Rust server's gates, then the app's tests 
 
 **Benchmarks.** The numbers of [Performance](cli.md#performance) come from synthetic apps in `cli/src/bench.rs`; re-run them with `cd cli && cargo test --release bench -- --ignored --nocapture --test-threads=1`. At 5,000 routes, cold, walking the folders and reading the files takes 82 ms, parsing 208 (spread over the cores), resolving 29, emitting 153 (the model 50, `minijinja` 105) and writing 6; `dart format`, when on, takes 1.4 s at 500 routes, 5.3 s at 2,000 and 14 s at 5,000.
 
+**The pub workspace.** The packages that claim Flutter 3.35 are one [pub workspace](https://dart.dev/tools/pub/workspaces) (the root `pubspec.yaml`): `flutter pub get` in any of them resolves all of them together, and their git dependencies on each other resolve to the checkout. The DevTools extension, `fespalier_sign_keypair`, `fespalier_download_background` and the examples are outside it and resolve on their own. Melos runs the scripts: `dart run melos run check` (what CI runs in each package), `dart run melos run deps:outdated` and `dart run melos run deps:upgrade` (every pubspec moves together; `cli/tests/versions.rs` then checks that each third-party dependency is spelled one way everywhere). The floor job copies each package out of the workspace first (`scripts/floor_copy.py`), so its `flutter pub downgrade` is that package's own.
+
 **What CI runs.** CI (`.github/workflows/ci.yml`) runs `just ci`'s steps:
 
 - `cargo fmt --check`, clippy and the tests, `cargo deny check`, and `fsp check` on the examples.
-- `dart format`, `flutter analyze` and `flutter test` on the package, the DevTools extension and every example.
+- `dart format`, `flutter analyze` and `flutter test` on the package, the DevTools extension and every example. The packages that claim Flutter 3.35 are one pub workspace: each package's job runs `flutter pub get` in its folder, which resolves the whole workspace at the root (one resolution), and a `workspace` job runs `dart run melos bootstrap` and `dart run melos list`; the `floor` job runs each package in a copy outside the workspace (see above).
 - A `devtools` job builds the extension again and fails when the committed build in `packages/fespalier/extension/devtools/build` is not what its source builds to, then runs `devtools_extensions validate` (`scripts/build-devtools-extension.sh --check`). After touching `packages/fespalier_devtools`, `lib/src/devtools/protocol.dart` or the Flutter version in `ci.yml`, run `just devtools-build` and commit the result.
 - A scaffold job writes every file kind with `fsp new` and `fsp init` and checks the result with `flutter analyze` and `dart format`. It gives that app a guarded route with a `data.dart` and an `action.dart`, builds it for profile and for release, and checks that the release build holds none of the DevTools code (the `traceGuard`, `traceData` and `watchData` wrappers included). It also runs `dart run fespalier` against a freshly built `fsp`. It also runs
   `types_tests::follows_typedefs_as_the_analyzer_does` with `FSP_REQUIRE_DART=1`, so the check of fsp's typedef

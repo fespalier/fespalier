@@ -224,6 +224,11 @@ jobs:
   # examples/minimal is the one app that goes through the same. `just floor` runs it locally.
   # The packages are one pub workspace (the root pubspec.yaml), where a downgrade would move every package
   # together, so each one runs in a copy outside it, on its own (scripts/floor_copy.py).
+  # Each package then runs once more as an app that depends on it alone (scripts/floor_app.py --only): a
+  # package's own floor also resolves its `dev_dependencies` (storage's `platform` dev dependency hid 3.0.0),
+  # and its tests compile only what they import. An app resolves only the regular dependencies, and a build
+  # compiles the plugin registrant and, on the web, every import. The `floor-app` job below does the same
+  # for an app that uses all of them.
   #
   # Left out on purpose:
   # - packages/fespalier_sign_keypair: flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so it
@@ -286,14 +291,51 @@ jobs:
         working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}
       - run: flutter test
         working-directory: ${{ runner.temp }}/floor/${{ matrix.dir }}
+      # The package alone, as an app (scripts/floor_app.py --only): `pub downgrade`, then `pub get` (which writes
+      # the plugin list the next step reads and keeps the downgrade), the Dart code of the plugins it resolved,
+      # `flutter test` (the package's libraries and those plugins compile) and a web build of its libraries.
+      - name: The package alone as an app (scripts/floor_app.py --only)
+        if: startsWith(matrix.dir, 'packages/')
+        env:
+          DIR: ${{ matrix.dir }}
+        run: python3 scripts/floor_app.py --only "${DIR##*/}" "$RUNNER_TEMP/floor" "$RUNNER_TEMP/floor-only"
+      - name: The app at its lowest versions
+        if: startsWith(matrix.dir, 'packages/')
+        run: flutter pub downgrade
+        working-directory: ${{ runner.temp }}/floor-only
+      - name: The plugin list of the lowest versions
+        if: startsWith(matrix.dir, 'packages/')
+        run: flutter pub get
+        working-directory: ${{ runner.temp }}/floor-only
+      - name: The Dart code of the plugins it resolved (scripts/floor_app.py --plugins)
+        if: startsWith(matrix.dir, 'packages/')
+        env:
+          DIR: ${{ matrix.dir }}
+        run: python3 "$GITHUB_WORKSPACE/scripts/floor_app.py" --only "${DIR##*/}" --plugins .
+        working-directory: ${{ runner.temp }}/floor-only
+      - name: The app compiles on the VM
+        if: startsWith(matrix.dir, 'packages/')
+        run: flutter test
+        working-directory: ${{ runner.temp }}/floor-only
+      - name: The app compiles for the web (scripts/floor_app.py --web)
+        if: startsWith(matrix.dir, 'packages/')
+        env:
+          FSP_REQUIRE_WEB: "1"
+        run: python3 "$GITHUB_WORKSPACE/scripts/floor_app.py" --web .
+        working-directory: ${{ runner.temp }}/floor-only
 
-  # One app that depends on every package at its lowest versions together (scripts/floor_app.py). Each package
-  # above resolves alone, and the packages meet only in an app: a floor that passes per package can still fail
-  # where two of them share a resolution (`platform` 3.0.0 does not compile on Dart 3).
+  # One app that depends on every package at its lowest versions together (scripts/floor_app.py). The `floor`
+  # job runs each package, and each alone as an app: a floor that passes per package can still fail where
+  # two of them share a resolution (`platform` 3.0.0 does not compile on Dart 3), and one package's constraint
+  # steers a union that hides the next one's. A package's own floor also resolves its `dev_dependencies`
+  # (storage's `platform` dev dependency hid 3.0.0), and its tests compile only what they import; an app
+  # resolves only the regular dependencies, and a build compiles the plugin registrant and, on the web, every
+  # import. So this app imports every public library of every package, compiles the Dart code of every
+  # plugin it resolved for Android, iOS, Linux, macOS and Windows, and builds for the web.
   floor-app:
     name: Floor app (Flutter 3.35, every package at its lowest versions)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
     steps:
@@ -310,9 +352,22 @@ jobs:
         run: |
           python3 scripts/floor_copy.py "$RUNNER_TEMP/floor-app/tree"
           python3 scripts/floor_app.py "$RUNNER_TEMP/floor-app/tree" "$RUNNER_TEMP/floor-app/app"
-      - run: flutter pub downgrade
+      - name: The app at its lowest versions
+        run: flutter pub downgrade
         working-directory: ${{ runner.temp }}/floor-app/app
-      - run: flutter test
+      - name: The plugin list of the lowest versions
+        run: flutter pub get
+        working-directory: ${{ runner.temp }}/floor-app/app
+      - name: The Dart code of the plugins it resolved (scripts/floor_app.py --plugins)
+        run: python3 "$GITHUB_WORKSPACE/scripts/floor_app.py" --plugins .
+        working-directory: ${{ runner.temp }}/floor-app/app
+      - name: The app compiles on the VM
+        run: flutter test
+        working-directory: ${{ runner.temp }}/floor-app/app
+      - name: The app compiles for the web (scripts/floor_app.py --web)
+        env:
+          FSP_REQUIRE_WEB: "1"
+        run: python3 "$GITHUB_WORKSPACE/scripts/floor_app.py" --web .
         working-directory: ${{ runner.temp }}/floor-app/app
 
   devtools:

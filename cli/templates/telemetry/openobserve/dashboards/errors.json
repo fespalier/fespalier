@@ -320,7 +320,7 @@
           "id": "panel_stopped_screens",
           "type": "metric",
           "title": "Did a failing check stop a screen from opening?",
-          "description": "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the debug report names the others.",
+          "description": "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the error report of the failure names the others.",
           "config": {
             "show_legends": false,
             "legends_position": null,

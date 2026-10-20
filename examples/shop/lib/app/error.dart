@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 class RootError extends StatelessWidget {
   const RootError({super.key, required this.error, required this.retry});
 
-  /// What went wrong: for the developer (the debug report names it), not for the person looking at
-  /// the screen, who gets a message of its own.
+  /// What went wrong: for the developer (the report of a failed guard names
+  /// it), not for the person looking at the screen, who gets a message of its
+  /// own.
   final Object error;
   final VoidCallback retry;
 

@@ -761,7 +761,7 @@ description = "What broke, where, and with which error: failed checks, loads, ac
   title = "Did a failing check stop a screen from opening?"
   type = "stat"
   verdict = "error_count"
-  description = "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the debug report names the others."
+  description = "Screen opens that a guard.dart or redirect.dart stopped because it threw, a check that threw before it returned included. Good: none. If not: Did a check throw? names the file of one that failed after an await; the error report of the failure names the others."
   sql = "SELECT COUNT(*) AS stopped {from} WHERE {nav_stopped_sql} AND {svc}"
   columns = [{ name = "stopped" }]
   promql = [{ expr = "sum(sum_over_time(fespalier_calls{ {nav_stopped_sel} }[$__range]))" }]

@@ -1,5 +1,5 @@
 // A guard that fails (since 0.21.0): what go_router gets, what the error route shows, the one
-// debug report and the retry. The zone tests stand in for go_router 17.2.3 to 18.1.0, which ran a
+// report (made in every build mode) and the retry. The zone tests stand in for go_router 17.2.3 to 18.1.0, which ran a
 // redirect in an error zone of their own; the widget tests run on every go_router.
 import 'dart:async';
 import 'dart:io';
@@ -359,12 +359,18 @@ void main() {
 
     test('the report does not depend on the build mode', () {
       // `kDebugMode` is a constant, so no test can build in release: the report is in every build
-      // mode as long as the file that makes it names no build mode. SentryFlutter.init hears it
-      // through FlutterError.onError there.
+      // mode as long as the code that makes it names no build mode and asserts nothing.
+      // SentryFlutter.init hears it through FlutterError.onError there.
       final source = File('lib/src/guards.dart').readAsStringSync();
       expect(source, isNot(contains('kDebugMode')));
+      expect(source, isNot(contains('kProfileMode')));
       expect(source, isNot(contains('kReleaseMode')));
-      expect(source, isNot(contains('assert(')));
+      // The path that reports: the error page, up to the retry that follows it.
+      final start = source.indexOf('Widget routerErrorPage(');
+      final end = source.indexOf('void _retry(');
+      expect(start, greaterThan(0));
+      expect(end, greaterThan(start));
+      expect(source.substring(start, end), isNot(contains('assert(')));
     });
 
     testWidgets('the report is one FlutterErrorDetails, and a second build of '

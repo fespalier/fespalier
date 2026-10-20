@@ -183,7 +183,7 @@ One spec, `scripts/telemetry/dashboards.toml`, generates both: `fsp` embeds the 
 - Grafana's percentiles are interpolated within histogram buckets (1, 2, 5, 10, 16, 33, 50, 100, 250, 500 ms, 1, 2.5, 5, 10 s); OpenObserve's are computed from the raw durations.
 - Span metrics are stamped when the collector receives a span. A batch that a phone replays later counts at the time it arrives in Grafana, and at its own time in OpenObserve.
 - Grafana has no error messages or trace ids: its _What failed last?_ is a count table with a link to OpenObserve, and _What was uncaught last?_ exists in OpenObserve only. _Verdicts, in words_ and _Where do people go next?_ exist in OpenObserve only too.
-- The percentage tiles agree (the smoke test compares them within 0.05), and a tile that rests on fewer than 20 samples says _Not enough data yet_ in both.
+- The percentage tiles agree (the smoke test compares them within 0.05), and a tile that rests on fewer than 20 samples says _Not enough data yet_ in both. Since 0.21.0 the percentage tiles agree also when every call failed (before, Grafana's tile said _Not enough data yet_).
 - Grafana shows no words for the colours, because PromQL cannot return a sentence.
 
 ![The same App health tiles in Grafana, with the same colours and numbers.](images/telemetry/grafana-app-health.png)

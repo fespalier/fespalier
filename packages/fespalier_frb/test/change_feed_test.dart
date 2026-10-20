@@ -312,6 +312,37 @@ void main() {
     },
   );
 
+  test(
+    'a change made by hand that makes the matcher throw reaches the listener',
+    () async {
+      final feed = ChangeFeed<CoreEvent>((ref) => const Stream.empty());
+      final topic = feed.topic<int>((e, id) {
+        if (e is OrderChanged && e.id == 13) throw StateError('bad');
+        return e is OrderChanged && e.id == id;
+      });
+      final handMade = StreamController<Change<CoreEvent>>();
+      addTearDown(handMade.close);
+      final container = ProviderContainer(
+        overrides: [feed.latest.overrideWith((ref) => handMade.stream)],
+      );
+      addTearDown(container.dispose);
+      final values = <int>[];
+      final errors = <Object>[];
+      container.listen(
+        topic(42),
+        (_, next) => values.add(next),
+        onError: (error, _) => errors.add(error),
+      );
+      await container.pump();
+      handMade.add(const Change(OrderChanged(13), 1));
+      await settle(container);
+      // The error is the listener's to see, as when the matcher runs on a log-backed event.
+      expect(errors, hasLength(1));
+      expect(errors.single.toString(), contains('bad'));
+      expect(values, isEmpty);
+    },
+  );
+
   group('InvalidationTable', () {
     final order = FutureProvider.family<String, int>((ref, id) async => '$id');
     final cart = FutureProvider<String>((ref) async => 'cart');

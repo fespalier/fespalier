@@ -27,8 +27,10 @@
 //     whether or not it is allowed; `allow` only keeps it from being reported. An `allow` entry that
 //     matches nothing in a whole run fails it, so it goes when its reason does.
 //
-// A URL with `known` (what is broken, and the fix item or issue that fixes it) is reported but does
-// not fail the run, and fails once it passes, so the note cannot outlive the bug.
+// A URL with `known` ({ "problem": "a substring of the problem", "reason": "what is broken, and the
+// fix item or issue that fixes it" }) is reported but does not fail the run. Any other problem of
+// that URL still fails, and so does the URL once the problem is gone, so the note cannot outlive
+// the bug.
 //
 // --print also prints every text each page shows (to write an `expect`).
 //
@@ -92,6 +94,15 @@ if (!entry.urls?.length) {
 const print = rest.includes("--print");
 
 const firstLine = (text) => String(text).split("\n")[0].slice(0, 300);
+
+/** The first stack frame of an uncaught error (`at f (url:line:col)`), or "" when it has none. */
+const frameOf = (error) => {
+  const frame = String(error.stack ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("at "));
+  return frame ? ` ${frame.slice(0, 200)}` : "";
+};
 
 /** Whether the build's own server (`origin`), or the browser itself (`data:`, `blob:`), answers `url`. */
 const isServed = (url, origin) => {
@@ -163,6 +174,18 @@ const locationOf = (url) => {
 const pathOf = (location) => location.split("?")[0];
 
 /**
+ * Turns the semantics tree on while it is off: a click on the "Enable accessibility" placeholder
+ * Flutter puts in the page. The placeholder is not there before the engine has started, so this
+ * runs on every poll until the first `flt-semantics` node exists.
+ */
+const enableSemantics = (page) =>
+  page.evaluate(() => {
+    if (!document.querySelector("flt-semantics")) {
+      document.querySelector("flt-semantics-placeholder")?.click();
+    }
+  });
+
+/**
  * Opens one URL of the example in a fresh context and checks it. Returns the context (the caller
  * closes it), the page, what went wrong, and the texts it saw.
  */
@@ -185,7 +208,7 @@ const open = async (browser, base, url, viewport) => {
   // Date.now() is fixed (a page that prints a time prints the same one every run); timers run.
   await page.clock.setFixedTime(new Date(SPEC.time));
   page.on("pageerror", (error) =>
-    problems.push(`uncaught: ${firstLine(error.message)}`),
+    problems.push(`uncaught: ${firstLine(error.message)}${frameOf(error)}`),
   );
   page.on("console", (message) => {
     if (message.type() !== "error") return;
@@ -202,13 +225,10 @@ const open = async (browser, base, url, viewport) => {
       .locator("flutter-view")
       .first()
       .waitFor({ state: "attached", timeout: 30000 });
-    // The "Enable accessibility" placeholder: a click turns the semantics tree on.
-    await page.evaluate(() =>
-      document.querySelector("flt-semantics-placeholder")?.click(),
-    );
     const deadline = Date.now() + TIMEOUT;
     let shown = false;
     for (;;) {
+      await enableSemantics(page);
       seen = await texts(page);
       if (seen.some((t) => t.includes(url.expect))) {
         shown = true;
@@ -280,15 +300,24 @@ const main = async () => {
         SPEC.viewport,
       );
       await context.close();
-      if (url.known && problems.length > 0) {
-        // A failure someone is fixing elsewhere: reported, not failed.
-        console.log(`known: ${name} ${url.path} (${url.known})`);
-        for (const p of problems) console.log(`  ${p}`);
-      } else if (url.known) {
-        failed = true;
-        console.error(
-          `FAIL: ${name} ${url.path} passes now: remove its "known"`,
-        );
+      if (url.known) {
+        // A failure someone is fixing elsewhere: reported, not failed. Only the problem it names.
+        const named = problems.filter((p) => p.includes(url.known.problem));
+        const others = problems.filter((p) => !p.includes(url.known.problem));
+        if (named.length === 0) {
+          failed = true;
+          console.error(
+            `FAIL: ${name} ${url.path}: its "known" problem ${JSON.stringify(url.known.problem)} did not happen: remove the "known"`,
+          );
+        } else {
+          console.log(`known: ${name} ${url.path} (${url.known.reason})`);
+          for (const p of named) console.log(`  ${p}`);
+        }
+        if (others.length > 0) {
+          failed = true;
+          console.error(`FAIL: ${name} ${url.path}: more than it names`);
+          for (const p of others) console.error(`  ${p}`);
+        }
       } else if (problems.length === 0) {
         console.log(`ok: ${name} ${url.path} shows "${url.expect}"`);
       } else {

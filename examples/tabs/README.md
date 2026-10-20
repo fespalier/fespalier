@@ -21,7 +21,7 @@ A release web build in Chromium: the phone shots are 390 Ã— 844 CSS pixels at 2Ã
 
 ```sh
 cd examples/tabs
-flutter create . --platforms=android,ios,web   # adds platform folders only
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run
 ```

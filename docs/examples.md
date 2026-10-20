@@ -1,6 +1,6 @@
 # Run the examples
 
-Start with [`examples/minimal`](../examples/minimal), then read on for what each of the others shows. Each example's README also has screenshots of its web build, made by `just example-screenshots`.
+Start with [`examples/minimal`](../examples/minimal), then read on for what each of the others shows. Each Flutter example's README also has screenshots of its web build, made by `just example-screenshots`.
 
 Trees that `fsp` rejects are not examples: the smallest broken app folder for each of fifteen common diagnostics, with the output of `fsp check --json` beside it, is under [`cli/tests/fixtures/diagnostics/`](https://github.com/fespalier/fespalier/blob/main/cli/tests/fixtures/diagnostics/README.md). They are what the troubleshooting skill's messages are tested against.
 
@@ -12,12 +12,20 @@ README that goes through each file and a few widget tests.
 
 ## shop
 
+[`examples/shop`](../examples/shop) is a product list, a product page, a cart and a checkout behind a guard.
+
 ```sh
 cd examples/shop
-flutter create . --platforms=android,ios,web   # adds platform folders only
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run
 ```
+
+Every example's run steps use this command. The examples commit no platform folders, and a plain `flutter create` in an
+existing app also writes a `test/widget_test.dart` for a `MyApp` that no example has, which fails `flutter analyze` and
+`flutter test`: `--empty` leaves that test out. A recent Flutter's `pub get` (checked with 3.47; `flutter create` runs
+one too) also adds the new platform folders to `analyzer: exclude:` in the example's `analysis_options.yaml`. That edit
+is harmless, and `git checkout analysis_options.yaml` takes it back.
 
 Things to try:
 
@@ -41,7 +49,7 @@ a server each photo fails and shows the product's initial.
 
 ## features
 
-`examples/features` covers the rest. Routing and layouts:
+[`examples/features`](../examples/features) covers the rest. Routing and layouts:
 
 - an `(account)` group next to a catch-all `$slug` page;
 - per-route transitions (the group fades in, `/ticks` doesn't animate);
@@ -120,7 +128,7 @@ reconnect, and a network that flaps loads once.
 
 ## tabs
 
-`examples/tabs` is a bottom navigation bar built as a tab layout:
+[`examples/tabs`](../examples/tabs) is a bottom navigation bar built as a tab layout:
 
 - four tabs: one with nested pages, and a Library tab that is a tab layout of its own, with two inner
   tabs;
@@ -172,7 +180,7 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 
 ## plugins
 
-`examples/plugins` (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics), and [`fespalier_launch`](../packages/fespalier_launch) (since 0.18.0) for home-screen shortcuts and widgets:
+[`examples/plugins`](../examples/plugins) (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics), and [`fespalier_launch`](../packages/fespalier_launch) (since 0.18.0) for home-screen shortcuts and widgets:
 
 - `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics, fespalier_launch]`; `main.dart` calls `FespalierPush.configure(...)`, `FespalierAnalytics.configure(...)` and `FespalierLaunch.configure(...)` (since 0.18.0) before `AppMain.run()`;
 - a `FakePushSource` in place of Firebase Messaging, and debug buttons on the home page that simulate a tap on a notification, a `RecordingAnalytics` in place of the analytics SDK, and the consent buttons of a banner (`analyticsConsent`);
@@ -194,7 +202,7 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 
 ```sh
 cd examples/downloads
-flutter create . --platforms=android,ios,macos,linux,windows,web   # adds platform folders only; keep the ones you test on
+flutter create --empty . --platforms=android,ios,macos,linux,windows,web   # adds the platform folders, .gitignore and .metadata; keep the ones you test on
 flutter pub get
 flutter run -d <device id>
 ```
@@ -247,7 +255,7 @@ The scenario's payloads are tens of bytes, so its totals are mostly headers; the
 
 ```sh
 cd examples/i18n
-flutter create . --platforms=android,ios,web
+flutter create --empty . --platforms=android,ios,web
 flutter run
 ```
 
@@ -263,7 +271,7 @@ flutter run
 
 ```sh
 cd examples/maps
-flutter create . --platforms=android,ios   # adds platform folders only
+flutter create --empty . --platforms=android,ios   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run                                  # a device or a simulator: a map does not draw in `flutter test`
 ```

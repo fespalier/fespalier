@@ -47,7 +47,7 @@ writes you do not need that (`pumpRouter` uses Flutter's `MaterialApp`).
 
 ```sh
 cd examples/shop
-flutter create . --platforms=android,ios,web   # adds platform folders only
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run
 ```

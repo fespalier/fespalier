@@ -57,7 +57,7 @@ device or a simulator is the only way to see the map. Like the other examples, t
 
 ```sh
 cd examples/maps
-flutter create . --platforms=android,ios   # adds platform folders only
+flutter create --empty . --platforms=android,ios   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run                                  # a device or a simulator
 ```

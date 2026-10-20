@@ -47,7 +47,7 @@ is the object the app pins). Passing the line's `addr` instead is the easy mista
 
 ```sh
 cd examples/cose
-flutter create . --platforms=android,ios   # adds platform folders only
+flutter create --empty . --platforms=android,ios   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run \
   --dart-define=COSE_SERVER_JWK='{"crv":"P-256","kty":"EC","x":"...","y":"..."}' \
@@ -83,7 +83,7 @@ another: the page says it kept the note under its key; start the server again an
 
 ### On macOS
 
-macOS runs, and it needs one thing beyond the defaults: `flutter create . --platforms=macos` makes a
+macOS runs, and it needs one thing beyond the defaults: `flutter create --empty . --platforms=macos` makes a
 sandboxed app whose entitlements allow `network.server` (the Dart VM service) but **not
 `network.client`**, so every outbound request is blocked and the app only shows its "the server did
 not answer" copy. `macos/Runner/{DebugProfile,Release}.entitlements` add

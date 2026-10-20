@@ -57,7 +57,7 @@ Things to read in it:
 
 ```sh
 cd examples/i18n
-flutter create . --platforms=android,ios,web   # adds platform folders only
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
 flutter pub get
 flutter run
 ```

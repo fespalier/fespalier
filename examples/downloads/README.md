@@ -35,7 +35,7 @@ Android phone or iPhone and one desktop (macOS, Windows or Linux), and report wh
 
 ```sh
 cd examples/downloads
-flutter create . --platforms=android,ios,macos,linux,windows,web   # adds the platform folders only; keep the ones you test on
+flutter create --empty . --platforms=android,ios,macos,linux,windows,web   # adds the platform folders, .gitignore and .metadata; keep the ones you test on
 flutter pub get
 ```
 

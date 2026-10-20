@@ -81,17 +81,21 @@ pub struct Device {
 }
 
 impl Device {
-    /// A device for the `cose` server in `built`.
+    /// A device for the `cose` server in `built`, with a key of its own.
+    ///
+    /// The device's scalar is a fresh random one, not the server's: a device and its server never
+    /// share a key, as they would in the real protocol.
     ///
     /// # Errors
-    /// When the scalar is not a P-256 key, or the client envelope cannot be built.
-    pub fn new(built: &Built, signing: &Signing) -> Result<Self, CratestackError> {
-        let signer = crate::scenario::signer_for(&signing.scalar)?;
+    /// When the system's random source fails, or the client envelope cannot be built.
+    pub fn new(built: &Built) -> Result<Self, CratestackError> {
+        let scalar = crate::random_scalar()?;
+        let signer = crate::scenario::signer_for(&scalar)?;
         let server_key: CoseVerifyKey = built.cose_server_key()?;
         let resolver = StaticVerifierResolver::new().with_key(server_key);
         let envelope = CoseEnvelope::client(
             CoseMode::Sign1,
-            std::sync::Arc::new(crate::scenario::signer_for(&signing.scalar)?)
+            std::sync::Arc::new(crate::scenario::signer_for(&scalar)?)
                 as std::sync::Arc<dyn CoseSigner>,
             std::sync::Arc::new(resolver),
         )
@@ -208,7 +212,7 @@ pub async fn run(
     let log = built.exchanges.clone();
 
     let device = if variant == Variant::Cose {
-        Some(Device::new(&built, &signing)?)
+        Some(Device::new(&built)?)
     } else {
         None
     };
@@ -295,7 +299,7 @@ pub async fn run_payload(
     let log = built.exchanges.clone();
 
     let device = if variant == Variant::Cose {
-        Some(Device::new(&built, &signing)?)
+        Some(Device::new(&built)?)
     } else {
         None
     };

@@ -521,12 +521,12 @@ async fn check_answer(device: &Device, call: &Sent, seen: &Observed) {
 
 #[tokio::test]
 async fn a_socket_carries_the_sealed_calls_of_the_cose_server() {
-    // Two servers with one key, as `runner::run` has one for its server and its device: the same
-    // calls go to each, in process and over a socket, so the two exchanges can be compared.
+    // Two servers with one key, as `runner::run` has one for its server: the same calls go to each,
+    // in process and over a socket, so the two exchanges can be compared. The device has its own key.
     let signing = Signing::fresh().expect("a signing setup");
     let in_process = build(Variant::Cose, DEFAULT_AUDIENCE, &signing.scalar).expect("a server");
     let over_socket = build(Variant::Cose, DEFAULT_AUDIENCE, &signing.scalar).expect("a server");
-    let device = Device::new(&in_process, &signing).expect("a device");
+    let device = Device::new(&in_process).expect("a device");
 
     let (x, y) = device.xy().expect("the device's coordinates");
     let calls = [

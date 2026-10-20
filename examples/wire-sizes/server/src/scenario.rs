@@ -184,10 +184,10 @@ impl Signing {
     }
 }
 
-/// The signer a `cose` server uses, from its scalar.
+/// A P-256 signer from a scalar: the server's, or a device's.
 ///
-/// The runner builds the server it is about to talk to, so it needs the same key material; this
-/// keeps that construction in one place instead of two.
+/// The server and the device each build their signer from a scalar through this one function, so
+/// the construction is in one place instead of two.
 ///
 /// # Errors
 /// When the scalar is not a valid P-256 key.

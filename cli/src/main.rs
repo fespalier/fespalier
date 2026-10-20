@@ -41,6 +41,7 @@ mod smoke;
 mod tasks;
 mod telemetry_stack;
 mod templates;
+mod types;
 mod upgrade;
 mod upgrade_replace;
 mod watch;
@@ -610,6 +611,8 @@ mod tasks_tests;
 mod telemetry_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod types_tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]

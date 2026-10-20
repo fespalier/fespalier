@@ -179,10 +179,10 @@ pub fn agree(a: &str, b: &str) -> bool {
 }
 
 /// A type name inside a type: `Product` or `m.Product`.
-struct TypeRef {
-    prefix: Option<String>,
-    name: String,
-    at: Range<usize>,
+pub(crate) struct TypeRef {
+    pub(crate) prefix: Option<String>,
+    pub(crate) name: String,
+    pub(crate) at: Range<usize>,
 }
 
 fn is_ident(c: char) -> bool {
@@ -190,7 +190,7 @@ fn is_ident(c: char) -> bool {
 }
 
 /// The type names in `ty`, skipping record field names and `dart:core` types.
-fn type_refs(ty: &str) -> Vec<TypeRef> {
+pub(crate) fn type_refs(ty: &str) -> Vec<TypeRef> {
     let chars: Vec<(usize, char)> = ty.char_indices().collect();
     let mut out = vec![];
     let mut i = 0;

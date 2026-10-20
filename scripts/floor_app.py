@@ -12,9 +12,9 @@ the root pubspec.yaml's `workspace:` list, read by floor_copy.py, never a hand l
 to the copies, as an app's own do to the release tag), `test/imports_test.dart`, which imports every
 public library of every package (each `lib/*.dart`, not `lib/src`), and a `lib/main.dart` with the
 same imports and `web/index.html`, which a web build needs. With `--only <package>` the app depends
-on that package alone, and overrides it and the workspace packages it reaches (floor_copy.reached):
-what an app that uses that one package resolves, where the union of all of them is steered by every
-member's constraints at once.
+on that package alone, and overrides it and the workspace packages it reaches through its regular
+dependencies (floor_copy.reached without the dev dependencies): what an app that uses that one
+package resolves, where the union of all of them is steered by every member's constraints at once.
 
     cd <app> && flutter pub downgrade && flutter pub get
 

@@ -1308,7 +1308,7 @@ fn every_third_party_dependency_has_one_constraint() {
 /// What an app picks at the lowest versions of a plugin or of Dio does not always compile, and a constraint that
 /// steers it away must sit in the pubspec of every package that brings the plugin (an app resolves its regular
 /// dependencies only): (the dependencies that bring it, the ones that steer, why).
-const STEERING: [(&[&str], &[&str], &str); 3] = [
+const STEERING: [(&[&str], &[&str], &str); 4] = [
     (
         &[
             "path_provider",
@@ -1327,6 +1327,12 @@ const STEERING: [(&[&str], &[&str], &str); 3] = [
         &["win32"],
         "sentry_flutter asks for package_info_plus 1.0.0 or newer, and package_info_plus 4.0.2 allows win32 4.0.0: \
          win32 before 5.5.3 uses `UnmodifiableUint8ListView`, gone from dart:typed_data, so a Windows build fails",
+    ),
+    (
+        &["connectivity_plus"],
+        &["web"],
+        "connectivity_plus 6.0.1 allows web 0.3.0, whose JS interop does not compile for the web on Dart 3.9 \
+         (`The type 'JSObject' can't be used as supertype`)",
     ),
     (
         &["dio"],

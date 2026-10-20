@@ -314,8 +314,11 @@ class _Revision<E, K> extends Notifier<int> {
       // A `Change(event, seq)` made by hand (a test overriding `latest`): no log to scan, so
       // a different change than the last seen counts if it matches.
       if (!identical(change, _handMade)) {
+        // The matcher first, the memo after: a matcher that throws throws again on the rebuild
+        // that the error causes, and the error reaches whoever watches the topic.
+        final hit = _countAll || _matches(change.event, _key);
         _handMade = change;
-        if (_countAll || _matches(change.event, _key)) _changed();
+        if (hit) _changed();
       }
     } else if (change != null) {
       // Started before the first event: every event of the subscription is news.

@@ -796,21 +796,21 @@
           "path": "/",
           "expect": "Legacy home",
           "title": "`/`",
-          "alt": "The legacy home page, still a hand-written go_router route: All products, Featured: Kettle and Order 7."
+          "alt": "The legacy home page, titled Legacy home: All products, Featured: Kettle and Order 7."
         },
         {
           "file": "shop.png",
           "path": "/shop",
           "expect": "Teapot",
           "title": "`/shop`",
-          "alt": "The products list, now a fespalier page mounted under /shop: Teapot, Kettle and Whisk with their prices."
+          "alt": "The products list at /shop, titled Products with a Home link: Teapot at 24 euros, Kettle at 39 euros and Whisk at 9 euros."
         },
         {
           "file": "product.png",
           "path": "/shop/products/2",
           "expect": "Kettle costs 39 €",
           "title": "`/shop/products/2`",
-          "alt": "A product page from fespalier's tree: Kettle costs 39 euros, and All products."
+          "alt": "A product page at /shop/products/2: an app bar with a back arrow and the title Kettle, Kettle costs 39 euros, and All products."
         }
       ]
     },

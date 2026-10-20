@@ -13,9 +13,10 @@
 //!
 //! The README's "Where the measurement is taken" rests on this. The request is built by
 //! `runner::request_for`, so it carries exactly the headers the runner sends. It is sent for the
-//! one plain call of every variant (`registerDevice`) and for `listNotes` in the two plain
-//! variants. A sealed call is not sent over the socket, because it needs the device key, which the
-//! runner keeps to itself.
+//! one plain call of every variant (`registerDevice`), for `listNotes` in the two plain variants,
+//! and, on the `cose` server, for a sealed `addNote` and `listNotes` after the registration. The
+//! sealed calls are sealed by the `runner::Device` the runner itself uses, over one connection, and
+//! their answers are opened under the server's key, so the test also checks that they verify.
 
 #![allow(clippy::expect_used, reason = "tests may expect")]
 
@@ -24,16 +25,21 @@ use std::io::{Read as _, Write as _};
 use std::net::{SocketAddr, TcpStream};
 use std::time::Duration;
 
+use cratestack::CratestackCodec as _;
 use cratestack::axum::body::{Body, to_bytes};
 use cratestack::axum::http::Request;
 use cratestack::serde_json::{Value, json};
+use cratestack_codec_cbor::CborCodec;
 use tower::ServiceExt as _;
 use wire_sizes_demo_server::measure::Exchange;
 use wire_sizes_demo_server::report::BEARER_BASELINE;
-use wire_sizes_demo_server::runner;
+use wire_sizes_demo_server::runner::{self, CBOR, Device, SIGN1};
+use wire_sizes_demo_server::scenario::{Signing, is_registration};
 use wire_sizes_demo_server::{DEFAULT_AUDIENCE, REGISTER_OP, Variant, build, random_scalar};
 
 const LIST_OP: &str = "procedure.listNotes";
+const ADD_OP: &str = "procedure.addNote";
+const NOTE: &str = "a sealed note";
 
 /// A call, as the runner would make it.
 struct Call {
@@ -124,18 +130,42 @@ async fn http1(request: Request<Body>, addr: SocketAddr) -> Vec<u8> {
     out
 }
 
+fn connect(addr: SocketAddr) -> TcpStream {
+    let stream = TcpStream::connect(addr).expect("connect");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .expect("a read timeout");
+    stream
+}
+
 /// Writes `request` to `addr` and reads one whole response.
 ///
 /// The response is read by its `content-length`, not to the end of the connection, so the request
 /// needs no `connection: close` and the exchange is the one a keep-alive client would have. Hyper
 /// sizes every response of this server, so there is always a `content-length` to read by.
 fn round_trip(addr: SocketAddr, request: &[u8]) -> Vec<u8> {
-    let mut stream = TcpStream::connect(addr).expect("connect");
-    stream
-        .set_read_timeout(Some(Duration::from_secs(10)))
-        .expect("a read timeout");
+    let mut stream = connect(addr);
     stream.write_all(request).expect("write");
+    read_response(&mut stream)
+}
 
+/// Writes each request over one connection, and reads each answer before the next request goes out.
+///
+/// That is how a keep-alive client uses a connection: the answers come back in order, each one
+/// framed by its own `content-length`.
+fn keep_alive(addr: SocketAddr, requests: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    let mut stream = connect(addr);
+    requests
+        .iter()
+        .map(|request| {
+            stream.write_all(request).expect("write");
+            read_response(&mut stream)
+        })
+        .collect()
+}
+
+/// Reads one whole response from `stream`, by the `content-length` of its head.
+fn read_response(stream: &mut TcpStream) -> Vec<u8> {
     let mut read = Vec::new();
     let mut chunk = [0_u8; 8192];
     let mut more = |read: &mut Vec<u8>| {
@@ -191,6 +221,11 @@ fn head_of(read: &[u8]) -> Head {
         headers,
         len: end + 4,
     }
+}
+
+/// The body of a whole response: what follows its head.
+fn body_of(read: &[u8]) -> &[u8] {
+    &read[head_of(read).len..]
 }
 
 /// Sends `call` in process, and again over a socket to a fresh server of the same variant.
@@ -251,6 +286,104 @@ impl Observed {
     }
 }
 
+/// What a socket adds to a request: `host` and `content-length`, and nothing the runner did not send.
+fn check_request(seen: &Observed, what: &str) {
+    // The exchange's count is the number of bytes written: the rebuilt request line is exact.
+    assert_eq!(
+        seen.socket.request_total_bytes(),
+        seen.written.len(),
+        "{what}: the exchange weighs what the socket carried"
+    );
+    assert_eq!(seen.socket.status, 200, "{what}");
+    assert_eq!(seen.in_process.status, 200, "{what}");
+
+    // The stack gets `host` and `content-length` over a socket and nothing else, and loses
+    // nothing the runner sends.
+    let socket_names = names(&seen.socket.request_headers);
+    let process_names = names(&seen.in_process.request_headers);
+    assert!(process_names.is_subset(&socket_names), "{what}");
+    assert_eq!(
+        socket_names
+            .difference(&process_names)
+            .cloned()
+            .collect::<BTreeSet<_>>(),
+        set(&["content-length", "host"]),
+        "{what}: the request headers a socket adds"
+    );
+    let content_length = seen.socket.request_body_bytes.to_string();
+    assert_eq!(
+        seen.request_added(),
+        line("host", &seen.addr.to_string()) + line("content-length", &content_length),
+        "{what}: the request bytes a socket adds"
+    );
+    assert_eq!(
+        seen.in_process.request_body_bytes, seen.socket.request_body_bytes,
+        "{what}: the body is the same"
+    );
+}
+
+/// What hyper adds to a response: `content-length` and `date`, and the status line the exchange
+/// rebuilds.
+fn check_response(seen: &Observed, what: &str) {
+    let head = head_of(&seen.read);
+
+    // The status line is the one the exchange rebuilds.
+    assert_eq!(head.status_line, seen.socket.status_line(), "{what}");
+
+    // Every header the stack set is on the socket, and what else is there is hyper's.
+    assert!(
+        seen.socket
+            .response_headers
+            .iter()
+            .all(|header| head.headers.contains(header)),
+        "{what}: the stack's headers reach the socket"
+    );
+    let added: Vec<&(String, String)> = head
+        .headers
+        .iter()
+        .filter(|header| !seen.socket.response_headers.contains(header))
+        .collect();
+    assert_eq!(
+        added
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect::<BTreeSet<_>>(),
+        set(&["content-length", "date"]),
+        "{what}: the response headers hyper adds"
+    );
+
+    // The lines hyper adds are the whole difference between the exchange and the socket.
+    let added_bytes: usize = added.iter().map(|(name, value)| line(name, value)).sum();
+    assert_eq!(seen.response_added(), added_bytes, "{what}");
+    assert_eq!(
+        seen.read.len() - head.len,
+        seen.socket.response_body_bytes,
+        "{what}: the body is the same"
+    );
+    let content_length = seen.socket.response_body_bytes.to_string();
+    let date = added
+        .iter()
+        .find(|(name, _)| name == "date")
+        .expect("a date header");
+    // An HTTP date is always 29 bytes (`Mon, 19 Oct 2026 19:22:25 GMT`), so the line is 37.
+    assert_eq!(line("date", &date.1), 37, "{what}");
+    assert_eq!(
+        seen.response_added(),
+        line("content-length", &content_length) + 37,
+        "{what}: the response bytes a socket adds"
+    );
+
+    // The stack sets the same headers in process, so the exchange is the same either way.
+    assert_eq!(
+        seen.in_process.response_headers, seen.socket.response_headers,
+        "{what}"
+    );
+    assert_eq!(
+        seen.in_process.response_body_bytes, seen.socket.response_body_bytes,
+        "{what}"
+    );
+}
+
 #[tokio::test]
 async fn a_socket_adds_host_and_content_length_to_the_request() {
     let calls = [
@@ -262,40 +395,7 @@ async fn a_socket_adds_host_and_content_length_to_the_request() {
     ];
     for call in &calls {
         let seen = observe(call).await;
-        let what = format!("{:?} {}", call.variant, call.op);
-
-        // The exchange's count is the number of bytes written: the rebuilt request line is exact.
-        assert_eq!(
-            seen.socket.request_total_bytes(),
-            seen.written.len(),
-            "{what}: the exchange weighs what the socket carried"
-        );
-        assert_eq!(seen.socket.status, 200, "{what}");
-        assert_eq!(seen.in_process.status, 200, "{what}");
-
-        // The stack gets `host` and `content-length` over a socket and nothing else, and loses
-        // nothing the runner sends.
-        let socket_names = names(&seen.socket.request_headers);
-        let process_names = names(&seen.in_process.request_headers);
-        assert!(process_names.is_subset(&socket_names), "{what}");
-        assert_eq!(
-            socket_names
-                .difference(&process_names)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
-            set(&["content-length", "host"]),
-            "{what}: the request headers a socket adds"
-        );
-        let content_length = seen.socket.request_body_bytes.to_string();
-        assert_eq!(
-            seen.request_added(),
-            line("host", &seen.addr.to_string()) + line("content-length", &content_length),
-            "{what}: the request bytes a socket adds"
-        );
-        assert_eq!(
-            seen.in_process.request_body_bytes, seen.socket.request_body_bytes,
-            "{what}: the body is the same"
-        );
+        check_request(&seen, &format!("{:?} {}", call.variant, call.op));
     }
 }
 
@@ -310,64 +410,7 @@ async fn hyper_adds_content_length_and_date_to_the_response() {
     ];
     for call in &calls {
         let seen = observe(call).await;
-        let what = format!("{:?} {}", call.variant, call.op);
-        let head = head_of(&seen.read);
-
-        // The status line is the one the exchange rebuilds.
-        assert_eq!(head.status_line, seen.socket.status_line(), "{what}");
-
-        // Every header the stack set is on the socket, and what else is there is hyper's.
-        assert!(
-            seen.socket
-                .response_headers
-                .iter()
-                .all(|header| head.headers.contains(header)),
-            "{what}: the stack's headers reach the socket"
-        );
-        let added: Vec<&(String, String)> = head
-            .headers
-            .iter()
-            .filter(|header| !seen.socket.response_headers.contains(header))
-            .collect();
-        assert_eq!(
-            added
-                .iter()
-                .map(|(name, _)| name.clone())
-                .collect::<BTreeSet<_>>(),
-            set(&["content-length", "date"]),
-            "{what}: the response headers hyper adds"
-        );
-
-        // The lines hyper adds are the whole difference between the exchange and the socket.
-        let added_bytes: usize = added.iter().map(|(name, value)| line(name, value)).sum();
-        assert_eq!(seen.response_added(), added_bytes, "{what}");
-        assert_eq!(
-            seen.read.len() - head.len,
-            seen.socket.response_body_bytes,
-            "{what}: the body is the same"
-        );
-        let content_length = seen.socket.response_body_bytes.to_string();
-        let date = added
-            .iter()
-            .find(|(name, _)| name == "date")
-            .expect("a date header");
-        // An HTTP date is always 29 bytes (`Mon, 19 Oct 2026 19:22:25 GMT`), so the line is 37.
-        assert_eq!(line("date", &date.1), 37, "{what}");
-        assert_eq!(
-            seen.response_added(),
-            line("content-length", &content_length) + 37,
-            "{what}: the response bytes a socket adds"
-        );
-
-        // The stack sets the same headers in process, so the exchange is the same either way.
-        assert_eq!(
-            seen.in_process.response_headers, seen.socket.response_headers,
-            "{what}"
-        );
-        assert_eq!(
-            seen.in_process.response_body_bytes, seen.socket.response_body_bytes,
-            "{what}"
-        );
+        check_response(&seen, &format!("{:?} {}", call.variant, call.op));
     }
 }
 
@@ -404,5 +447,139 @@ async fn a_difference_between_variants_holds_to_within_the_content_length_digits
                 - signed(digits(cbor.socket.response_body_bytes)),
             "{what}: the response difference moves by the digits of content-length"
         );
+    }
+}
+
+/// One call of the `cose` server, as the runner sends it: the body and the op it goes to.
+struct Sent {
+    op: &'static str,
+    /// The request body: the CBOR payload of the registration, a `COSE_Sign1` message for every
+    /// other call.
+    body: Vec<u8>,
+}
+
+impl Sent {
+    /// The request the runner builds for this call.
+    fn request(&self) -> Request<Body> {
+        runner::request_for(Variant::Cose, self.op, self.body.clone(), None).expect("a request")
+    }
+}
+
+/// A call of the `cose` server, built the way `runner::run` builds it: the registration is plain
+/// CBOR, and every other call is sealed by the device.
+async fn sent(device: &Device, op: &'static str, args: &Value) -> Sent {
+    let payload = runner::encode(Variant::Cose, args).expect("a CBOR payload");
+    let body = if is_registration(op) {
+        payload
+    } else {
+        device
+            .seal(op, None, &payload)
+            .await
+            .expect("a sealed call")
+    };
+    Sent { op, body }
+}
+
+/// The answer to a call of the `cose` server, as the socket carried it.
+///
+/// The registration is answered in plain CBOR. A sealed call is answered as a `COSE_Sign1` message
+/// that opens under the server's key and is bound to the request it answers, and its payload is the
+/// note the scenario wrote.
+async fn check_answer(device: &Device, call: &Sent, seen: &Observed) {
+    let op = call.op;
+    let media = seen
+        .socket
+        .response_headers
+        .iter()
+        .find(|(name, _)| name == "content-type")
+        .map(|(_, value)| value.as_str());
+    if is_registration(op) {
+        assert_eq!(
+            media,
+            Some(CBOR),
+            "{op}: the registration is answered in CBOR"
+        );
+        return;
+    }
+    assert_eq!(
+        media,
+        Some(SIGN1),
+        "{op}: a sealed call is answered as COSE_Sign1"
+    );
+
+    let payload = device
+        .open_response(op, &call.body, 200, body_of(&seen.read))
+        .await
+        .expect("the answer opens under the server's key");
+    let answer: Value = CborCodec.decode(&payload).expect("a CBOR answer");
+    match op {
+        ADD_OP => assert_eq!(answer["text"], NOTE, "{op}: the note comes back"),
+        LIST_OP => assert_eq!(answer["notes"][0]["text"], NOTE, "{op}: the note is listed"),
+        _ => {}
+    }
+}
+
+#[tokio::test]
+async fn a_socket_carries_the_sealed_calls_of_the_cose_server() {
+    // Two servers with one key, as `runner::run` has one for its server and its device: the same
+    // calls go to each, in process and over a socket, so the two exchanges can be compared.
+    let signing = Signing::fresh().expect("a signing setup");
+    let in_process = build(Variant::Cose, DEFAULT_AUDIENCE, &signing.scalar).expect("a server");
+    let over_socket = build(Variant::Cose, DEFAULT_AUDIENCE, &signing.scalar).expect("a server");
+    let device = Device::new(&in_process, &signing).expect("a device");
+
+    let (x, y) = device.xy().expect("the device's coordinates");
+    let calls = [
+        sent(&device, REGISTER_OP, &json!({ "args": { "x": x, "y": y } })).await,
+        sent(&device, ADD_OP, &json!({ "args": { "text": NOTE } })).await,
+        sent(&device, LIST_OP, &json!({ "args": {} })).await,
+    ];
+
+    // In process, one call after another, through the router.
+    for call in &calls {
+        let response = in_process
+            .router
+            .clone()
+            .oneshot(call.request())
+            .await
+            .expect("a response");
+        to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("a body");
+    }
+    let in_process_exchanges = in_process.exchanges.exchanges();
+
+    // Over one connection to the other server, each call written after the answer to the last.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("a free port");
+    let addr = listener.local_addr().expect("an address");
+    let router = over_socket.router.clone();
+    let server = tokio::spawn(async move { cratestack::axum::serve(listener, router).await });
+    let mut written = Vec::new();
+    for call in &calls {
+        written.push(http1(call.request(), addr).await);
+    }
+    let requests = written.clone();
+    let read = tokio::task::spawn_blocking(move || keep_alive(addr, &requests))
+        .await
+        .expect("the socket thread");
+    server.abort();
+    let socket_exchanges = over_socket.exchanges.exchanges();
+
+    assert_eq!(in_process_exchanges.len(), calls.len(), "in process");
+    assert_eq!(socket_exchanges.len(), calls.len(), "over the socket");
+    for (i, call) in calls.iter().enumerate() {
+        let seen = Observed {
+            written: written[i].clone(),
+            read: read[i].clone(),
+            addr,
+            socket: socket_exchanges[i].clone(),
+            in_process: in_process_exchanges[i].clone(),
+        };
+        let what = format!("cose {}", call.op);
+        check_request(&seen, &what);
+        check_response(&seen, &what);
+        check_answer(&device, call, &seen).await;
     }
 }

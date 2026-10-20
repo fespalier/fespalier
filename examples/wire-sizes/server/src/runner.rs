@@ -21,8 +21,8 @@ use cratestack::cose::{
     CoseEnvelope, CoseMode, CoseSigner, CoseVerifyKey, P256Signer, StaticVerifierResolver,
 };
 use cratestack::{
-    Binding, BoundHeaders, CratestackCodec, CratestackError, PathParams, ResponseBinding,
-    find_contract,
+    Binding, BoundHeaders, CratestackBody, CratestackCodec, CratestackError, PathParams,
+    ResponseBinding, find_contract,
     serde_json::{self, Value},
 };
 use cratestack_codec_cbor::CborCodec;
@@ -72,9 +72,10 @@ fn content_type_for(variant: Variant, op: &str) -> &'static str {
 
 /// A device that can sign for the `cose` server, built from its public key.
 ///
-/// The plain variants never call this: they carry a `Bearer` header or nothing, and there is no key
-/// to hold.
-struct Device {
+/// Public so that `tests/socket.rs` seals a call the way [`run`] does, and opens the answer. The
+/// plain variants never build one: they carry a `Bearer` header or nothing, and there is no key to
+/// hold.
+pub struct Device {
     signer: P256Signer,
     envelope: CoseEnvelope,
 }
@@ -84,7 +85,7 @@ impl Device {
     ///
     /// # Errors
     /// When the scalar is not a P-256 key, or the client envelope cannot be built.
-    fn new(built: &Built, signing: &Signing) -> Result<Self, CratestackError> {
+    pub fn new(built: &Built, signing: &Signing) -> Result<Self, CratestackError> {
         let signer = crate::scenario::signer_for(&signing.scalar)?;
         let server_key: CoseVerifyKey = built.cose_server_key()?;
         let resolver = StaticVerifierResolver::new().with_key(server_key);
@@ -102,7 +103,7 @@ impl Device {
     ///
     /// # Errors
     /// When the key is not a P-256 EC key.
-    fn xy(&self) -> Result<(String, String), CratestackError> {
+    pub fn xy(&self) -> Result<(String, String), CratestackError> {
         use base64::Engine as _;
 
         let sec1 = self
@@ -118,7 +119,7 @@ impl Device {
     ///
     /// # Errors
     /// When the payload cannot be sealed.
-    async fn seal(
+    pub async fn seal(
         &self,
         op: &str,
         idempotency_key: Option<&str>,
@@ -129,6 +130,36 @@ impl Device {
             .seal_request(payload, &binding(op, idempotency_key, None))
             .await?
             .to_vec())
+    }
+
+    /// Opens the answer to a sealed call of `op`, and returns the payload it carries.
+    ///
+    /// `request` is the sealed request as it was sent, and `status` and `body` the answer. A `cose`
+    /// server seals every answer under its own key and binds it to the request it answers (the
+    /// digest of the signed request bytes), so an answer that does not verify, or that answers
+    /// another request, is an error.
+    ///
+    /// # Errors
+    /// When the answer does not verify under the server's key for this request and op.
+    pub async fn open_response(
+        &self,
+        op: &str,
+        request: &[u8],
+        status: u16,
+        body: &[u8],
+    ) -> Result<Vec<u8>, CratestackError> {
+        let response = ResponseBinding {
+            request: cratestack::request_digest(request),
+            status,
+        };
+        let opened = self
+            .envelope
+            .open_response(
+                CratestackBody::copy_from_slice(body),
+                &binding(op, None, Some(response)),
+            )
+            .await?;
+        Ok(opened.payload.to_vec())
     }
 }
 

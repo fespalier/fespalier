@@ -393,7 +393,7 @@
           "path": "/profile",
           "expect": "Edit profile",
           "title": "`/profile`",
-          "alt": "The Profile tab: links to Edit profile, Security and Settings, above a bottom navigation bar with Home, Search, Profile and Library."
+          "alt": "The Profile tab: an avatar, Profile, and the buttons Edit profile, Security and Settings, above a bottom navigation bar with Home, Search, Profile (selected) and Library."
         },
         {
           "file": "books.png",
@@ -407,7 +407,7 @@
           "path": "/library/books",
           "expect": "Books count 0",
           "title": "`/library/books`, 1280 px wide",
-          "alt": "The same Library page in a window 1280 pixels wide, where fespalier_adaptive draws the menu as a navigation drawer instead of a bottom bar.",
+          "alt": "The same Library page in a window 1280 pixels wide: fespalier_adaptive draws the menu as a navigation drawer, with Home, Search, Profile and the Library section's Books and Authors, instead of a bottom bar.",
           "viewport": {
             "width": 1280,
             "height": 800,

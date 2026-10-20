@@ -1160,3 +1160,35 @@ fn a_symlinked_folder_is_still_a_folder() {
     assert_eq!(routes, 2);
     assert!(code.contains("LinkedRoute"));
 }
+
+/// A typedef of a plain type in a file outside the app folder is followed, and a run with it
+/// unchanged parses nothing (since 0.21.0).
+#[test]
+fn a_typedef_outside_the_app_folder_follows() {
+    let mut sim = Sim::new(&app(60), NO_CONFIG, 12);
+    sim.lib_write("models/ids.dart", "typedef ProductId = int;\n");
+    let shop = format!(
+        "import 'package:demo/models/ids.dart';\n{}",
+        page("ShopId", "required ProductId id")
+    );
+    sim.write("s1/shop/$id/page.dart", &shop);
+    let r = sim.same("the first run");
+    assert!(
+        r.ok && r.outputs[0]
+            .as_ref()
+            .unwrap()
+            .contains("Segment.asInt(s, 'id')"),
+        "{r:?}"
+    );
+    sim.regen();
+    assert_eq!(sim.parses, (0, 0));
+    // The typedef's file is read each run; a typedef of another type is a String segment.
+    sim.lib_write("models/ids.dart", "typedef ProductId = String;\n");
+    let r = sim.same("the typedef changed to String");
+    assert!(
+        r.ok && !r.outputs[0].as_ref().unwrap().contains("asInt"),
+        "{r:?}"
+    );
+    sim.lib_remove("models/ids.dart");
+    assert!(!sim.same("the file deleted").ok);
+}

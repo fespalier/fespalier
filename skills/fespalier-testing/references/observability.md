@@ -58,13 +58,13 @@ It returns the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there 
 build (so a store build never sends to a laptop); `http://10.0.2.2:4318` on Android (not the web); and
 `http://localhost:4318` everywhere else.
 
-| The app runs on                          | What to do                                                                                                 |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Android emulator, iOS simulator, desktop | Nothing                                                                                                    |
-| Chrome (`flutter run -d chrome`)         | Nothing; the collector allows CORS from `http://localhost:*` and `http://127.0.0.1:*`                      |
-| A phone on the same Wi-Fi                | `fsp telemetry --lan`, then `flutter run --dart-define-from-file=~/.fespalier/telemetry/dart-defines.json` |
-| An Android phone on USB                  | `adb reverse tcp:4318 tcp:4318`, then `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`    |
-| A changed `FSP_OTLP_HTTP_PORT`           | Pass the define; `endpoint()` always says 4318                                                             |
+| The app runs on                          | What to do                                                                                                       |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Android emulator, iOS simulator, desktop | Nothing                                                                                                          |
+| Chrome (`flutter run -d chrome`)         | Nothing; the collector allows CORS from `http://localhost:*` and `http://127.0.0.1:*`                            |
+| A phone on the same Wi-Fi                | `fsp telemetry --lan`, then `flutter run --dart-define-from-file="$HOME/.fespalier/telemetry/dart-defines.json"` |
+| An Android phone on USB                  | `adb reverse tcp:4318 tcp:4318`, then `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`          |
+| A changed `FSP_OTLP_HTTP_PORT`           | Pass the define; `endpoint()` always says 4318                                                                   |
 
 **On the web, `otel_zone` before v0.8.1 does not run the app inside its `runGuarded`** (checked on `otel_zone`
 v0.5.0): it opens a `ReceivePort` from `dart:isolate` before the body, the web has none, and the app stays blank

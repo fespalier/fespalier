@@ -103,8 +103,8 @@ never stays on screen.
 - **Signing out moves you, if the guard watches (since 0.5.0).** A guard that
   `ref.watch`es the session runs again when it changes, with `AppRoutes.router()` and
   with a router of your own built from `AppRoutes.mount()`, with no
-  `refreshListenable`. Three limits: a guard **under a pushed page that has no guard** does not react
-  until that page is uncovered, then runs again (a guard on the page on top reacts itself, and the guards of the page at the bottom keep watching: a sign-out they notice replaces the whole stack, a change only the top page's guard notices moves that page alone); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
+  `refreshListenable`. Three limits: a guard **under a pushed page** (guarded or not) is not watched while it is covered, and is
+  not run again by the app bar's back button, `Navigator.pop` or the system back, only by `GoRouter.pop` and `context.pop` of a page with no `leave.dart` (a guard on the page on top reacts itself while it is on top: with a base page under a redirect the router is refreshed first, so a sign-out replaces the whole stack and a change only the top page's guard notices can ask a dirty page's `leave()` twice, once for the refresh and once for the re-run; with none under it, the page moves alone and asks once); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
   again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
   the guard **twice** (Riverpod recomputes it, then the router asks), without
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it

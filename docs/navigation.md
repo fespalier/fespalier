@@ -280,7 +280,7 @@ The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, s
   - `go`, `replace`, `pushReplacement`, `pop`, `context.pop` and `Navigator.pop` of the page;
   - Android back (through `PopScope` and `GoRouter.pop`, or go_router's root fallback, where `true` closes the app);
   - the web's back and forward (refused: the address bar is reset to the page, a new history entry, forward history lost);
-  - a guard's refresh or redirect, **including a sign-out redirect**: check auth in `leave()`, or wrap sign-out in `leaveWithoutAsking`. A guard's re-run of a pushed page that moves the page (a redirect, or an error view) asks too (since 0.21.0), whatever the destination: the flow section's exemption below (a destination still inside the section passes) is for a navigation the app made, a base page's redirect included, and does not apply to a re-run. `leaveWithoutAsking` lets it through;
+  - a guard's refresh or redirect, **including a sign-out redirect**: check auth in `leave()`, or wrap sign-out in `leaveWithoutAsking`. A guard's re-run of a pushed page that moves the page (a redirect, or an error view) asks too (since 0.21.0), whatever the destination: the flow section's exemption below (a destination still inside the section passes) is for a navigation the app made, a base page's redirect included, and does not apply to a re-run. `leaveWithoutAsking` lets it through. Over a base page that is under a redirect, a change that only the pushed page's guard notices is a `refresh()` first, which go_router restores the pushed page for with a new entry and asks it: a dirty page can be asked twice, once for the refresh and once for the re-run (see [Guards](guards.md), "A dirty page can be asked twice");
   - go_router's `onEnter` (the adapters', since 0.11.0) and guards run first at parse time; `onExit` runs after, in the delegate;
   - leaving a tab layout, for the **active** tab's pages only.
 - **Not asked:**
@@ -290,6 +290,7 @@ The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, s
   - a dialog or sheet (a pageless route) on top;
   - `refresh()` with the same match list;
   - a guard's re-run of a pushed page whose guards pass again (since 0.21.0): it replaces the page with its own location, and the page stays;
+  - a guard's re-run of a pushed page that lands while the person's own question about the page is open or was refused (since 0.21.0): it is refused, replaces nothing and asks nothing;
   - a redirect.dart route;
   - layouts;
   - an imperative `Navigator.push` or replace outside go_router;

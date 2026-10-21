@@ -15,6 +15,11 @@ in `tasks: dev:` starts it with the app: it starts its stack and returns, so it 
   `telemetryAttach(router, base: () => _base)` into `AppRoutes.attach` (which `AppRoutes.router()`
   calls; an app that mounts the tree in a `GoRouter` of its own calls `AppRoutes.attach(router)` once).
   Off, the file is byte for byte what it was.
+- **A replaced router must be disposed** (with telemetry on). Telemetry's listener on the router's route information
+  keeps go_router's platform observer registered, so a router the app swapped out without `dispose()` keeps answering
+  the platform's links (deep links, `pushRoute`) while the new router gets none. Dispose the old one after the swap; without
+  telemetry it is not needed. A generated `main()` is not affected (`StartupGate` disposes its router). Details:
+  `docs/observability.md`, "Turning it on".
 - **`FespalierTelemetry`**: the sink, in `package:fespalier`. `FespalierTelemetry.install(sink)` (null
   uninstalls) before `runApp` and before the router is built. A sink is called synchronously and must
   return at once and not throw; what it throws is caught and printed once

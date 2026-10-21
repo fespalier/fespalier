@@ -714,6 +714,9 @@ final class TelemetrySite {
 /// Lets telemetry follow [router]'s navigations. The generated `AppRoutes.attach` calls it in an
 /// app generated with `telemetry: true`; an app that mounts the tree in a `GoRouter` of its own
 /// calls `AppRoutes.attach(router)`. [base] returns where the tree is mounted (`AppRoutes.base`).
+///
+/// A router the app replaces must be disposed: until then it keeps answering the platform's links
+/// (`docs/observability.md`, "Turning it on").
 void telemetryAttach(GoRouter router, {required String Function() base}) {
   try {
     RouterWatch.of(router).enableTelemetry(base);

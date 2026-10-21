@@ -128,6 +128,8 @@ FespalierTelemetry.install(sink); // null uninstalls
 
 A sink is called synchronously from the router, a provider or an action, so it must return at once, not throw (fespalier catches it and prints `fespalier telemetry: <error> (not shown again)` once) and not navigate or read a provider. There is one slot: a second `install` replaces the first. To report to several sinks, [combine them](#several-sinks-combine-and-add) (since 0.9.0).
 
+**A router the app replaces must be disposed.** Telemetry listens to the router's route information for as long as the router lives, and go_router registers that provider as a platform observer while it has a listener. A router the app swaps for another without calling its `dispose()` therefore keeps answering the platform's links (a deep link, a `pushRoute`) that the router on screen should get, and the new router does not see them. Dispose the old one after the swap: `dispose()` removes the listener with it. Without telemetry this is not needed, because go_router alone lets go of a replaced router. An app whose generated `main()` makes its router is not affected, since `StartupGate` disposes the router it makes.
+
 ### OpenTelemetry from the generated main()
 
 Since 0.19.0. With `otel: true`, `fsp gen` writes the OpenTelemetry wiring into `lib/app.main.g.dart`, so `lib/main.dart` is `Future<void> main() => AppMain.run();` and the app writes no OpenTelemetry code. Add `fespalier_otel` and `otel_zone` under `dependencies:` as [the next section](#opentelemetry-with-otel_zone) shows, then in `pubspec.yaml`:

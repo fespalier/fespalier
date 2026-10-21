@@ -290,7 +290,7 @@ The folder needs a `page.dart`: a layout's shell has no `onExit` in go_router, s
   - a dialog or sheet (a pageless route) on top;
   - `refresh()` with the same match list;
   - a guard's re-run of a pushed page whose guards pass again (since 0.21.0): it replaces the page with its own location, and the page stays;
-  - a guard's re-run of a pushed page that lands while the person's own question about the page is open or was refused (since 0.21.0): it is refused, replaces nothing and asks nothing;
+  - a guard's re-run of a pushed page that lands while the person's own question about the page is open or was refused (since 0.21.0): it is refused, replaces nothing and asks nothing (when its guard moves the page, the re-run goes again on the frame after, and asks then);
   - a redirect.dart route;
   - layouts;
   - an imperative `Navigator.push` or replace outside go_router;

@@ -452,6 +452,9 @@ void main() {
       return count;
     }
 
+    // The first container of an isolate sets up one microtask more than the ones after it, and
+    // the count taken first would pay for it: this call only warms Riverpod up.
+    scheduled(scoped: false);
     // Riverpod schedules work for a listener and for a close; the scope adds nothing to that.
     expect(scheduled(scoped: true), scheduled(scoped: false));
   });

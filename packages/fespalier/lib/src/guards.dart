@@ -168,9 +168,6 @@ final class _RouterGuards {
   /// that is not here and has a redirect is held back ([refuses]).
   final _passed = <String>{};
 
-  /// What the redirect of a pushed page threw, by page key: what the held page shows, nothing yet.
-  final _failures = <String, GuardFailure>{};
-
   /// The completer each pushed page's `Future` answers to: the one of the navigation that put the
   /// page on top. A re-run forwards its own result there, so the `Future` completes when the page
   /// that stands in for the failed one pops.
@@ -364,11 +361,8 @@ final class _RouterGuards {
       final key = top.pageKey.value;
       if (top.matches.isError) {
         _passed.remove(key);
-        final error = top.matches.error;
-        if (error is GuardFailure) _failures[key] = error;
       } else {
         _passed.add(key);
-        _failures.remove(key);
       }
       // A re-run's own commit keeps the completer the caller holds; any other commit is the
       // caller's navigation, and its completer is the one to answer.
@@ -376,7 +370,6 @@ final class _RouterGuards {
     }
     final keys = {for (final e in pushed) e.pageKey.value};
     _passed.removeWhere((k) => !keys.contains(k));
-    _failures.removeWhere((k, _) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
 
     if (!pushPath && shown != null && _guarded(shown)) {
@@ -664,9 +657,9 @@ const _guardFailureContext = 'while running a guard or redirect.dart';
 /// location, it is the router's own error (`GoRouter.refresh` runs the navigation again). After
 /// `push`, and `pushReplacement` and `replace` over other pages, go_router puts the failed list in an
 /// entry on top of the stack and the router's own `error` stays null: the retry then closes that
-/// entry and pushes the same location with the same `extra` again. The `Future` of the `push` that
-/// failed completes with `null` when the retry closes the entry, as it does when the user does; the
-/// page the retry pushes has no `Future` of its own that anyone waits for. A dialog, a sheet or
+/// entry with the same location and `extra` again, and keeps its page key (since 0.21.0). The `Future`
+/// of the `push` that failed completes with the result of the page in its place when that page pops
+/// (`null` when it is popped without one). A dialog, a sheet or
 /// another route without a page over the error view is closed first, so the retry replaces the
 /// error view and not the dialog. A retry held after the router moved on (the entry closed, another
 /// page above it) does nothing.

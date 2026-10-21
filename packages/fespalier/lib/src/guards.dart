@@ -521,6 +521,8 @@ final class _RouterGuards {
   /// change: after the frame, which no event of the app comes before.
   ///
   /// What it relies on: [config] is the stack as it is now, so the restore can answer when it likes.
+  /// With a synchronous base it has landed when `restore` returns, on the same list (go_router keeps
+  /// the list it was given when the location is the same, so nothing is set and nothing commits).
   /// A base redirect that is asynchronous (several awaits) answers after the pop, and its answer is
   /// the stack the person left, which is the one on screen: nothing is put back. That holds because
   /// the restore is sent after the pop. Sent before it, with a configuration that still held the

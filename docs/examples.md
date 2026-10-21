@@ -1,18 +1,18 @@
 # Run the examples
 
-Start with [`examples/minimal`](../examples/minimal), then read on for what each of the others shows. Each Flutter example's README also has screenshots of its web build, made by `just example-screenshots`.
+Start with [`examples/minimal`](https://github.com/fespalier/fespalier/tree/main/examples/minimal), then read on for what each of the others shows. Each Flutter example's README also has screenshots of its web build, made by `just example-screenshots`.
 
 Trees that `fsp` rejects are not examples: the smallest broken app folder for each of fifteen common diagnostics, with the output of `fsp check --json` beside it, is under [`cli/tests/fixtures/diagnostics/`](https://github.com/fespalier/fespalier/blob/main/cli/tests/fixtures/diagnostics/README.md). They are what the troubleshooting skill's messages are tested against.
 
 ## minimal
 
-[`examples/minimal`](../examples/minimal) is the smallest app: `flutter create` + `fsp init` and three
+[`examples/minimal`](https://github.com/fespalier/fespalier/tree/main/examples/minimal) is the smallest app: `flutter create` + `fsp init` and three
 pages (a class page, a function page and a `$id` page with a query parameter and a `data.dart`), with a
 README that goes through each file and a few widget tests.
 
 ## shop
 
-[`examples/shop`](../examples/shop) is a product list, a product page, a cart and a checkout behind a guard.
+[`examples/shop`](https://github.com/fespalier/fespalier/tree/main/examples/shop) is a product list, a product page, a cart and a checkout behind a guard.
 
 ```sh
 cd examples/shop
@@ -49,7 +49,7 @@ a server each photo fails and shows the product's initial.
 
 ## features
 
-[`examples/features`](../examples/features) covers the rest. Routing and layouts:
+[`examples/features`](https://github.com/fespalier/fespalier/tree/main/examples/features) covers the rest. Routing and layouts:
 
 - an `(account)` group next to a catch-all `$slug` page;
 - per-route transitions (the group fades in, `/ticks` doesn't animate);
@@ -128,7 +128,7 @@ reconnect, and a network that flaps loads once.
 
 ## tabs
 
-[`examples/tabs`](../examples/tabs) is a bottom navigation bar built as a tab layout:
+[`examples/tabs`](https://github.com/fespalier/fespalier/tree/main/examples/tabs) is a bottom navigation bar built as a tab layout:
 
 - four tabs: one with nested pages, and a Library tab that is a tab layout of its own, with two inner
   tabs;
@@ -165,7 +165,7 @@ route, its file and the OpenTelemetry trace of the same call.
 
 ## auth
 
-`examples/auth` (since 0.9.0) is [`fespalier_auth`](../packages/fespalier_auth):
+`examples/auth` (since 0.9.0) is [`fespalier_auth`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_auth):
 
 - a sign-in form on an action;
 - a `requireSignedIn` guard that comes back to where the user was going, and a `requireRole` one for
@@ -181,7 +181,7 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 
 ## plugins
 
-[`examples/plugins`](../examples/plugins) (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](../packages/fespalier_push) and [`fespalier_analytics`](../packages/fespalier_analytics), and [`fespalier_launch`](../packages/fespalier_launch) (since 0.18.0) for home-screen shortcuts and widgets:
+[`examples/plugins`](https://github.com/fespalier/fespalier/tree/main/examples/plugins) (since 0.13.0) is the companion packages that plug in through `fespalier: adapters:`, starting with [`fespalier_push`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_push) and [`fespalier_analytics`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_analytics), and [`fespalier_launch`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_launch) (since 0.18.0) for home-screen shortcuts and widgets:
 
 - `telemetry: true` and `adapters: [fespalier_push, fespalier_analytics, fespalier_launch]`; `main.dart` calls `FespalierPush.configure(...)`, `FespalierAnalytics.configure(...)` and `FespalierLaunch.configure(...)` (since 0.18.0) before `AppMain.run()`;
 - a `FakePushSource` in place of Firebase Messaging, and debug buttons on the home page that simulate a tap on a notification, a `RecordingAnalytics` in place of the analytics SDK, and the consent buttons of a banner (`analyticsConsent`);
@@ -193,7 +193,7 @@ provider with device-bound tokens (DPoP), and its tests check every proof the wa
 
 ## downloads
 
-`examples/downloads` (since 0.15.0) is [`fespalier_download`](../packages/fespalier_download) with the foreground backend ([Downloads](downloads.md)), and the app a person tests downloads on a phone or a desktop with, no code to write:
+`examples/downloads` (since 0.15.0) is [`fespalier_download`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_download) with the foreground backend ([Downloads](downloads.md)), and the app a person tests downloads on a phone or a desktop with, no code to write:
 
 - `adapters: [fespalier_download]`; `main.dart` calls `FespalierDownload.configure(...)` (through `configureDownloads()`) before `AppMain.run()`, with `HttpDownloadBackend`, `FileDownloadStore` and `TransferDownloadFiles`, a demo grantor and the mapping from a notification tap to a route;
 - `/` is one card per case of the device test ([issue #157](https://github.com/fespalier/fespalier/issues/157)): a large file with a SHA-256, a small one, and a wrong checksum, each with the buttons that make sense for its `downloadStatus` (start, pause, resume, retry, cancel, remove), and a sign-out that calls `clearAccount()`;
@@ -208,11 +208,11 @@ flutter pub get
 flutter run -d <device id>
 ```
 
-The [README](../examples/downloads/README.md) has the run steps for a tester, one per case, with what each must show and what to report; it needs no knowledge of fespalier.
+The [README](https://github.com/fespalier/fespalier/blob/main/examples/downloads/README.md) has the run steps for a tester, one per case, with what each must show and what to report; it needs no knowledge of fespalier.
 
 ## cose
 
-[`examples/cose`](../examples/cose) is a full stack: a [`fespalier_cratestack`](../packages/fespalier_cratestack) app and the CrateStack server it talks to, in which every request is a **COSE_Sign1** message signed by a device key ([`fespalier_sign_keypair`](../packages/fespalier_sign_keypair)) and every answer is a COSE_Sign1 message signed by the server. Its [README](../examples/cose/README.md) has the design as built, a sequence diagram of a signed call, the life of the device key, and every status the server answers with.
+[`examples/cose`](https://github.com/fespalier/fespalier/tree/main/examples/cose) is a full stack: a [`fespalier_cratestack`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_cratestack) app and the CrateStack server it talks to, in which every request is a **COSE_Sign1** message signed by a device key ([`fespalier_sign_keypair`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_sign_keypair)) and every answer is a COSE_Sign1 message signed by the server. Its [README](https://github.com/fespalier/fespalier/blob/main/examples/cose/README.md) has the design as built, a sequence diagram of a signed call, the life of the device key, and every status the server answers with.
 
 - a `CoseTransport` that signs at send time, so an [intent](cratestack.md#5-actions)'s retries are new messages (a fresh `iat` and `cti`) over the same payload under the same `Idempotency-Key`, and a sealed answer that does not open is `CrateStackOffline` (the same key, never the next);
 - a notes page whose read is `ref.serve` and whose write is an intent, with widget tests over `FakeCrateStackTransport`;
@@ -229,7 +229,7 @@ just cose                                                                   # th
 
 ## wire-sizes
 
-[`examples/wire-sizes`](../examples/wire-sizes) is a **measurement**, not an app: one CrateStack schema served as JSON, plain CBOR and `COSE_Sign1` CBOR, with every call weighed by a layer in the server that handles it: the request line, headers and body of each request and the status line, headers and body of each response, as the server's handler stack sees them. That is a count of the HTTP message, not a capture of a socket: `host`, `content-length`, hyper's `date` and TCP/TLS framing are not in it, so totals are lower bounds. It answers the question [`examples/cose`](../examples/cose) raises: what does signing a call actually cost?
+[`examples/wire-sizes`](https://github.com/fespalier/fespalier/tree/main/examples/wire-sizes) is a **measurement**, not an app: one CrateStack schema served as JSON, plain CBOR and `COSE_Sign1` CBOR, with every call weighed by a layer in the server that handles it: the request line, headers and body of each request and the status line, headers and body of each response, as the server's handler stack sees them. That is a count of the HTTP message, not a capture of a socket: `host`, `content-length`, hyper's `date` and TCP/TLS framing are not in it, so totals are lower bounds. It answers the question [`examples/cose`](https://github.com/fespalier/fespalier/tree/main/examples/cose) raises: what does signing a call actually cost?
 
 - a Rust server (`examples/wire-sizes/server`, no database, its own `Cargo.lock`) whose `--variant json|cbor|cose` picks the codec, and whose outermost middleware records each exchange before any inner layer can refuse it;
 - a runner that drives the same scenario through all three variants **in process** (`tower`'s `oneshot`, no socket), so it can read the server's own log back; `tests/socket.rs` sends the same requests over a real socket and pins what that adds;
@@ -246,7 +246,7 @@ The scenario's payloads are tens of bytes, so its totals are mostly headers; the
 
 ## i18n
 
-[`examples/i18n`](../examples/i18n) is [`fespalier_tolgee`](../packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):
+[`examples/i18n`](https://github.com/fespalier/fespalier/tree/main/examples/i18n) is [`fespalier_tolgee`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):
 
 - the language is a `$lang` enum folder (`/en`, `/fr`; `/xx` is not found), read by `MaterialApp.router(routerConfig: TranslationScope.routerConfig(router, localeOf: localeSegment()))`;
 - `startup()` reads `assets/i18n/en.arb` and `fr.arb` while `splash.dart` shows, so the first frame is translated, and `fr.arb` lacks one key on purpose: the page shows the English text;
@@ -262,7 +262,7 @@ flutter run
 
 ## maps
 
-`examples/maps` (since 0.13.0) is [`fespalier_maps`](../packages/fespalier_maps): a pin picker that returns a place, and one offline map pack ([Maps](maps.md)).
+`examples/maps` (since 0.13.0) is [`fespalier_maps`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_maps): a pin picker that returns a place, and one offline map pack ([Maps](maps.md)).
 
 - `/` asks "Where should we deliver?" with `await PickPlaceRoute().push<PickedPlace>(context)` and shows the point it gets back and the name as a best guess;
 - `/pick-place` is `PinPicker` as the whole body, over `MapLibreSurface` and `GeolocatorPositionSource`, with the guess card, the search field and the confirm button as widgets of the app;
@@ -290,7 +290,7 @@ Add the location strings `geolocator` needs first (`NSLocationWhenInUseUsageDesc
 
 ## offline
 
-`examples/offline` (since 0.10.0) is [`fespalier_cratestack`](../packages/fespalier_cratestack) with no server to start: two screens, and a switch in the app bar that plays the device's network.
+`examples/offline` (since 0.10.0) is [`fespalier_cratestack`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_cratestack) with no server to start: two screens, and a switch in the app bar that plays the device's network.
 
 - `/orders` reads with `ref.serve` (the `networkFirst` policy): with the switch off the list is the copy this phone last loaded, with its time, or "not loaded on this phone yet". Cancelling an order is an **intent** (`IntentQueue.submit`): saved, sent once under the key `<id>#<attempt>`, shown as "Cancelling, will send when back online" while queued, and sent when the network is back. A refusal (order 3 is already shipped) is shown and never retried.
 - `/notes` are owned rows (`OwnedRows` and a `RowSync` the app writes): edited offline, merged with another phone's edit field by field, and rolled back out loud when the server refuses one.

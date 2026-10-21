@@ -27,7 +27,7 @@ Contents: [Install](#install), [Requests and files](#requests-and-files), [Statu
 
 Add the package next to fespalier with the **same `url` and the same `ref`**: pub resolves the two to one package only
 then. The tag must be a release that contains the package (0.15.0 or later). The install block, with the version
-release-please keeps current, is in [the package's README](../packages/fespalier_download/README.md#install).
+release-please keeps current, is in [the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_download/README.md#install).
 
 The package depends on `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests), a pure Dart package, and on
 fespalier and `fespalier_http` (for `HttpCredentials`; list it yourself, with the same `url` and `ref`, only if your code imports it). It resolves on Flutter 3.35 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
@@ -229,7 +229,7 @@ goes on while the app is in the background and after the app was closed. It is a
 `fespalier_download`, because `background_downloader` 9.6 needs Dart 3.13 and **Flutter 3.47**: an app on an older
 Flutter keeps the foreground backend and resolves as before, and the package is left out of CI's `floor` job as
 `fespalier_sign_keypair` is. The install block is in
-[the package's README](../packages/fespalier_download_background/README.md#install). It was written against
+[the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_download_background/README.md#install). It was written against
 `background_downloader` **9.6.4**, whose sources and documentation were read, not recalled.
 
 ```dart

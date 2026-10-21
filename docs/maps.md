@@ -32,7 +32,7 @@ Contents: [Install](#install), [Picking a place](#picking-a-place), [Search and 
 
 Add the package next to fespalier with the **same `url` and the same `ref`**: pub resolves the two to one package only
 then. The tag must be a release that contains the package (0.13.0 or later). The install block, with the version
-release-please keeps current, is in [the package's README](../packages/fespalier_maps/README.md#install).
+release-please keeps current, is in [the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_maps/README.md#install).
 
 The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`), `geolocator` (`>=14.0.0 <15.0.0`) and, for the file packs,
 `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side, and on [`fespalier_download`](downloads.md), which does the file packs' transfer (list it next to `fespalier_maps` with the same `ref`). An app

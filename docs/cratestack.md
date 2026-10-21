@@ -5,7 +5,7 @@
 wait for the network, and rows a device edits and syncs. The idea behind it is in
 [Offline-first](offline-first.md); this page is how to wire it.
 
-Install and the short version: [`packages/fespalier_cratestack/README.md`](../packages/fespalier_cratestack/README.md).
+Install and the short version: [`packages/fespalier_cratestack/README.md`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_cratestack/README.md).
 
 ## What it is, and what it is not
 
@@ -393,7 +393,7 @@ that uses them leaves nothing pending. `ManualSyncTicker`, `FakeRowServer` and `
 - **Signed intents** (a re-confirmation, a device-bound proof of possession on a queued call). The intent is the
   stored call; a proof tied to a moment cannot be replayed from a queue. Signing **each attempt** at send time is
   another thing, and works: a `CrateStackTransport` that seals the call with a device key when `send` runs, so an
-  intent's retries are new messages over the same payload under the same key. [`examples/cose`](../examples/cose/README.md)
+  intent's retries are new messages over the same payload under the same key. [`examples/cose`](https://github.com/fespalier/fespalier/blob/main/examples/cose/README.md)
   does it with COSE_Sign1, against a CrateStack server that verifies every request and seals every answer.
 - **Paging helpers** for pulls beyond the cursor loop of `RowSync`.
 - **Sync telemetry spans.** A data read through `serve` and an action that calls `submit` already run inside

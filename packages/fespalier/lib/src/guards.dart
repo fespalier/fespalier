@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/scheduler.dart' show SchedulerBinding;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -386,6 +386,10 @@ final class _RouterGuards {
       final rerun = _reruns.remove(key);
       if (rerun == null) {
         _completers[key] = top.completer;
+      } else if (top.matches.isError || top.matches.uri != rerun.uri) {
+        // The page moved, or its guard failed: `replace` keeps the page key, so the Navigator keeps
+        // the dialogs and sheets over it, and they are the old page's.
+        _closeOver(config.matches, key);
       }
     }
     final keys = {for (final e in pushed) e.pageKey.value};
@@ -395,6 +399,28 @@ final class _RouterGuards {
 
     if (!pushPath && shown != null && _guarded(shown)) {
       _schedule(shownKey!);
+    }
+  }
+
+  /// Closes the routes without a page (dialogs, sheets) that lie over the pushed page [key] and
+  /// over its navigator's shells, as the retry of an error view does ([_closeRoutesOver]): the page
+  /// stays, with what it shows replaced, and what the person opened over the old page does not
+  /// belong to the new one. Not in a build, where a navigator may not be changed: after the frame.
+  void _closeOver(List<RouteMatchBase> matches, String key) {
+    final navigators = <GlobalKey<NavigatorState>>[];
+    _navigatorsAround(matches, key, navigators);
+    navigators.add(_router.routerDelegate.navigatorKey);
+    void close() {
+      for (final navigator in navigators) {
+        navigator.currentState?.popUntil(_hasPage);
+      }
+    }
+
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => close());
+    } else {
+      close();
     }
   }
 
@@ -466,6 +492,25 @@ bool _hasRedirect(List<RouteMatchBase> matches) {
       if (m.route.redirect != null || _hasRedirect(m.matches)) return true;
     } else if (m is RouteMatch && m.route.redirect != null) {
       return true;
+    }
+  }
+  return false;
+}
+
+/// Collects into [out] the navigator keys of the shells that hold the pushed page [key], outermost
+/// first; true when the page is found.
+bool _navigatorsAround(
+  List<RouteMatchBase> matches,
+  String key,
+  List<GlobalKey<NavigatorState>> out,
+) {
+  for (final m in matches) {
+    if (m is ImperativeRouteMatch) {
+      if (m.pageKey.value == key) return true;
+    } else if (m is ShellRouteMatch) {
+      out.add(m.navigatorKey);
+      if (_navigatorsAround(m.matches, key, out)) return true;
+      out.removeLast();
     }
   }
   return false;

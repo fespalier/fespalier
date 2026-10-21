@@ -231,7 +231,184 @@ void main() {
       expect(find.text('COUNT 0'), findsOneWidget);
     });
   });
+
+  group('what lies over a pushed page when its guard runs again', () {
+    var states = 0;
+    var runs = 0;
+
+    /// The evaluation at which the guard of `/admin` throws (0: never).
+    var throwAt = 0;
+
+    GoRouter admin({required bool isAsync}) => GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(
+          path: '/admin',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g1@admin', (ref) {
+              runs++;
+              final ok = ref.watch(_signedIn);
+              if (throwAt != 0 && runs >= throwAt) throw StateError('boom');
+              final answer = ok ? null : '/login';
+              return isAsync ? Future<String?>.value(answer) : answer;
+            }),
+          ),
+          builder: (context, state) =>
+              refusedView(context, state) ?? _Counter(onState: () => states++),
+        ),
+        GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+      ],
+      errorBuilder: (context, state) => routerErrorPage(
+        context,
+        state,
+        (uri) => Text('NOT FOUND ${uri.path}'),
+        guardError: (uri, error, stackTrace, retry) => const Text('ERROR'),
+      ),
+    );
+
+    setUp(() {
+      states = 0;
+      runs = 0;
+      throwAt = 0;
+    });
+
+    /// A dialog over the page on top, as the app's own code shows one.
+    Future<void> showSecret(WidgetTester tester) async {
+      final context = tester.element(find.byType(_Counter));
+      unawaited(
+        showDialog<void>(
+          context: context,
+          builder: (_) => const Text('SECRET DIALOG'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('SECRET DIALOG'), findsOneWidget);
+    }
+
+    testWidgets('a re-run in a tab closes a dialog of the tab\'s own '
+        'navigator too', (tester) async {
+      final r = GoRouter(
+        initialLocation: '/tab',
+        routes: [
+          StatefulShellRoute.indexedStack(
+            builder: (context, state, shell) => shell,
+            branches: [
+              StatefulShellBranch(
+                routes: [
+                  GoRoute(
+                    path: '/tab',
+                    builder: (_, _) => const Text('TAB'),
+                    routes: [
+                      GoRoute(
+                        path: 'admin',
+                        redirect: (context, state) => runRedirect(
+                          () => refGuard(
+                            context,
+                            'g1@tab-admin',
+                            (ref) =>
+                                ref.watch(_signedIn) ? null : '/tab/denied',
+                          ),
+                        ),
+                        builder: (context, state) =>
+                            refusedView(context, state) ??
+                            _Counter(onState: () => states++),
+                      ),
+                      GoRoute(
+                        path: 'denied',
+                        builder: (_, _) => const Text('DENIED'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+        ],
+      );
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/tab/admin'));
+      await tester.pumpAndSettle();
+      expect(find.text('COUNT 0'), findsOneWidget);
+      unawaited(
+        showDialog<void>(
+          context: tester.element(find.byType(_Counter)),
+          useRootNavigator: false,
+          builder: (_) => const Text('SECRET DIALOG'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('SECRET DIALOG'), findsOneWidget);
+      c.read(_signedIn.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(find.text('DENIED'), findsOneWidget);
+      expect(find.text('SECRET DIALOG'), findsNothing);
+    });
+
+    for (final isAsync in [false, true]) {
+      final kind = isAsync ? 'async' : 'sync';
+
+      testWidgets('a re-run that moves the page closes the dialog over it '
+          '($kind guard)', (tester) async {
+        final r = admin(isAsync: isAsync);
+        final c = await pumpRouter(tester, r);
+        unawaited(r.push<void>('/admin'));
+        await tester.pumpAndSettle();
+        await showSecret(tester);
+        c.read(_signedIn.notifier).set(false);
+        await tester.pumpAndSettle();
+        expect(currentLocation(tester), '/login');
+        expect(find.text('LOGIN'), findsOneWidget);
+        expect(find.text('SECRET DIALOG'), findsNothing);
+      });
+
+      testWidgets('a re-run that fails closes the dialog over the page and '
+          'shows the error view ($kind guard)', (tester) async {
+        final r = admin(isAsync: isAsync);
+        final c = await pumpRouter(tester, r);
+        unawaited(r.push<void>('/admin'));
+        await tester.pumpAndSettle();
+        await showSecret(tester);
+        // The push was the first run, the change the second, and the router's own run the third.
+        throwAt = 3;
+        c.read(_signedIn.notifier).set(false);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isA<StateError>());
+        expect(find.text('ERROR'), findsOneWidget);
+        expect(find.text('SECRET DIALOG'), findsNothing);
+      });
+
+      testWidgets('a re-run that passes again keeps the dialog and the '
+          'page\'s state ($kind guard)', (tester) async {
+        final r = admin(isAsync: isAsync);
+        await pumpRouter(tester, r);
+        unawaited(r.push<void>('/admin'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('COUNT 0'));
+        await tester.pump();
+        await showSecret(tester);
+        r.refresh();
+        await tester.pumpAndSettle();
+        // The refresh restored the page without its redirect, and its guard ran again and passed.
+        expect(runs, 2);
+        expect(find.text('SECRET DIALOG'), findsOneWidget);
+        expect(find.text('COUNT 1'), findsOneWidget);
+        expect(states, 1);
+      });
+    }
+  });
 }
+
+class _Flag extends Notifier<bool> {
+  @override
+  bool build() => true;
+
+  void set(bool value) => state = value;
+}
+
+/// Whether someone is signed in, which a guard watches.
+final _signedIn = NotifierProvider<_Flag, bool>(_Flag.new);
 
 /// A page with state of its own: a tap on its text counts, and [onState] hears each time the state
 /// is made.

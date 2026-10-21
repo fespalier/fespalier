@@ -104,7 +104,7 @@ class LoginPage extends ConsumerWidget {
   built from `AppRoutes.mount()`, with no `refreshListenable`.
 - **What to know.**
   - A guard that `ref.read`s, or takes `ProviderContainer c`, runs only when you navigate.
-  - A guarded page **under a pushed page** waits: it reacts once that page is uncovered (a guard on the page on top reacts itself; with a guarded base page under it, the base is asked first, so a sign-out replaces the whole stack).
+  - A guarded page **under a pushed page that has no guard** waits: it reacts once that page is uncovered. When the page on top has a guard it reacts itself, and the guards of the page at the bottom keep watching: a sign-out they notice replaces the whole stack, and a change only the top page's guard notices moves that page alone, asked once.
   - A sign-out runs the guard **twice** (Riverpod recomputes it, then the router asks
     again); the providers it watches are not fetched twice.
   - `ref.keepAlive()` in a guard keeps one provider alive per navigation: don't.

@@ -323,6 +323,9 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
 /// for a `go`, `replace` and `pushReplacement`, the target match list of a `restore`, and, for
 /// a pop (nothing new was requested), the current configuration without the exiting match.
 ///
+/// A guard's re-run of a pushed page that moves it (since 0.21.0) is asked whatever its destination:
+/// the exemption of [within] is for a navigation the app made, a base page's redirect included.
+///
 /// A synchronous answer stays synchronous, with no `Future` and no microtask.
 LeaveResult leaveExit(
   BuildContext context,

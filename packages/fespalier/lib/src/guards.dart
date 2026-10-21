@@ -467,7 +467,9 @@ final class _RouterGuards {
   ///   navigation that failed closes them all: a page that never showed has nothing to keep up to
   ///   date (a refresh that one of them asked for would show the guarded page, #258).
   /// - A site bound to a page stays live while that page is on top, and is closed when it is covered
-  ///   or gone. A site the navigation did not evaluate and that is bound to no page is closed.
+  ///   or gone. A site the navigation did not evaluate and that is bound to no page (the base's) is
+  ///   closed too, unless the page on top has a guard: then the base's stay, so a change the base
+  ///   notices is not left to the pushed page's guard (see [_ping]).
   /// - A pushed page that is on top and was not pushed by this navigation (a refresh, a restore, a
   ///   pop back, a tab, a swap) runs its guard again, after the frame.
   void _judge(RouteMatchList config, bool pushPath) {

@@ -234,7 +234,7 @@ void main() {
 - **Two `guard.dart` files in one folder** is not a thing: compose with `??`.
 - **A flag that is always off:** the app never overrode `flagSource` (every flag is its fallback), or the key is
   misspelled (use `FakeFlags.strict` in tests).
-- **A guarded page under a pushed page** does not react until it is uncovered (the rule for every guard).
+- **A guarded page under a pushed page that has no guard** does not react until it is uncovered (the rule for every guard).
 - **A cold deep link before the source is ready** sees the fallback. Await the vendor's local load in `startup()`.
 - **A `route.dart` constant for a flag is not built** (it would be a second gating mechanism). Neither are vendor
   packages or a DevTools flag panel.

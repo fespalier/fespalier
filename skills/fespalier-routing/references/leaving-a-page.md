@@ -93,7 +93,7 @@ class DiscardSheet extends StatelessWidget {
 **Asked:** `go`, `replace`, `pushReplacement`, `pop`, `context.pop` and `Navigator.pop` of the page; Android back
 (through `PopScope` and `GoRouter.pop`, or go_router's root fallback, where `true` closes the app); the web's back and
 forward (refused: the address bar is reset to the page, a new history entry, forward history lost); a guard's refresh or
-redirect, **including a sign-out redirect** (a guard's re-run of a pushed page that moves the page asks the same way, since 0.21.0); leaving a tab layout, for the **active** tab's pages only. go_router's
+redirect, **including a sign-out redirect** (a guard's re-run of a pushed page that moves the page asks too, since 0.21.0, whatever the destination: the exemption of a flow section is not for it); leaving a tab layout, for the **active** tab's pages only. go_router's
 `onEnter` and guards run first at parse time; `onExit` runs after.
 
 **Not asked:** a tab switch (fespalier parks; go_router would ask); a parked tab's pages when the whole layout leaves (use

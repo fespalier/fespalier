@@ -103,8 +103,8 @@ never stays on screen.
 - **Signing out moves you, if the guard watches (since 0.5.0).** A guard that
   `ref.watch`es the session runs again when it changes, with `AppRoutes.router()` and
   with a router of your own built from `AppRoutes.mount()`, with no
-  `refreshListenable`. Three limits: a guard **under a pushed page** does not react
-  until that page is uncovered, then runs again (a guard on the page on top reacts itself, and when the page at the bottom of the stack has a guard of its own, that one is asked first, so a sign-out replaces the whole stack); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
+  `refreshListenable`. Three limits: a guard **under a pushed page that has no guard** does not react
+  until that page is uncovered, then runs again (a guard on the page on top reacts itself, and the guards of the page at the bottom keep watching: a sign-out they notice replaces the whole stack, a change only the top page's guard notices moves that page alone); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
   again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
   the guard **twice** (Riverpod recomputes it, then the router asks), without
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it
@@ -211,7 +211,7 @@ Future<List<Override>> startup() async => [
   the first frame is blank). Put the value behind a `FlagSource`.
 - **`follow: false` for a flow**: with the default, turning the flag off on the page takes the user off it.
 - **A guard that redirected stays subscribed until the next navigation**, so a flag's subscription outlives the page it
-  gated by one navigation (a test pins it). A guarded page under a pushed page reacts only when uncovered.
+  gated by one navigation (a test pins it). A guarded page under a pushed page that has no guard reacts only when uncovered.
 - **A cold deep link before the source is ready sees the fallback**: await the vendor's local load in `startup()`, or
   wrap a network-first vendor in `AsyncFlags` (the app's own `.timeout()` is the only timer).
 - **Without an override every flag is its fallback.** A flag that is "always off" is no override in `startup()`, or a key

@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/navigation_kind.dart' show pushedMatches;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -687,6 +688,131 @@ void main() {
         expect(find.text('g4'), findsNothing);
       });
     });
+  });
+
+  // The base page has a guard of its own, and a guarded page is pushed over it (fespalier/fespalier#258):
+  // one question per move the person sees. A change the base notices replaces the whole stack, and the
+  // question is asked of the pushed page once; a change only the pushed page's guard notices moves
+  // that page, and asks once, whatever the base is.
+  group('a guarded base under a guarded pushed page asks once', () {
+    /// `/o` has a guard on the session. `/adm` has a guard on the session and one on the role
+    /// (`_gOpen`), and a `leave.dart`; `/adm2` is the same with a guard that answers a microtask later.
+    GoRouter orders() => GoRouter(
+      initialLocation: '/y',
+      navigatorKey: rootKey,
+      routes: [
+        GoRoute(path: '/y', builder: (_, _) => const Text('y')),
+        GoRoute(path: '/in', builder: (_, _) => const Text('in')),
+        leaving('/x', 'x'),
+        leaving(
+          '/o',
+          'o',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(
+              context,
+              'g1@o',
+              (ref) => ref.watch(session) ? null : '/in',
+            ),
+          ),
+        ),
+        for (final isAsync in [false, true])
+          leaving(
+            isAsync ? '/adm2' : '/adm',
+            isAsync ? 'adm2' : 'adm',
+            redirect: (context, state) => runRedirect(
+              () => firstRedirect([
+                () => refGuard(context, 'g2@adm${isAsync ? 2 : ''}', (ref) {
+                  final signedIn = ref.watch(session);
+                  return signedIn ? null : '/in';
+                }),
+                () => refGuard(context, 'g3@adm${isAsync ? 2 : ''}', (ref) {
+                  final open = ref.watch(_gOpen);
+                  final answer = open ? null : '/y';
+                  return isAsync ? Future<String?>.value(answer) : answer;
+                }),
+              ]),
+            ),
+          ),
+      ],
+    );
+
+    List<ImperativeRouteMatch> pushed(GoRouter r) {
+      final out = <ImperativeRouteMatch>[];
+      pushedMatches(r.routerDelegate.currentConfiguration.matches, out);
+      return out;
+    }
+
+    /// The base `/o` is shown, and the dirty `label` page is pushed over it.
+    Future<ProviderContainer> over(
+      WidgetTester tester,
+      GoRouter r,
+      String label,
+    ) async {
+      asked.clear();
+      sources.clear();
+      answer = (_, _) => true;
+      final c = await pumpRouter(tester, r);
+      sources[label] = FakeSource(label, dirty: true);
+      r.go('/o');
+      await settle(tester);
+      await push(tester, r, '/$label');
+      expect(currentLocation(tester), '/$label');
+      return c;
+    }
+
+    for (final label in ['adm', 'adm2']) {
+      testWidgets('/$label: a role revoked moves the pushed page, keeps the '
+          'base and asks once', (tester) async {
+        final r = orders();
+        final c = await over(tester, r, label);
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(asked, ['$label dirty']);
+        expect(currentLocation(tester), '/y');
+        expect(pushed(r), hasLength(1));
+        expect(find.text(label), findsNothing);
+        expect(find.text('o', skipOffstage: false), findsOneWidget);
+      });
+
+      testWidgets('/$label: a role revoked and a question refused keeps the '
+          'page and asks once', (tester) async {
+        final r = orders();
+        final c = await over(tester, r, label);
+        answer = (_, _) => false;
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(asked, ['$label dirty']);
+        expect(currentLocation(tester), '/$label');
+        expect(find.text(label), findsOneWidget);
+      });
+
+      testWidgets('/$label: a sign-out replaces the whole stack and asks '
+          'once', (tester) async {
+        final r = orders();
+        final c = await over(tester, r, label);
+        c.read(session.notifier).signedIn = false;
+        await settle(tester);
+        // Both pages leave, and each is asked once: the pushed page that is dirty, and the base.
+        expect(asked.where((l) => l.startsWith(label)), ['$label dirty']);
+        expect(asked.where((l) => l.startsWith('o')), ['o']);
+        expect(currentLocation(tester), '/in');
+        expect(pushed(r), isEmpty);
+        expect(find.text('o', skipOffstage: false), findsNothing);
+        expect(find.text(label, skipOffstage: false), findsNothing);
+      });
+
+      testWidgets('/$label: a sign-out and a question refused keeps the '
+          'stack and asks once', (tester) async {
+        final r = orders();
+        final c = await over(tester, r, label);
+        answer = (_, _) => false;
+        c.read(session.notifier).signedIn = false;
+        await settle(tester);
+        expect(asked, ['$label dirty']);
+        expect(currentLocation(tester), '/$label');
+        expect(find.text(label), findsOneWidget);
+      });
+    }
   });
 
   group('go, replace, pushReplacement', () {

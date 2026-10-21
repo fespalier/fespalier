@@ -184,6 +184,9 @@ final class _RouterGuards {
   /// The pages whose re-run is scheduled for after the frame.
   final _scheduled = <String>{};
 
+  /// How deep the guards are in asking the router (see [_ping]).
+  var _asking = 0;
+
   /// How many asynchronous redirects are being awaited while a re-run exists (see [_redirect]): a
   /// re-run whose guard has not answered yet has a navigation of go_router on the way, which will
   /// land when it does.
@@ -252,45 +255,101 @@ final class _RouterGuards {
       _closeAll();
       return;
     }
+    // A guard that changed in the middle of the router being asked (reading the guards, or the
+    // redirects the router runs, brings the others up to date): the ask answers it, and decides what
+    // to do with its page. It is accepted when the ask is over (see [_refresh]).
+    if (_asking > 0) return;
     // The router is about to ask again, so the newest answer is the one it uses.
     live.acceptLatest();
     final hook = guardRefreshHooks[_router];
     final owner = live.page;
-    if (owner == null) {
-      if (hook == null) {
-        _router.refresh();
-      } else {
-        hook(_router.refresh);
+    if (owner != null) {
+      // A guard of a pushed page: the page is run again, and only while it is on top.
+      final top = _topEntry();
+      if (top == null || top.pageKey.value != owner || top.matches.isError) {
+        _live.remove(site)?.close();
+        return;
       }
-      return;
     }
-    // A guard of a pushed page: the page is run again, and only while it is on top.
-    final top = _topEntry();
-    if (top == null || top.pageKey.value != owner || top.matches.isError) {
-      _live.remove(site)?.close();
-      return;
+
+    // go_router restores the pages under the one on top without their redirects, and a restore asks
+    // every pushed page to leave (it makes them again), so the router is asked only when the base
+    // page moves: a sign-out that only moved the top page would leave the base under it, and the
+    // system back would land on it signed out. `refresh()` asks the base: when its redirect moves
+    // it, the whole stack is replaced, as it was before the pushed page's guard watched anything
+    // (before 0.21.0), and the question about the pushed page is asked once. When the base keeps its
+    // place, only the pushed page is run again, with one question if it moves.
+    void ask() {
+      _asking++;
+      try {
+        if (owner != null && !_baseMoves()) {
+          final again = _topEntry();
+          if (again != null && again.pageKey.value == owner) _rerun(again);
+          return;
+        }
+        _refresh();
+      } finally {
+        _asking--;
+      }
     }
-    // go_router restores the pages under the one on top without their redirects, so a base page
-    // that has a guard of its own must be asked again too, whichever site pinged: a sign-out that
-    // only moved the top page would leave the base under it, and the system back would land on it
-    // signed out. `refresh()` asks the base: when its redirect moves it, the whole stack is
-    // replaced, as it was before the pushed page's guard watched anything (before 0.21.0); when it
-    // keeps its place, `_judge` runs the page on top again after that commit. A base with no guard
-    // has nothing to ask, so the pushed page is run again at once.
-    final VoidCallback run = _baseGuarded()
-        ? _router.refresh
-        : () => _rerun(top);
+
     if (hook == null) {
-      run();
+      ask();
     } else {
-      hook(run);
+      hook(ask);
     }
   }
 
-  /// Whether the page at the bottom of the stack, which a `refresh()` asks again, is under a
-  /// redirect (its own, a parent's or a shell's): the pushed pages are not looked at.
-  bool _baseGuarded() =>
-      _hasRedirect(_router.routerDelegate.currentConfiguration.matches);
+  /// Asks the router to run the redirects again, because a guard of the base moved (or because it
+  /// cannot be told). That answers every guard that changed with it: the pages it restores are asked
+  /// to leave once, and a guard that changed for the same reason does not ask the router again (or
+  /// ask the same page a second time, when the first question was refused).
+  void _refresh() {
+    _router.refresh();
+    for (final live in _live.values.toList()) {
+      final sub = live.sub;
+      if (sub == null) continue;
+      try {
+        final now = sub.read();
+        if (now is! Future<String?>) live.accept(now);
+      } catch (_) {
+        // A guard that throws is not an answer.
+      }
+    }
+  }
+
+  /// Whether the page at the bottom of the stack moves, for a `refresh()` to ask: one of the guards it
+  /// ran answers another location now than the one its navigation used. The guards are read where they
+  /// are (reading a provider that something it watches changed brings it up to date), so the answer is
+  /// the same one the guard would give when it pings. What cannot be read now, an asynchronous guard,
+  /// says yes: the router will ask. A guard that throws is not an answer, and keeps the base (as a
+  /// base page's guard that fails on its own does).
+  ///
+  /// A base under a redirect (its own, a parent's or a shell's) none of whose guards is watched now
+  /// (a page was pushed over it that has no guard, and closed them, or the redirect is not a
+  /// fespalier guard) cannot be told: it moves, and the router asks.
+  bool _baseMoves() {
+    var watched = 0;
+    for (final live in _live.values.toList()) {
+      final sub = live.sub;
+      if (live.page != null || sub == null) continue;
+      watched++;
+      final GuardResult now;
+      try {
+        now = sub.read();
+      } catch (_) {
+        continue;
+      }
+      if (now is Future<String?>) return true;
+      if (live.moved(now)) {
+        // The site pings for this change as well, and the router is asked once.
+        live.accept(now);
+        return true;
+      }
+    }
+    return watched == 0 &&
+        _hasRedirect(_router.routerDelegate.currentConfiguration.matches);
+  }
 
   /// Runs the guard of the pushed page [entry] again, as a navigation that replaces the page with
   /// the same location and `extra`: go_router runs the redirects of the entry, keeps its page key
@@ -398,6 +457,11 @@ final class _RouterGuards {
     final shown = top != null && !top.matches.isError ? top : null;
     final shownKey = shown?.pageKey.value;
 
+    // The guards of the base stay watched while a guarded page is pushed over it, so a change the
+    // base notices (a sign-out) asks the base, and a change only the pushed page notices asks only
+    // that page. Under a page with no guard they are closed, and a guarded page under it waits for
+    // the pop.
+    final keepBase = shown != null && _guarded(shown);
     final stale = <String>[];
     for (final site in _live.keys) {
       final live = _live[site]!;
@@ -405,7 +469,7 @@ final class _RouterGuards {
         stale.add(site);
       } else if (_touched.contains(site)) {
         live.page = pushPath ? shownKey : null;
-      } else if (live.page == null || live.page != shownKey) {
+      } else if (live.page == null ? !keepBase : live.page != shownKey) {
         stale.add(site);
       }
     }
@@ -697,6 +761,12 @@ final class _Live {
 
   /// The router is about to ask again: what it will use is the newest answer.
   void acceptLatest() => _used = _latest;
+
+  /// Whether [now] is another answer than the one the navigation used.
+  bool moved(String? now) => _usedKnown && _used != now;
+
+  /// The router is about to ask again, and [now] is the answer it will get.
+  void accept(String? now) => _used = now;
 
   /// Follows an asynchronous answer. An error is the navigation's to handle (the
   /// first answer) or nobody's (an answer to a later change), never unhandled here.

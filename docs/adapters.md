@@ -30,7 +30,7 @@ class MyToolsAdapter extends FespalierAdapter {
 }
 ```
 
-The adapters on the [roadmap](../ROADMAP.md) (error reporting, analytics, notification and shortcut
+The adapters on the [roadmap](https://github.com/fespalier/fespalier/blob/main/ROADMAP.md) (error reporting, analytics, notification and shortcut
 launches, ...) are packages of this kind; `fespalier_push` (since 0.13.0) is the first, see [Push notifications](push.md), `fespalier_analytics` is a sink installed in `beforeRun`, see [Analytics](analytics.md), and `fespalier_download` (since 0.15.0) opens a typed route from a download's notification tap, see [Notification taps](downloads.md#notification-taps), and `fespalier_launch` (since 0.18.0) opens a typed route from a home-screen shortcut or widget tap, see [Shortcuts and widgets](launch.md). `FespalierAdapter` has nine members, each with a default that
 adds nothing, so an adapter overrides what it needs:
 

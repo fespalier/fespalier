@@ -47,7 +47,7 @@ ICU messages itself, and keeps a `TranslationSource` interface for anything else
 
 Add the package next to fespalier with the **same `url` and the same `ref`**: pub resolves the two to one package only
 then. The tag must be a release that contains the package (0.10.0 or later). The install block, with the version
-release-please keeps current, is in [the package's README](../packages/fespalier_tolgee/README.md#install).
+release-please keeps current, is in [the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_tolgee/README.md#install).
 
 You also need `flutter_localizations` in your dependencies and `assets: [assets/i18n/]` under `flutter:`; for a cache that
 survives restarts, `fespalier_storage` (`PrefsDataStorage`).

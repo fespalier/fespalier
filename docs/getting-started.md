@@ -1,6 +1,6 @@
 # Installation and setup
 
-The [README](../README.md#getting-started) has the 60-second path: install `fsp`, then `fsp create` (a new app) or add the package and run `fsp init` (an app you have). This page has the rest: every way to install `fsp`, the companion packages, what `fsp create` and `fsp init` write, how to keep `app.g.dart` in CI, and platform notes.
+The [README](https://github.com/fespalier/fespalier/blob/main/README.md#getting-started) has the 60-second path: install `fsp`, then `fsp create` (a new app) or add the package and run `fsp init` (an app you have). This page has the rest: every way to install `fsp`, the companion packages, what `fsp create` and `fsp init` write, how to keep `app.g.dart` in CI, and platform notes.
 
 ## Requirements
 
@@ -33,7 +33,7 @@ if it isn't there yet.
 ### With Rust
 
 `cargo install` builds `fsp` from the release tag on any platform. The command, with the current tag, is
-in the [README](../README.md#getting-started).
+in the [README](https://github.com/fespalier/fespalier/blob/main/README.md#getting-started).
 
 ### Homebrew and Scoop
 

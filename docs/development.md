@@ -69,7 +69,7 @@ dart run melos run deps:outdated   # what is newer than the constraints allow, w
 dart run melos run deps:upgrade    # raise the constraints to the newest majors, every pubspec at once (then the checks it prints)
 ```
 
-[AGENTS.md](../AGENTS.md) is the contributor and agent guide: the layout, the gate commands, how to run each suite, and the conventions (Conventional Commit PR titles, squash merges, SHA-pinned actions, regenerating the examples).
+[AGENTS.md](https://github.com/fespalier/fespalier/blob/main/AGENTS.md) is the contributor and agent guide: the layout, the gate commands, how to run each suite, and the conventions (Conventional Commit PR titles, squash merges, SHA-pinned actions, regenerating the examples).
 
 **Building `fsp`.** `cd cli && cargo build --release` writes `cli/target/release/fsp`. After changing the emitter or a template, regenerate with `cargo run -- gen --project ../examples/<name>`; a test fails if a committed `app.g.dart` is stale. The code of `fsp size` is `cli/src/size.rs` and its tests `cli/src/size_tests.rs`, over an excerpt of a real build in `cli/tests/fixtures/shop-build/main.dart.js`.
 
@@ -94,7 +94,7 @@ dart run melos run deps:upgrade    # raise the constraints to the newest majors,
   - The `telemetry-smoke` job (`just telemetry-smoke`) runs the whole stack in Docker, sends a seeded session and runs every panel's query in OpenObserve and Grafana.
   - After touching `scripts/telemetry/dashboards.toml`, run `just telemetry-dashboards`.
   - To bump an image pin, edit the tag, resolve the digest with `docker buildx imagetools inspect <image>:<tag>` and run `just telemetry-smoke`.
-- The agent skills in `skills/` cover every README and `docs/` section, file kind, config key and `fsp` command (`node scripts/skills/verify-coverage.mjs`, which also checks every link and anchor of the docs; see [skills/README.md](../skills/README.md)).
+- The agent skills in `skills/` cover every README and `docs/` section, file kind, config key and `fsp` command (`node scripts/skills/verify-coverage.mjs`, which also checks every link and anchor of the docs; see [skills/README.md](https://github.com/fespalier/fespalier/blob/main/skills/README.md)).
 - The version agrees everywhere it is spelled out (`cli/tests/versions.rs`):
   - `cli/Cargo.toml`, `packages/fespalier/pubspec.yaml`, `packages/fespalier/extension/devtools/config.yaml`, `.release-please-manifest.json`, the `ref:` that `fsp init` prints, and the READMEs', the docs pages' and the skills' `ref:`, `--tag` and `FSP_VERSION`;
   - each of them is annotated for release-please and listed in `release-please-config.json`;

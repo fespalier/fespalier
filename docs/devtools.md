@@ -89,7 +89,7 @@ The extension and the app talk through `dart:developer`'s service extensions and
 - A change that only adds is not a new protocol: a reader ignores keys it does not know, and `hello` lists what the app can answer in `features`.
 - A user value, like an `extra`, is never sent as it is but as `{"type", "text"}`: its runtime type and its text cut to 200 characters.
 
-The records are in [`packages/fespalier/lib/src/devtools/protocol.dart`](../packages/fespalier/lib/src/devtools/protocol.dart), which imports nothing.
+The records are in [`packages/fespalier/lib/src/devtools/protocol.dart`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier/lib/src/devtools/protocol.dart), which imports nothing.
 
 | Service extension           | Parameters                                                               | Answers                                                                                                |
 | --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |

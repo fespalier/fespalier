@@ -6,7 +6,7 @@
 
 ## Install
 
-Add `fespalier_analytics` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_analytics/README.md`](../packages/fespalier_analytics/README.md). Then turn telemetry on, list the adapter and run `fsp gen`:
+Add `fespalier_analytics` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_analytics/README.md`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_analytics/README.md). Then turn telemetry on, list the adapter and run `fsp gen`:
 
 ```yaml
 # pubspec.yaml
@@ -82,4 +82,4 @@ await tester.pumpWidget(AppMain.root());
 expect(recorder.views.map((v) => v.pattern), ['/']);
 ```
 
-Call `FespalierAnalytics.debugReset()` in `setUp` and `tearDown`, and `FespalierTelemetry.install(null)` in `tearDown` (the sink is added to the telemetry slot). [`examples/plugins`](../examples/plugins) tests the first screen, undecided then granted, a refusal, a notification source, a skipped screen and the absence of any segment value through `AppMain.root()`; no device is needed. What no test can see is the vendor's own side: that Firebase or PostHog really receives the event, and honours the opt-out, on a device.
+Call `FespalierAnalytics.debugReset()` in `setUp` and `tearDown`, and `FespalierTelemetry.install(null)` in `tearDown` (the sink is added to the telemetry slot). [`examples/plugins`](https://github.com/fespalier/fespalier/tree/main/examples/plugins) tests the first screen, undecided then granted, a refusal, a notification source, a skipped screen and the absence of any segment value through `AppMain.root()`; no device is needed. What no test can see is the vendor's own side: that Firebase or PostHog really receives the event, and honours the opt-out, on a device.

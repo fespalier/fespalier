@@ -1,6 +1,6 @@
 # fespalier documentation
 
-The [README](../README.md) is the 60-second path. These pages are the reference, one topic each.
+The [README](https://github.com/fespalier/fespalier/blob/main/README.md) is the 60-second path. These pages are the reference, one topic each.
 
 | Page                                                               | What is in it                                                                                         |
 | ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
@@ -44,7 +44,7 @@ The [README](../README.md) is the 60-second path. These pages are the reference,
 
 An older link such as `github.com/fespalier/fespalier#telemetry`, or a message that says `(README, "Telemetry")`, still works: the README keeps an anchor for every old heading, and each section now lives on the page below.
 
-- [../README.md](../README.md): Getting started · License
+- [../README.md](https://github.com/fespalier/fespalier/blob/main/README.md): Getting started · License
 - [cli.md](cli.md): Running your app: `fsp dev` · Tasks: commands around `flutter run` · `fsp build` and `fsp run` · Plain output, CI and Windows · The generator · Deep links and a sitemap (`fsp links`) · Checking string paths · Web chunk sizes (`fsp size`) · Performance
 - [file-kinds.md](file-kinds.md): File kinds · Function views · File names · How parameters are filled
 - [routing.md](routing.md): Segment types · Enum segments · Catch-all segments · Typed catch-alls · Case and trailing slashes · Localized paths · Non-ASCII spellings · `(group)` folders · A sibling with a compound path · Not-found views · Query parameters · Route manifest and `meta.dart`

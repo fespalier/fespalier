@@ -1122,6 +1122,86 @@ void main() {
         expect(find.text('F PAGE'), findsNothing);
       });
     });
+
+    // A re-run that yielded to a question of the person's is refused when it lands (see
+    // `guardRerunRefused`): go_router replaces nothing, and nothing asked the page.
+    group('a re-run whose landing was refused', () {
+      /// `/gw` is pushed (dirty), `/x` over it and popped: its guard waits for [gGate]. The person's
+      /// back is asked and refused meanwhile. [base] is the page under them. Turns the guard to refuse
+      /// while the page is covered when [closed] is true.
+      Future<(GoRouter, ProviderContainer)> refusedBack(
+        WidgetTester tester, {
+        String base = '/y',
+        bool closed = false,
+        void Function(Future<String?> push)? onPush,
+      }) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        baseAwaits = 2;
+        answer = (l, _) => l == 'x';
+        sources['gw'] = FakeSource('gw', dirty: true);
+        if (base != '/y') {
+          r.go(base);
+          await settle(tester);
+        }
+        final pushed = r.push<String>('/gw');
+        onPush?.call(pushed);
+        await settle(tester);
+        await push(tester, r, '/x');
+        if (closed) c.read(_wOpen.notifier).set(false);
+        await settle(tester);
+        gGate = Completer<void>();
+        r.pop();
+        await settle(tester);
+        expect(find.text('gw'), findsOneWidget);
+        asked.clear();
+        answer = (_, _) => false;
+        await Navigator.of(tester.element(find.text('gw'))).maybePop();
+        await settle(tester);
+        expect(asked, ['gw dirty']);
+        return (r, c);
+      }
+
+      for (final refused in [true, false]) {
+        testWidgets('${refused ? 'after a refused landing, ' : ''}the app\'s own '
+            'replace of the page gets the result it pops with', (tester) async {
+          final pushedDone = <String?>[];
+          final replacedDone = <String?>[];
+          late final GoRouter r;
+          late final ProviderContainer c;
+          if (refused) {
+            (r, c) = await refusedBack(
+              tester,
+              onPush: (f) => unawaited(f.then(pushedDone.add)),
+            );
+            gGate!.complete();
+            await settle(tester);
+            expect(asked, ['gw dirty'], reason: 'the landing was refused');
+          } else {
+            r = guarded();
+            c = await start(tester, r);
+            unawaited(r.push<String>('/gw').then(pushedDone.add));
+            await settle(tester);
+          }
+          // The app replaces the page itself, a re-run of its guard follows (its guard turns to refuse,
+          // and the move lets the page go), and the page that stands in for it pops with a result.
+          unawaited(r.replace<String>('/gw').then(replacedDone.add));
+          await settle(tester);
+          answer = (_, _) => true;
+          c.read(_wOpen.notifier).set(false);
+          await settle(tester);
+          expect(stackOf(r).last, '/y', reason: 'the re-run moved the page');
+          r.pop('R');
+          await settle(tester);
+          expect(replacedDone, ['R'], reason: "the replace's Future completes");
+          expect(
+            pushedDone,
+            isEmpty,
+            reason: 'the page it opened was replaced',
+          );
+        });
+      }
+    });
   });
 
   // The base page has a guard of its own, and a guarded page is pushed over it (fespalier/fespalier#258).

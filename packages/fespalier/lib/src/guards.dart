@@ -460,9 +460,13 @@ final class _RouterGuards {
         _passed.add(key);
       }
       // A re-run's own commit keeps the completer the caller holds; any other commit is the
-      // caller's navigation, and its completer is the one to answer.
+      // caller's navigation, and its completer is the one to answer. The entry of a re-run that
+      // never landed (its `leave()` refused it, or the person's question was open) stays here, and
+      // the router has gone on to another navigation by the time something commits: a commit of the
+      // app's own on that page (`replace`) is the caller's, and takes the entry away unused. Only the
+      // navigation the router still holds is the re-run's (see [_Rerun.current]).
       final rerun = _reruns.remove(key);
-      if (rerun == null) {
+      if (rerun == null || !rerun.current(_router)) {
         _completers[key] = top.completer;
       } else if (top.matches.isError || top.matches.uri != rerun.uri) {
         // The page moved, or its guard failed: `replace` keeps the page key, so the Navigator keeps

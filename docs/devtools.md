@@ -5,7 +5,7 @@ Since 0.7.0, fespalier has an extension for [Flutter DevTools](https://docs.flut
 ## What it shows
 
 - **Which file serves this URL?** The _Location_ tab names the route and its `page.dart`. The _Routes_ tab is the whole tree with the current route highlighted; its **Match** button says which route any location is, without going there.
-- **Why is this page's parameter null?** Parameters are shown with their declared type and the value the app's own parser made of the URL, with the query and the `extra` beside them. A location no route has shows go_router's error.
+- **Why is this page's parameter null?** Parameters are shown with their declared type and the value the app's own parser made of the URL, with the query and the `extra` beside them. A location no route has shows go_router's error. A pushed page whose guard has not passed (go_router showed it again after a refresh, and the guard runs again after the frame, since 0.21.0) shows `held: its guard runs again` there, and on the history entry of that navigation.
 - **What is on the stack?** The _Stack_ tab lists the pages, the layouts and tab layouts around them, and the pages that were pushed, each with its route and file.
 - **How did I get here?** The history under _Location_ lists every location the router committed, newest first, and whether it was a `go`, a `push`, a `pop`, a `replace` or a refresh.
 - **Can I try a URL?** The go-to bar above the tabs takes a location and a `go`, `push` or `replace`, and has a **Pop** button. It asks the app's router, so guards and redirects run as they do for a link.

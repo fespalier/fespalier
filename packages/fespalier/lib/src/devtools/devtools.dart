@@ -40,6 +40,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart'
         WidgetRef;
 import 'package:hooks_riverpod/misc.dart' show ProviderBase, ProviderListenable;
 
+import '../guards.dart' show refusedEntry;
 import '../navigation_kind.dart';
 import '../route_data.dart' show PrefetchHandle, SectionView;
 import '../route_match.dart' show UrlMatch;
@@ -146,7 +147,7 @@ void devToolsAttach(GoRouter router) {
     _router = WeakReference(router);
     _last = null;
     // A router attached after its first location has one already: it is where the history starts.
-    _record(router.routerDelegate.currentConfiguration);
+    _record(router, router.routerDelegate.currentConfiguration);
     _post(DevToolsEvents.registered, () => const {});
   } catch (e) {
     _report(e);
@@ -167,7 +168,7 @@ void _committed() {
   try {
     final router = _router?.target;
     if (router == null) return;
-    _record(router.routerDelegate.currentConfiguration);
+    _record(router, router.routerDelegate.currentConfiguration);
   } catch (e) {
     _report(e);
   }
@@ -182,7 +183,29 @@ void _report(Object error) {
 // ---------------------------------------------------------------------------------------------
 // What the router did
 
-void _record(RouteMatchList config) {
+/// What `error` says of a pushed page whose guard has not passed (since 0.21.0): go_router holds no
+/// error for it, but the page is not built until its guard has run again. An optional string, so the
+/// protocol stays 1.
+const _heldError = 'held: its guard runs again';
+
+/// The `error` of [active], the list of the page on top: go_router's own, or [_heldError] when that
+/// page is a pushed one that is held back.
+String? _errorOf(
+  GoRouter? router,
+  RouteMatchList active,
+  List<ImperativeRouteMatch> pushed,
+) {
+  final error = active.error;
+  if (error != null) return error.toString();
+  if (router != null &&
+      pushed.isNotEmpty &&
+      refusedEntry(router, pushed.last)) {
+    return _heldError;
+  }
+  return null;
+}
+
+void _record(GoRouter router, RouteMatchList config) {
   if (config.isEmpty && config.error == null) return;
   final pushed = <ImperativeRouteMatch>[];
   pushedMatches(config.matches, pushed);
@@ -198,7 +221,7 @@ void _record(RouteMatchList config) {
     fullPath: active.fullPath,
     depth: depth,
     guards: List.of(_pending),
-    error: active.error?.toString(),
+    error: _errorOf(router, active, pushed),
   );
   // The decisions made since the last commit are this navigation's: a redirect chain is one.
   _pending.clear();
@@ -269,7 +292,7 @@ String _join(String parent, String child) {
   return '$parent/$child';
 }
 
-LocationRecord _location(RouteMatchList config) {
+LocationRecord _location(GoRouter? router, RouteMatchList config) {
   final pushed = <ImperativeRouteMatch>[];
   pushedMatches(config.matches, pushed);
   final active = activeMatches(config, pushed);
@@ -288,7 +311,7 @@ LocationRecord _location(RouteMatchList config) {
     extra: extra == null ? null : Shown.of(extra),
     route: match == null ? null : '${match.route.runtimeType}',
     params: match?.params.map((k, v) => MapEntry(k, Shown.of(v))),
-    error: active.error?.toString(),
+    error: _errorOf(router, active, pushed),
   );
 }
 
@@ -302,7 +325,9 @@ SnapshotRecord _snapshot() {
     event: _event,
     registered: _tree != null,
     attached: _router?.target != null,
-    location: config != null && placed ? _location(config) : null,
+    location: config != null && placed
+        ? _location(_router?.target, config)
+        : null,
     stack: stack,
     history: List.of(_history),
     guards: List.of(_guards),

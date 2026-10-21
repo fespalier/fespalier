@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:auth/api.dart';
 import 'package:auth/app.g.dart';
+import 'package:fespalier/fespalier.dart' show GoRouter;
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
@@ -82,6 +83,40 @@ void main() {
     unawaited(container.read(authSession.notifier).signOut());
     await tester.pumpAndSettle();
     expect(currentLocation(tester), '/sign-in?from=%2Forders%2F1');
+  });
+
+  testWidgets('signing out over a pushed /orders/1 replaces the whole stack, '
+      'and the system back never lands on /orders (fespalier/fespalier#258)', (
+    tester,
+  ) async {
+    final container = await pumpRouter(
+      tester,
+      AppRoutes.router(initialLocation: '/orders'),
+      overrides: signedIn(ada),
+    );
+    expect(currentLocation(tester), '/orders');
+    final router = GoRouter.of(tester.element(find.byType(Navigator).first));
+    unawaited(router.push<void>('/orders/1'));
+    await tester.pumpAndSettle();
+    expect(currentLocation(tester), '/orders/1');
+    unawaited(container.read(authSession.notifier).signOut());
+    await tester.pumpAndSettle();
+    // The guard above both pages ran for the push, and /orders runs it too: the sign-out asks the
+    // base, which redirects, and the stack under the sign-in page is the app's, not /orders.
+    expect(currentLocation(tester), '/sign-in?from=%2Forders');
+    expect(
+      find.widgetWithText(AppBar, 'Orders', skipOffstage: false),
+      findsNothing,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    // The pop shows the page below the sign-in page, the home page.
+    expect(Uri.parse(currentLocation(tester)).path, '/');
+    expect(find.text('Signed out'), findsOneWidget);
+    expect(
+      find.widgetWithText(AppBar, 'Orders', skipOffstage: false),
+      findsNothing,
+    );
   });
 
   testWidgets('a signed-in user on /sign-in goes home, and never off the app', (

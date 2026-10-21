@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/navigation_kind.dart' show pushedMatches;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +23,15 @@ class Counter extends Notifier<int> {
 }
 
 final counter = NotifierProvider<Counter, int>(Counter.new);
+
+class Role extends Notifier<bool> {
+  @override
+  bool build() => true;
+  void set(bool value) => state = value;
+}
+
+/// Whether the person has the admin role.
+final isAdmin = NotifierProvider<Role, bool>(Role.new);
 
 /// What a current-user fetch is: autoDispose, async, and counted.
 var userFetches = 0;
@@ -724,6 +734,134 @@ void main() {
       await tester.pumpAndSettle();
       expect(currentLocation(tester), '/login?from=/inbox');
       expect(find.text('INBOX'), findsNothing);
+    });
+  });
+
+  group('a guard above a pushed page asks the base first '
+      '(fespalier/fespalier#258)', () {
+    GoRouter orders({String initial = '/other'}) => GoRouter(
+      initialLocation: initial,
+      routes: [
+        GoRoute(path: '/other', builder: (_, _) => const Text('OTHER')),
+        // The generated shape: the guard sits on the parent, and the page pushed under it
+        // (`/orders/1`) runs it too, so the base `/orders` and the pushed page share the site.
+        GoRoute(
+          path: '/orders',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g1@orders', (ref) {
+              return ref.watch(session) ? null : '/sign-in?from=${state.uri}';
+            }),
+          ),
+          builder: (_, _) => const Text('ORDERS'),
+          routes: [
+            GoRoute(path: ':id', builder: (_, _) => const Text('ORDER')),
+          ],
+        ),
+        // Two guards, the first on the session and the second on the role.
+        GoRoute(
+          path: '/admin',
+          redirect: (context, state) => runRedirect(
+            () => firstRedirect([
+              () => refGuard(context, 'g1@admin', (ref) {
+                return ref.watch(session) ? null : '/sign-in?from=${state.uri}';
+              }),
+              () => refGuard(
+                context,
+                'g2@admin',
+                (ref) => ref.watch(isAdmin) ? null : '/forbidden',
+              ),
+            ]),
+          ),
+          builder: (_, _) => const Text('ADMIN'),
+        ),
+        GoRoute(path: '/sign-in', builder: (_, _) => const Text('SIGN-IN')),
+        GoRoute(path: '/forbidden', builder: (_, _) => const Text('FORBIDDEN')),
+      ],
+    );
+
+    /// The pages the router builds, even those under another page.
+    Finder page(String text) => find.text(text, skipOffstage: false);
+
+    List<ImperativeRouteMatch> pushed(GoRouter r) {
+      final out = <ImperativeRouteMatch>[];
+      pushedMatches(r.routerDelegate.currentConfiguration.matches, out);
+      return out;
+    }
+
+    testWidgets('a guard the base page runs too replaces the whole stack on '
+        'sign-out, as on main', (tester) async {
+      final r = orders();
+      final c = await pumpRouter(tester, r);
+      r.go('/orders');
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/orders/1'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/orders/1');
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/sign-in?from=/orders');
+      expect(pushed(r), isEmpty, reason: 'the base redirected: no stack stays');
+      expect(page('SIGN-IN'), findsOneWidget);
+      expect(page('ORDERS'), findsNothing);
+      expect(page('ORDER'), findsNothing);
+    });
+
+    testWidgets('a guard only the pushed page runs moves that page and keeps '
+        'the base', (tester) async {
+      final r = orders();
+      final c = await pumpRouter(tester, r);
+      unawaited(r.push<void>('/admin'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/admin');
+      c.read(isAdmin.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/forbidden');
+      expect(page('ADMIN'), findsNothing);
+      expect(page('OTHER'), findsOneWidget);
+      expect(pushed(r), hasLength(1));
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/other');
+      expect(find.text('OTHER'), findsOneWidget);
+    });
+
+    testWidgets('a guard another page of a guarded base runs makes the base '
+        'ask too: the sign-out replaces the whole stack', (tester) async {
+      final r = orders();
+      final c = await pumpRouter(tester, r);
+      r.go('/orders');
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/admin'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/admin');
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      // go_router restores the pushed pages without their redirects, so a base that only the
+      // page on top asks about would stay under the sign-in page, and the system back would
+      // land on it, signed out.
+      expect(currentLocation(tester), '/sign-in?from=/orders');
+      expect(pushed(r), isEmpty);
+      expect(page('ORDERS'), findsNothing);
+      expect(page('ADMIN'), findsNothing);
+    });
+
+    testWidgets('a guarded base that still passes keeps its place, and the '
+        'pushed page moves', (tester) async {
+      final r = orders();
+      final c = await pumpRouter(tester, r);
+      r.go('/orders');
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/admin'));
+      await tester.pumpAndSettle();
+      c.read(isAdmin.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/forbidden');
+      expect(page('ORDERS'), findsOneWidget);
+      expect(page('ADMIN'), findsNothing);
+      expect(pushed(r), hasLength(1));
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/orders');
     });
   });
 }

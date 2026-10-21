@@ -264,12 +264,27 @@ final class _RouterGuards {
       _live.remove(site)?.close();
       return;
     }
+    // go_router restores the pages under the one on top without their redirects, so a base page
+    // that has a guard of its own must be asked again too, whichever site pinged: a sign-out that
+    // only moved the top page would leave the base under it, and the system back would land on it
+    // signed out. `refresh()` asks the base: when its redirect moves it, the whole stack is
+    // replaced, as it was before the pushed page's guard watched anything (before 0.21.0); when it
+    // keeps its place, `_judge` runs the page on top again after that commit. A base with no guard
+    // has nothing to ask, so the pushed page is run again at once.
+    final VoidCallback run = _baseGuarded()
+        ? _router.refresh
+        : () => _rerun(top);
     if (hook == null) {
-      _rerun(top);
+      run();
     } else {
-      hook(() => _rerun(top));
+      hook(run);
     }
   }
+
+  /// Whether the page at the bottom of the stack, which a `refresh()` asks again, is under a
+  /// redirect (its own, a parent's or a shell's): the pushed pages are not looked at.
+  bool _baseGuarded() =>
+      _hasRedirect(_router.routerDelegate.currentConfiguration.matches);
 
   /// Runs the guard of the pushed page [entry] again, as a navigation that replaces the page with
   /// the same location and `extra`: go_router runs the redirects of the entry, keeps its page key

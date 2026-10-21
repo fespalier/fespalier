@@ -345,6 +345,143 @@ void main() {
       expect(find.text('SECRET DIALOG'), findsOneWidget);
     }
 
+    // A re-run that moves a page closes what the Navigator would close if that page were removed: the
+    // routes without a page over it, on the navigator the page is in. A dialog opened on the root
+    // navigator (`showDialog`'s default) over a page in a tab is over the tab layout's page, not over
+    // the pushed page, and stays, as it does when a base page of the tab moves.
+    group('the dialogs over a page in a tab', () {
+      /// When set, the guard of `/tab/admin` answers once it completes.
+      Completer<void>? tabGate;
+
+      /// `/tab/admin` has a guard on [_signedIn], and is pushed inside the tab, or on the root
+      /// navigator ([onRoot]).
+      GoRouter tabs({required bool isAsync, bool onRoot = false}) {
+        final rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+        return GoRouter(
+          initialLocation: '/tab',
+          navigatorKey: rootKey,
+          routes: [
+            StatefulShellRoute.indexedStack(
+              builder: (context, state, shell) => shell,
+              branches: [
+                StatefulShellBranch(
+                  routes: [
+                    GoRoute(
+                      path: '/tab',
+                      builder: (_, _) => const Text('TAB'),
+                      routes: [
+                        GoRoute(
+                          path: 'admin',
+                          parentNavigatorKey: onRoot ? rootKey : null,
+                          redirect: (context, state) => runRedirect(
+                            () => refGuard(context, 'g1@tab-admin', (ref) {
+                              final answer = ref.watch(_signedIn)
+                                  ? null
+                                  : '/tab/denied';
+                              if (!isAsync) return answer;
+                              final wait = tabGate;
+                              return wait == null
+                                  ? Future<String?>.value(answer)
+                                  : wait.future.then<String?>((_) => answer);
+                            }),
+                          ),
+                          builder: (context, state) =>
+                              refusedView(context, state) ??
+                              _Counter(onState: () => states++),
+                        ),
+                        GoRoute(
+                          path: 'denied',
+                          builder: (_, _) => const Text('DENIED'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        );
+      }
+
+      setUp(() => tabGate = null);
+
+      /// The page is pushed, and its guard is asked again because the person signed out. An asynchronous
+      /// guard takes a while, and the app opens its dialog (`onRootNavigator` or not) meanwhile; a
+      /// synchronous one answers at once, so the dialog is there before.
+      Future<void> dialogWhileWaiting(
+        WidgetTester tester,
+        GoRouter r, {
+        required bool isAsync,
+        required bool onRootNavigator,
+      }) async {
+        final c = await pumpRouter(tester, r);
+        unawaited(r.push<void>('/tab/admin'));
+        await tester.pumpAndSettle();
+        expect(find.text('COUNT 0'), findsOneWidget);
+        Future<void> showSignedOut() async {
+          unawaited(
+            showDialog<void>(
+              context: tester.element(find.byType(_Counter)),
+              useRootNavigator: onRootNavigator,
+              builder: (_) => const Text('SIGNED OUT DIALOG'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('SIGNED OUT DIALOG'), findsOneWidget);
+        }
+
+        if (isAsync) {
+          tabGate = Completer<void>();
+          c.read(_signedIn.notifier).set(false);
+          await tester.pump();
+          await showSignedOut();
+          tabGate!.complete();
+        } else {
+          await showSignedOut();
+          c.read(_signedIn.notifier).set(false);
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('DENIED'), findsOneWidget);
+      }
+
+      for (final isAsync in [false, true]) {
+        final kind = isAsync ? 'async' : 'sync';
+
+        testWidgets('a dialog on the root navigator stays when the re-run '
+            'moves the page ($kind guard)', (tester) async {
+          await dialogWhileWaiting(
+            tester,
+            tabs(isAsync: isAsync),
+            isAsync: isAsync,
+            onRootNavigator: true,
+          );
+          expect(find.text('SIGNED OUT DIALOG'), findsOneWidget);
+        });
+
+        testWidgets('a dialog of the tab\'s own navigator is closed when the '
+            're-run moves the page ($kind guard)', (tester) async {
+          await dialogWhileWaiting(
+            tester,
+            tabs(isAsync: isAsync),
+            isAsync: isAsync,
+            onRootNavigator: false,
+          );
+          expect(find.text('SIGNED OUT DIALOG'), findsNothing);
+        });
+
+        testWidgets('a page pushed on the root navigator closes the dialog '
+            'on it ($kind guard)', (tester) async {
+          await dialogWhileWaiting(
+            tester,
+            tabs(isAsync: isAsync, onRoot: true),
+            isAsync: isAsync,
+            onRootNavigator: true,
+          );
+          expect(find.text('SIGNED OUT DIALOG'), findsNothing);
+        });
+      }
+    });
+
     testWidgets('a re-run in a tab closes a dialog of the tab\'s own '
         'navigator too', (tester) async {
       final r = GoRouter(

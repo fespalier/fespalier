@@ -558,19 +558,20 @@ final class _RouterGuards {
     }
   }
 
-  /// Closes the routes without a page (dialogs, sheets) that lie over the pushed page [key] and
-  /// over its navigator's shells, as the retry of an error view does ([_closeRoutesOver]): the page
-  /// stays, with what it shows replaced, and what the person opened over the old page does not
-  /// belong to the new one. Not in a build, where a navigator may not be changed: after the frame.
+  /// Closes the routes without a page (dialogs, sheets) that lie over the pushed page [key], as the
+  /// Navigator would if the page were removed: the routes over it on its own navigator, the tab's
+  /// when it is in a tab, the root's when it is not. `replace` keeps the page key, so the Navigator
+  /// would keep them, and they belong to the old page. What lies over the pages around it, a dialog
+  /// the app opened on the root navigator over a page in a tab (`showDialog`'s default), is not over
+  /// this page and stays, as it does when a base page of the tab moves. Not in a build, where a
+  /// navigator may not be changed: after the frame.
   void _closeOver(List<RouteMatchBase> matches, String key) {
     final navigators = <GlobalKey<NavigatorState>>[];
     _navigatorsAround(matches, key, navigators);
-    navigators.add(_router.routerDelegate.navigatorKey);
-    void close() {
-      for (final navigator in navigators) {
-        navigator.currentState?.popUntil(_hasPage);
-      }
-    }
+    final own = navigators.isEmpty
+        ? _router.routerDelegate.navigatorKey
+        : navigators.last;
+    void close() => own.currentState?.popUntil(_hasPage);
 
     if (SchedulerBinding.instance.schedulerPhase ==
         SchedulerPhase.persistentCallbacks) {

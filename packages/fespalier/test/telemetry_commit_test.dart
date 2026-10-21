@@ -247,6 +247,45 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets('a push whose sync guard passes commits ok with its route '
+        '(fespalier/fespalier#258)', (tester) async {
+      checkout = () => null;
+      final r = await boot(tester);
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.contains(' commit ')), [
+        '#2 commit ok route=/checkout',
+      ]);
+      expectCommitsMatchEnds(rec.log);
+      // A second push of the guarded route (another location, so another navigation) is the
+      // same: it is a page of its own, and the first one is covered.
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout?again=1'));
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.contains(' commit ')), [
+        '#4 commit ok route=/checkout',
+      ]);
+      expectCommitsMatchEnds(rec.log);
+    });
+
+    testWidgets('a push whose async guard passes commits ok with its route '
+        '(fespalier/fespalier#258)', (tester) async {
+      final answer = Completer<String?>();
+      checkout = () => answer.future;
+      final r = await boot(tester);
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout'));
+      await tester.pump();
+      expect(rec.log.where((l) => l.startsWith('#2 commit ')), isEmpty);
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.startsWith('#2 commit ')), [
+        '#2 commit ok route=/checkout',
+      ]);
+      expectCommitsMatchEnds(rec.log);
+    });
+
     testWidgets('a sync redirect commits where it went, and only once', (
       tester,
     ) async {

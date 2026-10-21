@@ -313,12 +313,7 @@ final class _RouterGuards {
 
   /// The router committed a location: the navigation's sites are bound to the page it put on top,
   /// the rest are no longer watched. See [_judge].
-  void _committed() {
-    _judge(
-      _router.routerDelegate.currentConfiguration,
-      _isPushNavigation(_router),
-    );
-  }
+  void _committed() => _judgeNow();
 
   /// Judges the committed [config] once (since 0.21.0). [pushPath] says whether the navigation
   /// pushed a page (`push`, `pushReplacement`, `replace`): then its redirects ran, and a page on top
@@ -391,11 +386,24 @@ final class _RouterGuards {
       !_passed.contains(entry.pageKey.value) &&
       _guarded(entry);
 
+  /// Judges the configuration the router shows now, if no one did yet: the first reader of what a
+  /// commit passed does the work, whoever it is (the page gate, `RouterWatch`, DevTools, this
+  /// class's own listener). The listener of `RouterWatch` is attached before this class's, so at a
+  /// commit it asks first, and [_passed] must already hold the key the commit put on top.
+  void _judgeNow() => _judge(
+    _router.routerDelegate.currentConfiguration,
+    _isPushNavigation(_router),
+  );
+
   /// Whether [entry] is held back: see [_held].
-  bool refusesEntry(ImperativeRouteMatch entry) => _held(entry);
+  bool refusesEntry(ImperativeRouteMatch entry) {
+    _judgeNow();
+    return _held(entry);
+  }
 
   /// Whether a held page of this router is at [uri]: its page builds nothing (`refusedView`).
   bool refuses(Uri uri) {
+    _judgeNow();
     final pushed = <ImperativeRouteMatch>[];
     pushedMatches(_router.routerDelegate.currentConfiguration.matches, pushed);
     return pushed.any((e) => e.matches.uri == uri && _held(e));

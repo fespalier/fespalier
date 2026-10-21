@@ -229,3 +229,8 @@ that one is for a page-less folder that is no flow (`action.dart` with `const st
   `currentConfiguration.error` is `null`. The route's error view, or the not-found view, shows. The cause is in the guard: a value it did not
   expect, a provider it reads that throws, a store that is down. Fix the guard, or make it answer (a `null`, a location) instead of throwing.
   A widget test that expects the failure calls `tester.takeException()`.
+- **``The page that replaced a pushed page popped with a String, which the `push` that opened it does not ask for.``**, then `Its Future completed with null instead` (a debug build only, library `fespalier`, since 0.21.0).
+  A guard ran a pushed page again and sent it to a page that pops a value of another type than the `push<T>` that opened the first page
+  (`push<int>` on a guarded page, replaced by a sign-in page that pops a `String`). The `Future` of the `push` completes with `null`, as if
+  the page had been popped without a result, and the report names the type of the value, never the value. Pop the type the `push` asks
+  for, or push with the type the page in its place returns. A widget test that expects it calls `tester.takeException()`.

@@ -28,13 +28,26 @@ final class FakeState implements GoRouterState {
       throw UnsupportedError('${invocation.memberName}');
 }
 
-final InMemorySpanExporter exporter = InMemorySpanExporter();
+/// What the SDK exports to. A new one for each start, because `OTel.reset` shuts the old one down.
+InMemorySpanExporter exporter = InMemorySpanExporter();
+
+/// Takes the SDK down, and gives the next start an exporter of its own. Only the group with the SDK
+/// up starts it, and it calls this when it ends: the isolate starts with the SDK down, so a group
+/// that runs after it, in any order, finds the SDK down and an exporter with no spans in it.
+/// `OTel.reset` waits 250 ms, which is why it runs once and not for each test.
+Future<void> sdkDown() async {
+  // dartastic's reset is for its own tests; this file tests fespalier's adapter on the same SDK.
+  // ignore: invalid_use_of_visible_for_testing_member
+  await OTel.reset();
+  exporter = InMemorySpanExporter();
+}
 
 void main() {
   tearDown(() => FespalierTelemetry.install(null));
 
+  // The two groups below start from an SDK that is down: the isolate starts that way, and the
+  // group with the SDK up takes it down again when it ends (`tearDownAll(sdkDown)`).
   group('before the SDK is up', () {
-    // This group runs first in the file: nothing initialised OTel yet.
     test('an adapter that is not ready emits nothing and throws nothing', () {
       FespalierTelemetry.install(FespalierOtel(isReady: () => false));
       expect(
@@ -62,7 +75,6 @@ void main() {
   });
 
   group('within, before the SDK is up (since 0.9.0)', () {
-    // Still before any OTel.initialize in this file.
     test('with no SDK, within is the call, and the very result comes back', () {
       FespalierTelemetry.install(FespalierOtel());
       var runs = 0;
@@ -105,6 +117,7 @@ void main() {
         spanProcessor: SimpleSpanProcessor(exporter),
       );
     });
+    tearDownAll(sdkDown);
     setUp(() {
       exporter.clear();
       FespalierTelemetry.install(FespalierOtel());

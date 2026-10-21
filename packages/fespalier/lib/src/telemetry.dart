@@ -750,6 +750,11 @@ void _report(Object error) {
   debugPrint('fespalier telemetry: $error (not shown again)');
 }
 
+/// Forgets that an error of ours was printed, so that the next one is printed (a test's set up: the
+/// line is printed once per isolate, and a test that asserts it must not depend on the tests before).
+@visibleForTesting
+void debugResetTelemetryReport() => _reported = false;
+
 /// Starts an operation with the installed sink; null when there is none, or when it threw.
 Object? telemetryBegin(TelemetryStart start) {
   final sink = FespalierTelemetry._current;

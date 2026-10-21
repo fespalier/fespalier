@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/telemetry.dart' show debugResetTelemetryReport;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -35,6 +36,7 @@ List<String> printed(void Function() body) {
 }
 
 void main() {
+  setUp(debugResetTelemetryReport);
   tearDown(() => FespalierTelemetry.install(null));
 
   Object? begin() =>

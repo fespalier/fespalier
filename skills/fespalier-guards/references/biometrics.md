@@ -429,8 +429,8 @@ package's own `test/idle_test.dart` does.
 
 - **A guard never prompts, and a guard that runs again never re-prompts.** The guard watches only whether the app is
   unlocked: a prompt coming and going (`Unlocking`) and a second `Unlocked` stamp do not run it. A lock (`lock()`, or the
-  policy's relock) does, and the router leaves the page. Ten re-runs of the guard are zero prompts
-  (`test/guard_test.dart`).
+  policy's relock) does, and the router leaves the page (a pushed page can stay, fespalier/fespalier#258). Ten re-runs
+  of the guard are zero prompts (`test/guard_test.dart`).
 - **`unlock()` is single-flight and never throws.** Two buttons, a double tap or a guard that runs again while a sheet is
   up get the same `Future`. A prompt that throws is `BiometricOutcome.failed`. A prompt that does not succeed leaves the
   state as it was before the call: locked stays locked, and an unlocked app whose `withBiometrics` was cancelled stays

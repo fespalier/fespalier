@@ -99,12 +99,20 @@ class LoginPage extends ConsumerWidget {
   it changes the guard runs again; if its answer is now a different one (`null` became
   a location), the router runs the redirects again. Signing out on `/inbox` ends on
   `/login?from=%2Finbox`, and signing in on the login page lets the same guard through.
-  That also covers a session that ends elsewhere (a token expiring, another tab). Nothing
-  is wired up by you: it works with `AppRoutes.router()` and with a router of your own
-  built from `AppRoutes.mount()`, with no `refreshListenable`.
+  That also covers a session that ends elsewhere (a token expiring, another tab), on any
+  page but a pushed one (see "What to know"). Nothing is wired up by you: it works with
+  `AppRoutes.router()` and with a router of your own built from `AppRoutes.mount()`, with
+  no `refreshListenable`.
 - **What to know.**
   - A guard that `ref.read`s, or takes `ProviderContainer c`, runs only when you navigate.
   - A guarded page **under a pushed page** waits: it reacts once you pop back to it.
+  - A **pushed** page can stay when its own guard turns to refuse (go_router's `refresh()`
+    restores pushed pages without running their redirects, fespalier/fespalier#258): it
+    moves only if the location under the pushed pages refuses too. For a guard that must
+    move a pushed page, that location has to **refuse**, not merely run the guard (a root
+    guard that lets a public home page through is not enough). Put the guard in a group
+    that holds both the page you push from and the pushed page, with the login page beside
+    it, as above, and open a page that must never show with `go`, not `push`.
   - A sign-out runs the guard **twice** (Riverpod recomputes it, then the router asks
     again); the providers it watches are not fetched twice.
   - `ref.keepAlive()` in a guard keeps one provider alive per navigation: don't.

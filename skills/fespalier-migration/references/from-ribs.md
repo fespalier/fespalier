@@ -47,9 +47,10 @@ lib/app/
     game/page.dart           → /game   TicTacToe
 ```
 
-Signing out needs no code (the guard runs again); the login page finishes with `context.go(returnTo(from))`; with
-`fespalier_auth` the guard is `requireSignedIn(ref, uri, signIn: (from) => LoginRoute(from: from))`. The rules for
-guards, `returnTo` and the session are in [`fespalier-guards`](../../fespalier-guards/).
+Signing out needs no code (the guard runs again; a pushed page can stay, fespalier/fespalier#258); the login page
+finishes with `context.go(returnTo(from))`; with `fespalier_auth` the guard is
+`requireSignedIn(ref, uri, signIn: (from) => LoginRoute(from: from))`. The rules for guards, `returnTo` and the
+session are in [`fespalier-guards`](../../fespalier-guards/).
 
 ## Traps for someone used to RIBs
 

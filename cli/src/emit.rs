@@ -212,7 +212,7 @@ struct TreeCx {
     guarded: bool,
     /// The page is held back until its guard has passed (since 0.21.0, fespalier/fespalier#258): a
     /// redirect runs for it, its own or a `GoRoute`'s or a tab shell's above. Its page builder is
-    /// `refusedView(context, state) ?? <page>`, so a pushed page go_router restores without its redirect
+    /// `refusedView(context, state) ?? <page>`, so a pushed page `go_router` restores without its redirect
     /// is not built (see [`mark_gated`]).
     gated: bool,
 }

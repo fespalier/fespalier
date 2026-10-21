@@ -1387,6 +1387,34 @@ void main() {
         });
       }
     });
+
+    // The guard of a page that it moved is no longer that page's: the page shows another location,
+    // and the guard changing back does not navigate it again.
+    group('a page that its guard moved', () {
+      for (final how in ['re-run', 'push']) {
+        testWidgets('${how == 're-run' ? 'by a re-run' : 'by the push'}: a '
+            'guard that changes back navigates nothing', (tester) async {
+          final r = guarded();
+          final c = await start(tester, r);
+          answer = (_, _) => true;
+          if (how == 'push') c.read(_gOpen.notifier).set(false);
+          await push(tester, r, '/g');
+          if (how == 're-run') {
+            c.read(_gOpen.notifier).set(false);
+            await settle(tester);
+          }
+          expect(stackOf(r), ['/y', '/y'], reason: 'the guard moved the page');
+          var commits = 0;
+          r.routerDelegate.addListener(() => commits++);
+          final runs = gRuns;
+          c.read(_gOpen.notifier).set(true);
+          await settle(tester);
+          expect(commits, 0, reason: 'the page that replaced /g is not /g');
+          expect(gRuns, runs, reason: 'the guard is not watched any more');
+          expect(stackOf(r), ['/y', '/y']);
+        });
+      }
+    });
   });
 
   // The base page has a guard of its own, and a guarded page is pushed over it (fespalier/fespalier#258).

@@ -474,11 +474,20 @@ final class _RouterGuards {
       final live = _live[site]!;
       if (failed) {
         stale.add(site);
-      } else if (_touched.contains(site)) {
+        continue;
+      }
+      if (_touched.contains(site)) {
         live.page = pushPath ? shownKey : null;
       } else if (live.page == null || live.page != shownKey) {
         stale.add(site);
+        continue;
       }
+      // A guard that sent the page elsewhere does not belong to it: the page that stands in its place
+      // is another route's, and (`replace` keeps the page key) it would be run again, as a navigation
+      // of its own, whenever the guard changed back. The commit of a re-run that moved a page, or of
+      // a push that a guard redirected, closes the sites that answered a location. The guards of the
+      // location it moved to (they passed) stay.
+      if (pushPath && live.page != null && live.redirected) stale.add(site);
     }
     for (final site in stale) {
       _live.remove(site)?.close();
@@ -877,6 +886,9 @@ final class _Live {
   var _latestSeq = 0;
   var _latestKnown = false;
   String? _latest;
+
+  /// Whether the answer the navigation used was a location: the guard sent the page elsewhere.
+  bool get redirected => _usedKnown && _used != null;
 
   /// A number for an evaluation, so an older one that settles late does not win.
   int evaluate() => ++_evaluations;

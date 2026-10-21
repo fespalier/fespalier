@@ -353,6 +353,9 @@ void main() {
       /// When set, the guard of `/tab/admin` answers once it completes.
       Completer<void>? tabGate;
 
+      /// The tab layout, once a router built it.
+      StatefulNavigationShell? tabShell;
+
       /// `/tab/admin` has a guard on [_signedIn], and is pushed inside the tab, or on the root
       /// navigator ([onRoot]).
       GoRouter tabs({required bool isAsync, bool onRoot = false}) {
@@ -362,7 +365,10 @@ void main() {
           navigatorKey: rootKey,
           routes: [
             StatefulShellRoute.indexedStack(
-              builder: (context, state, shell) => shell,
+              builder: (context, state, shell) {
+                tabShell = shell;
+                return shell;
+              },
               branches: [
                 StatefulShellBranch(
                   routes: [
@@ -397,13 +403,24 @@ void main() {
                     ),
                   ],
                 ),
+                StatefulShellBranch(
+                  routes: [
+                    GoRoute(
+                      path: '/other-tab',
+                      builder: (_, _) => const Text('OTHER TAB'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ],
         );
       }
 
-      setUp(() => tabGate = null);
+      setUp(() {
+        tabGate = null;
+        tabShell = null;
+      });
 
       /// The page is pushed, and its guard is asked again because the person signed out. An asynchronous
       /// guard takes a while, and the app opens its dialog (`onRootNavigator` or not) meanwhile; a
@@ -466,6 +483,32 @@ void main() {
         expect(find.text('TAB'), findsOneWidget);
         expect(find.text('COUNT 0'), findsNothing);
         expect(find.text('DENIED'), findsNothing);
+      });
+
+      testWidgets('a tab switch while the guard of a page in a tab waits '
+          'is not undone by the re-run', (tester) async {
+        final r = tabs(isAsync: true);
+        await pumpRouter(tester, r);
+        unawaited(r.push<void>('/tab/admin'));
+        await tester.pumpAndSettle();
+        unawaited(r.push<void>('/tab/denied'));
+        await tester.pumpAndSettle();
+        tabGate = Completer<void>();
+        r.pop();
+        await tester.pumpAndSettle();
+        expect(find.text('COUNT 0'), findsOneWidget);
+        tabShell!.goBranch(1);
+        await tester.pumpAndSettle();
+        expect(find.text('OTHER TAB'), findsOneWidget);
+        tabGate!.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('OTHER TAB'), findsOneWidget);
+        expect(find.text('COUNT 0'), findsNothing);
+        // Back on the first tab the page is shown again, and its guard runs again.
+        tabGate = null;
+        tabShell!.goBranch(0);
+        await tester.pumpAndSettle();
+        expect(find.text('COUNT 0'), findsOneWidget);
       });
 
       for (final isAsync in [false, true]) {

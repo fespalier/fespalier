@@ -1332,6 +1332,70 @@ void pushedPageGroups() {
         });
       }
 
+      // The refused landing is the landing alone: a press of the person's right after it, before
+      // a frame has run, is a question about the page like any other and is asked as usual. The
+      // guard's own move is asked again after the frame, but the page is gone by then.
+      for (final base in ['/y', '/oa']) {
+        testWidgets('over $base: a press right after the refused landing is '
+            'asked, and a yes pops the page', (tester) async {
+          final (r, _) = await refusedBack(tester, base: base, closed: true);
+          gGate!.complete();
+          // The guard answers and the landing is refused, in microtasks: no frame has run.
+          await tester.idle();
+          expect(asked, ['gw dirty'], reason: 'the landing asked nobody');
+          answer = (_, _) => true;
+          await Navigator.of(tester.element(find.text('gw'))).maybePop();
+          await settle(tester);
+          await settle(tester);
+          expect(asked, ['gw dirty', 'gw dirty']);
+          // The page went to where a pop goes, not where its guard wanted to send it.
+          expect(stackOf(r), [base]);
+          expect(find.text('gw'), findsNothing);
+        });
+
+        // The guard that wanted to move the page passes again, a few frames after the refusal: the
+        // re-run that was asked for either moves it (and asks) or finds it passing, and the base's
+        // refresh asks the page once when the base is under a guard of its own. Never more.
+        for (final frames in [0, 1, 2]) {
+          testWidgets(
+            'over $base: the guard passes again $frames frames '
+            'after the refused landing: the page is asked at most once more',
+            (tester) async {
+              final (r, c) = await refusedBack(
+                tester,
+                base: base,
+                closed: true,
+              );
+              gGate!.complete();
+              await tester.idle();
+              for (var i = 0; i < frames; i++) {
+                await tester.pump();
+              }
+              final before = asked.length;
+              answer = (_, _) => true;
+              c.read(_wOpen.notifier).set(true);
+              await settle(tester);
+              await settle(tester);
+              expect(
+                asked.length - before,
+                lessThanOrEqualTo(base == '/oa' ? 1 : 0),
+              );
+              expect(stackOf(r), [base, '/gw']);
+              expect(find.text('gw'), findsOneWidget);
+              final after = asked.length;
+              for (var i = 0; i < 20; i++) {
+                await tester.pump();
+              }
+              expect(
+                asked.length,
+                after,
+                reason: 'nothing asks again by itself',
+              );
+            },
+          );
+        }
+      }
+
       for (final yes in [true, false]) {
         testWidgets('a question still open when the guard that moves the page '
             'answers: ${yes ? 'a yes' : 'a no'} settles both', (tester) async {
@@ -1396,6 +1460,52 @@ void pushedPageGroups() {
           );
         });
       }
+    });
+
+    // The app's own `replace` of a pushed page keeps its page key and puts another route on it. The
+    // guard of the route that stood there is no longer the page's, and a change of it does not run
+    // the new route again; the guard of the new route is the page's.
+    group('a page that the app replaced', () {
+      testWidgets('by an unguarded one: the guard that stood there is closed', (
+        tester,
+      ) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        answer = (_, _) => true;
+        await push(tester, r, '/g');
+        unawaited(r.replace<void>('/x'));
+        await settle(tester);
+        expect(stackOf(r), ['/y', '/x']);
+        var commits = 0;
+        r.routerDelegate.addListener(() => commits++);
+        final runs = gRuns;
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        c.read(_gOpen.notifier).set(true);
+        await settle(tester);
+        expect(commits, 0, reason: 'the page that replaced /g is not /g');
+        expect(gRuns, runs, reason: 'the guard is not watched any more');
+        expect(stackOf(r), ['/y', '/x']);
+      });
+
+      testWidgets('by a guarded one: only the guard of the new route is '
+          'watched', (tester) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        answer = (_, _) => true;
+        await push(tester, r, '/q');
+        unawaited(r.replace<void>('/g'));
+        await settle(tester);
+        expect(stackOf(r), ['/y', '/g']);
+        final runs = qRuns;
+        c.read(_qOpen.notifier).set(false);
+        await settle(tester);
+        expect(qRuns, runs, reason: "/q's guard is not watched any more");
+        expect(stackOf(r), ['/y', '/g']);
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(stackOf(r), ['/y', '/y'], reason: "/g's guard is");
+      });
     });
 
     // The guard of a page that it moved is no longer that page's: the page shows another location,

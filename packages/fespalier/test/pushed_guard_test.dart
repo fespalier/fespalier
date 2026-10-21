@@ -901,6 +901,158 @@ void pushedPageGroups() {
       expect(find.text('ADMIN'), findsNothing);
     });
   });
+
+  // A pushed page that go_router shows again without its redirect is run again after the frame, once.
+  // A reader that listens to the router before the Router widget (DevTools, telemetry: the
+  // groups run with each of them, see test/support/attach_order.dart) judges the commit first, and the
+  // widget's report of the configuration it committed then comes after the callback that starts the
+  // re-run: it replaces the route information the re-run put in the provider with an encoded Map before an
+  // asynchronous guard answers. The re-run is the router's own navigation all the same; taken for a
+  // commit nobody asked for, its landing started another re-run, and so on, every frame, with the
+  // guard and the page rebuilt each time and `leave()` asked each time.
+  group('a pushed page with an asynchronous guard settles', () {
+    var runs = 0;
+    var built = 0;
+    var asked = 0;
+    var fails = false;
+
+    GoRouter router() => GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(
+          path: '/other',
+          builder: (_, _) =>
+              Scaffold(appBar: AppBar(), body: const Text('OTHER')),
+        ),
+        for (final path in ['/ga', '/gl', '/fa'])
+          GoRoute(
+            path: path,
+            redirect: (context, state) => runRedirect(
+              () => refGuard(context, 'g@$path', (ref) {
+                runs++;
+                if (path == '/fa' && fails) {
+                  return Future<String?>.error(StateError('the guard failed'));
+                }
+                return Future<String?>.value(null);
+              }),
+            ),
+            // A page with a `leave.dart` (which lets everything go) and one without.
+            onExit: path == '/gl'
+                ? (context, state) =>
+                      leaveExit(context, state, 'gl/leave.dart', (ref, page) {
+                        asked++;
+                        return true;
+                      })
+                : null,
+            builder: (context, state) =>
+                refusedView(context, state) ??
+                Builder(
+                  builder: (_) {
+                    built++;
+                    return Text('PAGE $path');
+                  },
+                ),
+          ),
+      ],
+      errorBuilder: (context, state) => routerErrorPage(
+        context,
+        state,
+        (uri) => Text('NOT FOUND ${uri.path}'),
+        guardError: (uri, error, stackTrace, retry) => const Text('ERROR'),
+      ),
+    );
+
+    setUp(() {
+      runs = 0;
+      built = 0;
+      asked = 0;
+      fails = false;
+    });
+
+    /// How often the router committed during [body] and the 30 frames after it.
+    Future<int> commitsDuring(
+      WidgetTester tester,
+      GoRouter r,
+      FutureOr<void> Function() body,
+    ) async {
+      var commits = 0;
+      void count() => commits++;
+      r.routerDelegate.addListener(count);
+      await body();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      r.routerDelegate.removeListener(count);
+      return commits;
+    }
+
+    for (final path in ['/ga', '/gl']) {
+      testWidgets('$path, uncovered by a pop: its guard runs once more, in two '
+          'commits, and nothing is left to do', (tester) async {
+        final r = router();
+        await pumpRouter(tester, attached(r));
+        unawaited(r.push<void>(path));
+        await tester.pumpAndSettle();
+        unawaited(r.push<void>('/other'));
+        await tester.pumpAndSettle();
+        final before = (runs: runs, built: built);
+        final commits = await commitsDuring(tester, r, r.pop);
+        // The pop, and the re-run of the page that go_router showed without its redirect.
+        expect(commits, 2);
+        expect(runs, before.runs + 1);
+        expect(asked, 0, reason: 'a re-run that passes again asks nothing');
+        expect(built - before.built, lessThanOrEqualTo(2));
+        expect(find.text('PAGE $path'), findsOneWidget);
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('$path, after a refresh(): its guard runs once more, in two '
+          'commits, and nothing is left to do', (tester) async {
+        final r = router();
+        await pumpRouter(tester, attached(r));
+        unawaited(r.push<void>(path));
+        await tester.pumpAndSettle();
+        final before = (runs: runs, built: built);
+        final commits = await commitsDuring(tester, r, r.refresh);
+        // The restore go_router makes without the redirect, and the re-run of the page.
+        expect(commits, 2);
+        expect(runs, before.runs + 1);
+        // The restore replaces the page with a new entry, which asks `leave()` once; the re-run, which
+        // passes again, asks nothing.
+        expect(asked, path == '/gl' ? 1 : 0);
+        expect(built - before.built, lessThanOrEqualTo(2));
+        expect(find.text('PAGE $path'), findsOneWidget);
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        await tester.pumpAndSettle();
+      });
+    }
+
+    testWidgets('a push whose async guard failed, the guard fixed, then a '
+        'refresh(): the page is shown, built once, and the app settles', (
+      tester,
+    ) async {
+      final r = router();
+      await pumpRouter(tester, attached(r));
+      fails = true;
+      unawaited(r.push<void>('/fa'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('ERROR'), findsOneWidget);
+      expect(built, 0, reason: 'a failed push never builds the page');
+      fails = false;
+      final commits = await commitsDuring(tester, r, r.refresh);
+      expect(commits, 2);
+      expect(runs, 2);
+      expect(built, 1);
+      expect(find.text('PAGE /fa'), findsOneWidget);
+      expect(find.text('ERROR'), findsNothing);
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pumpAndSettle();
+    });
+  });
 }
 
 class _Flag extends Notifier<bool> {

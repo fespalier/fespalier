@@ -215,6 +215,12 @@ final class _RouterGuards {
   /// next commit after that closes the site like any other that is not on its page.
   final _touched = <String>{};
 
+  /// The sites evaluated since the router last committed a location by a `replace` of a pushed page,
+  /// which binds them to that page when it evaluates them (see [run]). The app's own `replace` puts
+  /// another route on the page key: the sites it bound before and that are not here belong to the
+  /// route that stood there, and the commit closes them (see [_judge]).
+  final _replaced = <String>{};
+
   /// The pushed pages whose redirects passed in a navigation that pushed them, by page key. A page
   /// that is not here and has a redirect is held back ([refuses]).
   final _passed = <String>{};
@@ -276,6 +282,7 @@ final class _RouterGuards {
       _touched.add(site);
     } else {
       live.page = replaced;
+      _replaced.add(site);
     }
     _live.remove(site)?.close();
     _live[site] = live;
@@ -516,6 +523,16 @@ final class _RouterGuards {
     final pushPath = _landedFromRequest(top);
     final shown = top != null && !top.matches.isError ? top : null;
     final shownKey = shown?.pageKey.value;
+    // The app's own `replace` of a pushed page keeps its page key (a push has a new one), and puts
+    // another route on it: the guards bound to the key from before belong to the route that stood
+    // there. The page is not theirs, and a change of one of them would run the new route again, as a
+    // `replace` of its own. Those that this navigation evaluated again stay. A re-run of the page is
+    // the same route and keeps them all.
+    final replacedByApp =
+        pushPath &&
+        top != null &&
+        _completers.containsKey(top.pageKey.value) &&
+        !(_reruns[top.pageKey.value]?.owns(top.completer) ?? false);
 
     final stale = <String>[];
     for (final site in _live.keys) {
@@ -527,6 +544,9 @@ final class _RouterGuards {
       if (_touched.contains(site)) {
         live.page = pushPath ? shownKey : null;
       } else if (live.page == null || live.page != shownKey) {
+        stale.add(site);
+        continue;
+      } else if (replacedByApp && !_replaced.contains(site)) {
         stale.add(site);
         continue;
       }
@@ -541,6 +561,7 @@ final class _RouterGuards {
       _live.remove(site)?.close();
     }
     _touched.clear();
+    _replaced.clear();
 
     if (pushPath && top != null) {
       final key = top.pageKey.value;
@@ -740,6 +761,7 @@ final class _RouterGuards {
     }
     _live.clear();
     _touched.clear();
+    _replaced.clear();
   }
 }
 

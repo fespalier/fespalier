@@ -1,15 +1,15 @@
 // Who listens to the router's delegate before the Router widget does.
 //
-// A generated app builds its router in `AppRoutes.router()`, which calls `attach(router)`: DevTools'
-// listener (`devToolsAttach`, on in every debug build and in `flutter test`) and, with
-// `telemetry: true`, `RouterWatch`'s (`telemetryAttach`, on in release too) are on the delegate
-// before `MaterialApp.router` builds the Router widget, whose own listener comes last. A router
-// that a test builds by hand has nobody in front of the Router, and the order matters: the Router
-// registers the post-frame report of the route information it just committed in its own listener,
-// so whatever a reader that is listening earlier registers after the commit runs first, and the
-// router's report (which replaces the provider's route information with an encoded `Map`) comes
-// after it. The tests of a pushed page's guard run in every order, so none of them depends on
-// which reader judges a commit first (fespalier/fespalier#258, review round 6).
+// A generated app builds its router in `AppRoutes.router()`, which calls `attach(router)` before
+// `MaterialApp.router` builds the Router widget: DevTools' listener (`devToolsAttach`, on in every
+// debug build and in `flutter test`) and, with `telemetry: true` or an `observe.dart`, the
+// lifecycle watch's (`telemetryAttach`, `observeAttach`, on in release too) are on the delegate
+// before the widget's own. A router that a test builds by hand has nobody in front of the widget,
+// and the order matters: the widget registers the post-frame report of the route information it
+// just committed in its own listener, so whatever a reader that listens earlier registers after the
+// commit runs before the report, and the report (which replaces the provider's route information
+// with an encoded `Map`) comes after it. The tests of a pushed page's guard run in every order, so
+// that none of them depends on which reader judges a commit first (fespalier/fespalier#258).
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,7 +24,10 @@ enum AttachFirst {
   devTools('DevTools first'),
 
   /// `telemetryAttach(router)` with a sink installed (an app generated with `telemetry: true`).
-  telemetry('telemetry first');
+  telemetry('telemetry first'),
+
+  /// `observeAttach(router, ...)` (an app with an `observe.dart`): the lifecycle hooks' watch.
+  observe('observe first');
 
   const AttachFirst(this.label);
 
@@ -45,14 +48,20 @@ GoRouter attached(GoRouter router) {
       devToolsAttach(router);
     case AttachFirst.telemetry:
       telemetryAttach(router, base: () => '');
+    case AttachFirst.observe:
+      observeAttach(router, (_) => const <RouteHooks>[]);
   }
   return router;
 }
 
-/// Registers [body] once for each order of [AttachFirst]: a group for each, whose tests build
-/// their routers with [attached].
-void inEveryOrder(void Function() body) {
-  for (final how in AttachFirst.values) {
+/// Registers [body] once for each order of [AttachFirst], or of [orders]: a group for each, whose
+/// tests build their routers with [attached]. A test that attaches the lifecycle watch itself
+/// (`observeAttach` with hooks of its own) leaves [AttachFirst.observe] out.
+void inEveryOrder(
+  void Function() body, {
+  List<AttachFirst> orders = AttachFirst.values,
+}) {
+  for (final how in orders) {
     group(how.label, () {
       setUp(() {
         attachFirst = how;

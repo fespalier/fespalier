@@ -494,7 +494,15 @@ void main() {
   });
   // The pushed navigations run in every order of what listens to the router before the Router
   // widget does (test/support/attach_order.dart).
-  inEveryOrder(pushedNavigations);
+  inEveryOrder(
+    pushedNavigations,
+    // A test of the group attaches the lifecycle watch itself, with hooks of its own.
+    orders: const [
+      AttachFirst.nothing,
+      AttachFirst.devTools,
+      AttachFirst.telemetry,
+    ],
+  );
 }
 
 void pushedNavigations() {

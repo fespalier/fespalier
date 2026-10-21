@@ -1004,6 +1004,110 @@ void main() {
       }
     });
 
+    // The same way back, refused by the page's `leave()` or left open while the guard waits, and
+    // allowed afterwards: the question is the person's, the base page may still be asking, and
+    // nothing the re-run does changes the page while a question about it is open or was refused.
+    group('a question about the page while the re-run waits, over a base whose '
+        'guard awaits', () {
+      for (final awaits in [1, 2, 4]) {
+        for (final how in [
+          'the back button of the app bar',
+          'the system back',
+          'GoRouter.pop',
+          'context.pop',
+        ]) {
+          /// `/gw` (dirty) over `/oa`, `/x` over it and popped: the re-run of the guard of `/gw` waits.
+          Future<GoRouter> waiting(WidgetTester tester) async {
+            final r = guarded();
+            await start(tester, r);
+            baseAwaits = awaits;
+            answer = (l, _) => l == 'x';
+            sources['gw'] = FakeSource('gw', dirty: true);
+            r.go('/oa');
+            await settle(tester);
+            await push(tester, r, '/gw');
+            await push(tester, r, '/x');
+            gGate = Completer<void>();
+            r.pop();
+            await settle(tester);
+            expect(find.text('gw'), findsOneWidget);
+            asked.clear();
+            return r;
+          }
+
+          Future<void> back(WidgetTester tester, GoRouter r) async {
+            switch (how) {
+              case 'the back button of the app bar':
+                await tester.pageBack();
+              case 'the system back':
+                await systemBack(tester);
+              case 'GoRouter.pop':
+                r.pop();
+              default:
+                tester.element(find.text('gw')).pop();
+            }
+            await settle(tester);
+          }
+
+          final label = '$how, $awaits await${awaits == 1 ? '' : 's'}';
+
+          testWidgets('$label: a refusal keeps the page, and the next back '
+              'goes', (tester) async {
+            final r = await waiting(tester);
+            answer = (_, _) => false;
+            await back(tester, r);
+            expect(asked, ['gw dirty']);
+            expect(stackOf(r), ['/oa', '/gw']);
+            gGate!.complete();
+            await settle(tester);
+            expect(asked, ['gw dirty']);
+            expect(stackOf(r), ['/oa', '/gw']);
+            expect(find.text('gw'), findsOneWidget);
+            answer = (_, _) => true;
+            await back(tester, r);
+            expect(asked, ['gw dirty', 'gw dirty']);
+            expect(stackOf(r), ['/oa']);
+            await settle(tester);
+            expect(stackOf(r), ['/oa']);
+            expect(find.text('gw'), findsNothing);
+          });
+
+          testWidgets('$label: a yes that comes after the guard answered '
+              'lets the page go', (tester) async {
+            final r = await waiting(tester);
+            final prompt = Completer<bool>();
+            answer = (_, _) => prompt.future;
+            await back(tester, r);
+            expect(asked, ['gw dirty']);
+            gGate!.complete();
+            await settle(tester);
+            expect(stackOf(r), ['/oa', '/gw']);
+            prompt.complete(true);
+            await settle(tester);
+            expect(asked, ['gw dirty']);
+            expect(stackOf(r), ['/oa']);
+            expect(find.text('gw'), findsNothing);
+          });
+
+          testWidgets('$label: a yes that comes before the guard answered '
+              'lets the page go', (tester) async {
+            final r = await waiting(tester);
+            final prompt = Completer<bool>();
+            answer = (_, _) => prompt.future;
+            await back(tester, r);
+            prompt.complete(true);
+            await settle(tester);
+            expect(stackOf(r), ['/oa']);
+            gGate!.complete();
+            await settle(tester);
+            expect(asked, ['gw dirty']);
+            expect(stackOf(r), ['/oa']);
+            expect(find.text('gw'), findsNothing);
+          });
+        }
+      }
+    });
+
     // A pushed guarded page that is uncovered runs its guard again, however it was uncovered, and a
     // page that is held back is never built before its guard has passed. A page that goes while the
     // re-run of the page above it still waits must not make the commit look like a push: the router's
@@ -1160,6 +1264,87 @@ void main() {
         await settle(tester);
         expect(asked, ['gw dirty']);
         return (r, c);
+      }
+
+      for (final base in ['/y', '/oa']) {
+        testWidgets('over $base: a guard that now moves the page moves it '
+            'once the person has made it clean', (tester) async {
+          final (r, _) = await refusedBack(tester, base: base, closed: true);
+          // The person cleans the page, and the guard answers: it refuses.
+          sources['gw']!.dirty = false;
+          answer = (_, _) => true;
+          gGate!.complete();
+          await settle(tester);
+          await settle(tester);
+          expect(find.text('gw'), findsNothing, reason: 'its guard refuses');
+          expect(stackOf(r), [base, '/y']);
+          // Asked once more, as the move it is, and not about a dirty page.
+          expect(asked, ['gw dirty', 'gw']);
+        });
+
+        testWidgets('over $base: a guard that now moves the page asks again '
+            'when the page is still dirty, and a refusal keeps it', (
+          tester,
+        ) async {
+          final (r, _) = await refusedBack(tester, base: base, closed: true);
+          gGate!.complete();
+          await settle(tester);
+          await settle(tester);
+          expect(asked, ['gw dirty', 'gw dirty']);
+          expect(stackOf(r), [base, '/gw']);
+          expect(find.text('gw'), findsOneWidget);
+          // Nothing asks again by itself: the person refused the move.
+          for (var i = 0; i < 20; i++) {
+            await tester.pump();
+          }
+          expect(asked, ['gw dirty', 'gw dirty']);
+          expect(stackOf(r), [base, '/gw']);
+          // And the page is not stuck: the question that follows is the person's, asked as usual.
+          answer = (_, _) => true;
+          r.pop();
+          await settle(tester);
+          expect(asked, ['gw dirty', 'gw dirty', 'gw dirty']);
+          expect(stackOf(r), [base]);
+        });
+
+        testWidgets('over $base: a guard that passes asks nothing more, and '
+            'keeps the page', (tester) async {
+          final (r, _) = await refusedBack(tester, base: base);
+          gGate!.complete();
+          await settle(tester);
+          await settle(tester);
+          expect(asked, ['gw dirty']);
+          expect(stackOf(r), [base, '/gw']);
+          for (var i = 0; i < 20; i++) {
+            await tester.pump();
+          }
+          expect(asked, ['gw dirty']);
+        });
+      }
+
+      for (final yes in [true, false]) {
+        testWidgets('a question still open when the guard that moves the page '
+            'answers: ${yes ? 'a yes' : 'a no'} settles both', (tester) async {
+          final (r, _) = await refusedBack(tester, closed: true);
+          // The person's back is asked again and left open.
+          final prompt = Completer<bool>();
+          answer = (_, _) => prompt.future;
+          await Navigator.of(tester.element(find.text('gw'))).maybePop();
+          await settle(tester);
+          expect(asked, ['gw dirty', 'gw dirty']);
+          gGate!.complete();
+          await settle(tester);
+          await settle(tester);
+          // The landing waits for the same question: nobody is asked a third time.
+          expect(asked, ['gw dirty', 'gw dirty']);
+          expect(stackOf(r), ['/y', '/gw']);
+          prompt.complete(yes);
+          await settle(tester);
+          await settle(tester);
+          expect(asked, ['gw dirty', 'gw dirty']);
+          expect(stackOf(r), yes ? ['/y'] : ['/y', '/gw']);
+          expect(find.text('gw'), yes ? findsNothing : findsOneWidget);
+        });
       }
 
       for (final refused in [true, false]) {

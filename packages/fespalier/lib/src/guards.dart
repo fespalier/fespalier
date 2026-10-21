@@ -187,13 +187,18 @@ final class _RouterGuards {
   /// The pages whose re-run started in this frame: one re-run per page at a time.
   final _rerunning = <String>{};
 
-  /// The last re-run of each page, until the commit that answers it: the commit of a re-run is not
-  /// a navigation of the caller's, so it keeps the completer the caller holds, and what it shows
-  /// tells whether the page moved.
+  /// The last re-run of each page, until a commit on that page: the commit of a re-run is not a
+  /// navigation of the caller's, so it keeps the completer the caller holds, and what it shows tells
+  /// whether the page moved. A commit of any other navigation (the router no longer holds the
+  /// re-run's) takes the entry away, and answers to its own completer. A re-run that never landed
+  /// (its landing was refused) stays until then.
   final _reruns = <String, _Rerun>{};
 
   /// The pages whose re-run is scheduled for after the frame.
   final _scheduled = <String>{};
+
+  /// The pages whose re-run is scheduled again, after a landing that was refused (see [_askAgain]).
+  final _askingAgain = <String>{};
 
   /// The configuration the last judgment was made for: one judgment per configuration object.
   RouteMatchList? _judged;
@@ -397,12 +402,40 @@ final class _RouterGuards {
     if (!_scheduled.add(key)) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _scheduled.remove(key);
-      final top = _topEntry();
-      if (top == null || top.pageKey.value != key || top.matches.isError) {
-        return;
-      }
-      _rerun(top);
+      _rerunIfTop(key);
     });
+  }
+
+  /// Runs the re-run of the pushed page [key] again, after its last landing was refused without a
+  /// question (see [guardRerunRefused]): the guard wanted to move the page, and nobody vetoed it, so
+  /// it asks once the question has settled, or moves the page.
+  ///
+  /// On the frame after the refusal, and not in the callback after the frame that is on its way.
+  /// That frame is the one in which the router reports the configuration it kept, in a callback it
+  /// registers after this method is called, and the report replaces the route information the new
+  /// re-run put there: the re-run would no longer be the navigation the router holds
+  /// ([_Rerun.current]) and its landing would be taken for a question of the person's. The frame is
+  /// asked for when none is on its way; there is no timer.
+  void _askAgain(String key) {
+    if (!_askingAgain.add(key)) return;
+    final binding = SchedulerBinding.instance;
+    binding.addPostFrameCallback((_) {
+      binding.addPostFrameCallback((_) {
+        _askingAgain.remove(key);
+        _rerunIfTop(key);
+      });
+      binding.ensureVisualUpdate();
+    });
+    if (binding.schedulerPhase == SchedulerPhase.idle) {
+      binding.ensureVisualUpdate();
+    }
+  }
+
+  /// Runs the re-run of [key] when it is the pushed page on top and shows a page.
+  void _rerunIfTop(String key) {
+    final top = _topEntry();
+    if (top == null || top.pageKey.value != key || top.matches.isError) return;
+    _rerun(top);
   }
 
   /// The router committed a location: the navigation's sites are bound to the page it put on top,
@@ -732,17 +765,32 @@ void guardRerunYields(GoRouter router, String pageKey) =>
 /// Refused, the replace changes nothing. False for a question of the person's, which is asked while a
 /// guard still waits, and for any page whose re-run did not yield.
 ///
+/// A guard that refuses is not ignored because nobody asked the page. When the landing would have
+/// moved it (a redirect answered a location, or failed), refusing it also asks for the re-run again,
+/// on the frame after the refusal (see `_RouterGuards._askAgain`): the question is settled by then,
+/// and the landing is asked about as the move it is, so the person is asked again (and may refuse
+/// again, which ends it: nothing asks a third time by itself), or the page moves. A landing that
+/// passes needs nothing more. A question that is still open then is the one the new landing joins.
+///
 /// A question that arrives between the last guard's answer and the end of the frame in which the
 /// router reports the configuration it kept (a few microtasks, then one frame) is taken for the
-/// landing, and refused without being asked: the person presses again. The flag is not cleared when
-/// it refuses, because a question that was taken for a landing that passes (see [guardRerunMoves])
-/// is let through without being asked, which loses input; a refusal is the safe side.
+/// landing, and refused without being asked: the person presses again, and so does an app's own
+/// `pop()` in that window. The flag is not cleared when it refuses, because a question that was
+/// taken for a landing that passes (see [guardRerunMoves]) is let through without being asked, which
+/// loses input; a refusal is the safe side.
 bool guardRerunRefused(GoRouter router, String pageKey) {
-  final rerun = _guardsOf[router]?._reruns[pageKey];
-  return rerun != null &&
-      rerun.yielded &&
-      rerun.current(router) &&
-      !rerun.waiting;
+  final guards = _guardsOf[router];
+  final rerun = guards?._reruns[pageKey];
+  if (rerun == null ||
+      !rerun.yielded ||
+      !rerun.current(router) ||
+      rerun.waiting) {
+    return false;
+  }
+  // A guard that refuses is not ignored because nobody asked the page: when the landing would have
+  // moved it, the re-run goes again, and its landing is asked about as the move it is.
+  if (rerun.moves) guards!._askAgain(pageKey);
+  return true;
 }
 
 /// Whether [info], the route information [router] holds, is the `replace` of a guard's re-run (see

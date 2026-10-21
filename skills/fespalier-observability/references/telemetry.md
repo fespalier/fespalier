@@ -17,9 +17,11 @@ in `tasks: dev:` starts it with the app: it starts its stack and returns, so it 
   Off, the file is byte for byte what it was.
 - **A replaced router must be disposed** (with telemetry on). Telemetry's listener on the router's route information
   keeps go_router's platform observer registered, so a router the app swapped out without `dispose()` keeps answering
-  the platform's links (deep links, `pushRoute`) while the new router gets none. Dispose the old one after the swap; without
-  telemetry it is not needed. A generated `main()` is not affected (`StartupGate` disposes its router). Details:
-  `docs/observability.md`, "Turning it on".
+  the platform's links (deep links, `pushRoute`) while the new router gets none. Dispose the old one after the swap. Two
+  routers the app switches between have the same problem (the one attached first answers every link): keep one router and
+  switch with a guard, or make a new router each time and dispose the old one. Without telemetry none of this is needed.
+  An app that starts from the generated `main()` or `AppMain.root()` is not affected (`StartupGate` disposes the router it
+  makes). Details: [`docs/observability.md`](../../../docs/observability.md#turning-it-on), "Turning it on".
 - **`FespalierTelemetry`**: the sink, in `package:fespalier`. `FespalierTelemetry.install(sink)` (null
   uninstalls) before `runApp` and before the router is built. A sink is called synchronously and must
   return at once and not throw; what it throws is caught and printed once

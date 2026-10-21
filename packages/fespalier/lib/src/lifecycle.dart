@@ -246,8 +246,10 @@ final class RouterWatch {
     // Kept until the router is disposed, and nothing else removes it. go_router registers its
     // provider as a platform observer while the provider has a listener, so a router the app
     // replaced without disposing it keeps answering platform links (#264, docs/observability.md).
-    // Flutter and go_router give no signal when the Router widget lets go of the provider, so
-    // there is no point at which to remove it. A fix would need one.
+    // Nothing says when the Router lets go of the provider or takes it back. The end of a frame in
+    // which another watched router commits shows that a router is off screen, but nothing shows it
+    // coming back where it was, so taking its provider off there would break a swap back. A fix
+    // needs that signal.
     router.routeInformationProvider.addListener(_requested);
     final config = router.routerDelegate.currentConfiguration;
     if (config.isEmpty && config.error == null) {

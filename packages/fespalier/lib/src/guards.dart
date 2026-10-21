@@ -401,12 +401,14 @@ final class _RouterGuards {
     return _held(entry);
   }
 
-  /// Whether a held page of this router is at [uri]: its page builds nothing (`refusedView`).
-  bool refuses(Uri uri) {
+  /// Whether the pushed page whose page key is [key] is held back: its page builds nothing
+  /// (`refusedView`). A page is told by its key, not by its location: a base page may have the
+  /// location of a held one.
+  bool refuses(String key) {
     _judgeNow();
     final pushed = <ImperativeRouteMatch>[];
     pushedMatches(_router.routerDelegate.currentConfiguration.matches, pushed);
-    return pushed.any((e) => e.matches.uri == uri && _held(e));
+    return pushed.any((e) => e.pageKey.value == key && _held(e));
   }
 
   void _closeAll() {
@@ -747,17 +749,20 @@ void _retry(GoRouter router, GuardFailure failure, BuildContext inside) {
 /// its navigation shows the error view of a failure, or the page of a pass. It makes no `Future`,
 /// and it reports nothing.
 Widget? refusedView(BuildContext context, GoRouterState state) {
+  // A base page's key is its matched path (`/orders/:id`, so it starts with `/`), and go_router
+  // makes a pushed page's key from letters and symbols that are never a `/`: a base page is never
+  // held, whatever else is, and costs no lookup.
+  final key = state.pageKey.value;
+  if (key.startsWith('/')) return null;
   final router = GoRouter.maybeOf(context);
   if (router == null) return null;
-  final config = router.routerDelegate.currentConfiguration;
   if (_guardsOf[router] == null) {
     final pushed = <ImperativeRouteMatch>[];
-    pushedMatches(config.matches, pushed);
+    pushedMatches(router.routerDelegate.currentConfiguration.matches, pushed);
     if (pushed.isEmpty) return null;
   }
   final guards = _guardsOf[router] ??= _RouterGuards(router);
-  guards._judge(config, _isPushNavigation(router));
-  return guards.refuses(state.uri) ? const SizedBox.shrink() : null;
+  return guards.refuses(key) ? const SizedBox.shrink() : null;
 }
 
 /// Closes what lies over the page that [inside] is in (since 0.21.0): the routes without a `Page`

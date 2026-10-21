@@ -161,4 +161,101 @@ void main() {
       },
     );
   });
+
+  group('the gate of a page holds the entry by its page key', () {
+    /// How often a counter page was built from scratch, and how often the guard ran.
+    var states = 0;
+    var runs = 0;
+
+    GoRouter gated() => GoRouter(
+      initialLocation: '/checkout',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(
+          path: '/checkout',
+          redirect: (context, state) => runRedirect(() {
+            runs++;
+            // The second run is the push, which fails; every other run passes.
+            if (runs == 2) throw StateError('boom');
+            return null;
+          }),
+          // The generated page builder of a guarded route.
+          builder: (context, state) =>
+              refusedView(context, state) ?? _Counter(onState: () => states++),
+        ),
+      ],
+      errorBuilder: (context, state) => routerErrorPage(
+        context,
+        state,
+        (uri) => Text('NOT FOUND ${uri.path}'),
+        guardError: (uri, error, stackTrace, retry) => const Text('ERROR'),
+      ),
+    );
+
+    setUp(() {
+      states = 0;
+      runs = 0;
+    });
+
+    testWidgets('a base page at the same location as a held page keeps its state', (
+      tester,
+    ) async {
+      final r = gated();
+      await pumpRouter(tester, r);
+      expect(states, 1);
+      await tester.tap(find.text('COUNT 0'));
+      await tester.pump();
+      expect(find.text('COUNT 1'), findsOneWidget);
+      // The push fails: its entry is the error view, over a base page that passed.
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      expect(find.text('ERROR'), findsOneWidget);
+      // A refresh restores both without their redirects. The entry that never passed is held,
+      // and the base page, which has the same location, is not.
+      r.refresh();
+      await tester.pump();
+      expect(
+        find.text('COUNT 1', skipOffstage: false),
+        findsOneWidget,
+        reason:
+            'the base page is built, with its state, while the entry is held',
+      );
+      await tester.pumpAndSettle();
+      // The refresh ran the guard of the base page (the third run) and the entry's guard ran again
+      // and passed (the fourth): its page is a second counter, and the base page under it is the
+      // one it was, never built again.
+      expect(runs, 4);
+      expect(states, 2);
+      expect(find.text('COUNT 1', skipOffstage: false), findsOneWidget);
+      expect(find.text('COUNT 0'), findsOneWidget);
+    });
+  });
+}
+
+/// A page with state of its own: a tap on its text counts, and [onState] hears each time the state
+/// is made.
+final class _Counter extends StatefulWidget {
+  const _Counter({required this.onState});
+
+  final VoidCallback onState;
+
+  @override
+  State<_Counter> createState() => _CounterState();
+}
+
+final class _CounterState extends State<_Counter> {
+  var count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onState();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () => setState(() => count++),
+    child: Text('COUNT $count'),
+  );
 }

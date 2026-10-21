@@ -134,7 +134,7 @@ Things to know:
 - A test that builds a `refetchOnResume` provider in a bare `ProviderContainer`, with no binding, throws when the signal is built: use `testWidgets`, or override `appResumeSignal.overrideWith(RefetchSignal.new)`.
 - A reload starts on a frame and its value shows on the next, so `pump()` a few times (or `pumpAndSettle` when nothing waits on a real delay).
 
-**Diagnostics.** Errors that say what to write instead: a `freshness` that is not a `Freshness(...)` call, a second one, one in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and a `dataCache` in a `route.dart` ([messages](../skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md)). `freshness` and `dataCache` are names fsp reads in a `data.dart`: a public top-level variable of one of those names with another type gets the first error, so rename it (a private `_freshness` is never read).
+**Diagnostics.** Errors that say what to write instead: a `freshness` that is not a `Freshness(...)` call, a second one, one in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider, and a `dataCache` in a `route.dart` ([messages](https://github.com/fespalier/fespalier/blob/main/skills/fespalier-troubleshooting/references/diagnostics-data-and-hooks.md)). `freshness` and `dataCache` are names fsp reads in a `data.dart`: a public top-level variable of one of those names with another type gets the first error, so rename it (a private `_freshness` is never read).
 
 ### Reconnects: fespalier_connectivity
 
@@ -179,7 +179,7 @@ if (!ref.watch(hasNetwork)) const Text('No network')
 
 `networkConnectivity` is the `List<ConnectivityResult>?` behind it (null until the first answer), for an app that shows the kind of network.
 
-**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?". Only a request tells whether the server answers: a captive portal, a router with no uplink, a VPN that is down or a dead server all look connected. So `refetchOnReconnect` can fire on a captive portal (the reload fails and `keepDataOnError` keeps the page); `hasNetwork == false` is reliable ("no network at all") and `true` promises nothing, so an offline banner should say "No network" and a failed load should show its own error. fespalier ships no reachability check (it needs a request to your own server, and polling is a timer); a recipe in [`skills/fespalier-data/references/reconnect-and-network.md`](../skills/fespalier-data/references/reconnect-and-network.md) asks your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
+**Connectivity versus reachability.** This package, like `navigator.onLine` on the web, answers "is a network interface up?". Only a request tells whether the server answers: a captive portal, a router with no uplink, a VPN that is down or a dead server all look connected. So `refetchOnReconnect` can fire on a captive portal (the reload fails and `keepDataOnError` keeps the page); `hasNetwork == false` is reliable ("no network at all") and `true` promises nothing, so an offline banner should say "No network" and a failed load should show its own error. fespalier ships no reachability check (it needs a request to your own server, and polling is a timer); a recipe in [`skills/fespalier-data/references/reconnect-and-network.md`](https://github.com/fespalier/fespalier/blob/main/skills/fespalier-data/references/reconnect-and-network.md) asks your own API once per connectivity change and per resume, never on a timer, and turns that into a `RefetchSignal`.
 
 **Two platform repairs.** The web sends no first state (only `online` and `offline` events), so the first state is asked with `check()`; an event that arrives before that answer wins. iOS drops connectivity events while the app is in the background, so `networkConnectivity` asks `check()` again on each resume, through `appResumeSignal`. Neither starts a timer.
 
@@ -203,7 +203,7 @@ await tester.pumpAndSettle();
 
 A widget test that reaches the plugin without that override **fails**, with Flutter's report `while activating platform stream on channel dev.fluttercommunity.plus/connectivity_status` and `MissingPluginException(No implementation found for method listen on channel dev.fluttercommunity.plus/connectivity_status)` (a test that shows `hasNetwork`, or builds a `refetchOnReconnect` provider with the package's signal, and no `FakeConnectivity`).
 
-In debug (`debugPrint`, nothing in a release build) it prints `fespalier_connectivity: the connectivity stream reported an error: <error>` and `fespalier_connectivity: checking connectivity failed: <error>`, and both leave the state as it was ([causes](../skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md)).
+In debug (`debugPrint`, nothing in a release build) it prints `fespalier_connectivity: the connectivity stream reported an error: <error>` and `fespalier_connectivity: checking connectivity failed: <error>`, and both leave the state as it was ([causes](https://github.com/fespalier/fespalier/blob/main/skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md)).
 
 ### A cache that survives a restart: `dataCache`
 
@@ -328,7 +328,7 @@ In debug (`debugPrint`, nothing in a release build), next to fespalier's two lin
 - `fespalier_storage: could not open shared preferences, so nothing is saved: <error>` and `fespalier_storage: could not open the Hive box <name>, so nothing is saved: <error>`, when `open()` returns `null`
 - a value over the budget, after fespalier's `could not save:`: `fespalier_storage: the value saved under <key> is <size> characters, more than maxSize (<maxSize>), so it was not saved`
 
-A budget of 0 or less throws an `ArgumentError` (`Invalid argument (maxSize): must be more than 0: 0`), and so does a `SharedPreferencesWithCache` with an allowList given to `PrefsDataStorage(prefs)`: the keys of a `dataCache` are not known in advance, so use `PrefsDataStorage.open()` ([messages](../skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md)).
+A budget of 0 or less throws an `ArgumentError` (`Invalid argument (maxSize): must be more than 0: 0`), and so does a `SharedPreferencesWithCache` with an allowList given to `PrefsDataStorage(prefs)`: the keys of a `dataCache` are not known in advance, so use `PrefsDataStorage.open()` ([messages](https://github.com/fespalier/fespalier/blob/main/skills/fespalier-troubleshooting/references/diagnostics-flags-storage-network.md)).
 
 **Testing.** `package:fespalier_storage/testing.dart` has `fakePrefsStore([values])`, which makes shared_preferences an in-memory store for the test, and `memoryBox()`, a Hive box in memory for `HiveDataStorage(await memoryBox())`. Two `open()`s in one test share the store: that is a restart.
 

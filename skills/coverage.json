@@ -1058,7 +1058,8 @@
     "README.md#Help",
     "README.md#Contributing",
     "docs/README.md",
-    "docs/README.md#Old README sections"
+    "docs/README.md#Old README sections",
+    "docs/index.md"
   ],
   "exemptReasons": {
     "docs/releasing.md": "Maintainer-only release procedure (Homebrew, Scoop, the JetBrains Marketplace, checksum pinning). An app author's agent never acts on it: release-please cuts the releases, and a skill would only go stale.",
@@ -1074,6 +1075,7 @@
     "README.md#Help": "Navigation only: a group of links in the README's documentation index, and states no behaviour a skill could get wrong.",
     "README.md#Contributing": "Navigation only: it links to the documentation and to AGENTS.md, and states no behaviour a skill could get wrong.",
     "docs/README.md#Old README sections": "Navigation only: the map from the old README headings to the pages.",
-    "docs/README.md": "Navigation only: the page index and the map from the old README headings to the pages, and states no behaviour a skill could get wrong."
+    "docs/README.md": "Navigation only: the page index and the map from the old README headings to the pages, and states no behaviour a skill could get wrong.",
+    "docs/index.md": "The documentation site's home page: a summary of the README's opening and links to the pages, and states no behaviour a skill could get wrong."
   }
 }

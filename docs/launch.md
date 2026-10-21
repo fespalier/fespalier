@@ -6,7 +6,7 @@ It is the routing half of the launcher, and only that. Where an action comes fro
 
 ## Install
 
-Add `fespalier_launch` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_launch/README.md`](../packages/fespalier_launch/README.md). Then list it as an adapter and run `fsp gen`:
+Add `fespalier_launch` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_launch/README.md`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_launch/README.md). Then list it as an adapter and run `fsp gen`:
 
 ```yaml
 # pubspec.yaml
@@ -32,7 +32,7 @@ Future<void> main() {
 }
 ```
 
-- **Build each source once.** `quickActions` and `homeWidget` are the app's one `QuickActionsLaunchSource` and one `HomeWidgetLaunchSource`, top-level `final` values of the recipes ([`references/launch-sources.md`](../skills/fespalier-routing/references/launch-sources.md)). Use that same object everywhere: `configure` gets it, and `startup()` calls `quickActions.setShortcuts()` on it. A second `QuickActionsLaunchSource()` calls quick_actions' `initialize` again, and the plugin keeps a single handler, so the source you configured would never hear a warm shortcut. `setShortcuts()` and the sources do nothing off Android and iOS (quick_actions has no other side: a call there throws `MissingPluginException`).
+- **Build each source once.** `quickActions` and `homeWidget` are the app's one `QuickActionsLaunchSource` and one `HomeWidgetLaunchSource`, top-level `final` values of the recipes ([`references/launch-sources.md`](https://github.com/fespalier/fespalier/blob/main/skills/fespalier-routing/references/launch-sources.md)). Use that same object everywhere: `configure` gets it, and `startup()` calls `quickActions.setShortcuts()` on it. A second `QuickActionsLaunchSource()` calls quick_actions' `initialize` again, and the plugin keeps a single handler, so the source you configured would never hear a warm shortcut. `setShortcuts()` and the sources do nothing off Android and iOS (quick_actions has no other side: a call there throws `MissingPluginException`).
 - `sources` is a list of `LaunchSource` (below), de-duplicated by identity, in the order you list them. `route` maps an action to a place. An empty list is allowed: nothing opens.
 - Calling `configure` twice replaces (a hot restart runs `main()` again).
 - **Unconfigured, the adapter says so once and does nothing**: one `FlutterError` reports ``fespalier_launch is listed under `fespalier: adapters:` but was never configured: call FespalierLaunch.configure(sources: [...], route: ...) in main() before AppMain.run()``, and `launch()` and `attach()` do nothing. It never throws out of them: an adapter must not stop an app from starting.
@@ -45,7 +45,7 @@ A `LaunchSource` is what a launcher plugin gives the package:
 | `initialAction()` | The action that cold-started the app, answered once (a second call answers null). A local read (in the recipes, the shortcut quick_actions hands its `initialize` handler, or home_widget's `initiallyLaunchedFromHomeWidget`): it runs before the first frame, so a `Future` delays that frame by one channel round trip. Every source is asked. **It must complete or fail**: the first frame waits for the answer and the package sets no timeout (that would be a timer), so a `Future` that never completes blocks the app on its first frame for good. The recipes' calls are platform-channel calls that answer. |
 | `actions`         | The actions taken while the app runs or sits in the background. A broadcast stream, listened to once per `ProviderScope` and, from `launch()` until the scope's own subscription exists, once more (the startup hold). A source on a platform channel returns the same stream every time (a `late final` field).                                                                                                                                                                                                                                                                                                        |
 
-The recipes for quick_actions and home_widget, with the floors of each plugin, are in [`references/launch-sources.md`](../skills/fespalier-routing/references/launch-sources.md).
+The recipes for quick_actions and home_widget, with the floors of each plugin, are in [`references/launch-sources.md`](https://github.com/fespalier/fespalier/blob/main/skills/fespalier-routing/references/launch-sources.md).
 
 ## Mapping an action
 
@@ -126,4 +126,4 @@ await tester.pumpAndSettle();
 
 An action while the app starts is the same test with `shortcuts.shortcut(...)` between `AppAdapters.launch()` and `pumpWidget`: it opens once, after the first frame, and only the latest of several does. Call `FespalierLaunch.debugReset()` in `setUp` and `tearDown` (it also ends the hold that `launch()` started), and the same for `FespalierPush` if the app lists it.
 
-[`examples/plugins`](../examples/plugins) tests a cold start from a shortcut and from a widget, a tap while the app runs and while it starts, a signed-out shortcut to a guarded page, a URI and a shortcut the app does not map, and the two home-page buttons, through `AppMain.root()`; no device is needed. Its `test/launch_test.dart` is the model. What no test can see is the list above: a real shortcut or widget tap, cold and warm, on each platform ([issue #202](https://github.com/fespalier/fespalier/issues/202)). Do it on a device before a release.
+[`examples/plugins`](https://github.com/fespalier/fespalier/tree/main/examples/plugins) tests a cold start from a shortcut and from a widget, a tap while the app runs and while it starts, a signed-out shortcut to a guarded page, a URI and a shortcut the app does not map, and the two home-page buttons, through `AppMain.root()`; no device is needed. Its `test/launch_test.dart` is the model. What no test can see is the list above: a real shortcut or widget tap, cold and warm, on each platform ([issue #202](https://github.com/fespalier/fespalier/issues/202)). Do it on a device before a release.

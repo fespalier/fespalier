@@ -392,7 +392,6 @@ void main() {
   ) async {
     var guardRuns = 0;
     var builds = 0;
-    var allowed = false;
     Widget gPage() {
       builds++;
       return const Text('G page');
@@ -402,8 +401,7 @@ void main() {
       path: '/g',
       redirect: (context, state) => runRedirect(() {
         guardRuns++;
-        if (!allowed) throw StateError('boom');
-        return null;
+        throw StateError('boom');
       }),
       builder: (context, state) => refusedView(context, state) ?? gPage(),
     );

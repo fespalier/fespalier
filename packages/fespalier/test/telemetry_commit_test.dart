@@ -360,12 +360,21 @@ void main() {
       final r = await boot(tester);
       unawaited(r.push<void>('/checkout'));
       await tester.pumpAndSettle();
+      final failedPush = rec.log.singleWhere(
+        (l) => l.startsWith('#2 end navigate error'),
+      );
+      expect(failedPush, endsWith('at=/checkout'));
       rec.log.clear();
       r.refresh();
       await tester.pumpAndSettle();
       expect(rec.log.where((l) => l.contains('route=')), isEmpty);
       expect(rec.log.where((l) => l.contains(' commit ')), isNotEmpty);
       expectCommitsMatchEnds(rec.log);
+      // The held page is at the location that failed, as the failed push was; the page below it is
+      // not where the navigation ended.
+      final ends = rec.log.where((l) => l.contains(' end navigate ')).toList();
+      expect(ends, isNotEmpty);
+      expect(ends, everyElement(endsWith('at=/checkout')));
     });
 
     testWidgets('a refresh of a pushed page whose guard passes is two '

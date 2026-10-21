@@ -512,8 +512,11 @@ final class RouterWatch {
   void _endNavigation(_Nav nav, RouteMatchList config, _Instance? visible) {
     final route = _routeOf(config, visible);
     final active = _activeOf(config);
-    // An error view is at the location that failed.
-    final location = active.isError ? active.uri : (visible?.uri ?? config.uri);
+    // An error view is at the location that failed, and so is a held pushed page (since 0.21.0):
+    // the walk shows the page under it, which is not where the navigation ended.
+    final location = _isErrorView(config)
+        ? active.uri
+        : (visible?.uri ?? config.uri);
     final requested = nav.requested;
     telemetryNavigationEnd(
       nav.token,

@@ -537,18 +537,24 @@ final class _RouterGuards {
   }
 
   /// A question about the pushed page [key] is the person's (a pop, the back button, with a
-  /// `leave()` to ask) while the re-run of its guard still waits: the re-run is cancelled, as it is
-  /// when the page has gone (see [_judge]). Otherwise it could land while the question is open and
-  /// replace the page that the answer is about, and an answer that lets the page go would find
-  /// another entry in its place and leave the page where it is. A refusal keeps the page, which is
-  /// not checked again until its guard changes or the router shows it again. Strict about the
-  /// re-run being the router's request: a question that belongs to another request (a `go`, a
-  /// browser's back) is asked inside that request, which dropped the re-run and may not be
-  /// replaced.
+  /// `leave()` to ask) while the re-run of its guard still waits: the re-run yields. Nothing is asked
+  /// of the router here.
+  ///
+  /// - If the re-run lands while the page is still on the stack (the question is open, or was
+  ///   refused), `leaveExit` refuses it ([guardRerunRefused]) and go_router replaces nothing: the
+  ///   entry the answer is about stays that entry, so a yes finds it. A refusal keeps the page, which
+  ///   is not checked again until its guard changes or the router shows it again.
+  /// - If the page goes first, the commit that removes it cancels the re-run (see [_judge]).
+  ///
+  /// The cancel is not made here, with a `restore` of the configuration that still holds the page:
+  /// that restore runs the base's redirect, which can answer after the pop (an asynchronous guard)
+  /// and put the page back. Strict about the re-run being the router's request: a question that
+  /// belongs to another request (a `go`, a browser's back) is asked inside that request, which
+  /// dropped the re-run, and it may not be refused.
   void _yield(String key) {
     final rerun = _reruns[key];
     if (rerun == null || !rerun.waiting || !rerun.current(_router)) return;
-    _cancelWaiting(_router.routerDelegate.currentConfiguration);
+    rerun.yielded = true;
   }
 
   /// Cancels the navigation of a re-run that is still waiting for its guard, after its page went
@@ -557,6 +563,14 @@ final class _RouterGuards {
   /// on the way for the newer one. It commits nothing (the same configuration), and telemetry sees
   /// no navigation in it (the same location). Not in a build, where a router may not be asked to
   /// change: after the frame, which no event of the app comes before.
+  ///
+  /// What it relies on: [config] is the stack as it is now, so the restore can answer when it likes.
+  /// A base redirect that is asynchronous (several awaits) answers after the pop, and its answer is
+  /// the stack the person left, which is the one on screen: nothing is put back. That holds because
+  /// the restore is sent after the pop. Sent before it, with a configuration that still held the
+  /// page, the same answer would put the page back (see [_yield]). A navigation that starts
+  /// meanwhile (a `go`) replaces the restore as it replaces any pending navigation, and a restore
+  /// that is issued later (after the frame) is skipped when the router has left [config] by then.
   void _cancelWaiting(RouteMatchList config) {
     void restore() {
       if (identical(_router.routerDelegate.currentConfiguration, config)) {
@@ -720,9 +734,25 @@ bool? guardRerunMoves(GoRouter router, String pageKey) {
 }
 
 /// A question about the pushed page [pageKey] is the person's while the re-run of its guard waits:
-/// the re-run is cancelled (see `_RouterGuards._yield`). Nothing when no re-run waits.
+/// the re-run yields (see `_RouterGuards._yield`). Nothing when no re-run waits.
 void guardRerunYields(GoRouter router, String pageKey) =>
     _guardsOf[router]?._yield(pageKey);
+
+/// Whether `leaveExit` refuses the landing of the re-run of the pushed page [pageKey] (since 0.21.0):
+/// the re-run yielded to a question of the person's about the page (see `_RouterGuards._yield`), and
+/// its guards have answered since, so go_router is about to replace the entry that question is about.
+/// Refused, the replace changes nothing. False for a question of the person's, which is asked while a
+/// guard still waits, and for any page whose re-run did not yield.
+///
+/// A question that arrives between the last guard's answer and the landing, a few microtasks, is
+/// taken for the landing.
+bool guardRerunRefused(GoRouter router, String pageKey) {
+  final rerun = _guardsOf[router]?._reruns[pageKey];
+  return rerun != null &&
+      rerun.yielded &&
+      rerun.current(router) &&
+      !rerun.waiting;
+}
 
 /// Whether [info], the route information [router] holds, is the `replace` of a guard's re-run (see
 /// `_RouterGuards._rerun`) and not one the app made: it asks for no change of the page, so it says
@@ -751,6 +781,10 @@ final class _Rerun {
 
   /// Whether a redirect of the re-run answered a location or failed.
   bool moves = false;
+
+  /// Whether a question of the person's about the page came while the re-run waited for a guard: when
+  /// the re-run lands, it is refused (see [guardRerunRefused]).
+  bool yielded = false;
 
   /// How many of its redirects have not answered yet (a guard that takes a while): the navigation of
   /// go_router that the re-run is has not landed, and will when they have.

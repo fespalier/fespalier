@@ -23,6 +23,7 @@ import 'guards.dart'
     show
         guardRefreshHooks,
         guardRerunMoves,
+        guardRerunRefused,
         guardRerunYields,
         guardsContainer,
         guardsIdle,
@@ -347,15 +348,17 @@ LeaveResult leaveExit(
       // asks as a base page's redirect does, whatever else is true of the navigation. When the
       // guards passed again the page is replaced by itself, which is no leave. A page that goes
       // while the re-run still waits for its guard (a pop, the back button) is asked as it is with
-      // no re-run.
-      final moves = guardRerunMoves(router, state.pageKey.value);
+      // no re-run, and the re-run yields to it: if it lands while that question's page is still
+      // there, it is refused, and replaces nothing.
+      final key = state.pageKey.value;
+      if (guardRerunRefused(router, key)) return false;
+      final moves = guardRerunMoves(router, key);
       if (moves == false) return true;
       if (moves == null) {
         if (_isTabSwitch(router, state)) return true;
         if (_isQueryOnlyReplace(router, state)) return true;
         if (within != null && _staysWithin(router, state, within)) return true;
-        // The question is the person's: a re-run still waiting for its guard must not land under it.
-        guardRerunYields(router, state.pageKey.value);
+        guardRerunYields(router, key);
       }
     }
     container =

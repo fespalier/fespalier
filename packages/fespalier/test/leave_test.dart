@@ -137,7 +137,10 @@ class _BackRegistrarState extends State<BackRegistrar> {
   Widget build(BuildContext context) => widget.child;
 }
 
-Widget page(String label) => Scaffold(body: Center(child: Text(label)));
+Widget page(String label, {bool appBar = false}) => Scaffold(
+  appBar: appBar ? AppBar() : null,
+  body: Center(child: Text(label)),
+);
 
 /// What the generator writes for a folder with a leave.dart: `onExit` and the page wrapper.
 GoRoute leaving(
@@ -146,6 +149,7 @@ GoRoute leaving(
   List<RouteBase> routes = const [],
   String Function(GoRouterState state)? labelOf,
   GoRouterRedirect? redirect,
+  bool appBar = false,
 }) {
   return GoRoute(
     path: path,
@@ -162,7 +166,7 @@ GoRoute leaving(
     ),
     pageBuilder: (context, state) {
       final l = labelOf?.call(state) ?? label;
-      var body = page(l);
+      var body = page(l, appBar: appBar);
       final source = sources[l];
       if (source != null) body = Registrar(source, child: body);
       final back = backs[l];
@@ -431,6 +435,9 @@ void main() {
     /// When set, the guard of `/g4` answers once it completes: a guard that takes a while.
     Completer<void>? gGate;
 
+    /// How many times the guard of `/oa`, a base page's, awaits before it answers.
+    var baseAwaits = 0;
+
     /// `/g` has a sync guard and `/g2` an async one, both on `_gOpen`, both with a `leave.dart`. The
     /// tabs hold a guarded page of their own, pushed inside the shell.
     GoRouter guarded() => GoRouter(
@@ -471,9 +478,11 @@ void main() {
             }),
           ),
         ),
+        // The page with an app bar, so the back button of its bar is there to press.
         leaving(
           '/g4',
           'g4',
+          appBar: true,
           redirect: (context, state) => runRedirect(
             () => refGuard(context, 'g4@g4', (ref) {
               gRuns++;
@@ -482,6 +491,20 @@ void main() {
               return wait == null
                   ? Future<String?>.value(answer)
                   : wait.future.then<String?>((_) => answer);
+            }),
+          ),
+        ),
+        // A base page with an asynchronous guard of its own, that awaits `baseAwaits` times.
+        leaving(
+          '/oa',
+          'oa',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'ga@oa', (ref) async {
+              final open = ref.watch(_gOpen);
+              for (var i = 0; i < baseAwaits; i++) {
+                await Future<void>.value();
+              }
+              return open ? null : '/y';
             }),
           ),
         ),
@@ -524,6 +547,7 @@ void main() {
       gRuns = 0;
       qRuns = 0;
       gGate = null;
+      baseAwaits = 0;
       answer = (_, _) => false;
       return pumpRouter(tester, r);
     }
@@ -762,6 +786,30 @@ void main() {
         });
       }
 
+      testWidgets('a pop that was refused is asked again, while the guard waits '
+          'and after it answered', (tester) async {
+        final r = await waiting(tester, isAsync: true);
+        final navigator = Navigator.of(tester.element(find.text('g4')));
+        await navigator.maybePop();
+        await settle(tester);
+        await navigator.maybePop();
+        await settle(tester);
+        expect(asked, ['g4 dirty', 'g4 dirty']);
+        expect(currentLocation(tester), '/g4');
+        // The guard answers: the re-run that yielded to the questions is refused, and replaces nothing.
+        gGate!.complete();
+        await settle(tester);
+        expect(asked, ['g4 dirty', 'g4 dirty']);
+        expect(currentLocation(tester), '/g4');
+        expect(find.text('g4'), findsOneWidget);
+        // The question that follows is the person's like the first ones: asked, and it lets the page go.
+        answer = (_, _) => true;
+        r.pop();
+        await settle(tester);
+        expect(asked, ['g4 dirty', 'g4 dirty', 'g4 dirty']);
+        expect(currentLocation(tester), '/y');
+      });
+
       testWidgets('a guard that never answers does not keep the re-run of '
           'another page from asking', (tester) async {
         final r = await waiting(tester, isAsync: true);
@@ -819,6 +867,62 @@ void main() {
         expect(currentLocation(tester), '/y');
         expect(find.text('g4'), findsNothing);
       });
+    });
+
+    // The base page's guard is asynchronous too, and the person leaves the page while the re-run of
+    // its guard waits. The pop is the person's and nothing restores the stack for it: the page goes,
+    // and it is asked once. The router is told to drop the re-run only after the pop, so a base that
+    // is still asking cannot put the page back.
+    group('a pop while the re-run waits, over a base whose guard awaits', () {
+      for (final awaits in [1, 2, 4]) {
+        for (final how in [
+          'the back button of the app bar',
+          'the system back',
+          'GoRouter.pop',
+          'context.pop',
+        ]) {
+          testWidgets('$how, $awaits await${awaits == 1 ? '' : 's'}: the page '
+              'goes, asked once, and does not come back', (tester) async {
+            final r = guarded();
+            await start(tester, r);
+            baseAwaits = awaits;
+            answer = (l, _) => l == 'x';
+            sources['g4'] = FakeSource('g4', dirty: true);
+            r.go('/oa');
+            await settle(tester);
+            await push(tester, r, '/g4');
+            await push(tester, r, '/x');
+            gGate = Completer<void>();
+            r.pop();
+            await settle(tester);
+            expect(find.text('g4'), findsOneWidget);
+            expect(asked, ['x']);
+            asked.clear();
+            answer = (_, _) => true;
+            switch (how) {
+              case 'the back button of the app bar':
+                await tester.pageBack();
+              case 'the system back':
+                await systemBack(tester);
+              case 'GoRouter.pop':
+                r.pop();
+              default:
+                tester.element(find.text('g4')).pop();
+            }
+            await settle(tester);
+            expect(asked, ['g4 dirty']);
+            expect(currentLocation(tester), '/oa');
+            expect(find.text('g4'), findsNothing);
+            expect(find.text('oa'), findsOneWidget);
+            // The guard of the page answers late: the re-run does not land and bring it back.
+            gGate!.complete();
+            await settle(tester);
+            expect(asked, ['g4 dirty'], reason: 'asked once, not again');
+            expect(currentLocation(tester), '/oa');
+            expect(find.text('g4'), findsNothing);
+          });
+        }
+      }
     });
   });
 

@@ -104,11 +104,11 @@ GuardResult guard(Ref ref, {required Uri uri}) => requireRole(
 GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from);
 ```
 
-- **`requireSignedIn(ref, uri, signIn:)`** returns `null` when signed in, else `signIn(uri.toString()).location`: a typed call the compiler checks, with the requested location (query included) as `from`. It watches only the session's phase, so it runs again on sign-out (the user is moved in that frame) and never on a refresh. It answers **synchronously**, unless the session is still being restored.
+- **`requireSignedIn(ref, uri, signIn:)`** returns `null` when signed in, else `signIn(uri.toString()).location`: a typed call the compiler checks, with the requested location (query included) as `from`. It watches only the session's phase, so it runs again on sign-out (the user is moved in that frame; a pushed page can stay, [#258](https://github.com/fespalier/fespalier/issues/258)) and never on a refresh. It answers **synchronously**, unless the session is still being restored.
 - **`requireRole(ref, uri, role, signIn:, forbidden:)`** is `requireSignedIn`, then `forbidden` when the user lacks the role. **`requireUser(ref, uri, test, ...)`** takes a function of the `AuthUser` instead. They watch only their own answer, so a role gained or lost runs the guard again, and a refresh does not.
 - **`redirectIfSignedIn(ref, from:)`** is for the **sign-in route's own** `guard.dart`: when there is a session it returns `returnTo(from)`. It watches the session, so **signing in on that page sends the user back to `from` by itself**, and the page has no navigation code. `returnTo` refuses `//host`, `https://…` and `/\`, so a crafted `?from=` cannot send the user elsewhere.
 - **The sign-in page sits beside the guarded group**, never inside it: a guard on the sign-in page would send the user to the sign-in page.
-- A guard under a **pushed** page reacts only when you pop back to it (see [Guards](guards.md)), so a sign-out button over a pushed page should navigate too: `const HomeRoute().go(context)`.
+- A guard under a **pushed** page reacts only when you pop back to it, and a pushed page's own guard does not move it unless the location under the pushed pages refuses too (see [Guards](guards.md)), so a sign-out button over a pushed page should navigate too: `const HomeRoute().go(context)`.
 - A guard is not access control: the server decides what a token may do.
 
 ## Signing in and out
@@ -135,7 +135,7 @@ Future<void> action(Ref ref, {required SignInFields input}) async {
 
 `signIn(request)` asks the backend, **stores the session, then** sets `SignedIn`, and rethrows what the backend threw with the state unchanged: `AuthCancelled` (the user closed a browser sign-in), `FieldErrors` (wrong credentials), `AuthRejected` (the server refused), or any other error (it could not ask). A sign-in overtaken by another one, or by a sign-out, throws `NotSignedIn` and changes nothing. The request is typed: `PasswordSignIn`, `BrowserSignIn`, or a subclass of `SignInRequest` of your own, so a page is the same whichever backend is configured, and a test swaps in `FakeAuthBackend`. `adopt(session)` signs in with a session the app obtained itself (a deep-link callback, a multi-step SDK flow), and throws an `ArgumentError` when it comes from another backend than the configured one.
 
-`signOut()` sets `SignedOut(reason: SignOutReason.user)` **synchronously**, so the guards move the user in that frame, then clears the store, runs the backend's `signOut` (best effort: its errors are swallowed) and resets the proof of possession. It does nothing when nobody is signed in.
+`signOut()` sets `SignedOut(reason: SignOutReason.user)` **synchronously**, so the guards move the user in that frame (a pushed page can stay: [#258](https://github.com/fespalier/fespalier/issues/258)), then clears the store, runs the backend's `signOut` (best effort: its errors are swallowed) and resets the proof of possession. It does nothing when nobody is signed in.
 
 **A backend** is `AuthBackend`: `name` (a short constant, `oidc`, `firebase`, `api`: what a stored session is tied to, and telemetry's `fespalier.auth.backend`), `signIn`, `refresh` and `signOut`. `refresh` throws `AuthRejected` when the server refused (the session is over) and anything else when it could not ask (the session stays). The starter in `skills/fespalier-guards/references/auth-package.md` is a complete one over a JSON API: a `POST /auth/login` and `/auth/refresh`.
 

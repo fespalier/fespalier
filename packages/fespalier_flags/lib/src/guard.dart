@@ -9,9 +9,10 @@ import 'providers.dart';
 /// `GuardResult guard(Ref ref) => flagGuard(ref, checkoutV2, orElse: const CartRoute().location);`
 ///
 /// With [follow] (the default) the guard watches the flag: when it changes, the guard runs again, the router leaves
-/// the route (or lets it in) and a menu entry under it hides or shows in the next frame, with no navigation. With
-/// `follow: false` it reads the flag once per navigation: a page already open stays until the next one, and a menu
-/// does not follow. It returns synchronously, so it composes with `??`:
+/// the route (or lets it in) and a menu entry under it hides or shows in the next frame, with no navigation. A page
+/// that was pushed can stay: go_router's `refresh()` does not run a pushed page's redirects (fespalier/fespalier#258).
+/// With `follow: false` it reads the flag once per navigation: a page already open stays until the next one, and a
+/// menu does not follow. It returns synchronously, so it composes with `??`:
 /// `flagGuard(ref, labs, orElse: '/') ?? (ref.watch(session) ? null : '/login')`.
 String? flagGuard(
   Ref ref,

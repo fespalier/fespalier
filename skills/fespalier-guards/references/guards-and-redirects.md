@@ -119,7 +119,8 @@ class LoginPage extends ConsumerWidget {
   reaches its routes, **and again when what it `ref.watch`es changes and its answer
   is now a different one** (since 0.5.0; the `ProviderContainer` form never does).
   The router is asked to run the redirects again, so a guard that watches the session
-  moves you to login on sign-out, and back on sign-in, on any page it covers. Rules:
+  moves you to login on sign-out, and back on sign-in, on any page it covers but a pushed
+  one (fespalier/fespalier#258, below). Rules:
   - **Each navigation evaluates the guard anew**, in a fresh `autoDispose` provider:
     `ref.read` is never stale, and `extra`, lists and `Uri`s need no key. What the guard
     watches is shared with the rest of the app, so a data provider is fetched once.
@@ -162,13 +163,17 @@ class LoginPage extends ConsumerWidget {
   - **A refresh does not run a pushed page's guard** (go_router, fespalier/fespalier#258): `refresh()`
     restores every pushed page without running its redirects, in a plain `GoRouter` too, on 17.2.3 to
     18.1.1, and fespalier does not work around it. A pushed page whose guard turns to refuse (a sign-out,
-    a role revoked) stays on screen, unless the page at the bottom of the stack refuses too, whose
-    redirect then replaces the whole stack. After a pushed navigation failed its guard, a later refresh
-    shows the guarded page; since 0.21.0 fespalier's own re-evaluation no longer triggers that (the guards
-    a failed navigation ran are closed as it commits), but an app's own `refresh()` or
-    `refreshListenable` still does, and `retry` does not refresh. Put a guard that must react in a folder
-    above every page it covers (the root `guard.dart` for a session), and open a page that must never
-    show with `go`, not `push`.
+    a role revoked) stays on screen, unless the location under the pushed pages refuses too. go_router
+    runs every redirect of that location, whichever folder holds the guard (`go('/orders/5')` with only
+    the `$id` folder guarded, then a push), and the redirect that refuses replaces the whole stack. After
+    a pushed navigation failed its guard, a later refresh shows the guarded page; since 0.21.0
+    fespalier's own re-evaluation no longer triggers that (the guards a failed navigation ran are closed
+    as it commits), but an app's own `refresh()` or `refreshListenable` still does, and `retry` does not
+    refresh. For a guard that must move a pushed page: it must **refuse** the location under the pushed
+    pages, not merely run there (a root guard that lets a public home page through leaves the pushed
+    page on screen); put it in a guarded group that holds both the page you push from and the pushed
+    page, with the sign-in page beside the group, never inside it (`auth-patterns.md`); and open a page
+    that must never show with `go`, not `push`.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

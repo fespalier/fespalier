@@ -73,7 +73,8 @@ import 'package:my_app/app.g.dart';
 import 'package:my_app/flags.dart';
 
 /// /labs is there while the `labs` flag is on. The guard watches the flag, so turning it off takes the app off
-/// /labs, and the menu, which asks this guard, hides the entry: nothing else knows about the flag.
+/// /labs (a pushed /labs can stay, fespalier/fespalier#258), and the menu, which asks this guard, hides the entry:
+/// nothing else knows about the flag.
 GuardResult guard(Ref ref) => flagGuard(ref, labs, orElse: const HomeRoute().location);
 ```
 
@@ -215,8 +216,9 @@ void main() {
   (`FakeFlags.listenerCount` is 1, then 0 after the next navigation), so a change in fespalier's guard lifetime is
   noticed.
 - **A change while a page is open moves the app.** `follow: true` (the default) watches: turning the flag off on `/labs`
-  takes the router to `orElse` in the next frame. A page that was pushed stays (go_router's `refresh()` skips a pushed
-  page's redirects, fespalier/fespalier#258). Use `follow: false` where that is wrong.
+  takes the router to `orElse` in the next frame. A page that was pushed stays, unless the location under the pushed
+  pages refuses too (go_router's `refresh()` skips a pushed page's redirects, fespalier/fespalier#258). Use
+  `follow: false` where that is wrong.
 - **`AsyncFlags`** reads `meanwhile` (`const ConstFlags()` by default: the fallbacks) until the future completes, then
   the new source, and sends one `FlagsChanged.all()`. It starts no timer: the future's callback is the whole of it. If
   the future fails, `meanwhile` stays and debug prints

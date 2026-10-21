@@ -103,9 +103,12 @@ never stays on screen.
 - **Signing out moves you, if the guard watches (since 0.5.0).** A guard that
   `ref.watch`es the session runs again when it changes, with `AppRoutes.router()` and
   with a router of your own built from `AppRoutes.mount()`, with no
-  `refreshListenable`. Three limits: a guard **under a pushed page** does not react
+  `refreshListenable`. Four limits: a guard **under a pushed page** does not react
   until you pop back to it (the push dropped its subscription, popping runs the guard
-  again); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
+  again); a **pushed page's own guard** does not move it when its answer changes,
+  unless the page at the bottom of the stack refuses too (go_router's `refresh()` skips
+  a pushed page's redirects, fespalier/fespalier#258: put a session guard in a folder
+  above every page, and open a page that must never show with `go`); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
   again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
   the guard **twice** (Riverpod recomputes it, then the router asks), without
   fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it

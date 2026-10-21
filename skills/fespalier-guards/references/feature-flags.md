@@ -215,7 +215,8 @@ void main() {
   (`FakeFlags.listenerCount` is 1, then 0 after the next navigation), so a change in fespalier's guard lifetime is
   noticed.
 - **A change while a page is open moves the app.** `follow: true` (the default) watches: turning the flag off on `/labs`
-  takes the router to `orElse` in the next frame. Use `follow: false` where that is wrong.
+  takes the router to `orElse` in the next frame. A page that was pushed stays (go_router's `refresh()` skips a pushed
+  page's redirects, fespalier/fespalier#258). Use `follow: false` where that is wrong.
 - **`AsyncFlags`** reads `meanwhile` (`const ConstFlags()` by default: the fallbacks) until the future completes, then
   the new source, and sends one `FlagsChanged.all()`. It starts no timer: the future's callback is the whole of it. If
   the future fails, `meanwhile` stays and debug prints

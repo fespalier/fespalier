@@ -159,12 +159,16 @@ class LoginPage extends ConsumerWidget {
     of the retry has no `Future` that anyone awaits. A retry pressed from a dialog or a sheet over the error
     view closes it first (since 0.21.0), so the retry replaces the error view and not the dialog. A retry held
     after the entry closed, or while a page is pushed over it, does nothing.
-  - **A refresh after a pushed failure skips the guard** (go_router, fespalier/fespalier#258): a later
-    `GoRouter.refresh()` restores the pushed location without running its redirect and the guarded page
-    shows. A plain `GoRouter` does the same on 17.2.3 to 18.1.1; fespalier does not work around it, and
-    `retry` does not refresh. Since 0.21.0 fespalier's own re-evaluation no longer triggers it after a
-    failed push: the guards a failed navigation ran are closed as it commits, so a sign-out does not
-    refresh the router. An app's own `refresh()` or `refreshListenable` still does.
+  - **A refresh does not run a pushed page's guard** (go_router, fespalier/fespalier#258): `refresh()`
+    restores every pushed page without running its redirects, in a plain `GoRouter` too, on 17.2.3 to
+    18.1.1, and fespalier does not work around it. A pushed page whose guard turns to refuse (a sign-out,
+    a role revoked) stays on screen, unless the page at the bottom of the stack refuses too, whose
+    redirect then replaces the whole stack. After a pushed navigation failed its guard, a later refresh
+    shows the guarded page; since 0.21.0 fespalier's own re-evaluation no longer triggers that (the guards
+    a failed navigation ran are closed as it commits), but an app's own `refresh()` or
+    `refreshListenable` still does, and `retry` does not refresh. Put a guard that must react in a folder
+    above every page it covers (the root `guard.dart` for a session), and open a page that must never
+    show with `go`, not `push`.
 - **Order.** Guards run **outermost first, and the first to return a location
   wins.** A folder with a page and its own guard keeps its guard for that page and
   everything nested in it; guards above it run first. A guard that returns a

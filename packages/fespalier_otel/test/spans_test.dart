@@ -1309,11 +1309,11 @@ void main() {
     });
   });
 
-  // Last in the file: by now every operation has run. This is the golden list of what fespalier
-  // emits, contract version 1. A name that is not in it was added (add it here, and to the
+  // The golden list of what fespalier emits, contract version 1, checked once every test of the file
+  // has run, whatever their order: the tests fill the sets as they run, so a test could read them
+  // too early. A name that is not in it was added (add it here, and to the
   // docs/telemetry-conventions.md); one that is gone was renamed or removed, which is version 2.
-  test('what was emitted is exactly the contract', () {
-    remember();
+  tearDownAll(() {
     expect(seenSpans, {
       'navigate',
       'navigate (not found)',

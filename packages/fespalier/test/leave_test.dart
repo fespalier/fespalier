@@ -415,12 +415,18 @@ final class _GOpen extends Notifier<bool> {
 
 final _gOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
 
+/// Whether the guard of `/q` lets it through: a guard of its own, that `_gOpen` has nothing to do with.
+final _qOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
+
 void main() {
   // A guard's re-run of a pushed page (since 0.21.0) asks `leave()` as a base page's redirect does:
   // nothing when the guard passes again (the page is replaced by itself), the question when it
   // moves the page. The base page's side is in 'signing out through fespalier guards' below.
   group('a re-run of a guarded pushed page (fespalier/fespalier#258)', () {
     var gRuns = 0;
+
+    /// How often the guard of `/q` ran: a guard of its own, that no change of `_gOpen` concerns.
+    var qRuns = 0;
 
     /// When set, the guard of `/g4` answers once it completes: a guard that takes a while.
     Completer<void>? gGate;
@@ -452,6 +458,16 @@ void main() {
               final open = ref.watch(_gOpen);
               await Future<void>.value();
               return open ? null : '/y';
+            }),
+          ),
+        ),
+        leaving(
+          '/q',
+          'q',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'q1@q', (ref) {
+              qRuns++;
+              return ref.watch(_qOpen) ? null : '/y';
             }),
           ),
         ),
@@ -506,6 +522,7 @@ void main() {
       asked.clear();
       sources.clear();
       gRuns = 0;
+      qRuns = 0;
       gGate = null;
       answer = (_, _) => false;
       return pumpRouter(tester, r);
@@ -585,6 +602,79 @@ void main() {
         expect(currentLocation(tester), '/y');
       });
     }
+    // A re-run that moves the page and is refused by its leave() leaves the page where it was, and its
+    // guard with it: the guard stays that page's.
+    group('after a re-run that a leave() refused', () {
+      for (final label in ['g', 'g2']) {
+        /// `/label` is pushed, dirty, and its guard now refuses: the question is asked and refused.
+        Future<ProviderContainer> refused(
+          WidgetTester tester,
+          GoRouter r,
+        ) async {
+          final c = await start(tester, r);
+          sources[label] = FakeSource(label, dirty: true);
+          await push(tester, r, '/$label');
+          c.read(_gOpen.notifier).set(false);
+          await settle(tester);
+          expect(asked, ['$label dirty']);
+          expect(currentLocation(tester), '/$label');
+          return c;
+        }
+
+        testWidgets('/$label: a change that makes the guard pass asks nothing '
+            'and keeps the page', (tester) async {
+          final r = guarded();
+          final c = await refused(tester, r);
+          c.read(_gOpen.notifier).set(true);
+          await settle(tester);
+          expect(asked, ['$label dirty']);
+          expect(currentLocation(tester), '/$label');
+          expect(find.text(label), findsOneWidget);
+        });
+
+        testWidgets('/$label: a change that refuses it again is a move of its '
+            'own, and is asked', (tester) async {
+          final r = guarded();
+          final c = await refused(tester, r);
+          c.read(_gOpen.notifier).set(true);
+          await settle(tester);
+          answer = (_, _) => true;
+          c.read(_gOpen.notifier).set(false);
+          await settle(tester);
+          expect(asked, ['$label dirty', '$label dirty']);
+          expect(currentLocation(tester), '/y');
+        });
+
+        testWidgets('/$label: nothing it watched is bound to a page pushed '
+            'later', (tester) async {
+          final r = guarded();
+          final c = await refused(tester, r);
+          answer = (l, _) => l == 'q';
+          await push(tester, r, '/q');
+          expect(qRuns, 1);
+          // The guard of `/$label` changes while the unrelated page is on top: that page has nothing
+          // to do with it, and its own guard does not run again.
+          c.read(_gOpen.notifier).set(true);
+          await settle(tester);
+          expect(qRuns, 1);
+          expect(currentLocation(tester), '/q');
+          expect(asked, ['$label dirty']);
+        });
+
+        testWidgets('/$label: a pop back to it while its guard still refuses '
+            'asks again', (tester) async {
+          final r = guarded();
+          await refused(tester, r);
+          answer = (l, _) => l == 'x';
+          await push(tester, r, '/x');
+          r.pop();
+          await settle(tester);
+          expect(asked, ['$label dirty', 'x', '$label dirty']);
+          expect(currentLocation(tester), '/$label');
+        });
+      }
+    });
+
     // A way back while the re-run is on the way (the guard is still asking): the person's pop is
     // asked as it is with no re-run, and the page does not come back once it has gone.
     group('a pop while the re-run waits', () {
@@ -775,7 +865,9 @@ void main() {
       });
 
       testWidgets('/$label: a role revoked and a question refused keeps the '
-          'page and asks once', (tester) async {
+          'page, asks once, and a later change is handled as usual', (
+        tester,
+      ) async {
         final r = orders();
         final c = await over(tester, r, label);
         answer = (_, _) => false;
@@ -784,6 +876,17 @@ void main() {
         expect(asked, ['$label dirty']);
         expect(currentLocation(tester), '/$label');
         expect(find.text(label), findsOneWidget);
+        // The role is back: the guard passes, and nothing is asked.
+        c.read(_gOpen.notifier).set(true);
+        await settle(tester);
+        expect(asked, ['$label dirty']);
+        expect(currentLocation(tester), '/$label');
+        // Revoked again: a move of its own, asked once more, and this time it goes.
+        answer = (_, _) => true;
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(asked, ['$label dirty', '$label dirty']);
+        expect(currentLocation(tester), '/y');
       });
 
       testWidgets('/$label: a sign-out replaces the whole stack and asks '

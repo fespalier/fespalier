@@ -217,7 +217,18 @@ final class _RouterGuards {
     }
     // The new subscription is open before the old one closes, so the providers both
     // watch are not disposed and fetched again in between.
-    _touched.add(site);
+    //
+    // A guard evaluated for the `replace` of a pushed page (a re-run of its guard is one) belongs to
+    // that page from the start: `replace` keeps the page key, and the navigation may end without a
+    // commit (a `leave()` that refuses the move, a guard that never answers), after which nothing
+    // would tell where the guard stood. Any other navigation says which page it puts on top when it
+    // commits.
+    final replaced = _replacedPage();
+    if (replaced == null) {
+      _touched.add(site);
+    } else {
+      live.page = replaced;
+    }
     _live.remove(site)?.close();
     _live[site] = live;
     final seq = live.evaluate();
@@ -234,6 +245,18 @@ final class _RouterGuards {
       },
     );
     return result;
+  }
+
+  /// The page key of the pushed page that the navigation being applied replaces in place, null when
+  /// it is not a `replace` of a pushed page.
+  String? _replacedPage() {
+    final info = _router.routeInformationProvider.value.state;
+    if (info is! RouteInformationState || info.type != NavigatingType.replace) {
+      return null;
+    }
+    final pushed = <ImperativeRouteMatch>[];
+    pushedMatches(info.baseRouteMatchList?.matches ?? const [], pushed);
+    return pushed.isEmpty ? null : pushed.last.pageKey.value;
   }
 
   /// Riverpod ran the guard again because something it watched changed.

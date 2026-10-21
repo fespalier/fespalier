@@ -20,7 +20,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'guards.dart'
-    show guardRefreshHooks, guardRerunning, guardsContainer, guardsIdle;
+    show guardRefreshHooks, guardRerunMoves, guardsContainer, guardsIdle;
 import 'lifecycle.dart' show RouterWatch;
 import 'route_scope.dart' show pageInstanceId;
 import 'segments.dart' show BadSegment;
@@ -333,11 +333,16 @@ LeaveResult leaveExit(
     if (router != null) {
       if (kDebugMode && _isRouteSwap(router, state)) return true;
       if (_bypass[router]?.allows(router) ?? false) return true;
-      // A guard's re-run replaces its pushed page with the same page, which is no leave (since 0.21.0).
-      if (guardRerunning(router)) return true;
-      if (_isTabSwitch(router, state)) return true;
-      if (_isQueryOnlyReplace(router, state)) return true;
-      if (within != null && _staysWithin(router, state, within)) return true;
+      // A guard's re-run of this pushed page (since 0.21.0): when the guards pass again it replaces
+      // the page with itself, which is no leave; when one redirects or fails it moves the page, and
+      // asks as a base page's redirect does, whatever else is true of the navigation.
+      final moves = guardRerunMoves(router, state.pageKey.value);
+      if (moves == false) return true;
+      if (moves == null) {
+        if (_isTabSwitch(router, state)) return true;
+        if (_isQueryOnlyReplace(router, state)) return true;
+        if (within != null && _staysWithin(router, state, within)) return true;
+      }
     }
     container =
         (router == null ? null : RouterWatch.peek(router)?.container) ??

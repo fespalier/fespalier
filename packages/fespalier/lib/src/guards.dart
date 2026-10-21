@@ -173,15 +173,16 @@ final class _RouterGuards {
   /// that stands in for the failed one pops.
   final _completers = <String, Completer<Object?>>{};
 
-  /// The pages whose re-run is in flight: the commit of that one is not a navigation of the
-  /// caller's, so it keeps the completer the caller holds.
+  /// The pages whose re-run started in this frame: one re-run per page at a time.
   final _rerunning = <String>{};
+
+  /// The last re-run of each page, until the commit that answers it: the commit of a re-run is not
+  /// a navigation of the caller's, so it keeps the completer the caller holds, and what it shows
+  /// tells whether the page moved.
+  final _reruns = <String, _Rerun>{};
 
   /// The pages whose re-run is scheduled for after the frame.
   final _scheduled = <String>{};
-
-  /// A re-run's navigation is in flight, until the frame after it: its `leave()` does not ask.
-  var _leaving = false;
 
   /// The configuration the last judgment was made for: one judgment per configuration object.
   RouteMatchList? _judged;
@@ -290,19 +291,25 @@ final class _RouterGuards {
   /// the same location and `extra`: go_router runs the redirects of the entry, keeps its page key
   /// and leaves the stack below alone. The `Future` of that navigation completes the completer the
   /// page answers to (see [_completers]). One re-run per page at a time.
+  ///
+  /// The re-run asks `leave()` of the page only when it moves it (see [guardRerunMoves]).
   void _rerun(ImperativeRouteMatch entry) {
     final key = entry.pageKey.value;
     if (!_rerunning.add(key)) return;
     final target = _completers[key] ?? entry.completer;
-    _leaving = true;
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      _leaving = false;
       _rerunning.remove(key);
     });
-    final Future<Object?> answer = _router.replace<Object?>(
-      entry.matches.uri.toString(),
-      extra: entry.matches.extra,
-    );
+    final rerun = _reruns[key] = _Rerun(entry.matches.uri);
+    final Future<Object?> answer;
+    try {
+      answer = _router.replace<Object?>(
+        entry.matches.uri.toString(),
+        extra: entry.matches.extra,
+      );
+    } finally {
+      rerun.info = _router.routeInformationProvider.value;
+    }
     answer.then<void>(
       (value) {
         if (!target.isCompleted) target.complete(value);
@@ -376,14 +383,26 @@ final class _RouterGuards {
       }
       // A re-run's own commit keeps the completer the caller holds; any other commit is the
       // caller's navigation, and its completer is the one to answer.
-      if (!_rerunning.contains(key)) _completers[key] = top.completer;
+      final rerun = _reruns.remove(key);
+      if (rerun == null) {
+        _completers[key] = top.completer;
+      }
     }
     final keys = {for (final e in pushed) e.pageKey.value};
     _passed.removeWhere((k) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
+    _reruns.removeWhere((k, _) => !keys.contains(k));
 
     if (!pushPath && shown != null && _guarded(shown)) {
       _schedule(shownKey!);
+    }
+  }
+
+  /// A redirect of the navigation in flight answered with a location, or failed: a re-run that is
+  /// in flight moves its page.
+  void _answered() {
+    for (final rerun in _reruns.values) {
+      if (rerun.current(_router)) rerun.moves = true;
     }
   }
 
@@ -465,14 +484,44 @@ bool _isPushNavigation(GoRouter router) {
   };
 }
 
-/// Whether a re-run of a pushed page's guard is in flight on [router] (the page is replaced, not
-/// left): `leaveExit` does not ask then.
-bool guardRerunning(GoRouter router) => _guardsOf[router]?._leaving ?? false;
+/// What the re-run of the guard of the pushed page [pageKey] on [router] does to the page that
+/// `leaveExit` is asked about, while go_router asks it to leave (since 0.21.0): null when no re-run
+/// of the page is in flight, true when one of its redirects answered a location or failed (the page
+/// moves, and `leave()` is asked as it is for a base page's redirect), false when the guards passed
+/// again (the page is replaced by itself, and nothing is asked).
+///
+/// A re-run is the navigation `replace` of the page with its own location; it is in flight while the
+/// router's route information is the one that `replace` put there, and a redirect that does not run
+/// through `runRedirect` is not seen, so such a re-run is taken for one that passes.
+bool? guardRerunMoves(GoRouter router, String pageKey) {
+  final rerun = _guardsOf[router]?._reruns[pageKey];
+  if (rerun == null || !rerun.current(router)) return null;
+  return rerun.moves;
+}
 
 /// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
 /// page the walk of `RouterWatch` treats as an error view, which covers the page below it.
 bool refusedEntry(GoRouter router, ImperativeRouteMatch entry) =>
     _guardsOf[router]?.refusesEntry(entry) ?? false;
+
+/// One re-run of a pushed page's guard (see [_RouterGuards._rerun]).
+final class _Rerun {
+  _Rerun(this.uri);
+
+  /// The page's location before the re-run: the page moved when the commit shows another one.
+  final Uri uri;
+
+  /// The route information the `replace` of the re-run put in the router's provider, null while
+  /// that call has not returned (a guard that answers at once is run inside it).
+  Object? info;
+
+  /// Whether a redirect of the re-run answered a location or failed.
+  bool moves = false;
+
+  /// Whether the router is still on the navigation of this re-run.
+  bool current(GoRouter router) =>
+      info == null || identical(info, router.routeInformationProvider.value);
+}
 
 /// One evaluation of a guard site and its subscription.
 final class _Live {
@@ -617,8 +666,14 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
   final router = zone[_goRouterZoneKey];
   // A redirect that runs for a push holds the pushed page's guard from here on (fespalier/fespalier#258):
   // go_router will restore that page later without running the redirect.
-  if (router is GoRouter && _isPushNavigation(router)) {
-    _guardsOf[router] ??= _RouterGuards(router);
+  _RouterGuards? guards;
+  if (router is GoRouter) {
+    guards = _guardsOf[router];
+    if (guards == null && _isPushNavigation(router)) {
+      guards = _guardsOf[router] = _RouterGuards(router);
+    }
+    // Only while a re-run of a pushed page is on the way does an answer need a word to the router.
+    if (guards != null && guards._reruns.isEmpty) guards = null;
   }
   if (router != null &&
       parent != null &&
@@ -626,24 +681,40 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
       !zone.inSameErrorZone(parent)) {
     return parent
         .fork(zoneValues: {_goRouterZoneKey: router})
-        .run(() => _redirect(redirect));
+        .run(() => _redirect(redirect, guards));
   }
-  return _redirect(redirect);
+  return _redirect(redirect, guards);
 }
 
-FutureOr<String?> _redirect(GuardResult Function() redirect) {
+/// Runs [redirect] for [runRedirect]. When [rerunning] is given, a re-run of a pushed page is on the
+/// way, and an answer that moves the page (a location, or a failure) is told to it: `leave()` is
+/// asked only of a page that a re-run moves (see [guardRerunMoves]).
+FutureOr<String?> _redirect(
+  GuardResult Function() redirect,
+  _RouterGuards? rerunning,
+) {
   final GuardResult result;
   try {
     result = redirect();
   } catch (error, stackTrace) {
     final failure = _failure(error, stackTrace);
+    rerunning?._answered();
     Error.throwWithStackTrace(failure, failure.stackTrace);
   }
-  if (result is! Future<String?>) return result;
+  if (result is! Future<String?>) {
+    if (result != null) rerunning?._answered();
+    return result;
+  }
   return result.then<String?>(
-    _same,
+    rerunning == null
+        ? _same
+        : (location) {
+            if (location != null) rerunning._answered();
+            return location;
+          },
     onError: (Object error, StackTrace stackTrace) {
       final failure = _failure(error, stackTrace);
+      rerunning?._answered();
       Error.throwWithStackTrace(failure, failure.stackTrace);
     },
   );

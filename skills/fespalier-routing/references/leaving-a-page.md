@@ -93,11 +93,11 @@ class DiscardSheet extends StatelessWidget {
 **Asked:** `go`, `replace`, `pushReplacement`, `pop`, `context.pop` and `Navigator.pop` of the page; Android back
 (through `PopScope` and `GoRouter.pop`, or go_router's root fallback, where `true` closes the app); the web's back and
 forward (refused: the address bar is reset to the page, a new history entry, forward history lost); a guard's refresh or
-redirect, **including a sign-out redirect**; leaving a tab layout, for the **active** tab's pages only. go_router's
+redirect, **including a sign-out redirect** (a guard's re-run of a pushed page that moves the page asks the same way, since 0.21.0); leaving a tab layout, for the **active** tab's pages only. go_router's
 `onEnter` and guards run first at parse time; `onExit` runs after.
 
 **Not asked:** a tab switch (fespalier parks; go_router would ask); a parked tab's pages when the whole layout leaves (use
-drafts); a query-only change (also `replace` of a pushed page with itself at another query); a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a guard's re-run of the pushed page on top (since 0.21.0); a
+drafts); a query-only change (also `replace` of a pushed page with itself at another query); a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a guard's re-run of a pushed page that passes again (since 0.21.0: it replaces the page with itself); a
 `redirect.dart` route; layouts; an imperative `Navigator.push` or replace outside go_router; process kill, hot restart,
 `router.dispose()`; the page's own `PopScope(canPop: false)`, which wins for system back. `/c/1` to `/c/2` is asked,
 whatever `remount` says. `leave.dart` is imported eagerly (never `deferred`), so what it imports leaves the deferred

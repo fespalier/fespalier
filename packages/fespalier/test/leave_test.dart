@@ -415,38 +415,157 @@ final class _GOpen extends Notifier<bool> {
 final _gOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
 
 void main() {
+  // A guard's re-run of a pushed page (since 0.21.0) asks `leave()` as a base page's redirect does:
+  // nothing when the guard passes again (the page is replaced by itself), the question when it
+  // moves the page. The base page's side is in 'signing out through fespalier guards' below.
   group('a re-run of a guarded pushed page (fespalier/fespalier#258)', () {
-    testWidgets('does not ask the page to leave when its guard moves it', (
-      tester,
-    ) async {
-      asked.clear();
-      answer = (_, _) => false;
-      final r = GoRouter(
-        initialLocation: '/y',
-        navigatorKey: rootKey,
-        routes: [
-          GoRoute(path: '/y', builder: (_, _) => const Text('y')),
-          leaving(
-            '/g',
-            'g',
-            redirect: (context, state) => runRedirect(
-              () => refGuard(context, 'g1@g', (ref) {
-                return ref.watch(_gOpen) ? null : '/y';
-              }),
-            ),
+    var gRuns = 0;
+
+    /// `/g` has a sync guard and `/g2` an async one, both on `_gOpen`, both with a `leave.dart`. The
+    /// tabs hold a guarded page of their own, pushed inside the shell.
+    GoRouter guarded() => GoRouter(
+      initialLocation: '/y',
+      navigatorKey: rootKey,
+      routes: [
+        GoRoute(path: '/y', builder: (_, _) => const Text('y')),
+        leaving('/x', 'x'),
+        leaving(
+          '/g',
+          'g',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g1@g', (ref) {
+              gRuns++;
+              return ref.watch(_gOpen) ? null : '/y';
+            }),
           ),
-        ],
-      );
-      final c = await pumpRouter(tester, r);
-      await push(tester, r, '/g');
-      expect(find.text('g'), findsOneWidget);
-      c.read(_gOpen.notifier).set(false);
-      await settle(tester);
-      // The guard answered '/y': the page is replaced, and nothing asked it to leave.
-      expect(asked, isEmpty);
-      expect(where(r), '/y');
-      expect(find.text('g'), findsNothing);
-    });
+        ),
+        leaving(
+          '/g2',
+          'g2',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g2@g2', (ref) async {
+              gRuns++;
+              final open = ref.watch(_gOpen);
+              await Future<void>.value();
+              return open ? null : '/y';
+            }),
+          ),
+        ),
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, shell) => shell,
+          branches: [
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/tab',
+                  builder: (_, _) => const Text('tab'),
+                  routes: [
+                    leaving(
+                      'g',
+                      'tab/g',
+                      redirect: (context, state) => runRedirect(
+                        () => refGuard(context, 'g3@tab', (ref) {
+                          gRuns++;
+                          return ref.watch(_gOpen) ? null : '/y';
+                        }),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(path: '/tab2', builder: (_, _) => const Text('tab2')),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+
+    Future<ProviderContainer> start(WidgetTester tester, GoRouter r) async {
+      asked.clear();
+      sources.clear();
+      gRuns = 0;
+      answer = (_, _) => false;
+      return pumpRouter(tester, r);
+    }
+
+    for (final label in ['g', 'g2', 'tab/g']) {
+      final location = label == 'tab/g' ? '/tab/g' : '/$label';
+
+      testWidgets('/$label: a re-run that passes again asks nothing, with a '
+          'leave() that refuses', (tester) async {
+        final r = guarded();
+        await start(tester, r);
+        // Only /x lets go; the guarded page refuses every question.
+        answer = (l, _) => l == 'x';
+        sources[label] = FakeSource(label, dirty: true);
+        if (label == 'tab/g') r.go('/tab');
+        await settle(tester);
+        await push(tester, r, location);
+        expect(gRuns, 1);
+        await push(tester, r, '/x');
+        r.pop();
+        await settle(tester);
+        // The page is on top again, and go_router showed it without its redirect: its guard ran
+        // again and passed, and replacing the page with itself asked nothing of it.
+        expect(gRuns, 2);
+        expect(asked, ['x']);
+        expect(currentLocation(tester), location);
+        expect(find.text(label), findsOneWidget);
+      });
+
+      testWidgets('/$label: a re-run that moves the page asks, and a leave() '
+          'that refuses keeps it', (tester) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        sources[label] = FakeSource(label, dirty: true);
+        if (label == 'tab/g') r.go('/tab');
+        await settle(tester);
+        await push(tester, r, location);
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(asked, ['$label dirty']);
+        expect(currentLocation(tester), location);
+        expect(find.text(label), findsOneWidget);
+      });
+
+      testWidgets('/$label: a re-run that moves the page asks, and a leave() '
+          'that allows lets it go', (tester) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        answer = (_, _) => true;
+        sources[label] = FakeSource(label, dirty: true);
+        if (label == 'tab/g') r.go('/tab');
+        await settle(tester);
+        await push(tester, r, location);
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(asked, ['$label dirty']);
+        expect(currentLocation(tester), '/y');
+        expect(find.text(label), findsNothing);
+      });
+
+      testWidgets('/$label: leaveWithoutAsking lets the re-run that moves the '
+          'page through', (tester) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        sources[label] = FakeSource(label, dirty: true);
+        if (label == 'tab/g') r.go('/tab');
+        await settle(tester);
+        await push(tester, r, location);
+        final done = leaveWithoutAsking(
+          r,
+          () => c.read(_gOpen.notifier).set(false),
+        );
+        await settle(tester);
+        await done;
+        expect(asked, isEmpty);
+        expect(currentLocation(tester), '/y');
+      });
+    }
   });
 
   group('go, replace, pushReplacement', () {

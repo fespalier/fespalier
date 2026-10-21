@@ -774,6 +774,18 @@ void main() {
           ),
           builder: (_, _) => const Text('ADMIN'),
         ),
+        // One guard, on the role alone: it knows nothing of the session.
+        GoRoute(
+          path: '/staff',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(
+              context,
+              'g3@staff',
+              (ref) => ref.watch(isAdmin) ? null : '/forbidden',
+            ),
+          ),
+          builder: (_, _) => const Text('STAFF'),
+        ),
         GoRoute(path: '/sign-in', builder: (_, _) => const Text('SIGN-IN')),
         GoRoute(path: '/forbidden', builder: (_, _) => const Text('FORBIDDEN')),
       ],
@@ -843,6 +855,30 @@ void main() {
       expect(pushed(r), isEmpty);
       expect(page('ORDERS'), findsNothing);
       expect(page('ADMIN'), findsNothing);
+    });
+
+    testWidgets('the guards of a guarded base are closed under any pushed page '
+        'and not only an unguarded one: the sign-out waits for the pop', (
+      tester,
+    ) async {
+      final r = orders();
+      final c = await pumpRouter(tester, r);
+      r.go('/orders');
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/staff'));
+      await tester.pumpAndSettle();
+      expect(currentLocation(tester), '/staff');
+      c.read(session.notifier).set(false);
+      await tester.pumpAndSettle();
+      // The guard of `/staff` knows nothing of the session, and the base's guard is not watched while
+      // a page is over it (a guarded page under a pushed page waits for the pop, whatever that page).
+      expect(currentLocation(tester), '/staff');
+      expect(page('STAFF'), findsOneWidget);
+      r.pop();
+      await tester.pumpAndSettle();
+      // Popping runs the base's guard again, and the answer is the new one.
+      expect(currentLocation(tester), '/sign-in?from=/orders');
+      expect(page('ORDERS'), findsNothing);
     });
 
     testWidgets('a guarded base that still passes keeps its place, and the '

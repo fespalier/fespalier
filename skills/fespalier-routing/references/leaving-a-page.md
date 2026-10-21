@@ -97,7 +97,7 @@ redirect, **including a sign-out redirect** (a guard's re-run of a pushed page t
 `onEnter` and guards run first at parse time; `onExit` runs after.
 
 **Not asked:** a tab switch (fespalier parks; go_router would ask); a parked tab's pages when the whole layout leaves (use
-drafts); a query-only change (also `replace` of a pushed page with itself at another query); a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a guard's re-run of a pushed page that passes again (since 0.21.0: it replaces the page with itself), or that lands while the person's own question about the page is open or was refused (it is refused and replaces nothing; when its guard moves the page, the re-run goes again on the frame after, and asks then); a
+drafts); a query-only change (also `replace` of a pushed page with itself at another query); a dialog or sheet (a pageless route) on top; `refresh()` with the same match list; a guard's re-run of a pushed page that passes again (since 0.21.0: it replaces the page with itself), or that lands while the person's own question about the page is open or was refused (it is refused and replaces nothing; when its guard moves the page, the re-run goes again after the next frame, and asks then; only that landing is refused, and a press of the person's or an app's own `pop()` is asked as usual whenever it comes); a
 `redirect.dart` route; layouts; an imperative `Navigator.push` or replace outside go_router; process kill, hot restart,
 `router.dispose()`; the page's own `PopScope(canPop: false)`, which wins for system back. `/c/1` to `/c/2` is asked,
 whatever `remount` says. `leave.dart` is imported eagerly (never `deferred`), so what it imports leaves the deferred

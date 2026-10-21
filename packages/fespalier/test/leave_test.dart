@@ -1396,6 +1396,38 @@ void pushedPageGroups() {
         }
       }
 
+      // The move the guard wanted is asked again after the next frame, and the router's own rebuild
+      // after the refusal is what asks for that frame: fespalier schedules none. An app in the
+      // background has no frames, so the move waits for the resume. UNCHECKED on a device.
+      testWidgets('with the app in the background no frame comes, and the '
+          "guard's move is asked again after the resume", (tester) async {
+        final (r, _) = await refusedBack(tester, closed: true);
+        final binding = tester.binding;
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        gGate!.complete();
+        await tester.idle();
+        expect(
+          binding.hasScheduledFrame,
+          isFalse,
+          reason: 'nobody asked for one',
+        );
+        for (var i = 0; i < 5; i++) {
+          await tester.pump();
+        }
+        expect(asked, ['gw dirty'], reason: 'the landing was refused, unasked');
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await settle(tester);
+        expect(asked, [
+          'gw dirty',
+          'gw dirty',
+        ], reason: 'asked as the move it is');
+        expect(stackOf(r), ['/y', '/gw']);
+      });
+
       for (final yes in [true, false]) {
         testWidgets('a question still open when the guard that moves the page '
             'answers: ${yes ? 'a yes' : 'a no'} settles both', (tester) async {

@@ -574,8 +574,9 @@ final class _RouterGuards {
       // caller's navigation, and its completer is the one to answer. The entry of a re-run that
       // never landed (its `leave()` refused it, or the person's question was open) stays here, and
       // the router has gone on to another navigation by the time something commits: a commit of the
-      // app's own on that page (`replace`) is the caller's, and takes the entry away unused. Only the
-      // navigation the router still holds is the re-run's (see [_Rerun.current]).
+      // app's own on that page (`replace`) is the caller's, and takes the entry away unused. A commit
+      // is the re-run's when the page it put on top has the completer of the re-run's request (see
+      // [_Rerun.owns]), whenever it comes.
       final rerun = _reruns.remove(key);
       if (rerun == null || !rerun.owns(top.completer)) {
         _completers[key] = top.completer;
@@ -942,7 +943,7 @@ final class _Rerun {
   /// completer go_router took from the request, whenever the commit comes (the question of its
   /// landing may stay open for as long as the person likes).
   bool owns(Completer<Object?> completer) =>
-      request == null ? current : identical(request!.completer, completer);
+      request == null || identical(request!.completer, completer);
 }
 
 /// One evaluation of a guard site and its subscription.

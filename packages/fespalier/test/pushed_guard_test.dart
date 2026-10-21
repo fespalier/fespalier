@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Whether a guard lets its page through, read through a provider nothing watches (a
@@ -456,6 +457,210 @@ void main() {
       });
     }
   });
+  group('a way back while the re-run of a pushed page waits', () {
+    var states = 0;
+    var runs = 0;
+
+    /// When set, the guard of `/admin` answers once it completes (an async guard that takes a while).
+    Completer<void>? gate;
+
+    /// What the guard answers: null lets the page through.
+    String? answerWith;
+
+    /// How often the `Future` of the push that opened `/admin` completed.
+    var completed = 0;
+
+    /// Whether the guard throws once it answers.
+    var failing = false;
+
+    GoRouter admin({required bool isAsync}) => GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(
+          path: '/admin',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g1@admin', (ref) {
+              runs++;
+              ref.watch(_signedIn);
+              if (!isAsync) return answerWith;
+              final wait = gate;
+              if (wait == null) return Future<String?>.value(answerWith);
+              final answer = answerWith;
+              return wait.future.then<String?>((_) {
+                if (failing) throw StateError('the guard failed');
+                return answer;
+              });
+            }),
+          ),
+          builder: (context, state) =>
+              refusedView(context, state) ??
+              Scaffold(
+                appBar: AppBar(title: const Text('ADMIN')),
+                body: _Counter(onState: () => states++),
+              ),
+        ),
+        GoRoute(
+          path: '/x',
+          builder: (_, _) =>
+              Scaffold(appBar: AppBar(), body: const Text('PAGE X')),
+        ),
+        GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+      ],
+      errorBuilder: (context, state) => routerErrorPage(
+        context,
+        state,
+        (uri) => Text('NOT FOUND ${uri.path}'),
+        guardError: (uri, error, stackTrace, retry) => const Text('ERROR'),
+      ),
+    );
+
+    setUp(() {
+      states = 0;
+      runs = 0;
+      gate = null;
+      answerWith = null;
+      completed = 0;
+      failing = false;
+    });
+
+    /// `/admin` pushed, `/x` pushed over it and popped: go_router shows `/admin` again without its
+    /// redirect, and its guard runs again after the frame. With [wait] the guard is still on its way.
+    Future<GoRouter> reRunning(
+      WidgetTester tester, {
+      required bool isAsync,
+      required bool wait,
+    }) async {
+      final r = admin(isAsync: isAsync);
+      await pumpRouter(tester, r);
+      unawaited(r.push<void>('/admin').then((_) => completed++));
+      await tester.pumpAndSettle();
+      expect(find.text('ADMIN'), findsOneWidget);
+      unawaited(r.push<void>('/x'));
+      await tester.pumpAndSettle();
+      expect(find.text('PAGE X'), findsOneWidget);
+      if (wait) gate = Completer<void>();
+      final before = runs;
+      r.pop();
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('ADMIN'), findsOneWidget);
+      expect(runs, before + 1, reason: 'the re-run started');
+      return r;
+    }
+
+    /// The stack is `/home` alone: nothing is pushed over it.
+    void expectHome(GoRouter r) {
+      final config = r.routerDelegate.currentConfiguration;
+      expect(config.matches.whereType<ImperativeRouteMatch>(), isEmpty);
+      expect(config.uri.toString(), '/home');
+    }
+
+    for (final isAsync in [false, true]) {
+      final kind = isAsync ? 'async' : 'sync';
+
+      testWidgets('the back button of the app bar leaves the page and the '
+          're-run does not bring it back ($kind guard)', (tester) async {
+        final r = await reRunning(tester, isAsync: isAsync, wait: isAsync);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expectHome(r);
+        expect(find.text('ADMIN'), findsNothing);
+        expect(completed, 1, reason: 'the push completed when its page popped');
+        gate?.complete();
+        await tester.pumpAndSettle();
+        expectHome(r);
+        expect(find.text('ADMIN'), findsNothing);
+        expect(find.text('HOME'), findsOneWidget);
+        expect(states, 1, reason: 'the page was never made again');
+        expect(completed, 1);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Navigator.maybePop leaves the page the same way '
+          '($kind guard)', (tester) async {
+        final r = await reRunning(tester, isAsync: isAsync, wait: isAsync);
+        final navigator = Navigator.of(tester.element(find.text('ADMIN')));
+        expect(await navigator.maybePop(), isTrue);
+        await tester.pumpAndSettle();
+        gate?.complete();
+        await tester.pumpAndSettle();
+        expectHome(r);
+        expect(find.text('ADMIN'), findsNothing);
+        expect(completed, 1);
+      });
+
+      testWidgets('GoRouter.pop leaves the page and nothing brings it back '
+          '($kind guard)', (tester) async {
+        final r = await reRunning(tester, isAsync: isAsync, wait: isAsync);
+        r.pop();
+        await tester.pumpAndSettle();
+        gate?.complete();
+        await tester.pumpAndSettle();
+        expectHome(r);
+        expect(find.text('ADMIN'), findsNothing);
+        expect(completed, 1);
+      });
+
+      testWidgets('the system back leaves the page and nothing brings it '
+          'back ($kind guard)', (tester) async {
+        final r = await reRunning(tester, isAsync: isAsync, wait: isAsync);
+        await _systemBack(tester);
+        gate?.complete();
+        await tester.pumpAndSettle();
+        expectHome(r);
+        expect(find.text('ADMIN'), findsNothing);
+        expect(completed, 1);
+      });
+    }
+
+    testWidgets('a guard that now sends the page elsewhere does not bring a '
+        'page back that the person left', (tester) async {
+      final r = await reRunning(tester, isAsync: true, wait: true);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expectHome(r);
+      answerWith = '/login';
+      gate!.complete();
+      await tester.pumpAndSettle();
+      expectHome(r);
+      expect(find.text('LOGIN'), findsNothing);
+      expect(find.text('ADMIN'), findsNothing);
+      expect(completed, 1);
+    });
+
+    testWidgets('a guard that fails does not bring a page back that the '
+        'person left, and shows no error view', (tester) async {
+      final r = await reRunning(tester, isAsync: true, wait: true);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expectHome(r);
+      failing = true;
+      gate!.complete();
+      await tester.pumpAndSettle();
+      expectHome(r);
+      expect(find.text('ADMIN'), findsNothing);
+      expect(find.text('ERROR'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a back that the person makes before the guard answers, with '
+        'a page pushed on top meanwhile, keeps both leaves', (tester) async {
+      final r = await reRunning(tester, isAsync: true, wait: true);
+      // The person goes on to another page over the waiting one, and back to home from there.
+      unawaited(r.push<void>('/x'));
+      await tester.pumpAndSettle();
+      gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('PAGE X'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expectHome(r);
+      expect(find.text('ADMIN'), findsNothing);
+    });
+  });
 }
 
 class _Flag extends Notifier<bool> {
@@ -493,4 +698,17 @@ final class _CounterState extends State<_Counter> {
     onTap: () => setState(() => count++),
     child: Text('COUNT $count'),
   );
+}
+
+/// The system's back button, as the engine sends it.
+Future<void> _systemBack(WidgetTester tester) async {
+  final message = const JSONMethodCodec().encodeMethodCall(
+    const MethodCall('popRoute'),
+  );
+  await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+    'flutter/navigation',
+    message,
+    (_) {},
+  );
+  await tester.pumpAndSettle();
 }

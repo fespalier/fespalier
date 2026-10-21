@@ -184,6 +184,11 @@ final class _RouterGuards {
   /// The pages whose re-run is scheduled for after the frame.
   final _scheduled = <String>{};
 
+  /// How many asynchronous redirects are being awaited while a re-run exists (see [_redirect]): a
+  /// re-run whose guard has not answered yet has a navigation of go_router on the way, which will
+  /// land when it does.
+  var _redirecting = 0;
+
   /// The configuration the last judgment was made for: one judgment per configuration object.
   RouteMatchList? _judged;
 
@@ -428,12 +433,41 @@ final class _RouterGuards {
       }
     }
     final keys = {for (final e in pushed) e.pageKey.value};
+    // A page that went (a pop, the system back) while its re-run is still waiting for its guard:
+    // that navigation will land later, on the stack as it was when the re-run started, and bring
+    // the page back. A pop go_router did not make through its route information (the app bar's back
+    // button, `Navigator.pop`, the pop of a page with a `leave.dart`) does not cancel it.
+    final leftWaiting =
+        _redirecting > 0 && _reruns.keys.any((k) => !keys.contains(k));
     _passed.removeWhere((k) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
     _reruns.removeWhere((k, _) => !keys.contains(k));
 
     if (!pushPath && shown != null && _guarded(shown)) {
       _schedule(shownKey!);
+    }
+    // Last, so what this judgment keeps is settled when the router answers it.
+    if (leftWaiting) _cancelWaiting(config);
+  }
+
+  /// Cancels the navigation of a re-run that is still waiting for its guard, after its page went
+  /// (see [_judge]): `restore` of [config], the configuration the person left, is a navigation of
+  /// its own, the one `GoRouter.pop` makes after a pop, and the router drops the navigation that was
+  /// on the way for the newer one. It commits nothing (the same configuration), and telemetry sees
+  /// no navigation in it (the same location). Not in a build, where a router may not be asked to
+  /// change: after the frame, which no event of the app comes before.
+  void _cancelWaiting(RouteMatchList config) {
+    void restore() {
+      if (identical(_router.routerDelegate.currentConfiguration, config)) {
+        _router.restore(config);
+      }
+    }
+
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) => restore());
+    } else {
+      restore();
     }
   }
 
@@ -565,18 +599,33 @@ bool _isPushNavigation(GoRouter router) {
 }
 
 /// What the re-run of the guard of the pushed page [pageKey] on [router] does to the page that
-/// `leaveExit` is asked about, while go_router asks it to leave (since 0.21.0): null when no re-run
-/// of the page is in flight, true when one of its redirects answered a location or failed (the page
-/// moves, and `leave()` is asked as it is for a base page's redirect), false when the guards passed
-/// again (the page is replaced by itself, and nothing is asked).
+/// `leaveExit` is asked about (since 0.21.0): null when this question is no part of a re-run, true
+/// when it is the re-run landing and one of its redirects answered a location or failed (the page
+/// moves, and `leave()` is asked as it is for a base page's redirect), false when it is the re-run
+/// landing and the guards passed again (the page is replaced by itself, and nothing is asked).
 ///
-/// A re-run is the navigation `replace` of the page with its own location; it is in flight while the
-/// router's route information is the one that `replace` put there, and a redirect that does not run
-/// through `runRedirect` is not seen, so such a re-run is taken for one that passes.
+/// A re-run is the navigation `replace` of the page with its own location. go_router asks the page
+/// to leave when that navigation lands, after every redirect has answered: while a guard is still
+/// asking, the page that goes (a pop, the back button) is the person's, and it is asked as it is with
+/// no re-run. The re-run is in flight while the router's route information is the one that `replace`
+/// put there, and a redirect that does not run through `runRedirect` is not seen, so such a re-run is
+/// taken for one that passes.
 bool? guardRerunMoves(GoRouter router, String pageKey) {
-  final rerun = _guardsOf[router]?._reruns[pageKey];
-  if (rerun == null || !rerun.current(router)) return null;
+  final guards = _guardsOf[router];
+  final rerun = guards?._reruns[pageKey];
+  if (rerun == null || !rerun.current(router) || guards!._redirecting > 0) {
+    return null;
+  }
   return rerun.moves;
+}
+
+/// Whether [info], the route information [router] holds, is the `replace` of a guard's re-run (see
+/// `_RouterGuards._rerun`) and not one the app made: it asks for no change of the page, so it says
+/// nothing about a page that goes meanwhile.
+bool isGuardRerun(GoRouter router, Object? info) {
+  final guards = _guardsOf[router];
+  return guards != null &&
+      guards._reruns.values.any((r) => identical(r.info, info));
 }
 
 /// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
@@ -785,15 +834,19 @@ FutureOr<String?> _redirect(
     if (result != null) rerunning?._answered();
     return result;
   }
+  // A guard that has not answered yet: the re-run it belongs to has a navigation on the way.
+  if (rerunning != null) rerunning._redirecting++;
   return result.then<String?>(
     rerunning == null
         ? _same
         : (location) {
+            rerunning._redirecting--;
             if (location != null) rerunning._answered();
             return location;
           },
     onError: (Object error, StackTrace stackTrace) {
       final failure = _failure(error, stackTrace);
+      if (rerunning != null) rerunning._redirecting--;
       rerunning?._answered();
       Error.throwWithStackTrace(failure, failure.stackTrace);
     },

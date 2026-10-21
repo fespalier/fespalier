@@ -20,7 +20,12 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'guards.dart'
-    show guardRefreshHooks, guardRerunMoves, guardsContainer, guardsIdle;
+    show
+        guardRefreshHooks,
+        guardRerunMoves,
+        guardsContainer,
+        guardsIdle,
+        isGuardRerun;
 import 'lifecycle.dart' show RouterWatch;
 import 'route_scope.dart' show pageInstanceId;
 import 'segments.dart' show BadSegment;
@@ -333,9 +338,12 @@ LeaveResult leaveExit(
     if (router != null) {
       if (kDebugMode && _isRouteSwap(router, state)) return true;
       if (_bypass[router]?.allows(router) ?? false) return true;
-      // A guard's re-run of this pushed page (since 0.21.0): when the guards pass again it replaces
-      // the page with itself, which is no leave; when one redirects or fails it moves the page, and
-      // asks as a base page's redirect does, whatever else is true of the navigation.
+      // A guard's re-run of this pushed page (since 0.21.0): go_router asks the page to leave when
+      // the re-run lands, and when one of its guards redirected or failed it moves the page, so it
+      // asks as a base page's redirect does, whatever else is true of the navigation. When the
+      // guards passed again the page is replaced by itself, which is no leave. A page that goes
+      // while the re-run still waits for its guard (a pop, the back button) is asked as it is with
+      // no re-run.
       final moves = guardRerunMoves(router, state.pageKey.value);
       if (moves == false) return true;
       if (moves == null) {
@@ -747,6 +755,9 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
   if (info is! RouteInformationState || info.type != NavigatingType.replace) {
     return false;
   }
+  // A guard's re-run replaces the page with itself and is not a request of the app's: a page that
+  // goes while it is on the way, or after it, is a pop.
+  if (isGuardRerun(router, value)) return false;
   final top = info.baseRouteMatchList?.lastOrNull;
   return top is ImperativeRouteMatch &&
       top.pageKey == state.pageKey &&

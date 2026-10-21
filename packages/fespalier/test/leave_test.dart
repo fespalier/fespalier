@@ -421,6 +421,9 @@ void main() {
   group('a re-run of a guarded pushed page (fespalier/fespalier#258)', () {
     var gRuns = 0;
 
+    /// When set, the guard of `/g4` answers once it completes: a guard that takes a while.
+    Completer<void>? gGate;
+
     /// `/g` has a sync guard and `/g2` an async one, both on `_gOpen`, both with a `leave.dart`. The
     /// tabs hold a guarded page of their own, pushed inside the shell.
     GoRouter guarded() => GoRouter(
@@ -448,6 +451,20 @@ void main() {
               final open = ref.watch(_gOpen);
               await Future<void>.value();
               return open ? null : '/y';
+            }),
+          ),
+        ),
+        leaving(
+          '/g4',
+          'g4',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g4@g4', (ref) {
+              gRuns++;
+              final answer = ref.watch(_gOpen) ? null : '/y';
+              final wait = gGate;
+              return wait == null
+                  ? Future<String?>.value(answer)
+                  : wait.future.then<String?>((_) => answer);
             }),
           ),
         ),
@@ -488,6 +505,7 @@ void main() {
       asked.clear();
       sources.clear();
       gRuns = 0;
+      gGate = null;
       answer = (_, _) => false;
       return pumpRouter(tester, r);
     }
@@ -566,6 +584,109 @@ void main() {
         expect(currentLocation(tester), '/y');
       });
     }
+    // A way back while the re-run is on the way (the guard is still asking): the person's pop is
+    // asked as it is with no re-run, and the page does not come back once it has gone.
+    group('a pop while the re-run waits', () {
+      /// `/g4` (a guard that waits for [gGate]) pushed, `/x` pushed over it and popped, so go_router
+      /// shows `/g4` again and its guard is running again. The page is dirty.
+      Future<GoRouter> waiting(
+        WidgetTester tester, {
+        required bool isAsync,
+      }) async {
+        final r = guarded();
+        await start(tester, r);
+        answer = (l, _) => l == 'x';
+        sources['g4'] = FakeSource('g4', dirty: true);
+        await push(tester, r, '/g4');
+        await push(tester, r, '/x');
+        if (isAsync) gGate = Completer<void>();
+        r.pop();
+        await settle(tester);
+        expect(find.text('g4'), findsOneWidget);
+        expect(asked, ['x']);
+        asked.clear();
+        return r;
+      }
+
+      for (final isAsync in [false, true]) {
+        final kind = isAsync ? 'async' : 'sync';
+
+        testWidgets('GoRouter.pop asks a dirty page, and a refusal keeps it '
+            '($kind guard)', (tester) async {
+          final r = await waiting(tester, isAsync: isAsync);
+          r.pop();
+          await settle(tester);
+          expect(asked, ['g4 dirty']);
+          expect(currentLocation(tester), '/g4');
+          gGate?.complete();
+          await settle(tester);
+          expect(asked, ['g4 dirty']);
+          expect(currentLocation(tester), '/g4');
+          expect(find.text('g4'), findsOneWidget);
+        });
+
+        testWidgets(
+          'GoRouter.pop asks a dirty page, and an answer that lets it '
+          'go leaves it for good ($kind guard)',
+          (tester) async {
+            final r = await waiting(tester, isAsync: isAsync);
+            answer = (_, _) => true;
+            r.pop();
+            await settle(tester);
+            expect(asked, ['g4 dirty']);
+            expect(currentLocation(tester), '/y');
+            gGate?.complete();
+            await settle(tester);
+            expect(asked, ['g4 dirty'], reason: 'asked once, not again');
+            expect(currentLocation(tester), '/y');
+            expect(find.text('g4'), findsNothing);
+          },
+        );
+
+        testWidgets('the back of the page (Navigator.maybePop) asks a dirty '
+            'page, and a refusal keeps it ($kind guard)', (tester) async {
+          await waiting(tester, isAsync: isAsync);
+          final navigator = Navigator.of(tester.element(find.text('g4')));
+          await navigator.maybePop();
+          await settle(tester);
+          expect(asked, ['g4 dirty']);
+          expect(currentLocation(tester), '/g4');
+          gGate?.complete();
+          await settle(tester);
+          expect(asked, ['g4 dirty']);
+          expect(currentLocation(tester), '/g4');
+        });
+
+        testWidgets('the system back asks a dirty page ($kind guard)', (
+          tester,
+        ) async {
+          await waiting(tester, isAsync: isAsync);
+          await systemBack(tester);
+          expect(asked, ['g4 dirty']);
+          expect(currentLocation(tester), '/g4');
+          gGate?.complete();
+          await settle(tester);
+          expect(asked, ['g4 dirty']);
+          expect(currentLocation(tester), '/g4');
+        });
+      }
+
+      testWidgets('a pop that is allowed while the guard waits leaves the page '
+          'for good, asked once', (tester) async {
+        await waiting(tester, isAsync: true);
+        answer = (_, _) => true;
+        final navigator = Navigator.of(tester.element(find.text('g4')));
+        await navigator.maybePop();
+        await settle(tester);
+        expect(asked, ['g4 dirty']);
+        expect(currentLocation(tester), '/y');
+        gGate!.complete();
+        await settle(tester);
+        expect(asked, ['g4 dirty']);
+        expect(currentLocation(tester), '/y');
+        expect(find.text('g4'), findsNothing);
+      });
+    });
   });
 
   group('go, replace, pushReplacement', () {

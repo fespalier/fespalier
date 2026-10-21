@@ -395,6 +395,34 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets('a pop while the re-run of a pushed page waits is one '
+        'navigation, and the re-run that goes with it adds none '
+        '(fespalier/fespalier#258)', (tester) async {
+      var wait = false;
+      final answer = Completer<String?>();
+      checkout = () => wait ? answer.future : null;
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/other'));
+      await tester.pumpAndSettle();
+      wait = true;
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(find.text('checkout'), findsOneWidget);
+      rec.log.clear();
+      // The back button of an app bar: the router is not asked, and the re-run is still waiting.
+      await Navigator.of(tester.element(find.text('checkout'))).maybePop();
+      await tester.pumpAndSettle();
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      expect(find.text('checkout'), findsNothing);
+      expect(rec.log.where((l) => l.contains(' commit ')), hasLength(1));
+      expect(rec.log.where((l) => l.contains(' end navigate ')), hasLength(1));
+      expect(rec.log.where((l) => l.contains('superseded')), isEmpty);
+      expectCommitsMatchEnds(rec.log);
+    });
+
     testWidgets('a superseded navigation never commits', (tester) async {
       final answer = Completer<String?>();
       checkout = () => answer.future;

@@ -700,8 +700,11 @@ void guardRerunYields(GoRouter router, String pageKey) =>
 /// Refused, the replace changes nothing. False for a question of the person's, which is asked while a
 /// guard still waits, and for any page whose re-run did not yield.
 ///
-/// A question that arrives between the last guard's answer and the landing, a few microtasks, is
-/// taken for the landing.
+/// A question that arrives between the last guard's answer and the end of the frame in which the
+/// router reports the configuration it kept (a few microtasks, then one frame) is taken for the
+/// landing, and refused without being asked: the person presses again. The flag is not cleared when
+/// it refuses, because a question that was taken for a landing that passes (see [guardRerunMoves])
+/// is let through without being asked, which loses input; a refusal is the safe side.
 bool guardRerunRefused(GoRouter router, String pageKey) {
   final rerun = _guardsOf[router]?._reruns[pageKey];
   return rerun != null &&

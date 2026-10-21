@@ -1,8 +1,8 @@
-import 'dart:async';
-
 // A guard that fails (since 0.21.0): the checkout's guard reads a cart that cannot be read. The
 // router's error route shows the route's error.dart (RootError, with a retry), the failure is
 // reported once, and the retry runs the guard again.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fespalier/fespalier.dart';

@@ -444,6 +444,31 @@ void main() {
         expect(find.text('DENIED'), findsOneWidget);
       }
 
+      testWidgets('a page in a tab that the person leaves while its guard '
+          'waits is not brought back', (tester) async {
+        final r = tabs(isAsync: true);
+        await pumpRouter(tester, r);
+        unawaited(r.push<void>('/tab/admin'));
+        await tester.pumpAndSettle();
+        unawaited(r.push<void>('/tab/denied'));
+        await tester.pumpAndSettle();
+        tabGate = Completer<void>();
+        r.pop();
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('COUNT 0'), findsOneWidget);
+        // The tab's own navigator pops the page: the router is not asked.
+        final navigator = Navigator.of(tester.element(find.byType(_Counter)));
+        expect(await navigator.maybePop(), isTrue);
+        await tester.pumpAndSettle();
+        expect(find.text('TAB'), findsOneWidget);
+        tabGate!.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('TAB'), findsOneWidget);
+        expect(find.text('COUNT 0'), findsNothing);
+        expect(find.text('DENIED'), findsNothing);
+      });
+
       for (final isAsync in [false, true]) {
         final kind = isAsync ? 'async' : 'sync';
 
@@ -610,6 +635,9 @@ void main() {
     /// Whether the guard throws once it answers.
     var failing = false;
 
+    /// How often the guard of `/counted`, a page of the app that a `go` leads to, ran.
+    var countedRuns = 0;
+
     GoRouter admin({required bool isAsync}) => GoRouter(
       initialLocation: '/home',
       routes: [
@@ -643,6 +671,17 @@ void main() {
               Scaffold(appBar: AppBar(), body: const Text('PAGE X')),
         ),
         GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+        GoRoute(
+          path: '/counted',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g2@counted', (ref) {
+              countedRuns++;
+              ref.watch(_signedIn);
+              return null;
+            }),
+          ),
+          builder: (_, _) => const Text('COUNTED'),
+        ),
       ],
       errorBuilder: (context, state) => routerErrorPage(
         context,
@@ -653,6 +692,7 @@ void main() {
     );
 
     setUp(() {
+      countedRuns = 0;
       states = 0;
       runs = 0;
       gate = null;
@@ -750,6 +790,20 @@ void main() {
         expect(completed, 1);
       });
     }
+
+    testWidgets('a go while the guard waits needs no cancelling: the page '
+        'it leads to is guarded once', (tester) async {
+      final r = await reRunning(tester, isAsync: true, wait: true);
+      r.go('/counted');
+      await tester.pumpAndSettle();
+      expect(find.text('COUNTED'), findsOneWidget);
+      expect(countedRuns, 1);
+      gate!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('COUNTED'), findsOneWidget);
+      expect(find.text('ADMIN'), findsNothing);
+      expect(countedRuns, 1, reason: 'the router was not asked again');
+    });
 
     testWidgets('a guard that now sends the page elsewhere does not bring a '
         'page back that the person left', (tester) async {

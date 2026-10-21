@@ -23,6 +23,7 @@ import 'guards.dart'
     show
         guardRefreshHooks,
         guardRerunMoves,
+        guardRerunYields,
         guardsContainer,
         guardsIdle,
         isGuardRerun;
@@ -353,6 +354,8 @@ LeaveResult leaveExit(
         if (_isTabSwitch(router, state)) return true;
         if (_isQueryOnlyReplace(router, state)) return true;
         if (within != null && _staysWithin(router, state, within)) return true;
+        // The question is the person's: a re-run still waiting for its guard must not land under it.
+        guardRerunYields(router, state.pageKey.value);
       }
     }
     container =

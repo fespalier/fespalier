@@ -762,6 +762,25 @@ void main() {
         });
       }
 
+      testWidgets('a pop that is allowed after the guard answered leaves the '
+          'page for good', (tester) async {
+        final r = await waiting(tester, isAsync: true);
+        final prompt = Completer<bool>();
+        answer = (_, _) => prompt.future;
+        r.pop();
+        await settle(tester);
+        expect(asked, ['g4 dirty']);
+        // The guard answers while the question is open: it passes, and the page is replaced by itself.
+        gGate!.complete();
+        await settle(tester);
+        expect(find.text('g4'), findsOneWidget);
+        prompt.complete(true);
+        await settle(tester);
+        expect(currentLocation(tester), '/y');
+        expect(find.text('g4'), findsNothing);
+        expect(asked, ['g4 dirty'], reason: 'asked once');
+      });
+
       testWidgets('a pop that is allowed while the guard waits leaves the page '
           'for good, asked once', (tester) async {
         await waiting(tester, isAsync: true);

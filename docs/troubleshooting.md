@@ -1,7 +1,7 @@
 # Troubleshooting
 
 An error message from `fsp` is explained, with its fix, in the `fespalier-troubleshooting` agent skill
-([skills/README.md](../skills/README.md)). The table below covers the problems that are not a message of
+([skills/README.md](https://github.com/fespalier/fespalier/blob/main/skills/README.md)). The table below covers the problems that are not a message of
 `fsp` itself.
 
 ## Symptoms

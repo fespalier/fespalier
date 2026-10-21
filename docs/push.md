@@ -6,7 +6,7 @@ It is the routing half of push, and only that. Where the push comes from is a `P
 
 ## Install
 
-Add `fespalier_push` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_push/README.md`](../packages/fespalier_push/README.md). Then list it as an adapter and run `fsp gen`:
+Add `fespalier_push` under `dependencies:` next to `fespalier`, with the same git `url` and the same `ref`: pub resolves the two to one package only if they are the same repository dependency. The snippet, kept at the release's tag, is in [`packages/fespalier_push/README.md`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_push/README.md). Then list it as an adapter and run `fsp gen`:
 
 ```yaml
 # pubspec.yaml
@@ -94,4 +94,4 @@ fake.tap(const PushMessage(id: '1', data: {'link': '/orders/42'}));
 await tester.pumpAndSettle();
 ```
 
-A tap while the app starts (since 0.16.0) is the same test with `fake.tap(...)` between `AppAdapters.launch()` and `pumpWidget`: it opens once, after the first frame, and only the latest of several does. Call `FespalierPush.debugReset()` in `setUp` and `tearDown` (it also ends the hold that `launch()` started). [`examples/plugins`](../examples/plugins) tests a cold start, a warm tap, a guard, a foreign link, a repeated id, the token and its revocation through `AppMain.root()`; no device is needed. What no test can see: a real tap from the system tray, cold and warm, on each platform. Do it on a device before a release.
+A tap while the app starts (since 0.16.0) is the same test with `fake.tap(...)` between `AppAdapters.launch()` and `pumpWidget`: it opens once, after the first frame, and only the latest of several does. Call `FespalierPush.debugReset()` in `setUp` and `tearDown` (it also ends the hold that `launch()` started). [`examples/plugins`](https://github.com/fespalier/fespalier/tree/main/examples/plugins) tests a cold start, a warm tap, a guard, a foreign link, a repeated id, the token and its revocation through `AppMain.root()`; no device is needed. What no test can see: a real tap from the system tray, cold and warm, on each platform. Do it on a device before a release.

@@ -454,8 +454,7 @@ void main() {
         await tester.pumpAndSettle();
         tabGate = Completer<void>();
         r.pop();
-        await tester.pump();
-        await tester.pump();
+        await tester.pumpAndSettle();
         expect(find.text('COUNT 0'), findsOneWidget);
         // The tab's own navigator pops the page: the router is not asked.
         final navigator = Navigator.of(tester.element(find.byType(_Counter)));
@@ -719,8 +718,7 @@ void main() {
       if (wait) gate = Completer<void>();
       final before = runs;
       r.pop();
-      await tester.pump();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.text('ADMIN'), findsOneWidget);
       expect(runs, before + 1, reason: 'the re-run started');
       return r;

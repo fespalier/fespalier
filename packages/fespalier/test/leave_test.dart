@@ -341,6 +341,17 @@ Future<GoRouter> boot(
 String where(GoRouter r) =>
     r.routerDelegate.currentConfiguration.uri.toString();
 
+/// The base page's location, then the location of each pushed page, bottom to top.
+List<String> stackOf(GoRouter r) {
+  final config = r.routerDelegate.currentConfiguration;
+  final out = <ImperativeRouteMatch>[];
+  pushedMatches(config.matches, out);
+  return [
+    config.matches.first.matchedLocation,
+    for (final e in out) e.matches.uri.toString(),
+  ];
+}
+
 /// A few frames and microtasks: go_router's pops answer in a microtask.
 Future<void> settle(WidgetTester tester) async {
   await tester.pump();
@@ -422,6 +433,10 @@ final _gOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
 /// Whether the guard of `/q` lets it through: a guard of its own, that `_gOpen` has nothing to do with.
 final _qOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
 
+/// Whether the guard of `/gw` lets it through: a guard of its own, so that a test can turn it to
+/// refuse without the guards of `/g` and `/oa` (which watch `_gOpen`) noticing.
+final _wOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
+
 void main() {
   // A guard's re-run of a pushed page (since 0.21.0) asks `leave()` as a base page's redirect does:
   // nothing when the guard passes again (the page is replaced by itself), the question when it
@@ -437,6 +452,14 @@ void main() {
 
     /// How many times the guard of `/oa`, a base page's, awaits before it answers.
     var baseAwaits = 0;
+
+    /// How often the guard of `/g5` was evaluated: from the third on, it waits for [gGate].
+    var g5Evals = 0;
+
+    /// How often the guard of `/f` ran, how often its page was built, and whether it throws.
+    var fRuns = 0;
+    var fBuilt = 0;
+    var fFails = false;
 
     /// `/g` has a sync guard and `/g2` an async one, both on `_gOpen`, both with a `leave.dart`. The
     /// tabs hold a guarded page of their own, pushed inside the shell.
@@ -494,6 +517,58 @@ void main() {
             }),
           ),
         ),
+        // The same page with a guard on a flag of its own (`_wOpen`).
+        leaving(
+          '/gw',
+          'gw',
+          appBar: true,
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'gw@gw', (ref) {
+              final answer = ref.watch(_wOpen) ? null : '/y';
+              final wait = gGate;
+              return wait == null
+                  ? Future<String?>.value(answer)
+                  : wait.future.then<String?>((_) => answer);
+            }),
+          ),
+        ),
+        // A guard on `_gOpen` whose third evaluation waits for `gGate`: the push, the change that
+        // `/g` notices too, and the re-run that change asks for.
+        leaving(
+          '/g5',
+          'g5',
+          appBar: true,
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'g5@g5', (ref) {
+              final answer = ref.watch(_gOpen) ? null : '/y';
+              return ++g5Evals >= 3
+                  ? gGate!.future.then<String?>((_) => answer)
+                  : Future<String?>.value(answer);
+            }),
+          ),
+        ),
+        // A guard that throws on demand, and the generated page builder of a guarded route.
+        GoRoute(
+          path: '/f',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(context, 'f1@f', (ref) {
+              fRuns++;
+              if (fFails) throw StateError('f fails');
+              return null;
+            }),
+          ),
+          pageBuilder: (context, state) => MaterialPage<void>(
+            key: state.pageKey,
+            child:
+                refusedView(context, state) ??
+                Builder(
+                  builder: (_) {
+                    fBuilt++;
+                    return const Text('F PAGE');
+                  },
+                ),
+          ),
+        ),
         // A base page with an asynchronous guard of its own, that awaits `baseAwaits` times.
         leaving(
           '/oa',
@@ -548,6 +623,10 @@ void main() {
       qRuns = 0;
       gGate = null;
       baseAwaits = 0;
+      g5Evals = 0;
+      fRuns = 0;
+      fBuilt = 0;
+      fFails = false;
       answer = (_, _) => false;
       return pumpRouter(tester, r);
     }
@@ -923,6 +1002,125 @@ void main() {
           });
         }
       }
+    });
+
+    // A pushed guarded page that is uncovered runs its guard again, however it was uncovered, and a
+    // page that is held back is never built before its guard has passed. A page that goes while the
+    // re-run of the page above it still waits must not make the commit look like a push: the router's
+    // route information is still that re-run's `replace`, and a commit taken for a push marks the
+    // page it uncovers as one whose guard passed, and runs nothing for it.
+    group('a pop while the re-run of the page above it waits', () {
+      /// `/g` (a guard on `_gOpen`) is pushed, `/gw` over it, `/x` over that, and `/x` is popped: the
+      /// re-run of `/gw` waits for [gGate]. While `/g` is covered its guard turns to refuse.
+      Future<(GoRouter, ProviderContainer)> covered(WidgetTester tester) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        answer = (_, _) => true;
+        await push(tester, r, '/g');
+        await push(tester, r, '/gw');
+        await push(tester, r, '/x');
+        gGate = Completer<void>();
+        r.pop();
+        await settle(tester);
+        expect(stackOf(r), ['/y', '/g', '/gw']);
+        expect(find.text('gw'), findsOneWidget);
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(stackOf(r), [
+          '/y',
+          '/g',
+          '/gw',
+        ], reason: '/g is covered: it waits');
+        return (r, c);
+      }
+
+      for (final how in [
+        'the back button of the app bar',
+        'the system back',
+        'GoRouter.pop',
+        'context.pop',
+      ]) {
+        testWidgets('$how: the page it uncovers runs its guard again', (
+          tester,
+        ) async {
+          final (r, _) = await covered(tester);
+          final runs = gRuns;
+          switch (how) {
+            case 'the back button of the app bar':
+              await tester.pageBack();
+            case 'the system back':
+              await systemBack(tester);
+            case 'GoRouter.pop':
+              r.pop();
+            default:
+              tester.element(find.text('gw')).pop();
+          }
+          await settle(tester);
+          await settle(tester);
+          expect(gRuns, greaterThan(runs), reason: "/g's guard ran again");
+          expect(find.text('g'), findsNothing, reason: "/g's guard refuses");
+          expect(stackOf(r).last, '/y');
+          // The guard of the page that went answers late: nothing comes back.
+          gGate!.complete();
+          await settle(tester);
+          expect(find.text('g'), findsNothing);
+          expect(find.text('gw'), findsNothing);
+          expect(stackOf(r).last, '/y');
+        });
+      }
+
+      testWidgets('one change that two pushed pages check, and the back button '
+          'during the re-run of the top one', (tester) async {
+        final r = guarded();
+        final c = await start(tester, r);
+        answer = (_, _) => true;
+        gGate = Completer<void>();
+        await push(tester, r, '/g');
+        await push(tester, r, '/g5');
+        expect(stackOf(r), ['/y', '/g', '/g5']);
+        // The role is revoked: /g5 notices on top, /g while it is covered.
+        c.read(_gOpen.notifier).set(false);
+        await settle(tester);
+        expect(g5Evals, 3, reason: "the re-run of /g5's guard waits");
+        expect(stackOf(r), ['/y', '/g', '/g5']);
+        final runs = gRuns;
+        await tester.pageBack();
+        await settle(tester);
+        await settle(tester);
+        expect(gRuns, greaterThan(runs), reason: "/g's guard ran again");
+        expect(find.text('g'), findsNothing);
+        expect(stackOf(r).last, '/y');
+      });
+
+      testWidgets('a held page is not built when the page above it goes', (
+        tester,
+      ) async {
+        final r = guarded();
+        await start(tester, r);
+        answer = (_, _) => true;
+        // The push of /f failed: go_router shows the entry as the page after a refresh, and the page
+        // is held back until its guard has passed.
+        fFails = true;
+        await push(tester, r, '/f');
+        expect(find.text('F PAGE'), findsNothing);
+        await push(tester, r, '/gw');
+        gGate = Completer<void>();
+        r.refresh();
+        await settle(tester);
+        expect(stackOf(r), ['/y', '/f', '/gw']);
+        expect(fBuilt, 0);
+        final runs = fRuns;
+        await tester.pageBack();
+        await settle(tester);
+        await settle(tester);
+        expect(fBuilt, 0, reason: 'its guard has not passed: never built');
+        expect(find.text('F PAGE'), findsNothing);
+        expect(fRuns, greaterThan(runs), reason: "/f's guard ran again");
+        gGate!.complete();
+        await settle(tester);
+        expect(fBuilt, 0);
+        expect(find.text('F PAGE'), findsNothing);
+      });
     });
   });
 

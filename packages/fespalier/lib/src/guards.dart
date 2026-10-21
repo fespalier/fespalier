@@ -409,9 +409,11 @@ final class _RouterGuards {
   /// the rest are no longer watched. See [_judge].
   void _committed() => _judgeNow();
 
-  /// Judges the committed [config] once (since 0.21.0). [pushPath] says whether the navigation
-  /// pushed a page (`push`, `pushReplacement`, `replace`): then its redirects ran, and a page on top
-  /// passed or failed them.
+  /// Judges the committed [config] once (since 0.21.0). The commit is a push when the navigation
+  /// the router holds put the page on top (`push`, `pushReplacement`, `replace`, see
+  /// [_landedFromRequest]): then its redirects ran, and that page passed or failed them. Any other
+  /// commit (a refresh, a restore, a pop back, a tab, a swap) shows a page whose redirects did not
+  /// run.
   ///
   /// - The sites the navigation evaluated are bound to the page on top (null for the base). A
   ///   navigation that failed closes them all: a page that never showed has nothing to keep up to
@@ -423,13 +425,14 @@ final class _RouterGuards {
   ///   base with a refresh when the base is under a redirect (see [_ping]).
   /// - A pushed page that is on top and was not pushed by this navigation (a refresh, a restore, a
   ///   pop back, a tab, a swap) runs its guard again, after the frame.
-  void _judge(RouteMatchList config, bool pushPath) {
+  void _judge(RouteMatchList config) {
     if (identical(config, _judged)) return;
     _judged = config;
     final pushed = <ImperativeRouteMatch>[];
     pushedMatches(config.matches, pushed);
     final failed = activeMatches(config, pushed).error is GuardFailure;
     final top = pushed.isEmpty ? null : pushed.last;
+    final pushPath = _landedFromRequest(_router, top);
     final shown = top != null && !top.matches.isError ? top : null;
     final shownKey = shown?.pageKey.value;
 
@@ -594,10 +597,7 @@ final class _RouterGuards {
   /// commit passed does the work, whoever it is (the page gate, `RouterWatch`, DevTools, this
   /// class's own listener). The listener of `RouterWatch` is attached before this class's, so at a
   /// commit it asks first, and [_passed] must already hold the key the commit put on top.
-  void _judgeNow() => _judge(
-    _router.routerDelegate.currentConfiguration,
-    _isPushNavigation(_router),
-  );
+  void _judgeNow() => _judge(_router.routerDelegate.currentConfiguration);
 
   /// Whether [entry] is held back: see [_held].
   bool refusesEntry(ImperativeRouteMatch entry) {
@@ -660,8 +660,34 @@ bool _navigatorsAround(
   return false;
 }
 
+/// Whether [top], the pushed page on top of the configuration [router] just committed, was put there
+/// by the navigation that the route information of [router] holds (a `push`, `pushReplacement` or
+/// `replace`): the page's `Future` is that navigation's own.
+///
+/// The type of the information alone does not say so. It stays what the last request was until the
+/// router reports the location it committed, and a request that has not landed yet keeps it: while
+/// the re-run of a pushed page waits for its guard, the information is that re-run's `replace`, and
+/// a pop the person makes meanwhile commits a stack that this request has nothing to do with. Taken
+/// for a push, that commit would count the page it uncovers as one whose redirects have just passed,
+/// and run nothing for it: a guard that turned to refuse while the page was covered would be missed,
+/// and a page held back for its guard would be built. A page that a request put on top is told by the
+/// completer it was made with, which go_router takes from the request (`ImperativeRouteMatch.completer`
+/// is the request's own), so no other commit can have it.
+bool _landedFromRequest(GoRouter router, ImperativeRouteMatch? top) {
+  if (top == null) return false;
+  final state = router.routeInformationProvider.value.state;
+  if (state is! RouteInformationState) return false;
+  return switch (state.type) {
+    NavigatingType.push ||
+    NavigatingType.pushReplacement ||
+    NavigatingType.replace => identical(top.completer, state.completer),
+    _ => false,
+  };
+}
+
 /// Whether [router] is in a navigation that pushes a page (`push`, `pushReplacement` or `replace`):
-/// the information it holds says so until the router reports the location it committed.
+/// the information it holds says so until the router reports the location it committed. A redirect
+/// that runs now belongs to that navigation; for a commit see [_landedFromRequest].
 bool _isPushNavigation(GoRouter router) {
   final state = router.routeInformationProvider.value.state;
   if (state is! RouteInformationState) return false;

@@ -829,16 +829,20 @@ const _guardFailureContext = 'while running a guard or redirect.dart';
 /// router still shows this failure. Without a view, [notFound] shows. Any other error (no route matched, a
 /// redirect loop, too many redirects) is [notFound]. It makes no `Future` and starts no timer.
 ///
-/// The failure reaches the error route in one of two places. After `go`, a link or the first
-/// location, it is the router's own error (`GoRouter.refresh` runs the navigation again). After
-/// `push`, and `pushReplacement` and `replace` over other pages, go_router puts the failed list in an
-/// entry on top of the stack and the router's own `error` stays null: the retry then closes that
-/// entry with the same location and `extra` again, and keeps its page key (since 0.21.0). The `Future`
-/// of the `push` that failed completes with the result of the page in its place when that page pops
-/// (`null` when it is popped without one). A dialog, a sheet or
-/// another route without a page over the error view is closed first, so the retry replaces the
-/// error view and not the dialog. A retry held after the router moved on (the entry closed, another
-/// page above it) does nothing.
+/// The failure reaches the error route in one of two places.
+///
+/// - After `go`, a link or the first location, it is the router's own error, and the retry calls
+///   `GoRouter.refresh`, which runs the navigation again.
+/// - After `push`, and `pushReplacement` and `replace` over other pages, go_router puts the failed
+///   list in an entry on top of the stack, and the router's own `error` stays null. Since 0.21.0 the
+///   retry replaces that entry with a navigation to the same location and `extra`, which keeps the
+///   entry's page key: the guard runs again, and a page that passes shows in the entry's place. The
+///   `Future` of the `push` that failed completes with the result of the page in its place when that
+///   page pops (`null` when it is popped without one). A dialog, a sheet or another route without a
+///   page over the error view is closed first, so the retry replaces the error view and not the
+///   dialog.
+///
+/// A retry held after the router moved on (the entry closed, another page above it) does nothing.
 Widget routerErrorPage(
   BuildContext context,
   GoRouterState state,

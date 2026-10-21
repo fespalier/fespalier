@@ -28,13 +28,24 @@ final class FakeState implements GoRouterState {
       throw UnsupportedError('${invocation.memberName}');
 }
 
-final InMemorySpanExporter exporter = InMemorySpanExporter();
+/// What the SDK exports to. A new one for each start, because `OTel.reset` shuts the old one down.
+InMemorySpanExporter exporter = InMemorySpanExporter();
+
+/// Takes the SDK down, and gives the next start an exporter of its own. The groups below run in
+/// any order, so each one starts from the state it needs instead of the one the file began with.
+Future<void> sdkDown() async {
+  // dartastic's reset is for its own tests; this file tests fespalier's adapter on the same SDK.
+  // ignore: invalid_use_of_visible_for_testing_member
+  await OTel.reset();
+  exporter = InMemorySpanExporter();
+}
 
 void main() {
   tearDown(() => FespalierTelemetry.install(null));
 
   group('before the SDK is up', () {
-    // This group runs first in the file: nothing initialised OTel yet.
+    setUp(sdkDown);
+
     test('an adapter that is not ready emits nothing and throws nothing', () {
       FespalierTelemetry.install(FespalierOtel(isReady: () => false));
       expect(
@@ -62,7 +73,8 @@ void main() {
   });
 
   group('within, before the SDK is up (since 0.9.0)', () {
-    // Still before any OTel.initialize in this file.
+    setUp(sdkDown);
+
     test('with no SDK, within is the call, and the very result comes back', () {
       FespalierTelemetry.install(FespalierOtel());
       var runs = 0;
@@ -96,6 +108,7 @@ void main() {
 
   group('with the SDK up', () {
     setUpAll(() async {
+      await sdkDown();
       await OTel.initialize(
         serviceName: 'test',
         serviceVersion: '0.0.1',

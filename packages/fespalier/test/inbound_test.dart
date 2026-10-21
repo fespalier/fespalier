@@ -263,10 +263,14 @@ void main() {
     InboundLaunch? got = InboundLaunch('/x', source: NavigationSource.link);
     // The debug assert says a launch is not used on the web; the router still gets none.
     try {
-      launchRouter(null, (l) {
+      final router = launchRouter(null, (l) {
         got = l;
         return make();
       });
+      // Attaching telemetry listens to the platform's route information, and a router that is never
+      // disposed keeps that listener: the binding then hands it every later platform link before the
+      // test's own router sees it.
+      addTearDown(router.dispose);
     } finally {
       debugInboundWeb = null;
     }

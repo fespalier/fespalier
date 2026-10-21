@@ -13,6 +13,9 @@ GoRouter _router({required bool telemetry}) {
     routes: [GoRoute(path: '/', builder: (_, _) => const Text('home'))],
   );
   if (telemetry) telemetryAttach(r, base: () => '/');
+  // Attaching telemetry listens to the platform's route information; a router that is never
+  // disposed keeps that listener for the rest of the isolate.
+  addTearDown(r.dispose);
   return r;
 }
 

@@ -1,11 +1,12 @@
 // A sink that gives `within`'s zone an error handler is refused at run time (since 0.9.0): a
 // `Future` that fails in another error zone never reaches Riverpod, so the page would stay on its
 // loading view. fespalier runs the body outside that zone and prints the mistake once. A file of
-// its own because the line is printed once per isolate, and the first test below asserts that a
-// zone of values alone prints nothing.
+// its own because the line is printed once per isolate: each test starts with that flag down, so
+// the tests assert the line in any order.
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/telemetry.dart' show debugResetTelemetryReport;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -47,6 +48,7 @@ FutureProvider<String> failing(List<Object?> zoneValues) =>
     );
 
 void main() {
+  setUp(debugResetTelemetryReport);
   tearDown(() => FespalierTelemetry.install(null));
 
   test('a zone of values only is not refused, and prints nothing', () async {

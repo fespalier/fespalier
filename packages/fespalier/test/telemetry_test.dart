@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/telemetry.dart' show debugResetTelemetryReport;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,6 +100,7 @@ Future<GoRouter> boot(WidgetTester tester, {String initial = '/home'}) async {
 }
 
 void main() {
+  setUp(debugResetTelemetryReport);
   setUp(() {
     rec = RecordingTelemetry();
     FespalierTelemetry.install(rec);

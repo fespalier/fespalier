@@ -216,6 +216,7 @@ void main() {
         (ref, input) => Object(),
         invalidates: () => const [],
       );
+      microtasks(plain); // warms up what Riverpod sets up once
       expect(microtasks(syncAction), microtasks(plain));
       expect(rec.log, ['#1 start action a/data.dart#act', '#1 end action ok']);
     });

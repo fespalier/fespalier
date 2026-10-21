@@ -33,12 +33,102 @@ const TelemetrySite actionSite = TelemetrySite(
 
 final InMemorySpanExporter exporter = InMemorySpanExporter();
 
-/// Everything the tests in this file made fespalier emit, for the golden list at the end.
-final Set<String> seenSpans = {};
-final Set<String> seenKeys = {};
-final Set<String> seenEvents = {};
-final Set<String> seenEventKeys = {};
+/// The golden lists of what fespalier emits, contract version 1. A name that is not in them was
+/// added (add it here, and to docs/telemetry-conventions.md); one that is gone was renamed or
+/// removed, which is version 2. Each test is checked against them when it ends, and the file as a
+/// whole when its last test has run (`tearDownAll`).
+const Set<String> contractSpans = {
+  'navigate',
+  'navigate (not found)',
+  'guard',
+  'redirect',
+  'data',
+  'action',
+  'deferred',
+  'auth',
+  'image',
+  'custom',
+};
+const Set<String> contractKeys = {
+  'fespalier.operation',
+  'fespalier.route',
+  'fespalier.file',
+  'fespalier.async',
+  'error.type',
+  'fespalier.navigation.kind',
+  'fespalier.navigation.outcome',
+  'fespalier.navigation.from',
+  'fespalier.navigation.redirected',
+  'fespalier.navigation.depth',
+  'fespalier.navigation.source',
+  'url.path',
+  'url.query',
+  'fespalier.guard.decision',
+  'fespalier.guard.location',
+  'fespalier.data.state',
+  'fespalier.data.keyed',
+  'fespalier.data.attempt',
+  'fespalier.data.source',
+  'fespalier.action.name',
+  'fespalier.action.result',
+  'fespalier.action.rolled_back',
+  'fespalier.action.invalid',
+  'fespalier.deferred.result',
+  'fespalier.auth.operation',
+  'fespalier.auth.result',
+  'fespalier.auth.backend',
+  'fespalier.auth.trigger',
+  'fespalier.auth.dpop',
+  'fespalier.image.cdn',
+  'fespalier.image.width',
+  'fespalier.image.preload',
+  'fespalier.image.result',
+  'fespalier.image.status',
+  'fespalier.custom.name',
+  'fespalier.custom.result',
+};
+const Set<String> contractEvents = {
+  'fespalier.page.enter',
+  'fespalier.page.focus',
+  'fespalier.page.leave',
+  'exception',
+};
 
+/// The keys of the events that start with `fespalier.`.
+const Set<String> contractEventKeys = {
+  'fespalier.route',
+  'fespalier.page.duration_ms',
+};
+
+/// The names fespalier emitted: spans, their attribute keys, events and their attribute keys.
+class Emitted {
+  final Set<String> spans = {};
+  final Set<String> keys = {};
+  final Set<String> events = {};
+  final Set<String> eventKeys = {};
+
+  void addAll(Emitted other) {
+    spans.addAll(other.spans);
+    keys.addAll(other.keys);
+    events.addAll(other.events);
+    eventKeys.addAll(other.eventKeys);
+  }
+
+  void clear() {
+    spans.clear();
+    keys.clear();
+    events.clear();
+    eventKeys.clear();
+  }
+}
+
+/// What the running test made fespalier emit so far (cleared by `setUp`, checked by `tearDown`).
+final Emitted thisTest = Emitted();
+
+/// What the tests that have ended made fespalier emit, for the check of the whole file.
+final Emitted seen = Emitted();
+
+/// Adds what the exporter holds now to [thisTest]. A test that clears the exporter calls it first.
 void remember() {
   for (final span in exporter.spans) {
     // The spans of an HTTP client the tests simulate are not fespalier's.
@@ -47,18 +137,33 @@ void remember() {
     // A custom span is named by its package (`fespalier.push.open`), and its own
     // `fespalier.push.*` keys are that package's contract, not version 1's.
     final custom = span.name.startsWith('fespalier.');
-    seenSpans.add(custom ? 'custom' : span.name.split(' ').first);
-    if (span.name == 'navigate (not found)') seenSpans.add(span.name);
-    seenKeys.addAll(
+    thisTest.spans.add(custom ? 'custom' : span.name.split(' ').first);
+    if (span.name == 'navigate (not found)') thisTest.spans.add(span.name);
+    thisTest.keys.addAll(
       span.attributes.keys.where(
         (k) => !custom || !k.startsWith('fespalier.push.'),
       ),
     );
     for (final event in span.spanEvents ?? const <SpanEvent>[]) {
-      seenEvents.add(event.name);
-      seenEventKeys.addAll(event.attributes?.keys ?? const <String>[]);
+      thisTest.events.add(event.name);
+      thisTest.eventKeys.addAll(event.attributes?.keys ?? const <String>[]);
     }
   }
+}
+
+/// Fails when [emitted] holds a name the contract does not list: it was added.
+void expectWithinContract(Emitted emitted) {
+  const reason =
+      'a name that is not in the contract was added (add it to the lists at the top of this file, '
+      'and to docs/telemetry-conventions.md)';
+  expect(contractSpans, containsAll(emitted.spans), reason: reason);
+  expect(contractKeys, containsAll(emitted.keys), reason: reason);
+  expect(contractEvents, containsAll(emitted.events), reason: reason);
+  expect(
+    contractEventKeys,
+    containsAll(emitted.eventKeys.where((k) => k.startsWith('fespalier.'))),
+    reason: reason,
+  );
 }
 
 /// What the guard of `/checkout` answers next.
@@ -180,12 +285,16 @@ void main() {
   });
   setUp(() {
     exporter.clear();
+    thisTest.clear();
     FespalierTelemetry.install(FespalierOtel());
     checkout = () => null;
   });
   tearDown(() {
     remember();
     FespalierTelemetry.install(null);
+    seen.addAll(thisTest);
+    // Last, so that a name added by this one test fails this one test, in any order.
+    expectWithinContract(thisTest);
   });
 
   group('a navigation', () {
@@ -1309,70 +1418,23 @@ void main() {
     });
   });
 
-  // Last in the file: by now every operation has run. This is the golden list of what fespalier
-  // emits, contract version 1. A name that is not in it was added (add it here, and to the
-  // docs/telemetry-conventions.md); one that is gone was renamed or removed, which is version 2.
-  test('what was emitted is exactly the contract', () {
-    remember();
-    expect(seenSpans, {
-      'navigate',
-      'navigate (not found)',
-      'guard',
-      'redirect',
-      'data',
-      'action',
-      'deferred',
-      'auth',
-      'image',
-      'custom',
-    });
-    expect(seenKeys, {
-      'fespalier.operation',
-      'fespalier.route',
-      'fespalier.file',
-      'fespalier.async',
-      'error.type',
-      'fespalier.navigation.kind',
-      'fespalier.navigation.outcome',
-      'fespalier.navigation.from',
-      'fespalier.navigation.redirected',
-      'fespalier.navigation.depth',
-      'fespalier.navigation.source',
-      'url.path',
-      'url.query',
-      'fespalier.guard.decision',
-      'fespalier.guard.location',
-      'fespalier.data.state',
-      'fespalier.data.keyed',
-      'fespalier.data.attempt',
-      'fespalier.data.source',
-      'fespalier.action.name',
-      'fespalier.action.result',
-      'fespalier.action.rolled_back',
-      'fespalier.action.invalid',
-      'fespalier.deferred.result',
-      'fespalier.auth.operation',
-      'fespalier.auth.result',
-      'fespalier.auth.backend',
-      'fespalier.auth.trigger',
-      'fespalier.auth.dpop',
-      'fespalier.image.cdn',
-      'fespalier.image.width',
-      'fespalier.image.preload',
-      'fespalier.image.result',
-      'fespalier.image.status',
-      'fespalier.custom.name',
-      'fespalier.custom.result',
-    });
-    expect(seenEvents, {
-      'fespalier.page.enter',
-      'fespalier.page.focus',
-      'fespalier.page.leave',
-      'exception',
-    });
-    expect(seenEventKeys.where((k) => k.startsWith('fespalier.')), {
-      'fespalier.route',
-      'fespalier.page.duration_ms',
-    });
+  // The other half of the contract needs the whole file: every name of it was emitted by some test
+  // (what the tests emit is checked one test at a time, in `tearDown`, against the lists above).
+  // This one asks the file's tests together, so a run that filters them by name (`--name`,
+  // `--plain-name`) reports it, because the tests that would emit the rest did not run; package:test
+  // does not tell a test whether it was filtered, and CI runs the file whole. A name that is gone
+  // was renamed or removed, which is version 2.
+  tearDownAll(() {
+    const reason =
+        'a name of the contract was not emitted: it was renamed or removed (version 2 of the '
+        'contract); this needs the whole file, so a filtered run reports it too';
+    expect(seen.spans, containsAll(contractSpans), reason: reason);
+    expect(seen.keys, containsAll(contractKeys), reason: reason);
+    expect(seen.events, containsAll(contractEvents), reason: reason);
+    expect(
+      seen.eventKeys.where((k) => k.startsWith('fespalier.')),
+      containsAll(contractEventKeys),
+      reason: reason,
+    );
   });
 }

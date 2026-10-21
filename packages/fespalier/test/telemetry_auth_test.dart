@@ -2,11 +2,13 @@
 // and `finish`: the same sink and the same guarantees as fespalier's own call sites. A separate
 // file, because the sink's "printed once" is per isolate.
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/src/telemetry.dart' show debugResetTelemetryReport;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  setUp(debugResetTelemetryReport);
   tearDown(() => FespalierTelemetry.install(null));
 
   test('with no sink, begin returns null and finish does nothing', () {

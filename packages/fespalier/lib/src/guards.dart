@@ -187,11 +187,6 @@ final class _RouterGuards {
   /// How deep the guards are in asking the router (see [_ping]).
   var _asking = 0;
 
-  /// How many asynchronous redirects are being awaited while a re-run exists (see [_redirect]): a
-  /// re-run whose guard has not answered yet has a navigation of go_router on the way, which will
-  /// land when it does.
-  var _redirecting = 0;
-
   /// The configuration the last judgment was made for: one judgment per configuration object.
   RouteMatchList? _judged;
 
@@ -526,11 +521,10 @@ final class _RouterGuards {
     // that navigation will land later, on the stack as it was when the re-run started, and bring
     // the page back. A pop go_router did not make through its route information (the app bar's back
     // button, `Navigator.pop`, the pop of a page with a `leave.dart`) does not cancel it.
-    final leftWaiting =
-        _redirecting > 0 &&
-        _reruns.entries.any(
-          (e) => !keys.contains(e.key) && e.value.mayLand(_router),
-        );
+    final leftWaiting = _reruns.entries.any(
+      (e) =>
+          !keys.contains(e.key) && e.value.waiting && e.value.mayLand(_router),
+    );
     _passed.removeWhere((k) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
     _reruns.removeWhere((k, _) => !keys.contains(k));
@@ -553,7 +547,7 @@ final class _RouterGuards {
   /// replaced.
   void _yield(String key) {
     final rerun = _reruns[key];
-    if (rerun == null || _redirecting == 0 || !rerun.current(_router)) return;
+    if (rerun == null || !rerun.waiting || !rerun.current(_router)) return;
     _cancelWaiting(_router.routerDelegate.currentConfiguration);
   }
 
@@ -601,12 +595,13 @@ final class _RouterGuards {
     }
   }
 
-  /// A redirect of the navigation in flight answered with a location, or failed: a re-run that is
-  /// in flight moves its page.
-  void _answered() {
+  /// The re-run that the redirect being run belongs to: the one whose navigation the router is on,
+  /// null when the redirect is another navigation's.
+  _Rerun? _rerunInFlight() {
     for (final rerun in _reruns.values) {
-      if (rerun.current(_router)) rerun.moves = true;
+      if (rerun.current(_router)) return rerun;
     }
+    return null;
   }
 
   /// The pushed page on top, or null when none is pushed.
@@ -719,11 +714,8 @@ bool _isPushNavigation(GoRouter router) {
 /// put there, and a redirect that does not run through `runRedirect` is not seen, so such a re-run is
 /// taken for one that passes.
 bool? guardRerunMoves(GoRouter router, String pageKey) {
-  final guards = _guardsOf[router];
-  final rerun = guards?._reruns[pageKey];
-  if (rerun == null || !rerun.current(router) || guards!._redirecting > 0) {
-    return null;
-  }
+  final rerun = _guardsOf[router]?._reruns[pageKey];
+  if (rerun == null || !rerun.current(router) || rerun.waiting) return null;
   return rerun.moves;
 }
 
@@ -759,6 +751,13 @@ final class _Rerun {
 
   /// Whether a redirect of the re-run answered a location or failed.
   bool moves = false;
+
+  /// How many of its redirects have not answered yet (a guard that takes a while): the navigation of
+  /// go_router that the re-run is has not landed, and will when they have.
+  int pending = 0;
+
+  /// Whether the re-run still waits for a guard.
+  bool get waiting => pending > 0;
 
   /// Whether the router is still on the navigation of this re-run.
   bool current(GoRouter router) =>
@@ -920,14 +919,14 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
   final router = zone[_goRouterZoneKey];
   // A redirect that runs for a push holds the pushed page's guard from here on (fespalier/fespalier#258):
   // go_router will restore that page later without running the redirect.
-  _RouterGuards? guards;
+  _Rerun? rerun;
   if (router is GoRouter) {
-    guards = _guardsOf[router];
+    var guards = _guardsOf[router];
     if (guards == null && _isPushNavigation(router)) {
       guards = _guardsOf[router] = _RouterGuards(router);
     }
-    // Only while a re-run of a pushed page is on the way does an answer need a word to the router.
-    if (guards != null && guards._reruns.isEmpty) guards = null;
+    // Only a redirect that belongs to the re-run of a pushed page needs a word to the router.
+    rerun = guards?._rerunInFlight();
   }
   if (router != null &&
       parent != null &&
@@ -935,47 +934,48 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
       !zone.inSameErrorZone(parent)) {
     return parent
         .fork(zoneValues: {_goRouterZoneKey: router})
-        .run(() => _redirect(redirect, guards));
+        .run(() => _redirect(redirect, rerun));
   }
-  return _redirect(redirect, guards);
+  return _redirect(redirect, rerun);
 }
 
-/// Runs [redirect] for [runRedirect]. When [rerunning] is given, a re-run of a pushed page is on the
-/// way, and an answer that moves the page (a location, or a failure) is told to it: `leave()` is
-/// asked only of a page that a re-run moves (see [guardRerunMoves]).
-FutureOr<String?> _redirect(
-  GuardResult Function() redirect,
-  _RouterGuards? rerunning,
-) {
+/// Runs [redirect] for [runRedirect]. When [rerun] is given, the redirect belongs to the re-run of a
+/// pushed page: an answer that moves the page (a location, or a failure) is told to it, as is a guard
+/// that has not answered yet. `leave()` is asked only of a page that a re-run moves, and a question
+/// about the page while a guard waits is the person's (see [guardRerunMoves]).
+FutureOr<String?> _redirect(GuardResult Function() redirect, _Rerun? rerun) {
   final GuardResult result;
   try {
     result = redirect();
   } catch (error, stackTrace) {
     final failure = _failure(error, stackTrace);
-    rerunning?._answered();
+    rerun?.moves = true;
     Error.throwWithStackTrace(failure, failure.stackTrace);
   }
   if (result is! Future<String?>) {
-    if (result != null) rerunning?._answered();
+    if (result != null) rerun?.moves = true;
     return result;
   }
-  // A guard that has not answered yet: the re-run it belongs to has a navigation on the way.
-  if (rerunning != null) rerunning._redirecting++;
+  if (rerun == null) return result.then<String?>(_same, onError: _fail);
+  rerun.pending++;
   return result.then<String?>(
-    rerunning == null
-        ? _same
-        : (location) {
-            rerunning._redirecting--;
-            if (location != null) rerunning._answered();
-            return location;
-          },
+    (location) {
+      rerun.pending--;
+      if (location != null) rerun.moves = true;
+      return location;
+    },
     onError: (Object error, StackTrace stackTrace) {
-      final failure = _failure(error, stackTrace);
-      if (rerunning != null) rerunning._redirecting--;
-      rerunning?._answered();
-      Error.throwWithStackTrace(failure, failure.stackTrace);
+      rerun.pending--;
+      rerun.moves = true;
+      _fail(error, stackTrace);
     },
   );
+}
+
+/// Fails a redirect that failed after it answered `Future`: with a [GuardFailure].
+Never _fail(Object error, StackTrace stackTrace) {
+  final failure = _failure(error, stackTrace);
+  Error.throwWithStackTrace(failure, failure.stackTrace);
 }
 
 String? _same(String? location) => location;

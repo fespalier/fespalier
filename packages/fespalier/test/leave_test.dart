@@ -762,6 +762,29 @@ void main() {
         });
       }
 
+      testWidgets('a guard that never answers does not keep the re-run of '
+          'another page from asking', (tester) async {
+        final r = await waiting(tester, isAsync: true);
+        // `/g4` is left with its guard still waiting for ever.
+        answer = (_, _) => true;
+        await Navigator.of(tester.element(find.text('g4'))).maybePop();
+        await settle(tester);
+        expect(currentLocation(tester), '/y');
+        asked.clear();
+        // Another page, dirty, whose guard now refuses when the page is uncovered: it moves, and asks.
+        answer = (l, _) => l == 'x';
+        sources['g'] = FakeSource('g', dirty: true);
+        await push(tester, r, '/g');
+        await push(tester, r, '/x');
+        ProviderScope.containerOf(
+          tester.element(find.text('x')),
+        ).read(_gOpen.notifier).set(false);
+        r.pop();
+        await settle(tester);
+        expect(asked, ['x', 'g dirty']);
+        expect(currentLocation(tester), '/g');
+      });
+
       testWidgets('a pop that is allowed after the guard answered leaves the '
           'page for good', (tester) async {
         final r = await waiting(tester, isAsync: true);

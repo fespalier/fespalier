@@ -143,8 +143,8 @@ final class _RouterGuards {
   /// The provider notifies for a request (`go`, `push`, `replace`, `restore`...), for a report of the
   /// platform, and for `refresh()`; **the router's own report of what it committed
   /// (`routerReportsNewRouteInformation`) replaces the value with an encoded `Map` and never notifies**.
-  /// That is true of every go_router fespalier allows (17.2.3, 17.5.0, 18.0.2, 18.1.0 and 18.1.1 were
-  /// read: `_setValue` and the platform's report notify, the router's report does not). So the value
+  /// That is true of every go_router fespalier allows (read in each release from 17.2.3 to 18.1.1:
+  /// `_setValue` and the platform's report notify, the router's report does not). So the value
   /// alone does not tell which navigation is on the way. The `Router` widget registers the report as a
   /// post-frame callback in its own listener of the delegate; a reader that listens to the delegate
   /// before it (DevTools in a debug build, `telemetryAttach`, `observeAttach`: a generated

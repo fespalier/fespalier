@@ -311,13 +311,48 @@ final class _RouterGuards {
       rerun.info = _router.routeInformationProvider.value;
     }
     answer.then<void>(
-      (value) {
-        if (!target.isCompleted) target.complete(value);
-      },
+      (value) => _completeWith(target, value),
       onError: (Object error, StackTrace stack) {
         if (!target.isCompleted) target.completeError(error, stack);
       },
     );
+  }
+
+  /// Completes [target], the `Future` of the push that opened a page, with [value], what the page
+  /// that stands in for it popped with.
+  ///
+  /// [target] was made for the type that push asked for (`push<int>`), and the page in its place may
+  /// pop with another one (a guard that sends `/pick` to a sign-in page that pops a `String`): the
+  /// completer refuses it with a `TypeError`. The push then completes with `null`, as if its page had
+  /// been popped without a result, and never hangs; no error reaches the caller, who awaits a result
+  /// of the type it asked for. A debug build reports the mismatch with `FlutterError.reportError` (the
+  /// type of [value] only, never the value); a release build says nothing.
+  static void _completeWith(Completer<Object?> target, Object? value) {
+    if (target.isCompleted) return;
+    try {
+      target.complete(value);
+    } on TypeError {
+      target.complete(null);
+      // Debug builds only: an `assert`, because this file names no build mode (the report of a failed
+      // guard is made in all of them, and a test pins that).
+      assert(() {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: FlutterError(
+              'The page that replaced a pushed page popped with a ${value.runtimeType}, which the '
+              '`push` that opened it does not ask for.\n'
+              'Its Future completed with null instead. A guard re-ran the pushed page and sent it '
+              'to a page whose result has another type than the push\'s.',
+            ),
+            library: 'fespalier',
+            context: ErrorDescription(
+              'while completing the Future of a push whose page a guard replaced',
+            ),
+          ),
+        );
+        return true;
+      }());
+    }
   }
 
   /// Runs the re-run of [key] after the frame, once, when it is still on top then.

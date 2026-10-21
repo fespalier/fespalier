@@ -232,6 +232,64 @@ void main() {
     });
   });
 
+  group('the Future of a push whose page a re-run replaces', () {
+    GoRouter picker() => GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(
+          path: '/pick',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(
+              context,
+              'g1@pick',
+              (ref) => ref.watch(_signedIn) ? null : '/other',
+            ),
+          ),
+          builder: (_, _) => const Text('PICK'),
+        ),
+        GoRoute(path: '/other', builder: (_, _) => const Text('OTHER')),
+      ],
+    );
+
+    testWidgets('completes with what the page in its place pops with', (
+      tester,
+    ) async {
+      final r = picker();
+      final c = await pumpRouter(tester, r);
+      final done = <int?>[];
+      unawaited(r.push<int>('/pick').then(done.add));
+      await tester.pumpAndSettle();
+      c.read(_signedIn.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(find.text('OTHER'), findsOneWidget);
+      r.pop(7);
+      await tester.pumpAndSettle();
+      expect(done, [7]);
+    });
+
+    testWidgets('a result of another type than the push asked for completes '
+        'it with null, and a debug build reports it', (tester) async {
+      final r = picker();
+      final c = await pumpRouter(tester, r);
+      final done = <int?>[];
+      final errors = <Object>[];
+      unawaited(r.push<int>('/pick').then(done.add, onError: errors.add));
+      await tester.pumpAndSettle();
+      c.read(_signedIn.notifier).set(false);
+      await tester.pumpAndSettle();
+      expect(find.text('OTHER'), findsOneWidget);
+      // The page in place pops with a String, which a Future of int? cannot hold.
+      r.pop('not an int');
+      await tester.pumpAndSettle();
+      expect(errors, isEmpty);
+      expect(done, [null], reason: 'the push does not hang');
+      final report = tester.takeException();
+      expect(report, isA<FlutterError>());
+      expect(report.toString(), contains('String'));
+    });
+  });
+
   group('what lies over a pushed page when its guard runs again', () {
     var states = 0;
     var runs = 0;

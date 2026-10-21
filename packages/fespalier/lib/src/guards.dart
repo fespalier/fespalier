@@ -129,11 +129,51 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// that navigation put on top.
 final class _RouterGuards {
   _RouterGuards(this._router) {
+    _heard = _router.routeInformationProvider.value;
     _router.routerDelegate.addListener(_committed);
+    _router.routeInformationProvider.addListener(_requested);
   }
 
   final GoRouter _router;
   final _live = <String, _Live>{};
+
+  /// The route information the provider held when it last notified (see [_requested]), until the
+  /// navigation it started has landed: null after that.
+  ///
+  /// The provider notifies for a request (`go`, `push`, `replace`, `restore`...), for a report of the
+  /// platform, and for `refresh()`; **the router's own report of what it committed
+  /// (`routerReportsNewRouteInformation`) replaces the value with an encoded `Map` and never notifies**.
+  /// That is true of every go_router fespalier allows (17.2.3, 17.5.0, 18.0.2, 18.1.0 and 18.1.1 were
+  /// read: `_setValue` and the platform's report notify, the router's report does not). So the value
+  /// alone does not tell which navigation is on the way. The `Router` widget registers the report as a
+  /// post-frame callback in its own listener of the delegate; a reader that listens to the delegate
+  /// before it (DevTools in a debug build, `telemetryAttach`, `observeAttach`: a generated
+  /// `AppRoutes.router()` attaches them before `MaterialApp.router` builds the widget) judges a commit
+  /// first and registers its post-frame callback first, so a navigation that callback starts has its
+  /// value replaced by the report before it lands. Which navigation is on the way is told by [_heard]
+  /// then, see [_processing].
+  RouteInformation? _heard;
+
+  /// The provider notified: the router starts to parse what it holds now.
+  void _requested() {
+    _heard = _router.routeInformationProvider.value;
+  }
+
+  /// The route information of the navigation the router is processing now: the provider's value while
+  /// it is a request (go_router's `RouteInformationState` is in it, and only a request and the
+  /// platform's report without a state put one there), else [_heard], else the value (nothing is on
+  /// the way: the `Map` is the router's report).
+  ///
+  /// The value is read first because a listener of the provider that was added after the `Router`
+  /// widget's is told after the widget has started to parse, and a sync parse commits inside that call:
+  /// the request being dispatched is not in [_heard] yet. The state of what is returned is the
+  /// identity of a navigation: its completer is the one go_router gives to the page the navigation puts
+  /// on the stack (`ImperativeRouteMatch.completer` is the request's own), which no other commit can
+  /// have.
+  RouteInformation get _processing {
+    final value = _router.routeInformationProvider.value;
+    return value.state is RouteInformationState ? value : (_heard ?? value);
+  }
 
   /// The container the guards of this router run in, as the last one that ran saw it.
   ProviderContainer? container;
@@ -258,7 +298,7 @@ final class _RouterGuards {
   /// The page key of the pushed page that the navigation being applied replaces in place, null when
   /// it is not a `replace` of a pushed page.
   String? _replacedPage() {
-    final info = _router.routeInformationProvider.value.state;
+    final info = _processing.state;
     if (info is! RouteInformationState || info.type != NavigatingType.replace) {
       return null;
     }
@@ -342,15 +382,24 @@ final class _RouterGuards {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _rerunning.remove(key);
     });
-    final rerun = _reruns[key] = _Rerun(entry.matches.uri);
+    final rerun = _reruns[key] = _Rerun(this, entry.matches.uri);
     final Future<Object?> answer;
     try {
-      answer = _router.replace<Object?>(
-        entry.matches.uri.toString(),
-        extra: entry.matches.extra,
+      // In a zone of its own: everything the router does for this navigation, its redirects, the
+      // answers of its guards and its landing (the question to the page that `leaveExit` is asked),
+      // runs in the zone where its callbacks were registered, so the code that runs for this re-run
+      // is told from any other by the zone and nothing else (see [_Rerun.here]).
+      answer = runZoned(
+        () => _router.replace<Object?>(
+          entry.matches.uri.toString(),
+          extra: entry.matches.extra,
+        ),
+        zoneValues: {_rerunZoneKey: rerun},
       );
     } finally {
-      rerun.info = _router.routeInformationProvider.value;
+      // The identity of this navigation from here on, whatever the router reports over the value.
+      final state = _router.routeInformationProvider.value.state;
+      rerun.request = state is RouteInformationState<Object?> ? state : null;
     }
     answer.then<void>(
       (value) => _completeWith(target, value),
@@ -410,25 +459,24 @@ final class _RouterGuards {
   /// question (see [guardRerunRefused]): the guard wanted to move the page, and nobody vetoed it, so
   /// it asks once the question has settled, or moves the page.
   ///
-  /// On the frame after the refusal, and not in the callback after the frame that is on its way.
-  /// That frame is the one in which the router reports the configuration it kept, in a callback it
-  /// registers after this method is called, and the report replaces the route information the new
-  /// re-run put there: the re-run would no longer be the navigation the router holds
-  /// ([_Rerun.current]) and its landing would be taken for a question of the person's. The frame is
-  /// asked for when none is on its way; there is no timer.
+  /// In a post-frame callback, not inside the landing that was just refused (a navigation started
+  /// there would start inside go_router's own), and not at once in a microtask either: the router's
+  /// own rebuild after a refused landing is what asks for the frame the callback waits for, so no
+  /// frame is scheduled here and there is no timer. The app in the background has no frames, and the
+  /// callback waits for the next one.
+  ///
+  /// Which of the two runs first in that frame does not matter. The `Router` widget's report of the
+  /// configuration it kept is a post-frame callback of the same frame, registered before this one
+  /// when an earlier commit had scheduled it already and after it otherwise. When it runs after, it
+  /// replaces the route information of the re-run this callback starts, and the re-run is the router's
+  /// navigation all the same: it is told by its own request and by the provider's notifications, never
+  /// by the provider's value (see [_RouterGuards._processing]). One hop is enough.
   void _askAgain(String key) {
     if (!_askingAgain.add(key)) return;
-    final binding = SchedulerBinding.instance;
-    binding.addPostFrameCallback((_) {
-      binding.addPostFrameCallback((_) {
-        _askingAgain.remove(key);
-        _rerunIfTop(key);
-      });
-      binding.ensureVisualUpdate();
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _askingAgain.remove(key);
+      _rerunIfTop(key);
     });
-    if (binding.schedulerPhase == SchedulerPhase.idle) {
-      binding.ensureVisualUpdate();
-    }
   }
 
   /// Runs the re-run of [key] when it is the pushed page on top and shows a page.
@@ -465,7 +513,7 @@ final class _RouterGuards {
     pushedMatches(config.matches, pushed);
     final failed = activeMatches(config, pushed).error is GuardFailure;
     final top = pushed.isEmpty ? null : pushed.last;
-    final pushPath = _landedFromRequest(_router, top);
+    final pushPath = _landedFromRequest(top);
     final shown = top != null && !top.matches.isError ? top : null;
     final shownKey = shown?.pageKey.value;
 
@@ -508,7 +556,7 @@ final class _RouterGuards {
       // app's own on that page (`replace`) is the caller's, and takes the entry away unused. Only the
       // navigation the router still holds is the re-run's (see [_Rerun.current]).
       final rerun = _reruns.remove(key);
-      if (rerun == null || !rerun.current(_router)) {
+      if (rerun == null || !rerun.owns(top.completer)) {
         _completers[key] = top.completer;
       } else if (top.matches.isError || top.matches.uri != rerun.uri) {
         // The page moved, or its guard failed: `replace` keeps the page key, so the Navigator keeps
@@ -516,14 +564,16 @@ final class _RouterGuards {
         _closeOver(config.matches, key);
       }
     }
+    // The navigation that put the page on top is over: what the router is processing next is told by
+    // the next notification of the provider, and its own report of this commit is not one.
+    if (pushPath) _heard = null;
     final keys = {for (final e in pushed) e.pageKey.value};
     // A page that went (a pop, the system back) while its re-run is still waiting for its guard:
     // that navigation will land later, on the stack as it was when the re-run started, and bring
     // the page back. A pop go_router did not make through its route information (the app bar's back
     // button, `Navigator.pop`, the pop of a page with a `leave.dart`) does not cancel it.
     final leftWaiting = _reruns.entries.any(
-      (e) =>
-          !keys.contains(e.key) && e.value.waiting && e.value.mayLand(_router),
+      (e) => !keys.contains(e.key) && e.value.waiting && e.value.current,
     );
     _passed.removeWhere((k) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
@@ -534,6 +584,31 @@ final class _RouterGuards {
     }
     // Last, so what this judgment keeps is settled when the router answers it.
     if (leftWaiting) _cancelWaiting(config);
+  }
+
+  /// Whether [top], the pushed page on top of the configuration the router just committed, was put
+  /// there by the navigation the router is processing (a `push`, `pushReplacement` or `replace`, see
+  /// [_processing]): the page's `Future` is that navigation's own, and its redirects have run.
+  ///
+  /// The type of the route information alone does not say so: it stays what the last request was
+  /// until the router reports, and a request that has not landed yet keeps it. While the re-run of a
+  /// pushed page waits for its guard, the information is that re-run's `replace`, and a pop the person
+  /// makes meanwhile commits a stack that this request has nothing to do with. Taken for a push, that
+  /// commit would count the page it uncovers as one whose redirects have just passed and run nothing
+  /// for it: a guard that turned to refuse while the page was covered would be missed, and a page
+  /// held back for its guard would be built. A page that a request put on top is told by the
+  /// completer it was made with, which go_router takes from the request
+  /// (`ImperativeRouteMatch.completer` is the request's own), so no other commit can have it.
+  bool _landedFromRequest(ImperativeRouteMatch? top) {
+    if (top == null) return false;
+    final state = _processing.state;
+    if (state is! RouteInformationState) return false;
+    return switch (state.type) {
+      NavigatingType.push ||
+      NavigatingType.pushReplacement ||
+      NavigatingType.replace => identical(top.completer, state.completer),
+      _ => false,
+    };
   }
 
   /// A question about the pushed page [key] is the person's (a pop, the back button, with a
@@ -558,7 +633,7 @@ final class _RouterGuards {
   /// be refused.
   void _yield(String key) {
     final rerun = _reruns[key];
-    if (rerun == null || !rerun.waiting || !rerun.current(_router)) return;
+    if (rerun == null || !rerun.waiting || !rerun.current) return;
     rerun.yielded = true;
   }
 
@@ -616,13 +691,11 @@ final class _RouterGuards {
     }
   }
 
-  /// The re-run that the redirect being run belongs to: the one whose navigation the router is on,
-  /// null when the redirect is another navigation's.
+  /// The re-run that the code running now belongs to (a redirect of its navigation): null when it is
+  /// another navigation's. Told by the zone, see [_Rerun.here].
   _Rerun? _rerunInFlight() {
-    for (final rerun in _reruns.values) {
-      if (rerun.current(_router)) return rerun;
-    }
-    return null;
+    final rerun = Zone.current[_rerunZoneKey];
+    return rerun is _Rerun && _reruns.containsValue(rerun) ? rerun : null;
   }
 
   /// The pushed page on top, or null when none is pushed.
@@ -706,31 +779,6 @@ bool _navigatorsAround(
   return false;
 }
 
-/// Whether [top], the pushed page on top of the configuration [router] just committed, was put there
-/// by the navigation that the route information of [router] holds (a `push`, `pushReplacement` or
-/// `replace`): the page's `Future` is that navigation's own.
-///
-/// The type of the information alone does not say so. It stays what the last request was until the
-/// router reports the location it committed, and a request that has not landed yet keeps it: while
-/// the re-run of a pushed page waits for its guard, the information is that re-run's `replace`, and
-/// a pop the person makes meanwhile commits a stack that this request has nothing to do with. Taken
-/// for a push, that commit would count the page it uncovers as one whose redirects have just passed,
-/// and run nothing for it: a guard that turned to refuse while the page was covered would be missed,
-/// and a page held back for its guard would be built. A page that a request put on top is told by the
-/// completer it was made with, which go_router takes from the request (`ImperativeRouteMatch.completer`
-/// is the request's own), so no other commit can have it.
-bool _landedFromRequest(GoRouter router, ImperativeRouteMatch? top) {
-  if (top == null) return false;
-  final state = router.routeInformationProvider.value.state;
-  if (state is! RouteInformationState) return false;
-  return switch (state.type) {
-    NavigatingType.push ||
-    NavigatingType.pushReplacement ||
-    NavigatingType.replace => identical(top.completer, state.completer),
-    _ => false,
-  };
-}
-
 /// Whether [router] is in a navigation that pushes a page (`push`, `pushReplacement` or `replace`):
 /// the information it holds says so until the router reports the location it committed. A redirect
 /// that runs now belongs to that navigation; for a commit see [_landedFromRequest].
@@ -754,12 +802,13 @@ bool _isPushNavigation(GoRouter router) {
 /// A re-run is the navigation `replace` of the page with its own location. go_router asks the page
 /// to leave when that navigation lands, after every redirect has answered: while a guard is still
 /// asking, the page that goes (a pop, the back button) is the person's, and it is asked as it is with
-/// no re-run. The re-run is in flight while the router's route information is the one that `replace`
-/// put there, and a redirect that does not run through `runRedirect` is not seen, so such a re-run is
-/// taken for one that passes.
+/// no re-run. The question is part of the re-run's landing when it is asked from the re-run's own
+/// navigation ([_Rerun.here]); a question from anywhere else is the person's or the app's, however
+/// long after the last guard answered it comes. A redirect that does not run through `runRedirect` is
+/// not seen, so such a re-run is taken for one that passes.
 bool? guardRerunMoves(GoRouter router, String pageKey) {
   final rerun = _guardsOf[router]?._reruns[pageKey];
-  if (rerun == null || !rerun.current(router) || rerun.waiting) return null;
+  if (rerun == null || !rerun.here || rerun.waiting) return null;
   return rerun.moves;
 }
 
@@ -776,24 +825,18 @@ void guardRerunYields(GoRouter router, String pageKey) =>
 ///
 /// A guard that refuses is not ignored because nobody asked the page. When the landing would have
 /// moved it (a redirect answered a location, or failed), refusing it also asks for the re-run again,
-/// on the frame after the refusal (see `_RouterGuards._askAgain`): the question is settled by then,
-/// and the landing is asked about as the move it is, so the person is asked again (and may refuse
-/// again, which ends it: nothing asks a third time by itself), or the page moves. A landing that
-/// passes needs nothing more. A question that is still open then is the one the new landing joins.
+/// after the next frame (see `_RouterGuards._askAgain`): the question is settled by then, and the
+/// landing is asked about as the move it is, so the person is asked again (and may refuse again,
+/// which ends it: nothing asks a third time by itself), or the page moves. A landing that passes
+/// needs nothing more. A question that is still open then is the one the new landing joins.
 ///
-/// A question that arrives between the last guard's answer and the end of the frame in which the
-/// router reports the configuration it kept (a few microtasks, then one frame) is taken for the
-/// landing, and refused without being asked: the person presses again, and so does an app's own
-/// `pop()` in that window. The flag is not cleared when it refuses, because a question that was
-/// taken for a landing that passes (see [guardRerunMoves]) is let through without being asked, which
-/// loses input; a refusal is the safe side.
+/// Only the landing is refused: it is told from every other question by the zone it is asked in
+/// ([_Rerun.here]), so a press of the person's, or an app's own `pop()`, is a question about the page
+/// whenever it comes, also between the last guard's answer and the landing, and is asked as usual.
 bool guardRerunRefused(GoRouter router, String pageKey) {
   final guards = _guardsOf[router];
   final rerun = guards?._reruns[pageKey];
-  if (rerun == null ||
-      !rerun.yielded ||
-      !rerun.current(router) ||
-      rerun.waiting) {
+  if (rerun == null || !rerun.yielded || !rerun.here || rerun.waiting) {
     return false;
   }
   // A guard that refuses is not ignored because nobody asked the page: when the landing would have
@@ -802,13 +845,13 @@ bool guardRerunRefused(GoRouter router, String pageKey) {
   return true;
 }
 
-/// Whether [info], the route information [router] holds, is the `replace` of a guard's re-run (see
-/// `_RouterGuards._rerun`) and not one the app made: it asks for no change of the page, so it says
-/// nothing about a page that goes meanwhile.
-bool isGuardRerun(GoRouter router, Object? info) {
+/// Whether [state], the `RouteInformationState` of the route information [router] holds, is the
+/// `replace` of a guard's re-run (see `_RouterGuards._rerun`) and not one the app made: it asks for
+/// no change of the page, so it says nothing about a page that goes meanwhile.
+bool isGuardRerun(GoRouter router, Object? state) {
   final guards = _guardsOf[router];
   return guards != null &&
-      guards._reruns.values.any((r) => identical(r.info, info));
+      guards._reruns.values.any((r) => identical(r.request, state));
 }
 
 /// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
@@ -816,16 +859,23 @@ bool isGuardRerun(GoRouter router, Object? info) {
 bool refusedEntry(GoRouter router, ImperativeRouteMatch entry) =>
     _guardsOf[router]?.refusesEntry(entry) ?? false;
 
+/// The zone value of the code that runs for a re-run (see [_RouterGuards._rerun]).
+const Symbol _rerunZoneKey = #fespalierGuardRerun;
+
 /// One re-run of a pushed page's guard (see [_RouterGuards._rerun]).
 final class _Rerun {
-  _Rerun(this.uri);
+  _Rerun(this.owner, this.uri);
+
+  /// The guards of the router the re-run is on.
+  final _RouterGuards owner;
 
   /// The page's location before the re-run: the page moved when the commit shows another one.
   final Uri uri;
 
-  /// The route information the `replace` of the re-run put in the router's provider, null while
-  /// that call has not returned (a guard that answers at once is run inside it).
-  Object? info;
+  /// The `RouteInformationState` the `replace` of the re-run put in the router's provider: the identity
+  /// of its navigation, whose completer is the one of the page it puts on the stack. Null while that
+  /// call has not returned (a guard that answers at once is run inside it).
+  RouteInformationState<Object?>? request;
 
   /// Whether a redirect of the re-run answered a location or failed.
   bool moves = false;
@@ -841,15 +891,36 @@ final class _Rerun {
   /// Whether the re-run still waits for a guard.
   bool get waiting => pending > 0;
 
-  /// Whether the router is still on the navigation of this re-run.
-  bool current(GoRouter router) =>
-      info == null || identical(info, router.routeInformationProvider.value);
+  /// Whether the router has not moved on to another request since this re-run's `replace`: no
+  /// notification of the provider (a request of the app's, the platform, a `refresh()`) has made the
+  /// `Router` widget parse anything else. The router's own report of what it committed is not one: it
+  /// replaces the provider's value and never notifies, so the value cannot be compared (see
+  /// [_RouterGuards._heard]). The system back is not a notification either: the widget drops the
+  /// navigation on the way for it, without telling the provider, so a re-run is only *maybe* alive
+  /// here. It is enough to know that the re-run's page need not be cancelled, or yielded to; whether
+  /// code running now is part of this re-run is [here].
+  bool get current =>
+      request == null || identical(owner._processing.state, request);
 
-  /// Whether the navigation of this re-run may still land: [current], or the route information was
-  /// reported in its place (the router reports what it showed, which is not a request).
-  bool mayLand(GoRouter router) =>
-      current(router) ||
-      router.routeInformationProvider.value.state is! RouteInformationState;
+  /// Whether the code running now is part of this re-run's navigation: a redirect of it, an answer
+  /// of one of its guards, or its landing (the question `leaveExit` is asked about the page).
+  ///
+  /// The re-run's `replace` runs in a zone of its own, and what go_router does for a navigation
+  /// (the redirects, the futures they return, the `Router` widget's callback that lands the result)
+  /// runs in the zone where it was registered, which is that one. Nothing else is, however it relates
+  /// to the page: the person's press, an app's own `pop()`, a frame, a platform message. So a
+  /// question about the page that is not asked in the zone is not the landing of this re-run, also
+  /// when it comes after its last guard answered, and a re-run that the router dropped (the system
+  /// back drops the one on the way without a trace in the provider) is not mistaken for one that
+  /// lands.
+  bool get here => identical(Zone.current[_rerunZoneKey], this);
+
+  /// Whether [completer], the one of the page a commit put on top, is this re-run's own: its commit,
+  /// not the app's own `replace` of the page after the landing of this one was refused. Told by the
+  /// completer go_router took from the request, whenever the commit comes (the question of its
+  /// landing may stay open for as long as the person likes).
+  bool owns(Completer<Object?> completer) =>
+      request == null ? current : identical(request!.completer, completer);
 }
 
 /// One evaluation of a guard site and its subscription.

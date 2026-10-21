@@ -766,7 +766,7 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
   }
   // A guard's re-run replaces the page with itself and is not a request of the app's: a page that
   // goes while it is on the way, or after it, is a pop.
-  if (isGuardRerun(router, value)) return false;
+  if (isGuardRerun(router, info)) return false;
   final top = info.baseRouteMatchList?.lastOrNull;
   return top is ImperativeRouteMatch &&
       top.pageKey == state.pageKey &&

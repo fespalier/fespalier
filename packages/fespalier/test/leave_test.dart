@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/attach_order.dart';
 import 'support/deferred_page.dart' deferred as deferred_page;
 import 'support/floor.dart';
 
@@ -334,7 +335,7 @@ Future<GoRouter> boot(
   shellRuns = 0;
   answer = (_, _) => true;
   final r = router(initial: initial, redirect: redirect);
-  await pumpRouter(tester, r);
+  await pumpRouter(tester, attached(r));
   return r;
 }
 
@@ -438,6 +439,15 @@ final _qOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
 final _wOpen = NotifierProvider<_GOpen, bool>(_GOpen.new);
 
 void main() {
+  // The tests of a pushed page's guard run in every order of what listens to the router before the
+  // Router widget does (test/support/attach_order.dart): a generated app has DevTools' or
+  // telemetry's listener in front, and a router built by hand has none.
+  inEveryOrder(pushedPageGroups);
+  otherGroups();
+}
+
+/// The re-run of a guarded pushed page, and a guarded base under one.
+void pushedPageGroups() {
   // A guard's re-run of a pushed page (since 0.21.0) asks `leave()` as a base page's redirect does:
   // nothing when the guard passes again (the page is replaced by itself), the question when it
   // moves the page. The base page's side is in 'signing out through fespalier guards' below.
@@ -628,7 +638,7 @@ void main() {
       fBuilt = 0;
       fFails = false;
       answer = (_, _) => false;
-      return pumpRouter(tester, r);
+      return pumpRouter(tester, attached(r));
     }
 
     for (final label in ['g', 'g2', 'tab/g']) {
@@ -1486,7 +1496,7 @@ void main() {
       asked.clear();
       sources.clear();
       answer = (_, _) => true;
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       sources[label] = FakeSource(label, dirty: true);
       r.go('/o');
       await settle(tester);
@@ -1566,7 +1576,9 @@ void main() {
       });
     }
   });
+}
 
+void otherGroups() {
   group('go, replace, pushReplacement', () {
     testWidgets('go away from a page that refuses keeps it', (tester) async {
       final r = await boot(tester, initial: '/x');

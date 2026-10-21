@@ -6,6 +6,7 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/attach_order.dart';
 import 'support/floor.dart';
 
 class Session extends Notifier<bool> {
@@ -598,12 +599,18 @@ void main() {
     });
   });
 
+  // A pushed page's guard runs in every order of what listens to the router before the Router
+  // widget does (test/support/attach_order.dart).
+  inEveryOrder(pushedPageGroups);
+}
+
+void pushedPageGroups() {
   group('a live guard on a pushed page (fespalier/fespalier#258)', () {
     testWidgets('moves on sign-out in one navigation, with the page below kept', (
       tester,
     ) async {
       final r = router(initial: '/other');
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/inbox'));
       await tester.pumpAndSettle();
       expect(currentLocation(tester), '/inbox');
@@ -621,7 +628,7 @@ void main() {
       tester,
     ) async {
       final r = router(initial: '/other');
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/inbox'));
       await tester.pumpAndSettle();
       expect(open, 1);
@@ -647,7 +654,7 @@ void main() {
           return signedIn ? null : '/login?from=$uri';
         },
       );
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/inbox'));
       await tester.pumpAndSettle();
       expect(currentLocation(tester), '/inbox');
@@ -669,7 +676,7 @@ void main() {
           return null;
         },
       );
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/inbox'));
       await tester.pumpAndSettle();
       c.read(session.notifier).set(false);
@@ -684,7 +691,7 @@ void main() {
       'a page under a pushed guarded page is guarded again when it is uncovered',
       (tester) async {
         final r = router(initial: '/other');
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/inbox'));
         await tester.pumpAndSettle();
         unawaited(r.push<void>('/third'));
@@ -706,7 +713,7 @@ void main() {
       'signing back in brings the pushed page back from its login page',
       (tester) async {
         final r = router(initial: '/other');
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/inbox'));
         await tester.pumpAndSettle();
         c.read(session.notifier).set(false);
@@ -723,7 +730,7 @@ void main() {
       tester,
     ) async {
       final r = router(initial: '/other');
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/inbox'));
       await tester.pumpAndSettle();
       unawaited(r.push<void>('/third'));
@@ -803,7 +810,7 @@ void main() {
     testWidgets('a guard the base page runs too replaces the whole stack on '
         'sign-out, as on main', (tester) async {
       final r = orders();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       r.go('/orders');
       await tester.pumpAndSettle();
       unawaited(r.push<void>('/orders/1'));
@@ -821,7 +828,7 @@ void main() {
     testWidgets('a guard only the pushed page runs moves that page and keeps '
         'the base', (tester) async {
       final r = orders();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/admin'));
       await tester.pumpAndSettle();
       expect(currentLocation(tester), '/admin');
@@ -840,7 +847,7 @@ void main() {
     testWidgets('a guard another page of a guarded base runs makes the base '
         'ask too: the sign-out replaces the whole stack', (tester) async {
       final r = orders();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       r.go('/orders');
       await tester.pumpAndSettle();
       unawaited(r.push<void>('/admin'));
@@ -862,7 +869,7 @@ void main() {
       tester,
     ) async {
       final r = orders();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       r.go('/orders');
       await tester.pumpAndSettle();
       unawaited(r.push<void>('/staff'));
@@ -884,7 +891,7 @@ void main() {
     testWidgets('a guarded base that still passes keeps its place, and the '
         'pushed page moves', (tester) async {
       final r = orders();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       r.go('/orders');
       await tester.pumpAndSettle();
       unawaited(r.push<void>('/admin'));

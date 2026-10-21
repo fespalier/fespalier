@@ -9,6 +9,8 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/attach_order.dart';
+
 /// go_router's zone value for the router (`currentRouterKey`).
 const routerKey = #goRouterRedirectContext;
 
@@ -490,6 +492,12 @@ void main() {
       expect(tester.takeException(), isA<StateError>());
     });
   });
+  // The pushed navigations run in every order of what listens to the router before the Router
+  // widget does (test/support/attach_order.dart).
+  inEveryOrder(pushedNavigations);
+}
+
+void pushedNavigations() {
   // go_router keeps a navigation that failed its guard in an entry on top of the stack when it was
   // pushed (`push`, and `pushReplacement` and `replace` over other pages): the router's own `error`
   // stays null, and the failed list is the entry's `matches`.
@@ -510,7 +518,7 @@ void main() {
     Future<({GoRouter router, Future<Object?> answer, List<Object?> done})>
     fail(WidgetTester tester, String kind) async {
       final r = router(initial: '/under');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/other'));
       await tester.pumpAndSettle();
       final done = <Object?>[];
@@ -624,7 +632,7 @@ void main() {
         return null;
       };
       final r = router(initial: '/t2');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       final answer = r.push<Object?>('/inbox');
       var done = false;
       unawaited(answer.whenComplete(() => done = true));
@@ -716,7 +724,7 @@ void main() {
     ) async {
       inbox = (ref) => throw StateError('boom');
       final r = router(initial: '/t2');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/inbox'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isA<StateError>());
@@ -745,7 +753,7 @@ void main() {
           ),
         ],
       );
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/other'));
       await tester.pumpAndSettle();
       expect(events, ['enter /under', 'enter /other']);
@@ -780,7 +788,7 @@ void main() {
             ),
           ],
         );
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/other'));
         await tester.pumpAndSettle();
         events.clear();
@@ -813,7 +821,7 @@ void main() {
         return null;
       };
       final r = router(initial: '/under');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.pushReplacement<void>('/inbox'));
       await tester.pumpAndSettle();
       expect(r.routerDelegate.currentConfiguration.error, isA<GuardFailure>());
@@ -835,7 +843,7 @@ void main() {
           'nothing', (tester) async {
         plainAnswer = () => throw StateError('boom');
         final r = router();
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         if (kind == 'push') {
           unawaited(r.push<void>('/admin'));
         } else {
@@ -861,7 +869,7 @@ void main() {
     ) async {
       plainAnswer = () => null;
       final r = router();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       r.go('/admin');
       await tester.pumpAndSettle();
       expect(find.text('ADMIN'), findsOneWidget);
@@ -891,7 +899,7 @@ void main() {
         return null;
       };
       final r = router(initial: '/under');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/other'));
       await tester.pumpAndSettle();
       final done = <Object?>[];

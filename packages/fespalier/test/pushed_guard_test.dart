@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/attach_order.dart';
+
 /// Whether a guard lets its page through, read through a provider nothing watches (a
 /// `ProviderContainer` guard).
 var allowed = true;
@@ -117,6 +119,12 @@ void main() {
     );
   });
 
+  // The tests of fespalier's own handling run in every order of what listens to the router before
+  // the Router widget does (test/support/attach_order.dart).
+  inEveryOrder(pushedPageGroups);
+}
+
+void pushedPageGroups() {
   group('fespalier holds a guard on a pushed page after a refresh', () {
     GoRouter router() => GoRouter(
       initialLocation: '/home',
@@ -137,7 +145,7 @@ void main() {
       'a ProviderContainer guard that now refuses moves the pushed page on refresh',
       (tester) async {
         final r = router();
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/secret'));
         await tester.pumpAndSettle();
         expect(find.text('SECRET'), findsOneWidget);
@@ -153,7 +161,7 @@ void main() {
       'a refresh after a pushed page whose guard passes keeps the page',
       (tester) async {
         final r = router();
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/secret'));
         await tester.pumpAndSettle();
         r.refresh();
@@ -202,7 +210,7 @@ void main() {
       tester,
     ) async {
       final r = gated();
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       expect(states, 1);
       await tester.tap(find.text('COUNT 0'));
       await tester.pump();
@@ -257,7 +265,7 @@ void main() {
       tester,
     ) async {
       final r = picker();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       final done = <int?>[];
       unawaited(r.push<int>('/pick').then(done.add));
       await tester.pumpAndSettle();
@@ -272,7 +280,7 @@ void main() {
     testWidgets('a result of another type than the push asked for completes '
         'it with null, and a debug build reports it', (tester) async {
       final r = picker();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       final done = <int?>[];
       final errors = <Object>[];
       unawaited(r.push<int>('/pick').then(done.add, onError: errors.add));
@@ -431,7 +439,7 @@ void main() {
         required bool isAsync,
         required bool onRootNavigator,
       }) async {
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/tab/admin'));
         await tester.pumpAndSettle();
         expect(find.text('COUNT 0'), findsOneWidget);
@@ -464,7 +472,7 @@ void main() {
       testWidgets('a page in a tab that the person leaves while its guard '
           'waits is not brought back', (tester) async {
         final r = tabs(isAsync: true);
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/tab/admin'));
         await tester.pumpAndSettle();
         unawaited(r.push<void>('/tab/denied'));
@@ -488,7 +496,7 @@ void main() {
       testWidgets('a tab switch while the guard of a page in a tab waits '
           'is not undone by the re-run', (tester) async {
         final r = tabs(isAsync: true);
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/tab/admin'));
         await tester.pumpAndSettle();
         unawaited(r.push<void>('/tab/denied'));
@@ -590,7 +598,7 @@ void main() {
           GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
         ],
       );
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/tab/admin'));
       await tester.pumpAndSettle();
       expect(find.text('COUNT 0'), findsOneWidget);
@@ -615,7 +623,7 @@ void main() {
       testWidgets('a re-run that moves the page closes the dialog over it '
           '($kind guard)', (tester) async {
         final r = admin(isAsync: isAsync);
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/admin'));
         await tester.pumpAndSettle();
         await showSecret(tester);
@@ -629,7 +637,7 @@ void main() {
       testWidgets('a re-run that fails closes the dialog over the page and '
           'shows the error view ($kind guard)', (tester) async {
         final r = admin(isAsync: isAsync);
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/admin'));
         await tester.pumpAndSettle();
         await showSecret(tester);
@@ -645,7 +653,7 @@ void main() {
       testWidgets('a re-run that passes again keeps the dialog and the '
           'page\'s state ($kind guard)', (tester) async {
         final r = admin(isAsync: isAsync);
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/admin'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('COUNT 0'));
@@ -751,7 +759,7 @@ void main() {
       required bool wait,
     }) async {
       final r = admin(isAsync: isAsync);
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/admin').then((_) => completed++));
       await tester.pumpAndSettle();
       expect(find.text('ADMIN'), findsOneWidget);

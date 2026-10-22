@@ -423,6 +423,39 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets('an asynchronous re-run, dropped at its answer and carried on, '
+        'starts no navigation of its own', (tester) async {
+      var wait = false;
+      final answer = Completer<String?>();
+      checkout = () => wait ? answer.future : null;
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/other'));
+      await tester.pumpAndSettle();
+      wait = true;
+      rec.log.clear();
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(find.text('checkout'), findsOneWidget, reason: 'waiting');
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      // The pop is one navigation and the landing of the replay the other. Neither re-run, the dropped
+      // one nor the one that carries it on, is a navigation of the app's: both start at their
+      // commit, as a guard's refresh does, and the dropped one is never reported superseded.
+      expect(
+        rec.log.where((l) => l.contains(' start navigate ')),
+        everyElement(endsWith('start navigate (commit)')),
+      );
+      expect(
+        rec.log.where((l) => l.contains(' start navigate ')),
+        hasLength(2),
+      );
+      expect(rec.log.where((l) => l.contains('superseded')), isEmpty);
+      expect(rec.log.where((l) => l.contains(' commit ')), hasLength(2));
+      expectCommitsMatchEnds(rec.log);
+    });
+
     testWidgets('a superseded navigation never commits', (tester) async {
       final answer = Completer<String?>();
       checkout = () => answer.future;

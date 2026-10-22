@@ -10,11 +10,21 @@ import 'package:flutter_test/flutter_test.dart';
 
 Widget page(String text) => Scaffold(body: Text(text));
 
-GoRouter router(String label, {required bool telemetry}) {
+GoRouter router(String label, {required bool telemetry, bool guarded = false}) {
   final r = GoRouter(
     initialLocation: '/home',
     routes: [
-      GoRoute(path: '/home', builder: (_, _) => page('home $label')),
+      GoRoute(
+        path: '/home',
+        // A guard that passes, as a generated app's redirect runs it. The guards of a router must
+        // not keep its route information provider registered as a binding observer (since 0.21.0).
+        redirect: guarded
+            ? (context, state) => runRedirect(
+                () => refGuard(context, 'g@home $label', (ref) => null),
+              )
+            : null,
+        builder: (_, _) => page('home $label'),
+      ),
       GoRoute(
         path: '/orders/:id',
         builder: (_, s) => page('order ${s.pathParameters['id']} $label'),
@@ -33,14 +43,17 @@ Future<GoRouter> replace(
   WidgetTester tester, {
   required bool telemetry,
   required bool disposeFirst,
+  bool guarded = false,
 }) async {
-  final first = router('a', telemetry: telemetry);
-  await tester.pumpWidget(MaterialApp.router(routerConfig: first));
+  Widget app(GoRouter r) =>
+      ProviderScope(child: MaterialApp.router(routerConfig: r));
+  final first = router('a', telemetry: telemetry, guarded: guarded);
+  await tester.pumpWidget(app(first));
   await tester.pumpAndSettle();
 
-  final second = router('b', telemetry: telemetry);
+  final second = router('b', telemetry: telemetry, guarded: guarded);
   addTearDown(second.dispose);
-  await tester.pumpWidget(MaterialApp.router(routerConfig: second));
+  await tester.pumpWidget(app(second));
   await tester.pumpAndSettle();
 
   if (disposeFirst) {
@@ -99,6 +112,28 @@ void main() {
     'with telemetry, a replaced router that is disposed does not take the link',
     (tester) async {
       final first = await replace(tester, telemetry: true, disposeFirst: true);
+      await sendPlatformLink(
+        tester,
+        Uri.parse('https://shop.example.com/orders/7'),
+      );
+      expect(find.text('order 7 b'), findsOneWidget);
+      expect(first.routeInformationProvider.value.uri.path, '/home');
+    },
+  );
+
+  // The guards of a router keep a subscription to what they watch and listen to the router's
+  // delegate, and nothing else: a listener on the route information provider, which go_router
+  // registers as a platform observer for as long as it has one, would take the platform's links for
+  // the router that was replaced (#264), in every app with a guard and not only with telemetry.
+  testWidgets(
+    'with a guard and no telemetry, a replaced router that is not disposed does not take the link',
+    (tester) async {
+      final first = await replace(
+        tester,
+        telemetry: false,
+        disposeFirst: false,
+        guarded: true,
+      );
       await sendPlatformLink(
         tester,
         Uri.parse('https://shop.example.com/orders/7'),

@@ -60,11 +60,19 @@ fn each_ending_has_its_outcome_and_whether_a_sealed_request_went_out() {
             None,
             false,
         ),
+        // A timeout, a dead connection or a failed read: the server may have run the request.
         (
             Err(Error::Transport("text")),
             Outcome::Unreachable,
             None,
             true,
+        ),
+        // The connection was never made: nothing went out.
+        (
+            Err(Error::Transport(error::UNREACHABLE)),
+            Outcome::Unreachable,
+            None,
+            false,
         ),
         (Err(Error::BadInput("text")), Outcome::Rejected, None, false),
     ];

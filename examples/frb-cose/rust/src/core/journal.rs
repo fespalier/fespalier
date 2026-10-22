@@ -1,13 +1,14 @@
 //! The journal: one row per call the engine accepted, the newest [`CAPACITY`] of them.
 //!
 //! A row says what a person needs to read what happened: the op, the idempotency key the call used, the outcome,
-//! the sealed status and whether a sealed request went to the network. It never holds a payload: no arguments, no
-//! body, no text from the server or the client. A call refused before anything was attempted (`BadInput`) has no row.
+//! the sealed status and whether a sealed request may have gone to the network. It never holds a payload: no
+//! arguments, no body, no text from the server or the client. A call refused before anything was attempted
+//! (`BadInput`) has no row.
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, PoisonError};
 
-use super::{Answer, Error};
+use super::{Answer, Error, error};
 
 /// How many rows the journal keeps.
 pub const CAPACITY: usize = 32;
@@ -25,7 +26,8 @@ pub enum Outcome {
     NotSigned,
     /// The device was not registered. Nothing sealed was sent.
     NotRegistered,
-    /// The sealed request got no usable answer.
+    /// The sealed request got no usable answer: the server could not be connected to (nothing was sent), or a request
+    /// went out, or may have, and no usable answer came back.
     Unreachable,
     /// The engine refused the call while it was sending it. Nothing sealed was sent.
     Rejected,
@@ -42,7 +44,10 @@ pub struct Entry {
     pub outcome: Outcome,
     /// The HTTP status the server sealed or sent, when it answered.
     pub status: Option<u16>,
-    /// Whether a sealed request went to the network (false when the device key or the registration refused first).
+    /// Whether a sealed request may have gone to the network. False only when the engine knows none did: the device
+    /// key or the registration refused first, the call was refused, or the connection to the server could not be
+    /// made. True when a request was sent, **or when that is unknown**: a timeout, a connection that died under the
+    /// request and a failed read leave the server free to have run it, so the row says "sent".
     pub sent: bool,
 }
 
@@ -55,7 +60,10 @@ impl Entry {
             Err(Error::Unverified) => (Outcome::Unverified, None, true),
             Err(Error::Seal(_)) => (Outcome::NotSigned, None, false),
             Err(Error::Registration(_)) => (Outcome::NotRegistered, None, false),
-            Err(Error::Transport(_)) => (Outcome::Unreachable, None, true),
+            // Only a connection that was never made is known to have sent nothing.
+            Err(Error::Transport(text)) => {
+                (Outcome::Unreachable, None, *text != error::UNREACHABLE)
+            }
             Err(Error::BadInput(_)) => (Outcome::Rejected, None, false),
         };
         Self {

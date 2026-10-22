@@ -449,8 +449,16 @@ async fn a_server_that_is_gone_is_a_transport_failure_named_by_its_class() {
         .contains(&text),
         "{text}"
     );
+    // Only a connection that was never made is known to have sent nothing; a dead pooled connection or a timeout
+    // may have carried the request, and the row says so.
     let row = last_row(&core);
-    assert_eq!((row.outcome, row.sent), (Outcome::Unreachable, true));
+    assert_eq!(
+        (row.outcome, row.sent),
+        (
+            Outcome::Unreachable,
+            text != "the server could not be reached"
+        )
+    );
 }
 
 #[tokio::test]

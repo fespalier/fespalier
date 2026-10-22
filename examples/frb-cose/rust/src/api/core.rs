@@ -91,7 +91,8 @@ pub enum JournalOutcome {
     NotSigned,
     /// The device was not registered. Nothing sealed was sent.
     NotRegistered,
-    /// The sealed request got no usable answer.
+    /// The sealed request got no usable answer: the server could not be connected to (nothing was sent), or a request
+    /// went out, or may have, and no usable answer came back.
     Unreachable,
     /// The engine refused the call while it was sending it. Nothing sealed was sent.
     Rejected,
@@ -107,7 +108,10 @@ pub struct JournalEntry {
     pub outcome: JournalOutcome,
     /// The HTTP status, when the server answered.
     pub status: Option<u16>,
-    /// Whether a sealed request went to the network.
+    /// Whether a sealed request may have gone to the network. False only when the core knows none did: the device key
+    /// or the registration refused first, the call was refused, or the connection to the server could not be made.
+    /// True when a request was sent, or when that is unknown (a timeout, a connection that died under the request, a
+    /// failed read).
     pub sent: bool,
 }
 

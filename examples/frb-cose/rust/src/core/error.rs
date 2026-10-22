@@ -31,8 +31,9 @@ const SEAL: &str = "the device key did not sign, or did not answer in time";
 const NO_ANSWER: &str = "the server did not answer";
 /// The request timed out.
 const TIMED_OUT: &str = "the server did not answer in time";
-/// The server could not be connected to.
-const UNREACHABLE: &str = "the server could not be reached";
+/// The server could not be connected to: the connection was never made, so the journal records that nothing was sent.
+/// A timeout or any other failure of a request that may have gone out is not this, and counts as sent.
+pub(crate) const UNREACHABLE: &str = "the server could not be reached";
 /// The sealed answer opened, but its body is not CBOR the engine can write as JSON.
 pub(crate) const ANSWER_UNREADABLE: &str = "the answer could not be read";
 /// The call cannot be sent in this form.

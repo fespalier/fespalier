@@ -1,7 +1,7 @@
-# cargo-deny configuration for the frb-cose example's server (`just frb-cose-server`), a copy of
-# examples/cose/server/deny.toml. The same policy as cli/deny.toml, plus the licences cratestack's
-# dependency graph (axum, reqwest and rustls through the Rust client runtime, the dalek crates)
-# brings in.
+# cargo-deny configuration for the frb-cose example's Rust core (`just frb-cose-core`). The policy of the example's
+# server (server/deny.toml, a copy of examples/cose/server/deny.toml): cli/deny.toml's, plus the licences cratestack's
+# dependency graph (axum, reqwest and rustls through the Rust client runtime, the dalek crates) brings in, and the
+# clarify below for flutter_rust_bridge's runtime.
 
 [graph]
 all-features = true

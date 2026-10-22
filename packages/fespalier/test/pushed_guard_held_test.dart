@@ -4,6 +4,11 @@
 // the page goes without a word.
 //
 // The probe I of the review of #268, kept as a test, in every order the lifecycle watch can listen in.
+//
+// And the other way round: a page that passed its guard is never held, however long ago and however
+// the router moved meanwhile. A tab round trip is the case: the page of the tab that is not on screen
+// is not in the configuration the router shows, and it comes back as a restored page whose guard runs
+// again (the probe T1 of the second review of #268).
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
@@ -21,6 +26,13 @@ var _mode = 'pass';
 final _asked = <String>[];
 var _built = 0;
 var _runs = 0;
+
+/// When set, the guard of `/tab/admin` answers a pass once it completes: a slow server. And whether
+/// its `leave()` lets the page go, how often its page's state was made, and the tab layout's shell.
+Completer<void>? _server;
+var _allow = true;
+var _states = 0;
+StatefulNavigationShell? _shell;
 
 List<String> _stack(GoRouter r) {
   final pushed = <ImperativeRouteMatch>[];
@@ -72,6 +84,60 @@ GoRouter _router({required bool async}) => GoRouter(
   ),
 );
 
+/// A tab layout (`/tab` and `/other`) with a guarded page, `/tab/admin`, that the tab holds.
+GoRouter _tabs() => GoRouter(
+  initialLocation: '/tab',
+  routes: [
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, shell) {
+        _shell = shell;
+        return shell;
+      },
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/tab',
+              builder: (_, _) => const Text('TAB'),
+              routes: [
+                GoRoute(
+                  path: 'admin',
+                  redirect: (context, state) => runRedirect(
+                    state,
+                    () => refGuard(context, 'g@tab-admin', (ref) {
+                      final server = _server;
+                      return server == null
+                          ? Future<String?>.value(null)
+                          : server.future.then<String?>((_) => null);
+                    }),
+                  ),
+                  onExit: (context, state) => leaveExit(
+                    context,
+                    state,
+                    'tab/admin/leave.dart',
+                    (ref, page) {
+                      _asked.add('tab-admin');
+                      return _allow;
+                    },
+                  ),
+                  builder: (context, state) =>
+                      refusedView(context, state) ??
+                      _Counter(onState: () => _states++),
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/other', builder: (_, _) => const Text('OTHER')),
+          ],
+        ),
+      ],
+    ),
+  ],
+);
+
 Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
   await tester.pump();
@@ -84,6 +150,10 @@ void main() {
     _asked.clear();
     _built = 0;
     _runs = 0;
+    _server = null;
+    _allow = true;
+    _states = 0;
+    _shell = null;
   });
 
   inEveryOrder(() {
@@ -131,5 +201,74 @@ void main() {
         });
       });
     }
+
+    group('a page that passed is not held', () {
+      for (final async in [false, true]) {
+        testWidgets('after a tab round trip, with a guard that '
+            '${async ? 'waits' : 'answers at once'}: it shows with its state, '
+            'and a dirty pop is asked', (tester) async {
+          final r = _tabs();
+          await pumpRouter(tester, attached(r));
+          unawaited(r.push<void>('/tab/admin'));
+          await _settle(tester);
+          await tester.tap(find.text('COUNT 0'));
+          await tester.pump();
+          expect(find.text('COUNT 1'), findsOneWidget);
+          _shell!.goBranch(1);
+          await _settle(tester);
+          expect(find.text('OTHER'), findsOneWidget);
+          // The tab comes back: go_router restores its pushed page without its redirect, and the
+          // guard runs again (the page waits for the server when the guard does).
+          if (async) _server = Completer<void>();
+          _shell!.goBranch(0);
+          await _settle(tester);
+          expect(
+            find.text('COUNT 1'),
+            findsOneWidget,
+            reason: 'the page passed before: it stays visible with its state',
+          );
+          // The person leaves the page, which refuses: it is asked, and stays.
+          _allow = false;
+          r.pop();
+          await _settle(tester);
+          expect(_asked, ['tab-admin']);
+          expect(find.text('COUNT 1'), findsOneWidget);
+          _server?.complete();
+          await _settle(tester);
+          expect(_states, 1, reason: 'the page was never made again');
+          expect(find.text('COUNT 1'), findsOneWidget);
+        });
+      }
+    });
   });
+}
+
+/// A page with state of its own: a tap on its text counts, and [onState] hears each time the state
+/// is made.
+final class _Counter extends StatefulWidget {
+  const _Counter({required this.onState});
+
+  final VoidCallback onState;
+
+  @override
+  State<_Counter> createState() => _CounterState();
+}
+
+final class _CounterState extends State<_Counter> {
+  var count = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.onState();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(),
+    body: GestureDetector(
+      onTap: () => setState(() => count++),
+      child: Text('COUNT $count'),
+    ),
+  );
 }

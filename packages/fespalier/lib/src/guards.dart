@@ -139,7 +139,8 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// 2. A commit is a push only when its top entry's completer belongs to a request whose redirects
 ///    ran: the request the provider holds at the commit, or one stored in [_requests].
 /// 3. A guarded pushed page whose key passed no push commit is never built, never entered, and
-///    never asked `leave()`.
+///    never asked `leave()`. A key that passed stays passed (a page in a tab that is not on screen
+///    is not in the configuration, and it is not held when the tab comes back).
 /// 4. A guarded pushed page shown by any other commit is re-run once, after the frame, if it is
 ///    still on top.
 /// 5. [_landing] lives exactly as long as [_rerun]'s synchronous `replace` call, so no callback
@@ -194,6 +195,14 @@ final class _RouterGuards {
   /// with a redirect that is not here is held back ([refuses]). Keyed by page key, not by
   /// completer, because a refresh decodes every pushed entry with a new completer and keeps its
   /// key, and so keeps the page's state.
+  ///
+  /// A key leaves the set only when a landing of its page fails ([_judge]). It is not forgotten when
+  /// the page is missing from the configuration: the pushed pages of a tab that is not on screen are
+  /// not in it, and they come back, with their state, when the tab does; forgetting their keys held
+  /// them back and dropped a dirty page's `leave()` question. go_router makes a pushed page's key
+  /// from a random string and never uses it twice, so a key that stays is harmless, and the set
+  /// grows by one short string for each guarded page pushed in the life of the router (a small leak,
+  /// taken on purpose: there is no way to tell from here that an offstage page is gone for good).
   final _passed = <String>{};
 
   /// The completer each pushed page's `Future` answers to (invariant 10): the one of the last push
@@ -628,8 +637,8 @@ final class _RouterGuards {
       _requests[top.completer] = null;
       rerun?.landed = true;
     }
+    // Not [_passed]: see there.
     final keys = {for (final e in pushed) e.pageKey.value};
-    _passed.removeWhere((k) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
 
     if (request == null && shown != null && _guarded(shown)) {

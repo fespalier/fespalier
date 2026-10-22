@@ -805,6 +805,13 @@ bool isGuardRerun(GoRouter router, Object? state) {
   return guards._rerunOf(state) != null;
 }
 
+/// Whether the pushed page whose page key is [pageKey] is held back (see `_RouterGuards._held`):
+/// its guard has not passed in a navigation that pushed it, so it was never built and `leave()` is
+/// never asked of it (invariant 3). A base page's key starts with `/` and is never held.
+bool isHeldPage(GoRouter router, ValueKey<String> pageKey) =>
+    !pageKey.value.startsWith('/') &&
+    (_guardsOf[router]?.refuses(pageKey.value) ?? false);
+
 /// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
 /// page the walk of `RouterWatch` treats as an error view, which covers the page below it.
 bool refusedEntry(GoRouter router, ImperativeRouteMatch entry) =>

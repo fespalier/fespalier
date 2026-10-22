@@ -247,6 +247,45 @@ void main() {
       expectCommitsMatchEnds(rec.log);
     });
 
+    testWidgets('a push whose sync guard passes commits ok with its route '
+        '(fespalier/fespalier#258)', (tester) async {
+      checkout = () => null;
+      final r = await boot(tester);
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.contains(' commit ')), [
+        '#2 commit ok route=/checkout',
+      ]);
+      expectCommitsMatchEnds(rec.log);
+      // A second push of the guarded route (another location, so another navigation) is the
+      // same: it is a page of its own, and the first one is covered.
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout?again=1'));
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.contains(' commit ')), [
+        '#4 commit ok route=/checkout',
+      ]);
+      expectCommitsMatchEnds(rec.log);
+    });
+
+    testWidgets('a push whose async guard passes commits ok with its route '
+        '(fespalier/fespalier#258)', (tester) async {
+      final answer = Completer<String?>();
+      checkout = () => answer.future;
+      final r = await boot(tester);
+      rec.log.clear();
+      unawaited(r.push<void>('/checkout'));
+      await tester.pump();
+      expect(rec.log.where((l) => l.startsWith('#2 commit ')), isEmpty);
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.startsWith('#2 commit ')), [
+        '#2 commit ok route=/checkout',
+      ]);
+      expectCommitsMatchEnds(rec.log);
+    });
+
     testWidgets('a sync redirect commits where it went, and only once', (
       tester,
     ) async {
@@ -310,6 +349,77 @@ void main() {
         '#2 commit error',
       ]);
       expect(rec.log.where((l) => l.contains('route=')), isEmpty);
+      expectCommitsMatchEnds(rec.log);
+    });
+
+    testWidgets('a refresh after a pushed failure holds the page: each commit '
+        'names no route, and the ends match them (fespalier/fespalier#258)', (
+      tester,
+    ) async {
+      checkout = () => throw StateError('boom');
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      final failedPush = rec.log.singleWhere(
+        (l) => l.startsWith('#2 end navigate error'),
+      );
+      expect(failedPush, endsWith('at=/checkout'));
+      rec.log.clear();
+      r.refresh();
+      await tester.pumpAndSettle();
+      expect(rec.log.where((l) => l.contains('route=')), isEmpty);
+      expect(rec.log.where((l) => l.contains(' commit ')), isNotEmpty);
+      expectCommitsMatchEnds(rec.log);
+      // The held page is at the location that failed, as the failed push was; the page below it is
+      // not where the navigation ended.
+      final ends = rec.log.where((l) => l.contains(' end navigate ')).toList();
+      expect(ends, isNotEmpty);
+      expect(ends, everyElement(endsWith('at=/checkout')));
+    });
+
+    testWidgets('a refresh of a pushed page whose guard passes is two '
+        'navigations: the refresh, then the re-run of the page, which both name '
+        'it (fespalier/fespalier#258)', (tester) async {
+      checkout = () => null;
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      rec.log.clear();
+      r.refresh();
+      await tester.pumpAndSettle();
+      // The page that passed stays on screen while its guard runs again: the refresh commits it, and
+      // the re-run replaces it with the same location.
+      final commits = rec.log.where((l) => l.contains(' commit ')).toList();
+      expect(commits, hasLength(2));
+      expect(commits, everyElement(endsWith('commit ok route=/checkout')));
+      expectCommitsMatchEnds(rec.log);
+    });
+
+    testWidgets('a pop while the re-run of a pushed page waits is one '
+        'navigation, and the re-run that goes with it adds none '
+        '(fespalier/fespalier#258)', (tester) async {
+      var wait = false;
+      final answer = Completer<String?>();
+      checkout = () => wait ? answer.future : null;
+      final r = await boot(tester);
+      unawaited(r.push<void>('/checkout'));
+      await tester.pumpAndSettle();
+      unawaited(r.push<void>('/other'));
+      await tester.pumpAndSettle();
+      wait = true;
+      r.pop();
+      await tester.pumpAndSettle();
+      expect(find.text('checkout'), findsOneWidget);
+      rec.log.clear();
+      // The back button of an app bar: the router is not asked, and the re-run is still waiting.
+      await Navigator.of(tester.element(find.text('checkout'))).maybePop();
+      await tester.pumpAndSettle();
+      answer.complete(null);
+      await tester.pumpAndSettle();
+      expect(find.text('checkout'), findsNothing);
+      expect(rec.log.where((l) => l.contains(' commit ')), hasLength(1));
+      expect(rec.log.where((l) => l.contains(' end navigate ')), hasLength(1));
+      expect(rec.log.where((l) => l.contains('superseded')), isEmpty);
       expectCommitsMatchEnds(rec.log);
     });
 

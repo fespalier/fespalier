@@ -386,6 +386,44 @@ void main() {
     },
   );
 
+  testWidgets('a swap runs the guard of the pushed page on top again, and a '
+      'page whose guard failed is not built (fespalier/fespalier#258)', (
+    tester,
+  ) async {
+    var guardRuns = 0;
+    var builds = 0;
+    Widget gPage() {
+      builds++;
+      return const Text('G page');
+    }
+
+    GoRoute guarded() => GoRoute(
+      path: '/g',
+      redirect: (context, state) => runRedirect(() {
+        guardRuns++;
+        throw StateError('boom');
+      }),
+      builder: (context, state) => refusedView(context, state) ?? gPage(),
+    );
+
+    final reload = _Reload([_a(), guarded()]);
+    final router = _routerOf(reload, initialLocation: '/a');
+    await tester.pumpWidget(StartupGate(router: () => router, app: app));
+    unawaited(router.push('/g'));
+    await pumpNavigation(tester);
+    expect(guardRuns, 1);
+    expect(builds, 0);
+
+    reload.fileVersion = 'v2';
+    reload.table = [_a(), guarded()];
+    await hotReload(tester);
+
+    expect(reload.rebuilds, 1);
+    expect(guardRuns, 2, reason: 'the swap runs the guard of the page on top');
+    expect(builds, 0, reason: 'a page whose guard failed is not built');
+    expect(find.text('G page'), findsNothing);
+  });
+
   testWidgets('a pushed page survives', (tester) async {
     GoRoute pushed() =>
         GoRoute(path: '/p', builder: (_, _) => const Text('P page'));

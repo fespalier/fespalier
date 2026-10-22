@@ -229,7 +229,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '02ab944db255934d';
+  static const String _version = '98d3670b1e7c7a55';
   static const Map<String, String> _kept = {
     '(router)': '7dcfa259',
     'BrowseRoute.data': '30ba4ab7',
@@ -481,7 +481,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i14.AdminPage(),
+                    child: refusedView(context, state) ?? const _i14.AdminPage(),
                   ),
                 )),
               ),
@@ -493,7 +493,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: buildWithParams(
+                    child: refusedView(context, state) ?? buildWithParams(
                       () => _params8(state),
                       (v) => _i17.InboxPage(folder: v.folder),
                       () => notFound(state.uri),
@@ -751,7 +751,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i47.LabsPage(),
+                    child: refusedView(context, state) ?? const _i47.LabsPage(),
                   ),
                 )),
               ),
@@ -945,7 +945,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: leaveScope(state, flowStep(const _i97.SignupCompanyPage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i97.SignupCompanyPage())),
                       ),
                     )),
                   ),
@@ -958,7 +958,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: leaveScope(state, flowStep(const _i98.SignupContactPage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i98.SignupContactPage())),
                       ),
                     )),
                   ),
@@ -971,7 +971,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: leaveScope(state, flowStep(const _i99.SignupNamePage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i99.SignupNamePage())),
                       ),
                     )),
                   ),
@@ -984,7 +984,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: leaveScope(state, flowStep(const _i100.SignupReviewPage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i100.SignupReviewPage())),
                       ),
                     )),
                   ),
@@ -1018,7 +1018,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i119.VaultPage(),
+                    child: refusedView(context, state) ?? const _i119.VaultPage(),
                   ),
                 )),
               ),
@@ -1051,7 +1051,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: buildWithParams(
+                        child: refusedView(context, state) ?? buildWithParams(
                           () => _params34(state),
                           (v) => _i52.NotePage(id: v.id, extra: extraOf(state)),
                           () => notFound(state.uri),
@@ -1097,7 +1097,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: buildWithParams(
+                        child: refusedView(context, state) ?? buildWithParams(
                           () => _params40(state),
                           (v) => DataView(
                             watch: (ref) => watchData(ref, 'dOrdersIdRefund', _dataOrdersIdRefund(v.id)),
@@ -1119,7 +1119,7 @@ abstract final class AppRoutes {
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
-                            child: buildWithParams(
+                            child: refusedView(context, state) ?? buildWithParams(
                               () => _params42(state),
                               (v) => _i64.ReceiptPage(id: v.id),
                               () => notFound(state.uri),
@@ -1140,7 +1140,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: buildWithParams(
+                        child: refusedView(context, state) ?? buildWithParams(
                           () => _params41(state),
                           (v) => _i63.ConfirmRefundPage(id: v.id),
                           () => notFound(state.uri),
@@ -1238,7 +1238,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: buildWithParams(
+                        child: refusedView(context, state) ?? buildWithParams(
                           () => _params63(state),
                           (v) => _i87.ShopPage(shop: v.shop),
                           () => notFound(state.uri),
@@ -1253,7 +1253,7 @@ abstract final class AppRoutes {
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
-                            child: buildWithParams(
+                            child: refusedView(context, state) ?? buildWithParams(
                               () => _params65(state),
                               (v) => DataView(
                                 watch: (ref) => watchData(ref, 'dShopsShopItemsId', _dataShopsShopItemsId((shop: v.shop, id: v.id))),

@@ -253,6 +253,50 @@ void main() {
       );
     });
 
+    testWidgets('a pushed page whose guard has not passed is held, and says '
+        'so in the location and in the navigation (fespalier/fespalier#258)', (
+      tester,
+    ) async {
+      final router = GoRouter(
+        initialLocation: '/a',
+        routes: [
+          GoRoute(path: '/a', builder: (_, _) => page('A')),
+          GoRoute(
+            path: '/guarded',
+            redirect: (context, state) =>
+                runRedirect(() => throw StateError('boom')),
+            builder: (context, state) =>
+                refusedView(context, state) ?? page('GUARDED'),
+          ),
+        ],
+        errorBuilder: (context, state) => routerErrorPage(
+          context,
+          state,
+          (uri) => page('NOT FOUND'),
+          guardError: (uri, error, stackTrace, retry) => page('ERROR'),
+        ),
+      );
+      register(router);
+      await pumpRouter(tester, router);
+      unawaited(router.push<void>('/guarded'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      // The failed push: the entry's own error, as go_router holds it.
+      var snap = await snapshot();
+      expect(snap.location!.uri, '/guarded');
+      expect(snap.location!.error, contains('GuardFailure'));
+      // The refresh restores the entry without its redirect, and the page is held back until its
+      // guard has run again after the frame: not an error of go_router's, but not a page either.
+      router.refresh();
+      snap = await snapshot();
+      expect(snap.location!.uri, '/guarded');
+      expect(snap.location!.error, 'held: its guard runs again');
+      expect(snap.history.last.kind, NavigationKind.refresh);
+      expect(snap.history.last.error, 'held: its guard runs again');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+    });
+
     testWidgets(
       'a route the matcher does not know has the router and no typed route',
       (tester) async {

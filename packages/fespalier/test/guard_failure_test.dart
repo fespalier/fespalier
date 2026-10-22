@@ -9,6 +9,8 @@ import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/attach_order.dart';
+
 /// go_router's zone value for the router (`currentRouterKey`).
 const routerKey = #goRouterRedirectContext;
 
@@ -36,8 +38,9 @@ const routerKey = #goRouterRedirectContext;
   return (microtasks: microtasks, timers: timers);
 }
 
-/// What the guard of `/inbox` answers, and how often it ran.
+/// What the guard of `/inbox` answers, how often it ran, and how often its page was built.
 var inboxRuns = 0;
+var inboxBuilt = 0;
 GuardResult Function(Ref ref) inbox = (ref) => null;
 
 /// What the `/plain` guard answers: a `ProviderContainer` guard, called with the app's container.
@@ -62,6 +65,13 @@ var adminRuns = 0;
 /// The retry of the last view built, and the state of the last error page built.
 VoidCallback? heldRetry;
 GoRouterState? lastErrorState;
+
+Widget _inboxPage(GoRouterState state) {
+  inboxBuilt++;
+  return Text(
+    'INBOX${state.extra == null ? '' : ' ${state.uri.query} ${state.extra}'}',
+  );
+}
 
 /// The view a failed guard of `/inbox` and `/plain` shows: its error, and a button that retries.
 final class GuardErrorView extends StatelessWidget {
@@ -116,9 +126,9 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
           }),
         ),
       ),
-      builder: (_, state) => Text(
-        'INBOX${state.extra == null ? '' : ' ${state.uri.query} ${state.extra}'}',
-      ),
+      // The generated page builder of a guarded route: `refusedView(context, state) ?? <page>`.
+      builder: (context, state) =>
+          refusedView(context, state) ?? _inboxPage(state),
     ),
     GoRoute(
       path: '/plain',
@@ -158,6 +168,7 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
 void main() {
   setUp(() {
     inboxRuns = 0;
+    inboxBuilt = 0;
     adminRuns = 0;
     inbox = (ref) => null;
     plainAnswer = () => null;
@@ -481,6 +492,20 @@ void main() {
       expect(tester.takeException(), isA<StateError>());
     });
   });
+  // The pushed navigations run in every order of what listens to the router before the Router
+  // widget does (test/support/attach_order.dart).
+  inEveryOrder(
+    pushedNavigations,
+    // A test of the group attaches the lifecycle watch itself, with hooks of its own.
+    orders: const [
+      AttachFirst.nothing,
+      AttachFirst.devTools,
+      AttachFirst.telemetry,
+    ],
+  );
+}
+
+void pushedNavigations() {
   // go_router keeps a navigation that failed its guard in an entry on top of the stack when it was
   // pushed (`push`, and `pushReplacement` and `replace` over other pages): the router's own `error`
   // stays null, and the failed list is the entry's `matches`.
@@ -501,7 +526,7 @@ void main() {
     Future<({GoRouter router, Future<Object?> answer, List<Object?> done})>
     fail(WidgetTester tester, String kind) async {
       final r = router(initial: '/under');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/other'));
       await tester.pumpAndSettle();
       final done = <Object?>[];
@@ -548,11 +573,13 @@ void main() {
         expect(find.text('INBOX x=1 EX'), findsOneWidget);
         expect(find.textContaining('ERROR'), findsNothing);
         expect(tester.takeException(), isNull);
-        // The Future of the navigation that failed completes with null when its error view closes.
-        expect(done, [null]);
+        // The retry keeps the entry the error view stood for (its key), so the Future of the
+        // navigation that failed completes when the page in its place pops.
+        expect(done, isEmpty);
         // The stack below is what it was: back to the page under the new one.
         router.pop();
         await tester.pumpAndSettle();
+        expect(done, [null]);
         expect(find.text(kind == 'push' ? 'OTHER' : 'UNDER'), findsOneWidget);
       });
 
@@ -566,7 +593,7 @@ void main() {
         expect(inboxRuns, 2);
         expect(find.text('ERROR Bad state: boom'), findsOneWidget);
         expect(tester.takeException(), isA<StateError>());
-        expect(done, [null]);
+        expect(done, isEmpty);
       });
 
       testWidgets('$kind: a retry held after the error view closed does '
@@ -613,7 +640,7 @@ void main() {
         return null;
       };
       final r = router(initial: '/t2');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       final answer = r.push<Object?>('/inbox');
       var done = false;
       unawaited(answer.whenComplete(() => done = true));
@@ -623,31 +650,100 @@ void main() {
       await tester.tap(find.text('ERROR Bad state: boom'));
       await tester.pumpAndSettle();
       expect(find.text('INBOX'), findsOneWidget);
-      expect(done, isTrue);
+      expect(done, isFalse);
       r.pop();
       await tester.pumpAndSettle();
+      expect(done, isTrue);
       expect(find.text('T2'), findsOneWidget);
     });
 
-    // An existing go_router bypass, which this package does not fix (it happens without
-    // `runRedirect` too, and in a plain GoRouter): go_router restores a pushed location with
-    // `findMatch` and skips its redirect on a refresh, so the guarded page shows without its guard.
-    // Skipped until go_router fixes it: fespalier/fespalier#258.
+    // go_router restores a pushed location with `findMatch` on a refresh and skips its redirect, so the
+    // guarded page would show without its guard (fespalier/fespalier#258; the general case is
+    // flutter/flutter#133985). fespalier holds the page back and runs its guard again.
     testWidgets(
-      'a refresh after a pushed failure runs the guard again (go_router '
-      'bypass, fespalier/fespalier#258)',
+      'a refresh after a pushed failure runs the guard again and never builds '
+      'the guarded page (fespalier/fespalier#258)',
       (tester) async {
         inbox = (ref) => throw StateError('boom');
         final (:router, :answer, :done) = await fail(tester, 'push');
         expect(tester.takeException(), isA<StateError>());
         expect(inboxRuns, 1);
+        expect(inboxBuilt, 0);
+        router.refresh();
+        await tester.pumpAndSettle();
+        expect(inboxRuns, 2, reason: 'refresh() must run the guard again');
+        expect(
+          inboxBuilt,
+          0,
+          reason: 'the guarded page is not built unless its guard passes',
+        );
+        expect(find.textContaining('INBOX'), findsNothing);
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        // The guard failed again: a second report, once.
+        expect(tester.takeException(), isA<StateError>());
+        expect(tester.takeException(), isNull);
+        expect(done, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'a refresh after a pushed failure shows the page once its guard passes, '
+      'and the push completes when that page pops',
+      (tester) async {
+        inbox = (ref) => throw StateError('boom');
+        final (:router, :answer, :done) = await fail(tester, 'push');
+        expect(tester.takeException(), isA<StateError>());
+        inbox = (ref) => null;
         router.refresh();
         await tester.pumpAndSettle();
         expect(inboxRuns, 2);
-        expect(find.textContaining('INBOX'), findsNothing);
+        expect(find.text('INBOX x=1 EX'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        expect(done, isEmpty, reason: 'the page it started is still open');
+        router.pop();
+        await tester.pumpAndSettle();
+        expect(done, [null]);
+        expect(find.text('OTHER'), findsOneWidget);
       },
-      skip: true,
     );
+
+    testWidgets(
+      'a refresh after a pushed async failure holds the page until the answer',
+      (tester) async {
+        inbox = (ref) async {
+          await null;
+          throw StateError('boom');
+        };
+        final (:router, :answer, :done) = await fail(tester, 'push');
+        expect(tester.takeException(), isA<StateError>());
+        router.refresh();
+        await tester.pump();
+        expect(find.textContaining('INBOX'), findsNothing);
+        await tester.pumpAndSettle();
+        expect(inboxRuns, 2);
+        expect(inboxBuilt, 0);
+        expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+        expect(tester.takeException(), isA<StateError>());
+      },
+    );
+
+    testWidgets('a refresh after a push from a tab holds the failed page too', (
+      tester,
+    ) async {
+      inbox = (ref) => throw StateError('boom');
+      final r = router(initial: '/t2');
+      await pumpRouter(tester, attached(r));
+      unawaited(r.push<void>('/inbox'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isA<StateError>());
+      r.refresh();
+      await tester.pumpAndSettle();
+      expect(inboxRuns, 2);
+      expect(inboxBuilt, 0);
+      expect(find.textContaining('INBOX'), findsNothing);
+      expect(find.text('ERROR Bad state: boom'), findsOneWidget);
+      expect(tester.takeException(), isA<StateError>());
+    });
 
     testWidgets('a pushed failure enters nothing and leaves nothing: the page '
         'under the error view stays', (tester) async {
@@ -665,7 +761,7 @@ void main() {
           ),
         ],
       );
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/other'));
       await tester.pumpAndSettle();
       expect(events, ['enter /under', 'enter /other']);
@@ -700,7 +796,7 @@ void main() {
             ),
           ],
         );
-        await pumpRouter(tester, r);
+        await pumpRouter(tester, attached(r));
         unawaited(r.push<void>('/other'));
         await tester.pumpAndSettle();
         events.clear();
@@ -733,7 +829,7 @@ void main() {
         return null;
       };
       final r = router(initial: '/under');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.pushReplacement<void>('/inbox'));
       await tester.pumpAndSettle();
       expect(r.routerDelegate.currentConfiguration.error, isA<GuardFailure>());
@@ -755,7 +851,7 @@ void main() {
           'nothing', (tester) async {
         plainAnswer = () => throw StateError('boom');
         final r = router();
-        final c = await pumpRouter(tester, r);
+        final c = await pumpRouter(tester, attached(r));
         if (kind == 'push') {
           unawaited(r.push<void>('/admin'));
         } else {
@@ -781,7 +877,7 @@ void main() {
     ) async {
       plainAnswer = () => null;
       final r = router();
-      final c = await pumpRouter(tester, r);
+      final c = await pumpRouter(tester, attached(r));
       r.go('/admin');
       await tester.pumpAndSettle();
       expect(find.text('ADMIN'), findsOneWidget);
@@ -811,7 +907,7 @@ void main() {
         return null;
       };
       final r = router(initial: '/under');
-      await pumpRouter(tester, r);
+      await pumpRouter(tester, attached(r));
       unawaited(r.push<void>('/other'));
       await tester.pumpAndSettle();
       final done = <Object?>[];

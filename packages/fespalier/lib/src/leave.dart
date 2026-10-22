@@ -19,7 +19,13 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'guards.dart' show guardRefreshHooks, guardsContainer, guardsIdle;
+import 'guards.dart'
+    show
+        guardRefreshHooks,
+        guardRerunVerdict,
+        guardsContainer,
+        guardsIdle,
+        isGuardRerun;
 import 'lifecycle.dart' show RouterWatch;
 import 'route_scope.dart' show pageInstanceId;
 import 'segments.dart' show BadSegment;
@@ -317,6 +323,9 @@ final class _LeaveScopeState extends State<_LeaveScopeWidget> {
 /// for a `go`, `replace` and `pushReplacement`, the target match list of a `restore`, and, for
 /// a pop (nothing new was requested), the current configuration without the exiting match.
 ///
+/// A guard's re-run of a pushed page that moves it (since 0.21.0) is asked whatever its destination:
+/// the exemption of [within] is for a navigation the app made, a base page's redirect included.
+///
 /// A synchronous answer stays synchronous, with no `Future` and no microtask.
 LeaveResult leaveExit(
   BuildContext context,
@@ -332,9 +341,23 @@ LeaveResult leaveExit(
     if (router != null) {
       if (kDebugMode && _isRouteSwap(router, state)) return true;
       if (_bypass[router]?.allows(router) ?? false) return true;
-      if (_isTabSwitch(router, state)) return true;
-      if (_isQueryOnlyReplace(router, state)) return true;
-      if (within != null && _staysWithin(router, state, within)) return true;
+      // A guard's re-run of this pushed page (since 0.21.0): go_router asks the page to leave when
+      // the re-run lands, in the re-run's own synchronous call and with every redirect answered
+      // (invariant 8 of the guards, see `guardRerunVerdict`). When one of them redirected or failed
+      // it moves the page, so it asks as a base page's redirect does, whatever else is true of the
+      // navigation. When the guards passed again the page is replaced by itself, which is no leave.
+      final moves = guardRerunVerdict(router, state.pageKey);
+      if (moves == false) {
+        // Nothing is asked. But a question about this page that is still open (the person's press
+        // is waiting for an answer) is not left without its page: the landing is refused, and the
+        // answer still finds the entry it was asked about.
+        return !(_asking[router]?.containsKey(pageInstanceId(state)) ?? false);
+      }
+      if (moves == null) {
+        if (_isTabSwitch(router, state)) return true;
+        if (_isQueryOnlyReplace(router, state)) return true;
+        if (within != null && _staysWithin(router, state, within)) return true;
+      }
     }
     container =
         (router == null ? null : RouterWatch.peek(router)?.container) ??
@@ -739,6 +762,9 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
   if (info is! RouteInformationState || info.type != NavigatingType.replace) {
     return false;
   }
+  // A guard's re-run replaces the page with itself and is not a request of the app's: a page that
+  // goes while it is on the way, or after it, is a pop.
+  if (isGuardRerun(router, info)) return false;
   final top = info.baseRouteMatchList?.lastOrNull;
   return top is ImperativeRouteMatch &&
       top.pageKey == state.pageKey &&
@@ -755,6 +781,9 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
 bool _staysWithin(GoRouter router, GoRouterState state, String within) {
   final value = router.routeInformationProvider.value;
   final info = value.state;
+  // A guard's re-run that is asked about outside its own call (an asynchronous `onEnter`) is not a
+  // navigation the app made: the flow section is no exemption for it (since 0.21.0).
+  if (isGuardRerun(router, info)) return false;
   final config = router.routerDelegate.currentConfiguration;
   final Uri? target;
   if (info is RouteInformationState) {

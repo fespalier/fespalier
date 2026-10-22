@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:features/app.g.dart';
 import 'package:features/app/(members)/inbox/page.dart';
+import 'package:features/app/help/page.dart';
 import 'package:features/app/login/page.dart';
+import 'package:features/app/vault/page.dart';
 import 'package:features/auth.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/material.dart';
@@ -135,6 +139,41 @@ void main() {
         const LoginRoute(from: '/inbox?folder=sent').location,
         '/login?from=%2Finbox%3Ffolder%3Dsent',
       );
+    });
+  });
+
+  // The generated `AppRoutes.router()` attaches DevTools' listener (debug builds and flutter test)
+  // to the router's delegate before `MaterialApp.router` builds the Router widget, so a commit is
+  // judged before the widget registers its report of the configuration. A pushed page whose guard is
+  // asynchronous was run again on every frame then, for ever (fespalier/fespalier#258, review 6).
+  group('an asynchronous guard on a pushed page', () {
+    testWidgets(
+        '/vault pushed, /help over it, pop: the guard runs once more '
+        'and the app settles', (tester) async {
+      final c = await boot(tester, '/');
+      c.read(session.notifier).set(true);
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      unawaited(router.push<void>(const VaultRoute().location));
+      await tester.pumpAndSettle();
+      expect(find.byType(VaultPage), findsOneWidget);
+      unawaited(router.push<void>(const HelpRoute().location));
+      await tester.pumpAndSettle();
+      expect(find.byType(HelpPage), findsOneWidget);
+
+      var commits = 0;
+      router.routerDelegate.addListener(() => commits++);
+      router.pop();
+      // `pumpAndSettle` throws when frames keep coming, and a re-run on every frame never stops.
+      await tester.pumpAndSettle();
+      // The pop, and the re-run of /vault, which go_router showed without its redirect.
+      expect(commits, 2);
+      expect(find.byType(VaultPage), findsOneWidget);
+      expect(find.byType(HelpPage), findsNothing);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(commits, 2);
+      expect(tester.binding.hasScheduledFrame, isFalse);
     });
   });
 

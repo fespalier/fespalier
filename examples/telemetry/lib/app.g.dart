@@ -35,7 +35,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '00550d07570826f1';
+  static const String _version = '46f8bb0ca6e524ec';
   static const Map<String, String> _kept = {
     '(router)': '692c8098',
     'OrderRoute.action': '1dd64668',
@@ -194,7 +194,7 @@ abstract final class AppRoutes {
               GoRoute(
                 path: joinLocation(at, '/settings'),
                 redirect: (context, state) => runRedirect(() => traceGuard(state, 'g5@5', refGuard(context, 'g5@5', (ref) => _i10.guard(ref)), telemetry: const TelemetrySite('(tabs)/settings/guard.dart', route: '/settings'))),
-                builder: (context, state) => DeferredView(
+                builder: (context, state) => refusedView(context, state) ?? DeferredView(
                   library: _libTabsSettings,
                   page: () => _pageTabsSettings.SettingsPage(),
                   loading: () => const DefaultLoading(),

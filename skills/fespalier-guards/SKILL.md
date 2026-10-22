@@ -104,24 +104,15 @@ never stays on screen.
 - **Signing out moves you, if the guard watches (since 0.5.0).** A guard that
   `ref.watch`es the session runs again when it changes, with `AppRoutes.router()` and
   with a router of your own built from `AppRoutes.mount()`, with no
-  `refreshListenable`. Four limits: a guard **under a pushed page** does not react
-  until you pop back to it (the push dropped its subscription, popping runs the guard
-  again); a **pushed page's own guard** does not move it when its answer changes,
-  unless the location under the pushed pages refuses too (go_router's `refresh()`
-  restores pushed pages without running their redirects: fespalier/fespalier#258); a
-  guard that takes `ProviderContainer c` (or only `ref.read`s) never runs again by
-  itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs the
-  guard **twice** (Riverpod recomputes it, then the router asks), without fetching the
-  providers it watches twice. To cover a pushed page, the guard must **refuse** the
-  location under the pushed pages, not merely run there: a root guard that lets a
-  public home page through leaves the pushed page on screen. Put the guard in a group
-  that holds both the page you push from and the pushed page, with the sign-in page
-  beside the group (never inside it), and open a page that must never show with `go`,
-  not `push`. **Don't `ref.keepAlive()` in a guard**: it leaks a provider per
-  navigation. A guard that throws never moves the router: on a navigation its failure
-  shows the route's error.dart (or the not-found view), reported once in every build
-  mode through `FlutterError.onError`, on every go_router (since 0.21.0). Details and
-  a compiled sample: [`references/auth-patterns.md`](references/auth-patterns.md).
+  `refreshListenable`. Three limits: a guard of a **base page under a pushed page** (guarded or not) is not watched while it is covered, and is
+  not run again by the app bar's back button, `Navigator.pop` or the system back, only by `GoRouter.pop` and `context.pop` of a page with no `leave.dart` (a guarded pushed page runs its guard again however it is uncovered; a guard on the page on top reacts itself while it is on top: with a base page under a redirect the router is refreshed first, so a sign-out replaces the whole stack and a change only the top page's guard notices can ask a dirty page's `leave()` twice, once for the refresh and once for the re-run; with none under it, the page moves alone and asks once); a guard that takes `ProviderContainer c` (or only `ref.read`s) never runs
+  again by itself, as on 0.4.1 and earlier, where **no** guard did; and a sign-out runs
+  the guard **twice** (Riverpod recomputes it, then the router asks), without
+  fetching the providers it watches twice. **Don't `ref.keepAlive()` in a guard**: it
+  leaks a provider per navigation. A guard that throws never moves the router: on a
+  navigation its failure shows the route's error.dart (or the not-found view), reported once in
+  every build mode through `FlutterError.onError`, on every go_router (since 0.21.0).
+  Details and a compiled sample: [`references/auth-patterns.md`](references/auth-patterns.md).
 - **DevTools shows each decision (since 0.7.0).** Its **Guards** tab lists every guard and
   `redirect.dart` that answered, with `pass`, `redirect` (and where to), `pending` or `error` for an
   async guard, or `skipped` when a segment did not parse; a redirect chain is one history entry.
@@ -222,7 +213,7 @@ Future<List<Override>> startup() async => [
 - **`follow: false` for a flow**: with the default, turning the flag off on the page takes the user off it; a
   pushed page can stay (fespalier/fespalier#258).
 - **A guard that redirected stays subscribed until the next navigation**, so a flag's subscription outlives the page it
-  gated by one navigation (a test pins it). A guarded page under a pushed page reacts only when uncovered.
+  gated by one navigation (a test pins it). A guarded page under a pushed page that has no guard reacts only when uncovered.
 - **A cold deep link before the source is ready sees the fallback**: await the vendor's local load in `startup()`, or
   wrap a network-first vendor in `AsyncFlags` (the app's own `.timeout()` is the only timer).
 - **Without an override every flag is its fallback.** A flag that is "always off" is no override in `startup()`, or a key

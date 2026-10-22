@@ -241,6 +241,55 @@ void pushedPageGroups() {
     });
   });
 
+  // go_router gives a plain list, with no pushed page in it, when `replace` or `pushReplacement` takes
+  // the base page's place. The guards that navigation evaluated are the base's, and they stay watched
+  // as they are after a `go`: no entry carries the completer of that request.
+  group('a replace over a lone base page keeps its guard watched', () {
+    GoRouter router() => GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+        GoRoute(
+          path: '/admin',
+          redirect: (context, state) => runRedirect(
+            () => refGuard(
+              context,
+              'g@admin',
+              (ref) => ref.watch(_signedIn) ? null : '/login',
+            ),
+          ),
+          builder: (context, state) =>
+              refusedView(context, state) ?? const Text('ADMIN'),
+        ),
+      ],
+    );
+
+    for (final how in ['pushReplacement', 'replace']) {
+      testWidgets('$how: a sign-out moves the page', (tester) async {
+        final r = router();
+        final c = await pumpRouter(tester, attached(r));
+        if (how == 'replace') {
+          unawaited(r.replace<void>('/admin'));
+        } else {
+          unawaited(r.pushReplacement<void>('/admin'));
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('ADMIN'), findsOneWidget);
+        expect(
+          r.routerDelegate.currentConfiguration.matches
+              .whereType<ImperativeRouteMatch>(),
+          isEmpty,
+          reason: 'go_router left no pushed page',
+        );
+        c.read(_signedIn.notifier).set(false);
+        await tester.pumpAndSettle();
+        expect(find.text('LOGIN'), findsOneWidget);
+        expect(find.text('ADMIN'), findsNothing);
+      });
+    }
+  });
+
   group('the Future of a push whose page a re-run replaces', () {
     GoRouter picker() => GoRouter(
       initialLocation: '/home',

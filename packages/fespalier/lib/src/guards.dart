@@ -548,7 +548,10 @@ final class _RouterGuards {
         live.fresh = false;
         final from = live.request;
         live.request = null;
-        if (from == null) {
+        if (from == null || top == null) {
+          // The base's: a navigation that made no request, or a `replace` or `pushReplacement` that
+          // left no pushed page (go_router gives a plain list when the page it replaced was the
+          // base's).
           live.owner = null;
         } else if (identical(from, topCompleter)) {
           live.owner = topCompleter;

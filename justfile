@@ -273,6 +273,46 @@ frb-cose-core:
     cargo build --locked
     cargo deny --config deny.toml check
 
+# The flutter_rust_bridge version of the frb-cose example, pinned exactly: its codegen (`frb-cose-bindings`), CI's
+# `frb-cose` job and the example's pubspec and rust/Cargo.toml. cli/tests/versions.rs keeps the five places equal.
+frb_codegen := "2.13.0"
+
+# The Dart and Rust bindings of the frb-cose core, regenerated with the codegen this repository pins (cargo install
+# flutter_rust_bridge_codegen --version {{frb_codegen}} --locked, and cargo install cargo-expand --version 1.0.127 --locked,
+# both on PATH). A fresh generation must match the committed files and leave no new one, or this fails. The pub get
+# comes first: the generator formats its output by the package's language version.
+[working-directory: 'examples/frb-cose']
+frb-cose-bindings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    have="$(flutter_rust_bridge_codegen --version | awk '{print $2}')"
+    if [ "$have" != "{{frb_codegen}}" ]; then
+        echo "flutter_rust_bridge_codegen is $have, not {{frb_codegen}}: cargo install flutter_rust_bridge_codegen --version {{frb_codegen}} --locked" >&2
+        exit 1
+    fi
+    flutter pub get
+    flutter_rust_bridge_codegen generate
+    git diff --exit-code -- lib/src/rust rust/src/frb_generated.rs
+    untracked="$(git ls-files --others --exclude-standard -- lib/src/rust rust/src/frb_generated.rs)"
+    if [ -n "$untracked" ]; then
+        echo "the generator wrote files that are not committed: $untracked" >&2
+        exit 1
+    fi
+
+# What CI's `frb-cose` job runs; not in `just ci`: the server and core gates, the bindings check and the app's tests
+# with the server's end-to-end test required (FSP_REQUIRE_FRB_COSE_SERVER=1: a missing binary fails, it does not skip).
+# `just flutter` runs the app's tests too, the real core included, with that test skipped. Needs Rust (rust/ and server/
+# name their toolchains), cargo-deny, the codegen and cargo-expand (`frb-cose-bindings`), and Flutter.
+frb-cose: frb-cose-server frb-cose-core frb-cose-bindings
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd examples/frb-cose
+    flutter pub get
+    find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 \
+        | xargs -0 dart format --output=none --set-exit-if-changed
+    flutter analyze
+    FRB_COSE_SERVER_BIN="$PWD/server/target/debug/frb-cose-demo-server" FSP_REQUIRE_FRB_COSE_SERVER=1 flutter test
+
 # The wire-sizes example's server (examples/wire-sizes/server, a standalone Rust crate on cratestack-api 0.15.3):
 # fmt, clippy, tests (the runner drives the router in process, and tests/socket.rs checks one request over a
 # real socket), a locked build and cargo-deny, then the report regenerated and compared with the committed
@@ -363,7 +403,8 @@ codegen-interop:
 # `just intellij`, the web builds are `just web-chunks` (the deferred pages), `just web-routes` (the
 # Maestro flows) and `just examples-web` (every example's routes, one CI job each), the stack in Docker
 # is `just telemetry-smoke`, the Flutter 3.35 floor is `just floor`, the cose example with its Rust
-# server is `just cose`, and the docs screenshots are `just telemetry-screenshots` (not in CI at all).
+# server is `just cose`, the frb-cose example with its core and server is `just frb-cose`, and the docs
+# screenshots are `just telemetry-screenshots` (not in CI at all).
 # The examples' README screenshots are `just example-screenshots` (not in CI at all); `just example-images` checks them.
 #
 # The gate: CI's Rust, Flutter, DevTools, packaging, telemetry and skills jobs

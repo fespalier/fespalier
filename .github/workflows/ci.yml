@@ -945,6 +945,112 @@ jobs:
           FSP_REQUIRE_COSE_SERVER: "1"
         run: flutter test
 
+  # examples/frb-cose: a Rust core (examples/frb-cose/rust) behind flutter_rust_bridge, which is the CrateStack client of the
+  # example: it seals every call as COSE_Sign1 and the device key stays in Dart. The server is a copy of examples/cose/server.
+  # The job gates both Rust crates, regenerates the committed bindings with the pinned codegen and fails on any difference,
+  # then runs the app's tests with the server's end-to-end test required (FSP_REQUIRE_FRB_COSE_SERVER: a missing binary fails
+  # instead of skipping). The `dart` job already runs the app's tests, the core included (its build hook compiles the core
+  # there); this job adds the server, the core's gates and the codegen. It is not in the `floor` job: fespalier_sign_keypair
+  # needs Flutter 3.44. `just frb-cose` runs the same steps (with the codegen and cargo-expand installed by hand).
+  frb-cose:
+    name: frb-cose example (Rust core, server and app, end to end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      # The codegen and cargo-expand that write the bindings: exact, the same as the pins in the example (its pubspec,
+      # rust/Cargo.toml and the generated headers); cli/tests/versions.rs keeps them equal.
+      FRB_CODEGEN_VERSION: 2.13.0
+      CARGO_EXPAND_VERSION: 1.0.127
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server and the core pin their own toolchains (cli/tests/versions.rs checks the channels equal the generator's);
+      # this reads both and fails when they differ.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: |
+          server="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/frb-cose/server/rust-toolchain.toml")"
+          core="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/frb-cose/rust/rust-toolchain.toml")"
+          if [ "$server" != "$core" ]; then
+            echo "examples/frb-cose/server ($server) and examples/frb-cose/rust ($core) pin different toolchains" >&2
+            exit 1
+          fi
+          echo "channel=$core" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: |
+            examples/frb-cose/server
+            examples/frb-cose/rust
+          cache-directories: examples/frb-cose/.dart_tool/hooks_runner
+      # Tests include the server's envelope tests (the refusals cose's end-to-end test covers).
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/frb-cose/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/frb-cose/server/Cargo.toml
+          command: check
+      # The core's tests run against the server in process (a dev-dependency), so its cold build compiles cratestack too.
+      - name: Core (fmt, clippy, tests, locked build)
+        working-directory: examples/frb-cose/rust
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/frb-cose/rust/Cargo.toml
+          command: check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - name: Codegen tools (the pinned flutter_rust_bridge_codegen and cargo-expand)
+        run: |
+          cargo install cargo-expand --version "$CARGO_EXPAND_VERSION" --locked
+          cargo install flutter_rust_bridge_codegen --version "$FRB_CODEGEN_VERSION" --locked
+      # Before the bindings: the generator formats its output by the package's language version, which pub get sets.
+      - name: Dependencies (flutter pub get)
+        working-directory: examples/frb-cose
+        run: flutter pub get
+      - name: Bindings (regenerated with the pinned codegen; any difference fails)
+        working-directory: examples/frb-cose
+        run: |
+          flutter_rust_bridge_codegen generate
+          git diff --exit-code -- lib/src/rust rust/src/frb_generated.rs
+          untracked="$(git ls-files --others --exclude-standard -- lib/src/rust rust/src/frb_generated.rs)"
+          if [ -n "$untracked" ]; then
+            echo "the generator wrote files that are not committed: $untracked" >&2
+            exit 1
+          fi
+      - name: App (pub get done, dart format, analyze)
+        working-directory: examples/frb-cose
+        run: |
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 |
+            xargs -0 dart format --output=none --set-exit-if-changed
+          flutter analyze
+      # The app's tests: the core is built by the hook, and the end-to-end test runs against the server binary, required.
+      - name: App tests, the end-to-end one against the server binary
+        working-directory: examples/frb-cose
+        env:
+          FRB_COSE_SERVER_BIN: ${{ github.workspace }}/examples/frb-cose/server/target/debug/frb-cose-demo-server
+          FSP_REQUIRE_FRB_COSE_SERVER: "1"
+        run: flutter test
+
   # examples/wire-sizes: a CrateStack server (a Rust crate of its own, examples/wire-sizes/server) that
   # serves one schema as JSON, CBOR and COSE_Sign1 CBOR with every call measured as the handler stack
   # sees it (a count of the HTTP message, not of bytes on a socket), and the runner that drives it in

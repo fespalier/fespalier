@@ -22,6 +22,7 @@
     reason = "integration-test helpers: a failed unwrap is a failed test"
 )]
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -2047,6 +2048,205 @@ fn the_wire_sizes_example_server_builds_with_the_generators_rust() {
             "the wire-sizes job must mention `{needle}`"
         );
     }
+}
+
+/// The frb-cose example's Rust: its core (rust/) is built by the Flutter hook with the toolchain its own file names, and
+/// its server is a crate of its own with a copy of that file. Both channels must be cli's; the core must list the host's
+/// target, because the hook refuses a target its toolchain file does not list; and the `frb-cose` job must read both
+/// files and gate the crates, the bindings and the end-to-end test. The `dart` job must read the core's file too, because
+/// its `flutter test` builds the core.
+#[test]
+fn the_frb_cose_crates_build_with_the_generators_rust() {
+    let channel = toolchain_channel("cli/rust-toolchain.toml");
+    for rel in [
+        "examples/frb-cose/server/rust-toolchain.toml",
+        "examples/frb-cose/rust/rust-toolchain.toml",
+    ] {
+        assert_eq!(
+            toolchain_channel(rel),
+            channel,
+            "{rel} (left) and cli/rust-toolchain.toml (right) differ"
+        );
+    }
+    assert!(
+        read("examples/frb-cose/rust/rust-toolchain.toml").contains("\"x86_64-unknown-linux-gnu\""),
+        "examples/frb-cose/rust/rust-toolchain.toml lists no x86_64-unknown-linux-gnu target: the \
+         Flutter hook refuses to build the core for a target its toolchain file does not list"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    let job = job_text(&ci, "frb-cose");
+    for needle in [
+        "examples/frb-cose/server/rust-toolchain.toml",
+        "examples/frb-cose/rust/rust-toolchain.toml",
+        "FRB_COSE_SERVER_BIN",
+        "FSP_REQUIRE_FRB_COSE_SERVER",
+        "flutter_rust_bridge_codegen",
+    ] {
+        assert!(
+            job.contains(needle),
+            "the frb-cose job must mention `{needle}`: it builds both crates with the pinned toolchains, regenerates \
+             the bindings and requires the end-to-end test to run"
+        );
+    }
+    assert!(
+        job_text(&ci, "dart").contains("examples/frb-cose/rust/rust-toolchain.toml"),
+        "the dart job must read examples/frb-cose/rust/rust-toolchain.toml: its flutter test builds the core"
+    );
+}
+
+/// The example's `flutter_rust_bridge` is exact in places that move together: its pubspec (the runtime and the build
+/// hook, two lines), `rust/Cargo.toml`, the version every generated file's header names, the `codegenVersion` the Dart
+/// bindings report, the codegen version the bindings' Rust names, the frb-cose job's install and the justfile's codegen
+/// pin. A bump is by hand (`scripts/deps.sh upgrade` writes the pubspec back to `rust/Cargo.toml`'s version), so every
+/// place is read here and each must equal the Cargo pin.
+#[test]
+fn the_frb_cose_example_pins_one_flutter_rust_bridge() {
+    let pubspec = read("examples/frb-cose/pubspec.yaml");
+    let cargo = read("examples/frb-cose/rust/Cargo.toml");
+    let pin = cargo
+        .lines()
+        .find_map(|l| l.strip_prefix("flutter_rust_bridge = \"="))
+        .map(version_at)
+        .expect(
+            "rust/Cargo.toml pins flutter_rust_bridge exactly: `flutter_rust_bridge = \"=x.y.z\"`",
+        );
+    assert!(
+        !pin.is_empty(),
+        "rust/Cargo.toml's flutter_rust_bridge pin has no version"
+    );
+
+    let generated = [
+        "examples/frb-cose/rust/src/frb_generated.rs",
+        "examples/frb-cose/lib/src/rust/frb_generated.dart",
+        "examples/frb-cose/lib/src/rust/frb_generated.io.dart",
+        "examples/frb-cose/lib/src/rust/frb_generated.web.dart",
+        "examples/frb-cose/lib/src/rust/api/core.dart",
+    ];
+    let rust_generated = read("examples/frb-cose/rust/src/frb_generated.rs");
+    let dart_generated = read("examples/frb-cose/lib/src/rust/frb_generated.dart");
+    let ci = read(".github/workflows/ci.yml");
+    let mut places: Vec<(String, Vec<String>)> = vec![
+        (
+            "pubspec.yaml (flutter_rust_bridge)".into(),
+            pins_after(&pubspec, "  flutter_rust_bridge: "),
+        ),
+        (
+            "pubspec.yaml (flutter_rust_bridge_hooks)".into(),
+            pins_after(&pubspec, "  flutter_rust_bridge_hooks: "),
+        ),
+        (
+            "rust/src/frb_generated.rs (FLUTTER_RUST_BRIDGE_CODEGEN_VERSION)".into(),
+            pins_after(
+                &rust_generated,
+                "pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = ",
+            ),
+        ),
+        (
+            "lib/src/rust/frb_generated.dart (codegenVersion)".into(),
+            pins_after(&dart_generated, "  String get codegenVersion => "),
+        ),
+        (
+            "ci.yml (the frb-cose job's FRB_CODEGEN_VERSION)".into(),
+            pins_after(job_text(&ci, "frb-cose"), "      FRB_CODEGEN_VERSION: "),
+        ),
+        (
+            "justfile (frb_codegen)".into(),
+            pins_after(&read("justfile"), "frb_codegen := "),
+        ),
+    ];
+    for rel in generated {
+        places.push((format!("{rel} (its header)"), generated_headers(&read(rel))));
+    }
+    for (place, found) in places {
+        assert!(!found.is_empty(), "{place} names no version");
+        for version in found {
+            assert_eq!(
+                version, pin,
+                "{place} says {version}, and rust/Cargo.toml pins flutter_rust_bridge {pin}: move them together"
+            );
+        }
+    }
+}
+
+/// The four lockfiles of the CrateStack examples (cose's and wire-sizes' servers, frb-cose's server and its core)
+/// resolve every `cratestack` crate they share to one version: an example on another one would prove a different
+/// protocol from the others.
+#[test]
+fn the_cratestack_examples_share_one_cratestack() {
+    let locks = [
+        "examples/cose/server/Cargo.lock",
+        "examples/wire-sizes/server/Cargo.lock",
+        "examples/frb-cose/server/Cargo.lock",
+        "examples/frb-cose/rust/Cargo.lock",
+    ];
+    let mut versions: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for lock in locks {
+        let packages = lock_packages(&read(lock));
+        assert!(
+            packages.iter().any(|(name, _)| name == "cratestack-core"),
+            "{lock} has no cratestack-core"
+        );
+        for (name, version) in packages {
+            if name.starts_with("cratestack") {
+                versions.entry(name).or_default().insert(version);
+            }
+        }
+    }
+    for (name, found) in &versions {
+        assert_eq!(
+            found.len(),
+            1,
+            "the CrateStack examples resolve {name} to {found:?}: one version in every lockfile"
+        );
+    }
+    let all: BTreeSet<&String> = versions.values().flatten().collect();
+    assert_eq!(
+        all.len(),
+        1,
+        "the CrateStack examples resolve to more than one cratestack version: {all:?}"
+    );
+}
+
+/// The version a text starts with: digits and dots, after any quotes.
+fn version_at(rest: &str) -> String {
+    rest.trim_start_matches(['"', '\''])
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect::<String>()
+        .trim_end_matches('.')
+        .to_string()
+}
+
+/// The version each line that starts with `prefix` names, after the prefix.
+fn pins_after(text: &str, prefix: &str) -> Vec<String> {
+    text.lines()
+        .filter_map(|l| l.strip_prefix(prefix))
+        .map(version_at)
+        .collect()
+}
+
+/// The version each generated header names, the one after the `flutter_rust_bridge` marker of its `@generated` line.
+fn generated_headers(text: &str) -> Vec<String> {
+    const MARK: &str = "@generated by `flutter_rust_bridge`@ ";
+    text.lines()
+        .filter_map(|l| l.split_once(MARK).map(|(_, rest)| version_at(rest)))
+        .collect()
+}
+
+/// The (name, version) of each package of a Cargo.lock, in order.
+fn lock_packages(lock: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut name = None;
+    for line in lock.lines() {
+        if let Some(value) = line.strip_prefix("name = ") {
+            name = Some(value.trim_matches('"').to_string());
+        } else if let Some(value) = line.strip_prefix("version = ")
+            && let Some(package) = name.take()
+        {
+            out.push((package, value.trim_matches('"').to_string()));
+        }
+    }
+    out
 }
 
 /// `fsp create` writes the version it is, and spells it out nowhere: the pubspec it plans (for

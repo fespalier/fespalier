@@ -11,6 +11,8 @@
 #
 # The root's exact `melos:` pin is the one constraint that must stay exact (cli/tests/versions.rs): pub rewrites
 # it like any other (to ^<newest>), so the upgrade writes it exact again, at the version pub chose.
+# flutter_rust_bridge (examples/frb-cose) is pinned exactly too: the upgrade writes its two pubspec pins back to the
+# version rust/Cargo.toml pins, and says what to change by hand to move it.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -57,10 +59,27 @@ if [ "$1" = upgrade ]; then
   if ! git diff --quiet -- packages/fespalier_devtools/pubspec.lock; then
     echo "packages/fespalier_devtools/pubspec.lock changed: run 'just devtools-build' and commit the build." >&2
   fi
+  # flutter_rust_bridge is pinned exactly, on purpose: the frb-cose example's bindings come from one codegen, and its Rust
+  # crate pins the same version. The upgrade moved the example's two pins to ^<newest>, so write them back to the version
+  # rust/Cargo.toml pins, then resolve again.
+  frb="$(sed -n 's/^flutter_rust_bridge = "=\(.*\)"$/\1/p' examples/frb-cose/rust/Cargo.toml)"
+  if [ -z "$frb" ]; then
+    echo "examples/frb-cose/rust/Cargo.toml has no exact flutter_rust_bridge pin" >&2
+    exit 1
+  fi
+  tmp="$(mktemp)"
+  sed "s/^  flutter_rust_bridge: .*/  flutter_rust_bridge: $frb/; s/^  flutter_rust_bridge_hooks: .*/  flutter_rust_bridge_hooks: $frb/" \
+    examples/frb-cose/pubspec.yaml > "$tmp"
+  cat "$tmp" > examples/frb-cose/pubspec.yaml
+  rm -f "$tmp"
+  (cd examples/frb-cose && flutter pub get > /dev/null)
   cat >&2 << 'EOF'
 Next:
   cd cli && cargo test --test versions   # one constraint per dependency, fsp create's recipes too (cargo test create_tests::)
   just floor <a Flutter 3.35 SDK>          # a raised lower bound may need a newer Flutter: write a range (go_router's)
   just ci
+  flutter_rust_bridge is not upgraded here (it is pinned): to move it by hand, change the two pubspec lines of
+  examples/frb-cose, rust/Cargo.toml and the codegen pin (ci.yml's FRB_CODEGEN_VERSION and the justfile's frb_codegen),
+  then `just frb-cose-bindings`, and commit the regenerated bindings
 EOF
 fi

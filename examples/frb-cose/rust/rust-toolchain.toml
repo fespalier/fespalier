@@ -1,0 +1,15 @@
+# The same channel, components and profile as cli/rust-toolchain.toml (cli/tests/versions.rs fails when the channel
+# differs). The build hook (native_toolchain_rust) refuses to build for a triple this file does not list, and rustup
+# installs every listed target the first time the hook runs. These are flutter_rust_bridge 2.13.0's template targets
+# without wasm32 (the web build has no core). Each installs about 130 to 170 MB, so about 2 GB once per machine.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
+targets = [
+  "aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android",
+  "aarch64-apple-ios", "aarch64-apple-ios-sim", "x86_64-apple-ios",
+  "aarch64-apple-darwin", "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu",
+  "x86_64-pc-windows-msvc", "aarch64-pc-windows-msvc",
+]

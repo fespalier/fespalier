@@ -10,6 +10,8 @@ import 'package:fespalier/src/telemetry.dart'
     show telemetryNavigationEnd, telemetryNavigationStart;
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -48,6 +50,7 @@ const Set<String> contractSpans = {
   'auth',
   'image',
   'custom',
+  'http',
 };
 const Set<String> contractKeys = {
   'fespalier.operation',
@@ -78,7 +81,7 @@ const Set<String> contractKeys = {
   'fespalier.auth.result',
   'fespalier.auth.backend',
   'fespalier.auth.trigger',
-  'fespalier.auth.dpop',
+  'fespalier.auth.scheme',
   'fespalier.image.cdn',
   'fespalier.image.width',
   'fespalier.image.preload',
@@ -86,6 +89,12 @@ const Set<String> contractKeys = {
   'fespalier.image.status',
   'fespalier.custom.name',
   'fespalier.custom.result',
+  'http.request.method',
+  'server.address',
+  'server.port',
+  'url.scheme',
+  'http.response.status_code',
+  'http.request.resend_count',
 };
 const Set<String> contractEvents = {
   'fespalier.page.enter',
@@ -137,7 +146,11 @@ void remember() {
     // A custom span is named by its package (`fespalier.push.open`), and its own
     // `fespalier.push.*` keys are that package's contract, not version 1's.
     final custom = span.name.startsWith('fespalier.');
-    thisTest.spans.add(custom ? 'custom' : span.name.split(' ').first);
+    // An HTTP span (`OtelTransport`) is named by its method.
+    final http = span.attributes.getString('fespalier.operation') == 'http';
+    thisTest.spans.add(
+      http ? 'http' : (custom ? 'custom' : span.name.split(' ').first),
+    );
     if (span.name == 'navigate (not found)') thisTest.spans.add(span.name);
     thisTest.keys.addAll(
       span.attributes.keys.where(
@@ -991,29 +1004,29 @@ void main() {
 
   group('an auth span (fespalier_auth, since 0.9.0)', () {
     test(
-      'a refresh: its step, backend, trigger and DPoP, and nothing else',
+      'a renewal: its step, backend, trigger and scheme, and nothing else',
       () {
         final token = FespalierTelemetry.begin(
           const TelemetryStart(
             TelemetryOp.auth,
-            authStep: 'refresh',
+            authStep: 'renew',
             authBackend: 'oidc',
             authTrigger: 'unauthorized',
-            authDpop: true,
+            authScheme: 'dpop',
           ),
         );
         FespalierTelemetry.finish(
           token,
           const TelemetryEnd(TelemetryOutcome.ok, isAsync: true),
         );
-        final span = only('auth refresh');
+        final span = only('auth renew');
         expect(span.parentSpanContext?.spanId.isValid ?? false, isFalse);
         final a = span.attributes;
         expect(a.getString('fespalier.operation'), 'auth');
-        expect(a.getString('fespalier.auth.operation'), 'refresh');
+        expect(a.getString('fespalier.auth.operation'), 'renew');
         expect(a.getString('fespalier.auth.backend'), 'oidc');
         expect(a.getString('fespalier.auth.trigger'), 'unauthorized');
-        expect(a.getBool('fespalier.auth.dpop'), true);
+        expect(a.getString('fespalier.auth.scheme'), 'dpop');
         expect(a.getString('fespalier.auth.result'), 'ok');
         expect(a.getBool('fespalier.async'), true);
         expect(span.status, SpanStatusCode.Unset);
@@ -1022,7 +1035,7 @@ void main() {
           'fespalier.auth.operation',
           'fespalier.auth.backend',
           'fespalier.auth.trigger',
-          'fespalier.auth.dpop',
+          'fespalier.auth.scheme',
           'fespalier.auth.result',
           'fespalier.async',
         });
@@ -1049,7 +1062,7 @@ void main() {
         expect(span.status, SpanStatusCode.Unset, reason: outcome);
         expect(a(span, 'fespalier.auth.result'), outcome);
         expect(a(span, 'fespalier.auth.trigger'), isNull);
-        expect(span.attributes.getBool('fespalier.auth.dpop'), false);
+        expect(a(span, 'fespalier.auth.scheme'), isNull);
       }
     });
 
@@ -1057,7 +1070,7 @@ void main() {
       final token = FespalierTelemetry.begin(
         const TelemetryStart(
           TelemetryOp.auth,
-          authStep: 'refresh',
+          authStep: 'renew',
           authBackend: 'oidc',
         ),
       );
@@ -1072,7 +1085,7 @@ void main() {
           stackTrace: StackTrace.current,
         ),
       );
-      final span = only('auth refresh');
+      final span = only('auth renew');
       expect(span.status, SpanStatusCode.Error);
       expect(a(span, 'fespalier.auth.result'), 'error');
       expect(a(span, 'error.type'), 'FormatException');
@@ -1416,6 +1429,30 @@ void main() {
       expect(spans[2].attributes.getBool('fespalier.action.invalid'), isNull);
       expect(spans[2].attributes.getString('fespalier.action.result'), 'ok');
     });
+  });
+
+  group('an HTTP request (OtelTransport, since 0.21.0)', () {
+    test(
+      'is a CLIENT span named by its method, and a re-send says so',
+      () async {
+        final transport = OtelTransport(
+          FakeTransport((_, _) => fakeResponse(503)),
+        );
+        final request = TransportRequest(
+          method: 'GET',
+          uri: Uri.parse('https://api.example.com/items/5?q=1'),
+        );
+        await transport.send(request);
+        await transport.send(
+          request.copyWith(attributes: {transportReplayKey: true}),
+        );
+        final sent = exporter.findSpansByName('GET');
+        expect(sent, hasLength(2));
+        expect(a(sent[0], 'fespalier.operation'), 'http');
+        expect(a(sent[0], 'url.path'), '/items/5');
+        expect(sent[1].attributes.getInt('http.request.resend_count'), 1);
+      },
+    );
   });
 
   // The other half of the contract needs the whole file: every name of it was emitted by some test

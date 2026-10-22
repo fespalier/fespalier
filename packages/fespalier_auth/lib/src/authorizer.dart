@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_http/fespalier_http.dart';
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart';
 
-import 'backend.dart';
+import 'authenticator.dart';
 import 'config.dart';
 import 'errors.dart';
 import 'notifier.dart';
@@ -15,95 +15,61 @@ import 'util.dart';
 /// since 0.15.0.
 final class AuthAttempt implements HttpAuthorization {
   AuthAttempt._({
-    required this.method,
-    required this.uri,
     this.headers = const <String, String>{},
-    this.accessToken,
-    String? userId,
-    this.proofUsed = false,
-    this.proofRetried = false,
-    this.refreshRetried = false,
-  }) : _userId = userId;
+    this.request,
+    this.session,
+    this.resent = false,
+    this.renewed = false,
+  });
 
-  /// The HTTP method this send is for.
-  @override
-  final String method;
-
-  /// The URL this send is for.
-  @override
-  final Uri uri;
-
-  /// `Authorization`, and `DPoP` for a DPoP-bound token; empty when none was attached.
+  /// What the authenticator added to the request (`Authorization`, a signature, an
+  /// attestation); empty when nothing was attached.
   @override
   final Map<String, String> headers;
 
-  /// The access token the headers carry; null when none was attached.
-  final String? accessToken;
+  /// The request as the authenticator saw it; null when nothing was attached.
+  final TransportRequest? request;
 
-  final String? _userId;
+  /// The session this send was made for; null when nothing was attached.
+  final AuthSession? session;
 
-  /// Whether this send carried a proof of possession.
-  final bool proofUsed;
+  /// What proved the session on this send; null when nothing was attached.
+  SessionCredential? get credential => session?.credential;
 
-  /// Whether this send is the one that follows a proof challenge (a nonce, a clock correction).
-  final bool proofRetried;
+  /// Whether this send is the one that follows a `Resend` (a nonce, a clock correction).
+  final bool resent;
 
-  /// Whether this send is the one that follows a refresh.
-  final bool refreshRetried;
+  /// Whether this send is the one that follows a `Renew`.
+  final bool renewed;
 
-  /// Whether this send is the one that follows a challenge or a refresh, so a request sent again
-  /// by the authorizer: `SessionClient` marks the request (`isAuthReplay`), and
-  /// `SessionInterceptor` sets `options.extra[authReplayKey]`.
+  /// Whether this send is the one that follows a `Resend` or a `Renew`, so a request sent again
+  /// by the authorizer: `SessionTransport` marks the request's attributes
+  /// (`transportReplayKey`).
   @override
-  bool get isReplay => proofRetried || refreshRetried;
+  bool get isReplay => resent || renewed;
 
-  bool _proofRetryNext = false;
-  bool _refreshRetryNext = false;
+  bool _resendNext = false;
+  bool _renewNext = false;
 }
 
-/// The `RequestOptions.extra` key `SessionInterceptor` sets to `true` on a request it sends again
-/// after a proof challenge or a 401 (since 0.9.0): `fespalier.auth.replay`. A write guard that
-/// refuses re-sends lets this one through. Never sent to a server.
-const String authReplayKey = 'fespalier.auth.replay';
-
-/// The id of the user signed in to [authorizer] now, or null. Package-private: `SessionInterceptor`
-/// records it when the authorizer fails for a request.
-String? authorizerUserId(Authorizer authorizer) =>
-    authorizer._notifier.session?.user.id;
-
-/// The id of the user [attempt] was made for, or null when it carried no session. Package-private.
-String? attemptUserId(AuthAttempt attempt) => attempt._userId;
-
-/// The `RequestOptions.extra` key `SessionInterceptor` sets to the `AuthRejected` that stopped a
-/// request before its send (since 0.19.0): `fespalier_auth.refused`. A request that finds it is
-/// refused again with the same error, with no refresh and no send, whoever sends it again (a
-/// retrier calls `dio.fetch` with the very same options). An `AuthUnavailable` is never stored
-/// here: the network may come back. Never sent to a server.
-const String authRefusedKey = 'fespalier_auth.refused';
-
-/// The `RequestOptions.extra` key `SessionInterceptor` sets to `true` when a request asked for the
-/// session and the authorizer failed (since 0.19.0): `fespalier_auth.wanted`. A later send of the
-/// same options that would go out without the session is refused instead. Never sent to a server.
-const String authWantedKey = 'fespalier_auth.wanted';
-
-/// What an HTTP client needs from the session (since 0.9.0): the headers for a request, and the
+/// What a transport needs from the session (since 0.9.0): the headers for a request, and the
 /// answer to "send it once more?". One per container: `ref.watch(authorizer)`.
 ///
-/// `SessionClient` and `SessionInterceptor` (dio) are two clients over it. A client of your own
-/// asks [authorize] before each send and [retry] after each response, and sends at most three
-/// times.
+/// `SessionTransport` is the client over it. A client of your own asks [authorize] before each
+/// send, with the request and the exact bytes of its body, and [retry] after each response, and
+/// sends at most three times.
 ///
-/// It is an [HttpCredentials] since 0.15.0, so a transfer that is not an `http.Client` can take
-/// it as it is.
+/// It is an [HttpCredentials] since 0.15.0, so a transfer that is not a transport can take it as
+/// it is.
 final class Authorizer implements HttpCredentials {
-  Authorizer._(this._notifier, this._origins, this._proof);
+  Authorizer._(this._notifier, this._origins, this._authenticator);
 
   final AuthSessionNotifier _notifier;
   final List<Uri> _origins;
-  final ProofOfPossession? _proof;
+  final RequestAuthenticator _authenticator;
 
   /// Whether [uri]'s origin (scheme, host and port) is one of `AuthConfig.apiOrigins`. Nothing
-  /// else gets a token.
+  /// else gets a credential.
   @override
   bool covers(Uri uri) {
     if (uri.host.isEmpty) return false;
@@ -117,19 +83,25 @@ final class Authorizer implements HttpCredentials {
     return false;
   }
 
-  /// The headers for [method] [uri]: none when [uri] is not covered or nobody is signed in;
-  /// otherwise the session's, after a refresh when the access token has expired (shared with every
-  /// request that finds it expired at the same time).
+  /// The id of the user signed in now, or null when nobody is (or the session is still being
+  /// restored) (since 0.21.0). `SessionTransport` compares it with the user a request was
+  /// first authorized for.
+  String? get userId => _notifier.session?.user.id;
+
+  /// The headers for [request]: none when its URL is not covered or nobody is signed in;
+  /// otherwise the authenticator's, after a renewal when the credential has expired (shared with
+  /// every request that finds it expired at the same time).
   ///
-  /// Throws `AuthRejected` when that refresh was refused (the session is over), or when [previous]
-  /// was made for another user than the one signed in now (since 0.19.0), and
+  /// The authenticator is given [request] as it is, with the exact bytes of its body in
+  /// `TransportRequest.body` (null for a streamed one): a scheme that signs the request signs
+  /// them. Throws `AuthRejected` when that renewal was refused (the session is over), or when
+  /// [previous] was made for another user than the one signed in now (since 0.19.0), and
   /// `AuthUnavailable` when it could not run. Pass the [previous] attempt of the same request
   /// when sending it again, so the retries are counted; an `ArgumentError` when it is not an
   /// attempt this package made. The result is an [AuthAttempt].
   @override
   Future<AuthAttempt> authorize(
-    String method,
-    Uri uri, {
+    TransportRequest request, {
     HttpAuthorization? previous,
   }) async {
     if (previous != null && previous is! AuthAttempt) {
@@ -140,111 +112,96 @@ final class Authorizer implements HttpCredentials {
       );
     }
     final prior = previous as AuthAttempt?;
-    final proofRetried =
-        prior != null && (prior.proofRetried || prior._proofRetryNext);
-    final refreshRetried =
-        prior != null && (prior.refreshRetried || prior._refreshRetryNext);
-    AuthAttempt unauthenticated() => AuthAttempt._(
-      method: method,
-      uri: uri,
-      proofRetried: proofRetried,
-      refreshRetried: refreshRetried,
-    );
-    if (!covers(uri)) return unauthenticated();
-    final AuthTokens tokens;
+    final resent = prior != null && (prior.resent || prior._resendNext);
+    final renewed = prior != null && (prior.renewed || prior._renewNext);
+    AuthAttempt unauthenticated() =>
+        AuthAttempt._(resent: resent, renewed: renewed);
+    if (!covers(request.uri)) return unauthenticated();
     try {
-      tokens = await _notifier.tokens();
+      await _notifier.credential();
     } on NotSignedIn {
       return unauthenticated();
     }
-    final userId = _notifier.session?.user.id;
-    final priorUser = prior?._userId;
-    if (priorUser != null && userId != priorUser) {
+    // The session as it is after any renewal above: it is what the request is made for.
+    final session = _notifier.session;
+    if (session == null) return unauthenticated();
+    final priorUser = prior?.session?.user.id;
+    if (priorUser != null && session.user.id != priorUser) {
       // A request made for one user is never sent again as another.
       throw const AuthRejected();
     }
-    if (!tokens.isDpop) {
-      return AuthAttempt._(
-        method: method,
-        uri: uri,
-        headers: {'Authorization': 'Bearer ${tokens.accessToken}'},
-        accessToken: tokens.accessToken,
-        userId: userId,
-        proofRetried: proofRetried,
-        refreshRetried: refreshRetried,
-      );
-    }
-    final proof = _proof;
-    if (proof == null) {
-      throw StateError(
-        'fespalier_auth: the access token is DPoP-bound (token_type DPoP), but the backend has '
-        'no proof of possession: pass proof: DpopProof.device() '
-        '(package:fespalier_sign_keypair) to the backend',
-      );
-    }
-    final proofHeaders = await proof.headers(
-      method: method,
-      uri: uri,
-      accessToken: tokens.accessToken,
-    );
+    final added = await _authenticator.headers(session, request);
     return AuthAttempt._(
-      method: method,
-      uri: uri,
-      headers: {'Authorization': 'DPoP ${tokens.accessToken}', ...proofHeaders},
-      accessToken: tokens.accessToken,
-      userId: userId,
-      proofUsed: true,
-      proofRetried: proofRetried,
-      refreshRetried: refreshRetried,
+      headers: Map<String, String>.unmodifiable(added),
+      request: request,
+      session: session,
+      resent: resent,
+      renewed: renewed,
     );
   }
 
-  /// After the response to [attempt] ([statusCode] and its [headers], with lower-case names):
-  /// records a `DPoP-Nonce`, and says whether to send the request once more, with
-  /// `authorize(..., previous: attempt)`.
+  /// After [response] to [attempt]: asks the authenticator what it means, and says whether to
+  /// send the request once more, with `authorize(..., previous: attempt)`.
   ///
-  /// True for a proof challenge (a nonce, a clock correction: once), or for a 401 to the access
-  /// token it carried, after one shared refresh (once). False when the response stands, and when
-  /// the refresh was refused (the user is signed out). Throws `AuthUnavailable` when the
-  /// refresh could not run.
+  /// The authenticator reads the body only when [response] is buffered (a transport layer
+  /// buffers a 401 or a 403 before asking). True for a `Resend` (a nonce, a clock correction:
+  /// once), or for a `Renew` after one shared renewal (once). False when the response stands
+  /// (`Accept`), and when the renewal was refused (the user is signed out). A `SessionEnded`
+  /// verdict signs the user out with its reason and throws `AuthRejected`. Throws
+  /// `AuthUnavailable` when the renewal could not run.
+  ///
+  /// With [mayRenew] false (since 0.21.0) a `Renew` verdict is not acted on: the response
+  /// stands, as for a request that has renewed already. `SessionTransport` passes false once the
+  /// logical request has spent its renewal on an earlier send.
   @override
   Future<bool> retry(
-    covariant AuthAttempt attempt, {
-    required int statusCode,
-    required Map<String, String> headers,
+    covariant AuthAttempt attempt,
+    TransportResponse response, {
+    bool mayRenew = true,
   }) async {
-    final token = attempt.accessToken;
-    if (token == null) return false;
-    final proof = _proof;
-    if (attempt.proofUsed &&
-        proof != null &&
-        proof.onResponse(
-          uri: attempt.uri,
-          statusCode: statusCode,
-          headers: headers,
-          retried: attempt.proofRetried,
-        )) {
-      attempt._proofRetryNext = true;
-      return true;
+    final request = attempt.request;
+    final session = attempt.session;
+    if (request == null || session == null) return false;
+    final verdict = _authenticator.judge(
+      session,
+      request,
+      statusCode: response.statusCode,
+      headers: response.headers,
+      body: response.isBuffered
+          ? utf8.decode(await response.bytes(), allowMalformed: true)
+          : null,
+      retried: attempt.isReplay,
+    );
+    switch (verdict) {
+      case Accept():
+        return false;
+      case Resend():
+        if (attempt.resent) return false;
+        attempt._resendNext = true;
+        return true;
+      case Renew(:final hint):
+        if (attempt.renewed || !mayRenew) return false;
+        try {
+          await _notifier.credential(rejected: session.credential, hint: hint);
+        } on AuthRejected {
+          return false;
+        } on NotSignedIn {
+          return false;
+        }
+        attempt._renewNext = true;
+        return true;
+      case SessionEnded(:final reason):
+        await _notifier.endSession(reason, only: session.user.id);
+        throw const AuthRejected();
     }
-    if (statusCode != 401 || attempt.refreshRetried) return false;
-    try {
-      await _notifier.tokens(rejected: token);
-    } on AuthRejected {
-      return false;
-    } on NotSignedIn {
-      return false;
-    }
-    attempt._refreshRetryNext = true;
-    return true;
   }
 }
 
 /// The [Authorizer] of the app's session (since 0.9.0). Throws a `StateError` that says what to do
 /// when `AuthConfig.apiOrigins` is empty.
 ///
-/// It does not depend on the session's state, so watching it never rebuilds anything on a token
-/// refresh.
+/// It does not depend on the session's state, so watching it never rebuilds anything on a
+/// renewal.
 final Provider<Authorizer> authorizer = Provider<Authorizer>((ref) {
   final config = ref.watch(authConfig);
   if (config.apiOrigins.isEmpty) {
@@ -256,14 +213,6 @@ final Provider<Authorizer> authorizer = Provider<Authorizer>((ref) {
   return Authorizer._(
     ref.read(authSession.notifier),
     List<Uri>.unmodifiable(config.apiOrigins),
-    config.backend.proof,
+    config.backend.authenticator,
   );
-}, retry: noRetry);
-
-/// The client `SessionClient` sends through (since 0.9.0): override it with a `MockClient` in a
-/// test. Closed with the container.
-final Provider<http.Client> authBaseClient = Provider<http.Client>((ref) {
-  final client = http.Client();
-  ref.onDispose(client.close);
-  return client;
 }, retry: noRetry);

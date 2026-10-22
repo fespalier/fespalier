@@ -136,7 +136,7 @@ void main() {
   `translationsConfig`). `bundled` is plain maps (`BundledTranslations.fromMaps`): no assets are read in a test, so
   nothing in `pubspec.yaml`'s `flutter: assets:` is needed there.
 - **`FakeTranslations`** is an in-memory `TranslationSource` with no delay: `set(locale, messages)`, `offline()`
-  (throws as a failed fetch), `notModified()` (answers null, a 304), `online()` (undoes both), `fetchCount(locale)`.
+  (throws a `TransportUnsent`, as a failed fetch does; an `http.ClientException` until 0.20.0), `notModified()` (answers null, a 304), `online()` (undoes both), `fetchCount(locale)`.
   It is all `Future.value`, so it leaves no timer pending.
 - **Strict.** `FakeTranslations.strict()` (or `fakeTranslations(strict: true)`) turns every key `tr` cannot find into a
   `FlutterError.reportError`, so a typo fails the test with

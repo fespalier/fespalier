@@ -1,6 +1,6 @@
 ---
 name: fespalier-guards
-description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package: a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, token storage, lazy single-flight refresh, an authenticated HTTP client (http and dio), OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API, device-bound tokens (DPoP, fespalier_sign_keypair) and a fake backend for tests, and the fespalier_flags package for feature flags (flagGuard in a guard.dart, menus that follow a flag, a synchronous flag provider, vendor sources, FakeFlags). Since 0.13.0 also the fespalier_biometrics package: a biometric unlock guard that never prompts (requireUnlocked redirects to the app's unlock page), a single-flight unlock(), withBiometrics for actions, relock on resume, since 0.19.0 an idle lock (idleTimeout, a ticker the app fires, BiometricActivity) and BiometricLockScreen (an unlock page body that prompts only when tapped; the auto-prompt is the unlock folder's observe.dart onEnter), secrets behind the biometric (BiometricSecrets, readSecret, writeSecret, deleteSecret; the keystore's gate; a read does not unlock the app; a flutter_secure_storage recipe), local_auth as a recipe (2.x and 3.x) and FakeBiometricPrompt and FakeBiometricSecrets. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
+description: "Guarding and redirecting routes in fespalier — guard.dart (a function over a Riverpod Ref that returns a location or null, for a folder and everything below it, in page-less groups too, and that runs again when what it watches changes), redirect.dart routes, the order guards run in, the uri parameter and returnTo for sending people back after sign-in, async guards, and auth patterns such as a session provider, a login page outside the guarded folder, and sign-out moving you to login. Since 0.9.0 also the fespalier_auth package (protocol-agnostic since 0.21.0): a session provider, restoreAuth in startup.dart, requireSignedIn, requireRole and redirectIfSignedIn guards, session storage, lazy single-flight renewal, a session transport (authTransport, over an HttpTransport you give AuthConfig), the AuthBackend you plug in (fespalier_oidc for OpenID Connect with PKCE and Keycloak, recipes for Firebase, Supabase and your own API), device-bound tokens (DPoP, fespalier_keypair_dpop), since 0.21.0 token-free device-signed sessions (fespalier_sign_keypair: enrolment, a signature per request, renewal by re-attestation, user-present keys) and a fake backend for tests, and the fespalier_flags package for feature flags (flagGuard in a guard.dart, menus that follow a flag, a synchronous flag provider, vendor sources, FakeFlags). Since 0.13.0 also the fespalier_biometrics package: a biometric unlock guard that never prompts (requireUnlocked redirects to the app's unlock page), a single-flight unlock(), withBiometrics for actions, relock on resume, since 0.19.0 an idle lock (idleTimeout, a ticker the app fires, BiometricActivity) and BiometricLockScreen (an unlock page body that prompts only when tapped; the auto-prompt is the unlock folder's observe.dart onEnter), secrets behind the biometric (BiometricSecrets, readSecret, writeSecret, deleteSecret; the keystore's gate; a read does not unlock the app; a flutter_secure_storage recipe), local_auth as a recipe (2.x and 3.x) and FakeBiometricPrompt and FakeBiometricSecrets. Load before adding a guard or redirect, wiring sign-in and sign-out, or when a guard loops, never runs, or shows not_found.dart at the login page."
 ---
 
 # fespalier-guards
@@ -131,8 +131,14 @@ never stays on screen.
 
 fespalier's core has **no auth feature**; the `fespalier_auth` package (a git dependency next to fespalier, **same
 `url`, same `ref`**) packages the pattern below: a session provider (`authSession`), `restoreAuth` for `startup()`,
-token storage, **lazy single-flight refresh with no timer**, guard helpers and an HTTP client that attaches the
+session storage, **lazy single-flight renewal with no timer**, guard helpers and a transport that attaches the
 session to your API. It changes no generated code, adds no file kind, key or command.
+
+**Since 0.21.0 it is the protocol-agnostic core.** It knows a `SessionCredential`, a `RequestAuthenticator` and an
+`AuthBackend`, never a token or a key; what proves a session is a **backend** you add (`fespalier_oidc` for OpenID
+Connect and Keycloak, `fespalier_keypair_dpop` on top for DPoP, `fespalier_sign_keypair` for device-signed sessions, or
+your own), and what sends is an `HttpTransport` (`fespalier_transport`; `HttpClientTransport` from `fespalier_http`,
+`DioTransport` from `fespalier_dio`) that `AuthConfig(transport:)` requires. What 0.20.0 called these things is in `fespalier-migration`.
 
 ```dart
 // app/(signed-in)/guard.dart: the group needs a session; sign-in/ sits BESIDE it
@@ -144,45 +150,70 @@ GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from
 
 // app/startup.dart
 FutureOr<List<Override>> startup() => restoreAuth(authSetup());
+
+// auth_setup.dart: one transport, no session on it; apiOrigins is where the session is sent
+AuthConfig authSetup() => AuthConfig(
+  backend: ApiBackend(Uri.parse('https://api.example.com'), transport),
+  transport: transport,
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
 ```
 
 - **`redirectIfSignedIn` is what sends the user back.** It watches the session, so signing in on the sign-in page
   navigates to `from` by itself; the page has no `context.go`. `returnTo` refuses `//host` and `https://…`.
-- **No `refreshing` state.** A refresh keeps `SignedIn`; `isSignedIn` and `authUser` do not notify on a token
-  swap, so no guard runs again. A refused refresh token is `SignedOut(reason: SignOutReason.expired)`; a network
-  error keeps the session (`AuthUnavailable`).
-- **Guards stay synchronous** once `startup()` returns `restoreAuth(...)` (no network, ever: an expired access
-  token is refreshed by the first request). Without it the guards answer a `Future` while the session restores.
-- **`authHttpClient` sends the session only to `AuthConfig.apiOrigins`**, refreshes once when the token has
-  expired (shared by every request that finds it so: refresh-token rotation needs one refresh), and sends a
-  request again after a 401, at most three sends. Watch `authUserId` in a `data.dart`: a user change reloads
-  it, a refresh does not.
-- **Tests:** `fakeAuth(signedInAs: ...)` from `package:fespalier_auth/testing.dart` is the `overrides` of
-  `pumpRouter`; see [`fespalier-testing`](../fespalier-testing/SKILL.md).
-- Never log or put a token, an id or an e-mail in an error or a telemetry attribute: the package's own
+- **No `renewing` state.** A renewal keeps `SignedIn`; `isSignedIn` and `authUser` do not notify on a credential swap,
+  so no guard runs again. A refused renewal is `SignedOut(reason: SignOutReason.expired)`; a network error keeps the
+  session (`AuthUnavailable`). `SignOutReason` is `expired`, `user`, `keyLost` and, since 0.21.0, `revoked`.
+- **Guards stay synchronous** once `startup()` returns `restoreAuth(...)` (no network, ever: an expired credential is
+  renewed by the first request). Without it the guards answer a `Future` while the session restores. **A session stored
+  by 0.20.0 or earlier is dropped at restore** (`fespalier_auth: unknown stored session version 1`, reported once): the
+  user signs in once more.
+- **`authTransport` sends the session only to `AuthConfig.apiOrigins`**, renews once when the credential has expired
+  (shared by every request that finds it so: refresh-token rotation needs one renewal), and sends a request again after
+  a verdict that says so, at most three sends. When a credential counts as expired is the backend's
+  (`AuthBackend.renewAhead`; was `AuthConfig.leeway` until 0.20.0). Call your API through `TransportClient(ref.watch(authTransport))`
+  (`fespalier_http`, an `http.Client`) or `TransportAdapter(ref.watch(authTransport))` (`fespalier_dio`, a Dio adapter).
+  Watch `authUserId` in a `data.dart`: a user change reloads it, a renewal does not.
+- **A backend** is `AuthBackend`: `name`, `scheme`, `authenticator` (a `RequestAuthenticator`: `headers` for every send,
+  `judge` returning `Accept`, `Resend`, `Renew` or `SessionEnded`), `readCredential`, `renewAhead`, `signIn`, `renew`
+  (was `refresh`), `check`, `signOut` and `discard`. A starter over a JSON API is in `references/auth-package.md`.
+- **Tests:** `fakeAuth(signedInAs: ..., transport: FakeTransport(...))` from `package:fespalier_auth/testing.dart` is the
+  `overrides` of `pumpRouter`; see [`fespalier-testing`](../fespalier-testing/SKILL.md).
+- Never log or put a credential, an id or an e-mail in an error or a telemetry attribute: the package's own
   `toString`s hide them.
 - **With `fespalier_cratestack`** (since 0.10.0): `crateStackScope.overrideWith((ref) => ref.watch(authUserId))`, and a
   sign-out calls `ref.read(crateStackAccount).clear()` **before** `signOut()`, whose state flips synchronously (or
   `clear(scope: id)` after). A `401` keeps a queued intent's key ([`fespalier-offline`](../fespalier-offline/SKILL.md)).
 
-- **OpenID Connect and Keycloak are in the package** (`package:fespalier_auth/oidc.dart`, `OidcBackend`: code flow
-  with PKCE for a public client, Keycloak's endpoints and roles, refresh-token rotation). Firebase and Supabase
-  are **recipes**, not packages. [`references/auth-backends.md`](references/auth-backends.md) has the code and
-  what was read from a live Keycloak 26.8.0.
-- **A replay after a 401 is marked** (`isAuthReplay(request)`, `options.extra[authReplayKey]`) and keeps an
-  `AbortableRequest`'s abort trigger. **Never put `RetryClient` under the session client**: it re-sends the
-  same DPoP proof and the server refuses it. Wrap `authHttpClient` in it instead.
+- **OpenID Connect and Keycloak are the `fespalier_oidc` package** (since 0.21.0; `package:fespalier_auth/oidc.dart` until
+  0.20.0). `OidcBackend(transport: ...)`: code flow with PKCE for a public client, Keycloak's endpoints and roles,
+  refresh-token rotation, a `TokenCredential` and a `BearerAuthenticator`. Firebase and Supabase are **recipes**, not
+  packages. [`references/auth-backends.md`](references/auth-backends.md) has the code and what was read from a live
+  Keycloak 26.8.0.
+- **A replay after a verdict is marked** (`transportReplayKey` in `TransportRequest.attributes`) and keeps the request's
+  abort trigger. **Never put a retrier under the session transport**: it re-sends the same DPoP proof, or the same
+  signature, and the server refuses it. Put `RetryClient` or `dio_smart_retry` above it. The whole chain's order is in
+  [`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#decorators-and-their-order).
 
-- **Device-bound tokens are the `fespalier_sign_keypair` package** (a third git dependency with the **same `url` and
-  `ref`**): `OidcBackend(proof: DpopProof.device())` signs every token call and API request with a key in the Secure
-  Enclave or the AndroidKeyStore (DPoP, RFC 9449), and the server binds the tokens to it. **`DpopProof.device()` throws
-  `DpopUnavailable` on the web, Windows and Linux** unless `fallback: DpopFallback.software` (a key in memory) or
-  `DpopFallback.bearer` (no DPoP) is given. Sign-out deletes the key. Keycloak sends no nonce and no `Date`, so a wrong
-  device clock is `DPoP proof is not active`: set the clock. [`references/auth-dpop.md`](references/auth-dpop.md).
+- **Device-bound tokens are `fespalier_keypair_dpop`** (with `fespalier_oidc` and `fespalier_keypair`, the **same `url`
+  and `ref`** for all; it was `fespalier_sign_keypair` until 0.20.0): `OidcBackend(proof: DpopProof.device())` signs every
+  token call and API request with a key in the Secure Enclave or the AndroidKeyStore, or on the web the browser's
+  non-extractable key (since 0.21.0; **UNCHECKED in CI**, run by hand in Chrome only), and the server binds the tokens to it
+  (DPoP, RFC 9449). **`DpopProof.device()` throws `DpopUnavailable` on Windows and Linux** unless `fallback:
+DpopFallback.software` (a key in memory) or `DpopFallback.bearer` (no DPoP) is given. Sign-out deletes the key. Keycloak
+  sends no nonce and no `Date`, so a wrong device clock is `DPoP proof is not active`: set the clock.
+  [`references/auth-dpop.md`](references/auth-dpop.md).
+- **No token at all: `fespalier_sign_keypair`** (since 0.21.0; it held DPoP until 0.20.0). `DeviceAuthBackend` makes a
+  session of an enrolled device key: enrolment is signing in (`beginEnrolment`, then `signIn(CompleteEnrolment(...))`, both
+  unsigned), every request carries `X-Attestation` and `X-Signature` over its method, path, query and exact body bytes
+  (**a streamed body cannot be signed**: `ArgumentError`), renewal is a re-attestation, `webankRefusals` sorts a 401 or 403
+  into renew, `keyLost` or `revoked`, and a request asks for the user-present key (a biometric prompt) with
+  `DeviceSigner.roleAttribute`. You write the `DeviceAuthServer` (five methods over your endpoints); the secure-element
+  parts are **UNCHECKED on a device**. [`references/auth-device-sessions.md`](references/auth-device-sessions.md).
 
 [`references/auth-package.md`](references/auth-package.md) has the pieces, a compiled starter (a backend over
 a JSON API, the guards, the sign-in form, an API call and its tests) and every behaviour above in detail;
-`examples/auth` is the running version (guards, form, refresh, restore, Keycloak realm). Its messages are in
+`examples/auth` is the running version (guards, form, renewal, restore, Keycloak realm). Its messages are in
 [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-auth.md` page).
 
 ## Feature flags (`fespalier_flags`, since 0.9.0)
@@ -262,9 +293,10 @@ from `build` or a guard; never put `requireUnlocked` on the unlock page.
 | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Every guard and redirect rule, compiled samples, `returnTo` details                                                                       | [`references/guards-and-redirects.md`](references/guards-and-redirects.md)                                                                                           |
 | Session provider, sign-in/out, guards that re-run, async guards                                                                           | [`references/auth-patterns.md`](references/auth-patterns.md)                                                                                                         |
-| `fespalier_auth` (since 0.9.0): restore, guards, refresh, HTTP, tests                                                                     | [`references/auth-package.md`](references/auth-package.md)                                                                                                           |
-| OpenID Connect, Keycloak, Firebase, Supabase, your own API, dio                                                                           | [`references/auth-backends.md`](references/auth-backends.md)                                                                                                         |
-| Device-bound tokens: DPoP, `fespalier_sign_keypair`, proofs in tests                                                                      | [`references/auth-dpop.md`](references/auth-dpop.md)                                                                                                                 |
+| `fespalier_auth` (since 0.9.0): restore, guards, renewal, the session transport, tests                                                    | [`references/auth-package.md`](references/auth-package.md)                                                                                                           |
+| OpenID Connect (`fespalier_oidc`), Keycloak, Firebase, Supabase, your own API, dio                                                        | [`references/auth-backends.md`](references/auth-backends.md)                                                                                                         |
+| Device-bound tokens: DPoP (`fespalier_keypair_dpop`), proofs in tests                                                                     | [`references/auth-dpop.md`](references/auth-dpop.md)                                                                                                                 |
+| Device-signed sessions, no token (`fespalier_sign_keypair`, since 0.21.0): enrolment, a signature per request, user-present keys          | [`references/auth-device-sessions.md`](references/auth-device-sessions.md)                                                                                           |
 | Feature flags (since 0.9.0): `flagGuard`, flag providers, `FakeFlags`                                                                     | [`references/feature-flags.md`](references/feature-flags.md)                                                                                                         |
 | Flag sources (since 0.9.0): Remote Config, LaunchDarkly, PostHog, GrowthBook                                                              | [`references/flag-sources.md`](references/flag-sources.md)                                                                                                           |
 | Biometric unlock (since 0.13.0): `requireUnlocked`, `unlock()`, `withBiometrics`, relock, idle lock, `BiometricLockScreen` (since 0.19.0) | [`references/biometrics.md`](references/biometrics.md)                                                                                                               |

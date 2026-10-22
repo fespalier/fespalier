@@ -1,6 +1,6 @@
 ---
 name: fespalier-cratestack
-description: "Wiring a CrateStack backend into a fespalier app with fespalier_cratestack (since 0.10.0) — the generate-dart client, the two seams the app writes (a CrateStackTransport over the generated RPC adapter, an error reader with CrateStackFailure.fromEnvelope), the startup() overrides, the Dio with CrateStackCancelInterceptor, CrateStackPortalInterceptor and fespalier_dio's WriteGuard, ref.cancellable in data.dart, actions as intents with withCrateStackFieldErrors, the server's idempotency contract (keys namespaced by a verified principal) and the answer table, one retry layer, where the embedded SQLite mode fits, and the package's debug messages. Load before connecting a CrateStack client to data.dart or action.dart, configuring its Dio, or when a CrateStack call runs twice, is cancelled with another page, or an override error names crateStackTransport."
+description: "Wiring a CrateStack backend into a fespalier app with fespalier_cratestack (since 0.10.0) — the generate-dart client, the two seams the app writes (a CrateStackTransport over the generated RPC adapter, an error reader with CrateStackFailure.fromEnvelope), the startup() overrides, the transport chain under the generated Dio (PortalTransport, WriteGuardTransport and a TransportAdapter on its httpClientAdapter, since 0.21.0), ref.cancellable in data.dart, TransportFailures.read composed with DioErrors.toTransport, actions as intents with withCrateStackFieldErrors, the server's idempotency contract (keys namespaced by a verified principal) and the answer table, one retry layer, where the embedded SQLite mode fits, and the package's debug messages. Load before connecting a CrateStack client to data.dart or action.dart, configuring its Dio or transport, or when a CrateStack call runs twice, is cancelled with another page, or an override error names crateStackTransport."
 ---
 
 # fespalier-cratestack
@@ -28,17 +28,22 @@ rows, sync) are [`fespalier-offline`](../fespalier-offline/SKILL.md) and the API
 ## Install
 
 ```yaml
-# pubspec.yaml: the same url and the same ref for all three, or pub refuses to resolve
+# pubspec.yaml: the same url and the same ref for all of them, or pub refuses to resolve
 dependencies:
   fespalier:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: <the tag of your fespalier>
-  fespalier_dio:
+  fespalier_dio: # TransportAdapter and DioErrors, if the generated client uses Dio
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
+      ref: <the same tag>
+  fespalier_http: # HttpClientTransport, the end of the chain that reaches the network (or DioTransport from fespalier_dio)
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
       ref: <the same tag>
   fespalier_cratestack:
     git:
@@ -52,12 +57,16 @@ in these pages, where `cli/tests/versions.rs` reads it as fespalier's own versio
 [install block](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_cratestack/README.md#install) is the
 one release-please keeps current.) Dart 3.9, Flutter 3.35.
 
-| Library                                                  | For                                | What is in it                                                                                                                  |
-| -------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Dio or Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows, `SyncEngine`, `autoSync` |
-| `package:fespalier_cratestack/dio.dart`                  | Dio                                | `ref.cancellable`, `CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures`                                 |
-| `package:fespalier_cratestack/hive.dart`                 | a durable store                    | `HiveLocalStore`, a hive_ce box that never evicts                                                                              |
-| `package:fespalier_cratestack/testing.dart`              | tests                              | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`                                      |
+| Library                                                  | For                         | What is in it                                                                                                                                                                                                               |
+| -------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows, `SyncEngine`, `autoSync`, and the HTTP pieces since 0.21.0: `ref.cancellable`, `PortalTransport`, `TransportFailures` |
+| `package:fespalier_cratestack/hive.dart`                 | a durable store             | `HiveLocalStore`, a hive_ce box that never evicts                                                                                                                                                                           |
+| `package:fespalier_cratestack/testing.dart`              | tests                       | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`                                                                                                                                   |
+
+**Until 0.20.0** there was a fourth library, `package:fespalier_cratestack/dio.dart` (`ref.cancellable`,
+`CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures`). It is **gone, not deprecated**: the package
+links neither Dio nor `package:http` any more (`test/no_http_test.dart`), and each piece is a transport piece in the main
+library (below). Delete the import; `ref.cancellable` moved with its name unchanged.
 
 ## 1. Generate the client
 
@@ -120,34 +129,55 @@ final class ShopTransport implements CrateStackTransport {
 }
 ```
 
-`CrateStackErrors([readShopError, DioFailures.read])` runs the readers in order, **the app's reader first** (a
+`CrateStackErrors([readShopError, (e) => TransportFailures.read(DioErrors.toTransport(e))])` runs the readers in order, **the app's reader first** (a
 `CrateStackFailure` passes through as itself; anything unknown is `null` and is rethrown unchanged by whoever asked).
 `CrateStackFailure.fromEnvelope` applies the status and code table (`fespalier-offline`,
-[`fespalier-offline`](../fespalier-offline/SKILL.md) (its `intents.md` page)).
+[`fespalier-offline`](../fespalier-offline/SKILL.md) (its `intents.md` page)). `TransportFailures.read` is the last reader
+(`DioFailures.read` until 0.20.0): it reads a `TransportFailure` or a `TransportStatusError` and knows no Dio type, which is
+why a Dio client wraps it in `DioErrors.toTransport` (`fespalier_dio`), the function that turns a `DioException` back into
+the failure its transport chain threw, or into a `TransportStatusError` for a 4xx or a 5xx. What each failure means:
+`TransportUnsent`, `TransportTimedOut` and `TransportPortal` are `CrateStackOffline`, `TransportAborted` is
+`CrateStackCancelled`, and `TransportBroken` and `TransportUntrusted` (a certificate that does not verify may be a captive
+portal or an attack) are `null`, unknown. A `TransportStatusError` goes through `CrateStackFailure.fromResponse` by its
+status and body, after the app's own reader had its turn.
 
-## 3. `startup()`, the Dio and the root layout
+## 3. `startup()`, the transport under the Dio and the root layout
 
 The full, compiled wiring is [`references/wiring.md`](references/wiring.md). The overrides, in short:
 
 - `shopAdapterProvider` (your generated client's provider) on a Dio you configure, `crateStackTransport` over it, and
-  `crateStackErrors` with `[readShopError, DioFailures.read]`;
+  `crateStackErrors` with `[readShopError, (e) => TransportFailures.read(DioErrors.toTransport(e))]` (a top-level function
+  keeps the `CrateStackErrors` `const`);
 - `crateStackScope.overrideWith((ref) => ref.watch(authUserId))` (whose data it is: `fespalier_auth`) and
   `localStore.overrideWithValue(await HiveLocalStore.open(directory: ...))` (where queued work lives);
 - optionally `readCache` on the storage your `dataCache` already uses, `reconnectSignal.overrideWith(ConnectivitySignal.new)`
   and `syncTicker.overrideWith(<your ticker>)`.
 
-**The Dio**, with the guard last because it goes first:
+**The Dio sends through a transport chain (since 0.21.0).** The generated client keeps its own Dio, and you point that
+Dio's `httpClientAdapter` at `TransportAdapter(chain)` (`fespalier_dio`); the chain is where the CrateStack pieces sit
+([`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#decorators-and-their-order) has
+the general order):
 
 ```dart
 // lib/dio.dart
 import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_cratestack/dio.dart';
+import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:http/http.dart' as http;
+
+/// The chain next to the network: a portal's page is an error, and a write is marked as one.
+final apiTransport = Provider<HttpTransport>((ref) {
+  final network = http.Client();
+  ref.onDispose(network.close);
+  return PortalTransport(WriteGuardTransport(HttpClientTransport(network)));
+});
 
 final dio = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))
-    ..interceptors.addAll(const [CrateStackCancelInterceptor(), CrateStackPortalInterceptor()]);
+    ..httpClientAdapter = TransportAdapter(ref.watch(apiTransport));
   WriteGuard.install(dio); // last: it goes first (fespalier_dio)
   ref.onDispose(dio.close);
   return dio;
@@ -157,14 +187,21 @@ final dio = Provider<Dio>((ref) {
 ```yaml
 # pubspec.yaml dependencies
   dio: ^5.7.0
+  http: ^1.5.0
 ```
 
-- **`CrateStackCancelInterceptor`** is what makes a page that went away stop its requests (section 4).
-- **`CrateStackPortalInterceptor`** rejects a `text/html` response as an error that `DioFailures.read` reads as
-  **offline**: Dio does not throw on a `200`, so without it a captive portal's page reaches the generated client, which
-  cannot decode it, and no reader knows what it threw.
-- **`WriteGuard`** keeps a retrier from sending a write twice. The generated RPC reads are **POSTs**, so it counts them
-  as writes and a Dio retry policy never repeats them. That is what you want (section 6).
+- **`PortalTransport`** (it replaces `CrateStackPortalInterceptor`) throws a `TransportPortal` for a `text/html` answer,
+  and `TransportFailures.read` reads that as **offline**: no transport treats a `200` as a failure, so without it a
+  captive portal's page reaches the generated client, which cannot decode it, and no reader knows what it threw. It
+  drains the page and keeps nothing of it.
+- **The session goes in the chain, not in the Dio.** With `fespalier_auth`, put `SessionTransport(inner, ref.watch(authorizer))`
+  around the chain above (or hand the chain to `AuthConfig.transport` and use `authTransport`): `SessionInterceptor` is
+  gone (0.21.0). A signature or a token is then made again for every send, a replay after a 401 included.
+- **`WriteGuard`** (the Dio's first interceptor) keeps a retrier from sending a write twice, and `WriteGuardTransport` marks
+  a write for a `RetryClient` that sits above a `TransportClient`. The generated RPC reads are **POSTs**, so both count them as
+  writes and a Dio retry policy never repeats them. That is what you want (section 6).
+- **The cancel is in the adapter.** `TransportAdapter` merges Dio's cancel with the abort trigger of the zone
+  `ref.cancellable` set (section 4); `CrateStackCancelInterceptor` is gone.
 - The root `layout.dart` does `ref.watch(autoSync)` once (a sample is in `fespalier-offline`), and a sign-out calls
   `ref.read(crateStackAccount).clear()` **before** the session ends (`fespalier-guards`,
   [`auth-package.md`](../fespalier-guards/SKILL.md) (its `auth-package.md` page)).
@@ -219,7 +256,6 @@ final shopClientProvider = Provider<ShopClient>((ref) {
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_cratestack/dio.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:my_app/shop_client.dart';
 
@@ -265,7 +301,10 @@ class OrdersPage extends StatelessWidget {
 ```
 
 - **`ref.cancellable` stops the request with the provider.** The generated options carry no cancel token, so the token
-  travels in a **zone value** that `CrateStackCancelInterceptor` picks up. Call it **before the first `await`**. The body
+  travels in a **zone value** (`TransportZone`) that the `TransportAdapter` on the Dio picks up and merges into the request's
+  abort trigger, so a Dio whose adapter is not a `TransportAdapter` never cancels a call made inside `ref.cancellable`.
+  The cancelled call fails with `TransportAborted`, which `TransportFailures.read` reads as `CrateStackCancelled`. Call
+  it **before the first `await`**. The body
   must be **only the client call**: a provider built _inside_ it runs in the same zone, so its own requests would take
   this provider's token and be cancelled with it (the symptom: another page's request is cancelled).
 - **`freshness` decides _when_ a read runs again, `serve` _where_ the answer comes from.** Do not combine `serve` with
@@ -331,8 +370,10 @@ When the server verifies a signature on every request, the signing goes **inside
 attempt, and nowhere earlier. An intent stores the call as JSON and sends it from the store on every attempt, so each
 attempt must be a new message (a fresh issue time and nonce, or the server's replay check refuses the second one) over the
 same payload under the same `Idempotency-Key` (which a signature can bind). `examples/cose` is the worked case: a
-COSE_Sign1 transport with a device key from `fespalier_sign_keypair`, a Rust CrateStack server that checks it, and an
-end-to-end test that starts the server's binary.
+COSE_Sign1 transport with a device key from `fespalier_keypair` (a signer for a protocol of your own, never DPoP, and not the
+device sessions of `fespalier_sign_keypair`), sending through the app's one `HttpTransport` (`TransportRequest` in,
+`TransportResponse` out, built once in `startup()`), a Rust CrateStack server that checks it, and an end-to-end test that
+starts the server's binary.
 
 - **An unsigned `401` is `CrateStackUnauthenticated`**: the intent stays pending under the same key. Do not turn it into a
   retry inside the transport.
@@ -386,8 +427,8 @@ isolate.
 
 ## Where the code is
 
-`packages/fespalier_cratestack/lib/`: `fespalier_cratestack.dart`, `dio.dart` (`src/dio/cancel.dart`, `portal.dart`,
-`failures.dart`), `hive.dart`, `testing.dart`, and `src/transport.dart` (`CrateStackTransport`, `RpcCall`, `RestCall`,
+`packages/fespalier_cratestack/lib/`: `fespalier_cratestack.dart` (with `src/portal_transport.dart`,
+`src/transport_cancel.dart` and `src/transport_failures.dart`), `hive.dart`, `testing.dart`, and `src/transport.dart` (`CrateStackTransport`, `RpcCall`, `RestCall`,
 `crateStackTransport`). The guide is
 [`docs/cratestack.md`](https://github.com/fespalier/fespalier/blob/main/docs/cratestack.md).
 

@@ -7,6 +7,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,27 +18,44 @@ String stored(AuthSession session) => jsonEncode(session.toJson());
 
 AuthSession session({
   String backend = 'fake',
-  String? binding,
-  DateTime? refreshExpiresAt,
-  bool refreshToken = true,
   DateTime? expiresAt,
+  DateTime? renewableUntil,
+  bool renewable = true,
 }) => AuthSession(
   backend: backend,
-  tokens: AuthTokens(
-    accessToken: 'fake-access-0',
-    tokenType: binding == null ? 'Bearer' : 'DPoP',
-    refreshToken: refreshToken ? 'fake-refresh-0' : null,
+  credential: FakeCredential(
+    id: 'fake-0',
     expiresAt: expiresAt,
-    refreshExpiresAt: refreshExpiresAt,
+    renewableUntil: renewableUntil,
+    renewable: renewable,
   ),
   user: ada,
-  binding: binding,
+);
+
+AuthConfig configOf(
+  AuthBackend backend,
+  TokenStore store, {
+  List<Uri> apiOrigins = const [],
+}) => AuthConfig(
+  backend: backend,
+  transport: noTransport,
+  store: store,
+  apiOrigins: apiOrigins,
 );
 
 SessionState stateOf(List<Override> overrides) {
   final container = ProviderContainer(overrides: overrides);
   addTearDown(container.dispose);
   return container.read(authSession);
+}
+
+/// What the Flutter error handler is told while the test runs.
+List<FlutterErrorDetails> captureErrors() {
+  final errors = <FlutterErrorDetails>[];
+  final old = FlutterError.onError;
+  FlutterError.onError = errors.add;
+  addTearDown(() => FlutterError.onError = old);
+  return errors;
 }
 
 void main() {
@@ -51,7 +69,7 @@ void main() {
   group('with a synchronous store', () {
     test('restoreAuth returns the overrides at once, not a Future', () {
       final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: MemoryTokenStore()),
+        configOf(FakeAuthBackend(), MemoryTokenStore()),
       );
       expect(result, isA<List<Override>>());
       expect(result, isNot(isA<Future<Object?>>()));
@@ -59,31 +77,37 @@ void main() {
 
     test('nothing stored: signed out, and the span says none', () {
       final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: MemoryTokenStore()),
+        configOf(FakeAuthBackend(), MemoryTokenStore()),
       );
       expect(stateOf(result as List<Override>), const SignedOut());
       expect(rec.log, [
-        '#1 start auth restore backend=fake',
+        '#1 start auth restore backend=fake scheme=fake',
         '#1 end auth none',
       ]);
     });
 
-    test('a stored session: signed in from the first read', () {
-      final store = MemoryTokenStore(stored(session()));
-      final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: store),
-      );
-      final state = stateOf(result as List<Override>);
-      expect(state, isA<SignedIn>());
-      expect(state.user, ada);
-      expect(rec.log, ['#1 start auth restore backend=fake', '#1 end auth ok']);
-    });
+    test(
+      'a stored session: signed in from the first read, the credential read by the backend',
+      () {
+        final store = MemoryTokenStore(stored(session()));
+        final result = restoreAuth(configOf(FakeAuthBackend(), store));
+        final state = stateOf(result as List<Override>);
+        expect(state, isA<SignedIn>());
+        expect(state.user, ada);
+        expect(
+          (state as SignedIn).session.credential,
+          isA<FakeCredential>().having((c) => c.id, 'id', 'fake-0'),
+        );
+        expect(rec.log, [
+          '#1 start auth restore backend=fake scheme=fake',
+          '#1 end auth ok',
+        ]);
+        expect(store.value, isNotNull, reason: 'a kept session stays stored');
+      },
+    );
 
     test('the config is overridden too, so the rest of the app reads it', () {
-      final config = AuthConfig(
-        backend: FakeAuthBackend(),
-        store: MemoryTokenStore(),
-      );
+      final config = configOf(FakeAuthBackend(), MemoryTokenStore());
       final container = ProviderContainer(
         overrides: restoreAuth(config) as List<Override>,
       );
@@ -92,15 +116,10 @@ void main() {
     });
 
     test('corrupt JSON is reported once, dropped, and signed out', () {
-      final errors = <FlutterErrorDetails>[];
-      final old = FlutterError.onError;
-      FlutterError.onError = errors.add;
-      addTearDown(() => FlutterError.onError = old);
+      final errors = captureErrors();
       final log = <String>[];
       final store = SpyStore(log, '{not json');
-      final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: store),
-      );
+      final result = restoreAuth(configOf(FakeAuthBackend(), store));
       expect(stateOf(result as List<Override>), const SignedOut());
       expect(store.value, isNull);
       expect(errors, hasLength(1));
@@ -120,15 +139,21 @@ void main() {
     });
 
     test('JSON that is not a session is just as corrupt', () {
-      final errors = <FlutterErrorDetails>[];
-      final old = FlutterError.onError;
-      FlutterError.onError = errors.add;
-      addTearDown(() => FlutterError.onError = old);
-      for (final raw in ['[]', '{"v":2}', '{"v":1,"backend":"fake"}']) {
+      final errors = captureErrors();
+      final good = session().toJson();
+      for (final raw in [
+        '[]',
+        '{"v":2}',
+        '{"v":3,"backend":"fake"}',
+        jsonEncode({...good, 'credential': 'x'}),
+        jsonEncode({
+          ...good,
+          'credential': {'id': 1},
+        }),
+        jsonEncode({...good, 'user': null}),
+      ]) {
         final store = MemoryTokenStore(raw);
-        final result = restoreAuth(
-          AuthConfig(backend: FakeAuthBackend(), store: store),
-        );
+        final result = restoreAuth(configOf(FakeAuthBackend(), store));
         expect(
           stateOf(result as List<Override>),
           const SignedOut(),
@@ -136,30 +161,71 @@ void main() {
         );
         expect(store.value, isNull, reason: raw);
       }
-      expect(errors, hasLength(3));
+      expect(errors, hasLength(6));
     });
 
-    test("another backend's session is dropped, and deleted", () {
-      final store = MemoryTokenStore(stored(session(backend: 'firebase')));
-      final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: store),
-      );
+    test(
+      'a session of version 1 (0.20.0 and before) is dropped and reported: the user signs in once more',
+      () {
+        final errors = captureErrors();
+        final store = MemoryTokenStore(
+          jsonEncode({
+            'v': 1,
+            'backend': 'fake',
+            'tokens': {'accessToken': 'old', 'tokenType': 'Bearer'},
+            'user': ada.toJson(),
+          }),
+        );
+        final result = restoreAuth(configOf(FakeAuthBackend(), store));
+        expect(stateOf(result as List<Override>), const SignedOut());
+        expect(store.value, isNull);
+        expect(errors, hasLength(1));
+        expect(errors.single.exception, isA<FormatException>());
+        expect(rec.log.last, '#1 end auth error');
+      },
+    );
+
+    test('a stored text that is not an object is reported and dropped', () {
+      final errors = captureErrors();
+      final store = MemoryTokenStore('"just a string"');
+      final result = restoreAuth(configOf(FakeAuthBackend(), store));
       expect(stateOf(result as List<Override>), const SignedOut());
       expect(store.value, isNull);
+      expect(errors.single.exception, isA<FormatException>());
+    });
+
+    test("another backend's session is dropped silently, and deleted", () {
+      final errors = captureErrors();
+      final store = MemoryTokenStore(stored(session(backend: 'firebase')));
+      final result = restoreAuth(configOf(FakeAuthBackend(), store));
+      expect(stateOf(result as List<Override>), const SignedOut());
+      expect(store.value, isNull);
+      expect(errors, isEmpty, reason: 'it is not corrupt: nothing to report');
       expect(rec.log.last, '#1 end auth none');
     });
 
-    test('a refresh token that has expired signs out with reason expired', () {
+    test(
+      "another backend's session is not handed to this backend's credential reader",
+      () {
+        final backend = _CountingReader();
+        final store = MemoryTokenStore(stored(session(backend: 'firebase')));
+        final result = restoreAuth(configOf(backend, store));
+        stateOf(result as List<Override>);
+        expect(backend.reads, 0);
+      },
+    );
+
+    test('a renewableUntil that has passed signs out with reason expired', () {
       final time = TestTime();
       final store = MemoryTokenStore(
         stored(
           session(
-            refreshExpiresAt: time.now.subtract(const Duration(seconds: 1)),
+            renewableUntil: time.now.subtract(const Duration(seconds: 1)),
           ),
         ),
       );
       final result = time.run(
-        () => restoreAuth(AuthConfig(backend: FakeAuthBackend(), store: store)),
+        () => restoreAuth(configOf(FakeAuthBackend(), store)),
       );
       expect(
         stateOf(result as List<Override>),
@@ -169,37 +235,11 @@ void main() {
       expect(rec.log.last, '#1 end auth expired');
     });
 
-    test('a refresh token that is still good keeps the session, offline too', () {
+    test('a renewableUntil that is exactly now has passed too', () {
       final time = TestTime();
-      final store = MemoryTokenStore(
-        stored(
-          session(
-            refreshExpiresAt: time.now.add(const Duration(minutes: 1)),
-            // The access token has expired: it is refreshed by the first request, not at start-up.
-            expiresAt: time.now.subtract(const Duration(minutes: 1)),
-          ),
-        ),
-      );
-      final backend = FakeAuthBackend();
+      final store = MemoryTokenStore(stored(session(renewableUntil: time.now)));
       final result = time.run(
-        () => restoreAuth(AuthConfig(backend: backend, store: store)),
-      );
-      expect(stateOf(result as List<Override>), isA<SignedIn>());
-      expect(backend.refreshes, 0, reason: 'restore never refreshes');
-    });
-
-    test('an expired access token with nothing to renew it is expired', () {
-      final time = TestTime();
-      final store = MemoryTokenStore(
-        stored(
-          session(
-            refreshToken: false,
-            expiresAt: time.now.subtract(const Duration(seconds: 1)),
-          ),
-        ),
-      );
-      final result = time.run(
-        () => restoreAuth(AuthConfig(backend: FakeAuthBackend(), store: store)),
+        () => restoreAuth(configOf(FakeAuthBackend(), store)),
       );
       expect(
         stateOf(result as List<Override>),
@@ -207,29 +247,143 @@ void main() {
       );
     });
 
-    test('a session bound to a key, and no proof: the key is lost', () {
-      final store = MemoryTokenStore(stored(session(binding: 'thumb')));
-      final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: store),
+    test(
+      'a renewable credential past its expiresAt is kept, offline too: it is renewed lazily',
+      () {
+        final time = TestTime();
+        final store = MemoryTokenStore(
+          stored(
+            session(
+              renewableUntil: time.now.add(const Duration(minutes: 1)),
+              expiresAt: time.now.subtract(const Duration(minutes: 1)),
+            ),
+          ),
+        );
+        final backend = FakeAuthBackend();
+        final result = time.run(() => restoreAuth(configOf(backend, store)));
+        expect(stateOf(result as List<Override>), isA<SignedIn>());
+        expect(backend.renewals, 0, reason: 'restore never renews');
+        expect(store.value, isNotNull);
+      },
+    );
+
+    test('a renewable credential with no renewableUntil is kept too', () {
+      final time = TestTime();
+      final store = MemoryTokenStore(
+        stored(session(expiresAt: time.now.subtract(const Duration(days: 30)))),
+      );
+      final backend = FakeAuthBackend();
+      final result = time.run(() => restoreAuth(configOf(backend, store)));
+      expect(stateOf(result as List<Override>), isA<SignedIn>());
+      expect(backend.renewals, 0);
+    });
+
+    test('an expired credential that cannot be renewed is expired', () {
+      final time = TestTime();
+      final store = MemoryTokenStore(
+        stored(
+          session(
+            renewable: false,
+            expiresAt: time.now.subtract(const Duration(seconds: 1)),
+          ),
+        ),
+      );
+      final result = time.run(
+        () => restoreAuth(configOf(FakeAuthBackend(), store)),
       );
       expect(
         stateOf(result as List<Override>),
-        const SignedOut(reason: SignOutReason.keyLost),
+        const SignedOut(reason: SignOutReason.expired),
       );
       expect(store.value, isNull);
+      expect(rec.log.last, '#1 end auth expired');
+    });
+
+    test('a credential that cannot be renewed but has not expired is kept', () {
+      final time = TestTime();
+      final store = MemoryTokenStore(
+        stored(
+          session(
+            renewable: false,
+            expiresAt: time.now.add(const Duration(minutes: 1)),
+          ),
+        ),
+      );
+      final result = time.run(
+        () => restoreAuth(configOf(FakeAuthBackend(), store)),
+      );
+      expect(stateOf(result as List<Override>), isA<SignedIn>());
+    });
+
+    test('a credential that cannot be renewed and never expires is kept', () {
+      final store = MemoryTokenStore(stored(session(renewable: false)));
+      final result = restoreAuth(configOf(FakeAuthBackend(), store));
+      expect(stateOf(result as List<Override>), isA<SignedIn>());
+    });
+
+    test(
+      'the backend refusing the session (check): dropped with that reason, and the store is cleared',
+      () {
+        for (final reason in [SignOutReason.keyLost, SignOutReason.revoked]) {
+          final backend = FakeAuthBackend()..checkResult = reason;
+          final store = MemoryTokenStore(stored(session()));
+          final result = restoreAuth(configOf(backend, store));
+          expect(
+            stateOf(result as List<Override>),
+            SignedOut(reason: reason),
+            reason: '$reason',
+          );
+          expect(store.value, isNull, reason: '$reason');
+        }
+      },
+    );
+
+    test(
+      'check runs after the expiry rule: an expired session is not asked',
+      () {
+        final time = TestTime();
+        final backend = _CheckSpy();
+        final store = MemoryTokenStore(
+          stored(
+            session(
+              renewableUntil: time.now.subtract(const Duration(seconds: 1)),
+            ),
+          ),
+        );
+        final result = time.run(() => restoreAuth(configOf(backend, store)));
+        expect(
+          stateOf(result as List<Override>),
+          const SignedOut(reason: SignOutReason.expired),
+        );
+        expect(backend.checked, 0);
+      },
+    );
+
+    test('check is asked about a session that is kept', () {
+      final backend = _CheckSpy();
+      final store = MemoryTokenStore(stored(session()));
+      final result = restoreAuth(configOf(backend, store));
+      expect(stateOf(result as List<Override>), isA<SignedIn>());
+      expect(backend.checked, 1);
     });
 
     test('a store that fails to read makes restoreAuth throw', () {
       expect(
-        () => restoreAuth(
-          AuthConfig(backend: FakeAuthBackend(), store: _Broken()),
-        ),
+        () => restoreAuth(configOf(FakeAuthBackend(), _Broken())),
         throwsStateError,
       );
       expect(rec.log, [
-        '#1 start auth restore backend=fake',
+        '#1 start auth restore backend=fake scheme=fake',
         '#1 end auth error error=Bad state: keychain locked',
       ]);
+    });
+
+    test('a store that fails to delete does not fail a restore', () {
+      final errors = captureErrors();
+      final store = _DeleteFails('{not json');
+      final result = restoreAuth(configOf(FakeAuthBackend(), store));
+      expect(stateOf(result as List<Override>), const SignedOut());
+      expect(errors, hasLength(1), reason: 'only the corrupt text is reported');
     });
   });
 
@@ -239,12 +393,12 @@ void main() {
         'fespalier_auth.session': stored(session()),
       });
       final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: const SecureTokenStore()),
+        configOf(FakeAuthBackend(), const SecureTokenStore()),
       );
       expect(result, isA<Future<List<Override>>>());
       expect(stateOf(await result), isA<SignedIn>());
       expect(rec.log, [
-        '#1 start auth restore backend=fake',
+        '#1 start auth restore backend=fake scheme=fake',
         '#1 end auth ok async',
       ]);
     });
@@ -252,56 +406,61 @@ void main() {
     test('nothing stored in the keychain: signed out', () async {
       FlutterSecureStorage.setMockInitialValues({});
       final result = restoreAuth(
-        AuthConfig(backend: FakeAuthBackend(), store: const SecureTokenStore()),
+        configOf(FakeAuthBackend(), const SecureTokenStore()),
       );
       expect(stateOf(await result), const SignedOut());
+      expect(rec.log.last, '#1 end auth none async');
     });
 
     test(
-      'a key that matches keeps the session, one that does not loses it',
+      'a corrupt stored session in the keychain is reported and dropped',
       () async {
-        final proof = FakeProof(thumbprintValue: 'this-device');
-        final backend = FakeAuthBackend(proof: proof);
-        final good = restoreAuth(
-          AuthConfig(
-            backend: backend,
-            store: MemoryTokenStore(stored(session(binding: 'this-device'))),
-          ),
+        final errors = captureErrors();
+        final data = <String, String>{'fespalier_auth.session': 'garbage'};
+        FlutterSecureStorage.setMockInitialValues(data);
+        final result = restoreAuth(
+          configOf(FakeAuthBackend(), const SecureTokenStore()),
         );
-        expect(
-          good,
-          isA<Future<List<Override>>>(),
-          reason: 'the thumbprint is async',
-        );
-        expect(stateOf(await good), isA<SignedIn>());
-        expect(rec.log.first, '#1 start auth restore backend=fake dpop');
-
-        final store = MemoryTokenStore(
-          stored(session(binding: 'another-device')),
-        );
-        final lost = restoreAuth(AuthConfig(backend: backend, store: store));
-        expect(
-          stateOf(await lost),
-          const SignedOut(reason: SignOutReason.keyLost),
-        );
-        expect(store.value, isNull);
-        expect(rec.log.last, '#2 end auth expired async');
+        expect(stateOf(await result), const SignedOut());
+        expect(data, isEmpty);
+        expect(errors, hasLength(1));
+        expect(rec.log.last, '#1 end auth error async');
       },
     );
+
+    test('an asynchronous check makes restore async, and decides', () async {
+      final backend = _AsyncCheck(SignOutReason.keyLost);
+      final store = MemoryTokenStore(stored(session()));
+      final good = restoreAuth(
+        configOf(_AsyncCheck(null), MemoryTokenStore(stored(session()))),
+      );
+      expect(good, isA<Future<List<Override>>>());
+      expect(stateOf(await good), isA<SignedIn>());
+      expect(rec.log.last, '#1 end auth ok async');
+
+      final lost = restoreAuth(configOf(backend, store));
+      expect(lost, isA<Future<List<Override>>>());
+      expect(
+        stateOf(await lost),
+        const SignedOut(reason: SignOutReason.keyLost),
+      );
+      expect(store.value, isNull);
+      expect(rec.log.last, '#2 end auth expired async');
+    });
   });
 
   group('a backend that keeps its own session', () {
-    test('is asked for it, and the store is never used', () async {
+    test('is asked for it, and the store is never used', () {
       final log = <String>[];
       final backend = _OwnSession(
         AuthSession(
           backend: 'own',
-          tokens: const AuthTokens(accessToken: 'sdk-token'),
+          credential: const FakeCredential(id: 'sdk'),
           user: ada,
         ),
       );
       final store = SpyStore(log);
-      final result = restoreAuth(AuthConfig(backend: backend, store: store));
+      final result = restoreAuth(configOf(backend, store));
       expect(
         result,
         isA<List<Override>>(),
@@ -309,22 +468,63 @@ void main() {
       );
       expect(stateOf(result as List<Override>), isA<SignedIn>());
       expect(log, isEmpty);
+      expect(rec.log.last, '#1 end auth ok');
     });
 
     test('signed out when the SDK has no user', () {
       final result = restoreAuth(
-        AuthConfig(backend: _OwnSession(null), store: MemoryTokenStore()),
+        configOf(const _OwnSession(null), MemoryTokenStore()),
       );
       expect(stateOf(result as List<Override>), const SignedOut());
     });
 
     test('an SDK that answers later makes restore async', () async {
-      final backend = _OwnSession(null, later: true);
-      final result = restoreAuth(
-        AuthConfig(backend: backend, store: MemoryTokenStore()),
-      );
+      final backend = const _OwnSession(null, later: true);
+      final result = restoreAuth(configOf(backend, MemoryTokenStore()));
       expect(result, isA<Future<List<Override>>>());
       expect(stateOf(await result), const SignedOut());
+    });
+
+    test(
+      'its session is not held to the stored-session rules: no expiry check, store untouched',
+      () {
+        final time = TestTime();
+        final log = <String>[];
+        final backend = _OwnSession(
+          AuthSession(
+            backend: 'own',
+            credential: FakeCredential(
+              id: 'sdk',
+              expiresAt: time.now.subtract(const Duration(hours: 1)),
+              renewable: false,
+            ),
+            user: ada,
+          ),
+        );
+        final store = SpyStore(log, 'kept');
+        final result = time.run(() => restoreAuth(configOf(backend, store)));
+        expect(stateOf(result as List<Override>), isA<SignedIn>());
+        expect(log, isEmpty);
+        expect(store.value, 'kept');
+      },
+    );
+
+    test('check still decides', () {
+      final backend = _OwnSession(
+        AuthSession(
+          backend: 'own',
+          credential: const FakeCredential(id: 'sdk'),
+          user: ada,
+        ),
+        checkResult: SignOutReason.revoked,
+      );
+      final log = <String>[];
+      final result = restoreAuth(configOf(backend, SpyStore(log)));
+      expect(
+        stateOf(result as List<Override>),
+        const SignedOut(reason: SignOutReason.revoked),
+      );
+      expect(log, isEmpty, reason: 'there is no store to clear');
     });
   });
 
@@ -335,9 +535,7 @@ void main() {
         final store = MemoryTokenStore(stored(session()));
         final container = ProviderContainer(
           overrides: [
-            authConfig.overrideWithValue(
-              AuthConfig(backend: FakeAuthBackend(), store: store),
-            ),
+            authConfig.overrideWithValue(configOf(FakeAuthBackend(), store)),
           ],
         );
         addTearDown(container.dispose);
@@ -352,9 +550,7 @@ void main() {
         final store = GatedStore(gate, stored(session()));
         final container = ProviderContainer(
           overrides: [
-            authConfig.overrideWithValue(
-              AuthConfig(backend: FakeAuthBackend(), store: store),
-            ),
+            authConfig.overrideWithValue(configOf(FakeAuthBackend(), store)),
           ],
         );
         addTearDown(container.dispose);
@@ -382,14 +578,11 @@ void main() {
     test(
       'a store that fails to read is reported and answers signed out',
       () async {
-        final errors = <FlutterErrorDetails>[];
-        final old = FlutterError.onError;
-        FlutterError.onError = errors.add;
-        addTearDown(() => FlutterError.onError = old);
+        final errors = captureErrors();
         final container = ProviderContainer(
           overrides: [
             authConfig.overrideWithValue(
-              AuthConfig(backend: FakeAuthBackend(), store: _Broken()),
+              configOf(FakeAuthBackend(), _Broken()),
             ),
           ],
         );
@@ -400,33 +593,65 @@ void main() {
       },
     );
 
+    test(
+      'a gated store that fails to read is reported, and the wait ends signed out',
+      () async {
+        final errors = captureErrors();
+        final gate = Completer<void>();
+        final container = ProviderContainer(
+          overrides: [
+            authConfig.overrideWithValue(
+              configOf(FakeAuthBackend(), _GatedBroken(gate)),
+            ),
+          ],
+        );
+        addTearDown(container.dispose);
+        final notifier = container.read(authSession.notifier);
+        expect(container.read(authSession), const SessionRestoring());
+        gate.complete();
+        expect(await notifier.ready, const SignedOut());
+        expect(container.read(authSession), const SignedOut());
+        expect(errors, hasLength(1));
+      },
+    );
+
     test('a sign-in while it restores wins, and ends the wait', () async {
       final gate = Completer<void>();
       final backend = FakeAuthBackend();
       final container = ProviderContainer(
         overrides: [
           authConfig.overrideWithValue(
-            AuthConfig(
-              backend: backend,
-              store: GatedStore(gate, stored(session())),
-            ),
+            configOf(backend, GatedStore(gate, stored(session()))),
           ),
         ],
       );
       addTearDown(container.dispose);
       final notifier = container.read(authSession.notifier);
       expect(container.read(authSession), const SessionRestoring());
-      await notifier.signIn(
-        const PasswordSignIn(username: 'bob', password: 'bob'),
-      );
+      await notifier.signIn(const TestSignIn());
       expect(container.read(authSession), isA<SignedIn>());
       expect(await notifier.ready, isA<SignedIn>());
       gate.complete();
       await pumpEventQueue();
       expect(
-        (container.read(authSession) as SignedIn).session.tokens.accessToken,
-        'fake-access-1',
+        (container.read(authSession) as SignedIn).session.credential,
+        isA<FakeCredential>().having((c) => c.id, 'id', 'fake-1'),
+        reason: 'the late restore did not overwrite the sign-in',
       );
+    });
+
+    test('a container disposed while restoring does not hang ready', () async {
+      final gate = Completer<void>();
+      final container = ProviderContainer(
+        overrides: [
+          authConfig.overrideWithValue(
+            configOf(FakeAuthBackend(), GatedStore(gate, stored(session()))),
+          ),
+        ],
+      );
+      final ready = container.read(authSession.notifier).ready;
+      container.dispose();
+      expect(await ready, const SignedOut());
     });
   });
 
@@ -450,6 +675,20 @@ void main() {
         ),
       );
     });
+
+    test(
+      'an AuthConfig takes a transport, and has no apiOrigins by default',
+      () {
+        final transport = FakeTransport((_, _) => fakeResponse(200));
+        final config = AuthConfig(
+          backend: FakeAuthBackend(),
+          transport: transport,
+        );
+        expect(config.transport, same(transport));
+        expect(config.apiOrigins, isEmpty);
+        expect(config.store, isA<SecureTokenStore>());
+      },
+    );
   });
 }
 
@@ -464,14 +703,79 @@ final class _Broken implements TokenStore {
   void delete() {}
 }
 
-final class _OwnSession extends AuthBackend {
-  const _OwnSession(this.session, {this.later = false});
+final class _GatedBroken implements TokenStore {
+  _GatedBroken(this.gate);
+
+  final Completer<void> gate;
+
+  @override
+  Future<String?> read() async {
+    await gate.future;
+    throw StateError('keychain locked');
+  }
+
+  @override
+  void write(String value) {}
+
+  @override
+  void delete() {}
+}
+
+final class _DeleteFails implements TokenStore {
+  _DeleteFails(this.value);
+
+  final String value;
+
+  @override
+  String? read() => value;
+
+  @override
+  void write(String value) {}
+
+  @override
+  void delete() => throw StateError('cannot delete');
+}
+
+final class _CountingReader extends StubBackend {
+  _CountingReader();
+
+  int reads = 0;
+
+  @override
+  SessionCredential readCredential(Map<String, Object?> json) {
+    reads++;
+    return super.readCredential(json);
+  }
+}
+
+final class _CheckSpy extends StubBackend {
+  _CheckSpy();
+
+  int checked = 0;
+
+  @override
+  FutureOr<SignOutReason?> check(AuthSession session) {
+    checked++;
+    return null;
+  }
+}
+
+final class _AsyncCheck extends StubBackend {
+  const _AsyncCheck(this.result);
+
+  final SignOutReason? result;
+
+  @override
+  FutureOr<SignOutReason?> check(AuthSession session) async => result;
+}
+
+final class _OwnSession extends StubBackend {
+  const _OwnSession(this.session, {this.later = false, this.checkResult})
+    : super('own');
 
   final AuthSession? session;
   final bool later;
-
-  @override
-  String get name => 'own';
+  final SignOutReason? checkResult;
 
   @override
   bool get keepsOwnSession => true;
@@ -481,13 +785,5 @@ final class _OwnSession extends AuthBackend {
       later ? Future.value(session) : session;
 
   @override
-  Future<AuthSession> signIn(SignInRequest request) =>
-      throw UnimplementedError();
-
-  @override
-  Future<AuthSession> refresh(AuthSession session) =>
-      throw UnimplementedError();
-
-  @override
-  Future<void> signOut(AuthSession session) async {}
+  FutureOr<SignOutReason?> check(AuthSession session) => checkResult;
 }

@@ -13,19 +13,22 @@ description: "Files downloaded in a fespalier app with fespalier_download (since
 
 **Since 0.15.0.** `package:fespalier_download` is the vocabulary of a download that outlives a screen: a request, a status
 and the ports of a transfer engine. It adds no file kind, no `fespalier:` key and no `fsp` command, and `app.g.dart` is the
-same bytes. It is pure Dart over `package:http`, with no platform plugin, and resolves on Flutter 3.35. A release that
+same bytes. It is pure Dart over `fespalier_transport`'s `HttpTransport` (over `package:http` until 0.20.0), with no platform plugin, and resolves on Flutter 3.35. A release that
 predates 0.15.0 has no such package.
 
 **Not built yet in this release: a foreground upload.** The engine, `Downloads`, the foreground
 `HttpDownloadBackend`, the `FileDownloadStore` registry, the providers, the background backend
 (`fespalier_download_background`, Flutter 3.47, [`references/background.md`](references/background.md)) and background
 uploads ([`references/uploads.md`](references/uploads.md)) exist (since 0.15.0); do not write an upload over an
-`http.Client`: it does not exist. Notification taps as routes are an adapter (below). A download that must go on while the app is closed uses the
+`HttpTransport` or an `http.Client`: it does not exist. Notification taps as routes are an adapter (below). A download that must go on while the app is closed uses the
 background backend. What no device has answered about it (issue #158) is listed there as UNCHECKED: never state those as fact.
 
 ## The foreground backend
 
-`HttpDownloadBackend(client: client, bases: bases)` (since 0.15.0) downloads with the app's `http.Client` while the app runs.
+`HttpDownloadBackend(transport: transport, bases: bases)` (since 0.15.0) downloads through an `HttpTransport` while the app runs.
+**Until 0.20.0 it was `HttpDownloadBackend(client: client, ...)` over an `http.Client`**: wrap that client in
+`HttpClientTransport(client)` (`fespalier_http`), or use `DioTransport(dio)` (`fespalier_dio`), and list
+`fespalier_transport` yourself. The backend never closes the transport.
 `bases` is a `Future<String> Function(DownloadBase)` the app writes (usually `path_provider`); give the engine
 `TransferDownloadFiles(bases: bases)` so `remove`, `cancel` and sign-out delete the file and its `.part` and `.part.etag`.
 
@@ -36,9 +39,10 @@ background backend. What no device has answered about it (issue #158) is listed 
   the engine reports `Failed(killed)`, and `retry` continues from the part.
 - **A file at the destination is whole and checked** (size, then SHA-256 in another isolate, then an atomic move). A
   mismatch deletes the part. `cancel` deletes the part of a transfer in progress; an ended one keeps it for `retry`.
-- **Failures**: `network`, `rejected` (other HTTP errors), `unauthorized` (401, 403), `sizeMismatch`, `hashMismatch`,
+- **Failures**: `network` (the transport could not reach the server, or its certificate was refused
+  (`TransportUntrusted`), or the body broke), `rejected` (other HTTP errors), `unauthorized` (401, 403), `sizeMismatch`, `hashMismatch`,
   `storage`, `unsupported`. On the web every start is `Failed(unsupported)` before a request: hand the browser the URL.
-- **The client must honour `http.Abortable`** (the `package:http` clients do) or a pause cannot free a silent connection.
+- **The transport must honour `TransportRequest.abortTrigger`** (`HttpClientTransport` over a `package:http` client and `DioTransport` do) or a pause cannot free a silent connection.
 - `HttpTransfer` and `TransferFiles` are the pieces under it, exported for a backend of your own.
 
 ## The background backend
@@ -93,15 +97,20 @@ the engine cancels the failed attempt, keeps the bytes the backend can continue 
 Each start, retry and resume has its own one renewal, and a resume goes to the address its grant names, not the one it had
 (since 0.16.0).
 A second 401 or 403, a grantor that throws, or a grant URL that is not a valid http(s) URL ends `Failed(unauthorized)`, except
-a grantor that throws an `http.ClientException` (no network; `AuthUnavailable`, a token that could not refresh offline, is one):
-since 0.16.0 that ends `Failed(network)` (a `resume` stays `Paused` and returns false), because nothing was refused. A
+a grantor that throws a `TransportFailure` (no network) or a `CredentialsUnavailable` (`AuthUnavailable`, a token that could
+not refresh offline, is one; an `http.ClientException` until 0.20.0): since 0.16.0 that ends `Failed(network)` (a `resume`
+stays `Paused` and returns false), because nothing was refused. A `TransportUntrusted` (the grantor's server certificate was
+refused) ends `Failed(network)` too, **and a `resume` does not wait for the network on it**: a certificate that does not
+verify is not being offline. A
 cancel, remove, restart or `clearAccount()` while the grant request is in flight wins. The registry stores the request, never
 the grant; `DownloadGrant.toString()` prints no field; the span end carries `fespalier.download.regranted: true` after a renewal.
 
-- **`HttpDownloadBackend(credentials: HttpCredentials)`** (from `fespalier_http`; `fespalier_auth`'s `Authorizer` is one)
-  authorizes each send of the foreground transfer with `authorize('GET', url)` and asks `retry` after a 4xx for one re-send, at
-  most three sends, as `SessionClient` does; a credentials object that throws ends `Failed(unauthorized)`, or `Failed(network)`
-  when it throws an `http.ClientException` such as `AuthUnavailable` (since 0.16.0). It is foreground
+- **`HttpDownloadBackend(credentials: HttpCredentials)`** (from `fespalier_transport`, was `fespalier_http`'s until 0.20.0;
+  `fespalier_auth`'s `Authorizer` is one) authorizes each send of the foreground transfer with `authorize(request)` (a
+  `TransportRequest` for the GET) and asks `retry(attempt, response)` after a 4xx for one re-send, at most three sends (the
+  body of a 401 or a 403, up to 64 KiB, is read first so the credentials can see why), as `SessionTransport` does; a
+  credentials object that throws ends `Failed(unauthorized)`, or `Failed(network)` when it throws a
+  `CredentialsUnavailable` such as `AuthUnavailable` (since 0.16.0; an `http.ClientException` until 0.20.0). It is foreground
   only. For anything an operating-system backend sends, use a grant.
 - **Plain `DownloadRequest.headers` are persisted in plaintext** (the registry, and a background backend's queue). Never a
   refresh token or a long-lived bearer. DPoP per send cannot work in the background: the native callbacks cannot sign.

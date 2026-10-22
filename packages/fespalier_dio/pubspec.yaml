@@ -1,5 +1,5 @@
 name: fespalier_dio
-description: Dio and package:http for fespalier — requests cancelled with their page, server validation errors on fespalier_forms forms, and writes that are never retried.
+description: Dio for fespalier — Dio as a fespalier_transport transport and a Dio over one, requests cancelled with their page, server validation errors on fespalier_forms forms, and writes that are never retried.
 version: 0.20.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
@@ -30,17 +30,16 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.20.0 # x-release-please-version
-  # The package:http half, and the write rule and the problem decoders both clients share.
-  fespalier_http:
+  # HttpTransport, which DioTransport implements and TransportAdapter takes (since 0.21.0), and the
+  # one write rule WriteGuard shares with every transport.
+  fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
-      path: packages/fespalier_http
+      path: packages/fespalier_transport
       ref: v0.20.0 # x-release-please-version
-  # 1.5.0: Abortable requests, which DioHttpClient turns into a CancelToken (package:fespalier_dio/client.dart).
-  http: ^1.5.0
 
 dev_dependencies:
-  # The tests run the real SessionInterceptor under the retry interceptor (test/session_retry_test.dart).
+  # The tests run the real SessionTransport under the retry interceptor (test/session_retry_test.dart).
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier

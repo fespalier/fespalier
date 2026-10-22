@@ -6,4 +6,9 @@
 library;
 
 export 'src/in_context/editor.dart'
-    show TolgeeEditor, TranslationEditor, kTolgeeInContext, translationEditor;
+    show
+        TolgeeEditor,
+        TranslationEditor,
+        kTolgeeInContext,
+        tolgeeEditorTransport,
+        translationEditor;

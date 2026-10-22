@@ -10,6 +10,7 @@ import 'package:auth/auth_setup.dart';
 import 'package:auth/demo/demo_backend.dart';
 import 'package:auth/demo/demo_server.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,18 +37,19 @@ final class _Locked implements TokenStore {
 }
 
 void useStore(DemoServer server, TokenStore store) {
-  debugAuthSetup = () => AuthConfig(
-    backend: DemoBackend(apiOrigin, server.client),
+  debugApiTransport = () => server.transport;
+  debugAuthSetup = (transport) => AuthConfig(
+    backend: DemoBackend(apiOrigin, transport),
+    transport: transport,
     store: store,
     apiOrigins: [apiOrigin],
   );
-  debugApiClient = () => server.client;
 }
 
 void main() {
   tearDown(() {
     debugAuthSetup = null;
-    debugApiClient = null;
+    debugApiTransport = null;
   });
 
   testWidgets('a synchronous store: the very first frame is the app', (
@@ -99,7 +101,7 @@ void main() {
       final server = DemoServer();
       final session = await DemoBackend(
         apiOrigin,
-        server.client,
+        server.transport,
       ).signIn(const PasswordSignIn(username: 'bob', password: 'bob'));
       FlutterSecureStorage.setMockInitialValues({
         'fespalier_auth.session': jsonEncode(session.toJson()),
@@ -140,8 +142,8 @@ void main() {
     final server = DemoServer();
     final store = await signedInStore(server, 'ada');
     final json = jsonDecode(store.value!) as Map<String, Object?>;
-    final tokens = json['tokens']! as Map<String, Object?>;
-    tokens['refreshExpiresAt'] = DateTime.utc(2000).toIso8601String();
+    final credential = json['credential']! as Map<String, Object?>;
+    credential['refreshExpiresAt'] = DateTime.utc(2000).toIso8601String();
     store.value = jsonEncode(json);
     server.requests.clear();
     useStore(server, store);

@@ -18,7 +18,8 @@ import 'package:cose_example/src/notes.dart';
 import 'package:cose_example/src/payload.dart';
 import 'package:cose_example/src/wiring.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -72,7 +73,7 @@ class _Server {
 class _Device {
   _Device._(this.signer, this.sealer, this.identity, this.server, this.client);
 
-  final FakeDpopSigner signer;
+  final FakeKeypairSigner signer;
   final CoseSealer sealer;
   final Esp256VerifyKey identity;
   final _Server server;
@@ -82,7 +83,7 @@ class _Device {
     _Server server, {
     String seed = 'device a',
   }) async {
-    final signer = FakeDpopSigner(seed: seed);
+    final signer = FakeKeypairSigner(seed: seed);
     final sealer = CoseSealer(signer);
     return _Device._(
       signer,
@@ -104,7 +105,7 @@ class _Device {
     return transport = CoseTransport(
       config: config ?? server.config,
       sealer: sealer,
-      client: client,
+      http: HttpClientTransport(client),
       beforeSigned: register ? registrar.ensure : null,
     );
   }
@@ -235,7 +236,7 @@ void main() {
     'a client that pinned another server key cannot open the answer: Offline, same key',
     () async {
       final other = await CoseSealer(
-        FakeDpopSigner(seed: 'not the server'),
+        FakeKeypairSigner(seed: 'not the server'),
       ).identity();
       final wrong = CoseConfig(
         baseUrl: server.config.baseUrl,
@@ -541,7 +542,7 @@ CoseTransport _transportWith(_Device device, Map<String, OpContract> ops) {
   return CoseTransport(
     config: device.server.config,
     sealer: device.sealer,
-    client: client,
+    http: HttpClientTransport(client),
     ops: ops,
   );
 }

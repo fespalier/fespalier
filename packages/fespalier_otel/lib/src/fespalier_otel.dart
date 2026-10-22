@@ -206,8 +206,8 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.file: ?start.file,
           },
         ),
-        // Only the step, the backend's constant name, the trigger and whether tokens are bound:
-        // never a token, an id, a claim, an e-mail or a URL.
+        // Only the step, the backend's constant name, the trigger and the scheme's constant
+        // name: never a token, a signature, an attestation, an id, a claim, an e-mail or a URL.
         TelemetryOp.auth => (
           'auth ${start.authStep}',
           <String, Object>{
@@ -215,7 +215,7 @@ final class FespalierOtel extends FespalierTelemetry {
             FespalierConventions.authOperation: ?start.authStep,
             FespalierConventions.authBackend: ?start.authBackend,
             FespalierConventions.authTrigger: ?start.authTrigger,
-            FespalierConventions.authDpop: start.authDpop,
+            FespalierConventions.authScheme: ?start.authScheme,
           },
         ),
         // Only the builder's name, the bucket and whether a precache started it: never the URL, the

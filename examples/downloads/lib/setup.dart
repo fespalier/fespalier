@@ -1,7 +1,7 @@
 import 'package:downloads/app.g.dart';
 import 'package:fespalier_download/fespalier_download.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
 /// The folders downloads go in. On the web there are none: every start ends
@@ -45,19 +45,26 @@ DownloadTarget? tapTarget(DownloadTap tap) {
   return DownloadTarget.to(FileRoute(id: request.id));
 }
 
-/// Configures `fespalier_download` before `AppMain.run()`. With no argument it is the app: the
-/// foreground [HttpDownloadBackend] over `package:http`, a [FileDownloadStore] registry and the
-/// files of [bases]. A test passes fakes.
+/// Configures `fespalier_download` before `AppMain.run()`. It is the app with the app's one
+/// [transport] (`main()` builds it): the foreground [HttpDownloadBackend] sends through it, with a
+/// [FileDownloadStore] registry and the files of [bases]. A test passes fakes instead, and no
+/// transport.
 void configureDownloads({
+  HttpTransport? transport,
   DownloadBackend? backend,
   DownloadStore? store,
   DownloadFiles? files,
 }) {
+  if (backend == null && transport == null) {
+    throw ArgumentError(
+      'configureDownloads needs the app\'s transport, or a backend of its own',
+    );
+  }
   final realFiles = TransferDownloadFiles(bases: bases);
   _files = files ?? realFiles;
   FespalierDownload.configure(
     backend:
-        backend ?? HttpDownloadBackend(client: http.Client(), bases: bases),
+        backend ?? HttpDownloadBackend(transport: transport!, bases: bases),
     store: store ?? FileDownloadStore(bases: bases),
     files: _files,
     grantor: demoGrantor,

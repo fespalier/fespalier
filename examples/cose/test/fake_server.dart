@@ -6,7 +6,7 @@ import 'package:cose_example/src/cose/cose.dart';
 import 'package:cose_example/src/cose_transport.dart';
 import 'package:cose_example/src/payload.dart';
 import 'package:cose_example/src/wiring.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -29,11 +29,11 @@ typedef SeenRequest = ({
 final class FakeCoseServer {
   /// A server with its own response key.
   FakeCoseServer()
-    : _signer = FakeDpopSigner(seed: 'cose example fake server') {
+    : _signer = FakeKeypairSigner(seed: 'cose example fake server') {
     _sealer = CoseSealer(_signer);
   }
 
-  final FakeDpopSigner _signer;
+  final FakeKeypairSigner _signer;
   late final CoseSealer _sealer;
   final List<CoseVerifyKey> _devices = [];
   final Set<String> _ctis = {};

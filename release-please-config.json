@@ -93,6 +93,38 @@
         },
         {
           "type": "generic",
+          "path": "packages/fespalier_oidc/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_oidc/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_transport/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_transport/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_keypair/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_keypair/README.md"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_keypair_dpop/pubspec.yaml"
+        },
+        {
+          "type": "generic",
+          "path": "packages/fespalier_keypair_dpop/README.md"
+        },
+        {
+          "type": "generic",
           "path": "packages/fespalier_sign_keypair/pubspec.yaml"
         },
         {

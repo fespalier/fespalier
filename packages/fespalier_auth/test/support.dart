@@ -6,8 +6,9 @@ import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart' show addTearDown;
-import 'package:http/http.dart' as http;
 
 /// A clock a test moves by hand: `withClock(time.clock, body)` runs `body` (and everything it
 /// awaits) on it.
@@ -96,19 +97,61 @@ ProviderContainer containerFor({
   FakeAuthBackend? backend,
   TokenStore? store,
   List<Uri> apiOrigins = const [],
-  Duration? tokenLifetime,
-  http.Client? client,
+  Duration? credentialLifetime,
+  HttpTransport? transport,
 }) {
   final container = ProviderContainer(
     overrides: fakeAuth(
-      client: client,
+      transport: transport,
       signedInAs: signedInAs,
       backend: backend,
       store: store,
       apiOrigins: apiOrigins,
-      tokenLifetime: tokenLifetime,
+      credentialLifetime: credentialLifetime,
     ),
   );
   addTearDown(container.dispose);
   return container;
 }
+
+/// What a sign-in asks for in a test: the fakes ignore it.
+final class TestSignIn extends SignInRequest {
+  /// A request.
+  const TestSignIn();
+}
+
+/// A backend with everything but its name answered, for the tests that need one to behave in a
+/// way [FakeAuthBackend] does not (which is `final`): override what the test is about.
+abstract class StubBackend extends AuthBackend {
+  /// A stub named [name].
+  const StubBackend([this.name = 'fake']);
+
+  @override
+  final String name;
+
+  @override
+  RequestAuthenticator get authenticator => _authenticator;
+
+  @override
+  Duration get renewAhead => Duration.zero;
+
+  @override
+  SessionCredential readCredential(Map<String, Object?> json) =>
+      FakeCredential.fromJson(json);
+
+  @override
+  Future<AuthSession> signIn(SignInRequest request) =>
+      throw UnimplementedError('signIn');
+
+  @override
+  Future<AuthSession> renew(AuthSession session, {Object? hint}) =>
+      throw UnimplementedError('renew');
+
+  @override
+  Future<void> signOut(AuthSession session) async {}
+}
+
+final FakeAuthenticator _authenticator = FakeAuthenticator();
+
+/// A transport that answers 200 to everything, for the tests that never send.
+final FakeTransport noTransport = FakeTransport((_, _) => fakeResponse(200));

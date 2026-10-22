@@ -29,7 +29,7 @@ Uint8List kidFromThumbprint(List<int> thumbprint) =>
     Uint8List.fromList(thumbprint.sublist(0, kidLength));
 
 /// The coordinates of a P-256 public JWK (`{kty: EC, crv: P-256, x, y}`, unpadded base64url),
-/// as `fespalier_sign_keypair`'s `DpopSigner.publicJwk` answers.
+/// as `fespalier_keypair`'s `KeypairSigner.publicJwk` answers.
 ({Uint8List x, Uint8List y}) p256CoordinatesOfJwk(Map<String, String> jwk) {
   if (jwk['kty'] != 'EC' || jwk['crv'] != 'P-256') {
     throw const CoseMisuse('the key is not a P-256 EC key');

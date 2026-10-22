@@ -938,7 +938,7 @@
                         "index": 5
                       },
                       "auth": {
-                        "text": "Session (sign-in, refresh, sign-out)",
+                        "text": "Session (sign-in, renew, sign-out)",
                         "index": 6
                       },
                       "image": {
@@ -948,6 +948,10 @@
                       "custom": {
                         "text": "Package operation",
                         "index": 8
+                      },
+                      "http": {
+                        "text": "Web request",
+                        "index": 9
                       }
                     }
                   }

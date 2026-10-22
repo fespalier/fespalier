@@ -63,6 +63,47 @@ pub struct Step {
     pub awaits: bool,
 }
 
+/// A decorator the telemetry features wrap around the app's one transport, innermost first (the
+/// order of the variants is the order on the wire, so `Ord` sorts them).
+///
+/// The wire order of a generated app, outermost to innermost, is the one `docs/http.md` has: an
+/// app's own retrier, `SessionTransport` (`authTransport`, which `fespalier_auth` makes over the
+/// transport `authSetup` is given), `OtelTransport`, `SentryTransport`, `WriteGuardTransport`, the
+/// client. Telemetry sits under the session so each wire send is one span, an auth replay too; the
+/// guard sits under telemetry so a retrier above everything still reads its marks (every
+/// decorator returns the very response, and rethrows the very error, the guard marked).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TransportLayer {
+    /// `SentryTransport(inner)`: a breadcrumb per request (errors first, no span by default).
+    Sentry,
+    /// `OtelTransport(inner, isReady: ...)`: one `CLIENT` span per request, once the SDK is up.
+    Otel,
+}
+
+/// The statement that builds the app's one transport (since 0.21.0): every feature that sends
+/// (`http`, `auth`, `image`, `download`) has it, and the composer writes it once. Every package
+/// that sends is given this `transport`, which is the client inside a `WriteGuardTransport`
+/// (a retrier above reads its marks to leave writes alone) and, when the app has `otel` or
+/// `sentry`, inside their decorators ([`TransportLayer`]): the composer rewrites `code` and
+/// `comment` then. The session wraps it in `authTransport`, outside all of them.
+pub const TRANSPORT: Step = Step {
+    kind: StepKind::Statement,
+    phase: Phase::Rest,
+    comment: "The app's one transport, given to every package that sends: the client inside a write guard.",
+    code: "final transport = WriteGuardTransport(HttpClientTransport(http.Client()));",
+    awaits: false,
+};
+
+/// The expression [`TRANSPORT`] builds before any telemetry layer is put around it.
+pub const TRANSPORT_BASE: &str = "WriteGuardTransport(HttpClientTransport(http.Client()))";
+
+/// `package:http`, which the shared transport is built over (`^1.5.0` is the first release with
+/// abortable requests, which `fespalier_http` needs).
+const HTTP: ThirdParty = ThirdParty {
+    name: "http",
+    source: Source::Range("^1.5.0"),
+};
+
 /// What a feature adds to the files that every feature shares: `lib/app/startup.dart`,
 /// `lib/app/app.dart`, `lib/main.dart` and the pubspec's `flutter: assets:`, `test:` and Android
 /// `minSdk`. `compose.rs` merges the fragments of all the chosen
@@ -117,6 +158,24 @@ pub struct Startup {
     /// before Flutter 3.35 (24 since), so `fsp create` raises it in `android/app/build.gradle.kts`
     /// when the app is made with Android and the default is lower.
     pub android_min_sdk: Option<u32>,
+    /// The decorator this feature wraps around the app's one transport ([`TRANSPORT`]), with the
+    /// imports it needs written only when the app has a transport (a telemetry feature without a
+    /// feature that sends has nothing to wrap, and an unused import would fail `flutter analyze`).
+    pub transport_layer: Option<TransportLayer>,
+    /// Elements of the `List<Override> overrides(String pattern)` of `test/routes/setup.dart`
+    /// (each with its trailing comma, a `//` comment above it allowed): what `fsp test`'s route
+    /// smoke tests boot with. Any feature that has one makes the composer write that file, and
+    /// then a guarded route is no longer skipped on its own: see
+    /// [`smoke_guarded`](Self::smoke_guarded).
+    pub smoke_overrides: &'static [&'static str],
+    /// Library URIs `test/routes/setup.dart` imports for [`smoke_overrides`](Self::smoke_overrides)
+    /// (`{name}` is the app's package name).
+    pub smoke_imports: &'static [&'static str],
+    /// Guarded routes of this feature, each with why `fsp test` leaves it out, listed in
+    /// `test: skip:` **only when the app has a setup file**: without one `fsp test` skips a
+    /// guarded route by itself, and with one (its `overrides`) it would run the route, which only
+    /// a test of the feature's own can get past the guard.
+    pub smoke_guarded: &'static [(&'static str, &'static str)],
 }
 
 impl Startup {
@@ -137,6 +196,10 @@ impl Startup {
         assets: &[],
         smoke_skip: &[],
         android_min_sdk: None,
+        transport_layer: None,
+        smoke_overrides: &[],
+        smoke_imports: &[],
+        smoke_guarded: &[],
     };
 }
 
@@ -320,6 +383,10 @@ pub const RECIPES: &[Recipe] = &[
         conflicts: &[],
         startup: Startup {
             imports: &["package:fespalier_flags/fespalier_flags.dart"],
+            smoke_guarded: &[(
+                "/labs",
+                "guarded by the labs flag, which is off: test/flags_test.dart turns it on",
+            )],
             steps: &[Step {
                 kind: StepKind::Override,
                 phase: Phase::Rest,
@@ -353,8 +420,12 @@ pub const RECIPES: &[Recipe] = &[
         replaces: &[],
         requires: &[],
         conflicts: &[],
-        // `otel: true` writes the wiring into lib/app.main.g.dart (since 0.19.0): no startup.dart.
-        startup: Startup::NONE,
+        // `otel: true` writes the wiring into lib/app.main.g.dart (since 0.19.0): no startup.dart of
+        // its own. An app that sends has `OtelTransport` wrapped around its one transport there.
+        startup: Startup {
+            transport_layer: Some(TransportLayer::Otel),
+            ..Startup::NONE
+        },
     },
     Recipe {
         id: "sentry",
@@ -383,6 +454,7 @@ pub const RECIPES: &[Recipe] = &[
             ),
             sinks: &["FespalierSentry()"],
             router_observers: &["if (kIsWeb) FespalierSentry.navigatorObserver(),"],
+            transport_layer: Some(TransportLayer::Sentry),
             ..Startup::NONE
         },
     },
@@ -390,8 +462,18 @@ pub const RECIPES: &[Recipe] = &[
         id: "auth",
         description: "Signed-in routes (fespalier_auth): a guard on /account, a sign-in form, restoreAuth at startup and a backend that says to connect your identity provider.",
         // The sign-in page is a form on an action (docs/auth.md), which needs the forms package.
-        companions: &["fespalier_auth", "fespalier_forms"],
-        third_party: &[],
+        // The stub backend keeps bearer tokens (fespalier_oidc's TokenCredential and
+        // BearerAuthenticator, and the PasswordSignIn the form sends), and the config takes the
+        // app's one transport (fespalier_http builds it in startup.dart, fespalier_transport names
+        // its type).
+        companions: &[
+            "fespalier_auth",
+            "fespalier_forms",
+            "fespalier_http",
+            "fespalier_oidc",
+            "fespalier_transport",
+        ],
+        third_party: &[HTTP],
         // The tests that start the whole app give the keychain an in-memory store.
         dev_third_party: &[ThirdParty {
             name: "flutter_secure_storage",
@@ -417,15 +499,31 @@ pub const RECIPES: &[Recipe] = &[
         startup: Startup {
             imports: &[
                 "package:fespalier_auth/fespalier_auth.dart",
+                "package:fespalier_http/fespalier_http.dart",
+                "package:fespalier_transport/fespalier_transport.dart",
+                "package:http/http.dart as http",
                 "package:{name}/auth_setup.dart",
             ],
-            steps: &[Step {
-                kind: StepKind::Override,
-                phase: Phase::Session,
-                comment: "fespalier_auth: reads the stored session, with no network, so the first guard is synchronous.",
-                code: "...await restoreAuth(authSetup()),",
-                awaits: true,
-            }],
+            smoke_guarded: &[
+                (
+                    "/account",
+                    "guarded by the session: test/auth_test.dart signs in",
+                ),
+                (
+                    "/sign-in",
+                    "guarded, and its form needs the auth config: test/auth_test.dart opens it with one",
+                ),
+            ],
+            steps: &[
+                TRANSPORT,
+                Step {
+                    kind: StepKind::Override,
+                    phase: Phase::Session,
+                    comment: "fespalier_auth: reads the stored session, with no network, so the first guard is synchronous.",
+                    code: "...await restoreAuth(authSetup(transport)),",
+                    awaits: true,
+                },
+            ],
             // flutter_secure_storage, the token store: Android 7.0 (docs/auth.md, "Installing").
             android_min_sdk: Some(24),
             ..Startup::NONE
@@ -477,8 +575,10 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "image",
         description: "Responsive images (fespalier_image): a ResponsiveImage that asks the CDN for the width its box needs, through a URL template; no signing key.",
-        companions: &["fespalier_image"],
-        third_party: &[],
+        // The CDN fetches through the app's one transport (fespalier_http builds it in startup.dart,
+        // fespalier_transport names its type).
+        companions: &["fespalier_http", "fespalier_image", "fespalier_transport"],
+        third_party: &[HTTP],
         dev_third_party: &[],
         flutter_floor: "3.35",
         config: &[],
@@ -492,29 +592,44 @@ pub const RECIPES: &[Recipe] = &[
         conflicts: &[],
         startup: Startup {
             imports: &[
+                "package:fespalier_http/fespalier_http.dart",
                 "package:fespalier_image/fespalier_image.dart",
+                "package:fespalier_transport/fespalier_transport.dart",
+                "package:http/http.dart as http",
                 "package:{name}/images.dart",
             ],
-            steps: &[Step {
-                kind: StepKind::Override,
-                phase: Phase::Rest,
-                comment: "fespalier_image: which CDN the images come from (lib/images.dart).",
-                code: "imageCdnProvider.overrideWithValue(appImages),",
-                awaits: false,
-            }],
+            steps: &[
+                TRANSPORT,
+                Step {
+                    kind: StepKind::Override,
+                    phase: Phase::Rest,
+                    comment: "fespalier_image: which CDN the images come from (lib/images.dart), fetched through the transport.",
+                    code: "imageCdnProvider.overrideWithValue(appImages(transport)),",
+                    awaits: false,
+                },
+            ],
+            // The page needs the CDN, which only startup() (or a test's overrides) gives: the route
+            // smoke tests boot with test/routes/setup.dart's, a CDN over a transport that sends
+            // nothing, whose loads wait (the page is on screen, which is all they look for).
+            smoke_imports: &[
+                "package:fespalier_image/fespalier_image.dart",
+                "package:fespalier_image/testing.dart",
+                "package:fespalier_transport/testing.dart",
+                "package:{name}/images.dart",
+            ],
+            smoke_overrides: &[
+                "// The photo's CDN, over a transport that sends nothing: FakeImages holds every load\n// (the page is on screen, which is all a smoke test looks for).\nimageCdnProvider.overrideWithValue(\n  FakeImages().cdn(\n    appImages(\n      FakeTransport(\n        (request, body) => throw StateError('a smoke test sends nothing'),\n      ),\n    ),\n  ),\n),",
+            ],
             ..Startup::NONE
         },
     },
     Recipe {
         id: "http",
-        description: "An http.Client provider and a page that loads JSON through it (fespalier_http): the request is aborted when the page goes away; --dart-define=API_URL sets the server.",
-        companions: &["fespalier_http"],
-        // The app imports package:http itself (the client, and the response a test builds).
-        // 1.5.0 is the first release with abortable requests, which fespalier_http needs.
-        third_party: &[ThirdParty {
-            name: "http",
-            source: Source::Range("^1.5.0"),
-        }],
+        description: "The app's one transport and an http.Client over it, and a page that loads JSON through it (fespalier_http): the request is aborted when the page goes away; --dart-define=API_URL sets the server.",
+        // The app imports fespalier_transport itself (HttpTransport, WriteGuardTransport in the shared
+        // transport, and the FakeTransport a test serves from) and package:http (the client type).
+        companions: &["fespalier_http", "fespalier_transport"],
+        third_party: &[HTTP],
         dev_third_party: &[],
         flutter_floor: "3.35",
         config: &[],
@@ -528,10 +643,26 @@ pub const RECIPES: &[Recipe] = &[
         requires: &[],
         conflicts: &[],
         startup: Startup {
+            imports: &[
+                "package:fespalier_http/fespalier_http.dart",
+                "package:fespalier_transport/fespalier_transport.dart",
+                "package:http/http.dart as http",
+                "package:{name}/api.dart",
+            ],
+            steps: &[
+                TRANSPORT,
+                Step {
+                    kind: StepKind::Override,
+                    phase: Phase::Rest,
+                    comment: "fespalier_http: the transport lib/api.dart's httpClient sends through (the app's one, whose write guard keeps a retrier from repeating a write).",
+                    code: "httpTransport.overrideWithValue(transport),",
+                    awaits: false,
+                },
+            ],
             // A page that loads from a server has no network in `fsp test`'s smoke test.
             smoke_skip: &[(
                 "/headlines",
-                "needs an http client: test/http_test.dart serves it from a FakeHttpClient",
+                "needs a transport: test/http_test.dart serves it from a FakeTransport",
             )],
             ..Startup::NONE
         },
@@ -539,8 +670,13 @@ pub const RECIPES: &[Recipe] = &[
     Recipe {
         id: "download",
         description: "Downloads that outlive a screen (fespalier_download, the foreground backend): a /downloads page with a start button and the download's status; --dart-define=DOWNLOAD_URL sets the file.",
-        companions: &["fespalier_download"],
-        // The foreground backend takes an http.Client. The package names no plugin for the base
+        companions: &[
+            "fespalier_download",
+            "fespalier_http",
+            "fespalier_transport",
+        ],
+        // The foreground backend sends through the app's one transport (fespalier_http builds it
+        // in startup.dart, fespalier_transport names its write guard). The package names no plugin for the base
         // folders (application support, cache, documents), so the app adds one.
         //
         // `file` and `platform` are not imported. fespalier_download pulls no path_provider, so
@@ -554,10 +690,7 @@ pub const RECIPES: &[Recipe] = &[
                 name: "file",
                 source: Source::Range(">=6.1.3 <8.0.0"),
             },
-            ThirdParty {
-                name: "http",
-                source: Source::Range("^1.5.0"),
-            },
+            HTTP,
             ThirdParty {
                 name: "path_provider",
                 source: Source::Range("^2.1.0"),
@@ -581,19 +714,24 @@ pub const RECIPES: &[Recipe] = &[
         startup: Startup {
             imports: &[
                 "package:fespalier_download/fespalier_download.dart",
+                "package:fespalier_http/fespalier_http.dart",
+                "package:fespalier_transport/fespalier_transport.dart",
                 "package:http/http.dart as http",
                 "package:path_provider/path_provider.dart",
             ],
             decls: &[
                 "/// Where each base folder of a download is on this device. fespalier_download names no\n/// plugin for it, so the app does (docs/downloads.md, \"The foreground backend\").\nFuture<String> appBases(DownloadBase base) async => switch (base) {\n  DownloadBase.support => (await getApplicationSupportDirectory()).path,\n  DownloadBase.cache => (await getApplicationCacheDirectory()).path,\n  DownloadBase.documents => (await getApplicationDocumentsDirectory()).path,\n};",
             ],
-            steps: &[Step {
-                kind: StepKind::Override,
-                phase: Phase::Rest,
-                comment: "fespalier_download: the engine, over a foreground transfer (it stops with the app).",
-                code: "downloadsEngine.overrideWithValue(\n  Downloads(\n    backend: HttpDownloadBackend(client: http.Client(), bases: appBases),\n    store: FileDownloadStore(bases: appBases),\n    files: TransferDownloadFiles(bases: appBases),\n  ),\n),",
-                awaits: false,
-            }],
+            steps: &[
+                TRANSPORT,
+                Step {
+                    kind: StepKind::Override,
+                    phase: Phase::Rest,
+                    comment: "fespalier_download: the engine, over a foreground transfer through the transport (it stops with the app).",
+                    code: "downloadsEngine.overrideWithValue(\n  Downloads(\n    backend: HttpDownloadBackend(transport: transport, bases: appBases),\n    store: FileDownloadStore(bases: appBases),\n    files: TransferDownloadFiles(bases: appBases),\n  ),\n),",
+                    awaits: false,
+                },
+            ],
             // The page reads the engine, which only startup() (or a test's overrides) provides.
             smoke_skip: &[(
                 "/downloads",
@@ -627,7 +765,7 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     ),
     (
         "fespalier_dio",
-        "an app that wants Dio adds it itself; the `http` feature scaffolds package:http (fespalier_http), and `DioHttpClient` makes a Dio fit it",
+        "an app that wants Dio adds it itself; the `http` feature scaffolds package:http (fespalier_http), and `TransportAdapter` makes a Dio send through a transport",
     ),
     (
         "fespalier_download_background",
@@ -636,6 +774,14 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     (
         "fespalier_frb",
         "needs a Rust core and flutter_rust_bridge, which are the app's own",
+    ),
+    (
+        "fespalier_keypair",
+        "needs Flutter 3.44 and a git dependency of another repository; keys and signers a protocol builds on, nothing to scaffold",
+    ),
+    (
+        "fespalier_keypair_dpop",
+        "needs Flutter 3.44 and a git dependency of another repository, and an identity provider that is the app's own",
     ),
     (
         "fespalier_launch",
@@ -664,16 +810,32 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
 /// app resolves a companion's own git dependency on the others at the checkout only when each
 /// is overridden. `create_tests` compares this table with the pubspecs.
 pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
-    ("fespalier_auth", &["fespalier_http"]),
-    ("fespalier_cratestack", &["fespalier_dio"]),
-    ("fespalier_dio", &["fespalier_http"]),
-    ("fespalier_download", &["fespalier_http"]),
+    ("fespalier_auth", &["fespalier_transport"]),
+    ("fespalier_cratestack", &["fespalier_transport"]),
+    ("fespalier_dio", &["fespalier_transport"]),
+    ("fespalier_download", &["fespalier_transport"]),
     (
         "fespalier_download_background",
-        &["fespalier_download", "fespalier_http"],
+        &["fespalier_download", "fespalier_transport"],
     ),
-    ("fespalier_maps", &["fespalier_download"]),
-    ("fespalier_sign_keypair", &["fespalier_auth"]),
+    ("fespalier_http", &["fespalier_transport"]),
+    ("fespalier_image", &["fespalier_transport"]),
+    (
+        "fespalier_keypair_dpop",
+        &["fespalier_keypair", "fespalier_oidc"],
+    ),
+    (
+        "fespalier_maps",
+        &["fespalier_download", "fespalier_transport"],
+    ),
+    ("fespalier_oidc", &["fespalier_auth", "fespalier_transport"]),
+    ("fespalier_otel", &["fespalier_transport"]),
+    ("fespalier_sentry", &["fespalier_transport"]),
+    (
+        "fespalier_sign_keypair",
+        &["fespalier_auth", "fespalier_keypair", "fespalier_transport"],
+    ),
+    ("fespalier_tolgee", &["fespalier_transport"]),
 ];
 
 /// The companions `names` need at the checkout: themselves and everything they depend on, sorted.

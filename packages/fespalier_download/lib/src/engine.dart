@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:clock/clock.dart' as time;
-import 'package:http/http.dart' as http show ClientException;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show CredentialsUnavailable, TransportFailure, TransportUntrusted;
 
 import 'grant.dart';
 import 'ports.dart';
@@ -32,8 +33,9 @@ typedef DownloadObserver = void Function(String id, DownloadStatus status);
 /// allows) and enqueues again with the new grant. The renewal is once for each of those grants: a
 /// download that is paused and resumed again, as long as it takes, can be renewed again (since
 /// 0.16.0), and a resume goes to the address its grant names, not the one it had. A second 401 or 403, or a grantor that throws,
-/// ends the download `Failed(unauthorized)`, except a grantor that throws an `http.ClientException`
-/// (the app could not reach its server, or its session could not refresh offline): nothing was
+/// ends the download `Failed(unauthorized)`, except a grantor that throws a `TransportFailure` or a
+/// `CredentialsUnavailable` (the app could not reach its server, or its session could not refresh
+/// offline, which is `fespalier_auth`'s `AuthUnavailable`): nothing was
 /// refused, so the download ends `Failed(network)` and `retry` asks again (a resume leaves the
 /// download paused and returns false). A cancel, a remove, a restart or a sign-out during the
 /// request wins: its answer is dropped.
@@ -215,7 +217,7 @@ class Downloads {
   ///
   /// With a `grantor` the engine asks it first (`renewal: false`) and hands the backend the
   /// grant's headers and address (since 0.16.0), and the resume has its own one renewal. A
-  /// grantor that cannot reach its server (an `http.ClientException`) leaves the download paused
+  /// grantor that cannot reach its server (a `TransportFailure` or a `CredentialsUnavailable`) leaves the download paused
   /// and this returns false.
   Future<bool> resume(String id) async {
     if (statusOf(id) is! Paused) return false;
@@ -401,7 +403,7 @@ class Downloads {
   // Asks the grantor (if there is one) for the attempt of [generation]. Null means the attempt
   // is over: a newer one owns the id, or the grant failed and the download ended
   // Failed(unauthorized), or Failed(network) when the grantor could not reach its server (an
-  // http.ClientException: nothing was refused). With [failIfOffline] false that last case ends
+  // TransportFailure: nothing was refused). With [failIfOffline] false that last case ends
   // nothing: a paused download stays paused. The grant is used for this attempt and kept nowhere.
   Future<_Granted?> _ask(
     String id,
@@ -415,8 +417,22 @@ class Downloads {
     DownloadGrant? grant;
     try {
       grant = await grantor(request, renewal: renewal);
-    } on http.ClientException {
-      // Offline, a timeout, an AuthUnavailable: the app's server was not reached, so no one
+    } on TransportUntrusted {
+      // The grantor's server certificate was refused: that is not being offline, so even a resume
+      // (which waits out an offline grantor) ends the download rather than wait for the network.
+      if (generation == _generationOf(id)) {
+        _apply(id, const Failed(DownloadFailure.network));
+      }
+      return null;
+    } on TransportFailure {
+      // Offline, a timeout: the app's server was not reached, so no one
+      // refused the person. Not a lost session; the error may name the host, and is not kept.
+      if (failIfOffline && generation == _generationOf(id)) {
+        _apply(id, const Failed(DownloadFailure.network));
+      }
+      return null;
+    } on CredentialsUnavailable {
+      // An AuthUnavailable: the app's server was not reached, so no one
       // refused the person. Not a lost session; the error may name the host, and is not kept.
       if (failIfOffline && generation == _generationOf(id)) {
         _apply(id, const Failed(DownloadFailure.network));

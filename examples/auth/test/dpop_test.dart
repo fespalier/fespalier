@@ -1,8 +1,8 @@
-// DPoP (RFC 9449) with fespalier_sign_keypair, against the demo server in `requireDpop` mode: it
+// DPoP (RFC 9449) with fespalier_keypair_dpop, against the demo server in `requireDpop` mode: it
 // checks every proof with verifyDpopProof, binds the code and the tokens to the key, asks for a
-// nonce at the API, and refuses a clock that is wrong. FakeDpopSigner is the key: the same on every
-// run, and no platform. (The real thing, a real Keycloak, is
-// `packages/fespalier_sign_keypair/test/keycloak_live_test.dart`.)
+// nonce at the API, and refuses a clock that is wrong. FakeKeypairSigner is the key: the same on
+// every run, and no platform. (The real thing, a real Keycloak, is
+// `packages/fespalier_keypair_dpop/test/keycloak_live_test.dart`.)
 import 'dart:convert';
 
 import 'package:auth/api.dart';
@@ -11,18 +11,22 @@ import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart' show Override;
 import 'package:fespalier_auth/fespalier_auth.dart';
-import 'package:fespalier_auth/oidc.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_keypair/testing.dart';
+import 'package:fespalier_keypair_dpop/fespalier_keypair_dpop.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
+
+import 'support.dart';
 
 final issuer = Uri.parse(DemoServer.issuer);
 final redirect = Uri.parse('com.example.fespalierauth:/callback');
 const tokenCall = 'POST /oidc/protocol/openid-connect/token';
 
-/// The thumbprints of FakeDpopSigner's keys, made with python (see the sign_keypair package's
+/// The thumbprints of FakeKeypairSigner's keys, made with python (see the keypair package's
 /// thumbprint_test.dart).
 const firstKey = 'XCW8GJrJxRT2sQyX29vGikHXwr7aK5puMdwvhd9pqNE';
 const secondKey = 'kSFjtX3PWG7XxFarb-p54ae5WE7C7nIbuoo5V2zbE20';
@@ -38,20 +42,27 @@ Future<Uri> browser(Uri url, Uri back, DemoServer server) async {
   return Uri.parse(response.headers['location']!);
 }
 
-OidcBackend backend(DemoServer server, DpopProof proof) => OidcBackend(
+/// The backend of [server]'s provider, with [proof]; its token calls go through [transport] (the
+/// server by default).
+OidcBackend backend(
+  DemoServer server,
+  DpopProof proof, {
+  HttpTransport? transport,
+}) => OidcBackend(
   issuer: issuer,
   clientId: 'fespalier-auth-example-dpop',
   redirectUri: redirect,
   endpoints: OidcEndpoints.keycloak(issuer),
   openBrowser: (url, back) => browser(url, back, server),
-  client: server.client,
+  transport: transport ?? server.transport,
   proof: proof,
 );
 
+/// The app over [oidc]: the one transport is [base] (the server by default), as `startup()` makes it.
 ProviderContainer app(
   DemoServer server,
   OidcBackend oidc, {
-  http.Client? base,
+  HttpTransport? base,
   TokenStore? store,
 }) {
   final container = ProviderContainer(
@@ -59,17 +70,21 @@ ProviderContainer app(
       authConfig.overrideWithValue(
         AuthConfig(
           backend: oidc,
+          transport: base ?? server.transport,
           store: store ?? MemoryTokenStore(),
           apiOrigins: [apiOrigin],
         ),
       ),
       authInitialState.overrideWithValue(const SignedOut()),
-      authBaseClient.overrideWithValue(base ?? server.client),
     ],
   );
   addTearDown(container.dispose);
   return container;
 }
+
+/// The tokens a session holds.
+TokenCredential tokensOf(AuthSession session) =>
+    session.credential as TokenCredential;
 
 Future<AuthSession> signIn(ProviderContainer container) async {
   await container.read(authSession.notifier).signIn(const BrowserSignIn());
@@ -103,11 +118,11 @@ void main() {
     () async {
       await onClock(() async {
         final server = DemoServer(requireDpop: true);
-        final dpop = DpopProof(signer: FakeDpopSigner());
+        final dpop = DpopProof(signer: FakeKeypairSigner());
         final session = await signIn(app(server, backend(server, dpop)));
-        expect(session.tokens.tokenType, 'DPoP');
-        expect(session.tokens.isDpop, isTrue);
-        expect(session.binding, firstKey);
+        expect(tokensOf(session).tokenType, 'DPoP');
+        expect(tokensOf(session).isDpop, isTrue);
+        expect(tokensOf(session).jkt, firstKey);
         expect(server.acceptedProofs, [tokenCall]);
         // The access token says which key it belongs to (cnf.jkt, RFC 9449 section 6.1).
         final claims =
@@ -115,7 +130,7 @@ void main() {
                   utf8.decode(
                     base64Url.decode(
                       base64Url.normalize(
-                        session.tokens.accessToken.split('.')[1],
+                        tokensOf(session).accessToken.split('.')[1],
                       ),
                     ),
                   ),
@@ -133,16 +148,16 @@ void main() {
         final server = DemoServer(requireDpop: true);
         final container = app(
           server,
-          backend(server, DpopProof(signer: FakeDpopSigner())),
+          backend(server, DpopProof(signer: FakeKeypairSigner())),
         );
         final session = await signIn(container);
-        final ok = await container.read(authHttpClient).get(api('/orders'));
-        expect(ok.statusCode, 200);
+        final ok = await get(container.read(authTransport), '/orders');
+        expect(ok.status, 200);
         expect(server.acceptedProofs, [tokenCall, 'GET /orders']);
         // Sent by hand, the token alone is no use.
         final bearer = await server.client.get(
           api('/orders'),
-          headers: {'Authorization': 'Bearer ${session.tokens.accessToken}'},
+          headers: {'Authorization': 'Bearer ${tokensOf(session).accessToken}'},
         );
         expect(bearer.statusCode, 401);
         expect(
@@ -151,7 +166,7 @@ void main() {
         );
         final dpopNoProof = await server.client.get(
           api('/orders'),
-          headers: {'Authorization': 'DPoP ${session.tokens.accessToken}'},
+          headers: {'Authorization': 'DPoP ${tokensOf(session).accessToken}'},
         );
         expect(dpopNoProof.statusCode, 401);
         expect(
@@ -167,19 +182,19 @@ void main() {
       final server = DemoServer(requireDpop: true);
       final container = app(
         server,
-        backend(server, DpopProof(signer: FakeDpopSigner())),
+        backend(server, DpopProof(signer: FakeKeypairSigner())),
       );
       final session = await signIn(container);
-      final thief = DpopProof(signer: FakeDpopSigner(seed: 'a thief'));
+      final thief = DpopProof(signer: FakeKeypairSigner(seed: 'a thief'));
       final headers = await thief.headers(
         method: 'GET',
         uri: api('/orders'),
-        accessToken: session.tokens.accessToken,
+        accessToken: tokensOf(session).accessToken,
       );
       final response = await server.client.get(
         api('/orders'),
         headers: {
-          'Authorization': 'DPoP ${session.tokens.accessToken}',
+          'Authorization': 'DPoP ${tokensOf(session).accessToken}',
           ...headers,
         },
       );
@@ -200,15 +215,15 @@ void main() {
         final server = DemoServer(requireDpop: true, apiNonce: 'demo-nonce-1');
         final container = app(
           server,
-          backend(server, DpopProof(signer: FakeDpopSigner())),
+          backend(server, DpopProof(signer: FakeKeypairSigner())),
         );
         await signIn(container);
-        final client = container.read(authHttpClient);
-        expect((await client.get(api('/orders'))).statusCode, 200);
+        final transport = container.read(authTransport);
+        expect((await get(transport, '/orders')).status, 200);
         expect(server.refusedProofs, ['use_dpop_nonce']);
         expect(server.acceptedProofs, [tokenCall, 'GET /orders']);
         // The nonce was kept: the next request is not challenged.
-        expect((await client.get(api('/orders/1'))).statusCode, 200);
+        expect((await get(transport, '/orders/1')).status, 200);
         expect(server.refusedProofs, ['use_dpop_nonce']);
         expect(server.acceptedProofs.last, 'GET /orders/1');
       });
@@ -216,29 +231,27 @@ void main() {
   );
 
   test(
-    'a refresh carries a proof of the same key, and the next request a new token',
+    'a renewal carries a proof of the same key, and the next request a new token',
     () async {
       await onClock(() async {
         final server = DemoServer(requireDpop: true);
         final container = app(
           server,
-          backend(server, DpopProof(signer: FakeDpopSigner())),
+          backend(server, DpopProof(signer: FakeKeypairSigner())),
         );
         final first = await signIn(container);
         now = now.add(const Duration(minutes: 6));
-        final response = await container
-            .read(authHttpClient)
-            .get(api('/orders'));
-        expect(response.statusCode, 200);
+        final response = await get(container.read(authTransport), '/orders');
+        expect(response.status, 200);
         expect(server.acceptedProofs, [tokenCall, tokenCall, 'GET /orders']);
         final next = (container.read(authSession) as SignedIn).session;
-        expect(next.tokens.accessToken, isNot(first.tokens.accessToken));
+        expect(tokensOf(next).accessToken, isNot(tokensOf(first).accessToken));
         expect(
-          next.tokens.refreshToken,
-          isNot(first.tokens.refreshToken),
+          tokensOf(next).refreshToken,
+          isNot(tokensOf(first).refreshToken),
           reason: 'rotated',
         );
-        expect(next.binding, firstKey);
+        expect(tokensOf(next).jkt, firstKey);
         expect(server.refreshes, 1);
       });
     },
@@ -252,14 +265,14 @@ void main() {
           requireDpop: true,
           clockSkew: const Duration(minutes: 2),
         );
-        final dpop = DpopProof(signer: FakeDpopSigner());
+        final dpop = DpopProof(signer: FakeKeypairSigner());
         final container = app(server, backend(server, dpop));
         await signIn(container);
         expect(server.refusedProofs, ['invalid_dpop_proof']);
         expect(dpop.clockOffset, const Duration(minutes: 2));
         // The correction applies to the next request: no refusal.
         expect(
-          (await container.read(authHttpClient).get(api('/orders'))).statusCode,
+          (await get(container.read(authTransport), '/orders')).status,
           200,
         );
         expect(server.refusedProofs, ['invalid_dpop_proof']);
@@ -272,16 +285,16 @@ void main() {
     () async {
       await onClock(() async {
         final server = DemoServer(requireDpop: true);
-        final signer = FakeDpopSigner();
+        final signer = FakeKeypairSigner();
         final container = app(
           server,
           backend(server, DpopProof(signer: signer)),
         );
-        expect((await signIn(container)).binding, firstKey);
+        expect(tokensOf(await signIn(container)).jkt, firstKey);
         await container.read(authSession.notifier).signOut();
         expect(signer.deletes, 1);
         expect(container.read(authSession), isA<SignedOut>());
-        expect((await signIn(container)).binding, secondKey);
+        expect(tokensOf(await signIn(container)).jkt, secondKey);
       });
     },
   );
@@ -289,12 +302,12 @@ void main() {
   test('a refresh token is no use with another key: AuthRejected', () async {
     await onClock(() async {
       final server = DemoServer(requireDpop: true);
-      final dpop = DpopProof(signer: FakeDpopSigner());
+      final dpop = DpopProof(signer: FakeKeypairSigner());
       final oidc = backend(server, dpop);
       final session = await oidc.signIn(const BrowserSignIn());
       await dpop.reset(); // the key is gone
       await expectLater(
-        oidc.refresh(session),
+        oidc.renew(session),
         throwsA(
           isA<AuthRejected>()
               .having((e) => e.error, 'error', 'invalid_grant')
@@ -314,17 +327,20 @@ void main() {
       await onClock(() async {
         final server = DemoServer(requireDpop: true);
         final session = await signIn(
-          app(server, backend(server, DpopProof(signer: FakeDpopSigner()))),
+          app(server, backend(server, DpopProof(signer: FakeKeypairSigner()))),
         );
-        expect(session.binding, firstKey);
+        expect(tokensOf(session).jkt, firstKey);
         // The app starts again, on a device whose key is another one (a restored backup).
         final restored =
             restoreAuth(
                   AuthConfig(
                     backend: backend(
                       server,
-                      DpopProof(signer: FakeDpopSigner(seed: 'another device')),
+                      DpopProof(
+                        signer: FakeKeypairSigner(seed: 'another device'),
+                      ),
                     ),
+                    transport: server.transport,
                     store: MemoryTokenStore(jsonEncode(session.toJson())),
                     apiOrigins: [apiOrigin],
                   ),
@@ -341,22 +357,30 @@ void main() {
 
   group('RetryClient', () {
     test(
-      'under the session client re-sends one proof, which the server refuses; over it, each attempt has its own',
+      'under the session transport re-sends one proof, which the server refuses; over it, each attempt has its own',
       () async {
         await onClock(() async {
-          // Under: the same headers go twice.
+          // Under: the retrier sits in the one transport, below the session, so the same headers
+          // go twice.
           final under = DemoServer(requireDpop: true);
-          final underContainer = app(
-            under,
-            backend(under, DpopProof(signer: FakeDpopSigner())),
-            base: RetryClient(
+          final retrying = HttpClientTransport(
+            RetryClient(
               Flaky(under.client),
               retries: 1,
               delay: (_) => Duration.zero,
             ),
           );
+          final underContainer = app(
+            under,
+            backend(
+              under,
+              DpopProof(signer: FakeKeypairSigner()),
+              transport: retrying,
+            ),
+            base: retrying,
+          );
           await signIn(underContainer);
-          await underContainer.read(authHttpClient).get(api('/orders'));
+          await get(underContainer.read(authTransport), '/orders');
           expect(
             under.refusedProofs,
             contains('invalid_dpop_proof'),
@@ -364,21 +388,27 @@ void main() {
           );
           expect(under.reusedProofs, 1, reason: 'as a reused jti');
 
-          // Over: nothing is refused.
+          // Over: the retrier sends through the session transport, as an http.Client
+          // (TransportClient), so every attempt is signed afresh and nothing is refused.
           final over = DemoServer(requireDpop: true);
+          final flaky = HttpClientTransport(Flaky(over.client));
           final overContainer = app(
             over,
-            backend(over, DpopProof(signer: FakeDpopSigner())),
-            base: Flaky(over.client),
+            backend(
+              over,
+              DpopProof(signer: FakeKeypairSigner()),
+              transport: flaky,
+            ),
+            base: flaky,
           );
           await signIn(overContainer);
-          final retrying = RetryClient(
-            overContainer.read(authHttpClient),
+          final client = RetryClient(
+            TransportClient(overContainer.read(authTransport)),
             retries: 1,
             when: (response) => response.statusCode == 503,
             delay: (_) => Duration.zero,
           );
-          final response = await retrying.get(api('/orders'));
+          final response = await client.get(api('/orders'));
           expect(response.statusCode, 200);
           expect(over.refusedProofs, isEmpty);
           expect(over.reusedProofs, 0);

@@ -3,10 +3,20 @@ import 'dart:ui' as ui;
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_image/fespalier_image.dart';
 import 'package:fespalier_image/testing.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:{{ package }}/app.g.dart';
 import 'package:{{ package }}/images.dart';
+
+/// The transport the CDN is built with: `FakeImages` replaces the provider, so nothing is sent.
+final noNetwork = FakeTransport(
+  (request, body) => throw StateError('the images load through FakeImages'),
+);
+
+/// The app's CDN, loading through [images].
+Override cdnThrough(FakeImages images) =>
+    imageCdnProvider.overrideWithValue(images.cdn(appImages(noNetwork)));
 
 void main() {
   late ui.Image image;
@@ -20,7 +30,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/photo'),
-      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+      overrides: [cdnThrough(images)],
     );
     // A 160-point box at the test view's 3x pixel ratio is 480 pixels: the 640 bucket.
     expect(images.requested, ['$imagesUrl/sample.jpg?w=640&q=80']);
@@ -34,7 +44,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/photo'),
-      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+      overrides: [cdnThrough(images)],
     );
     final url = images.requested.single;
     images.fail(url);

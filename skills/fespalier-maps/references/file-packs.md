@@ -6,7 +6,7 @@ directory the app owns. Unlike a MapLibre region, **it resumes after the app was
 `Range: bytes=<size>-`. The file is moved to its destination only when it has the size and the SHA-256 the request names.
 `FilePacks` (the notifier `filePacks`) holds one `PackStatus` per key, the same values as region packs.
 
-Three seams, all provided by the app: an `http.Client` (`packHttpClient`, **no default**), the directory (you pass a path in
+Three seams, all provided by the app: an `HttpTransport` (`packTransport`, **no default**; `packHttpClient`, an `http.Client`, until 0.20.0), the directory (you pass a path in
 the request: the package depends on no `path_provider`), and, only in tests, the files (`packFileStore`, default `dart:io`,
 `FakePackFiles` in `testing.dart`). On the web there are no files: a download ends `Failed(unsupported)` before any request.
 
@@ -39,20 +39,22 @@ FilePackRequest doualaFilePack(String supportDirectory) => FilePackRequest(
 );
 ```
 
-## Wire the client
+## Wire the transport
 
-`packHttpClient` has no default: override it once with the client the app already has (its timeouts, proxy and
-certificates apply to the download). The package never closes it. `start` without the override throws the
+`packTransport` has no default: override it once with the transport the app already has (its timeouts, proxy and
+certificates apply to the download; a chain with a session in it signs the request, and an `HttpClientTransport` over the
+app's `http.Client` is the plain case). Until 0.20.0 this was `packHttpClient`, an `http.Client`: it is gone, so wrap that
+client in `HttpClientTransport(client)` (`fespalier_http`). The package never closes it. `start` without the override throws the
 `ProviderException` Riverpod wraps the explaining `StateError` in.
 
 ```yaml
 # pubspec.yaml dependencies
-  http: ">=1.5.0 <2.0.0"
   crypto: ">=3.0.6 <4.0.0"
 ```
 
 (`crypto` is only for the test below, which hashes its fake body.) Since 0.15.0 the transfer is `fespalier_download`'s
-(`HttpTransfer`): list `fespalier_download` next to `fespalier_maps`, with the same git `url` and `ref`. The API, the
+(`HttpTransfer`): list `fespalier_download` next to `fespalier_maps`, with the same git `url` and `ref` (and `fespalier_transport`, which
+owns `HttpTransport`, since 0.21.0). The API, the
 statuses and the failures below did not change; a 401 or 403 is still `PackFailure.rejected`.
 
 ```dart
@@ -60,13 +62,13 @@ statuses and the failures below did not change; a 401 or 403 is still `PackFailu
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_maps/fespalier_maps.dart';
 import 'package:flutter/widgets.dart';
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:my_app/offline/douala_file.dart';
 
-/// The app's `ProviderScope`: its own client for the downloads, and the directory it chose for the files.
-Widget fileScope({required http.Client client, required String directory, required Widget child}) => ProviderScope(
+/// The app's `ProviderScope`: its own transport for the downloads, and the directory it chose for the files.
+Widget fileScope({required HttpTransport transport, required String directory, required Widget child}) => ProviderScope(
   overrides: [
-    packHttpClient.overrideWithValue(client),
+    packTransport.overrideWithValue(transport),
     supportDirectory.overrideWithValue(directory),
   ],
   child: child,
@@ -193,7 +195,7 @@ an error: it answers 200 with the whole body and the transfer **starts again fro
 glued onto the old bytes, and `Accept-Encoding: identity`, because a byte offset counts the bytes on the wire (a client on the
 platform's own stack, such as `cupertino_http` or `cronet_http`, may decompress anyway). A CDN that ignores `If-Range` is caught
 too: a 206 whose validator is not the stored one restarts from zero, and a partial file with no stored validator and no `sha256`
-is not continued blindly (it starts from byte 0). `pause` and `remove` abort the request, so a stalled connection does not hold them (if the client honours `http.Abortable`: `IOClient` does, a wrapper such as `RetryClient` must forward the request's `abortTrigger`). A 416 to a
+is not continued blindly (it starts from byte 0). `pause` and `remove` abort the request, so a stalled connection does not hold them (if the transport honours the request's `abortTrigger`: `HttpClientTransport` over `IOClient` and `DioTransport` do, and a decorator of your own must pass the request on whole). A 416 to a
 partial file that is longer than the server's file gets one restart from zero. To publish a newer archive, change its
 URL and the pack's `destination`, or `remove` the pack first: a file already at the destination is taken as `Complete`
 without a request.
@@ -207,7 +209,7 @@ partial file and the validator.
 
 ## Test it
 
-`FakePackFiles` is the files in memory and `MockClient.streaming` (`package:http/testing.dart`) the server. Seed a partial
+`FakePackFiles` is the files in memory and `FakeTransport` (`package:fespalier_transport/testing.dart`; a `MockClient.streaming` in an `HttpClientTransport` until 0.20.0) the server. Seed a partial
 file with `putBytes('<destination>.part', ...)` (and its validator with `putText('<destination>.part.etag', '"v1"')`) to
 play a pack that an earlier session left; read what a transfer wrote with `bytesOf`. `failWrites`, `failRename` and
 `failDelete` make that call throw, `unsupported` plays the web, and `renames` says what was moved into place.
@@ -218,23 +220,25 @@ import 'package:crypto/crypto.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_maps/fespalier_maps.dart';
 import 'package:fespalier_maps/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:my_app/offline/douala_file.dart';
 
 void main() {
   test('a partial file from an earlier session is continued with Range', () async {
     final body = [for (var i = 0; i < 300; i++) i % 251];
     final ranges = <String?>[];
-    final client = MockClient.streaming((request, _) async {
+    final transport = FakeTransport((request, _) async {
       ranges.add(request.headers['range']);
       final from = int.parse(RegExp(r'bytes=(\d+)-').firstMatch(request.headers['range']!)!.group(1)!);
-      return http.StreamedResponse(
-        Stream.value(body.sublist(from)),
-        206,
-        contentLength: body.length - from,
-        headers: {'content-range': 'bytes $from-${body.length - 1}/${body.length}'},
+      return TransportResponse(
+        statusCode: 206,
+        headers: {
+          'content-length': '${body.length - from}',
+          'content-range': 'bytes $from-${body.length - 1}/${body.length}',
+        },
+        body: Stream.value(body.sublist(from)),
       );
     });
 
@@ -249,7 +253,7 @@ void main() {
     // The app was closed after 100 bytes.
     final files = FakePackFiles(files: {request.partial: body.sublist(0, 100)});
     final container = ProviderContainer(
-      overrides: [packHttpClient.overrideWithValue(client), packFileStore.overrideWithValue(files)],
+      overrides: [packTransport.overrideWithValue(transport), packFileStore.overrideWithValue(files)],
     );
     addTearDown(container.dispose);
     final packs = container.read(filePacks.notifier);

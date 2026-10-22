@@ -112,6 +112,15 @@ full display are attributes of their spans. A superseded navigation cannot be di
 ends before the navigation commits carries the segment name `navigate`. See
 the docs' [Span streaming](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#span-streaming).
 
+## Requests
+
+`SentryTransport(inner)` (since 0.21.0) decorates a `fespalier_transport` chain, errors first: each request leaves one
+`http` breadcrumb (method, URL without its query and fragment, status, duration) and nothing else. A failed request
+(no response, or a `5xx`) is an error event only with `captureFailedRequests: true`. With `tracing: true` each send is
+an `http.client` span (a child of the active data or action span with `traceLifecycle: stream`, of the screen's
+transaction otherwise), and `sentry-trace` and `baggage` go only to the origins in `tracePropagationTargets`. Never a
+query value, a header value or a body. Do not also put `SentryHttpClient` or `sentry_dio` on the same requests.
+
 ## Tests
 
 `package:fespalier_sentry/testing.dart` has `RecordingSentry`: a real Sentry hub whose transport keeps what

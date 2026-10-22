@@ -21,7 +21,8 @@ package's own fakes.
 `lib/app/layout.dart` watches `autoSync` once, so a sync runs at start, on resume, on reconnect (the switch fires
 `reconnectSignal`; a device would use `fespalier_connectivity`) and on the app's tick (`lib/foreground_ticker.dart`, a
 timer the app owns: the package starts none). `lib/wiring.dart` is the whole connection to the package: the transport
-behind the switch, the error reader (`lib/errors.dart`), the account as `crateStackScope`, and the `RowSync`.
+behind the switch (which fails with a `TransportUnsent` while it is off, as a real transport does), the error readers
+(`lib/errors.dart`: the app's own, then `TransportFailures.read`), the account as `crateStackScope`, and the `RowSync`.
 
 The queue is in memory here, so a queued change is lost when the app exits. A device build overrides `localStore` with
 `HiveLocalStore` (`package:fespalier_cratestack/hive.dart`) so it survives; see the

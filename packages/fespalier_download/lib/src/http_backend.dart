@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:fespalier_http/fespalier_http.dart' show HttpCredentials;
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show HttpCredentials, HttpTransport;
 
 import 'grant.dart';
 import 'location.dart';
@@ -107,8 +107,8 @@ final class _Attempt {
   }
 }
 
-/// The foreground download backend (since 0.15.0): `HttpTransfer`s over an `http.Client` the app
-/// provides (so its timeouts, proxy and certificates apply), reporting to the engine through
+/// The foreground download backend (since 0.15.0): `HttpTransfer`s over an `HttpTransport` the app
+/// provides (so its timeouts, proxy, certificates and signing apply), reporting to the engine through
 /// [DownloadEvents]. It works while the app runs and holds nothing on the operating system's
 /// side, so its [capabilities] are honest: it can pause, and that is all. No background, no
 /// notifications, no `unmetered` (a request that asks for it is refused), and a transfer does
@@ -126,17 +126,17 @@ final class _Attempt {
 /// Nothing a server or a file said is reported: a failure is a [DownloadFailure] value, with the
 /// HTTP status code of a refusal.
 class HttpDownloadBackend implements DownloadBackend {
-  /// A backend downloading with [client] into the folders [bases] names. [files] defaults to the
-  /// platform's. The backend never closes [client].
+  /// A backend downloading through [transport] into the folders [bases] names. [files] defaults to
+  /// the platform's. The backend never closes [transport].
   HttpDownloadBackend({
-    required http.Client client,
+    required HttpTransport transport,
     required this.bases,
     TransferFiles? files,
     this.credentials,
-  }) : _client = client,
+  }) : _transport = transport,
        _files = files ?? defaultTransferFiles();
 
-  final http.Client _client;
+  final HttpTransport _transport;
   final TransferFiles _files;
 
   /// The base folders.
@@ -144,12 +144,13 @@ class HttpDownloadBackend implements DownloadBackend {
 
   /// The session's credentials for the requests this backend sends itself (since 0.15.0), or
   /// null for none. Each send asks `authorize`, and a refusal asks `retry`, the way
-  /// `fespalier_auth`'s `SessionClient` does. They live in memory for the send: nothing is
+  /// `fespalier_auth`'s session does. They live in memory for the send: nothing is
   /// written to disk. It is a foreground-only path: the operating system's download service has
   /// no session, so a background backend takes a short-lived grant instead (see [DownloadGrant]).
-  /// A throw ends the download `Failed(unauthorized)`, except an `http.ClientException` (the
-  /// session could not be reached: `AuthUnavailable`, offline), which ends it `Failed(network)`
-  /// since 0.16.0.
+  /// A throw ends the download `Failed(unauthorized)`, except a `CredentialsUnavailable` (the
+  /// session could not be reached: `fespalier_auth`'s `AuthUnavailable`, offline), which ends it
+  /// `Failed(network)` since 0.16.0. Since 0.21.0 the credentials are `fespalier_transport`'s: they
+  /// get the request as a `TransportRequest` and a refused 401 or 403 with its body buffered.
   final HttpCredentials? credentials;
 
   DownloadEvents? _events;
@@ -286,7 +287,7 @@ class HttpDownloadBackend implements DownloadBackend {
       }
       if (!_current(id, generation) || attempt.stopped) return;
       final transfer = HttpTransfer(
-        client: _client,
+        transport: _transport,
         files: _files,
         url: request.url,
         destination: destination,

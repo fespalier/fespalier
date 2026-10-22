@@ -14,29 +14,29 @@ import 'telemetry.dart';
 import 'util.dart';
 
 /// The session (since 0.9.0): where the app is signed in or out, and the way to sign in, out and
-/// to get tokens. Not auto-disposed: the session outlives every page.
+/// to get the credential. Not auto-disposed: the session outlives every page.
 final NotifierProvider<AuthSessionNotifier, SessionState> authSession =
     NotifierProvider<AuthSessionNotifier, SessionState>(
       AuthSessionNotifier.new,
       retry: noRetry,
     );
 
-/// Whether somebody is signed in. Watch this in a guard: a token refresh does not change it, so
-/// a refresh never runs a guard again.
+/// Whether somebody is signed in. Watch this in a guard: a renewal does not change it, so
+/// a renewal never runs a guard again.
 final Provider<bool> isSignedIn = Provider<bool>(
   (ref) => ref.watch(authSession.select((state) => state is SignedIn)),
   retry: noRetry,
 );
 
 /// The signed-in user, or null. It changes when the user or their roles and claims do, never on a
-/// token refresh that changes nothing about them.
+/// renewal that changes nothing about them.
 final Provider<AuthUser?> authUser = Provider<AuthUser?>(
   (ref) => ref.watch(authSession.select((state) => state.user)),
   retry: noRetry,
 );
 
 /// The signed-in user's id, or null. Watch it in a `data.dart` whose data belongs to the user:
-/// another user loads it again, a token refresh does not.
+/// another user loads it again, a renewal does not.
 final Provider<String?> authUserId = Provider<String?>(
   (ref) => ref.watch(authUser.select((user) => user?.id)),
   retry: noRetry,
@@ -45,24 +45,24 @@ final Provider<String?> authUserId = Provider<String?>(
 /// The session's notifier (since 0.9.0): `ref.read(authSession.notifier)`.
 ///
 /// There is no timer, no `Future.delayed` and no listener here: the only clock is
-/// `clock.now()`, read when a token is asked for. A refresh is lazy (the first request that finds
-/// the access token expired) and single-flight (one refresh at a time, shared by every waiter),
-/// which is what refresh-token rotation needs.
+/// `clock.now()`, read when the credential is asked for. A renewal is lazy (the first request
+/// that finds the credential expired) and single-flight (one renewal at a time, shared by every
+/// waiter), which is what refresh-token rotation needs.
 class AuthSessionNotifier extends Notifier<SessionState> {
   late AuthConfig _config;
 
-  /// Bumped by every sign-in, sign-out and rejected refresh: work that started under an older
+  /// Bumped by every sign-in, sign-out and rejected renewal: work that started under an older
   /// number finds the session changed under it, and throws its result away.
   int _generation = 0;
 
-  Completer<AuthSession>? _refreshing;
+  Completer<AuthSession>? _renewing;
   Completer<SessionState>? _ready;
 
   @override
   SessionState build() {
     _config = ref.watch(authConfig);
     _generation++;
-    _refreshing = null;
+    _renewing = null;
     _ready = null;
     final initial = ref.watch(authInitialState);
     if (initial != null) return initial;
@@ -241,8 +241,8 @@ class AuthSessionNotifier extends Notifier<SessionState> {
 
   /// Signs out: the state is [SignedOut] with [SignOutReason.user] at once, so the guards move
   /// the user in this frame. Then the store is cleared, the backend's `signOut` runs (best
-  /// effort: its errors are not thrown) and the proof of possession is reset. Does nothing when
-  /// nobody is signed in.
+  /// effort: its errors are not thrown) and the backend forgets what was bound to the session
+  /// (`AuthBackend.discard`: keys, nonces). Does nothing when nobody is signed in.
   Future<void> signOut() async {
     if (state is SessionRestoring) await ready;
     final old = session;
@@ -263,7 +263,7 @@ class AuthSessionNotifier extends Notifier<SessionState> {
       failureStack = stackTrace;
     }
     try {
-      await backend.proof?.reset();
+      await backend.discard(old);
     } catch (error, stackTrace) {
       outcome = TelemetryOutcome.error;
       failure ??= error;
@@ -272,66 +272,101 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     authSpanEnd(token, outcome, error: failure, stackTrace: failureStack);
   }
 
-  /// The tokens to send now: **synchronous** while the access token is good (the answer is not a
-  /// `Future`); otherwise one shared refresh.
+  /// Ends the session because the server said so (since 0.21.0): the state is [SignedOut] with
+  /// [reason] at once, the store is cleared and the backend forgets what was bound to it
+  /// (`AuthBackend.discard`), with no call to the server. The clients do it when an
+  /// authenticator answers `SessionEnded`; an app can too, when its own API says the device is
+  /// revoked.
   ///
-  /// [forceRefresh] refreshes anyway. [rejected] is the access token a server just answered 401
-  /// to: when the session already has another one (a request that finished first refreshed), it
-  /// is returned without a second refresh, which refresh-token rotation would refuse.
+  /// Does nothing when nobody is signed in, or, with [only], when the session is not that user's:
+  /// a late answer to a request made for one user never ends another's session.
+  Future<void> endSession(SignOutReason reason, {String? only}) async {
+    if (state is SessionRestoring) await ready;
+    final old = session;
+    if (old == null || (only != null && old.user.id != only)) return;
+    _generation++;
+    _renewing = null;
+    state = SignedOut(reason: reason);
+    await _endedByServer(_config.backend, old);
+  }
+
+  /// The credential to send now: **synchronous** while it is good (the answer is not a
+  /// `Future`); otherwise one shared renewal (was `tokens` before 0.21.0).
   ///
-  /// Throws [NotSignedIn] when signed out (a request that waited for a refresh while the user
-  /// signed out gets it too), [AuthRejected] when the server refused the refresh (the state is
-  /// then `SignedOut(reason: SignOutReason.expired)`), and [AuthUnavailable] when it could not
-  /// ask (offline, a 5xx): the session stays, and the next call asks again.
-  FutureOr<AuthTokens> tokens({bool forceRefresh = false, String? rejected}) {
+  /// "Good" is `expiresAt` further than `AuthBackend.renewAhead` away, read from `clock.now()`.
+  /// [forceRenew] renews anyway. [rejected] is the credential a server just refused: when the
+  /// session already holds another one (a request that finished first renewed it), that one is
+  /// returned without a second renewal, which refresh-token rotation would refuse. [hint] goes
+  /// to `AuthBackend.renew`; when a renewal is already running, the one it started with stands.
+  ///
+  /// Throws [NotSignedIn] when signed out (a request that waited for a renewal while the user
+  /// signed out gets it too), [AuthRejected] when the server refused to renew (the state is
+  /// then `SignedOut(reason: SignOutReason.expired)`, or the reason of an [AuthEnded]), and
+  /// [AuthUnavailable] when it could not ask (offline, a 5xx): the session stays, and the next
+  /// call asks again.
+  FutureOr<SessionCredential> credential({
+    bool forceRenew = false,
+    SessionCredential? rejected,
+    Object? hint,
+  }) {
     final current = state;
     if (current is SessionRestoring) {
-      return ready.then<AuthTokens>(
-        (_) => tokens(forceRefresh: forceRefresh, rejected: rejected),
+      return ready.then<SessionCredential>(
+        (_) =>
+            credential(forceRenew: forceRenew, rejected: rejected, hint: hint),
       );
     }
     if (current is! SignedIn) throw NotSignedIn();
-    final held = current.session.tokens;
-    if (rejected != null && held.accessToken != rejected) return held;
-    if (!forceRefresh &&
-        rejected == null &&
-        !held.isExpiredAt(clock.now(), leeway: _config.leeway)) {
-      return held;
-    }
+    final held = current.session.credential;
+    if (rejected != null && held != rejected) return held;
+    if (!forceRenew && rejected == null && !_expiring(held)) return held;
     final trigger = rejected != null
         ? 'unauthorized'
-        : forceRefresh
+        : forceRenew
         ? 'forced'
         : 'expired';
-    final running = _refreshing ?? _startRefresh(current.session, trigger);
-    return running.future.then<AuthTokens>((session) => session.tokens);
+    final running = _renewing ?? _startRenewal(current.session, trigger, hint);
+    return running.future.then<SessionCredential>(
+      (session) => session.credential,
+    );
   }
 
-  Completer<AuthSession> _startRefresh(AuthSession from, String trigger) {
+  bool _expiring(SessionCredential held) {
+    final at = held.expiresAt;
+    return at != null &&
+        !at.subtract(_config.backend.renewAhead).isAfter(clock.now());
+  }
+
+  Completer<AuthSession> _startRenewal(
+    AuthSession from,
+    String trigger,
+    Object? hint,
+  ) {
     final completer = Completer<AuthSession>();
-    // Set before the work starts: a second `tokens()` finds it, and the work, which may fail
+    // Set before the work starts: a second `credential()` finds it, and the work, which may fail
     // before its first `await`, clears it only once it is set.
-    _refreshing = completer;
-    unawaited(_refresh(completer, from, trigger));
+    _renewing = completer;
+    unawaited(_renew(completer, from, trigger, hint));
     return completer;
   }
 
-  Future<void> _refresh(
+  Future<void> _renew(
     Completer<AuthSession> completer,
     AuthSession from,
     String trigger,
+    Object? hint,
   ) async {
     final generation = _generation;
     final backend = _config.backend;
-    final token = authSpan('refresh', backend, trigger: trigger);
+    final token = authSpan('renew', backend, trigger: trigger);
     try {
-      final next = await backend.refresh(from);
+      final next = await backend.renew(from, hint: hint);
       if (generation != _generation || !ref.mounted) {
         authSpanEnd(token, TelemetryOutcome.cancelled);
         completer.completeError(NotSignedIn());
         return;
       }
-      // The store gets the new (rotated) refresh token before the state does: a kill between the
+      // The store gets the new (rotated) credential before the state does: a kill between the
       // two leaves the store on the one the server accepts.
       await _persist(next);
       if (generation != _generation || !ref.mounted) {
@@ -343,13 +378,16 @@ class AuthSessionNotifier extends Notifier<SessionState> {
       authSpanEnd(token, TelemetryOutcome.ok);
       completer.complete(next);
     } on AuthRejected catch (error, stackTrace) {
-      if (generation == _generation && ref.mounted) {
-        _generation++;
-        state = const SignedOut(reason: SignOutReason.expired);
-        unawaited(_endedByServer(backend));
-      }
+      _ended(generation, from, backend, SignOutReason.expired);
       authSpanEnd(token, TelemetryOutcome.rejected);
       completer.completeError(error, stackTrace);
+    } on AuthEnded catch (ended, stackTrace) {
+      _ended(generation, from, backend, ended.reason);
+      authSpanEnd(token, TelemetryOutcome.rejected);
+      completer.completeError(
+        AuthRejected(ended.error, ended.description),
+        stackTrace,
+      );
     } catch (error, stackTrace) {
       final unavailable = error is AuthUnavailable
           ? error
@@ -362,16 +400,29 @@ class AuthSessionNotifier extends Notifier<SessionState> {
       );
       completer.completeError(unavailable, stackTrace);
     } finally {
-      if (identical(_refreshing, completer)) _refreshing = null;
+      if (identical(_renewing, completer)) _renewing = null;
     }
   }
 
-  /// The server ended the session: forget it here too, and the device key the tokens were bound
-  /// to.
-  Future<void> _endedByServer(AuthBackend backend) async {
+  /// The server refused to renew [from]: if the session is still the one that asked, it is over.
+  void _ended(
+    int generation,
+    AuthSession from,
+    AuthBackend backend,
+    SignOutReason reason,
+  ) {
+    if (generation != _generation || !ref.mounted) return;
+    _generation++;
+    state = SignedOut(reason: reason);
+    unawaited(_endedByServer(backend, from));
+  }
+
+  /// The server ended the session: forget it here too, and what the backend bound to it (the
+  /// device key).
+  Future<void> _endedByServer(AuthBackend backend, AuthSession old) async {
     try {
       await _clear();
-      await backend.proof?.reset();
+      await backend.discard(old);
     } catch (_) {
       // Best effort: the state already says signed out.
     }

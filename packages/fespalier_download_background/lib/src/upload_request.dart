@@ -1,5 +1,5 @@
 import 'package:fespalier_download/fespalier_download.dart';
-import 'package:fespalier_http/fespalier_http.dart' show HttpWrites;
+import 'package:fespalier_transport/fespalier_transport.dart' show HttpWrites;
 
 /// The HTTP method of an upload (since 0.15.0).
 enum UploadMethod {
@@ -22,7 +22,7 @@ enum UploadEncoding {
 /// One file to send (since 0.15.0): where it is, where it goes, and how.
 ///
 /// **Replay safety.** An upload is *replay safe* when sending it again cannot do harm, which is
-/// `fespalier_http`'s rule for writes (`HttpWrites.isWrite`): it carries an `Idempotency-Key`
+/// `fespalier_transport`'s rule for writes (`HttpWrites.isWrite`): it carries an `Idempotency-Key`
 /// header. Every other upload is a write the server may already have taken, and `Uploads` treats it
 /// that way: no retry, no re-send after a 401, and a restart that finds no answer ends it
 /// `Failed`, never sends it again. See [replaySafe].

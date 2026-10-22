@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart';
 
 import 'contracts.g.dart';
 import 'cose/cose.dart';
@@ -127,7 +127,8 @@ final class CoseConfig {
 /// purpose: the write may have landed, and `Unavailable` would move the intent to the next
 /// idempotency key, risking a second write.
 final class CoseTransport implements CrateStackTransport {
-  /// A transport for [config] sealing with [sealer].
+  /// A transport for [config] sealing with [sealer], sending through [http] (the app's one
+  /// `HttpTransport`, built once in `startup()`).
   ///
   /// [beforeSigned] runs before every signed call and may throw to stop it: the app uses it to
   /// register the device key before the first one. **Anything it throws becomes a
@@ -136,7 +137,7 @@ final class CoseTransport implements CrateStackTransport {
   CoseTransport({
     required this.config,
     required this.sealer,
-    required this._client,
+    required this._http,
     this.beforeSigned,
     this.onUnauthenticated,
     this._ops = coseOps,
@@ -157,7 +158,7 @@ final class CoseTransport implements CrateStackTransport {
   /// call's registration.
   final void Function()? onUnauthenticated;
 
-  final http.Client _client;
+  final HttpTransport _http;
   final Map<String, OpContract> _ops;
   final CoseOpener _opener;
 
@@ -192,18 +193,23 @@ final class CoseTransport implements CrateStackTransport {
       idempotencyKey: idempotencyKey,
     );
     final request = await sealer.sealRequest(payload, bind);
-    final http.Response response;
+    final TransportResponse response;
+    final Uint8List answer;
     try {
-      response = await _client.post(
-        uri,
-        headers: {
-          'content-type': coseContentType,
-          'accept': coseContentType,
-          contractHeader: contract.selector,
-          'idempotency-key': ?idempotencyKey,
-        },
-        body: request,
+      response = await _http.send(
+        TransportRequest(
+          method: 'POST',
+          uri: uri,
+          headers: {
+            'content-type': coseContentType,
+            'accept': coseContentType,
+            contractHeader: contract.selector,
+            'idempotency-key': ?idempotencyKey,
+          },
+          body: request,
+        ),
       );
+      answer = await response.bytes();
     } on Object catch (error) {
       throw CrateStackOffline(error);
     }
@@ -216,14 +222,12 @@ final class CoseTransport implements CrateStackTransport {
       );
       final Object? body;
       try {
-        body = decodePayload(
-          _opener.openResponse(response.bodyBytes, answered).payload,
-        );
+        body = decodePayload(_opener.openResponse(answer, answered).payload);
       } on Object catch (error) {
         // Not the server's answer, or damaged on the way: the call may have landed.
         throw CrateStackOffline('the sealed answer did not open: $error');
       }
-      return _result(response, body);
+      return _result(response.statusCode, response.headers, body);
     }
     // Not sealed. Only the envelope layer's refusals from before the handler runs are believed,
     // and only by their status: anything else unsigned (a 5xx the layer makes when sealing fails
@@ -247,51 +251,56 @@ final class CoseTransport implements CrateStackTransport {
     OpContract contract,
     Uint8List payload,
   ) async {
-    final http.Response response;
+    final TransportResponse response;
+    final Uint8List answer;
     try {
-      response = await _client.post(
-        uri,
-        headers: {
-          'content-type': 'application/cbor',
-          'accept': 'application/cbor',
-          contractHeader: contract.selector,
-        },
-        body: payload,
+      response = await _http.send(
+        TransportRequest(
+          method: 'POST',
+          uri: uri,
+          headers: {
+            'content-type': 'application/cbor',
+            'accept': 'application/cbor',
+            contractHeader: contract.selector,
+          },
+          body: payload,
+        ),
       );
+      answer = await response.bytes();
     } on Object catch (error) {
       throw CrateStackOffline(error);
     }
-    final failure = _refusal(response);
+    final failure = _refusal(response, answer);
     if (failure != null) throw failure;
     try {
-      return decodePayload(response.bodyBytes);
+      return decodePayload(answer);
     } on PayloadFormatException catch (error) {
       throw CrateStackOffline(error);
     }
   }
 
-  Object? _result(http.Response response, Object? body) {
-    if (response.statusCode >= 200 && response.statusCode < 300) return body;
+  Object? _result(int status, Map<String, String> headers, Object? body) {
+    if (status >= 200 && status < 300) return body;
     throw CrateStackFailure.fromResponse(
-          status: response.statusCode,
+          status: status,
           body: body,
-          contentType: response.headers['content-type'],
+          contentType: headers['content-type'],
           // The idempotency layer's "still being answered": 409 with Retry-After, same key.
-          retryAfter: response.headers.containsKey('retry-after'),
+          retryAfter: headers.containsKey('retry-after'),
         ) ??
         const CrateStackOffline(
           'a status that is neither a result nor an error',
         );
   }
 
-  CrateStackFailure? _refusal(http.Response response) {
+  CrateStackFailure? _refusal(TransportResponse response, Uint8List answer) {
     Object? body;
     final type = response.headers['content-type']?.toLowerCase() ?? '';
     try {
       body = type.contains('json')
-          ? jsonDecode(utf8.decode(response.bodyBytes))
+          ? jsonDecode(utf8.decode(answer))
           : type.contains('cbor')
-          ? decodePayload(response.bodyBytes)
+          ? decodePayload(answer)
           : null;
     } on Object {
       body = null;
@@ -303,7 +312,7 @@ final class CoseTransport implements CrateStackTransport {
     );
   }
 
-  static bool _isCose(http.Response response) =>
+  static bool _isCose(TransportResponse response) =>
       (response.headers['content-type'] ?? '').toLowerCase().startsWith(
         'application/cose',
       );

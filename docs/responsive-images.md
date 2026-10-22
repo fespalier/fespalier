@@ -42,8 +42,9 @@ The app's choice lives in a provider, overridden in `startup()` like everything 
 // lib/app/startup.dart
 Future<List<Override>> startup() async => [
   imageCdnProvider.overrideWithValue(
-    const ImageCdn(
-      builder: ImgproxyUrlBuilder.emgr(
+    ImageCdn(
+      transport: transport, // the app's HttpTransport chain (fespalier_transport)
+      builder: const ImgproxyUrlBuilder.emgr(
         baseUrl: String.fromEnvironment('IMAGES', defaultValue: 'https://img.example.com'),
         sourceBase: 'https://images.example.com/',
       ),
@@ -53,21 +54,23 @@ Future<List<Override>> startup() async => [
 ];
 ```
 
-Without an override the provider holds `const ImageCdn()`, which is no CDN: a source is a URL and is fetched as it is, decoded at the width the box needs (`ResizeImage`, off the web). A source that is not a URL (it has no scheme) then prints this once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it
+Images load through `ImageCdn.transport` (since 0.21.0): a `TransportImage`, which is `NetworkImage` over your `HttpTransport` chain ([HTTP transport](transport.md#one-transport-built-in-startup)), so an image request is signed, traced and counted like the app's others. `ImageCdn` is therefore no longer `const` when it has a transport (a transport is a runtime object; `const ImageCdn(builder: ...)` was the example until 0.20.0). A `TransportImage` reads the bytes whole, decodes them with the image cache's own decoder (so the `ResizeImage` round it still decodes at the width the box needs, off the web) and reports a bad status as a `NetworkImageLoadException`.
+
+Without an override the provider holds `const ImageCdn()`, which is no CDN and has no transport: a source is a URL and is meant to be fetched as it is, but with neither `transport` nor `providerFactory` there is nothing to fetch it with, so the image shows its error view and reports an `ImageUrlError` that says so (a `NetworkImage` was the default until 0.20.0). A source that is not a URL (it has no scheme) prints this once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it
 is fetched as it is. Override imageCdnProvider in startup() (docs/responsive-images.md, "Images").`
 
-| `ImageCdn` field         | What it is                                                                                                                        |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `builder`                | The [URL builder](#url-builders) (`DirectUrlBuilder` by default)                                                                  |
-| `buckets`                | The [widths](#buckets-the-widths-an-image-is-fetched-at) an image may be asked for (`ImageBuckets.standard`)                      |
-| `format`                 | `ImageFormat.webp` (default), `jpeg`, `png`, `avif` or `auto` (see [URL builders](#url-builders): name a format)                  |
-| `quality`                | 1 to 100, or null to leave it to the CDN                                                                                          |
-| `maxPixelRatio`          | The device pixel ratio is capped at this (3 by default): a 3.5× phone asks for 3× widths                                          |
-| `providerFactory`        | `ImageProvider<Object> Function(String url)`: the provider of a URL. Null is a `NetworkImage`; plug a disk cache in here          |
-| `webHtmlElementStrategy` | On the web, whether a failed fetch falls back to an `<img>` element ([Images on the web](#images-on-the-web)); `never` by default |
-| `placeholder`            | What shows while an image loads (a box in the theme's `surfaceContainerHighest` by default)                                       |
-| `errorBuilder`           | What a failed image shows: `(context, error, retry)`; that box with a broken-image icon by default                                |
-| `fadeIn`                 | How long a loaded image fades in; zero (the default) shows it at once                                                             |
+| `ImageCdn` field  | What it is                                                                                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `builder`         | The [URL builder](#url-builders) (`DirectUrlBuilder` by default)                                                              |
+| `buckets`         | The [widths](#buckets-the-widths-an-image-is-fetched-at) an image may be asked for (`ImageBuckets.standard`)                  |
+| `format`          | `ImageFormat.webp` (default), `jpeg`, `png`, `avif` or `auto` (see [URL builders](#url-builders): name a format)              |
+| `quality`         | 1 to 100, or null to leave it to the CDN                                                                                      |
+| `maxPixelRatio`   | The device pixel ratio is capped at this (3 by default): a 3.5× phone asks for 3× widths                                      |
+| `transport`       | The `HttpTransport` images are fetched through, as a `TransportImage` (since 0.21.0)                                          |
+| `providerFactory` | `ImageProvider<Object> Function(String url)`: the provider of a URL, instead of a `TransportImage`; plug a disk cache in here |
+| `placeholder`     | What shows while an image loads (a box in the theme's `surfaceContainerHighest` by default)                                   |
+| `errorBuilder`    | What a failed image shows: `(context, error, retry)`; that box with a broken-image icon by default                            |
+| `fadeIn`          | How long a loaded image fades in; zero (the default) shows it at once                                                         |
 
 Every argument of `ResponsiveImage` that has a counterpart overrides the CDN's for that one image.
 
@@ -324,13 +327,13 @@ Flutter 3.35 and later (every Flutter fespalier supports) have no HTML renderer:
 - EmgR sends `Access-Control-Allow-Origin: *` on every route; its `CDN_BASE_URL` host must as well, since it answers the redirect to the stored file.
 - imgproxy: `IMGPROXY_ALLOW_ORIGIN`.
 
-`ImageCdn.webHtmlElementStrategy` is Flutter's. Leave it on `never` (the default) unless the server cannot send CORS: `fallback` shows an `<img>` platform view when the fetch fails (no CORS needed, but a platform view per image, which is costly in a long list, and no request headers); `prefer` always uses `<img>`.
+**A transport fetch needs CORS on the image host** (since 0.21.0). `TransportImage` fetches through the transport, which on the web is `fetch` or `XMLHttpRequest` (`package:http`'s browser client, or Dio's adapter), and the browser refuses a response without CORS headers. The `<img>` element fallback that `NetworkImage` could fall back to did not need them, but `ImageCdn.webHtmlElementStrategy` is gone (it defaulted to `never` until 0.20.0). For a host you do not control that sends no CORS, give the CDN a provider of your own and give up the transport chain for its images: `providerFactory: (url) => NetworkImage(url, webHtmlElementStrategy: WebHtmlElementStrategy.fallback)` shows an `<img>` platform view when the fetch fails (a platform view per image, which is costly in a long list, and no request headers); `prefer` always uses `<img>`.
 
 Also on the web: the browser's HTTP cache works for XHR, so EmgR's `immutable` downloads are cached across reloads; `ResizeImage` does not shrink a web `NetworkImage`, so a `DirectUrlBuilder` saves no memory there; `ImageFormat.auto` can answer AVIF, so do not use it; and the package's code is part of `main.dart.js` when an eager page uses it ([Web chunk sizes](cli.md#web-chunk-sizes-fsp-size) has the budgets).
 
 ## Caching images
 
-By default Flutter's in-memory `ImageCache` (1000 images, 100 MB). On Android, iOS and desktop there is no disk cache: `dart:io`'s `HttpClient` has no HTTP cache, so a restart downloads again. Plug one in with `providerFactory`, a one-line recipe on `cached_network_image` (the app adds the dependency; it needs Flutter 3.44 and Dart 3.12, above fespalier's own floor, which is why the package does not depend on it):
+By default Flutter's in-memory `ImageCache` (1000 images, 100 MB). On Android, iOS and desktop there is no disk cache: a transport over `dart:io`'s `HttpClient` has no HTTP cache, so a restart downloads again. Plug one in with `providerFactory` (instead of `transport`: it gives up the transport chain for images), a one-line recipe on `cached_network_image` (the app adds the dependency; it needs Flutter 3.44 and Dart 3.12, above fespalier's own floor, which is why the package does not depend on it):
 
 ```dart
 // lib/app/startup.dart

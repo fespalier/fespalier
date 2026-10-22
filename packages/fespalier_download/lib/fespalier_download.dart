@@ -1,6 +1,6 @@
 /// Downloads for fespalier (since 0.15.0): the model and the ports of a file transfer that
 /// outlives a screen, the `Downloads` engine over them, and the telemetry names. Pure Dart over
-/// `package:http`, with no platform plugin; `HttpDownloadBackend` is the foreground transfer, `FileDownloadStore` the durable registry and
+/// `fespalier_transport`'s `HttpTransport`, with no platform plugin; `HttpDownloadBackend` is the foreground transfer, `FileDownloadStore` the durable registry and
 /// `downloads` / `downloadStatus` the Riverpod providers a widget watches.
 /// The fakes are in `package:fespalier_download/testing.dart`.
 library;

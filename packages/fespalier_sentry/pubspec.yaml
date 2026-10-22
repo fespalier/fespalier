@@ -24,6 +24,13 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.20.0 # x-release-please-version
+  # HttpTransport, which SentryTransport decorates (since 0.21.0): an interface with no dependencies
+  # of its own, so no HTTP client is linked here (test/no_http_test.dart).
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v0.20.0 # x-release-please-version
   # 9.26.0: standalone app start, which the first-screen rule of `tracing: true` reads. It
   # re-exports package:sentry and pins it exactly, so it is the only Sentry import.
   sentry_flutter: ">=9.26.0 <10.0.0"

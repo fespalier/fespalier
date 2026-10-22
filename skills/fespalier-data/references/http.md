@@ -8,6 +8,13 @@ form field, and a write is never sent twice. They add no file kind, no `fespalie
 that does not import them is byte for byte what it was. They start no timer and no listener, and have **no retry policy
 of their own** (a backoff needs a timer).
 
+**Since 0.21.0 both sit on one seam, `fespalier_transport`** (pure Dart, brought in by either package): an `HttpTransport`
+with one method, `send(TransportRequest)`, that a session, a write guard, a download, tracing and your own code decorate.
+This page is the data side (cancel, field errors, the write rule); the interface, the decorators and their order, the
+memo and the failures are in [`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#the-interface)
+([the order](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#decorators-and-their-order),
+[the failures](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#failures)).
+
 ```yaml
 # pubspec.yaml: the same url and the same ref as fespalier, or pub refuses to resolve
 dependencies:
@@ -31,42 +38,62 @@ dependencies:
 (A fragment, not a sample: pub resolves them only at a release tag. A mismatch fails as it does for
 `fespalier_auth`: see [`auth-package.md`](../../fespalier-guards/references/auth-package.md).)
 
-| Library                                      | For            | What is in it                                                                                                           |
-| -------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `package:fespalier_http/fespalier_http.dart` | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`, `HttpWrites`, `HttpCredentials` |
-| `package:fespalier_http/problem.dart`        | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (the other libraries export it)                                    |
-| `package:fespalier_http/testing.dart`        | tests          | `FakeHttpClient`, `FakeHttpCredentials`                                                                                 |
-| `package:fespalier_dio/fespalier_dio.dart`   | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and `problem.dart`                           |
-| `package:fespalier_dio/client.dart`          | Dio            | `DioHttpClient`: the app's Dio as an `http.Client` (since 0.15.0)                                                       |
+| Library                                                | For            | What is in it                                                                                                                                                                                                        |
+| ------------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_http/fespalier_http.dart`           | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, and since 0.21.0 `HttpClientTransport` (a transport over an `http.Client`) and `TransportClient` (an `http.Client` over a transport)             |
+| `package:fespalier_http/testing.dart`                  | tests          | `FakeHttpClient`                                                                                                                                                                                                     |
+| `package:fespalier_dio/fespalier_dio.dart`             | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and since 0.21.0 `DioTransport` (a transport over a Dio), `TransportAdapter` (a Dio adapter over a transport) and `DioErrors.toTransport` |
+| `package:fespalier_transport/fespalier_transport.dart` | no client      | `HttpTransport`, `TransportRequest`, `TransportResponse`, `TransportFailure`, `HttpCredentials`, `HttpWrites`, `WriteGuardTransport` (since 0.21.0)                                                                  |
+| `package:fespalier_transport/testing.dart`             | tests          | `FakeTransport`, `FakeHttpCredentials`, `fakeResponse` (since 0.21.0)                                                                                                                                                |
+| `package:fespalier/problem.dart`                       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`: the validation-error decoders, in the core since 0.21.0                                                                                                        |
 
-**On 0.14.0 and earlier** the `package:http` half was `package:fespalier_dio/http.dart` and the decoders
-`package:fespalier_dio/problem.dart`. Both are **removed in 0.15.0, not deprecated**: an app that upgrades changes the
-import to `package:fespalier_http/fespalier_http.dart` or `package:fespalier_http/problem.dart` and adds the pubspec
-line, and nothing else ([`fespalier-migration`](../../fespalier-migration/SKILL.md)). A Dio-only app changes nothing.
+**On 0.20.0 and earlier** `HttpCredentials`, `HttpWrites` and `FakeHttpCredentials` were in `fespalier_http`, and
+`WriteGuardClient` (an `http.Client` wrapper) was there too: they are `fespalier_transport`'s since 0.21.0, and
+`WriteGuardClient` is `WriteGuardTransport`. `DioHttpClient` (your Dio as an `http.Client`, in `package:fespalier_dio/client.dart`)
+is **gone, not deprecated**: send through `DioTransport`, or give a Dio a `TransportAdapter`. The decoders were
+`package:fespalier_http/problem.dart` (re-exported by `fespalier_dio`); change the import to `package:fespalier/problem.dart`.
+On 0.14.0 and earlier the `package:http` half was `package:fespalier_dio/http.dart` (removed in 0.15.0).
+[`fespalier-migration`](../../fespalier-migration/SKILL.md) has the steps.
 
 An app that uses one client imports one library (`dio` and `http` are pure Dart, so the other is not linked). Importing
 **both** is fine: the two `withFieldErrors()` are on different types (`Future<T>` and `Future<http.Response>`), and the
 more specific one wins.
 
-## One client seam, the order of the layers, and credentials (since 0.15.0)
+## One transport seam, the order of the layers, and credentials (since 0.21.0)
 
-- **The seam is `package:http`'s `Client`.** Any `http.Client` fits `ref.abortable(...)`, `WriteGuardClient`, a
-  `RetryClient` and a `SessionClient`: `IOClient`, `cronet_http`, `cupertino_http` or `DioHttpClient(dio)`. Whether
-  `cupertino_http` honours an abort is **not checked**: do not promise it. `DioHttpClient` streams the response body, returns
-  every status as a response, turns an `Abortable` trigger into a Dio cancel (`RequestAbortedException`), and its
-  `close()` does nothing (the Dio belongs to its provider). Since 0.16.0 an `http.Request` (`get`, `post`, `put`, `patch`,
-  `delete`) sends its body as bytes, so `SessionInterceptor` sends it again whole after a 401 and a refresh (`WriteGuard`
-  lets that one second send through); a streamed or multipart request streams its body and is not sent again (the caller
-  gets the 401, after the refresh). A failure that has no Dio message keeps its cause: `fespalier_dio: unknown: <cause>`.
-- **The order** that is proved (`packages/fespalier_auth/test/wrapping_order_test.dart`), outside in:
-  `ref.abortable(...)`, then `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), when:
-WriteGuardClient.readsOnly(), whenError: WriteGuardClient.readErrorsOnly(...)))`. **A retrier outside the session
-  is wrong for a bearer token:** `RetryClient` sends a streamed copy of every request, which `SessionClient` does not
-  send again after a 401, so the 401 is refreshed and returned, not replayed. The retrier outside the session is the
-  choice only when a DPoP proof must be new on every attempt.
-- **`HttpCredentials`** is the session for a transfer that is not an `http.Client`: `covers(uri)`, `authorize(method,
-uri, {previous})` and `retry(attempt, statusCode:, headers:)` with lower-case header names. `fespalier_auth`'s
-  `Authorizer` implements it; `FakeHttpCredentials` and `FakeHttpClient` are the test doubles.
+Until 0.20.0 the seam was `package:http`'s `Client` (`WriteGuardClient`, `SessionClient`, and `DioHttpClient` to put a Dio
+behind it), and a Dio had its own session interceptor. Since 0.21.0 it is `HttpTransport`
+([`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#the-interface)): **one chain of
+decorators, and both clients are ends of it**.
+
+- **The two ends.** `HttpClientTransport(client)` sends the chain's requests through any `http.Client` (`IOClient`,
+  `cronet_http`, `cupertino_http`; whether `cupertino_http` honours an abort is **not checked**, do not promise it).
+  `DioTransport(dio)` sends them through the app's Dio, with its interceptors (a retrier, `WriteGuard`): the response body
+  streams, every status is an answer and not an exception, and a `DioException` becomes a `TransportFailure` (`cancel` is
+  `TransportAborted`, `connectionError` and `connectionTimeout` are `TransportUnsent`, `badCertificate` is
+  `TransportUntrusted`, the other timeouts are `TransportTimedOut`, the rest `TransportBroken`).
+- **The other direction, for code that is written against a client.** `TransportClient(transport)` is an `http.Client` over
+  the chain, so `ref.abortable(...)` and `RetryClient` work on it; `TransportAdapter(transport)` is a Dio
+  `HttpClientAdapter` over the chain, so the app's Dio (with `dio_smart_retry` and `WriteGuard`) is signed in by a session
+  below it. A transport's `close()` is not the client's: both wrappers' `close()` do nothing.
+- **The order that is proved** (`packages/fespalier_auth/test/wrapping_order_test.dart`), outside in:
+  `ref.abortable(...)`, then a retrier, then the client (`TransportClient` or the Dio's `TransportAdapter`), then
+  `SessionTransport(WriteGuardTransport(HttpClientTransport(client)), authorizer)`. The session is **below the retrier**
+  (was above it until 0.20.0): every send a retrier makes is authorized again, so a signature is new each time. Either
+  order of the guard and the session replays a write once after a 401; the guard only has to be somewhere in the chain
+  for `TransportClient.readsOnly()` to retry anything. The app's `authTransport` provider is the session over the
+  `AuthConfig.transport` you gave it, so the guard goes inside that value.
+- **What `fsp create` builds** (since 0.21.0): one `transport` in `startup()`, `WriteGuardTransport(HttpClientTransport(http.Client()))`, wrapped by `SentryTransport` and/or `OtelTransport` when those features are chosen; the http feature's `httpTransport` is overridden with that same transport. `WriteGuardTransport` only **marks** a write; the retrier's predicate (`readsOnly()`) is what refuses to repeat it.
+- **A `RetryClient` costs the 401 replay.** It sends a streamed copy of every request, which `TransportClient` hands on
+  as a body stream: the session reads it once, renews on a 401 and returns that 401 (the caller's next attempt works),
+  and each copy is a **new logical request** to the memo, so the session may renew once per copy. A Dio retrier does not
+  cost it: `TransportAdapter` collects the body into bytes and shares one memo across the sends of one `RequestOptions`.
+  Without a retrier, an `http.Request` goes through as bytes and is replayed once.
+- **`HttpCredentials`** (in `fespalier_transport`) is the session for a transfer that is not a transport: `covers(uri)`,
+  `authorize(request, {previous})` returning an `HttpAuthorization` (its `headers` and `isReplay`), and
+  `retry(attempt, response)`; the caller sends at most three times. `fespalier_auth`'s `Authorizer` implements it;
+  `FakeTransport` and `FakeHttpCredentials` (`package:fespalier_transport/testing.dart`) and `FakeHttpClient` are the test
+  doubles.
 
 The samples below share one tiny API. `dio` is the app's Dio, with a retry interceptor for reads and the guard for
 writes, and `httpClient` is the same policy for `package:http`.
@@ -85,6 +112,7 @@ import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
 import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
@@ -130,17 +158,20 @@ final dio = Provider<Dio>((ref) {
   return client;
 });
 
-/// package:http: the retry client retries a 503 for reads only, and a connection error too.
+/// package:http: the retry client retries a 503 for reads only, and a connection error too. A real app puts a
+/// SessionTransport between the guard and the client.
 final httpClient = Provider<http.Client>((ref) {
-  final client = RetryClient(
-    WriteGuardClient(http.Client()), // inside the RetryClient
-    when: WriteGuardClient.readsOnly(),
-    whenError: WriteGuardClient.readErrorsOnly(
+  final network = http.Client();
+  ref.onDispose(network.close); // TransportClient.close does nothing
+  return RetryClient(
+    TransportClient(
+      WriteGuardTransport(HttpClientTransport(network)), // next to the network
+    ),
+    when: TransportClient.readsOnly(),
+    whenError: TransportClient.readErrorsOnly(
       (error, stackTrace) => error is http.ClientException,
     ),
   );
-  ref.onDispose(client.close);
-  return client;
 });
 ```
 
@@ -220,8 +251,9 @@ class StockPage extends StatelessWidget {
   after the build was replaced.
 - **One token serves every request of the build.** A request that a retrier or an authentication refresh sends again
   keeps it, because it sends the same options. `ref.abortable(client)` is the same for `package:http`: one trigger
-  for every request through the wrapper. `fespalier_auth`'s `SessionClient` copies an `AbortableRequest` with its
-  trigger, so a replay after a 401 is aborted too.
+  for every request through the wrapper. `TransportClient` passes the `Abortable` trigger on as the transport request's
+  `abortTrigger`, so a session's replay after a 401 is aborted too. A Dio request carries its `CancelToken` the same way
+  through `TransportAdapter`.
 - **What the request fails with.** Dio: a `DioException` of type `cancel` whose `error` is `fespalier_dio: the provider
 that started this request was disposed`. `package:http`: `RequestAbortedException` (``Request aborted by
 `abortTrigger` ``). It fails **after** its provider is gone. With telemetry on, the data span has already ended as
@@ -341,7 +373,9 @@ class NicknamePage extends HookConsumerWidget {
   `form.error`.
 - **Your own shape:** a `FieldErrors? Function(Object? body)` that gets the body as a `Map<String, Object?>`, passed as
   `decoder:`. **chopper** and anything without a `Future` to extend: `fieldErrorsOf(response.statusCode, response.body)`
-  returns the `FieldErrors` or null, and you throw it.
+  returns the `FieldErrors` or null, and you throw it. `FieldErrorsDecoders`, `FieldNames` and `fieldErrorsOf` are in
+  `package:fespalier/problem.dart` (neither client library exports them since 0.21.0; they were in
+  `package:fespalier_http/problem.dart`, and re-exported by `fespalier_dio`, from 0.15.0 to 0.20.0).
 
 A retrofit client is the same code over Dio, which is why it composes (retrofit's generator writes this class; the
 `@PUT('/me')` annotation is the only difference, and it is not built here):
@@ -380,7 +414,8 @@ client's retry layer breaks that promise from below: `dio_smart_retry` retries *
 - **A write** is any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, **unless** it carries an `Idempotency-Key`
   header (any case) or `Options(extra: {WriteGuard.idempotent: true})`, which say it is safe to repeat.
   `Options(extra: {WriteGuard.write: true})` makes any request one. `WriteGuard.isWrite(options)` and
-  `WriteGuardClient.isWrite(request)` are the rule (the second has no `extra`); since 0.15.0 both call `HttpWrites.isWrite`, so they cannot disagree.
+  `WriteGuardTransport.isWrite(request)` are the rule (the second has no `extra`); both call `HttpWrites.isWrite` (in
+  `fespalier_transport` since 0.21.0), so they cannot disagree.
 - **`WriteGuard` is an interceptor that must be first.** It records the error of a write's first send, and refuses a
   second send of the same `RequestOptions`, handing the caller **the first error** (and a debug build prints the
   message below, once per request, with the method and the path only). `WriteGuard.install(dio)` puts it at index 0,
@@ -388,19 +423,21 @@ client's retry layer breaks that promise from below: `dio_smart_retry` retries *
   sends the same `RequestOptions` (or a `copyWith` of them) again, because its state is in `extra`, which Dio never sends.
 - **`WriteGuard.readsOnly(evaluator)`** answers `false` for a write **before** asking `evaluator`, so the retrier does not
   even wait out its delay. It has the shape of `dio_smart_retry`'s `RetryEvaluator`, and no dependency on it.
-- **One exception: a send after a 401.** The server refused it before running it, and that is what an authentication
-  refresh sends again (`fespalier_auth`'s `SessionInterceptor` marks the replay `authReplayKey`, and sends it once per
-  challenge). It is allowed once per 401, also for a response the client accepted as it was (`validateStatus`). A
-  write that fails a second time is refused as above.
+- **One exception: a send after a 401.** The server refused it before running it, so a write that gets a 401 may be sent
+  once more (an interceptor of your own that refreshes a token and replays does that). It is allowed once per 401, also
+  for a response the client accepted as it was (`validateStatus`). A write that fails a second time is refused as above.
+  `fespalier_auth` no longer needs it from Dio: since 0.21.0 `SessionTransport` replays below `TransportAdapter`, inside
+  the chain, where `WriteGuard` does not see the second send and `WriteGuardTransport` never refuses one.
 - **A retrier placed before the guard** sees the error first and sends the write again before the guard has recorded
   anything: that send fails with a `DioException` whose `error` is **`WriteNotRetried`**. The cure is the one in its
   message: `WriteGuard.install(dio)` after every other interceptor.
-- **`package:http`.** `WriteGuardClient(inner)` forwards every request unchanged and remembers, by identity, which
-  responses and which thrown errors came from a write. Put it **inside** the `RetryClient`, and give the retry client both
-  predicates: `when: WriteGuardClient.readsOnly()` (a 503, for reads; pass your own rule as its argument) and
-  `whenError: WriteGuardClient.readErrorsOnly(yourRule)`. Without `whenError` nothing is retried on an error, which is
-  `RetryClient`'s default; without `when:` a write is retried on a 503. A response that says nothing about its request and
-  went through no `WriteGuardClient` is not retried.
+- **`package:http`.** `WriteGuardTransport(inner)` (was `WriteGuardClient` until 0.20.0) forwards every request unchanged
+  and remembers, by identity, which responses and which thrown errors came from a write; it refuses nothing itself.
+  Put it in the chain under a `TransportClient`, and give the `RetryClient` above that both predicates:
+  `when: TransportClient.readsOnly()` (a 503, for reads; pass your own rule as its argument) and
+  `whenError: TransportClient.readErrorsOnly(yourRule)`. Without `whenError` nothing is retried on an error, which is
+  `RetryClient`'s default; without `when:` a write is retried on a 503. A response that says nothing about its request
+  and went through no `WriteGuardTransport` is not retried.
 - **Two retry layers multiply.** fespalier already retries a failing `data.dart` (Riverpod's retry, `data_retry: inherit`),
   so an HTTP retrier under it multiplies the attempts. **Keep one:** either the data retry and no HTTP
   retrier for reads, or an HTTP retrier for reads with `data_retry: none` in `pubspec.yaml` (or a `ProviderScope(retry:)`
@@ -534,23 +571,28 @@ void main() {
 
 ## With `fespalier_cratestack` (since 0.10.0)
 
-`fespalier_cratestack/dio.dart` adds three things to a Dio that a **generated** CrateStack client uses, and they sit
-beside this page's, not in place of them:
+Three things belong to a **generated** CrateStack client's Dio, and they sit beside this page's, not in place of them.
+**Until 0.20.0** they came from `fespalier_cratestack/dio.dart` as two interceptors and a reader
+(`CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures`); that library is gone, and they are
+transport pieces in `fespalier_cratestack.dart` since 0.21.0:
 
 - `ref.cancellable(() => client.models.order.list())` is `ref.cancelToken()` for a client whose generated options carry no
-  cancel token: the token travels in a **zone value** that `CrateStackCancelInterceptor` picks up. Call it before the first
-  `await`, with a body that is only the client call; a provider built inside it takes this provider's token and is cancelled
-  with it. Use `ref.cancelToken()` as above for a Dio you call yourself.
-- `CrateStackPortalInterceptor` rejects a `text/html` response (a captive portal, a gateway) as an error that
-  `DioFailures.read` classifies as offline, which Dio does not do for a `200`.
+  cancel token: the abort trigger travels in a **zone value** (`TransportZone`) that the Dio's `TransportAdapter` merges
+  into the request's trigger. Call it before the first `await`, with a body that is only the client call; a provider built
+  inside it takes this provider's trigger and is cancelled with it. Use `ref.cancelToken()` as above for a Dio you call
+  yourself.
+- `PortalTransport` throws a `TransportPortal` for a `text/html` response (a captive portal, a gateway), which
+  `TransportFailures.read` classifies as offline, which Dio does not do for a `200`.
 - **`WriteGuard.install(dio)` still goes last** (it is placed first), and it counts the generated RPC reads as writes,
   because they are POSTs: no retrier repeats them, which is what you want, since Riverpod's data retry is the one layer.
 
-[`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md) has the whole Dio.
+[`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md) has the whole chain.
 
 ## What it does not do
 
 No retry policy of its own (a backoff needs a timer; `RetryInterceptor` and `RetryClient` are yours). No logging. No
-tracing: the HTTP spans and the trace headers come from the instrumentation you add to the client (`otel_dio`,
-`otel_http`, `sentry_dio`), not from this package. No `fespalier.route` request header. A `data.dart` that wants more
+tracing of its own: since 0.21.0 the HTTP spans and the trace headers are two decorators of the transport chain,
+`OtelTransport(inner, propagateTo: ...)` (`fespalier_otel`) and `SentryTransport(inner)` (`fespalier_sentry`), which
+[`fespalier-observability`](../../fespalier-observability/SKILL.md) covers; before 0.21.0 they came from the
+instrumentation you added to the client (`otel_dio`, `otel_http`, `sentry_dio`). No `fespalier.route` request header. A `data.dart` that wants more
 than the client's own timeouts sets them on the client: fespalier starts no timer to enforce one.

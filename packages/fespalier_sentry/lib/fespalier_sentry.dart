@@ -6,8 +6,12 @@
 /// FespalierTelemetry.install(FespalierSentry());
 /// ```
 ///
+/// `SentryTransport` (since 0.21.0) is a `fespalier_transport` decorator that leaves a breadcrumb for
+/// each request sent, and a span with `tracing: true`.
+///
 /// `package:fespalier_sentry/testing.dart` has `RecordingSentry`, a real Sentry hub whose
 /// transport keeps what it would send, for tests.
 library;
 
 export 'src/fespalier_sentry.dart' show FespalierSentry;
+export 'src/sentry_transport.dart' show SentryTransport;

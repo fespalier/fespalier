@@ -34,10 +34,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_otel depends on fespalier by git, as an app does; here both are the checkout's.
+# fespalier_otel and fespalier_sentry depend on fespalier and fespalier_transport by git, as an app does; here
+# all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 # Read by the `fsp` generator. `telemetry` makes app.g.dart tell FespalierTelemetry where each
 # guard, data.dart, action and deferred page is, and follow the router's navigations. It reports

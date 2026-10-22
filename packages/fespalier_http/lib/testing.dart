@@ -1,14 +1,13 @@
 /// Fakes for tests of code that sends HTTP through `package:fespalier_http` (since 0.15.0):
-/// [FakeHttpClient], an `http.Client` that answers from a handler and honours an abort, and
-/// [FakeHttpCredentials], an [HttpCredentials] with a canned answer.
+/// [FakeHttpClient], an `http.Client` that answers from a handler and honours an abort.
+/// `FakeHttpCredentials` moved to `package:fespalier_transport/testing.dart` in 0.21.0, with
+/// `FakeTransport`.
 library;
 
 import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
-
-import 'fespalier_http.dart';
 
 /// One request a [FakeHttpClient] was sent, with its body read.
 final class SentRequest {
@@ -110,114 +109,4 @@ final class FakeHttpClient extends http.BaseClient {
 
   @override
   void close() => _closed = true;
-}
-
-/// The attempt a [FakeHttpCredentials] made.
-final class FakeHttpAuthorization implements HttpAuthorization {
-  /// An attempt; [number] counts the sends of one request from 1.
-  FakeHttpAuthorization._({
-    required this.method,
-    required this.uri,
-    required this.headers,
-    required this.number,
-  });
-
-  @override
-  final String method;
-
-  @override
-  final Uri uri;
-
-  @override
-  final Map<String, String> headers;
-
-  /// Which send of the request this is, from 1.
-  final int number;
-
-  @override
-  bool get isReplay => number > 1;
-}
-
-/// An [HttpCredentials] with a canned answer, for tests of a client or a transfer that takes one.
-///
-/// It covers the origins it was given, attaches [headers] (`Authorization: Bearer fake` by
-/// default) and asks for a re-send of the responses whose status is in [retryOn], once per
-/// request. [authorizeCalls] and [retryCalls] record what it was asked.
-final class FakeHttpCredentials implements HttpCredentials {
-  /// Credentials for [origins] (scheme, host and port).
-  FakeHttpCredentials({
-    required Iterable<Uri> origins,
-    this.headers = const <String, String>{'Authorization': 'Bearer fake'},
-    this.retryOn = const <int>{401},
-  }) : origins = List<Uri>.unmodifiable(origins);
-
-  /// The origins that get [headers].
-  final List<Uri> origins;
-
-  /// The headers attached to a covered request.
-  final Map<String, String> headers;
-
-  /// The response statuses that ask for one re-send.
-  final Set<int> retryOn;
-
-  /// The `method uri` of every [authorize] call, oldest first.
-  final List<String> authorizeCalls = <String>[];
-
-  /// The status code of every [retry] call, oldest first.
-  final List<int> retryCalls = <int>[];
-
-  @override
-  bool covers(Uri uri) {
-    if (uri.host.isEmpty) return false;
-    for (final origin in origins) {
-      if (origin.scheme == uri.scheme &&
-          origin.host == uri.host &&
-          origin.port == uri.port) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  @override
-  Future<HttpAuthorization> authorize(
-    String method,
-    Uri uri, {
-    HttpAuthorization? previous,
-  }) async {
-    if (previous != null && previous is! FakeHttpAuthorization) {
-      throw ArgumentError.value(
-        previous,
-        'previous',
-        'not an attempt of this FakeHttpCredentials',
-      );
-    }
-    authorizeCalls.add('$method $uri');
-    final number = previous is FakeHttpAuthorization ? previous.number + 1 : 1;
-    return FakeHttpAuthorization._(
-      method: method,
-      uri: uri,
-      headers: covers(uri) ? headers : const <String, String>{},
-      number: number,
-    );
-  }
-
-  @override
-  Future<bool> retry(
-    HttpAuthorization attempt, {
-    required int statusCode,
-    required Map<String, String> headers,
-  }) async {
-    retryCalls.add(statusCode);
-    if (attempt is! FakeHttpAuthorization) {
-      throw ArgumentError.value(
-        attempt,
-        'attempt',
-        'not an attempt of this FakeHttpCredentials',
-      );
-    }
-    return attempt.headers.isNotEmpty &&
-        attempt.number == 1 &&
-        retryOn.contains(statusCode);
-  }
 }

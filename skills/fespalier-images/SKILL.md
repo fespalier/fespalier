@@ -1,6 +1,6 @@
 ---
 name: fespalier-images
-description: "Responsive CDN images in a fespalier app with fespalier_image (since 0.9.0) — ResponsiveImage (the width bucket from the box and the device pixel ratio, aspectRatio, the latch, placeholders and errors), imageCdnProvider in startup(), the URL builders (imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template, a srcset), signing without a key in the app, precaching behind a RouteLink, hero flights, the web and CORS, caching, FakeImages in tests and image spans. Load before showing a network image, configuring an image CDN, signing image URLs, or when an image flickers, loads twice, is blurry or fails on the web."
+description: "Responsive CDN images in a fespalier app with fespalier_image (since 0.9.0) — ResponsiveImage (the width bucket from the box and the device pixel ratio, aspectRatio, the latch, placeholders and errors), imageCdnProvider in startup(), the URL builders (imgproxy and EmgR, Cloudinary, imgix, Thumbor, a template, a srcset), signing without a key in the app, precaching behind a RouteLink, hero flights, the transport the images are fetched through (ImageCdn(transport:), TransportImage, since 0.21.0), the web and CORS, caching, FakeImages in tests and image spans. Load before showing a network image, configuring an image CDN, signing image URLs, or when an image flickers, loads twice, is blurry or fails on the web."
 ---
 
 # fespalier-images
@@ -46,7 +46,7 @@ Dart 3.9 and Flutter 3.35 or newer; no plugin; nothing in `pubspec.yaml`'s `fesp
 import 'package:fespalier_image/fespalier_image.dart';
 
 /// Product photos from an EmgR on this computer, unsigned (development): a production app has its backend
-/// sign them (see references/signing.md).
+/// sign them (see references/signing.md). No transport here: ImageCdn(transport: ...) is not const, so startup() adds it.
 const shopImages = ImageCdn(
   builder: ImgproxyUrlBuilder.emgr(
     baseUrl: 'http://localhost:13001',
@@ -58,10 +58,20 @@ const shopImages = ImageCdn(
 ```dart
 // lib/app/startup.dart
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:fespalier_image/fespalier_image.dart';
+import 'package:http/http.dart' as http;
 import 'package:my_app/images.dart';
 
-Future<List<Override>> startup() async => [imageCdnProvider.overrideWithValue(shopImages)];
+/// The images load through the app's transport (since 0.21.0): signed, traced and counted like its other requests.
+Future<List<Override>> startup() async => [
+  imageCdnProvider.overrideWithValue(shopImages.copyWith(transport: HttpClientTransport(http.Client()))),
+];
+```
+
+```yaml
+# pubspec.yaml dependencies
+  http: ^1.5.0
 ```
 
 ```dart
@@ -80,10 +90,18 @@ class HomePage extends StatelessWidget {
 ```
 
 `imageCdnProvider` holds an `ImageCdn`: the `builder`, the `buckets` (Next.js 16's `32 … 3840`), the `format`
-(`webp`), the `quality`, `maxPixelRatio` (3), a `providerFactory` (a disk cache goes here), `webHtmlElementStrategy` (`never`) and the defaults
-of the placeholder, the error view and the fade. Every argument of `ResponsiveImage` overrides the CDN's for
-that image. Without an override the provider holds `const ImageCdn()`, which is **no CDN**: a source is a URL,
-fetched as it is. A nested `ProviderScope` can override it for a subtree.
+(`webp`), the `quality`, `maxPixelRatio` (3), the `transport` the images are fetched through (an `HttpTransport` from
+`fespalier_transport`; since 0.21.0), a `providerFactory` (a disk cache goes here, and it replaces the transport) and the
+defaults of the placeholder, the error view and the fade. Every argument of `ResponsiveImage` overrides the CDN's for
+that image. Without an override the provider holds `const ImageCdn()`, which is **no CDN and no transport**: a source is
+a URL, but nothing can fetch it, so the image shows its error view and an `ImageUrlError` is reported (below). A nested
+`ProviderScope` can override it for a subtree.
+
+**Since 0.21.0 an image is a `TransportImage`**: `NetworkImage` over your `HttpTransport` chain, not over `dart:io`'s client
+or the browser's `<img>`, so its requests carry the session, appear in traces and count like the others. `ImageCdn(transport:)`
+is **not `const`** (a transport is a live object): keep the builder and defaults in a `const ImageCdn` and add the
+transport with `copyWith(transport: ...)` in `startup()`, as above. Until 0.20.0 `ImageCdn` was always `const` and fetched
+with `NetworkImage`, whose `webHtmlElementStrategy` the CDN exposed (`ImageCdn.webHtmlElementStrategy`, **removed**).
 
 The width needed is `(logical × min(devicePixelRatio, maxPixelRatio) − 0.5).ceil()`, then the smallest bucket
 at least that wide (the largest when none is): 40 points at 3× is 120 pixels, bucket **128**; 160 points at 3×
@@ -105,27 +123,30 @@ question, and `references/integration.md` precache, heroes, the web, caching, te
    `Heroes(shuttle: ResponsiveImage.flightShuttle)` in `transition.dart`). Without the flight shuttle
    Flutter's default measures the image at every size of the flight.
 5. **`FakeImages` in every test that shows an image**, in `pumpRouter(overrides:)` and in
-   `test/routes/setup.dart`'s `overrides(pattern)`. Without it the test goes through flutter_test's fake
-   `HttpClient` (400s and a warning) and, with no CDN, prints the "not a URL" message.
+   `test/routes/setup.dart`'s `overrides(pattern)`. Without it the test sends through the transport it was given (or,
+   with `const ImageCdn()`, reports the `ImageUrlError` below) and, with no CDN, prints the "not a URL" message.
 6. **Name a format.** `ImageFormat.webp` is the default and Flutter decodes it everywhere. `ImageFormat.auto`
    lets the CDN choose from an `Accept` header Flutter cannot steer, so it can answer an AVIF the platform
    does not decode.
 
 ## The traps
 
-- **An unconfigured app fetches `products/3.jpg` as a URL**, fails as a network error, and prints once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched as it is. Override imageCdnProvider in startup() (docs/responsive-images.md, "Images").` The fix is the `startup()` override.
+- **An unconfigured app cannot fetch `products/3.jpg`.** It prints once in a debug build: `fespalier_image: "products/3.jpg" is not a URL and no image CDN is configured, so it is fetched as it is. Override imageCdnProvider in startup() (docs/responsive-images.md, "Images").` And, since 0.21.0, an `ImageCdn` with neither a `transport` nor a `providerFactory` reports an `ImageUrlError` through `FlutterError.reportError` (once per image, library `fespalier_image`) and the image shows its error view: `fespalier_image: the ImageCdn has no transport and no providerFactory, so it cannot fetch "products/3.jpg". Give it ImageCdn(transport: ...) in startup() (docs/responsive-images.md, "Images").` The fix is the `startup()` override with a transport; a test uses `FakeImages`.
 - **It chooses once and only grows.** An animated box (`AnimatedSize`, a hero) asks for one width; a smaller
   box never asks again (a change of the view's size or of the device pixel ratio also grows it). For a box that really should get a sharper image as it grows, `growWithBox: true`.
   "It loads twice" is a box that grew with `growWithBox`, or a precache at another width than the page
   (a different bucket: say it with one constant).
 - **While a variant loads it shows the widest loaded one of the same picture**, not the placeholder: a
   thumbnail on screen stands in for the large image. That is "loaded" in Flutter's `ImageCache`, so it needs a
-  provider whose key is available synchronously (`NetworkImage`'s is).
+  provider whose key is available synchronously (`NetworkImage`'s and `TransportImage`'s are).
 - **`LayoutBuilder` and intrinsics.** Without a `width` the widget measures with a `LayoutBuilder`, which
   throws inside `IntrinsicHeight` and `IntrinsicWidth`: give it a `width`.
-- **CORS on the web.** CanvasKit and skwasm fetch the bytes with XHR: the image server must send
-  `Access-Control-Allow-Origin` on the image **and on a redirect's target** (EmgR redirects to its
-  `CDN_BASE_URL`). A blank image on the web and fine elsewhere is this.
+- **CORS on the web.** CanvasKit and skwasm fetch the bytes, and since 0.21.0 the transport does the fetching: the image
+  server must send `Access-Control-Allow-Origin` on the image **and on a redirect's target** (EmgR redirects to its
+  `CDN_BASE_URL`). A blank image on the web and fine elsewhere is this. Until 0.20.0 a `NetworkImage` that failed the
+  fetch fell back to an `<img>` element, which needs no CORS; a `TransportImage` has no such fallback, so an image host
+  that sends none (a CDN you do not control) needs `providerFactory: (url) => NetworkImage(url, webHtmlElementStrategy:
+WebHtmlElementStrategy.fallback)`, which gives up the transport chain for its images.
 - **EmgR is not imgproxy.** An unsigned URL says `unsigned` (and the server needs `ALLOW_UNSIGNED_REQUESTS`),
   `g:` is grayscale and gravity is `gr:`, a plain source ends in `.png` and not `@png`. `ImgproxyUrlBuilder.emgr`
   has them right; the plain constructor is imgproxy's.
@@ -134,8 +155,8 @@ question, and `references/integration.md` precache, heroes, the web, caching, te
 - **Telemetry never has the URL.** Image spans (since 0.9.0) carry the builder's name, the width, whether a
   precache started the load and the HTTP status of a failure, never the URL, the source or a signature. A sink
   that switches exhaustively over `TelemetryOp` needs an `image` case.
-- **No disk cache** off the web by default: `dart:io` has no HTTP cache, so a restart downloads again.
-  `providerFactory` takes `CachedNetworkImageProvider.new` (the app adds the dependency).
+- **No disk cache** off the web by default: neither `dart:io`'s client nor a `TransportImage` keeps images on disk, so a
+  restart downloads again. `providerFactory` takes `CachedNetworkImageProvider.new` (the app adds the dependency).
 
 ## What it does not do
 
@@ -148,7 +169,7 @@ endpoint belongs in `data.dart`); no `fsp` lint for a raw `Image.network` and no
 ## Where the code is
 
 `packages/fespalier_image/`: `lib/src/responsive_image.dart` (the widget, `precache`, the flight shuttle),
-`cdn.dart` (`ImageCdn`, `imageCdnProvider`), `buckets.dart`, `request.dart`, `builder.dart` and
+`cdn.dart` (`ImageCdn`, `imageCdnProvider`), `transport_image.dart` (`TransportImage`), `buckets.dart`, `request.dart`, `builder.dart` and
 `builders/` (one file per CDN), `variants.dart` (the loaded-variant registry), `warnings.dart` (the debug-only "not a URL" message and the reported builder errors), `heroes.dart`
 (`imageHero`), `telemetry.dart` (the image span), and `lib/testing.dart` (`FakeImages`). The tests pin each
 builder's URL against the providers' published examples (`test/builders_test.dart`, `signing_test.dart`).

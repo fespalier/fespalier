@@ -200,6 +200,7 @@ Widget app(GoRouter router) => MaterialApp.router(routerConfig: router, theme: a
 - `Widget app(GoRouter router)` builds the app around the router; the default is `MaterialApp.router(routerConfig: router)`. `pumpRouter` takes the same `app:` since 0.8.1.
 - Each takes exactly one required positional parameter. A setup file with neither, or with one that takes another shape, is an error that says what to write.
 - A route with a `guard.dart` at or above it is skipped when there is no `overrides`, because the guard would most likely redirect. With `overrides` it gets a test, and a guard that still redirects fails it, naming where the router ended.
+- **`fsp create` writes one** when the `image` feature is chosen (since 0.21.0): its `test/routes/setup.dart` has an `overrides` that boots `/photo` over a fake CDN (`FakeImages` over a `FakeTransport` that sends nothing), so the route is smoke-tested. A setup file makes `fsp test` run the guarded routes too, so `fsp create` then lists the ones it cannot open on their own (`/account` and `/sign-in` of `auth`, `/labs` of `flags`) under `test: skip:` of the pubspec, each with a comment saying which test of the feature opens it. Without the `image` feature there is no setup file, and `fsp test` skips a guarded route by itself.
 
 **Which routes get a test.** Each is checked in this order, and the first that applies wins. Every skip is printed on every run (and listed in the test file's header), and none of them fails `--check`.
 

@@ -12,8 +12,10 @@ is public, not a secret).
 // lib/app/startup.dart
 import 'package:fespalier/fespalier.dart' show dataCacheStorage;
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:http/http.dart' as http;
 
 const _cdn = String.fromEnvironment('TOLGEE_CDN_URL');
 
@@ -24,7 +26,12 @@ Future<List<Override>> startup() async => [
       baseLocale: 'en',
       remote: _cdn.isEmpty
           ? null
-          : TolgeeCdn(Uri.parse(_cdn), format: TolgeeCdnFormat.arb, namespace: 'app'),
+          : TolgeeCdn(
+              Uri.parse(_cdn),
+              transport: HttpClientTransport(http.Client()),
+              format: TolgeeCdnFormat.arb,
+              namespace: 'app',
+            ),
       refreshOnResume: true, // off by default
       cacheMaxAge: const Duration(days: 7), // 30 days by default
     ),
@@ -34,9 +41,18 @@ Future<List<Override>> startup() async => [
 ];
 ```
 
-`TolgeeCdn(base, {format = TolgeeCdnFormat.json, namespace, file})` asks for `<base>/<locale>.json` (`.arb` for the ARB
+```yaml
+# pubspec.yaml dependencies
+  http: ^1.5.0
+```
+
+`TolgeeCdn(base, {required transport, format = TolgeeCdnFormat.json, namespace, file})` asks for `<base>/<locale>.json` (`.arb` for the ARB
 format), or `<base>/<namespace>/<locale>.json`; `file: (locale) => ...` overrides the file name. It has **no parameter
-for an API key**, by design: a key in a build is public.
+for an API key**, by design: a key in a build is public. The `transport` is any `HttpTransport` (since 0.21.0):
+`HttpClientTransport(client)` from `fespalier_http`, `DioTransport(dio)` from `fespalier_dio`, or a decorated chain
+(`docs/transport.md`, [the interface](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#the-interface)).
+It was an optional `client:` (an `http.Client`) until 0.20.0, and a refusal was an `http.ClientException`; it is a
+`TransportStatusError` now.
 
 - **ETag.** The first answer's `ETag` is saved; the next ask sends `If-None-Match`. A **304 or a 404 changes nothing**,
   and any other failure (a `5xx`, no network, a body that is not a JSON object) keeps what the app has, **silently**:

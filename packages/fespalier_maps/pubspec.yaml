@@ -38,13 +38,25 @@ dependencies:
   maplibre_gl: ">=0.27.1 <0.28.0"
   # The device position: lib/geolocator.dart is the only file that imports it.
   geolocator: ">=14.0.0 <15.0.0"
-  # File packs download with an http.Client the app provides (so its timeouts, proxy and
-  # certificates apply). 1.5.0 is the first http release with abortable requests (Dart 3.4), and
-  # crypto 3.0.6 the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
-  http: ^1.5.0
+  # File packs download through an HttpTransport the app provides (so its timeouts, proxy,
+  # certificates and signing apply); the same url and ref as fespalier.
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v0.20.0 # x-release-please-version
+  # crypto 3.0.6 is the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
   crypto: ^3.0.6
 
 dev_dependencies:
+  # HttpClientTransport, which the tests put over package:http's MockClient (a test dependency
+  # only: lib/ imports neither package; test/no_http_test.dart checks it).
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.20.0 # x-release-please-version
+  http: ^1.5.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

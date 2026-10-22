@@ -19,7 +19,8 @@ package resolves, where the union of all of them is steered by every member's co
     cd <app> && flutter pub downgrade && flutter pub get
 
 is what an app resolves to at its floor. The second form, run after that, reads
-`.flutter-plugins-dependencies` and writes `test/plugins_test.dart`, which imports the Dart
+`.flutter-plugins-dependencies` (pub writes none when the app resolved no plugin, as for a package in
+pure Dart: then there is nothing to import) and writes `test/plugins_test.dart`, which imports the Dart
 implementation of every plugin the app resolved for Android, iOS, Linux, macOS and Windows
 (`flutter.plugin.platforms.<os>.dartPluginClass` and `dartFileName` in each plugin's pubspec).
 `flutter test` then compiles them all. The third runs `flutter build web` in the app, and skips when
@@ -105,6 +106,12 @@ def plugin_imports(app):
     """The Dart plugin implementations of the resolved app: {(package, file): [(os, class), ...]}."""
     deps = app / ".flutter-plugins-dependencies"
     if not deps.is_file():
+        # `flutter pub get` writes this file only when the resolution has a Flutter plugin: an app of a
+        # package in pure Dart (fespalier_transport) gets none. That `pub get` ran is what
+        # `.dart_tool/package_config.json` shows, so the file's absence after one means no plugins, and
+        # without one it means the step was skipped.
+        if (app / ".dart_tool" / "package_config.json").is_file():
+            return {}
         sys.exit(f"floor_app.py: {deps} is missing: run `flutter pub get` in {app} first")
     found = {}
     for os_name, plugins in json.loads(deps.read_text(encoding="utf-8"))["plugins"].items():

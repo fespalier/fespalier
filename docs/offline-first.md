@@ -53,8 +53,8 @@ The rules that keep it honest:
 - **A gateway or a captive portal counts as offline.** An HTML page where a JSON answer was expected, or a
   `5xx` with no CrateStack envelope, means nobody that knows your API answered, and the write may have landed. Since
   0.16.0 that is every `5xx` without the envelope, a bare `500` included; before it was `502`, `503`, `504` and
-  `511`. A `5xx` in the envelope is not: the server did answer. With Dio, add `CrateStackPortalInterceptor`: Dio does not throw on an HTML
-  `200`, so without it the page reaches the client as a decoding error that no reader knows.
+  `511`. A `5xx` in the envelope is not: the server did answer. Put a `PortalTransport` in the transport chain (since 0.21.0; `CrateStackPortalInterceptor` with Dio until 0.20.0): no transport throws on an HTML
+  `200`, so without it the page reaches the client as a decoding error that no reader knows. A refused TLS certificate is **not** offline (since 0.21.0): it may be a captive portal or an attack, so it is unclassified and a read serves no saved copy for it ([CrateStack with fespalier](cratestack.md#5-actions)).
 
 The `Freshness` rules of `data.dart` (`staleTime`, `refetchOnResume`, `refetchOnReconnect`) still say _when_ a
 read runs again; `serve` says where its answer comes from.

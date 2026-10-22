@@ -483,7 +483,7 @@ and `lock()` leaves stored secrets alone (delete them at sign-out with `deleteSe
 - **A secret kept after a lock.** Locking does not clear data providers: a `data.dart` that loaded the vault stays in
   memory, and the app decides whether to invalidate it (`ref.invalidate`) when `biometricUnlock` goes to `Locked`.
 - **A biometric check is not authentication to a server.** It proves a person is at the phone; it signs nothing. Use
-  [`fespalier_sign_keypair`](auth-dpop.md) for a key the server can verify.
+  [device-signed sessions](auth-device-sessions.md) (`fespalier_sign_keypair`, since 0.21.0) for a key the server can verify.
 
 ## Testing
 

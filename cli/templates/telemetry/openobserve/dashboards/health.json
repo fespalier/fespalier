@@ -913,7 +913,7 @@
               {
                 "type": "value",
                 "value": "auth",
-                "text": "Session (sign-in, refresh, sign-out)"
+                "text": "Session (sign-in, renew, sign-out)"
               },
               {
                 "type": "value",
@@ -924,6 +924,11 @@
                 "type": "value",
                 "value": "custom",
                 "text": "Package operation"
+              },
+              {
+                "type": "value",
+                "value": "http",
+                "text": "Web request"
               }
             ],
             "drilldown": [

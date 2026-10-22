@@ -2,9 +2,13 @@ import 'package:cose_example/src/cose/cose.dart';
 import 'package:cose_example/src/cose_transport.dart';
 import 'package:cose_example/src/wiring.dart';
 import 'package:fespalier/startup.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
+import 'package:http/http.dart' as http;
 
-/// Runs once, before the app, while splash.dart shows: opens the device key (made on first use,
+/// Runs once, before the app, while splash.dart shows: builds the app's one transport (the only
+/// place `package:http` is named: `HttpClientTransport` over its client, which every call is
+/// sent through), opens the device key (made on first use,
 /// in the Secure Enclave or the AndroidKeyStore) and pins the server's key from the build's
 /// `--dart-define`s. Neither touches the network: the device is registered by the first signed
 /// call, and an unreachable server is an offline app, not a failed start.
@@ -24,16 +28,16 @@ import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
 /// does not show it: the page shows the key's `kid`. A build that must *require* hardware passes
 /// `requireHardware: true` and takes the failure instead.
 Future<List<Override>> startup() async {
-  Future<DpopSigner> openSigner() async {
+  Future<KeypairSigner> openSigner() async {
     try {
       // `requireHardware: false`: use the keystore when there is one, else a software key.
-      final hardware = SignKeypairSigner(keyId: deviceKeyId);
+      final hardware = HardwareKeypairSigner(keyId: deviceKeyId);
       await hardware.publicJwk();
       return hardware;
     } on Object {
       // No keystore (the web, Windows, Linux), a sandbox that refuses the keychain (macOS without
       // a signing certificate), or a simulator keychain: fall back rather than fail to start.
-      return SoftwareDpopSigner(keyId: deviceKeyId);
+      return SoftwareKeypairSigner(keyId: deviceKeyId);
     }
   }
 
@@ -41,6 +45,7 @@ Future<List<Override>> startup() async {
   final identity = await CoseSealer(signer).identity();
   return [
     coseConfig.overrideWithValue(CoseConfig.fromEnvironment()),
+    coseHttpTransport.overrideWithValue(HttpClientTransport(http.Client())),
     deviceSigner.overrideWithValue(signer),
     deviceIdentity.overrideWithValue(identity),
     ...coseOverrides(),

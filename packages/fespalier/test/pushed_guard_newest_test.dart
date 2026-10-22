@@ -11,6 +11,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/src/navigation_kind.dart' show pushedMatches;
 import 'package:fespalier/testing.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/attach_order.dart';
@@ -55,11 +56,31 @@ Future<String?> _adminGuard(Ref ref) {
       : server.future.then<String?>((_) => null);
 }
 
-GoRouter _router() => GoRouter(
+/// How often the guard of the base page `/home` ran (see `_router`).
+var _homeRuns = 0;
+
+/// A router whose base page `/home` has no redirect, so a pushed page's guard is run again alone,
+/// or, with [guardedBase], a guard of its own on the session (answered at once, or with a `Future`
+/// when [asyncBase]): a sign-out is then asked of the base too.
+GoRouter _router({
+  bool guardedBase = false,
+  bool asyncBase = false,
+}) => GoRouter(
   initialLocation: '/home',
   routes: [
-    // No redirect on the base page: a pushed page's guard is run again alone.
-    GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+    GoRoute(
+      path: '/home',
+      redirect: guardedBase
+          ? (context, state) => runRedirect(
+              () => refGuard(context, 'g@home', (ref) {
+                _homeRuns++;
+                final answer = ref.watch(_session) ? null : '/login';
+                return asyncBase ? Future<String?>.value(answer) : answer;
+              }),
+            )
+          : null,
+      builder: (_, _) => const Text('HOME'),
+    ),
     GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
     GoRoute(
       path: '/x',
@@ -77,6 +98,23 @@ GoRouter _router() => GoRouter(
       builder: (context, state) =>
           refusedView(context, state) ??
           Scaffold(appBar: AppBar(), body: const Text('ADMIN')),
+    ),
+    // A page whose guard waits for the server and watches the session.
+    GoRoute(
+      path: '/acct',
+      redirect: (context, state) => runRedirect(
+        () => refGuard(context, 'g@acct', (ref) {
+          _runs++;
+          if (!ref.watch(_session)) return Future<String?>.value('/login');
+          final server = _server;
+          return server == null
+              ? Future<String?>.value(null)
+              : server.future.then<String?>((_) => null);
+        }),
+      ),
+      builder: (context, state) =>
+          refusedView(context, state) ??
+          Scaffold(appBar: AppBar(), body: const Text('ACCT')),
     ),
     // A parent whose guard passes at once and a child whose guard waits: two positions.
     GoRoute(
@@ -105,6 +143,34 @@ GoRouter _router() => GoRouter(
       routerErrorPage(context, state, (uri) => Text('NOT FOUND ${uri.path}')),
 );
 
+/// What the router told the platform (the browser's history) from now on: the location and whether
+/// it replaced the current entry.
+typedef _Report = ({String uri, bool replace});
+
+List<_Report> _history(WidgetTester tester) {
+  final reports = <_Report>[];
+  tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+    SystemChannels.navigation,
+    (call) async {
+      if (call.method == 'routeInformationUpdated') {
+        final args = call.arguments as Map<Object?, Object?>;
+        reports.add((
+          uri: args['uri']! as String,
+          replace: args['replace']! as bool,
+        ));
+      }
+      return null;
+    },
+  );
+  addTearDown(
+    () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.navigation,
+      null,
+    ),
+  );
+  return reports;
+}
+
 Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
   await tester.pump();
@@ -119,6 +185,7 @@ Future<void> _push(WidgetTester tester, GoRouter r, String location) async {
 void main() {
   setUp(() {
     _runs = 0;
+    _homeRuns = 0;
     _asked.clear();
     _server = null;
   });
@@ -212,6 +279,98 @@ void main() {
         await _settle(tester);
         expect(_stack(r), ['/home', '/login']);
       });
+    });
+
+    group('a sign-out while a re-run waits', () {
+      for (final asyncBase in [false, true]) {
+        group(
+          'over a base page under a ${asyncBase ? 'asynchronous' : 'synchronous'} guard',
+          () {
+            /// `/acct` pushed, `/x` over it and popped while the server is slow (a re-run of `/acct`
+            /// waits), then the session ends and, last, the server answers.
+            Future<(GoRouter, ProviderContainer)> signedOutWhileWaiting(
+              WidgetTester tester,
+            ) async {
+              final r = _router(guardedBase: true, asyncBase: asyncBase);
+              final c = await pumpRouter(tester, attached(r));
+              await _push(tester, r, '/acct');
+              await _push(tester, r, '/x');
+              _server = Completer<void>();
+              r.pop();
+              await _settle(tester);
+              expect(
+                find.text('ACCT'),
+                findsOneWidget,
+                reason: 'the re-run waits',
+              );
+              final homeRuns = _homeRuns;
+              c.read(_session.notifier).set(false);
+              await _settle(tester);
+              _server!.complete();
+              await _settle(tester);
+              for (var i = 0; i < 5; i++) {
+                await tester.pump(const Duration(milliseconds: 16));
+              }
+              expect(
+                _homeRuns,
+                greaterThan(homeRuns),
+                reason: 'the base was asked',
+              );
+              return (r, c);
+            }
+
+            testWidgets('the whole stack is replaced, as without a re-run', (
+              tester,
+            ) async {
+              final (r, _) = await signedOutWhileWaiting(tester);
+              expect(find.text('ACCT'), findsNothing);
+              expect(find.text('HOME'), findsNothing);
+              expect(find.text('LOGIN'), findsOneWidget);
+              expect(_stack(r), ['/login']);
+            });
+
+            testWidgets('the browser history gets one new entry, as without a '
+                're-run', (tester) async {
+              // To report the committed stack before it refreshes, the guards tell go_router's route
+              // information provider with `RouteInformationReportingType.neglect`, which the provider
+              // (the same code in go_router 17.2.3 and 18.1.1) turns into
+              // `SystemNavigator.routeInformationUpdated(replace: true)`: on the web the browser
+              // replaces the current entry and adds none. The only entry the sign-out adds is the
+              // one of its redirect, `/login`, as in the control.
+              final reports = _history(tester);
+              final r = _router(guardedBase: true, asyncBase: asyncBase);
+              final c = await pumpRouter(tester, attached(r));
+              await _push(tester, r, '/acct');
+              await _push(tester, r, '/x');
+              _server = Completer<void>();
+              r.pop();
+              await _settle(tester);
+              reports.clear();
+              c.read(_session.notifier).set(false);
+              await _settle(tester);
+              _server!.complete();
+              await _settle(tester);
+              final added = [
+                for (final report in reports)
+                  if (!report.replace) report.uri,
+              ];
+              expect(added, ['/login'], reason: 'reports: $reports');
+              expect(_stack(r), ['/login']);
+            });
+
+            testWidgets('no re-run in flight: the same end state (control)', (
+              tester,
+            ) async {
+              final r = _router(guardedBase: true, asyncBase: asyncBase);
+              final c = await pumpRouter(tester, attached(r));
+              await _push(tester, r, '/acct');
+              c.read(_session.notifier).set(false);
+              await _settle(tester);
+              expect(_stack(r), ['/login']);
+            });
+          },
+        );
+      }
     });
   });
 }

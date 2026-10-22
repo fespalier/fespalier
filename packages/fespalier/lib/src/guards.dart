@@ -338,13 +338,41 @@ final class _RouterGuards {
     // the two apart in advance means reading the base's guards, and an async guard or a hand-written
     // `redirect:` cannot be read.
     final VoidCallback run = top == null || _baseGuarded()
-        ? _router.refresh
+        ? _refresh
         : () => _rerun(top);
     if (hook == null) {
       run();
     } else {
       hook(run);
     }
+  }
+
+  /// `GoRouter.refresh()`, which parses again what the route information provider holds. While a
+  /// re-run of a pushed page waits for an asynchronous guard, the provider still holds the re-run's
+  /// `replace` (the Router reports a configuration only when it commits one, and go_router has not
+  /// committed that one), so a plain `refresh()` would run the re-run's redirects alone and the
+  /// stack under the page would never be asked: a sign-out would leave a guarded base under
+  /// `/login`. So the committed configuration is reported first, as the Router does after a commit,
+  /// and the refresh restores the stack and asks the base.
+  ///
+  /// The report is [RouteInformationReportingType.neglect], which go_router's provider turns into
+  /// `SystemNavigator.routeInformationUpdated(replace: true)` (the same code from 17.2.3 to 18.1.1):
+  /// on the web it replaces the current history entry and adds none, so the back button does not
+  /// get a step. `test/pushed_guard_newest_test.dart` counts the reports.
+  void _refresh() {
+    final provider = _router.routeInformationProvider;
+    if (isGuardRerun(_router, provider.value.state)) {
+      final committed = _router.routeInformationParser.restoreRouteInformation(
+        _router.routerDelegate.currentConfiguration,
+      );
+      if (committed != null) {
+        provider.routerReportsNewRouteInformation(
+          committed,
+          type: RouteInformationReportingType.neglect,
+        );
+      }
+    }
+    _router.refresh();
   }
 
   /// Whether the page at the bottom of the stack, which a `refresh()` asks again, is under a

@@ -16,7 +16,7 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'guards.dart' show GuardFailure, refusedEntry;
+import 'guards.dart' show GuardFailure, isGuardRerun, refusedEntry;
 import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
@@ -293,6 +293,11 @@ final class RouterWatch {
   void _requested() {
     try {
       if (!telemetryOn) return;
+      // A guard's re-run of a pushed page (since 0.21.0) is no navigation of the app's, and no
+      // request: it starts at its commit with nothing requested, as a guard's refresh does.
+      if (isGuardRerun(router, router.routeInformationProvider.value.state)) {
+        return;
+      }
       final uri = router.routeInformationProvider.value.uri;
       // The same location as the one committed: `GoRouter.refresh()` only notifies again, and a
       // `go` to where you are commits nothing. Not a new navigation.

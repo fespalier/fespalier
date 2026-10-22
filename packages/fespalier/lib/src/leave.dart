@@ -22,9 +22,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'guards.dart'
     show
         guardRefreshHooks,
-        guardRerunMoves,
-        guardRerunRefused,
-        guardRerunYields,
+        guardRerunVerdict,
         guardsContainer,
         guardsIdle,
         isGuardRerun;
@@ -344,21 +342,21 @@ LeaveResult leaveExit(
       if (kDebugMode && _isRouteSwap(router, state)) return true;
       if (_bypass[router]?.allows(router) ?? false) return true;
       // A guard's re-run of this pushed page (since 0.21.0): go_router asks the page to leave when
-      // the re-run lands, and when one of its guards redirected or failed it moves the page, so it
-      // asks as a base page's redirect does, whatever else is true of the navigation. When the
-      // guards passed again the page is replaced by itself, which is no leave. A page that goes
-      // while the re-run still waits for its guard (a pop, the back button) is asked as it is with
-      // no re-run, and the re-run yields to it: if it lands while that question's page is still
-      // there, it is refused, and replaces nothing.
-      final key = state.pageKey.value;
-      if (guardRerunRefused(router, key)) return false;
-      final moves = guardRerunMoves(router, key);
-      if (moves == false) return true;
+      // the re-run lands, in the re-run's own synchronous call and with every redirect answered
+      // (invariant 8 of the guards, see `guardRerunVerdict`). When one of them redirected or failed
+      // it moves the page, so it asks as a base page's redirect does, whatever else is true of the
+      // navigation. When the guards passed again the page is replaced by itself, which is no leave.
+      final moves = guardRerunVerdict(router, state.pageKey);
+      if (moves == false) {
+        // Nothing is asked. But a question about this page that is still open (the person's press
+        // is waiting for an answer) is not left without its page: the landing is refused, and the
+        // answer still finds the entry it was asked about.
+        return !(_asking[router]?.containsKey(pageInstanceId(state)) ?? false);
+      }
       if (moves == null) {
         if (_isTabSwitch(router, state)) return true;
         if (_isQueryOnlyReplace(router, state)) return true;
         if (within != null && _staysWithin(router, state, within)) return true;
-        guardRerunYields(router, key);
       }
     }
     container =
@@ -783,6 +781,9 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
 bool _staysWithin(GoRouter router, GoRouterState state, String within) {
   final value = router.routeInformationProvider.value;
   final info = value.state;
+  // A guard's re-run that is asked about outside its own call (an asynchronous `onEnter`) is not a
+  // navigation the app made: the flow section is no exemption for it (since 0.21.0).
+  if (isGuardRerun(router, info)) return false;
   final config = router.routerDelegate.currentConfiguration;
   final Uri? target;
   if (info is RouteInformationState) {

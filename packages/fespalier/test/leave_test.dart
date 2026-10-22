@@ -1237,9 +1237,12 @@ void pushedPageGroups() {
       });
     });
 
-    // A re-run that yielded to a question of the person's is refused when it lands (see
-    // `guardRerunRefused`): go_router replaces nothing, and nothing asked the page.
-    group('a re-run whose landing was refused', () {
+    // A re-run lands with all its answers (an asynchronous one is carried on by a re-run that replays
+    // them), and a landing that moves the page asks `leave()` as any move does, also when the person
+    // refused a question about the page while the guard waited: that was a question about the pop.
+    // A refusal at the landing keeps the page and its guard. A landing that passes asks nothing, and
+    // is refused only while a question about the page is open, so its answer finds the entry.
+    group('a re-run that lands after a refused question', () {
       /// `/gw` is pushed (dirty), `/x` over it and popped: its guard waits for [gGate]. The person's
       /// back is asked and refused meanwhile. [base] is the page under them. Turns the guard to refuse
       /// while the page is covered when [closed] is true.
@@ -1332,75 +1335,68 @@ void pushedPageGroups() {
         });
       }
 
-      // The refused landing is the landing alone: a press of the person's right after it, before
-      // a frame has run, is a question about the page like any other and is asked as usual. The
-      // guard's own move is asked again after the frame, but the page is gone by then.
+      // The landing asks the move, and a refusal keeps the page. A press of the person's right after
+      // it, before a frame has run, is a question about the page like any other and is asked as
+      // usual: a yes pops the page to where a pop goes.
       for (final base in ['/y', '/oa']) {
-        testWidgets('over $base: a press right after the refused landing is '
-            'asked, and a yes pops the page', (tester) async {
+        testWidgets('over $base: a press right after the landing that a refusal '
+            'kept is asked, and a yes pops the page', (tester) async {
           final (r, _) = await refusedBack(tester, base: base, closed: true);
           gGate!.complete();
-          // The guard answers and the landing is refused, in microtasks: no frame has run.
+          // The guard answers and the landing asks the move, in microtasks: no frame has run. The
+          // person refuses it again.
           await tester.idle();
-          expect(asked, ['gw dirty'], reason: 'the landing asked nobody');
+          expect(asked, ['gw dirty', 'gw dirty'], reason: 'the landing asked');
+          expect(stackOf(r), [base, '/gw']);
           answer = (_, _) => true;
           await Navigator.of(tester.element(find.text('gw'))).maybePop();
           await settle(tester);
           await settle(tester);
-          expect(asked, ['gw dirty', 'gw dirty']);
+          expect(asked, ['gw dirty', 'gw dirty', 'gw dirty']);
           // The page went to where a pop goes, not where its guard wanted to send it.
           expect(stackOf(r), [base]);
           expect(find.text('gw'), findsNothing);
         });
 
-        // The guard that wanted to move the page passes again, a few frames after the refusal: the
-        // re-run that was asked for either moves it (and asks) or finds it passing, and the base's
-        // refresh asks the page once when the base is under a guard of its own. Never more.
+        // The guard that wanted to move the page passes again, a few frames after the landing that the
+        // person refused: the page is not moved, and the base's refresh asks it once when the base is
+        // under a guard of its own. Never more.
         for (final frames in [0, 1, 2]) {
-          testWidgets(
-            'over $base: the guard passes again $frames frames '
-            'after the refused landing: the page is asked at most once more',
-            (tester) async {
-              final (r, c) = await refusedBack(
-                tester,
-                base: base,
-                closed: true,
-              );
-              gGate!.complete();
-              await tester.idle();
-              for (var i = 0; i < frames; i++) {
-                await tester.pump();
-              }
-              final before = asked.length;
-              answer = (_, _) => true;
-              c.read(_wOpen.notifier).set(true);
-              await settle(tester);
-              await settle(tester);
-              expect(
-                asked.length - before,
-                lessThanOrEqualTo(base == '/oa' ? 1 : 0),
-              );
-              expect(stackOf(r), [base, '/gw']);
-              expect(find.text('gw'), findsOneWidget);
-              final after = asked.length;
-              for (var i = 0; i < 20; i++) {
-                await tester.pump();
-              }
-              expect(
-                asked.length,
-                after,
-                reason: 'nothing asks again by itself',
-              );
-            },
-          );
+          testWidgets('over $base: the guard passes again $frames frames '
+              'after the refused move: the page is asked at most once more', (
+            tester,
+          ) async {
+            final (r, c) = await refusedBack(tester, base: base, closed: true);
+            gGate!.complete();
+            await tester.idle();
+            for (var i = 0; i < frames; i++) {
+              await tester.pump();
+            }
+            final before = asked.length;
+            answer = (_, _) => true;
+            c.read(_wOpen.notifier).set(true);
+            await settle(tester);
+            await settle(tester);
+            expect(
+              asked.length - before,
+              lessThanOrEqualTo(base == '/oa' ? 1 : 0),
+            );
+            expect(stackOf(r), [base, '/gw']);
+            expect(find.text('gw'), findsOneWidget);
+            final after = asked.length;
+            for (var i = 0; i < 20; i++) {
+              await tester.pump();
+            }
+            expect(asked.length, after, reason: 'nothing asks again by itself');
+          });
         }
       }
 
-      // The move the guard wanted is asked again after the next frame, and the router's own rebuild
-      // after the refusal is what asks for that frame: fespalier schedules none. An app in the
-      // background has no frames, so the move waits for the resume. UNCHECKED on a device.
+      // The guard's move is asked at its landing, with no frame: fespalier schedules none and waits
+      // for none, so an app in the background is asked as soon as the guard answers.
+      // UNCHECKED on a device: that the question shows while the app is hidden.
       testWidgets('with the app in the background no frame comes, and the '
-          "guard's move is asked again after the resume", (tester) async {
+          "guard's move is asked at once", (tester) async {
         final (r, _) = await refusedBack(tester, closed: true);
         final binding = tester.binding;
         binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -1416,15 +1412,15 @@ void pushedPageGroups() {
         for (var i = 0; i < 5; i++) {
           await tester.pump();
         }
-        expect(asked, ['gw dirty'], reason: 'the landing was refused, unasked');
+        expect(asked, [
+          'gw dirty',
+          'gw dirty',
+        ], reason: 'asked as the move it is, with no frame');
         binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
         binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
         binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
         await settle(tester);
-        expect(asked, [
-          'gw dirty',
-          'gw dirty',
-        ], reason: 'asked as the move it is');
+        expect(asked, ['gw dirty', 'gw dirty'], reason: 'and not again');
         expect(stackOf(r), ['/y', '/gw']);
       });
 
@@ -1454,7 +1450,7 @@ void pushedPageGroups() {
       }
 
       for (final refused in [true, false]) {
-        testWidgets('${refused ? 'after a refused landing, ' : ''}the app\'s own '
+        testWidgets('${refused ? 'after a refused question, ' : ''}the app\'s own '
             'replace of the page gets the result it pops with', (tester) async {
           final pushedDone = <String?>[];
           final replacedDone = <String?>[];
@@ -1467,7 +1463,7 @@ void pushedPageGroups() {
             );
             gGate!.complete();
             await settle(tester);
-            expect(asked, ['gw dirty'], reason: 'the landing was refused');
+            expect(asked, ['gw dirty'], reason: 'the landing passed: unasked');
           } else {
             r = guarded();
             c = await start(tester, r);

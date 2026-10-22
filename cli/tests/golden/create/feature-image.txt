@@ -23,11 +23,22 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v<version>
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v<version>
   fespalier_image:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_image
       ref: v<version>
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v<version>
+  http: "^1.5.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0
@@ -154,15 +165,22 @@ class HomePage extends StatelessWidget {
 
 === lib/app/startup.dart (new)
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:http/http.dart' as http;
 import 'package:my_app/images.dart';
 
 /// Runs once before the app (docs/app-startup.md); the providers it returns are
 /// overridden in the app's ProviderScope, so the first frame already has them.
-List<Override> startup() => [
-  // fespalier_image: which CDN the images come from (lib/images.dart).
-  imageCdnProvider.overrideWithValue(appImages),
-];
+List<Override> startup() {
+  // The app's one transport, given to every package that sends: the client inside a write guard.
+  final transport = WriteGuardTransport(HttpClientTransport(http.Client()));
+  return [
+    // fespalier_image: which CDN the images come from (lib/images.dart), fetched through the transport.
+    imageCdnProvider.overrideWithValue(appImages(transport)),
+  ];
+}
 
 === lib/app/transition.dart (new)
 import 'package:fespalier/fespalier.dart';
@@ -173,8 +191,34 @@ import 'package:flutter/widgets.dart';
 Page<void> transition(LocalKey key, Widget child) =>
     Transitions.material(key, child);
 
+=== test/routes/setup.dart (new)
+// What the route smoke tests (routes_test.dart, written by `fsp test`) boot with. This file is
+// the app's: `fsp test` only looks for the two functions it may export, `overrides` and `app`.
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_image/testing.dart';
+import 'package:fespalier_transport/testing.dart';
+import 'package:my_app/images.dart';
+
+/// The providers the smoke test of [pattern] (`/about`) boots with. Called once per test, so every
+/// test gets fresh fakes.
+List<Override> overrides(String pattern) => [
+  // The photo's CDN, over a transport that sends nothing: FakeImages holds every load
+  // (the page is on screen, which is all a smoke test looks for).
+  imageCdnProvider.overrideWithValue(
+    FakeImages().cdn(
+      appImages(
+        FakeTransport(
+          (request, body) => throw StateError('a smoke test sends nothing'),
+        ),
+      ),
+    ),
+  ),
+];
+
 === lib/images.dart (new)
 import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 
 /// Where the images are served from: `--dart-define=IMAGES_URL=https://img.example.com`. A public
 /// address, never a key (docs/responsive-images.md, "Signed image URLs").
@@ -186,9 +230,16 @@ const String imagesUrl = String.fromEnvironment(
 /// How the app asks for an image: a URL template, with the width the box needs in `{width}`.
 /// Swap the builder for your CDN's (`ImgproxyUrlBuilder`, `CloudinaryUrlBuilder`, `ImgixUrlBuilder`,
 /// `ThumborUrlBuilder`): docs/responsive-images.md, "URL builders".
-const ImageCdn appImages = ImageCdn(
-  builder: TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}'),
+///
+/// The images are fetched through [transport], the app's one (`startup()` builds it and hands it
+/// to every package that sends), so an image request is signed, traced and counted like the
+/// others. That is why the CDN is no longer `const`.
+ImageCdn appImages(HttpTransport transport) => ImageCdn(
+  builder: const TemplateUrlBuilder(
+    '$imagesUrl/{source}?w={width}&q={quality}',
+  ),
   quality: 80,
+  transport: transport,
 );
 
 === lib/app/photo/page.dart (new)
@@ -224,10 +275,20 @@ import 'dart:ui' as ui;
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_image/fespalier_image.dart';
 import 'package:fespalier_image/testing.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:my_app/app.g.dart';
 import 'package:my_app/images.dart';
+
+/// The transport the CDN is built with: `FakeImages` replaces the provider, so nothing is sent.
+final noNetwork = FakeTransport(
+  (request, body) => throw StateError('the images load through FakeImages'),
+);
+
+/// The app's CDN, loading through [images].
+Override cdnThrough(FakeImages images) =>
+    imageCdnProvider.overrideWithValue(images.cdn(appImages(noNetwork)));
 
 void main() {
   late ui.Image image;
@@ -241,7 +302,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/photo'),
-      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+      overrides: [cdnThrough(images)],
     );
     // A 160-point box at the test view's 3x pixel ratio is 480 pixels: the 640 bucket.
     expect(images.requested, ['$imagesUrl/sample.jpg?w=640&q=80']);
@@ -255,7 +316,7 @@ void main() {
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/photo'),
-      overrides: [imageCdnProvider.overrideWithValue(images.cdn(appImages))],
+      overrides: [cdnThrough(images)],
     );
     final url = images.requested.single;
     images.fail(url);

@@ -1,6 +1,6 @@
 # Wiring it once
 
-Since 0.10.0. Everything the app writes is in four places: **`startup.dart`** (the overrides), **the Dio**, **the root
+Since 0.10.0. Everything the app writes is in four places: **`startup.dart`** (the overrides), **the Dio and its transport chain**, **the root
 `layout.dart`** (`autoSync`) and **the sign-out**. The generated package is yours, so the sample builds against a few
 **stand-ins** for it (marked as such); the real ones are `CratestackDioAdapter`, `CratestackRpcException` and the
 generated client.
@@ -58,28 +58,54 @@ CrateStackFailure? readShopError(Object e) => e is ShopException
     : null;
 ```
 
-## The Dio
+## The Dio and its transport chain
+
+Since 0.21.0 the generated client's Dio sends through a transport chain: `TransportAdapter(chain)` (`fespalier_dio`) is its
+`httpClientAdapter`. Until 0.20.0 the Dio carried `CrateStackCancelInterceptor()` and `CrateStackPortalInterceptor()`,
+which are gone (so is `package:fespalier_cratestack/dio.dart`); their jobs are `PortalTransport` in the chain and the
+zone that `TransportAdapter` reads.
 
 ```dart
 // lib/dio.dart
 import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_cratestack/dio.dart';
+import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:http/http.dart' as http;
+
+/// What the Dio sends through: a portal's page becomes an error, a write is marked as one, and the network is
+/// package:http. An app with fespalier_auth wraps this in SessionTransport (or hands it to AuthConfig.transport).
+final apiTransport = Provider<HttpTransport>((ref) {
+  final network = http.Client();
+  ref.onDispose(network.close);
+  return PortalTransport(WriteGuardTransport(HttpClientTransport(network)));
+});
 
 final dio = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))
-    ..interceptors.addAll(const [CrateStackCancelInterceptor(), CrateStackPortalInterceptor()]);
+    ..httpClientAdapter = TransportAdapter(ref.watch(apiTransport));
   WriteGuard.install(dio); // last: it goes first
   ref.onDispose(dio.close);
   return dio;
 });
+
+/// The last reader of crateStackErrors: what the Dio threw, as the transport's own failure, then classified.
+CrateStackFailure? readTransportError(Object e) => TransportFailures.read(DioErrors.toTransport(e));
 ```
 
 `WriteGuard.install` puts the guard **first** in the chain, and calling it again moves it back there, so call it after
-adding the others (a session interceptor from `fespalier_auth`, `SessionInterceptor`, goes in with them). A second send
-of a write is refused except after a `401`; `fespalier_dio`'s `WriteNotRetried` is what such a send fails with when
-the guard was not first.
+adding the other interceptors. A second send of a write is refused except after a `401`; `fespalier_dio`'s
+`WriteNotRetried` is what such a send fails with when the guard was not first. **The session is not an interceptor any
+more** (`SessionInterceptor` is gone): with `fespalier_auth`, `SessionTransport(chain, ref.watch(authorizer))` goes in the
+transport chain, outside the `PortalTransport` so that a portal's page is never taken for an answer the session judges,
+and it signs every send afresh, whatever retries above it.
+
+**What the chain does with a failure.** `TransportAdapter` makes a `TransportFailure` a `DioException` whose `error` is the
+failure (`TransportAborted` a `cancel`, `TransportUnsent` a `connectionError`, `TransportUntrusted` a `badCertificate`,
+`TransportTimedOut` a `receiveTimeout`, `TransportBroken` and `TransportPortal` an `unknown`), and
+`DioErrors.toTransport` gives it back, so `TransportFailures.read` classifies it without a Dio type.
 
 ## `startup.dart`
 
@@ -106,7 +132,6 @@ import 'package:fespalier/fespalier.dart' show dataCacheStorage, reconnectSignal
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_connectivity/fespalier_connectivity.dart';
-import 'package:fespalier_cratestack/dio.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_cratestack/hive.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
@@ -127,7 +152,7 @@ Future<List<Override>> startup() async {
 
     // the two seams
     crateStackTransport.overrideWith((ref) => ShopTransport(ref.watch(shopAdapterProvider))),
-    crateStackErrors.overrideWithValue(const CrateStackErrors([readShopError, DioFailures.read])),
+    crateStackErrors.overrideWithValue(const CrateStackErrors([readShopError, readTransportError])),
 
     // whose data it is, and where queued work lives
     crateStackScope.overrideWith((ref) => ref.watch(authUserId)),
@@ -147,6 +172,7 @@ Future<List<Override>> startup() async {
 ```yaml
 # pubspec.yaml dependencies
   dio: ^5.7.0
+  http: ^1.5.0
   file: ">=6.1.3 <8.0.0"
   path_provider: ^2.1.0
   platform: ^3.1.4
@@ -158,7 +184,8 @@ Future<List<Override>> startup() async {
   constraints, as `fespalier_cratestack`, `fespalier_dio` and `fespalier_auth` carry `dio_web_adapter` for `dio`; an
   app that lists `path_provider` without one of them (`fsp create --features download`) lists the two itself.
 - **The order of the readers is the rule**: the app's reader for its generated exception first, then
-  `DioFailures.read` for what Dio throws. An error neither knows is `null`, and is rethrown by a read and kept as
+  `TransportFailures.read` (`DioFailures.read` until 0.20.0) for what the transport chain throws, through
+  `DioErrors.toTransport` for a Dio. An error neither knows is `null`, and is rethrown by a read and kept as
   `Queued` by a `submit`.
 - **`localStore` has a default that loses everything at exit** (`InMemoryLocalStore`). Override it with
   `HiveLocalStore` on a device. `HiveLocalStore.open` throws
@@ -211,4 +238,4 @@ intent and its key (the session is being renewed); only a sign-out removes the a
 ## Where the code is
 
 `packages/fespalier_cratestack/lib/src/transport.dart`, `errors.dart`, `scope.dart`, `hive_store.dart`, `auto_sync.dart`
-and `dio/`; `README.md` of the package has the install block.
+`portal_transport.dart`, `transport_cancel.dart` and `transport_failures.dart`; `README.md` of the package has the install block.

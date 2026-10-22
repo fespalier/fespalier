@@ -38,8 +38,9 @@ a finished transfer would; `delete` is recorded in `deleted` and is not an error
 
 A `TransferFiles` (the path level a transfer writes through) in a map: `putBytes`, `putText`, `bytesOf`, `textOf`, `paths`,
 `renames`, `hashes`. `failWrites`, `failRename` and `failDelete` make that call throw; `unsupported = true` is the web
-(`isSupported` false, every call an `UnsupportedError`). Test `HttpDownloadBackend` with it and a `MockClient` from
-`package:http/testing.dart` whose streamed response honours the request's `abortTrigger`.
+(`isSupported` false, every call an `UnsupportedError`). Test `HttpDownloadBackend` with it and a `FakeTransport` from
+`package:fespalier_transport/testing.dart` (since 0.21.0; a `MockClient` from `package:http/testing.dart` wrapped in
+`HttpClientTransport` before), which honours the request's `abortTrigger`.
 
 ## What a model test looks like
 

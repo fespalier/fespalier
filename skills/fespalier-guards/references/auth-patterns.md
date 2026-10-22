@@ -1,9 +1,9 @@
-# Auth patterns: sign-in, sign-out and refreshing on auth change
+# Auth patterns: sign-in, sign-out and guards that run again on auth change
 
 As of 0.5.0. fespalier's core has **no auth feature**; it gives you guards that take a
 `Ref` (and run again when what they watch changes), `returnTo`, and typed routes.
 Since 0.9.0, `package:fespalier_auth` packages the pattern below (a session provider, `restoreAuth`, the
-guard helpers, token storage, refresh and an HTTP client): see [`auth-package.md`](auth-package.md).
+guard helpers, session storage, lazy renewal and a transport that carries the session): see [`auth-package.md`](auth-package.md).
 Everything below is the hand-written pattern, for an app that does not use it. Guards took a `ProviderContainer` and
 ran only on navigation before 0.5.0: see "On 0.4.1 and earlier" below.
 

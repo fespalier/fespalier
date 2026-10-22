@@ -1,12 +1,11 @@
-import 'dart:convert';
-
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 void main() {
-  late List<http.Request> requests;
+  late FakeTransport sent;
+  List<SentRequest> requestsSent() => sent.requests;
 
   TolgeeCdn cdn(
     int status, {
@@ -17,23 +16,23 @@ void main() {
     String Function(String)? file,
     Uri? base,
   }) {
-    requests = [];
+    final transport = FakeTransport(
+      (request, _) => fakeResponse(status, body: body, headers: headers),
+    );
+    sent = transport;
     return TolgeeCdn(
       base ?? Uri.parse('https://cdn.tolg.ee/abc123/'),
       format: format,
       namespace: namespace,
       file: file,
-      client: MockClient((request) async {
-        requests.add(request);
-        return http.Response.bytes(utf8.encode(body), status, headers: headers);
-      }),
+      transport: transport,
     );
   }
 
   test('URL is <base>/<locale>.json, and .arb, with a namespace', () async {
     await cdn(200).fetch('fr');
     expect(
-      requests.single.url.toString(),
+      requestsSent().single.url.toString(),
       'https://cdn.tolg.ee/abc123/fr.json',
     );
     await cdn(
@@ -42,7 +41,7 @@ void main() {
       namespace: 'shop',
     ).fetch('pt-BR');
     expect(
-      requests.single.url.toString(),
+      requestsSent().single.url.toString(),
       'https://cdn.tolg.ee/abc123/shop/pt-BR.arb',
     );
     await cdn(
@@ -50,7 +49,10 @@ void main() {
       base: Uri.parse('https://x.test/c'),
       file: (l) => 'app_$l.json',
     ).fetch('de');
-    expect(requests.single.url.toString(), 'https://x.test/c/app_de.json');
+    expect(
+      requestsSent().single.url.toString(),
+      'https://x.test/c/app_de.json',
+    );
   });
 
   test('200 parses the body as UTF-8 and keeps the ETag', () async {
@@ -75,12 +77,12 @@ void main() {
 
   test('If-None-Match is sent; 304 and 404 are null; 5xx throws', () async {
     expect(await cdn(304).fetch('fr', etag: '"v1"'), isNull);
-    expect(requests.single.headers['If-None-Match'], '"v1"');
+    expect(requestsSent().single.headers['If-None-Match'], '"v1"');
     expect(await cdn(404).fetch('fr'), isNull);
-    expect(requests.single.headers.containsKey('If-None-Match'), isFalse);
+    expect(requestsSent().single.headers.containsKey('If-None-Match'), isFalse);
     await expectLater(
       cdn(503).fetch('fr'),
-      throwsA(isA<http.ClientException>()),
+      throwsA(isA<TransportStatusError>()),
     );
   });
 
@@ -93,7 +95,9 @@ void main() {
 
   test('no X-API-Key or Authorization header is ever sent', () async {
     await cdn(200).fetch('fr', etag: 'x');
-    final names = requests.single.headers.keys.map((k) => k.toLowerCase());
+    final names = requestsSent().single.headers.keys.map(
+      (k) => k.toLowerCase(),
+    );
     expect(names, isNot(contains('x-api-key')));
     expect(names, isNot(contains('authorization')));
   });

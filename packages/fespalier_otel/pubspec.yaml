@@ -22,6 +22,13 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.20.0 # x-release-please-version
+  # HttpTransport, which OtelTransport decorates (since 0.21.0): an interface with no dependencies of
+  # its own, so no HTTP client is linked here (test/no_http_test.dart).
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v0.20.0 # x-release-please-version
   # The SDK otel_zone starts, with otel_zone's own lower bound: the 1.1 beta line is the current
   # one (otel_zone's pubspec explains why).
   dartastic_opentelemetry: ^1.1.0-beta.17

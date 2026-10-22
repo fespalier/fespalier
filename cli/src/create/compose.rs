@@ -8,7 +8,7 @@
 //! - **imports** are sorted (`dart:` first, then `package:`, then the rest) and deduplicated;
 //! - **startup steps** run by [`Phase`](super::recipes::Phase) (telemetry sinks first, as
 //!   `docs/observability.md` has it, then the session, then the rest), and by the feature table's
-//!   order inside a phase;
+//!   order inside a phase; a step two features share (the app's one transport) is written once;
 //! - **`zone()`** comes from at most one feature (a second is an error naming both);
 //! - **`startup()`** is `async` when a step awaits, and the file is not written at all when no
 //!   feature adds a step (the base app has none).
@@ -21,7 +21,10 @@ use anyhow::{Result, bail};
 use serde::Serialize;
 
 use super::plan::{BASE_FLOOR, REF, REPO_URL, floor_of};
-use super::recipes::{Phase, Recipe, Source, Startup, StepKind, ThirdParty, companion_closure};
+use super::recipes::{
+    Phase, Recipe, Source, Startup, StepKind, TRANSPORT, TRANSPORT_BASE, ThirdParty,
+    TransportLayer, companion_closure,
+};
 use crate::templates;
 
 /// `text` as a YAML scalar: as it is when that reads back the same, else in single quotes.
@@ -192,9 +195,17 @@ pub fn pubspec(
 /// The `test:` section of the pubspec's `fespalier:` key that leaves out the routes the features
 /// say `fsp test` cannot open on its own, each with the reason: none when no feature says so.
 fn smoke_skip_lines(features: &[&Recipe]) -> Vec<String> {
+    // With a setup file `fsp test` runs a guarded route too (it has `overrides` to get past
+    // its guard), so the guarded routes the features list are left out by name.
+    let guarded = smoke_setup("app", features).is_some();
     let skips: Vec<&(&str, &str)> = features
         .iter()
-        .flat_map(|r| r.startup.smoke_skip.iter())
+        .flat_map(|r| {
+            r.startup
+                .smoke_skip
+                .iter()
+                .chain(r.startup.smoke_guarded.iter().filter(|_| guarded))
+        })
         .collect();
     if skips.is_empty() {
         return vec![];
@@ -411,6 +422,87 @@ fn sink_variable(sink: &str) -> String {
     format!("_{}{}", head.unwrap_or('s'), chars.as_str())
 }
 
+/// The statement that builds the app's one transport, with the telemetry `layers` of the chosen
+/// features around the write guard, formatted the way `dart format` leaves it: the guard sits
+/// directly on the client, then `SentryTransport`, then `OtelTransport` (the order of
+/// [`TransportLayer`]), and the session goes outside all of them, in `authTransport`.
+fn transport_code(layers: &[TransportLayer]) -> String {
+    let mut layers = layers.to_vec();
+    layers.sort();
+    layers.dedup();
+    let mut inner = TRANSPORT_BASE.to_string();
+    let mut sentry = false;
+    let mut otel = false;
+    for layer in &layers {
+        match layer {
+            TransportLayer::Sentry => {
+                sentry = true;
+                inner = format!("SentryTransport({inner})");
+            }
+            TransportLayer::Otel => otel = true,
+        }
+    }
+    if otel {
+        // `AppMain.observability` is the SDK `otel: true` starts in the generated main(): the
+        // spans start once it is up, and a test that never starts it makes none.
+        return format!(
+            "final transport = OtelTransport(\n  {inner},\n  isReady: () => AppMain.observability.isReady,\n);"
+        );
+    }
+    let line = format!("final transport = {inner};");
+    // Two columns of indent: `dart format` breaks what passes the 80th.
+    if line.len() + 2 <= 80 {
+        return line;
+    }
+    debug_assert!(sentry, "only the Sentry layer can make the line long");
+    format!("final transport = SentryTransport(\n  {TRANSPORT_BASE},\n);")
+}
+
+/// What a telemetry layer needs imported, written only when the app builds a transport.
+fn layer_imports(layer: TransportLayer) -> &'static [&'static str] {
+    match layer {
+        TransportLayer::Sentry => &["package:fespalier_sentry/fespalier_sentry.dart"],
+        TransportLayer::Otel => &[
+            "package:fespalier_otel/fespalier_otel.dart",
+            "package:{name}/app.main.g.dart",
+        ],
+    }
+}
+
+/// `test/routes/setup.dart`, or `None` when no feature has something the route smoke tests boot
+/// with. `name` is the app's package name. The file is the app's afterwards: `fsp test` reads only
+/// the two functions it may export.
+pub fn smoke_setup(name: &str, features: &[&Recipe]) -> Option<String> {
+    let startups = || features.iter().map(|r| &r.startup);
+    let elements: Vec<&str> = startups()
+        .flat_map(|s| s.smoke_overrides.iter().copied())
+        .collect();
+    if elements.is_empty() {
+        return None;
+    }
+    let uris: Vec<String> = startups()
+        .flat_map(|s| s.smoke_imports.iter().copied())
+        .chain(["package:fespalier/testing.dart"])
+        .map(|uri| uri.replace("{name}", name))
+        .collect();
+    let mut out = String::from(
+        "// What the route smoke tests (routes_test.dart, written by `fsp test`) boot with. This file is\n// the app's: `fsp test` only looks for the two functions it may export, `overrides` and `app`.\n",
+    );
+    out.push_str(&import_block(plain_imports(
+        uris.iter().map(String::as_str),
+    )));
+    out.push_str(
+        "\n/// The providers the smoke test of [pattern] (`/about`) boots with. Called once per test, so every\n/// test gets fresh fakes.\nList<Override> overrides(String pattern) => [\n",
+    );
+    for element in elements {
+        for line in element.lines() {
+            let _ = writeln!(out, "  {line}");
+        }
+    }
+    out.push_str("];\n");
+    Some(out)
+}
+
 /// `lib/app/startup.dart`, or `None` when no feature adds anything to it. `name` is the app's
 /// package name.
 pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> {
@@ -488,6 +580,28 @@ pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> 
                 awaits: step.awaits,
             }),
     );
+    // The same step from two features (the app's one transport, which every feature that sends
+    // builds) is written once, at the first one's place.
+    let mut seen: Vec<(StepKind, String)> = vec![];
+    steps.retain(|s| {
+        let key = (s.kind, s.code.clone());
+        let fresh = !seen.contains(&key);
+        if fresh {
+            seen.push(key);
+        }
+        fresh
+    });
+    // The app's one transport, when something builds it: the telemetry features' layers go
+    // around the write guard, and their imports are needed only then.
+    let layers: Vec<TransportLayer> = startups().filter_map(|(_, s)| s.transport_layer).collect();
+    let has_transport = steps.iter().any(|s| s.code == TRANSPORT.code);
+    if has_transport && !layers.is_empty() {
+        for step in steps.iter_mut().filter(|s| s.code == TRANSPORT.code) {
+            step.code = transport_code(&layers);
+            step.comment = "The app's one transport, given to every package that sends: the client, a write guard, then telemetry."
+                .to_string();
+        }
+    }
     // Phase first, then the table's order (the sort is stable); the sink install is the first
     // of the telemetry phase.
     steps.sort_by_key(|s| s.phase);
@@ -523,9 +637,14 @@ pub fn startup_dart(name: &str, features: &[&Recipe]) -> Result<Option<String>> 
         }
     };
 
+    let layer_uris = layers
+        .iter()
+        .filter(|_| has_transport)
+        .flat_map(|layer| layer_imports(*layer).iter().copied());
     let uris: Vec<String> = features
         .iter()
         .flat_map(|r| r.startup.imports.iter().copied())
+        .chain(layer_uris)
         .chain(["package:fespalier/startup.dart"])
         .map(|uri| uri.replace("{name}", name))
         .collect();

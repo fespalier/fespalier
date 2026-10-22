@@ -4,6 +4,7 @@ import 'package:auth/demo/demo_server.dart';
 import 'package:auth/app.g.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 

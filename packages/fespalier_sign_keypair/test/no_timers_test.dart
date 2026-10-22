@@ -1,7 +1,10 @@
-// The rule, in code: a proof is made when a request is made, and nothing runs in between. No
+// The rule, in code: a signature is made when something asks for one, and nothing runs in between. No
 // timer, no delay, no listener, no wall clock (the clock is `clock.now()`, so a test can move
 // time). This reads every file under lib/ and fails on the constructs that would break the rule,
 // naming the file and the line.
+@TestOn('vm')
+library;
+
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';

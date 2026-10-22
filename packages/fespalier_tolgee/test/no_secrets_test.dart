@@ -73,9 +73,11 @@ void main() {
     final i = source.indexWhere((l) => l.contains('TolgeeEditor.withKey('));
     expect(i, greaterThan(0));
     expect(source[i - 1].trim(), '@visibleForTesting');
-    final publicKey = source.where(
-      (l) => RegExp(r'^\s*TolgeeEditor\.[a-zA-Z]\w*\(.*[kK]ey').hasMatch(l),
-    );
+    // The parameter list may span lines.
+    final publicKey = RegExp(
+      r'^\s*TolgeeEditor\.[a-zA-Z]\w*\([^)]*[kK]ey',
+      multiLine: true,
+    ).allMatches(source.join('\n'));
     expect(publicKey, hasLength(1));
   });
 

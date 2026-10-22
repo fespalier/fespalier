@@ -3,7 +3,9 @@ import 'dart:convert';
 
 import 'package:clock/clock.dart';
 import 'package:crypto/crypto.dart';
-import 'package:fespalier_sign_keypair/verify.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_keypair_dpop/verify.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
@@ -77,7 +79,7 @@ class _Code {
 /// [latency] makes every answer take that long (zero in tests). With [trustAnyToken] the API
 /// accepts any bearer token, for when the tokens come from a real Keycloak this server cannot ask.
 ///
-/// With [requireDpop] the provider is a DPoP one (RFC 9449, `package:fespalier_sign_keypair`): the
+/// With [requireDpop] the provider is a DPoP one (RFC 9449, `package:fespalier_keypair_dpop`): the
 /// token endpoint checks a proof on every call (`verifyDpopProof`), binds the code to the key of
 /// `dpop_jkt`, issues `token_type: DPoP` tokens bound to the key of the proof, and refuses a refresh
 /// token with a proof of another key; the API takes a DPoP-bound token only with the `DPoP` scheme and
@@ -142,8 +144,12 @@ class DemoServer {
   /// How many sign-ins, refreshes and sign-outs it answered.
   int logins = 0, refreshes = 0, logouts = 0;
 
-  /// The client to give `authBaseClient`.
+  /// The server as an `http.Client`.
   late final http.Client client = MockClient(_handle);
+
+  /// The server as the `HttpTransport` the app sends through (what `HttpClientTransport(client)`
+  /// makes): in your app it is `HttpClientTransport(http.Client())`.
+  late final HttpTransport transport = HttpClientTransport(client);
 
   /// Makes every access token the server has issued expire now, as if time had passed.
   void expireAccessTokens() => _access.clear();

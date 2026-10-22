@@ -35,7 +35,7 @@ then. The tag must be a release that contains the package (0.13.0 or later). The
 release-please keeps current, is in [the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_maps/README.md#install).
 
 The package depends on `maplibre_gl` (`>=0.27.1 <0.28.0`), `geolocator` (`>=14.0.0 <15.0.0`) and, for the file packs,
-`http` (`>=1.5.0 <2.0.0`, the first release with abortable requests) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side, and on [`fespalier_download`](downloads.md), which does the file packs' transfer (list it next to `fespalier_maps` with the same `ref`). An app
+`fespalier_transport` (since 0.21.0; the `HttpTransport` the download goes through, which replaces `http`, `>=1.5.0 <2.0.0`, as a dependency) and `crypto` (`>=3.0.6 <4.0.0`), two pure Dart packages with no platform side, and on [`fespalier_download`](downloads.md), which does the file packs' transfer (list it next to `fespalier_maps` with the same `ref`). An app
 that lists the package links the two plugins: each is imported by one library only (`maplibre.dart`, `geolocator.dart`), but a platform plugin is linked
 whether or not it is imported. Both ranges resolve on Flutter 3.35, fespalier's floor, with the lowest versions they
 allow (CI's `floor` job runs `flutter pub downgrade`, `flutter analyze` and `flutter test` on the package). Two things
@@ -258,13 +258,14 @@ for the rest with `Range: bytes=<size of the partial file>-`. Pieces:
   Its state is the same `Map<String, PackStatus>` as region packs, with `filePackStatus(key)` for one pack, so a page
   that shows both kinds reads one vocabulary. The `PackFailure`s a file pack ends in are `network`, `rejected`, `sizeMismatch`,
   `hashMismatch`, `storage`, `invalidRequest` and `unsupported`.
-- `packHttpClient`, the provider of the `http.Client` the download uses. It has **no default**: override it with the app's
-  client (its timeouts, proxy and certificates then apply), and a test with `package:http/testing.dart`'s `MockClient`.
-  The package never closes it. `packFileStore` is the provider of the files (`dart:io`; `FakePackFiles` in tests).
+- `packTransport`, the provider of the `HttpTransport` the download uses (since 0.21.0; it was `packHttpClient`, a provider
+  of an `http.Client`, until 0.20.0). It has **no default**: override it with the app's transport chain (its timeouts,
+  proxy, certificates and session then apply; [HTTP transport](transport.md#one-transport-built-in-startup)), and a test
+  with `package:fespalier_transport/testing.dart`'s `FakeTransport`. The package never closes it. `packFileStore` is the provider of the files (`dart:io`; `FakePackFiles` in tests).
 
 ```dart
 ProviderScope(
-  overrides: [packHttpClient.overrideWithValue(http.Client())],
+  overrides: [packTransport.overrideWithValue(HttpClientTransport(http.Client()))],
   child: const MyApp(),
 )
 
@@ -288,7 +289,7 @@ How a download goes:
   isolate: a large file takes a moment, not frames), and only then is the file renamed into place. A size or a hash that does not match **deletes the partial
   file** (`Failed(sizeMismatch)` or `Failed(hashMismatch)`): it is not the file the app expects, and appending to it would
   not help. Without `bytes` and `sha256` the pack is trusted as the server sent it.
-- **Resuming is a new request with `Range`.** `pause` aborts the request (so a connection that sends nothing cannot hold it; this needs a `packHttpClient` that honours `http.Abortable`: `IOClient` in `http` 1.5 does, a wrapper such as `RetryClient` must forward the request's `abortTrigger`) and keeps the partial file
+- **Resuming is a new request with `Range`.** `pause` aborts the request (so a connection that sends nothing cannot hold it; this needs a `packTransport` that honours the request's `abortTrigger`: `HttpClientTransport` and `DioTransport` do, over a client that does (`IOClient` in `http` 1.5 does, a wrapper such as `RetryClient` must forward the request's `abortTrigger`), and so must a transport of your own) and keeps the partial file
   (`Paused`); `resume` asks for the bytes from its size on. The same call after an error (`Failed(network)`), and after a restart
   (`refresh` found the `.part` file and reports `Interrupted(bytes:, progress:)`), continues from the last byte on disk, so
   the label is "Resume", unlike a region pack's "Download again".
@@ -301,12 +302,12 @@ How a download goes:
   one restart from zero (a 416 that says the partial file is the whole file finishes it); a 206 that starts at another offset
   than asked does the same; a second failure is `Failed(rejected)`. Any other status (a 404, a 403, a 5xx) is
   `Failed(rejected)` and the partial file stays. The package asks for `Accept-Encoding: identity`, because offsets count the
-  bytes on the wire (a client built on the platform's own stack, such as `cupertino_http` or `cronet_http`, may decompress
+  bytes on the wire (a transport over a client built on the platform's own stack, such as `cupertino_http` or `cronet_http`, may decompress
   anyway: use the default `dart:io` client, or a server that does not compress archives). Bodies the transfer does not
   read (an error page, a restart) are cancelled.
 - **`start` and `resume` return when the transfer stops**, not when it begins (unlike `TilePacks.start`): `unawaited(...)` them in
   a handler, or `await` them in a test. They never throw for a failure of the transfer, only the `ProviderException` (Riverpod wraps the `StateError` that
-  explains it) when `packHttpClient` is not overridden. `start` of a key that is `Downloading` or `Paused` does nothing; of one whose file is already at the
+  explains it) when `packTransport` is not overridden. `start` of a key that is `Downloading` or `Paused` does nothing; of one whose file is already at the
   destination (with the size the request names) makes it `Complete` with no request (a file of another size stays until the new
   one is whole, and the move replaces it), so to publish a newer archive give it
   another URL **and** destination, or `remove` the pack first.
@@ -318,7 +319,7 @@ How a download goes:
 - **On the web a file pack ends in `Failed(unsupported)`** before any request (there are no files); the `dart:io` part is behind
   a conditional import.
 - **No timer, no listener, no microtask.** The response body is read with `await for`, which ends when the transfer does; a
-  pause, a removal and the end of the provider abort the request (`http` 1.5's `abortTrigger`, which the app's client must honour), and the transfer closes its file.
+  pause, a removal and the end of the provider abort the request (the `abortTrigger` of the `TransportRequest`, which the app's transport must honour), and the transfer closes its file.
 
 **Drawing from the file.** A finished PMTiles archive is read directly by MapLibre: a style's vector source whose `url` is
 `pmtilesSourceUrl(path)` (`pmtiles://file:///data/.../douala.pmtiles`). In the style JSON you pass to
@@ -397,8 +398,8 @@ channel:
 - `FakePositionSource(fix, {hold})`: answers with `answer`, counts `calls`, and with `hold` waits for `release()`.
 - `FakePackFiles({files, texts})`: the files of a file pack in memory (override `packFileStore` with it), with `bytesOf`, `textOf`,
   `putBytes` and `putText` to seed what an earlier session left and read what a transfer wrote, `failWrites`, `failRename`
-  and `failDelete`, `unsupported` (the web) and `renames`. The server is `package:http/testing.dart`'s `MockClient.streaming`
-  behind `packHttpClient`: answer `Range` with a 206 and a `Content-Range`, or ignore it with a 200, to play both servers.
+  and `failDelete`, `unsupported` (the web) and `renames`. The server is a `FakeTransport` (`package:fespalier_transport/testing.dart`)
+  behind `packTransport`: answer `Range` with a 206 and a `Content-Range`, or ignore it with a 200, to play both servers.
 - `FakeOfflineTiles({holdDownloads, databaseSize})`: the offline database in memory; override `offlineTiles` with it. The
   test plays MapLibre with `progress(key, fraction, ...)`, `finish(key)` and `fail(key, reason)`; `seed(request, complete:)`
   puts a region there as an earlier session left it, `restart()` plays the app being reopened (old downloads are no longer

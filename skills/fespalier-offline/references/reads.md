@@ -119,9 +119,11 @@ is named `Served` so it does not clash with fespalier's `Freshness`.
   in-memory store, Hive, `PrefsDataStorage`) `serve` returns a `Served`, not a `Future`: the saved copy is on the first
   frame. A `Future` store costs one `loading.dart` frame.
 - **What counts as offline** is `CrateStackErrors.classify`: your reader for the generated client's exception, then
-  `DioFailures.read` (connection errors and timeouts, `text/html`, and any `5xx` without a CrateStack envelope: a bare `500` too
-  since 0.16.0, before it was `CrateStackUnavailable`; a `5xx` in the envelope is `CrateStackUnavailable`; a
-  certificate that does not verify is unknown, not offline).
+  `TransportFailures.read` (since 0.21.0; `DioFailures.read` until 0.20.0): a `TransportUnsent` (connection errors) or a
+  `TransportTimedOut`, a `TransportPortal` (`PortalTransport` throws it for `text/html`), and any `5xx` without a CrateStack
+  envelope: a bare `500` too since 0.16.0, before it was `CrateStackUnavailable`; a `5xx` in the envelope is
+  `CrateStackUnavailable`. A `TransportUntrusted` (a certificate that does not verify) and a `TransportBroken` are unknown,
+  not offline. A Dio client reaches it through `DioErrors.toTransport` (`fespalier-cratestack`).
 
 ## `ReadCache`
 

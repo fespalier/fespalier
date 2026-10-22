@@ -19,6 +19,13 @@ dependencies:
   # Dart 3.9 (`File.create` has no `exclusive:`): an app's `flutter pub downgrade` picks it and a Linux or
   # Windows build fails. fespalier_download pulls no path_provider, so nothing else steers the app away.
   file: ">=6.1.3 <8.0.0"
+  # HttpClientTransport: the app's one transport, built in main() and handed to the foreground
+  # backend.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  # HttpTransport, the type of that transport.
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
   http: ^1.5.0
   # The folders a download goes in (fespalier_download has no plugin of its own).
   path_provider: ^2.1.0
@@ -31,12 +38,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# The companions depend on fespalier by repository, as an app does; here they are all the checkout's.
+# The companions depend on fespalier and fespalier_transport by repository, as an app does; here they are
+# all the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
-  fespalier_http:
-    path: ../../packages/fespalier_http
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

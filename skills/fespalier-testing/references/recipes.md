@@ -275,15 +275,21 @@ backend.gate!.complete();
 await tester.pumpAndSettle();
 ```
 
-- `fakeAuth({signedInAs, backend, store, apiOrigins, client, tokenLifetime})`: `client` is a `MockClient` for
-  `authHttpClient` (the API calls), `apiOrigins` says which hosts get the token, `tokenLifetime` makes the
-  session expire against the fake clock (call `fakeAuth` inside the test body, where that clock starts).
-- `FakeAuthBackend` counts `signIns`, `refreshes` and `signOuts`, and fails with `signInError` (thrown by the
-  next sign-in: `AuthCancelled()`, `FieldErrors({...})`, `AuthRejected()`) or `refreshError` (every refresh
-  until cleared: `AuthRejected()` ends the session, anything else keeps it).
+- `fakeAuth({signedInAs, backend, store, apiOrigins, transport, credentialLifetime})`: `transport` is a `FakeTransport`
+  (`package:fespalier_transport/testing.dart`) for `authTransport` (the API calls; it was `client`, a `MockClient` for
+  `authHttpClient`, until 0.20.0), `apiOrigins` says which hosts get the session, `credentialLifetime` (was `tokenLifetime`)
+  makes the session expire against the fake clock (call `fakeAuth` inside the test body, where that clock starts).
+- `FakeAuthBackend` counts `signIns`, `renewals` (was `refreshes`), `signOuts` and `discards`, and fails with `signInError`
+  (thrown by the next sign-in: `AuthCancelled()`, `FieldErrors({...})`, `AuthRejected()`) or `renewError` (every renewal
+  until cleared: `AuthRejected()` ends the session as `expired`, `AuthEnded(SignOutReason.revoked)` as `revoked`, anything
+  else keeps it); `checkResult` is what `check` answers at a restore (`SignOutReason.keyLost` drops the session), and `hints`
+  has the `hint` of each renewal. Its credentials are numbered `FakeCredential`s (no secret), and its `FakeAuthenticator`
+  adds `x-fake-credential: <id>#<n>` to every send (`signed` has the requests), so a test sees that each send was
+  authorized afresh; set its `verdict` to answer `Resend` or `SessionEnded` to a response.
 - In `fsp test`'s `test/routes/setup.dart`, `List<Override> overrides(String pattern) =>
 fakeAuth(signedInAs: ...)` makes every guarded route render (otherwise a guarded route is skipped).
-- `RecordingTelemetry` sees the `auth` spans: `#2 start auth refresh backend=fake trigger=expired`.
+- `RecordingTelemetry` sees the `auth` spans: `#1 start auth renew backend=fake trigger=expired scheme=fake` (the step was
+  `refresh` until 0.20.0).
 
 ## Flagged routes (since 0.9.0)
 
@@ -427,16 +433,39 @@ instead. `debugPrint` is a foundation debug variable: put it back before the tes
 
 ## DPoP proofs (since 0.9.0)
 
-With `package:fespalier_sign_keypair`, a test needs no secure element: `DpopProof(signer: FakeDpopSigner())` is a proof
-maker over a software key from a fixed scalar (the same key and signature on every run; `deleteKey`, which sign-out
-calls, moves to the next key), and `verifyDpopProof(proof, method:, uri:, accessToken:, nonce:, thumbprint:, now:)`
-(from `package:fespalier_sign_keypair/testing.dart`) is what a fake server checks each proof with: it throws a
-`DpopProofInvalid` that names the first check that failed (`htm is GET, not POST`, `ath does not match the access
-token`, `iat is 120 s from now`). It does not remember `jti`s: a fake server keeps a `Set` and refuses a repeat, which is
-how a `RetryClient` under the session client shows up. Call `DpopProof` inside the test body so `clock` is the test's;
-`withClock(Clock.fixed(...), ...)` pins `iat`. The whole story, against the demo server, is `examples/auth/test/dpop_test.dart`
-(a nonce challenge, a clock two minutes behind, a refresh with the same key, a rotated key, `keyLost`); a compiling sample
+With `package:fespalier_keypair_dpop` (in `package:fespalier_sign_keypair` until 0.20.0), a test needs no secure element:
+`DpopProof(signer: FakeKeypairSigner())` is a proof maker over a software key from a fixed scalar (the same key and
+signature on every run; `deleteKey`, which sign-out calls, moves to the next key; `FakeKeypairSigner` is in
+`package:fespalier_keypair/testing.dart`, and was `FakeDpopSigner` until 0.20.0), and `verifyDpopProof(proof, method:, uri:,
+accessToken:, nonce:, thumbprint:, now:)` (from `package:fespalier_keypair_dpop/verify.dart`) is what a fake server checks
+each proof with: it throws a `DpopProofInvalid` that names the first check that failed (`htm is GET, not POST`, `ath does
+not match the access token`, `iat is 120 s from now`). It does not remember `jti`s: a fake server keeps a `Set` and refuses a
+repeat, which is how a retrier under the session shows up. Call `DpopProof` inside the test body so `clock` is the test's;
+`withClock(Clock.fixed(...), ...)` pins `iat`. `FakeProof` (`package:fespalier_oidc/testing.dart`) has no crypto at all, for a
+test of the backend or the session. The whole story, against the demo server, is `examples/auth/test/dpop_test.dart`
+(a nonce challenge, a clock two minutes behind, a renewal with the same key, a rotated key, `keyLost`); a compiling sample
 is in [`fespalier-guards`](../../fespalier-guards/references/auth-dpop.md).
+
+## Device-signed sessions (since 0.21.0)
+
+With `package:fespalier_sign_keypair` the whole scheme runs in a unit test, with no device: a `FakeDeviceAuthServer`
+(`package:fespalier_sign_keypair/testing.dart`) is your `DeviceAuthServer`, and a `FakeKeypairSigner` is each key.
+
+- `FakeDeviceAuthServer` checks the one-time code (`otp`, `123456` by default; a wrong one is a `FieldErrors`), verifies each
+  challenge signature against the key the device registered, issues attestations signed by a test issuer key (`issuerKeys`,
+  for `verifyDeviceSignature`, so a fake API can verify every request), renews and revokes. Steer it with `renewalError`,
+  `revokeError`, `beginEnrolmentError`, `confirmEnrolmentError`, `revokeDevice(id)`, `renewalGate` (a `Completer`: a renewal
+  in flight) and `attestationLifetime`; read `enrolments`, `renewals`, `renewalRequests`, `revocations` and `revokeSignedWith`.
+  `AuthRejected()` thrown from it is the server saying the device is dead (the session ends as `revoked`), a `TransportUnsent()`
+  is being offline (the session stays).
+- `FakeKeypairSigner(role: KeyRole.userPresent)` counts `prompts`, records `lastReason`, `refuseNextPrompt()` makes the next
+  prompt a cancelled one (a `UserPresenceRefused` for that one request) and `loseKey()` makes a restore end as `keyLost`.
+- The clock is `clock.now()`, which `withClock(Clock(() => now), ...)` moves: an attestation expires without a timer.
+
+A running sample (enrolment, a signed request, a user-present request) is in
+[`fespalier-guards`](../../fespalier-guards/references/auth-device-sessions.md); the package's own `test/support.dart` has a `Rig`
+with a verifying fake API that is worth copying. These tests are plain `test()`s over a `ProviderContainer`
+(`addTearDown(container.dispose)`), not widget tests.
 
 ## A form and its pending state (since 0.8.1)
 

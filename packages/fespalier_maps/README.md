@@ -94,7 +94,7 @@ restart the region is `Interrupted` and `resume` downloads it again. MapLibre al
 as one, so two keys cannot share a rectangle, style and zoom range (`Failed(duplicateRegion)`), and a re-download replaces
 the old region when it begins. PMTiles **file packs** are the resumable kind: `FilePacks` downloads one file over HTTP
 into a directory the app passes, with `Range` requests, so a transfer continues after the app was closed, and moves it into place only when its
-size and SHA-256 match (`filePacks`, `FilePackRequest`, `packHttpClient` which the app provides; `FakePackFiles` in tests). See [docs/maps.md](https://github.com/fespalier/fespalier/blob/main/docs/maps.md#offline-packs).
+size and SHA-256 match (`filePacks`, `FilePackRequest`, `packTransport`, the `HttpTransport` the app provides; `FakePackFiles` in tests). See [docs/maps.md](https://github.com/fespalier/fespalier/blob/main/docs/maps.md#offline-packs).
 
 ## Test it
 

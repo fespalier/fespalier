@@ -1,8 +1,8 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart' show Override;
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
-import 'package:http/http.dart' as http;
+import 'package:fespalier_keypair/fespalier_keypair.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 
 import 'cose/cose.dart';
 import 'cose_transport.dart';
@@ -18,11 +18,11 @@ final coseConfig = Provider<CoseConfig>(
   ),
 );
 
-/// The device key. On a device it is `SignKeypairSigner`, the ambient key of flutter-sign-keypair
+/// The device key. On a device it is `HardwareKeypairSigner`, the ambient key of flutter-sign-keypair
 /// (Secure Enclave, StrongBox or the TEE), made on first use and found again at the next start.
-/// A test overrides it with `SoftwareDpopSigner`, a pure-Dart key.
-final deviceSigner = Provider<DpopSigner>(
-  (ref) => SignKeypairSigner(keyId: deviceKeyId),
+/// A test overrides it with `SoftwareKeypairSigner`, a pure-Dart key.
+final deviceSigner = Provider<KeypairSigner>(
+  (ref) => HardwareKeypairSigner(keyId: deviceKeyId),
 );
 
 /// The public half of the device key, read once by `startup()`: its thumbprint names the account
@@ -33,12 +33,14 @@ final deviceIdentity = Provider<Esp256VerifyKey>(
   ),
 );
 
-/// The HTTP client every call goes through; a test overrides it with a `MockClient`.
-final coseHttpClient = Provider<http.Client>((ref) {
-  final client = http.Client();
-  ref.onDispose(client.close);
-  return client;
-});
+/// The app's one `HttpTransport`, which every call goes through. `startup()` builds it once
+/// (`HttpClientTransport` over `package:http`) and overrides this; a test gives a `FakeTransport`
+/// or an `HttpClientTransport` over a `MockClient`.
+final coseHttpTransport = Provider<HttpTransport>(
+  (ref) => throw UnimplementedError(
+    'Override coseHttpTransport (startup.dart does; a test passes a fake).',
+  ),
+);
 
 /// The device key's thumbprint as lowercase hex: the account the notes belong to, and the `id`
 /// the server knows the device by.
@@ -63,7 +65,7 @@ final class DeviceRegistrar {
     required this._send,
   });
 
-  final DpopSigner _signer;
+  final KeypairSigner _signer;
   final Esp256VerifyKey _identity;
   final Future<Object?> Function(CrateStackCall call) _send;
   Future<void>? _inFlight;
@@ -119,7 +121,7 @@ final coseTransport = Provider<CoseTransport>((ref) {
   return CoseTransport(
     config: ref.watch(coseConfig),
     sealer: CoseSealer(ref.watch(deviceSigner)),
-    client: ref.watch(coseHttpClient),
+    http: ref.watch(coseHttpTransport),
     // Read lazily: the registrar sends through this very transport, for the plain call.
     beforeSigned: () => ref.read(deviceRegistrar).ensure(),
     onUnauthenticated: () => ref.read(deviceRegistrar).reset(),

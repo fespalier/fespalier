@@ -2,7 +2,7 @@
 
 `fespalier_download` (since 0.15.0) is the vocabulary of a file download that outlives a screen: a **request** (an id, a
 URL, a file and what the file must be), a **status** that says where the download stands, and the **ports** a transfer
-engine is built from. It is pure Dart over `package:http` with no platform plugin, so it resolves on Flutter 3.35,
+engine is built from. It is pure Dart over `fespalier_transport`'s `HttpTransport` (no `package:http`, no Dio; since 0.21.0, over an `http.Client` until 0.20.0) with no platform plugin, so it resolves on Flutter 3.35,
 fespalier's floor, and an app that lists it links nothing native.
 
 fespalier itself has no download feature: no file kind, no `fespalier:` key, no `fsp` command, and `app.g.dart` is the
@@ -10,7 +10,7 @@ same bytes. The package is a companion, installed like `fespalier_flags`.
 
 **What is in this release, and what is not.** This release is the model, the telemetry names, the fakes, the engine,
 `Downloads`, which starts, pauses, resumes, retries, cancels and removes a download over a backend you give it and settles
-the registry after a restart, a **foreground backend**, `HttpDownloadBackend`, that downloads over an `http.Client`
+the registry after a restart, a **foreground backend**, `HttpDownloadBackend`, that downloads through an `HttpTransport`
 while the app runs, a **durable registry**, `FileDownloadStore`, and the **providers** a widget watches (`downloads`,
 `downloadStatus`). A download that must go on while the app is closed is the job of the **background backend**, in the
 separate package `fespalier_download_background` (since 0.15.0, Flutter 3.47 or newer, over `background_downloader`; see
@@ -29,8 +29,8 @@ Add the package next to fespalier with the **same `url` and the same `ref`**: pu
 then. The tag must be a release that contains the package (0.15.0 or later). The install block, with the version
 release-please keeps current, is in [the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_download/README.md#install).
 
-The package depends on `http` (`>=1.5.0 <2.0.0`, the first release with abortable requests), a pure Dart package, and on
-fespalier and `fespalier_http` (for `HttpCredentials`; list it yourself, with the same `url` and `ref`, only if your code imports it). It resolves on Flutter 3.35 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
+The package depends on `fespalier_transport` (since 0.21.0; for `HttpTransport` and `HttpCredentials`), a pure Dart package with no dependencies, and on
+fespalier. It depends on neither `http` nor Dio (it depended on `http` and `fespalier_http` until 0.20.0): you hand the backend a transport, so list `fespalier_transport` yourself, with the same `url` and `ref`, and `fespalier_http` or `fespalier_dio` for the one that sends (`HttpClientTransport(http.Client())`, `DioTransport(dio)`; [HTTP transport](transport.md#the-two-implementations)). It resolves on Flutter 3.35 with the lowest versions it allows (CI's `floor` job runs `flutter pub downgrade`,
 `flutter analyze` and `flutter test` on the package).
 
 ## Requests and files
@@ -85,8 +85,8 @@ A download is in one `DownloadStatus` at a time, a sealed family you can `switch
 HTTP error that asking again will not fix), `unauthorized` (401 or 403), `sizeMismatch`, `hashMismatch`, `storage`,
 `notificationsRequired`, `killed` and `other`. Every status prints its state and numbers, never a path. `network` is also
 what a download ends with when the app could not reach its server for the credentials (since 0.16.0): a grantor or an
-`HttpCredentials` that throws an `http.ClientException`, which is what `fespalier_auth`'s `AuthUnavailable` is when a token
-cannot refresh offline. Nothing was refused, so it is not `unauthorized`, and `retry` asks again.
+`HttpCredentials` that throws a `CredentialsUnavailable` (which is what `fespalier_auth`'s `AuthUnavailable` is when a token
+cannot refresh offline; it was an `http.ClientException` until 0.20.0) or a `TransportFailure`. Nothing was refused, so it is not `unauthorized`, and `retry` asks again.
 
 The ports are the seams the engine is built on, and an app does not call them: `DownloadBackend` (the transfer
 machinery, with `DownloadCapabilities` saying what it can do and `DownloadEvents` as the way back), `DownloadStore` (the
@@ -170,8 +170,10 @@ can sign in, as `crateStackAccount.clear` is in `fespalier_cratestack`.
 ## The foreground backend
 
 `HttpDownloadBackend` (since 0.15.0) is a `DownloadBackend` that runs each download as a resumable HTTP transfer in the
-app's own process, with the `http.Client` you give it, so its timeouts, proxy and certificates apply. It is pure Dart: the
-base folders are yours to name, because the package depends on no plugin.
+app's own process, through the `HttpTransport` you give it (`HttpDownloadBackend(transport:)`; it was `client:`, an
+`http.Client`, until 0.20.0), so the timeouts, proxy and certificates of the client under it apply. It is pure Dart: the
+base folders are yours to name, because the package depends on no plugin. A transfer that cannot reach the server, or
+whose certificate was refused (`TransportUntrusted`), ends `Failed(network)`.
 
 ```dart
 Future<String> bases(DownloadBase base) async => switch (base) {
@@ -181,7 +183,7 @@ Future<String> bases(DownloadBase base) async => switch (base) {
 };
 
 final downloads = Downloads(
-  backend: HttpDownloadBackend(client: client, bases: bases),
+  backend: HttpDownloadBackend(transport: HttpClientTransport(client), bases: bases),
   store: store,
   files: TransferDownloadFiles(bases: bases),
 );
@@ -203,8 +205,8 @@ final downloads = Downloads(
   and a 416 to a part the server no longer has the end of, each restart once. A part with no validator and no `sha256`
   starts again from the first byte, since nothing says it belongs to the file the server has now. After a restart the
   engine finds the download ended (`Failed(killed)`), and `retry` goes on from the part.
-- **Cancel.** `cancel` and `remove` abort the request in flight (the client must honour `http.Abortable`, as the
-  `package:http` clients do), so a connection that sends nothing cannot hold them up. A transfer that was running or paused
+- **Cancel.** `cancel` and `remove` abort the request in flight (the transport must honour `abortTrigger`, as `HttpClientTransport`
+  and `DioTransport` do), so a connection that sends nothing cannot hold them up. A transfer that was running or paused
   loses its part; one that already ended keeps it, so `retry` can continue. Give the engine a `TransferDownloadFiles` so
   `remove`, `cancel` and sign-out also delete the finished file, the part and the validator.
 - **Failures** are values: `network` (no connection, a body that ended short), `rejected` (any other HTTP error, with the
@@ -228,7 +230,7 @@ most apps never touch them.
 goes on while the app is in the background and after the app was closed. It is a package of its own, and not part of
 `fespalier_download`, because `background_downloader` 9.6 needs Dart 3.13 and **Flutter 3.47**: an app on an older
 Flutter keeps the foreground backend and resolves as before, and the package is left out of CI's `floor` job as
-`fespalier_sign_keypair` is. The install block is in
+`fespalier_keypair` is. The install block is in
 [the package's README](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_download_background/README.md#install). It was written against
 `background_downloader` **9.6.4**, whose sources and documentation were read, not recalled.
 
@@ -304,7 +306,7 @@ await engine.start(
   request in the foreground, the server answers with a short-lived URL (or a download-scoped header), and that is what the
   task holds. **The headers of a task are written to the operating system's task queue in plaintext until it ends,** and a
   retry sends the same ones; set `BackgroundOptions(retries: 0)` where a stale grant must not be replayed. Never a refresh
-  token, never a long-lived bearer. A proof per request (DPoP) cannot be done: the plugin's native callbacks run with no
+  token, never a long-lived bearer. A proof per request (DPoP, `fespalier_keypair_dpop`) cannot be done: the plugin's native callbacks run with no
   access to the app's state or its plugins. **A grant works here as it does anywhere** ([Credentials](#credentials)): the
   engine hands `enqueue` and `resume` the granted request (its URL) and the grant's headers, and after a 401 or 403 it
   cancels the attempt and enqueues again with a renewed grant. The backend drops the plugin's late `canceled` update for the
@@ -396,7 +398,7 @@ A download is a request the operating system may send **later, in another proces
 its plugins or its signing key**. That decides what credentials can be (since 0.15.0).
 
 **The documented path is a short-lived capability grant.** Before the download starts, in the foreground, the app makes a
-normal signed request (a `fespalier_http` client, so the session, its refresh and its proofs apply there), and the server
+normal signed request (through `authTransport`, so the session, its renewal and its proofs apply there), and the server
 answers with something good for one file for a few minutes: a single-file URL and/or headers scoped to that download. The
 transfer carries only that.
 
@@ -420,10 +422,10 @@ final downloads = Downloads(backend: backend, store: store, files: files, granto
   from (the foreground backend keeps its `.part`, and the new attempt sends `Range`), and enqueues again with the new
   grant. A second 401 or 403 ends `Failed(unauthorized)`; so does a grantor that throws or a grant whose URL is not a valid
   http or https URL. Nothing of the error is kept. There is no retry loop and no timer.
-- **A grantor that cannot reach its server is not a refusal** (since 0.16.0). A grantor that throws an
-  `http.ClientException` (no network; `fespalier_auth`'s `AuthUnavailable`, a token that could not refresh offline, is one)
+- **A grantor that cannot reach its server is not a refusal** (since 0.16.0). A grantor that throws a
+  `TransportFailure` (no network) or a `CredentialsUnavailable` (`fespalier_auth`'s `AuthUnavailable`, a token that could not refresh offline, is one; an `http.ClientException` until 0.20.0)
   ends the download `Failed(network)`, not `Failed(unauthorized)`, so an app that reads `unauthorized` as "sign in again"
-  does not sign the person out for being offline, and `retry` asks again. On a `resume` the download stays `Paused` and
+  does not sign the person out for being offline, and `retry` asks again. A **refused certificate** (`TransportUntrusted`) ends the download `Failed(network)` too, and not even a `resume` waits for the network on it: a certificate that does not verify is not being offline. On a `resume` the download stays `Paused` and
   `resume` returns false. Any other throw is still `Failed(unauthorized)`.
 - **A newer state wins.** A `cancel`, `remove`, restart or `clearAccount` while the grant request is in flight drops its
   answer: nothing reaches the backend after it.
@@ -445,16 +447,16 @@ or expires in minutes, never for a credential you would mind finding in a backup
 **Never a refresh token or a long-lived bearer** in a request or a grant: anything a background backend persists can be
 read back from the device, and a download has no way to refresh a token itself.
 
-**Why not the session's own credentials in the background.** A DPoP proof is bound to one method, one URL and a fresh
+**Why not the session's own credentials in the background.** A DPoP proof (`fespalier_keypair_dpop`) is bound to one method, one URL and a fresh
 nonce and timestamp, so it would have to be signed for each send, by a key the operating system's native callbacks cannot
 reach. Authenticating every send is therefore possible only where your Dart code makes the send.
 
 **The foreground backend can do exactly that.** `HttpDownloadBackend(credentials: credentials)` takes any
-`HttpCredentials` from `fespalier_http` (`fespalier_auth`'s `Authorizer` is one). For each request it sends it asks
-`credentials.authorize('GET', url)` and adds the headers it returns (nothing for an origin the credentials do not cover),
-and after a 4xx answer it asks `credentials.retry(attempt, statusCode:, headers:)` and, if told to, sends again with
-`authorize(..., previous: attempt)`, at most three sends, the way `SessionClient` does. The credentials live in memory for
-the send. A credentials object that throws ends the download `Failed(unauthorized)`, except an `http.ClientException`
+`HttpCredentials` from `fespalier_transport` (since 0.21.0; `fespalier_http` until 0.20.0; `fespalier_auth`'s `Authorizer` is one). For each request it sends it asks
+`credentials.authorize(request)` (a `TransportRequest` for the `GET`) and adds the headers it returns (nothing for an origin the credentials do not cover),
+and after a 4xx answer it asks `credentials.retry(attempt, response)` (the body of a 401 or a 403, up to 64 KiB, is read first) and, if told to, sends again with
+`authorize(request, previous: attempt)`, at most three sends, the way `SessionTransport` does. The credentials live in memory for
+the send. A credentials object that throws ends the download `Failed(unauthorized)`, except a `CredentialsUnavailable`
 (`AuthUnavailable`: the token could not refresh offline), which ends it `Failed(network)` since 0.16.0, so `retry` goes
 on from the partial file once the network is back. When the refusal stands, the engine's
 grant renewal above still applies, so the two compose. Choose by where the transfer runs: `credentials` for a foreground
@@ -491,7 +493,7 @@ Future<String> bases(DownloadBase base) async => switch (base) {
 Future<List<Override>> startup() async => [
   downloadsEngine.overrideWithValue(
     Downloads(
-      backend: HttpDownloadBackend(client: http.Client(), bases: bases),
+      backend: HttpDownloadBackend(transport: HttpClientTransport(http.Client()), bases: bases),
       store: FileDownloadStore(bases: bases),
       files: TransferDownloadFiles(bases: bases),
     ),
@@ -603,7 +605,7 @@ fespalier:
 `fespalier_download_background` also uploads a file (since 0.15.0), over `background_downloader` **9.6.4**'s `UploadTask`
 (multipart and binary; `MultiUploadTask` is not used). The operating system runs the upload, so it goes on after the app
 was closed. It is **background only** in this release: `HttpDownloadBackend` downloads, and a foreground upload over an
-`http.Client` (a streamed, abortable request body, with its own replay rules) is not built. On the web every upload ends
+`HttpTransport` (a streamed, abortable request body, with its own replay rules) is not built. On the web every upload ends
 `Failed(unsupported)`.
 
 ```dart
@@ -644,7 +646,7 @@ await uploads.start(
   `file` is the file that was sent (untouched) and `bytes` its size, or `Failed`. An upload never shows `Paused` or
   `Verifying`: the plugin cannot pause an upload. The server's response body is not reported.
 - **Replay safety is a rule, not an option.** An upload is _replay safe_ when it carries an `Idempotency-Key` header,
-  `fespalier_http`'s rule for a write (`HttpWrites.isWrite`; `UploadRequest.replaySafe`). A `POST` or `PUT` without one may
+  `fespalier_transport`'s rule for a write (`HttpWrites.isWrite`; `UploadRequest.replaySafe`). A `POST` or `PUT` without one may
   already be on the server, so it is sent **once**:
 
   | Situation                                 | Replay safe (has an `Idempotency-Key`)   | Not replay safe                                                 |
@@ -733,7 +735,7 @@ await uploads.start(
   `downloadStatus`) to an engine over the fakes, for a `ProviderContainer` or `ProviderScope`. The test keeps the backend and
   plays the platform with `emit`; disposing the container closes the engine, as in an app.
 - `FakeTransferFiles`: the path-level files of a transfer in memory (`putBytes`, `bytesOf`, `renames`, `failWrites`,
-  `failRename`, `failDelete`, `unsupported` for the web), to test `HttpDownloadBackend` with a `MockClient`.
+  `failRename`, `failDelete`, `unsupported` for the web), to test `HttpDownloadBackend` with a `FakeTransport` (`package:fespalier_transport/testing.dart`).
 
 `package:fespalier_download_background/testing.dart` has `FakeBackgroundTransport`, which plays `background_downloader`
 for one group so that `BackgroundDownloaderBackend` runs without a plugin or a device: the test plays the operating system

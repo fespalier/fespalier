@@ -1,6 +1,7 @@
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:{{ package }}/app.g.dart';
@@ -41,12 +42,19 @@ void main() {
     tester,
   ) async {
     // The app's own backend, on an in-memory token store: nothing is stored, nothing is asked.
+    final config = authSetup(
+      FakeTransport((request, body) => fakeResponse(200)),
+    );
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/sign-in'),
       overrides: [
         authConfig.overrideWithValue(
-          AuthConfig(backend: authSetup().backend, store: MemoryTokenStore()),
+          AuthConfig(
+            backend: config.backend,
+            transport: config.transport,
+            store: MemoryTokenStore(),
+          ),
         ),
         authInitialState.overrideWithValue(const SignedOut()),
       ],

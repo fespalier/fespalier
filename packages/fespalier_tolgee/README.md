@@ -36,8 +36,9 @@ dependencies:
 <!-- x-release-please-end -->
 
 It also needs `flutter_localizations` (for the Material strings of each language) and, to keep the remote texts across
-restarts, a `dataCacheStorage` such as `fespalier_storage`'s `PrefsDataStorage`. The package itself uses `http` 1.5 or
-newer and `intl` 0.20.2 or newer.
+restarts, a `dataCacheStorage` such as `fespalier_storage`'s `PrefsDataStorage`. The package itself uses `intl` 0.20.2 or newer, and no HTTP client: `TolgeeCdn(base, transport:)` fetches through an
+`HttpTransport` from `fespalier_transport` (`HttpClientTransport(http.Client())`, `DioTransport(dio)`, or your chain), and
+in-context editing saves through the `tolgeeEditorTransport` provider (no default, read only by an in-context build with a key).
 
 ## Wire it
 
@@ -52,7 +53,7 @@ Future<List<Override>> startup() async => [
   translationsConfig.overrideWithValue(Translations(
     bundled: await BundledTranslations.load(locales: Lang.values.map((l) => l.name)), // local assets only
     baseLocale: 'en',
-    remote: _cdn.isEmpty ? null : TolgeeCdn(Uri.parse(_cdn)),
+    remote: _cdn.isEmpty ? null : TolgeeCdn(Uri.parse(_cdn), transport: transport),
   )),
   dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
 ];

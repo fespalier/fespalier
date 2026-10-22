@@ -265,15 +265,14 @@ fn a_checkout_overrides_each_companion_and_what_it_needs() {
         .lines()
         .filter_map(|l| l.strip_prefix("  ").and_then(|l| l.strip_suffix(':')))
         .collect();
-    // cratestack depends on dio, and dio on http, which the app does not name.
+    // cratestack depends on the transport, which the app does not name.
     assert_eq!(
         names,
         [
             "fespalier",
             "fespalier_cratestack",
-            "fespalier_dio",
-            "fespalier_http",
-            "fespalier_storage"
+            "fespalier_storage",
+            "fespalier_transport"
         ]
     );
     // No companion, no override: the app depends on fespalier at the path itself.
@@ -1021,14 +1020,28 @@ fn the_closure_of_a_companion_names_what_it_needs() {
         recipes::companion_closure(&["fespalier_cratestack", "fespalier_otel"]),
         [
             "fespalier_cratestack",
-            "fespalier_dio",
-            "fespalier_http",
-            "fespalier_otel"
+            "fespalier_otel",
+            "fespalier_transport"
+        ]
+    );
+    assert_eq!(
+        recipes::companion_closure(&["fespalier_keypair_dpop"]),
+        [
+            "fespalier_auth",
+            "fespalier_keypair",
+            "fespalier_keypair_dpop",
+            "fespalier_oidc",
+            "fespalier_transport"
         ]
     );
     assert_eq!(
         recipes::companion_closure(&["fespalier_sign_keypair"]),
-        ["fespalier_auth", "fespalier_http", "fespalier_sign_keypair"]
+        [
+            "fespalier_auth",
+            "fespalier_keypair",
+            "fespalier_sign_keypair",
+            "fespalier_transport"
+        ]
     );
 }
 
@@ -1781,14 +1794,22 @@ fn auth_restores_the_session_after_the_sink_and_raises_the_android_floor() {
             .find(needle)
             .unwrap_or_else(|| panic!("{needle}\n{startup}"))
     };
-    assert!(at("FespalierTelemetry.install(") < at("...await restoreAuth(authSetup()),"));
-    assert!(at("...await restoreAuth(authSetup()),") < at("dataCacheStorage.overrideWithValue"));
+    assert!(at("FespalierTelemetry.install(") < at("...await restoreAuth(authSetup(transport)),"));
+    assert!(
+        at("...await restoreAuth(authSetup(transport)),")
+            < at("dataCacheStorage.overrideWithValue")
+    );
+    // The app's one transport is built before anything is given it.
+    assert!(
+        at("final transport = SentryTransport(") < at("return ["),
+        "{startup}"
+    );
     assert!(
         startup.contains("import 'package:my_app/auth_setup.dart';"),
         "{startup}"
     );
     let setup = file(&plan, "lib/auth_setup.dart");
-    for method in ["signIn", "refresh", "signOut"] {
+    for method in ["signIn", "renew", "signOut"] {
         assert!(setup.contains(&format!("{method}(")), "{method}");
     }
     assert_eq!(
@@ -1797,10 +1818,17 @@ fn auth_restores_the_session_after_the_sink_and_raises_the_android_floor() {
             .count(),
         1
     );
-    assert!(
-        file(&plan, "pubspec.yaml").contains("fespalier_forms:"),
-        "the sign-in form"
-    );
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(pubspec.contains("fespalier_forms:"), "the sign-in form");
+    // The stub backend keeps bearer tokens, and the config takes the app's one transport.
+    for companion in ["fespalier_oidc", "fespalier_http", "fespalier_transport"] {
+        assert!(
+            pubspec.contains(&format!("  {companion}:\n    git:")),
+            "{pubspec}"
+        );
+    }
+    assert!(setup.contains("AuthConfig authSetup(HttpTransport transport)"));
+    assert!(setup.contains("BearerAuthenticator()"));
     assert_eq!(plan.android_min_sdk, Some(24));
     // Android is in the default platforms; a web-only app has no Gradle file to edit.
     let mut req = request("my_app");
@@ -1858,22 +1886,23 @@ fn i18n_wraps_the_router_in_the_scope_and_declares_its_assets() {
 fn image_asks_a_template_cdn_and_holds_no_key() {
     let plan = plan_of(RECIPES, &["image"]);
     let images = file(&plan, "lib/images.dart");
-    assert!(images.contains("TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}')"));
+    assert!(images.contains("'$imagesUrl/{source}?w={width}&q={quality}'"));
     for forbidden in ["signer", "secret", "salt", "hmac", "apikey"] {
         assert!(!images.to_lowercase().contains(forbidden), "{forbidden}");
     }
     let startup = file(&plan, "lib/app/startup.dart");
     assert!(
-        startup.contains("imageCdnProvider.overrideWithValue(appImages),"),
+        startup.contains("imageCdnProvider.overrideWithValue(appImages(transport)),"),
         "{startup}"
     );
+    assert!(images.contains("transport: transport,"), "{images}");
 }
 
 // --- http and download --------------------------------------------------------------------------
 
 /// docs/http.md: the request is made through `ref.abortable(client)` before the first `await`,
-/// from a client provider that closes its client and a configurable base URL, and the test
-/// serves it from `FakeHttpClient`. No Dio.
+/// from a client over the app's one transport (which `startup()` builds and overrides) and a
+/// configurable base URL, and the test serves it from `FakeTransport`. No Dio.
 #[test]
 fn http_loads_through_an_abortable_client_and_is_tested_on_the_fake() {
     let plan = plan_of(RECIPES, &["http"]);
@@ -1882,7 +1911,15 @@ fn http_loads_through_an_abortable_client_and_is_tested_on_the_fake() {
         api.contains("String.fromEnvironment(\n  'API_URL'"),
         "{api}"
     );
-    assert!(api.contains("ref.onDispose(client.close);"), "{api}");
+    assert!(
+        api.contains("TransportClient(ref.watch(httpTransport))"),
+        "{api}"
+    );
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(
+        startup.contains("httpTransport.overrideWithValue(transport),"),
+        "{startup}"
+    );
     let data = file(&plan, "lib/app/headlines/data.dart");
     assert!(
         data.contains("ref.abortable(ref.watch(httpClient))"),
@@ -1891,8 +1928,8 @@ fn http_loads_through_an_abortable_client_and_is_tested_on_the_fake() {
     let first_await = data.find("await").unwrap();
     assert!(data.find("ref.abortable").unwrap() < first_await, "{data}");
     let test = file(&plan, "test/http_test.dart");
-    assert!(test.contains("FakeHttpClient("), "{test}");
-    assert!(test.contains("client.abortCount, 1"), "{test}");
+    assert!(test.contains("FakeTransport("), "{test}");
+    assert!(test.contains("transport.abortCount, 1"), "{test}");
     let pubspec = file(&plan, "pubspec.yaml");
     assert!(pubspec.contains("  http: \"^1.5.0\"\n"), "{pubspec}");
     assert!(pubspec.contains("  fespalier_http:\n    git:"), "{pubspec}");
@@ -1909,7 +1946,8 @@ fn download_overrides_the_engine_over_a_foreground_backend_and_is_tested_on_the_
     let startup = file(&plan, "lib/app/startup.dart");
     for needle in [
         "downloadsEngine.overrideWithValue(",
-        "HttpDownloadBackend(",
+        "HttpDownloadBackend(transport: transport, bases: appBases)",
+        "final transport = WriteGuardTransport(HttpClientTransport(http.Client()));",
         "FileDownloadStore(bases: appBases)",
         "TransferDownloadFiles(bases: appBases)",
         "import 'package:http/http.dart' as http;",
@@ -1936,8 +1974,9 @@ fn download_overrides_the_engine_over_a_foreground_backend_and_is_tested_on_the_
     );
 }
 
-/// The two share `package:http`: one line in the pubspec, and at a checkout the overrides hold
-/// everything `fespalier_download` depends on (`fespalier_http`) though no feature names it.
+/// The two share `package:http` and the app's one transport: one line in the pubspec and one
+/// statement in `startup()`, and at a checkout the overrides hold everything `fespalier_download`
+/// depends on (`fespalier_transport`) though the feature does not name it.
 #[test]
 fn http_and_download_share_one_http_dependency_and_a_checkout_overrides_the_closure() {
     let plan = plan_of(RECIPES, &["http", "download"]);
@@ -1947,15 +1986,155 @@ fn http_and_download_share_one_http_dependency_and_a_checkout_overrides_the_clos
         1,
         "{pubspec}"
     );
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert_eq!(
+        startup
+            .matches("final transport = WriteGuardTransport(HttpClientTransport(http.Client()));")
+            .count(),
+        1,
+        "{startup}"
+    );
     let mut req = request("my_app");
     req.features = vec!["download".into()];
     req.local_packages = Some("/checkout".into());
     let local = ok(&req, RECIPES);
     let pubspec = file(&local, "pubspec.yaml");
     assert!(
-        pubspec.contains("  fespalier_http:\n    path: /checkout/packages/fespalier_http\n"),
+        pubspec
+            .contains("  fespalier_transport:\n    path: /checkout/packages/fespalier_transport\n"),
         "{pubspec}"
     );
+}
+
+// --- telemetry on the one transport ------------------------------------------------------------
+
+/// The wire order of a generated app, outermost to innermost: `SessionTransport` (`authTransport`,
+/// made by `fespalier_auth` over the transport `authSetup` is given), `OtelTransport`,
+/// `SentryTransport`, `WriteGuardTransport`, the client. `startup()` builds everything from
+/// `OtelTransport` in: the telemetry sits under the session, so each wire send is one span (an
+/// auth replay too), and the guard sits under the telemetry, whose decorators return the very
+/// response and rethrow the very error the guard marked.
+#[test]
+fn telemetry_wraps_the_one_transport_between_the_session_and_the_write_guard() {
+    let plan = plan_of(RECIPES, &["auth", "otel", "sentry"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    let wrapped = concat!(
+        "  final transport = OtelTransport(\n",
+        "    SentryTransport(WriteGuardTransport(HttpClientTransport(http.Client()))),\n",
+        "    isReady: () => AppMain.observability.isReady,\n",
+        "  );\n",
+    );
+    assert!(startup.contains(wrapped), "{startup}");
+    assert_eq!(startup.matches("final transport").count(), 1, "{startup}");
+    // The session is `authTransport`, over this transport, so it is not built here: it is outside
+    // both decorators by construction.
+    assert!(!startup.contains("SessionTransport"), "{startup}");
+    assert!(
+        startup.contains("restoreAuth(authSetup(transport))"),
+        "{startup}"
+    );
+    for import in [
+        "import 'package:fespalier_otel/fespalier_otel.dart';",
+        "import 'package:fespalier_sentry/fespalier_sentry.dart';",
+        "import 'package:fespalier_transport/fespalier_transport.dart';",
+        "import 'package:my_app/app.main.g.dart';",
+    ] {
+        assert!(startup.contains(import), "{import}\n{startup}");
+    }
+    // The order the features were asked in changes nothing.
+    let other = plan_of(RECIPES, &["sentry", "otel", "auth"]);
+    assert_eq!(file(&other, "lib/app/startup.dart"), startup);
+}
+
+/// Each telemetry feature alone: the same wrapping, formatted as `dart format` leaves it.
+#[test]
+fn each_telemetry_layer_wraps_the_guard_alone_too() {
+    let sentry = plan_of(RECIPES, &["http", "sentry"]);
+    let startup = file(&sentry, "lib/app/startup.dart");
+    assert!(
+        startup.contains(concat!(
+            "  final transport = SentryTransport(\n",
+            "    WriteGuardTransport(HttpClientTransport(http.Client())),\n",
+            "  );\n",
+        )),
+        "{startup}"
+    );
+    assert!(!startup.contains("OtelTransport"), "{startup}");
+    assert!(!startup.contains("fespalier_otel"), "{startup}");
+    assert!(!startup.contains("app.main.g.dart"), "{startup}");
+    let otel = plan_of(RECIPES, &["image", "otel"]);
+    let startup = file(&otel, "lib/app/startup.dart");
+    assert!(
+        startup.contains(concat!(
+            "  final transport = OtelTransport(\n",
+            "    WriteGuardTransport(HttpClientTransport(http.Client())),\n",
+            "    isReady: () => AppMain.observability.isReady,\n",
+            "  );\n",
+        )),
+        "{startup}"
+    );
+    assert!(!startup.contains("SentryTransport"), "{startup}");
+    // Without telemetry the transport is the client in its guard, and nothing imports either.
+    let plain = plan_of(RECIPES, &["http", "image"]);
+    let startup = file(&plain, "lib/app/startup.dart");
+    assert!(
+        startup.contains(
+            "  final transport = WriteGuardTransport(HttpClientTransport(http.Client()));\n"
+        ),
+        "{startup}"
+    );
+    assert!(!startup.contains("Telemetry"), "{startup}");
+}
+
+/// A telemetry feature with nothing that sends has no transport to wrap, and so no import it
+/// would leave unused (`flutter analyze` fails an unused import).
+#[test]
+fn telemetry_without_a_transport_imports_nothing_it_does_not_use() {
+    let plan = plan_of(RECIPES, &["storage", "otel", "sentry"]);
+    let startup = file(&plan, "lib/app/startup.dart");
+    assert!(!startup.contains("final transport"), "{startup}");
+    assert!(!startup.contains("fespalier_otel"), "{startup}");
+    assert!(!startup.contains("app.main.g.dart"), "{startup}");
+    assert!(!startup.contains("fespalier_transport"), "{startup}");
+}
+
+/// The `/photo` route is in the route smoke tests again: `test/routes/setup.dart` boots them with
+/// a CDN over a `FakeTransport` that sends nothing. A setup file lets `fsp test` run a guarded
+/// route, so the routes the features guard are listed in `test: skip:` once there is one.
+#[test]
+fn the_photo_route_is_smoke_tested_over_a_fake_transport() {
+    let plan = plan_of(RECIPES, &["image"]);
+    let setup = file(&plan, "test/routes/setup.dart");
+    assert!(
+        setup.contains("List<Override> overrides(String pattern) => ["),
+        "{setup}"
+    );
+    assert!(setup.contains("FakeImages().cdn("), "{setup}");
+    assert!(setup.contains("FakeTransport("), "{setup}");
+    assert!(
+        setup.contains("import 'package:my_app/images.dart';"),
+        "{setup}"
+    );
+    let pubspec = file(&plan, "pubspec.yaml");
+    assert!(!pubspec.contains("/photo"), "{pubspec}");
+    assert!(!pubspec.contains("  test:\n"), "{pubspec}");
+
+    // With the auth and flags features the guarded routes are listed, each with why.
+    let all = plan_of(RECIPES, &["image", "auth", "flags"]);
+    let pubspec = file(&all, "pubspec.yaml");
+    assert!(
+        pubspec.contains("    skip: [/labs, /account, /sign-in]\n"),
+        "{pubspec}"
+    );
+    // Without the image feature there is no setup file, and `fsp test` skips a guarded route itself.
+    let auth = plan_of(RECIPES, &["auth", "flags"]);
+    assert!(
+        auth.files
+            .iter()
+            .all(|f| f.path != "test/routes/setup.dart")
+    );
+    let pubspec = file(&auth, "pubspec.yaml");
+    assert!(!pubspec.contains("  test:\n"), "{pubspec}");
 }
 
 /// Two features that both write app.dart are refused, naming both.

@@ -1,10 +1,12 @@
 name: auth
-description: fespalier example — signed-in routes with fespalier_auth, with guards, a sign-in form, lazy single-flight refresh, an API client and OpenID Connect with Keycloak.
+description: fespalier example — signed-in routes with fespalier_auth, with guards, a sign-in form, lazy single-flight renewal, one transport for the API, OpenID Connect with Keycloak (fespalier_oidc) and device-bound tokens (DPoP, fespalier_keypair_dpop).
 publish_to: none
 version: 0.1.0
 
 environment:
-  sdk: ^3.8.0
+  # fespalier_keypair (DPoP's device key) needs Dart 3.12 (Flutter 3.44): flutter_sign_keypair does.
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
 
 dependencies:
   # What the demo server and backend read the time from, so a test's fake clock ages the tokens.
@@ -20,10 +22,21 @@ dependencies:
   # The sign-in form: sign-in/action.dart has a form(), which needs this package since 0.11.0.
   fespalier_forms:
     path: ../../packages/fespalier_forms
-  # DPoP (--dart-define=DPOP=true): proofs signed by a device key, and verifyDpopProof, which the
-  # demo server checks them with.
-  fespalier_sign_keypair:
-    path: ../../packages/fespalier_sign_keypair
+  # The one transport the app sends through: HttpClientTransport over package:http, handed to
+  # AuthConfig and to OidcBackend in startup.dart.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  # DPoP (--dart-define=DPOP=true): proofs signed by a device key (DpopProof), and verifyDpopProof,
+  # which the demo server checks them with.
+  fespalier_keypair_dpop:
+    path: ../../packages/fespalier_keypair_dpop
+  # OpenID Connect (OidcBackend, BrowserSignIn, TokenCredential) and the bearer authenticator the
+  # demo backend reuses (since 0.21.0; it was fespalier_auth/oidc.dart).
+  fespalier_oidc:
+    path: ../../packages/fespalier_oidc
+  # HttpTransport, the type the one transport has.
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
   # The browser step of OpenID Connect (--dart-define=OIDC_ISSUER=...). A plugin, so it is the
   # app's dependency and not fespalier_auth's: an app that signs in some other way links none.
   flutter_web_auth_2: ^5.1.0
@@ -32,19 +45,25 @@ dependencies:
 dev_dependencies:
   # restore_test.dart seeds the keychain with its mock.
   flutter_secure_storage: ">=10.0.0 <12.0.0"
+  # FakeKeypairSigner, the device key of the DPoP tests: the same key on every run, and no platform.
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
 
-# fespalier_auth and fespalier_sign_keypair depend on fespalier (and the second on the first) by
-# git, as an app does; here all are the checkout's.
+# The packages depend on fespalier and on each other by git, as an app does; here all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
   fespalier_auth:
     path: ../../packages/fespalier_auth
-  fespalier_http:
-    path: ../../packages/fespalier_http
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
+  fespalier_oidc:
+    path: ../../packages/fespalier_oidc
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

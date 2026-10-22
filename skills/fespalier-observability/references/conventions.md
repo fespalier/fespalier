@@ -20,11 +20,12 @@ spans                   navigate {route} | navigate (not found) | navigate   (su
                         guard {file} | redirect {file} | data {file}
                         action {file}#{name} | deferred {file}
                         auth {operation}   (since 0.9.0, fespalier_auth)
+                        {METHOD}, e.g. GET   (http, since 0.21.0: a CLIENT span of OtelTransport, fespalier_otel)
                         image {cdn}   (since 0.9.0, fespalier_image)
                         fespalier.<pkg>.<op>   (custom, since 0.11.0: a package's own operation)
 events (on navigate)    fespalier.page.enter | fespalier.page.focus | fespalier.page.leave
                         exception (semconv, on an error span)
-every span              fespalier.operation = navigate | guard | redirect | data | action | deferred | auth | image | custom
+every span              fespalier.operation = navigate | guard | redirect | data | action | deferred | auth | image | http (since 0.21.0) | custom
                         fespalier.route, fespalier.file, fespalier.async, error.type
 navigate                fespalier.navigation.kind = initial | go | push | pop | replace | refresh
                         fespalier.navigation.outcome = ok | not_found | error (since 0.21.0) | superseded
@@ -39,11 +40,15 @@ data                    fespalier.data.state = data | error | stream | disposed
 action                  fespalier.action.name, fespalier.action.result = ok | error
                         fespalier.action.rolled_back (bool), fespalier.action.invalid (bool) (since 0.18.0)
 deferred                fespalier.deferred.result = ok | error
-auth (since 0.9.0)      fespalier.auth.operation = restore | sign_in | refresh | sign_out
+auth (since 0.9.0)      fespalier.auth.operation = restore | sign_in | renew | sign_out   (renew was refresh until 0.20.0)
                         fespalier.auth.result = ok | none | expired | rejected | cancelled | error
-                        fespalier.auth.backend (the backend's constant name: oidc, firebase, fake, your own)
-                        fespalier.auth.trigger = expired | unauthorized | forced   (refresh only)
-                        fespalier.auth.dpop (bool: the backend binds its tokens)
+                        fespalier.auth.backend (the backend's constant name: oidc, device, firebase, fake, your own)
+                        fespalier.auth.trigger = expired | unauthorized | forced   (renew only)
+                        fespalier.auth.scheme (since 0.21.0: bearer | dpop | device | your own, the backend's constant;
+                                               was the bool fespalier.auth.dpop until 0.20.0)
+http (since 0.21.0)     http.request.method, server.address, server.port (int), url.scheme, url.path
+                        http.response.status_code (int, when a response came back)
+                        http.request.resend_count (int, on a re-send only), error.type
 image (since 0.9.0)     fespalier.image.cdn (the URL builder's name: imgproxy, emgr, cloudinary, imgix, thumbor, template, srcset, direct)
                         fespalier.image.width (int: the bucket, in physical pixels)
                         fespalier.image.preload (bool: a precache started the load)
@@ -69,9 +74,24 @@ enter, focus events     fespalier.route
   neither is an `auth` span that ends `rejected` or `cancelled`. An `auth` span that ends `error` has the status
   and `error.type`, **never the exception's text** (it can name a host).
 - **`auth` spans** (since 0.9.0, `fespalier_auth`, within version 1: a new operation and new keys) follow the
-  installed sink and need no `telemetry: true`. A refresh is one span however many requests wait for it.
-  `auth` is also the first word of the span name: `auth restore`, `auth sign_in`, `auth refresh`,
-  `auth sign_out`. A sink that switches exhaustively over `TelemetryOp` needs an `auth` case (0.9.0).
+  installed sink and need no `telemetry: true`. A renewal is one span however many requests wait for it.
+  `auth` is also the first word of the span name: `auth restore`, `auth sign_in`, `auth renew` (`auth refresh`
+  until 0.20.0), `auth sign_out`. A sink that switches exhaustively over `TelemetryOp` needs an `auth` case (0.9.0).
+- **`auth` names changed in 0.21.0, without a new contract version** (a break of version 1, taken while the names
+  were young): the step `refresh` is `renew`, and the boolean `fespalier.auth.dpop` is the string
+  `fespalier.auth.scheme`, which the backend names (`bearer`, `dpop`, `device`; `TelemetryStart.authDpop` is
+  `authScheme` in code). A dashboard, alert or query of your own that filters on either changes with it; `fsp telemetry`'s
+  dashboards follow. `fespalier.auth.result` `expired` also means a stored session the backend's `check` refused (a device
+  key that is gone).
+- **`http` spans** (since 0.21.0, `OtelTransport` in `fespalier_otel`, within version 1: a new operation and new
+  keys) are one per request **sent**, `SpanKind.client`, named by the method (`GET`), a child of the current `data`
+  or `action` span. A re-send (an auth replay after a 401, a retry) is a span of its own with
+  `http.request.resend_count`, which is why `OtelTransport` sits **below** the session
+  ([`telemetry.md`](telemetry.md), "Spans around requests"). Status is `Error` with `error.type` when the status is 400
+  or more (`error.type` is `503`) or when no answer came (`error.type` is the `TransportFailure` class, `TransportUnsent`);
+  the span ends when the headers arrive. `traceparent` and `tracestate` go only to the origins in
+  `OtelTransport(propagateTo:)` (none by default). **Never recorded**: a query or fragment (`url.path` only), a header
+  value, a body, a credential, a failure's text.
 - **`image` spans** (since 0.9.0, `fespalier_image`, within version 1) are one per network load that starts
   (a cache hit and a load already in flight make none), named `image emgr`, `image cloudinary`, and so on. They
   are a child of the navigation in progress when there is one, follow the installed sink and need no
@@ -96,8 +116,8 @@ enter, focus events     fespalier.route
   still does.
 - **Never recorded**: segment and query values (unless `recordLocations: true`), family keys, `extra`,
   action input and result, data values, guard inputs. Exception text is scrubbed by `otel_zone`. From
-  `fespalier_auth`: tokens, user ids, claims, user names, e-mails, issuer and endpoint URLs, DPoP proofs
-  and key thumbprints; from `fespalier_image`, an image's URL, source and signature; `fespalier_sentry` never
+  `fespalier_auth`: credentials and tokens, user ids, claims, user names, e-mails, issuer and endpoint URLs, DPoP proofs,
+  device signatures and key thumbprints; from `fespalier_image`, an image's URL, source and signature; `fespalier_sentry` never
   sends a `custom` operation's attributes.
 - **Superseded** navigations never committed: no kind, no route, no `redirected` or `depth`. Leave them
   out of latency panels.
@@ -120,7 +140,7 @@ enter, focus events     fespalier.route
     input, or the action named wrong fields). A form whose own check stops a submit before the action runs makes
     no span, so it is not counted.
 - **Metrics**: none. Derive them in the collector with the `spanmetrics` connector, using these
-  attributes as dimensions. The `fespalier.auth.*`, `fespalier.image.*` and `fespalier.custom.*` attributes and `fespalier.navigation.source` are not
+  attributes as dimensions. The `fespalier.auth.*`, `fespalier.image.*` and `fespalier.custom.*` attributes, the `http` span's `http.*`, `server.*` and `url.scheme` (since 0.21.0) and `fespalier.navigation.source` are not
   dimensions of the collector `fsp telemetry` starts yet (since 0.9.0).
 - **The backend decides the column names.** OpenObserve turns `.` into `_` and stores every span
   attribute as a string (a bool is `'true'`), keeps resource attributes under `service_`, and has no

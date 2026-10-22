@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_maps/fespalier_maps.dart';
 import 'package:fespalier_maps/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpClientTransport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -39,7 +40,9 @@ void main() {
   ProviderContainer make({http.Client? client, PackFileStore? store}) {
     final c = ProviderContainer(
       overrides: [
-        packHttpClient.overrideWithValue(client ?? server.client),
+        packTransport.overrideWithValue(
+          HttpClientTransport(client ?? server.client),
+        ),
         packFileStore.overrideWithValue(store ?? files),
       ],
     );
@@ -367,6 +370,7 @@ void main() {
               Stream.value(body.sublist(0, 200)),
               200,
               contentLength: 450,
+              headers: {'content-length': '450'},
             ),
             server,
           ),
@@ -479,7 +483,7 @@ void main() {
             predicate(
               (Object e) =>
                   e.runtimeType.toString() == 'ProviderException' &&
-                  e.toString().contains('packHttpClient has no default'),
+                  e.toString().contains('packTransport has no default'),
             ),
           ),
         );
@@ -569,7 +573,7 @@ void main() {
         server.beforeChunk = (i) => i == 2 ? gate.future : Future<void>.value();
         final first = ProviderContainer(
           overrides: [
-            packHttpClient.overrideWithValue(server.client),
+            packTransport.overrideWithValue(HttpClientTransport(server.client)),
             packFileStore.overrideWithValue(files),
           ],
         );
@@ -863,7 +867,7 @@ void main() {
           i == 1 ? Completer<void>().future : Future<void>.value();
       final c = ProviderContainer(
         overrides: [
-          packHttpClient.overrideWithValue(server.client),
+          packTransport.overrideWithValue(HttpClientTransport(server.client)),
           packFileStore.overrideWithValue(files),
         ],
       );
@@ -977,7 +981,9 @@ void main() {
       final path = '${dir.path}/nested/dir/douala.pmtiles';
       // The default store is the dart:io one: only the client is overridden.
       final c = ProviderContainer(
-        overrides: [packHttpClient.overrideWithValue(server.client)],
+        overrides: [
+          packTransport.overrideWithValue(HttpClientTransport(server.client)),
+        ],
       );
       addTearDown(c.dispose);
       final packs = c.read(filePacks.notifier);
@@ -1003,7 +1009,9 @@ void main() {
     test('a hash mismatch deletes the partial file on disk', () async {
       final path = '${dir.path}/a.pmtiles';
       final c = ProviderContainer(
-        overrides: [packHttpClient.overrideWithValue(server.client)],
+        overrides: [
+          packTransport.overrideWithValue(HttpClientTransport(server.client)),
+        ],
       );
       addTearDown(c.dispose);
       await c

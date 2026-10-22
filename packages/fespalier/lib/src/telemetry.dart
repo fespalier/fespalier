@@ -234,7 +234,7 @@ enum TelemetryOp {
   /// The code of a deferred page loaded.
   deferred,
 
-  /// `fespalier_auth` (since 0.9.0) restored, signed in, refreshed or signed out a session.
+  /// `fespalier_auth` (since 0.9.0) restored, signed in, renewed or signed out a session.
   auth,
 
   /// An image loaded from the network (`package:fespalier_image`, since 0.9.0).
@@ -259,7 +259,7 @@ final class TelemetryStart {
     this.authStep,
     this.authBackend,
     this.authTrigger,
-    this.authDpop = false,
+    this.authScheme,
     this.source,
     this.imageCdn,
     this.imageWidth,
@@ -295,17 +295,19 @@ final class TelemetryStart {
   /// on its own after try n failed; null for other operations. A `Stream` load is always 1.
   final int? dataAttempt;
 
-  /// auth (since 0.9.0): which step, `restore`, `sign_in`, `refresh` or `sign_out`.
+  /// auth (since 0.9.0): which step, `restore`, `sign_in`, `renew` or `sign_out` (`renew` was
+  /// `refresh` until 0.20.0).
   final String? authStep;
 
   /// auth: the backend's short constant name (`oidc`, `firebase`), never a URL or an id.
   final String? authBackend;
 
-  /// auth, on a refresh: what asked for it, `expired`, `unauthorized` or `forced`.
+  /// auth, on a renewal: what asked for it, `expired`, `unauthorized` or `forced`.
   final String? authTrigger;
 
-  /// auth: whether the backend binds its tokens with DPoP.
-  final bool authDpop;
+  /// auth (since 0.21.0, in place of a DPoP flag): how the backend authenticates requests, a
+  /// short constant of the backend's own (`bearer`, `dpop`, `device`), never a secret.
+  final String? authScheme;
 
   /// navigate: where the navigation came from when the app's own code did not start it, a
   /// [NavigationSource] value (since 0.9.0); null otherwise.
@@ -344,7 +346,7 @@ final class TelemetryStart {
     authStep: authStep,
     authBackend: authBackend,
     authTrigger: authTrigger,
-    authDpop: authDpop,
+    authScheme: authScheme,
     source: source,
     imageCdn: imageCdn,
     imageWidth: imageWidth,

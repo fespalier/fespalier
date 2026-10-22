@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show HttpTransport, TransportRequest, TransportStatusError;
 
 import 'catalog.dart';
 import 'source.dart';
@@ -18,15 +20,16 @@ enum TolgeeCdnFormat {
 /// Since 0.10.0.
 final class TolgeeCdn implements TranslationSource {
   /// [base] is the Content Delivery URL Tolgee shows (`https://cdn.tolg.ee/<hash>/`); a file is
-  /// `<base>/<namespace>/<locale>.<ext>`. [file] overrides the file name. [client] defaults to a
-  /// new `http.Client`.
+  /// `<base>/<namespace>/<locale>.<ext>`. [file] overrides the file name. The files are fetched
+  /// through [transport] (since 0.21.0; it was an optional `client:`, an `http.Client`): the app's
+  /// own, so its timeouts, proxy and telemetry apply. There is no default.
   TolgeeCdn(
     this.base, {
+    required this.transport,
     this.format = TolgeeCdnFormat.json,
     this.namespace,
     this.file,
-    http.Client? client,
-  }) : _client = client ?? http.Client();
+  });
 
   /// The Content Delivery URL.
   final Uri base;
@@ -40,7 +43,8 @@ final class TolgeeCdn implements TranslationSource {
   /// The file name for a locale, instead of `<locale>.<ext>`.
   final String Function(String locale)? file;
 
-  final http.Client _client;
+  /// What the files are fetched through.
+  final HttpTransport transport;
 
   /// The URL of [locale]'s file.
   Uri urlFor(String locale) {
@@ -57,18 +61,26 @@ final class TolgeeCdn implements TranslationSource {
 
   @override
   Future<RemoteCatalog?> fetch(String locale, {String? etag}) async {
-    final response = await _client.get(
-      urlFor(locale),
-      headers: {'If-None-Match': ?etag},
+    final response = await transport.send(
+      TransportRequest(
+        method: 'GET',
+        uri: urlFor(locale),
+        headers: {'If-None-Match': ?etag},
+      ),
     );
+    // Read whatever the status: an unread body would hold the connection.
+    final bytes = await response.bytes();
     if (response.statusCode == 304 || response.statusCode == 404) return null;
     if (response.statusCode != 200) {
-      throw http.ClientException(
-        'Tolgee CDN answered ${response.statusCode}',
-        response.request?.url,
+      // A refusal: its status is the whole story (what the CDN said is not kept).
+      throw TransportStatusError(
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body: Uint8List(0),
+        reasonPhrase: response.reasonPhrase,
       );
     }
-    final text = utf8.decode(response.bodyBytes);
+    final text = utf8.decode(bytes);
     final catalog = format == TolgeeCdnFormat.arb
         ? Catalog.fromArb(locale, text)
         : Catalog.fromJson(locale, text);

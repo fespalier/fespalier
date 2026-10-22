@@ -6,7 +6,8 @@ import 'package:cose_example/src/cose_transport.dart';
 import 'package:cose_example/src/wiring.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_keypair/testing.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Pins the shape of the graph `startup()` builds, and the one thing that must stay lazy in it.
@@ -30,7 +31,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// that caught it, and it is in the README's run steps.
 void main() {
   test('the real wiring builds', () async {
-    final signer = FakeDpopSigner();
+    final signer = FakeKeypairSigner();
     final identity = await CoseSealer(signer).identity();
 
     final container = ProviderContainer(
@@ -49,6 +50,12 @@ void main() {
           ),
         ),
         deviceSigner.overrideWithValue(signer),
+        // startup() builds this one over package:http; no request is sent here.
+        coseHttpTransport.overrideWithValue(
+          FakeTransport(
+            (request, body) => throw StateError('no request is sent'),
+          ),
+        ),
         deviceIdentity.overrideWithValue(identity),
         // What `startup()` returns: the real seams, including `crateStackTransport` = the transport.
         ...coseOverrides(),

@@ -481,6 +481,9 @@ fn starter_files(package: &str, features: &[&Recipe]) -> Result<Vec<PlannedFile>
     if let Some(startup) = compose::startup_dart(package, features)? {
         files.push(new("lib/app/startup.dart".to_string(), startup));
     }
+    if let Some(setup) = compose::smoke_setup(package, features) {
+        files.push(new("test/routes/setup.dart".to_string(), setup));
+    }
     // A feature that brings its own layout and pages takes the base app's out.
     files.retain(|f| {
         !features

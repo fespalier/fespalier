@@ -26,10 +26,10 @@ void main() {
     final token = FespalierTelemetry.begin(
       const TelemetryStart(
         TelemetryOp.auth,
-        authStep: 'refresh',
+        authStep: 'renew',
         authBackend: 'oidc',
         authTrigger: 'unauthorized',
-        authDpop: true,
+        authScheme: 'dpop',
       ),
     );
     FespalierTelemetry.finish(
@@ -37,7 +37,7 @@ void main() {
       const TelemetryEnd(TelemetryOutcome.ok, isAsync: true),
     );
     expect(rec.log, [
-      '#1 start auth refresh backend=oidc trigger=unauthorized dpop',
+      '#1 start auth renew backend=oidc trigger=unauthorized scheme=dpop',
       '#1 end auth ok async',
     ]);
   });

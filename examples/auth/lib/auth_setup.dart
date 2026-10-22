@@ -2,8 +2,10 @@ import 'package:auth/api.dart';
 import 'package:auth/demo/demo_backend.dart';
 import 'package:auth/demo/demo_server.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
-import 'package:fespalier_auth/oidc.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_keypair_dpop/fespalier_keypair_dpop.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
@@ -50,33 +52,61 @@ final DemoServer demoServer = DemoServer(
   requireDpop: useDpop && usesDemoOidc,
 );
 
-/// A test swaps in its own [AuthConfig] (and, with [debugApiClient], its own API).
+/// A test swaps in its own [AuthConfig] (and, with [debugApiTransport], its own API).
 @visibleForTesting
-AuthConfig Function()? debugAuthSetup;
+AuthConfig Function(HttpTransport transport)? debugAuthSetup;
 
-/// A test swaps in the client the API is reached through.
+/// A test swaps in the transport the app sends through.
 @visibleForTesting
-http.Client Function()? debugApiClient;
+HttpTransport Function()? debugApiTransport;
 
-/// The client `authHttpClient` sends through: the demo server's. In your app it is the default,
-/// a real `http.Client`, and you do not override `authBaseClient` at all.
-http.Client apiClient() => (debugApiClient ?? () => demoServer.client)();
-
-/// The app's [AuthConfig]: the demo backend over the demo server by default, OpenID Connect
-/// (Keycloak) with `--dart-define=OIDC_ISSUER=...`.
-AuthConfig authSetup() {
-  final debug = debugAuthSetup;
+/// The one transport the app sends through: `startup()` builds it once and hands it to
+/// [authSetup], which gives it to `AuthConfig` (the API calls, through `authTransport`) and to
+/// `OidcBackend` (the token endpoint).
+///
+/// In your app it is `HttpClientTransport(http.Client())` and nothing else. Here the API is the
+/// demo server, in process; with a real Keycloak (`OIDC_ISSUER`) Keycloak is on the network and the
+/// API still the demo, so the transport sends each origin where it lives.
+HttpTransport apiTransport() {
+  final debug = debugApiTransport;
   if (debug != null) return debug();
+  final demo = HttpClientTransport(demoServer.client);
+  if (!usesOidc || usesDemoOidc) return demo;
+  return _ByOrigin(
+    routes: {apiOrigin.origin: demo},
+    otherwise: HttpClientTransport(http.Client()),
+  );
+}
+
+/// Sends a request to the transport of its origin, and any other to [otherwise]: a transport is
+/// a function of a request, so routing is a decorator like any other.
+final class _ByOrigin implements HttpTransport {
+  const _ByOrigin({required this.routes, required this.otherwise});
+
+  final Map<String, HttpTransport> routes;
+  final HttpTransport otherwise;
+
+  @override
+  Future<TransportResponse> send(TransportRequest request) =>
+      (routes[request.uri.origin] ?? otherwise).send(request);
+}
+
+/// The app's [AuthConfig] over [transport]: the demo backend over the demo server by default,
+/// OpenID Connect (Keycloak) with `--dart-define=OIDC_ISSUER=...`.
+AuthConfig authSetup(HttpTransport transport) {
+  final debug = debugAuthSetup;
+  if (debug != null) return debug(transport);
   if (usesOidc) {
     final issuer = Uri.parse(usesDemoOidc ? DemoServer.issuer : oidcIssuer);
     return AuthConfig(
+      transport: transport,
       backend: OidcBackend(
         issuer: issuer,
         clientId: oidcClientId,
         redirectUri: Uri.parse(oidcRedirect),
         endpoints: OidcEndpoints.keycloak(issuer),
         openBrowser: usesDemoOidc ? demoBrowser : openBrowser,
-        client: usesDemoOidc ? demoServer.client : null,
+        transport: transport,
         // The hardware key on Android, iOS and macOS; a software key where there is none (the web,
         // Windows, Linux: it does not survive a reload there). The default, DpopFallback.refuse,
         // throws DpopUnavailable there instead, which is what a production app that promises
@@ -89,7 +119,8 @@ AuthConfig authSetup() {
     );
   }
   return AuthConfig(
-    backend: DemoBackend(apiOrigin, demoServer.client),
+    transport: transport,
+    backend: DemoBackend(apiOrigin, transport),
     apiOrigins: [apiOrigin],
   );
 }

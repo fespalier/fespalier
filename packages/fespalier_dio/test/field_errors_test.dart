@@ -1,13 +1,10 @@
-// withFieldErrors() on a Dio future, and the two extensions (Dio's and package:http's) imported
-// together: the more specific one must win on a Future<http.Response>.
+// withFieldErrors() on a Dio future.
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
-import 'package:fespalier_http/fespalier_http.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 
 void main() {
   group('Dio: withFieldErrors()', () {
@@ -145,55 +142,5 @@ void main() {
         ),
       );
     });
-  });
-
-  group('both extensions imported together', () {
-    test('a Dio future is read by the Dio extension', () async {
-      final options = RequestOptions(path: '/me', method: 'PUT');
-      final future = Future<Response<Object?>>.error(
-        DioException.badResponse(
-          statusCode: 422,
-          requestOptions: options,
-          response: Response<Object?>(
-            requestOptions: options,
-            statusCode: 422,
-            data: {
-              'errors': {
-                'nickname': ['taken'],
-              },
-            },
-          ),
-        ),
-      );
-      await expectLater(
-        future.withFieldErrors(),
-        throwsA(
-          isA<FieldErrors>().having((e) => e.fields, 'fields', {
-            'nickname': 'taken',
-          }),
-        ),
-      );
-    });
-
-    test(
-      'a Future<http.Response> is read by the package:http extension',
-      () async {
-        final response = http.Response(
-          '{"errors":{"nickname":["taken"]}}',
-          422,
-        );
-        await expectLater(
-          Future.value(response).withFieldErrors(),
-          throwsA(
-            isA<FieldErrors>().having((e) => e.fields, 'fields', {
-              'nickname': 'taken',
-            }),
-          ),
-        );
-        // A response that is not a validation error comes back as it is, not through Dio's catch.
-        final ok = http.Response('{}', 200);
-        expect(identical(await Future.value(ok).withFieldErrors(), ok), isTrue);
-      },
-    );
   });
 }

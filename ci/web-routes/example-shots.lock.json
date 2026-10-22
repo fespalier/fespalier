@@ -33,6 +33,20 @@
       "png": "b0230f8df722be852b6b67cbd3f8e767f007eddc89e93add7ddb65b49680a7d2"
     }
   },
+  "device": {
+    "enrol.png": {
+      "spec": "929b5de66aab7c55583f6c0018e10febc1f3db4e523e1b58fc43ee4ecaf844f2",
+      "png": "c99e2cfd0c0301f2fa3a0238be750e5694b55c7ff1dae222bd0b0398d18f03dd"
+    },
+    "guarded.png": {
+      "spec": "2ce41ade5df6425898758b4a2e230365157e9bc68c6d6c1da9a843dc7587868f",
+      "png": "739580414829f39ef8a4f538104023694a0d787124c8b9196207e0efa8bf49a2"
+    },
+    "home.png": {
+      "spec": "a331e84475204457cc51166254ae9663fcd286c99df766fce7030e4e8c7c37e4",
+      "png": "fea026095cfe1c1ecf8354ad8559e30a085ff577cc5b0ad8cc2a720f962ab666"
+    }
+  },
   "downloads": {
     "home.png": {
       "spec": "3f08b78150ecee7d0c789f08701f0851ba215570ad5e3c452f92ff1f788b7cdb",

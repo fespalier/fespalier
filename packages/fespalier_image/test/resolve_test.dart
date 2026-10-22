@@ -1,4 +1,5 @@
 import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -162,24 +163,30 @@ void main() {
         )!;
 
     test(
-      'a NetworkImage with the URL, never the HTML element fallback by default',
+      'a TransportImage over the CDN\'s transport with the URL by default',
       () {
-        final image = resolveOf(cdn);
-        final provider = cdn.providerFor(image);
-        expect(provider, isA<NetworkImage>());
-        final network = provider as NetworkImage;
-        expect(network.url, image.url);
-        expect(network.webHtmlElementStrategy, WebHtmlElementStrategy.never);
+        final transport = FakeTransport.script(const []);
+        final through = cdn.copyWith(transport: transport);
+        final image = resolveOf(through);
+        final provider = through.providerFor(image);
+        expect(provider, isA<TransportImage>());
+        final loads = provider as TransportImage;
+        expect(loads.url, image.url);
+        expect(loads.transport, same(transport));
       },
     );
 
-    test('the CDN\'s web strategy reaches the provider', () {
-      final configured = cdn.copyWith(
-        webHtmlElementStrategy: WebHtmlElementStrategy.fallback,
+    test('neither a transport nor a providerFactory is an ImageUrlError', () {
+      expect(
+        () => cdn.providerFor(resolveOf(cdn)),
+        throwsA(
+          isA<ImageUrlError>().having(
+            (e) => e.message,
+            'message',
+            contains('no transport'),
+          ),
+        ),
       );
-      final provider =
-          configured.providerFor(resolveOf(configured)) as NetworkImage;
-      expect(provider.webHtmlElementStrategy, WebHtmlElementStrategy.fallback);
     });
 
     test('providerFactory\'s provider when set', () {
@@ -197,7 +204,7 @@ void main() {
     });
 
     test('a builder that does not resize is decoded at the bucket width', () {
-      const direct = ImageCdn();
+      final direct = ImageCdn(transport: FakeTransport.script(const []));
       final image = direct.resolve(
         'https://images.example.com/photo.jpg',
         logicalWidth: 40,
@@ -206,6 +213,7 @@ void main() {
       final provider = direct.providerFor(image);
       expect(provider, isA<ResizeImage>());
       final resize = provider as ResizeImage;
+      expect(resize.imageProvider, isA<TransportImage>());
       expect(resize.width, 128);
       expect(resize.height, isNull);
       expect(resize.policy, ResizeImagePolicy.fit);
@@ -214,7 +222,11 @@ void main() {
     });
 
     test('a resizing builder is not wrapped', () {
-      expect(cdn.providerFor(resolveOf(cdn)), isNot(isA<ResizeImage>()));
+      final through = cdn.copyWith(transport: FakeTransport.script(const []));
+      expect(
+        through.providerFor(resolveOf(through)),
+        isNot(isA<ResizeImage>()),
+      );
     });
   });
 
@@ -223,5 +235,11 @@ void main() {
     expect(const ImageCdn().hashCode, const ImageCdn().hashCode);
     expect(const ImageCdn(), isNot(const ImageCdn(quality: 80)));
     expect(cdn.copyWith(), cdn);
+    final transport = FakeTransport.script(const []);
+    expect(ImageCdn(transport: transport), ImageCdn(transport: transport));
+    expect(
+      ImageCdn(transport: transport),
+      isNot(ImageCdn(transport: FakeTransport.script(const []))),
+    );
   });
 }

@@ -28,6 +28,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
       ref: v<version>
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v<version>
   http: "^1.5.0"
 
 dev_dependencies:
@@ -41,7 +46,7 @@ flutter:
 # Read by the `fsp` generator; docs/configuration.md lists every key.
 fespalier:
   test:
-    # /headlines needs an http client: test/http_test.dart serves it from a FakeHttpClient.
+    # /headlines needs a transport: test/http_test.dart serves it from a FakeTransport.
     skip: [/headlines]
 
 === lib/main.dart (overwrite)
@@ -149,6 +154,24 @@ class HomePage extends StatelessWidget {
   );
 }
 
+=== lib/app/startup.dart (new)
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:http/http.dart' as http;
+import 'package:my_app/api.dart';
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+List<Override> startup() {
+  // The app's one transport, given to every package that sends: the client inside a write guard.
+  final transport = WriteGuardTransport(HttpClientTransport(http.Client()));
+  return [
+    // fespalier_http: the transport lib/api.dart's httpClient sends through (the app's one, whose write guard keeps a retrier from repeating a write).
+    httpTransport.overrideWithValue(transport),
+  ];
+}
+
 === lib/app/transition.dart (new)
 import 'package:fespalier/fespalier.dart';
 import 'package:flutter/widgets.dart';
@@ -160,6 +183,8 @@ Page<void> transition(LocalKey key, Widget child) =>
 
 === lib/api.dart (new)
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/http.dart' as http;
 
 /// Where the API is: `--dart-define=API_URL=https://api.myapp.dev`. The default is a placeholder,
@@ -169,19 +194,30 @@ const String apiUrl = String.fromEnvironment(
   defaultValue: 'https://api.example.com',
 );
 
-/// The client every request of the app goes through. A `data.dart` asks for it with
-/// `ref.abortable(ref.watch(httpClient))`, so the request stops when its page is gone
-/// (docs/http.md, "Cancelling a load whose page is gone"). A test replaces it with a
-/// `FakeHttpClient` (fespalier_http/testing.dart).
+/// The app's one transport. `startup()` builds it once (lib/app/startup.dart) and overrides this
+/// provider with it: the client inside a `WriteGuardTransport` (a retrier above it can tell a write
+/// from a read) and, when the app has OpenTelemetry or Sentry, inside their decorators. Every
+/// package that sends is given that same transport. A test replaces it with a `FakeTransport`
+/// (fespalier_transport/testing.dart).
 ///
-/// This is the one place to wrap it: a retrier for reads, `WriteGuardClient` so a write is never
-/// sent twice, and a session once you sign users in (`authHttpClient` of fespalier_auth, or
-/// `SessionClient`). docs/http.md, "The wrapping order", has the order that works.
-final httpClient = Provider<http.Client>((ref) {
-  final client = http.Client();
-  ref.onDispose(client.close);
-  return client;
-});
+/// The wire order, outermost first: a retrier of your own, the session (`authTransport` of
+/// fespalier_auth is a `SessionTransport` over this same transport), `OtelTransport`,
+/// `SentryTransport`, `WriteGuardTransport`, the client. So each wire send, an auth replay
+/// included, is one span, and a retrier never repeats a write.
+final httpTransport = Provider<HttpTransport>(
+  (ref) => throw StateError(
+    'httpTransport has no default: startup() overrides it (lib/app/startup.dart), '
+    'and a test overrides it with a FakeTransport',
+  ),
+);
+
+/// The client every request of the app goes through: a `package:http` view of [httpTransport]. A
+/// `data.dart` asks for it with `ref.abortable(ref.watch(httpClient))`, so the request stops when
+/// its page is gone (docs/http.md, "Cancelling a load whose page is gone"). A retrier for reads
+/// goes around it: `RetryClient(TransportClient(...), when: TransportClient.readsOnly())`.
+final httpClient = Provider<http.Client>(
+  (ref) => TransportClient(ref.watch(httpTransport)),
+);
 
 === lib/app/headlines/data.dart (new)
 import 'dart:convert';
@@ -228,53 +264,53 @@ class HeadlinesPage extends StatelessWidget {
 import 'dart:async';
 
 import 'package:fespalier/testing.dart';
-import 'package:fespalier_http/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 import 'package:my_app/api.dart';
 import 'package:my_app/app.g.dart';
 
 void main() {
-  testWidgets('the headlines are loaded through the client, abortable', (
+  testWidgets('the headlines are loaded through the transport, abortable', (
     tester,
   ) async {
     // No network: the fake answers from a handler and records what was sent.
-    final client = FakeHttpClient(
+    final transport = FakeTransport(
       (request, body) =>
-          http.Response('[{"title": "One"}, {"title": "Two"}]', 200),
+          fakeResponse(200, body: '[{"title": "One"}, {"title": "Two"}]'),
     );
     await pumpRouter(
       tester,
       AppRoutes.router(initialLocation: '/headlines'),
-      overrides: [httpClient.overrideWithValue(client)],
+      overrides: [httpTransport.overrideWithValue(transport)],
     );
     expect(find.text('One'), findsOneWidget);
     expect(find.text('Two'), findsOneWidget);
-    expect(client.requests.single.url, Uri.parse('$apiUrl/headlines'));
-    expect(client.requests.single.abortable, isTrue);
+    expect(transport.requests.single.url, Uri.parse('$apiUrl/headlines'));
+    expect(transport.requests.single.abortable, isTrue);
   });
 
   testWidgets('leaving the page aborts a request that is still running', (
     tester,
   ) async {
     // A server that never answers.
-    final client = FakeHttpClient(
-      (request, body) => Completer<http.Response>().future,
+    final transport = FakeTransport(
+      (request, body) => Completer<TransportResponse>().future,
     );
     final router = AppRoutes.router(initialLocation: '/headlines');
     // Not settled: the loading view is on screen and the request is out.
     await pumpRouter(
       tester,
       router,
-      overrides: [httpClient.overrideWithValue(client)],
+      overrides: [httpTransport.overrideWithValue(transport)],
       settle: false,
     );
     await tester.pump();
-    expect(client.requests, hasLength(1));
-    expect(client.abortCount, 0);
+    expect(transport.requests, hasLength(1));
+    expect(transport.abortCount, 0);
 
     router.go('/');
     await tester.pumpAndSettle(); // the page is gone, and so is its provider
-    expect(client.abortCount, 1);
+    expect(transport.abortCount, 1);
   });
 }

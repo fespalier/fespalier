@@ -56,9 +56,9 @@ release build are unchanged.
 
 Since 0.9.0 `package:fespalier_auth` sits next to it, a repository dependency at the same release tag:
 [signed-in routes](https://github.com/fespalier/fespalier/blob/main/docs/auth.md), with a session provider,
-guards, token storage, lazy single-flight refresh and an authenticated HTTP client. It changes neither the
+guards, session storage, lazy single-flight renewal and an authenticated HTTP transport (`authTransport`; since 0.21.0 it is protocol-agnostic, and `package:fespalier_oidc` is the OpenID Connect and Keycloak backend). It changes neither the
 generated code nor a release build that does not use it.
-`package:fespalier_sign_keypair` adds [device-bound tokens](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#device-bound-tokens-dpop-with-fespalier_sign_keypair) (DPoP, signed by a key in the Secure Enclave or the AndroidKeyStore) to it.
+`package:fespalier_keypair_dpop` adds [device-bound tokens](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#device-bound-tokens-dpop-with-fespalier_keypair_dpop) (DPoP, signed by a `fespalier_keypair` key in the Secure Enclave or the AndroidKeyStore) to `fespalier_oidc`, and `package:fespalier_sign_keypair` is [device-signed sessions](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#device-signed-sessions-fespalier_sign_keypair), with no token.
 
 Since 0.9.0 `package:fespalier_flags` is [feature flags](https://github.com/fespalier/fespalier/blob/main/docs/guards.md#feature-flags-fespalier_flags),
 another repository dependency at the same release tag: synchronous `flag()` providers that a `guard.dart` watches

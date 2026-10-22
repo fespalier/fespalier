@@ -59,7 +59,8 @@ staying), and with `renewal: true` once per grant (a start, a retry and a resume
 while reconciling at `open()`). The renewal moves the id's generation on, shows `Queued`, waits for the grant, then
 `backend.cancel(id)` and `backend.enqueue(grantedRequest, authorization: grant.headers)`. A second 401 or 403 is
 `Failed(unauthorized)`, as is a throwing grantor or a grant whose URL makes an invalid request; a grantor that throws an
-`http.ClientException` (it could not reach its server) is `Failed(network)` instead since 0.16.0, and on a resume it leaves the
-download `Paused` and `resume` returns false. Every wait is
+`TransportFailure` or `CredentialsUnavailable` (it could not reach its server; an `http.ClientException` until 0.20.0) is
+`Failed(network)` instead since 0.16.0, and on a resume it leaves the download `Paused` and `resume` returns false. A
+`TransportUntrusted` (its certificate was refused) is `Failed(network)` even on a resume: it is not being offline. Every wait is
 guarded by the generation, so a cancel, remove, restart or `clearAccount()` meanwhile means the answer is dropped.
 `start`, `retry` and a renewal reset nothing in the registry: it holds the request as the app made it, never the grant.

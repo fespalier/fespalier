@@ -5,7 +5,8 @@
 # that claim `flutter: ">=3.35.0"` (fespalier_devtools aside), the justfile reads it, and CI's floor job runs
 # each of them in a copy outside it (scripts/floor_copy.py).
 #
-# Outside it on purpose, each resolved on its own: packages/fespalier_sign_keypair (Flutter 3.44),
+# Outside it on purpose, each resolved on its own: packages/fespalier_keypair, fespalier_keypair_dpop and
+# fespalier_sign_keypair (Flutter 3.44: flutter_sign_keypair needs it),
 # packages/fespalier_download_background (3.47), packages/fespalier_devtools (its lockfile is committed) and
 # every example (what an app resolves).
 name: fespalier_workspace
@@ -31,12 +32,14 @@ workspace:
   - packages/fespalier_image
   - packages/fespalier_launch
   - packages/fespalier_maps
+  - packages/fespalier_oidc
   - packages/fespalier_otel
   - packages/fespalier_push
   - packages/fespalier_riverpod
   - packages/fespalier_sentry
   - packages/fespalier_storage
   - packages/fespalier_tolgee
+  - packages/fespalier_transport
 
 dev_dependencies:
   # Melos 8 runs only where the workspace root depends on it (a global install alone says the folder "does not

@@ -1,6 +1,6 @@
-// package:http: ref.abortTrigger() and ref.abortable(client), and WriteGuardClient under a
-// RetryClient. A MockClient does not honour an abort trigger by itself ("it is the handler's
-// responsibility"), so the handlers here race the trigger the way a real client does.
+// package:http: ref.abortTrigger() and ref.abortable(client). (The write guard under a RetryClient
+// is transport_client_test.dart.) A MockClient does not honour an abort trigger by itself ("it is
+// the handler's responsibility"), so the handlers here race the trigger the way a real client does.
 import 'dart:async';
 import 'dart:convert';
 
@@ -9,7 +9,6 @@ import 'package:fespalier/fespalier.dart'
 import 'package:fespalier_http/fespalier_http.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/retry.dart';
 import 'package:http/testing.dart';
 
 /// A client that counts how often it was closed.
@@ -35,17 +34,6 @@ Future<http.StreamedResponse> holdUntilAborted(
   final trigger = (request as http.Abortable).abortTrigger!;
   await trigger;
   throw http.RequestAbortedException(request.url);
-}
-
-/// A client that returns what a function makes: no MockClient, which wraps every response in a
-/// new object.
-final class _Fixed extends http.BaseClient {
-  _Fixed(this.make);
-
-  final Future<http.StreamedResponse> Function() make;
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) => make();
 }
 
 http.StreamedResponse streamed(int status, {http.BaseRequest? request}) =>
@@ -405,210 +393,5 @@ void main() {
         },
       );
     });
-  });
-
-  group('WriteGuardClient under a RetryClient', () {
-    RetryClient retrying(http.Client inner) => RetryClient(
-      WriteGuardClient(inner),
-      when: WriteGuardClient.readsOnly(),
-      whenError: WriteGuardClient.readErrorsOnly((error, stackTrace) => true),
-      delay: (_) => Duration.zero,
-    );
-
-    test('a POST that gets a 503 is sent once; a GET is retried', () async {
-      final sent = <String>[];
-      final client = retrying(
-        MockClient((request) async {
-          sent.add(request.method);
-          return http.Response('', sent.length < 2 ? 503 : 200);
-        }),
-      );
-
-      expect((await client.post(url)).statusCode, 503);
-      expect(sent, ['POST']);
-
-      sent.clear();
-      expect((await client.get(url)).statusCode, 200);
-      expect(sent, ['GET', 'GET']);
-    });
-
-    test('every method but the four safe ones is a write', () async {
-      for (final method in ['POST', 'PUT', 'PATCH', 'DELETE']) {
-        var sent = 0;
-        final client = retrying(
-          MockClient((request) async {
-            sent++;
-            return http.Response('', 503);
-          }),
-        );
-        final response = await client.send(http.Request(method, url));
-
-        expect(response.statusCode, 503);
-        expect(sent, 1, reason: method);
-      }
-      for (final method in ['GET', 'HEAD', 'OPTIONS']) {
-        var sent = 0;
-        final client = retrying(
-          MockClient((request) async {
-            sent++;
-            return http.Response('', sent < 3 ? 503 : 200);
-          }),
-        );
-        final response = await client.send(http.Request(method, url));
-
-        expect(response.statusCode, 200, reason: method);
-        expect(sent, 3, reason: method);
-      }
-    });
-
-    test('a write with an Idempotency-Key is retried', () async {
-      var sent = 0;
-      final client = retrying(
-        MockClient((request) async {
-          sent++;
-          return http.Response('', sent < 2 ? 503 : 200);
-        }),
-      );
-
-      final response = await client.post(
-        url,
-        headers: {'Idempotency-Key': 'k-1'},
-      );
-
-      expect(response.statusCode, 200);
-      expect(sent, 2);
-    });
-
-    test('a write that throws is not retried, a read that throws is', () async {
-      var sent = 0;
-      final client = retrying(
-        MockClient((request) async {
-          sent++;
-          if (sent < 2) throw http.ClientException('offline');
-          return http.Response('', 200);
-        }),
-      );
-
-      await expectLater(client.post(url), throwsA(isA<http.ClientException>()));
-      expect(sent, 1);
-
-      sent = 0;
-      expect((await client.get(url)).statusCode, 200);
-      expect(sent, 2);
-    });
-
-    test(
-      'a write whose answer does not say which request it answers is still a write',
-      () async {
-        // MockClient's Response has no `request`, which is what real clients always set.
-        var sent = 0;
-        final client = retrying(
-          MockClient.streaming((request, body) async {
-            sent++;
-            return streamed(503); // request: null
-          }),
-        );
-
-        final response = await client.send(http.Request('DELETE', url));
-
-        expect(response.request, isNull);
-        expect(response.statusCode, 503);
-        expect(sent, 1);
-      },
-    );
-
-    test(
-      'the response and the error are the very objects the inner client made',
-      () async {
-        final answer = streamed(200);
-        final guard = WriteGuardClient(_Fixed(() async => answer));
-        expect(
-          identical(await guard.send(http.Request('POST', url)), answer),
-          isTrue,
-        );
-
-        final failure = http.ClientException('boom');
-        final failing = WriteGuardClient(_Fixed(() async => throw failure));
-        Object? thrown;
-        try {
-          await failing.send(http.Request('POST', url));
-        } on Object catch (error) {
-          thrown = error;
-        }
-        expect(identical(thrown, failure), isTrue);
-      },
-    );
-
-    test(
-      'readsOnly takes the rule of your own, and the errors of a read go to yours',
-      () async {
-        final guard = WriteGuardClient(
-          MockClient((request) async => http.Response('', 429)),
-        );
-        final read = await guard.send(http.Request('GET', url));
-        final write = await guard.send(http.Request('POST', url));
-
-        final on429 = WriteGuardClient.readsOnly(
-          (response) => response.statusCode == 429,
-        );
-        expect(on429(read), isTrue);
-        expect(on429(write), isFalse);
-        expect(WriteGuardClient.readsOnly()(read), isFalse); // 429 is not 503
-        expect(WriteGuardClient.retryOn503(streamed(503)), isTrue);
-        expect(WriteGuardClient.retryOn503(streamed(200)), isFalse);
-
-        var asked = 0;
-        final onError = WriteGuardClient.readErrorsOnly((error, stackTrace) {
-          asked++;
-          return true;
-        });
-        expect(
-          onError(StateError('x'), StackTrace.empty),
-          isTrue,
-        ); // never went through a guard
-        expect(asked, 1);
-      },
-    );
-
-    test('isWrite is the WriteGuard rule on a request', () {
-      expect(WriteGuardClient.isWrite(http.Request('GET', url)), isFalse);
-      expect(WriteGuardClient.isWrite(http.Request('post', url)), isTrue);
-      expect(
-        WriteGuardClient.isWrite(
-          http.Request('POST', url)..headers['idempotency-key'] = 'k',
-        ),
-        isFalse,
-      );
-    });
-
-    test('close closes the client under it', () {
-      final inner = CountingClient(
-        MockClient((request) async => http.Response('', 200)),
-      );
-      WriteGuardClient(inner).close();
-      expect(inner.closed, 1);
-    });
-
-    test(
-      'an aborted request is not retried, and is not a failed write',
-      () async {
-        var sent = 0;
-        final abort = Completer<void>();
-        final client = retrying(
-          MockClient.streaming((request, body) async {
-            sent++;
-            throw http.RequestAbortedException(request.url);
-          }),
-        );
-
-        await expectLater(
-          client.send(
-            http.AbortableRequest('GET', url, abortTrigger: abort.future),
-          ),
-          throwsA(isA<http.RequestAbortedException>()),
-        );
-        expect(sent, 1);
-      },
-    );
   });
 }

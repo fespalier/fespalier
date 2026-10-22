@@ -51,12 +51,10 @@ dependency_overrides:
     path: /check out/packages/fespalier
   fespalier_cratestack:
     path: /check out/packages/fespalier_cratestack
-  fespalier_dio:
-    path: /check out/packages/fespalier_dio
-  fespalier_http:
-    path: /check out/packages/fespalier_http
   fespalier_storage:
     path: /check out/packages/fespalier_storage
+  fespalier_transport:
+    path: /check out/packages/fespalier_transport
 
 === lib/main.dart (overwrite)
 import 'dart:async';

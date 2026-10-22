@@ -33,6 +33,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_tolgee
       ref: <the same tag>
+  fespalier_http: # HttpClientTransport, for TolgeeCdn's transport (fespalier_dio's DioTransport, or your own, will do)
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: <the same tag>
   flutter_localizations:
     sdk: flutter
 flutter:
@@ -60,7 +65,9 @@ enum Lang { en, fr, de }
 ```dart
 // lib/app/startup.dart
 import 'package:fespalier/startup.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
+import 'package:http/http.dart' as http;
 import 'package:my_app/lang.dart';
 
 const _cdn = String.fromEnvironment('TOLGEE_CDN_URL'); // public, not a secret
@@ -71,10 +78,17 @@ Future<List<Override>> startup() async => [
       // Local assets only: assets/i18n/en.arb, fr.arb, de.arb. A missing file throws, and splash.dart offers the retry.
       bundled: await BundledTranslations.load(locales: Lang.values.map((l) => l.name)),
       baseLocale: 'en',
-      remote: _cdn.isEmpty ? null : TolgeeCdn(Uri.parse(_cdn)),
+      // The transport is required (since 0.21.0; the optional `client:` of 0.20.0 and earlier is gone): the app's own,
+      // so its timeouts, proxy and telemetry apply.
+      remote: _cdn.isEmpty ? null : TolgeeCdn(Uri.parse(_cdn), transport: HttpClientTransport(http.Client())),
     ),
   ),
 ];
+```
+
+```yaml
+# pubspec.yaml dependencies
+  http: ^1.5.0
 ```
 
 ```dart
@@ -147,6 +161,10 @@ The catalog behind it, one file per language (a fragment, not built):
   `setLocale`. A language menu navigates (`relocate`, below).
 - **Bundled texts are the floor.** Every locale you list is read from `assets/i18n/` before the first frame; a missing
   asset makes `startup()` throw (so `splash.dart` offers the retry), and **the base locale must be bundled**.
+- **`TolgeeCdn(base, transport:)` has no default transport (since 0.21.0).** Until 0.20.0 it took an optional `client:`
+  (an `http.Client`) and made its own when it was left out; now the transport is required, so the app's timeouts, proxy
+  and telemetry apply. A refusal from the CDN (any status but 200, 304 or 404) is a `TransportStatusError` (it was an
+  `http.ClientException` until 0.20.0), and the fetcher still swallows it.
 - **Never an API key in a build.** `TolgeeCdn` has no parameter for one. The only key is the in-context editor's,
   passed with `--dart-define-from-file=tolgee.local.json` (gitignored) to a **debug** run; release builds pass only
   `TOLGEE_CDN_URL`.

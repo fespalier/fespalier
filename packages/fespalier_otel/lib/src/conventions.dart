@@ -54,6 +54,10 @@ abstract final class FespalierConventions {
   /// A package's own operation (since 0.11.0): `fespalier.custom.name` says which.
   static const String opCustom = 'custom';
 
+  /// One HTTP request sent through `OtelTransport` (since 0.21.0): a `CLIENT` span named by the
+  /// method (`GET`), as OpenTelemetry's HTTP semantic conventions name it.
+  static const String opHttp = 'http';
+
   // Span names: the operation, then what it is about.
 
   /// A navigation that matched no route is named `navigate (not found)`.
@@ -73,7 +77,8 @@ abstract final class FespalierConventions {
   /// Whether the operation returned a `Future`.
   static const String isAsync = 'fespalier.async';
 
-  /// The exception's class (semconv `error.type`), on an outcome `error`.
+  /// The exception's class (semconv `error.type`), on an outcome `error`; on an `http` span the
+  /// status code (`503`) of an error answer or the `TransportFailure` class of no answer.
   static const String errorType = 'error.type';
 
   // Attributes of a `navigate` span.
@@ -96,7 +101,8 @@ abstract final class FespalierConventions {
   /// Where the navigation came from when the app's own code did not start it (since 0.9.0).
   static const String navigationSource = 'fespalier.navigation.source';
 
-  /// The committed path (semconv `url.path`); only with `recordLocations`.
+  /// The committed path (semconv `url.path`); only with `recordLocations`. On an `http` span it is
+  /// the request's path, always (never its query).
   static const String urlPath = 'url.path';
 
   /// The committed query (semconv `url.query`); only with `recordLocations`.
@@ -245,7 +251,7 @@ abstract final class FespalierConventions {
   // Attributes of an `auth` span (since 0.9.0). Never recorded: tokens, user ids, claims, user
   // names, e-mails, issuer and endpoint URLs, DPoP proofs and thumbprints.
 
-  /// Which step: restore, sign in, refresh or sign out.
+  /// Which step: restore, sign in, renew (`refresh` until 0.20.0) or sign out.
   static const String authOperation = 'fespalier.auth.operation';
 
   /// How the step ended.
@@ -254,11 +260,12 @@ abstract final class FespalierConventions {
   /// The backend's short constant name (`oidc`, `firebase`, `fake`, an app's own).
   static const String authBackend = 'fespalier.auth.backend';
 
-  /// What asked for a refresh (refresh only).
+  /// What asked for a renewal (renew only).
   static const String authTrigger = 'fespalier.auth.trigger';
 
-  /// Whether the backend binds its tokens with DPoP.
-  static const String authDpop = 'fespalier.auth.dpop';
+  /// How the backend authenticates requests, a short constant of its own (`bearer`, `dpop`,
+  /// `device`), since 0.21.0 in place of `fespalier.auth.dpop`.
+  static const String authScheme = 'fespalier.auth.scheme';
 
   // The values of `fespalier.auth.operation`.
 
@@ -268,8 +275,8 @@ abstract final class FespalierConventions {
   /// A sign-in, or a session the app adopted.
   static const String authOpSignIn = 'sign_in';
 
-  /// New tokens were asked for.
-  static const String authOpRefresh = 'refresh';
+  /// The session's credential was renewed (since 0.21.0; `refresh` until 0.20.0).
+  static const String authOpRenew = 'renew';
 
   /// The user signed out.
   static const String authOpSignOut = 'sign_out';
@@ -282,19 +289,19 @@ abstract final class FespalierConventions {
   /// Restore: nothing was stored.
   static const String authResultNone = 'none';
 
-  /// Restore: the stored refresh token had expired, or the device key is gone.
+  /// Restore: the stored credential could not be renewed any more, or the device key is gone.
   static const String authResultExpired = 'expired';
 
-  /// The server refused: invalid credentials, or a refresh token it no longer accepts.
+  /// The server refused: invalid credentials, or a session it no longer renews.
   static const String authResultRejected = 'rejected';
 
   /// The user closed the sign-in.
   static const String authResultCancelled = 'cancelled';
 
-  /// It could not run; a refresh keeps the session.
+  /// It could not run; a renewal keeps the session.
   static const String authResultError = 'error';
 
-  // The values of `fespalier.auth.trigger` (refresh only).
+  // The values of `fespalier.auth.trigger` (renew only).
 
   /// The access token had expired before a request.
   static const String authTriggerExpired = 'expired';
@@ -302,7 +309,7 @@ abstract final class FespalierConventions {
   /// A server answered 401 to the access token.
   static const String authTriggerUnauthorized = 'unauthorized';
 
-  /// The app asked for a refresh.
+  /// The app asked for a renewal.
   static const String authTriggerForced = 'forced';
 
   // Attributes of an `image` span (since 0.9.0). Never recorded: the image's URL, its source, a
@@ -333,6 +340,29 @@ abstract final class FespalierConventions {
   /// How the operation ended: the `TelemetryOutcome` the package finished with, usually `ok` or
   /// `error` (`cancelled`, `disposed`, `rejected` and `skipped` are possible).
   static const String customResult = 'fespalier.custom.result';
+
+  // Attributes of an `http` span (since 0.21.0), OpenTelemetry's HTTP client semantic conventions
+  // (plus `fespalier.operation`, `url.path` and `error.type` above). Never recorded: a query, a
+  // fragment, a header value, a body, a credential.
+
+  /// The request method, upper case: `GET`.
+  static const String httpMethod = 'http.request.method';
+
+  /// The host the request went to.
+  static const String serverAddress = 'server.address';
+
+  /// The port the request went to (the scheme's default when the URL names none).
+  static const String serverPort = 'server.port';
+
+  /// `https` or `http`.
+  static const String urlScheme = 'url.scheme';
+
+  /// The response's status code, when one came back.
+  static const String httpStatusCode = 'http.response.status_code';
+
+  /// How many times the request had been sent before this send, on a re-send (an auth replay, a
+  /// retry): absent on the first send.
+  static const String httpResendCount = 'http.request.resend_count';
 
   // Events on the `navigate` span.
 

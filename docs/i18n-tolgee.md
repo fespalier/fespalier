@@ -40,7 +40,7 @@ The package uses the Tolgee **platform** (Content Delivery files, ICU messages, 
 | `Tolgee.init` is a `Future` that, with `apiUrl` or `cdnUrl`, can put the network before `runApp`. | The adapter and startup rules say "a local read, never the network".                                                 |
 | In-context editing runs on the same `init(apiKey:)` as production.                                | A key could end up in a release build. Tolgee's own docs say never to ship one.                                      |
 
-So fespalier_tolgee reads Tolgee's public Content Delivery files itself (about 60 lines of `package:http`), formats the
+So fespalier_tolgee reads Tolgee's public Content Delivery files itself (about 60 lines over an `HttpTransport` from `fespalier_transport`, so it links neither `package:http` nor Dio), formats the
 ICU messages itself, and keeps a `TranslationSource` interface for anything else.
 
 ## Install
@@ -149,12 +149,12 @@ Create a Content Delivery in Tolgee (Project settings), pick **JSON** or **ARB**
 
 ```dart
 const _cdn = String.fromEnvironment('TOLGEE_CDN_URL'); // public, not a secret
-remote: _cdn.isEmpty ? null : TolgeeCdn(Uri.parse(_cdn)), // TolgeeCdn(uri, format: TolgeeCdnFormat.arb, namespace: 'app')
+remote: _cdn.isEmpty ? null : TolgeeCdn(Uri.parse(_cdn), transport: transport), // TolgeeCdn(uri, transport:, format: TolgeeCdnFormat.arb, namespace: 'app')
 ```
 
 Tolgee publishes after a change with a delay of up to 15 minutes. The package asks for `<url>/<locale>.json` (or `.arb`,
 or `<namespace>/<locale>.json`; `file:` overrides the name) when a locale is first used in a container, with
-`If-None-Match` when it has an ETag. A 304 or a 404 changes nothing; any failure keeps what the app has.
+`If-None-Match` when it has an ETag. A 304 or a 404 changes nothing; any failure keeps what the app has. `transport` is required (since 0.21.0; it was an optional `client:`, an `http.Client`, until 0.20.0): it is the app's own `HttpTransport` chain ([HTTP transport](transport.md#one-transport-built-in-startup)), so its timeouts, proxy and telemetry apply. Any other status is thrown as a `TransportStatusError` (was an `http.ClientException` until 0.20.0), and a failure to reach the CDN is a `TransportFailure`; neither is kept or shown.
 
 - Never on a timer. `Translations(refreshOnResume: true)` asks again when the app resumes, `refreshOnReconnect` (on by
   default) once the network is back **after a failed fetch**, both through fespalier's `appResumeSignal` and
@@ -197,6 +197,8 @@ A small handle opens a panel with the keys read on the current screen, their val
 `PUT /v2/projects/translations` with `X-API-Key` and puts the text into the edited layer at once, so you do not wait for
 the CDN. Everyone else sees it when Tolgee publishes. Without a key the panel is read only.
 
+The editor saves through a transport too (since 0.21.0; it made its own `http.Client` until 0.20.0): `TolgeeEditor.fromEnvironment(transport:)` (and the test-only `withKey(transport:)`), and the scope's panel reads the `tolgeeEditorTransport` provider, which has **no default**: override it with the app's transport in the debug configuration that turns in-context editing on (`tolgeeEditorTransport.overrideWithValue(transport)`). A release build never reads it. A refused save is a `TransportStatusError`.
+
 ## Testing
 
 `pumpRouter`'s default app is a bare `MaterialApp.router`, with no scope, so pass your app: `app: (router) => App(router: router)`
@@ -229,7 +231,7 @@ await pumpRouter(
 - No API key in a release build, and `TolgeeCdn` has no parameter for one: `test/no_secrets_test.dart` greps `lib/`.
 - No telemetry in v1. A future `TelemetryOp` would go through `FespalierTelemetry.begin` and `finish` and never carry keys,
   texts or the CDN URL.
-- It adds `http`, `intl` and `clock` (the cache's age is read from it, so a test's fake clock ages it) and nothing else
+- It adds `fespalier_transport` (pure Dart, no dependencies), `intl` and `clock` (the cache's age is read from it, so a test's fake clock ages it) and nothing else
   beyond fespalier. It is in the Flutter 3.35 `floor` job.
 
 ## Not built

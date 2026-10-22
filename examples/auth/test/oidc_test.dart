@@ -1,13 +1,15 @@
 // OidcBackend against the demo server's OpenID Connect provider, which is shaped like Keycloak and
 // checks PKCE the way it does. The "browser" is a function that asks the provider for the redirect.
-// (The real thing, a real Keycloak, is `packages/fespalier_auth/test/keycloak_live_test.dart`.)
+// (The real thing, a real Keycloak, is `packages/fespalier_oidc/test/keycloak_live_test.dart`.)
 import 'package:auth/api.dart';
 import 'package:auth/demo/demo_server.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
-import 'package:fespalier_auth/oidc.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
+
+import 'support.dart';
 
 final issuer = Uri.parse(DemoServer.issuer);
 final redirect = Uri.parse('com.example.fespalierauth:/callback');
@@ -33,7 +35,7 @@ OidcBackend backend(
   redirectUri: redirect,
   endpoints: OidcEndpoints.keycloak(issuer),
   openBrowser: browser(server, change: change),
-  client: server.client,
+  transport: server.transport,
 );
 
 ProviderContainer app(DemoServer server, OidcBackend oidc) {
@@ -42,12 +44,12 @@ ProviderContainer app(DemoServer server, OidcBackend oidc) {
       authConfig.overrideWithValue(
         AuthConfig(
           backend: oidc,
+          transport: server.transport,
           store: MemoryTokenStore(),
           apiOrigins: [apiOrigin],
         ),
       ),
       authInitialState.overrideWithValue(const SignedOut()),
-      authBaseClient.overrideWithValue(server.client),
     ],
   );
   addTearDown(container.dispose);
@@ -119,10 +121,13 @@ void main() {
       final server = DemoServer();
       final oidc = backend(server);
       final session = await oidc.signIn(const BrowserSignIn());
-      final next = await oidc.refresh(session);
-      expect(next.tokens.refreshToken, isNot(session.tokens.refreshToken));
+      final next = await oidc.renew(session);
+      expect(
+        (next.credential as TokenCredential).refreshToken,
+        isNot((session.credential as TokenCredential).refreshToken),
+      );
       await expectLater(
-        oidc.refresh(session),
+        oidc.renew(session),
         throwsA(
           isA<AuthRejected>().having(
             (e) => e.description,
@@ -135,22 +140,22 @@ void main() {
   );
 
   test(
-    'concurrent requests on an expired token refresh once: rotation would refuse a second',
+    'concurrent requests on an expired token renew once: rotation would refuse a second',
     () async {
       final server = DemoServer();
       final container = app(server, backend(server));
       final notifier = container.read(authSession.notifier);
       await notifier.signIn(const BrowserSignIn());
       server.requests.clear();
-      // The server forgets the access token: every request gets a 401 and asks for a refresh.
+      // The server forgets the access token: every request gets a 401 and asks for a renewal.
       server.expireAccessTokens();
-      final client = container.read(authHttpClient);
-      final responses = await Future.wait([
-        client.get(api('/orders')),
-        client.get(api('/orders/1')),
-        client.get(api('/me')),
+      final transport = container.read(authTransport);
+      final answers = await Future.wait([
+        get(transport, '/orders'),
+        get(transport, '/orders/1'),
+        get(transport, '/me'),
       ]);
-      expect(responses.map((r) => r.statusCode), [200, 200, 200]);
+      expect(answers.map((a) => a.status), [200, 200, 200]);
       expect(server.refreshes, 1);
       expect(container.read(authSession), isA<SignedIn>());
     },
@@ -172,7 +177,10 @@ void main() {
 
   test('the provider reached by discovery spells the same endpoints', () async {
     final server = DemoServer();
-    final found = await OidcEndpoints.discover(issuer, client: server.client);
+    final found = await OidcEndpoints.discover(
+      issuer,
+      transport: server.transport,
+    );
     final spelled = OidcEndpoints.keycloak(issuer);
     expect(found.authorization, spelled.authorization);
     expect(found.token, spelled.token);
@@ -188,7 +196,9 @@ void main() {
       redirectUri: redirect,
       endpoints: OidcEndpoints.keycloak(issuer),
       openBrowser: (_, _) async => throw const AuthCancelled(),
-      client: http.Client(),
+      transport: FakeTransport(
+        (_, _) => throw StateError('no request is made'),
+      ),
     );
     await expectLater(
       oidc.signIn(const BrowserSignIn()),

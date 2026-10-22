@@ -4,9 +4,9 @@
 import 'dart:typed_data';
 
 import 'package:cose_example/src/cose/cose.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
 import 'package:flutter_sign_keypair/flutter_sign_keypair.dart'
     show SoftwareSecureSigner;
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
@@ -98,7 +98,7 @@ void main() {
       final software = SoftwareSecureSigner();
       await software.importKey(keyId: 'vectors', privateScalar: scalar);
       sealer = CoseSealer(
-        SoftwareDpopSigner(keyId: 'vectors', signer: software),
+        SoftwareKeypairSigner(keyId: 'vectors', signer: software),
       );
     });
 

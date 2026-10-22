@@ -5,8 +5,10 @@ import 'dart:async';
 
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download/testing.dart';
-import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpClientTransport;
 import 'package:fespalier_http/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -63,6 +65,80 @@ void main() {
     expect(client.requests, hasLength(2));
     expect(files.bytesOf(dest), body);
   });
+
+  test(
+    'retry sees the body of a 401 and of a 403, not of another refusal',
+    () async {
+      for (final (status, seen) in [
+        (401, 'try again with a nonce'),
+        (403, 'try again with a nonce'),
+        (404, null),
+      ]) {
+        final credentials = FakeHttpCredentials(origins: [_origin]);
+        final client = FakeHttpClient(
+          (request, _) => http.Response('try again with a nonce', status),
+        );
+        final c = Rig(client, files, credentials: credentials);
+        await c.start(request());
+        expect(credentials.retryBodies.first, seen, reason: '$status');
+        expect(c.httpStatuses['douala'], status);
+      }
+    },
+  );
+
+  test(
+    'a refusal with a body longer than 64 KiB is not read for the credentials',
+    () async {
+      final credentials = FakeHttpCredentials(origins: [_origin]);
+      final client = FakeHttpClient(
+        (request, _) => http.Response('x' * (64 * 1024 + 1), 401),
+      );
+      final c = Rig(client, files, credentials: credentials);
+      await c.start(request());
+      expect(credentials.retryCalls, [401, 401]);
+      expect(credentials.retryBodies, [null, null]);
+      expect(c.now, const Failed(DownloadFailure.unauthorized));
+      expect(c.httpStatuses['douala'], 401);
+    },
+  );
+
+  test(
+    'a refusal that streams more than 64 KiB without saying so is handled as before',
+    () async {
+      final credentials = FakeHttpCredentials(origins: [_origin]);
+      final client = _Chunked(401, List.filled(5, 'y' * 20000));
+      final c = Rig(client, files, credentials: credentials);
+      await c.start(request());
+      expect(credentials.retryBodies, [null, null]);
+      expect(c.now, const Failed(DownloadFailure.unauthorized));
+      expect(c.httpStatuses['douala'], 401);
+    },
+  );
+
+  test(
+    'authorize gets the final request: its range and the headers so far',
+    () async {
+      files.putBytes(part, body.sublist(0, 100));
+      files.putText(tag, '"v1"');
+      final credentials = FakeHttpCredentials(origins: [_origin]);
+      final client = FakeHttpClient(
+        (request, _) => http.Response.bytes(
+          body.sublist(100),
+          206,
+          headers: {'content-range': 'bytes 100-299/300', 'etag': '"v1"'},
+        ),
+      );
+      final c = Rig(client, files, credentials: credentials);
+      await c.start(
+        request(bytes: 300, sha256: sha256Of(body), headers: {'x-app': '1'}),
+      );
+      final seen = credentials.authorizeRequests.single;
+      expect(seen.method, 'GET');
+      expect(seen.headers['x-app'], '1');
+      expect(seen.headers['range'], 'bytes=100-');
+      expect(seen.body, isEmpty);
+    },
+  );
 
   test('a second 401 stands: Failed(unauthorized) with the status', () async {
     final credentials = FakeHttpCredentials(origins: [_origin]);
@@ -130,7 +206,7 @@ void main() {
 
   // The session could not be reached (no network while the token refreshes): nothing was refused,
   // so the person is not told their session is gone. `fespalier_auth` throws `AuthUnavailable`,
-  // a `ClientException`, for it.
+  // a `CredentialsUnavailable`, for it.
   test('authorize that cannot reach the session ends network', () async {
     final client = FakeHttpClient(
       (request, _) => http.Response.bytes(body, 200),
@@ -138,10 +214,7 @@ void main() {
     final c = Rig(
       client,
       files,
-      credentials: _Throws(
-        onAuthorize: true,
-        error: http.ClientException("couldn't refresh the session"),
-      ),
+      credentials: _Throws(onAuthorize: true, error: _Unreachable()),
     );
     await c.start(request());
     expect(c.now, const Failed(DownloadFailure.network));
@@ -154,10 +227,7 @@ void main() {
     final c = Rig(
       client,
       files,
-      credentials: _Throws(
-        onAuthorize: false,
-        error: http.ClientException("couldn't refresh the session"),
-      ),
+      credentials: _Throws(onAuthorize: false, error: _Unreachable()),
     );
     await c.start(request());
     expect(c.now, const Failed(DownloadFailure.network));
@@ -179,7 +249,7 @@ void main() {
       });
       final d = Downloads(
         backend: HttpDownloadBackend(
-          client: client,
+          transport: HttpClientTransport(client),
           bases: defaultBases,
           files: files,
           credentials: session,
@@ -248,7 +318,7 @@ void main() {
       final asked = <bool>[];
       final d = Downloads(
         backend: HttpDownloadBackend(
-          client: client,
+          transport: HttpClientTransport(client),
           bases: defaultBases,
           files: files,
         ),
@@ -280,6 +350,28 @@ void main() {
   );
 }
 
+// What `fespalier_auth`'s `AuthUnavailable` is: the session could not be reached.
+class _Unreachable implements CredentialsUnavailable {
+  @override
+  Object get cause => "couldn't refresh the session";
+}
+
+// A server that answers [status] with a body streamed in [chunks], with no content-length.
+class _Chunked extends http.BaseClient {
+  _Chunked(this.status, this.chunks);
+
+  final int status;
+  final List<String> chunks;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async =>
+      http.StreamedResponse(
+        Stream<List<int>>.fromIterable(chunks.map((c) => c.codeUnits)),
+        status,
+        request: request,
+      );
+}
+
 // Wants every request sent again.
 class _Eager implements HttpCredentials {
   final List<int> retryCalls = [];
@@ -289,18 +381,16 @@ class _Eager implements HttpCredentials {
 
   @override
   Future<HttpAuthorization> authorize(
-    String method,
-    Uri uri, {
+    TransportRequest request, {
     HttpAuthorization? previous,
-  }) async => _Attempt(method, uri);
+  }) async => _Attempt();
 
   @override
   Future<bool> retry(
-    HttpAuthorization attempt, {
-    required int statusCode,
-    required Map<String, String> headers,
-  }) async {
-    retryCalls.add(statusCode);
+    HttpAuthorization attempt,
+    TransportResponse response,
+  ) async {
+    retryCalls.add(response.statusCode);
     return true;
   }
 }
@@ -317,20 +407,18 @@ class _Throws implements HttpCredentials {
 
   @override
   Future<HttpAuthorization> authorize(
-    String method,
-    Uri uri, {
+    TransportRequest request, {
     HttpAuthorization? previous,
   }) async {
     if (onAuthorize) throw error;
-    return _Attempt(method, uri);
+    return _Attempt();
   }
 
   @override
   Future<bool> retry(
-    HttpAuthorization attempt, {
-    required int statusCode,
-    required Map<String, String> headers,
-  }) async => throw error;
+    HttpAuthorization attempt,
+    TransportResponse response,
+  ) async => throw error;
 }
 
 // A session that cannot be reached while [offline] (the refresh has no network), then can.
@@ -342,31 +430,21 @@ class _Flaky implements HttpCredentials {
 
   @override
   Future<HttpAuthorization> authorize(
-    String method,
-    Uri uri, {
+    TransportRequest request, {
     HttpAuthorization? previous,
   }) async {
-    if (offline) throw http.ClientException("couldn't refresh the session");
-    return _Attempt(method, uri);
+    if (offline) throw _Unreachable();
+    return _Attempt();
   }
 
   @override
   Future<bool> retry(
-    HttpAuthorization attempt, {
-    required int statusCode,
-    required Map<String, String> headers,
-  }) async => false;
+    HttpAuthorization attempt,
+    TransportResponse response,
+  ) async => false;
 }
 
 class _Attempt implements HttpAuthorization {
-  _Attempt(this.method, this.uri);
-
-  @override
-  final String method;
-
-  @override
-  final Uri uri;
-
   @override
   Map<String, String> get headers => const {'Authorization': 'Bearer t'};
 

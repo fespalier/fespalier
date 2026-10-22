@@ -66,6 +66,7 @@ jobs:
           cargo run --quiet -- check --project ../examples/plugins
           cargo run --quiet -- check --project ../examples/downloads
           cargo run --quiet -- check --project ../examples/cose
+          cargo run --quiet -- check --project ../examples/frb-cose
           cargo run --quiet -- check --project ../examples/i18n
           cargo run --quiet -- check --project ../examples/maps
           cargo run --quiet -- check --project ../examples/adopt
@@ -161,6 +162,7 @@ jobs:
           - examples/maps
           - examples/adopt
           - examples/offline
+          - examples/frb-cose
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -184,6 +186,24 @@ jobs:
           find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*'
           -print0 | xargs -0 dart format --output=none --set-exit-if-changed
       - run: flutter analyze
+      # examples/frb-cose: its flutter test builds the Rust core (hook/build.dart compiles examples/frb-cose/rust with
+      # the toolchain that folder's rust-toolchain.toml names; rustup installs the targets it lists on first use, about
+      # 2 GB). No other folder needs Rust, so these steps run for that one only.
+      - name: Read the Rust toolchain of the frb-cose core
+        if: matrix.dir == 'examples/frb-cose'
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/frb-cose/rust/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        if: matrix.dir == 'examples/frb-cose'
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: matrix.dir == 'examples/frb-cose'
+        with:
+          workspaces: examples/frb-cose/rust
+          cache-directories: examples/frb-cose/.dart_tool/hooks_runner
+          key: frb-cose-hook
       - run: flutter test
       # The generated files hide lints with `ignore_for_file`; the const ones are checked here,
       # on a copy without it (a page built without `const` rebuilds on every navigation).
@@ -1055,6 +1075,7 @@ jobs:
           - adopt
           - offline
           - cose
+          - frb-cose
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

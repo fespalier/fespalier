@@ -900,6 +900,20 @@
           "alt": "The cose example's Notes page with no server running: this device's key, The server did not answer, No notes yet, and a New note field with an Add button."
         }
       ]
+    },
+    "frb-cose": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "The Rust core is not in this build",
+          "note": "a web build has no core (hook/build.dart builds none for the web), so the notes page says so, makes no call and keeps nothing"
+        },
+        {
+          "path": "/core",
+          "expect": "Not built for the web",
+          "note": "the core page of a web build: no key, no registration and no journal, and no request"
+        }
+      ]
     }
   }
 }

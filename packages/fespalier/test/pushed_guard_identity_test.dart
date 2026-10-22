@@ -154,6 +154,7 @@ GoRouter _router() => GoRouter(
       '/g4',
       'g4',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(context, 'g4@g4', (ref) {
           ref.watch(_authEvents);
           final answer = ref.watch(_g4Open) ? null : '/z';
@@ -176,6 +177,7 @@ GoRouter _router() => GoRouter(
       '/oa',
       'oa',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(context, 'ga@oa', (ref) async {
           final open = ref.watch(_baseOpen);
           for (var i = 0; i < _baseAwaits; i++) {
@@ -384,6 +386,7 @@ void main() {
           GoRoute(
             path: '/',
             redirect: (context, state) => runRedirect(
+              state,
               () => refGuard(
                 context,
                 'b@root',
@@ -395,6 +398,7 @@ void main() {
           GoRoute(
             path: '/login',
             redirect: (context, state) => runRedirect(
+              state,
               () => refGuard(
                 context,
                 'l@login',
@@ -409,6 +413,7 @@ void main() {
             '/g4',
             'g4',
             redirect: (context, state) => runRedirect(
+              state,
               () => refGuard(context, 'g4@g4', (ref) {
                 final answer = ref.watch(_g4Open) && ref.watch(_session)
                     ? null

@@ -459,14 +459,18 @@ final class _RouterGuards {
   ///
   /// If the entry it was about is still on top (the same completer) and this re-run is the newest of
   /// that entry ([_newest]), the re-run goes on as a new one that replays the answers received so
-  /// far by position, so every redirect answers at once and the new `replace` lands in its own call,
-  /// with all its answers (invariant 8). It starts in the zone the first re-run started in, so it
-  /// does not inherit the error zone go_router 17.2.3 to 18.1.0 run a redirect in. If the entry has
-  /// gone (a pop, a `go`, a refresh that gave the page a new completer, another re-run that
-  /// landed), nothing is carried and nothing comes back: the person's pop is not undone by a guard
-  /// that answers late. Nor is a newer re-run of the entry: a change that started it (a role
-  /// revoked while this one waited for the server) made this one's answer stale, and carrying it
-  /// would land a page the newer one has refused.
+  /// far by position, each to the redirect for the same route and location that gave it
+  /// ([_Rerun.replayAt]), so every redirect answers at once and the new `replace` lands in its own
+  /// call, with all its answers (invariant 8). A redirect that is another one (the app's own redirect
+  /// sent the run elsewhere) runs for real, and that run is carried on in turn if it waits.
+  ///
+  /// The new re-run starts in the zone the first one started in, so it does not inherit the error
+  /// zone go_router 17.2.3 to 18.1.0 run a redirect in. If the entry has gone (a pop, a `go`, a
+  /// refresh that gave the page a new completer, another re-run that landed), nothing is carried and
+  /// nothing comes back: the person's pop is not undone by a guard that answers late. Nor is a newer
+  /// re-run of the entry: a change that started it (a role revoked while this one waited for the
+  /// server) made this one's answer stale, and carrying it would land a page the newer one has
+  /// refused.
   Future<String?> _carry(_Rerun dropped) {
     final top = _topEntry();
     if (top != null &&
@@ -845,10 +849,14 @@ final class _Rerun {
   /// The zone the re-run started in, which a carried one starts in too (see [_RouterGuards._carry]).
   final Zone zone;
 
-  /// The answers of the dropped re-run this one carries on, by position (a location, null, or a
-  /// [GuardFailure]), and the answers of this one, replayed ones included.
-  final List<Object?> replay;
-  final answers = <Object?>[];
+  /// The answers of the dropped re-run this one carries on, by position, and the answers of this
+  /// one, replayed ones included. Each says which location and route it was given for ([_Answer]).
+  final List<_Answer> replay;
+  final answers = <_Answer>[];
+
+  /// Whether the replay still holds: it ends at the first redirect that is not the one that gave the
+  /// answer recorded at its position (see [replayAt]), and every redirect after it runs for real.
+  bool replaying = true;
 
   /// The `RouteInformationState` the `replace` of the re-run put in the provider: the identity of
   /// its navigation. Null until the first redirect, site or question of the call asks for it.
@@ -874,12 +882,49 @@ final class _Rerun {
       ? state
       : null;
 
+  /// The answer recorded at [position] by the re-run this one carries on, when the redirect that
+  /// asks now is the one that gave it: the same route, asked about the same location. Null when
+  /// there is none, or when the redirect is another one, and then the replay is over.
+  ///
+  /// The chain of redirects that go_router runs for the re-run can differ from the dropped one's
+  /// while the guard waited, when a redirect of the app's own that fespalier does not see (the
+  /// router's top-level `redirect:`, a hand-written one) sends the location elsewhere. The answer of
+  /// the old position is then another route's, and giving it to this one would let the page in
+  /// without its guard having run or being watched.
+  _Answer? replayAt(int position, GoRouterState state) {
+    if (!replaying || position >= replay.length) return null;
+    final recorded = replay[position];
+    if (recorded.isFor(state)) return recorded;
+    replaying = false;
+    return null;
+  }
+
   /// Records the answer of the redirect at the next position: a location (or null), or a
   /// [GuardFailure].
-  void record(Object? answer) {
+  void record(_Answer answer) {
     answers.add(answer);
-    if (answer != null) moves = true;
+    if (answer.value != null) moves = true;
   }
+}
+
+/// What one redirect of a re-run answered, and for what: the location it was asked about and the
+/// route whose redirect it was (`GoRouterState.uri` and `fullPath`). [value] is a location, null or
+/// a [GuardFailure].
+final class _Answer {
+  const _Answer(this.uri, this.fullPath, this.value);
+
+  /// The answer of the redirect that was given [state].
+  _Answer.of(GoRouterState state, this.value)
+    : uri = state.uri,
+      fullPath = state.fullPath;
+
+  final Uri uri;
+  final String? fullPath;
+  final Object? value;
+
+  /// Whether the redirect that was given [state] is the one that gave this answer.
+  bool isFor(GoRouterState state) =>
+      uri == state.uri && fullPath == state.fullPath;
 }
 
 /// A push-type request whose redirects ran (see [_RouterGuards._requests]).
@@ -1032,7 +1077,9 @@ final class GuardFailure extends GoException {
 const Symbol _goRouterZoneKey = #goRouterRedirectContext;
 
 /// What a generated `redirect:` runs its guards and its `redirect.dart` through (since 0.21.0):
-/// `redirect: (context, state) => runRedirect(() => traceGuard(...))`.
+/// `redirect: (context, state) => runRedirect(state, () => traceGuard(...))`. [state] is the
+/// `GoRouterState` go_router gave the redirect: the re-run of a pushed page tells by its location
+/// and route which redirect it replays an answer to (see [_RouterGuards._carry]).
 ///
 /// A guard or `redirect.dart` that throws, or whose `Future` fails, reaches go_router as a
 /// [GuardFailure] (what it threw and its stack trace, Riverpod's `ProviderException` taken off), so
@@ -1046,7 +1093,10 @@ const Symbol _goRouterZoneKey = #goRouterRedirectContext;
 /// navigation never ended. There, [redirect] runs where go_router 18.1.1 runs it: in a plain fork of
 /// the zone that called go_router, with go_router's router value. Anywhere else (go_router 18.1.1, no
 /// router, a zone of the app's own) it runs in the current zone.
-FutureOr<String?> runRedirect(GuardResult Function() redirect) {
+FutureOr<String?> runRedirect(
+  GoRouterState state,
+  GuardResult Function() redirect,
+) {
   final zone = Zone.current;
   final parent = zone.parent;
   final router = zone[_goRouterZoneKey];
@@ -1073,23 +1123,29 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
       !zone.inSameErrorZone(parent)) {
     return parent
         .fork(zoneValues: {_goRouterZoneKey: router})
-        .run(() => _redirect(redirect, rerun));
+        .run(() => _redirect(state, redirect, rerun));
   }
-  return _redirect(redirect, rerun);
+  return _redirect(state, redirect, rerun);
 }
 
-/// Runs [redirect] for [runRedirect]. When [rerun] is given, the redirect belongs to the re-run of a
-/// pushed page, and runs in its `replace` call: its answer is recorded by position, and an answer
-/// that moves the page (a location, or a failure) is told to the landing ([guardRerunVerdict]). A
-/// redirect whose position the re-run has an answer for (it carries on a dropped one) answers at
-/// once with that. One that answers with a `Future` drops the re-run when the `Future` completes
-/// (invariant 7, see [_RouterGuards._carry]).
-FutureOr<String?> _redirect(GuardResult Function() redirect, _Rerun? rerun) {
+/// Runs [redirect], the redirect of the route [state] is for, for [runRedirect]. When [rerun] is
+/// given, the redirect belongs to the re-run of a pushed page, and runs in its `replace` call: its
+/// answer is recorded by position, with the location and route it is for, and an answer that moves
+/// the page (a location, or a failure) is told to the landing ([guardRerunVerdict]). A redirect
+/// whose position the re-run has an answer for, given for this very location and route (it carries
+/// on a dropped one, see [_Rerun.replayAt]), answers at once with that. One that answers with a
+/// `Future` drops the re-run when the `Future` completes (invariant 7, see [_RouterGuards._carry]).
+FutureOr<String?> _redirect(
+  GoRouterState state,
+  GuardResult Function() redirect,
+  _Rerun? rerun,
+) {
   if (rerun != null) {
     final position = rerun.position++;
-    if (position < rerun.replay.length) {
-      final answer = rerun.replay[position];
-      rerun.record(answer);
+    final recorded = rerun.replayAt(position, state);
+    if (recorded != null) {
+      rerun.record(recorded);
+      final answer = recorded.value;
       if (answer is GuardFailure) {
         Error.throwWithStackTrace(answer, answer.stackTrace);
       }
@@ -1101,22 +1157,22 @@ FutureOr<String?> _redirect(GuardResult Function() redirect, _Rerun? rerun) {
     result = redirect();
   } catch (error, stackTrace) {
     final failure = _failure(error, stackTrace);
-    rerun?.record(failure);
+    rerun?.record(_Answer.of(state, failure));
     Error.throwWithStackTrace(failure, failure.stackTrace);
   }
   if (result is! Future<String?>) {
-    rerun?.record(result);
+    rerun?.record(_Answer.of(state, result));
     return result;
   }
   if (rerun == null) return result.then<String?>(_same, onError: _fail);
   final guards = rerun.guards;
   return result.then<String?>(
     (location) {
-      rerun.record(location);
+      rerun.record(_Answer.of(state, location));
       return guards._carry(rerun);
     },
     onError: (Object error, StackTrace stackTrace) {
-      rerun.record(_failure(error, stackTrace));
+      rerun.record(_Answer.of(state, _failure(error, stackTrace)));
       return guards._carry(rerun);
     },
   );

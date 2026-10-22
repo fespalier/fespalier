@@ -36,6 +36,13 @@ final _asked = <String>[];
 /// When set, the guards answer a pass once it completes: the slow server.
 Completer<void>? _server;
 
+/// The same for the guard of `/secure`, and how often that guard ran.
+Completer<void>? _secureServer;
+var _secureRuns = 0;
+
+/// Whether the app's own top-level redirect (not a fespalier guard) sends `/admin` to `/secure`.
+var _maintenance = false;
+
 List<String> _stack(GoRouter r) {
   final pushed = <ImperativeRouteMatch>[];
   pushedMatches(r.routerDelegate.currentConfiguration.matches, pushed);
@@ -67,11 +74,14 @@ GoRouter _router({
   bool asyncBase = false,
 }) => GoRouter(
   initialLocation: '/home',
+  redirect: (context, state) =>
+      _maintenance && state.uri.path == '/admin' ? '/secure' : null,
   routes: [
     GoRoute(
       path: '/home',
       redirect: guardedBase
           ? (context, state) => runRedirect(
+              state,
               () => refGuard(context, 'g@home', (ref) {
                 _homeRuns++;
                 final answer = ref.watch(_session) ? null : '/login';
@@ -89,7 +99,7 @@ GoRouter _router({
     GoRoute(
       path: '/admin',
       redirect: (context, state) =>
-          runRedirect(() => refGuard(context, 'g@admin', _adminGuard)),
+          runRedirect(state, () => refGuard(context, 'g@admin', _adminGuard)),
       onExit: (context, state) =>
           leaveExit(context, state, 'admin/leave.dart', (ref, page) {
             _asked.add('admin');
@@ -99,10 +109,28 @@ GoRouter _router({
           refusedView(context, state) ??
           Scaffold(appBar: AppBar(), body: const Text('ADMIN')),
     ),
+    // A page that is never shown signed out: its guard watches the session.
+    GoRoute(
+      path: '/secure',
+      redirect: (context, state) => runRedirect(
+        state,
+        () => refGuard(context, 'g@secure', (ref) {
+          _secureRuns++;
+          if (!ref.watch(_session)) return Future<String?>.value('/login');
+          final server = _secureServer;
+          return server == null
+              ? Future<String?>.value(null)
+              : server.future.then<String?>((_) => null);
+        }),
+      ),
+      builder: (context, state) =>
+          refusedView(context, state) ?? const Text('SECURE'),
+    ),
     // A page whose guard waits for the server and watches the session.
     GoRoute(
       path: '/acct',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(context, 'g@acct', (ref) {
           _runs++;
           if (!ref.watch(_session)) return Future<String?>.value('/login');
@@ -120,6 +148,7 @@ GoRouter _router({
     GoRoute(
       path: '/p',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(
           context,
           'g@p',
@@ -131,7 +160,7 @@ GoRouter _router({
         GoRoute(
           path: 'c',
           redirect: (context, state) =>
-              runRedirect(() => refGuard(context, 'g@p/c', _adminGuard)),
+              runRedirect(state, () => refGuard(context, 'g@p/c', _adminGuard)),
           builder: (context, state) =>
               refusedView(context, state) ??
               Scaffold(appBar: AppBar(), body: const Text('CHILD')),
@@ -186,8 +215,11 @@ void main() {
   setUp(() {
     _runs = 0;
     _homeRuns = 0;
+    _secureRuns = 0;
+    _maintenance = false;
     _asked.clear();
     _server = null;
+    _secureServer = null;
   });
 
   inEveryOrder(() {
@@ -371,6 +403,67 @@ void main() {
           },
         );
       }
+    });
+
+    // A carried re-run replays the answers of the redirects it has received, by position. A position
+    // is replayed only for the location and the route that gave the answer: when the app's own
+    // redirect (go_router asks it first, and fespalier does not see it) sends the carried run
+    // somewhere else, the guard of that other route runs for real.
+    group('the replay is for the location that answered', () {
+      /// `/admin` pushed, `/x` over it and popped while the server is slow (a re-run of `/admin`
+      /// waits), then the app's own redirect starts to send `/admin` to `/secure`, and last the
+      /// server answers.
+      Future<(GoRouter, ProviderContainer)> sentElsewhere(
+        WidgetTester tester, {
+        required bool signedIn,
+      }) async {
+        final r = _router();
+        final c = await pumpRouter(tester, attached(r));
+        c.read(_session.notifier).set(signedIn);
+        await _settle(tester);
+        await _push(tester, r, '/admin');
+        await _push(tester, r, '/x');
+        _server = Completer<void>();
+        r.pop();
+        await _settle(tester);
+        expect(find.text('ADMIN'), findsOneWidget, reason: 'the re-run waits');
+        _maintenance = true;
+        return (r, c);
+      }
+
+      testWidgets('the guard of the other route runs, and refuses', (
+        tester,
+      ) async {
+        final (r, _) = await sentElsewhere(tester, signedIn: false);
+        _server!.complete();
+        await _settle(tester);
+        expect(_secureRuns, 1, reason: "/secure's guard ran for real");
+        expect(find.text('SECURE'), findsNothing, reason: 'signed out');
+        expect(find.text('LOGIN'), findsOneWidget);
+        expect(_stack(r), ['/home', '/login']);
+        expect(_asked, ['admin'], reason: 'the page moved: asked once');
+      });
+
+      testWidgets('a guard of the other route that waits is run once and the '
+          'page it lets in is watched', (tester) async {
+        final (r, c) = await sentElsewhere(tester, signedIn: true);
+        _secureServer = Completer<void>();
+        _server!.complete();
+        await _settle(tester);
+        expect(_secureRuns, 1, reason: "/secure's guard ran for real");
+        expect(find.text('SECURE'), findsNothing, reason: 'still waiting');
+        expect(find.text('ADMIN'), findsOneWidget);
+        _secureServer!.complete();
+        await _settle(tester);
+        expect(_secureRuns, 1, reason: 'and its answer was replayed');
+        expect(find.text('SECURE'), findsOneWidget);
+        expect(_stack(r), ['/home', '/secure']);
+        // The guard that let the page in is watched: signing out takes it away.
+        c.read(_session.notifier).set(false);
+        await _settle(tester);
+        expect(find.text('SECURE'), findsNothing);
+        expect(_stack(r), ['/home', '/login']);
+      });
     });
   });
 }

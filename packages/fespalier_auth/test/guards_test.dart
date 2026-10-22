@@ -225,6 +225,7 @@ void main() {
           GoRoute(
             path: '/orders/1',
             redirect: (context, state) => runRedirect(
+              state,
               () => refGuard(
                 context,
                 'g/orders/1',

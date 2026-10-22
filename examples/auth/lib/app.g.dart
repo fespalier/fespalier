@@ -39,7 +39,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '6f2092aa52f921fc';
+  static const String _version = 'be1947b5f698c6cf';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
     'OrderRoute.data': '4c4f2fac',
@@ -144,7 +144,7 @@ abstract final class AppRoutes {
         routes: [
           GoRoute(
             path: 'admin',
-            redirect: (context, state) => runRedirect(() => firstRedirect([
+            redirect: (context, state) => runRedirect(state, () => firstRedirect([
               () => traceGuard(state, 'g1@2', refGuard(context, 'g1@2', (ref) => _i3.guard(ref, uri: state.uri))),
               () => traceGuard(state, 'g2@2', refGuard(context, 'g2@2', (ref) => _i5.guard(ref, uri: state.uri))),
             ])),
@@ -155,7 +155,7 @@ abstract final class AppRoutes {
           ),
           GoRoute(
             path: 'orders',
-            redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@3', refGuard(context, 'g1@3', (ref) => _i3.guard(ref, uri: state.uri)))),
+            redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g1@3', refGuard(context, 'g1@3', (ref) => _i3.guard(ref, uri: state.uri)))),
             pageBuilder: (context, state) => namedPage('/orders', () => _i1.transition(
               state.pageKey,
               refusedView(context, state) ?? DataView(
@@ -197,7 +197,7 @@ abstract final class AppRoutes {
           ),
           GoRoute(
             path: 'sign-in',
-            redirect: (context, state) => runRedirect(() => traceGuard(state, 'g6@6', guardWithParams(
+            redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g6@6', guardWithParams(
               () => _params6(state),
               (v) => refGuard(context, 'g6@6', (ref) => _i13.guard(ref, from: v.from)),
             ))),

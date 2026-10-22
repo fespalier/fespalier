@@ -40,6 +40,7 @@ GoRouter _router({required bool async}) => GoRouter(
     GoRoute(
       path: '/f',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(context, 'g@f', (ref) {
           _runs++;
           String? answer() => switch (_mode) {

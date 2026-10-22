@@ -76,6 +76,7 @@ GoRouter _router() => GoRouter(
     GoRoute(
       path: '/slow',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(context, 'g@slow', (ref) {
           _slowRuns++;
           return _answer(ref.watch(_session) ? null : '/login');
@@ -97,6 +98,7 @@ GoRouter _router() => GoRouter(
     GoRoute(
       path: '/chain',
       redirect: (context, state) => runRedirect(
+        state,
         () => firstRedirect([
           () => refGuard(context, 'g1@chain', (ref) {
             _chain1Runs++;
@@ -117,6 +119,7 @@ GoRouter _router() => GoRouter(
     GoRoute(
       path: '/p',
       redirect: (context, state) => runRedirect(
+        state,
         () => refGuard(context, 'g@p', (ref) {
           _parentRuns++;
           return ref.watch(_session) ? null : '/login';
@@ -127,6 +130,7 @@ GoRouter _router() => GoRouter(
         GoRoute(
           path: 'c',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g@p/c', (ref) {
               _childRuns++;
               return _answer(ref.watch(_role) ? null : '/login');

@@ -20,6 +20,7 @@ GoRouter router(String label, {required bool telemetry, bool guarded = false}) {
         // not keep its route information provider registered as a binding observer (since 0.21.0).
         redirect: guarded
             ? (context, state) => runRedirect(
+                state,
                 () => refGuard(context, 'g@home $label', (ref) => null),
               )
             : null,

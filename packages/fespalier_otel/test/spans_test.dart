@@ -209,12 +209,14 @@ GoRouter router({String initial = '/home'}) {
       GoRoute(
         path: '/old',
         redirect: (_, state) => runRedirect(
+          state,
           () => traceGuard(state, 'r4', '/other', telemetry: redirectSite),
         ),
       ),
       GoRoute(
         path: '/checkout',
         redirect: (_, state) => runRedirect(
+          state,
           () => traceGuard(state, 'g1@3', checkout(), telemetry: guardSite),
         ),
         builder: (_, _) => page('checkout'),

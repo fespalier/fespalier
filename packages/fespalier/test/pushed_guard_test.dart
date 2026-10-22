@@ -133,6 +133,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/secret',
           redirect: (context, state) => runRedirect(
+            state,
             () =>
                 allowedGuard(ProviderScope.containerOf(context, listen: false)),
           ),
@@ -182,7 +183,7 @@ void pushedPageGroups() {
         GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
         GoRoute(
           path: '/checkout',
-          redirect: (context, state) => runRedirect(() {
+          redirect: (context, state) => runRedirect(state, () {
             runs++;
             // The second run is the push, which fails; every other run passes.
             if (runs == 2) throw StateError('boom');
@@ -253,6 +254,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/admin',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(
               context,
               'g@admin',
@@ -298,6 +300,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/pick',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(
               context,
               'g1@pick',
@@ -362,6 +365,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/admin',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g1@admin', (ref) {
               runs++;
               final ok = ref.watch(_signedIn);
@@ -437,6 +441,7 @@ void pushedPageGroups() {
                           path: 'admin',
                           parentNavigatorKey: onRoot ? rootKey : null,
                           redirect: (context, state) => runRedirect(
+                            state,
                             () => refGuard(context, 'g1@tab-admin', (ref) {
                               final answer = ref.watch(_signedIn)
                                   ? null
@@ -623,6 +628,7 @@ void pushedPageGroups() {
                       GoRoute(
                         path: 'admin',
                         redirect: (context, state) => runRedirect(
+                          state,
                           () => refGuard(
                             context,
                             'g1@tab-admin',
@@ -744,6 +750,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/admin',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g1@admin', (ref) {
               runs++;
               ref.watch(_signedIn);
@@ -773,6 +780,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/counted',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g2@counted', (ref) {
               countedRuns++;
               ref.watch(_signedIn);
@@ -978,6 +986,7 @@ void pushedPageGroups() {
           GoRoute(
             path: path,
             redirect: (context, state) => runRedirect(
+              state,
               () => refGuard(context, 'g@$path', (ref) {
                 runs++;
                 if (path == '/fa' && fails) {

@@ -333,6 +333,7 @@ void main() {
           GoRoute(
             path: '/boom',
             redirect: (context, state) => runRedirect(
+              state,
               () => traceGuard(
                 state,
                 'g5@6',

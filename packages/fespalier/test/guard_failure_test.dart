@@ -117,6 +117,7 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
     GoRoute(
       path: '/inbox',
       redirect: (context, state) => runRedirect(
+        state,
         () => traceGuard(
           state,
           'g1@1',
@@ -133,6 +134,7 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
     GoRoute(
       path: '/plain',
       redirect: (context, state) => runRedirect(
+        state,
         () => plainGuard(ProviderScope.containerOf(context, listen: false)),
       ),
       builder: (_, _) => const Text('PLAIN'),
@@ -142,6 +144,7 @@ GoRouter router({String initial = '/other', bool withView = true}) => GoRouter(
     GoRoute(
       path: '/admin',
       redirect: (context, state) => runRedirect(
+        state,
         () => firstRedirect([
           () => refGuard(context, 'g1@admin', (ref) {
             adminRuns++;
@@ -177,11 +180,15 @@ void main() {
   });
 
   group('runRedirect', () {
+    // Outside a router, `runRedirect` never reads the state it is given (only the replay of a
+    // pushed page's re-run does).
+    final state = _NoState();
+
     test('a sync answer is the very object, and schedules nothing', () {
       const location = '/login';
       late FutureOr<String?> result;
       final counts = countAsync(() {
-        result = runRedirect(() => location);
+        result = runRedirect(state, () => location);
       });
       expect(result, same(location));
       expect(counts.microtasks, 0);
@@ -192,6 +199,7 @@ void main() {
       final stack = StackTrace.fromString('the guard');
       expect(
         () => runRedirect(
+          state,
           () => Error.throwWithStackTrace(StateError('boom'), stack),
         ),
         throwsA(
@@ -207,7 +215,7 @@ void main() {
       addTearDown(container.dispose);
       final provider = Provider<String?>((ref) => throw StateError('boom'));
       expect(
-        () => runRedirect(() => container.read(provider)),
+        () => runRedirect(state, () => container.read(provider)),
         throwsA(
           isA<GuardFailure>().having(
             (f) => f.error,
@@ -220,7 +228,10 @@ void main() {
 
     test('a GuardFailure is passed on as the same object', () {
       final failure = GuardFailure(StateError('boom'), StackTrace.empty);
-      expect(() => runRedirect(() => throw failure), throwsA(same(failure)));
+      expect(
+        () => runRedirect(state, () => throw failure),
+        throwsA(same(failure)),
+      );
     });
 
     test('an async answer is a Future of its own, with the same value, and '
@@ -228,7 +239,7 @@ void main() {
       final answer = Future<String?>.value('/login');
       late FutureOr<String?> result;
       final counts = countAsync(() {
-        result = runRedirect(() => answer);
+        result = runRedirect(state, () => answer);
       });
       expect(result, isA<Future<String?>>());
       expect(identical(result, answer), isFalse);
@@ -240,7 +251,7 @@ void main() {
         'failed with', () async {
       final stack = StackTrace.fromString('the guard');
       final answer = Future<String?>.error(StateError('boom'), stack);
-      final result = runRedirect(() => answer) as Future<String?>;
+      final result = runRedirect(state, () => answer) as Future<String?>;
       await expectLater(
         result,
         throwsA(
@@ -263,7 +274,7 @@ void main() {
       runZonedGuarded(
         () {
           results.add(
-            runRedirect(() {
+            runRedirect(state, () {
               inside = Zone.current;
               seen.add(Zone.current[routerKey]);
               return Future<String?>.error(StateError('boom'));
@@ -285,7 +296,7 @@ void main() {
       late Zone inside;
       runZonedGuarded(() {
         app = Zone.current;
-        runRedirect(() {
+        runRedirect(state, () {
           inside = Zone.current;
           return '/x';
         });
@@ -299,7 +310,7 @@ void main() {
         final fork = Zone.current.fork(zoneValues: {routerKey: Object()});
         late Zone inside;
         fork.run(() {
-          runRedirect(() {
+          runRedirect(state, () {
             inside = Zone.current;
             return '/x';
           });
@@ -1016,3 +1027,6 @@ void pushedNavigations() {
     });
   });
 }
+
+/// A `GoRouterState` that nothing may read.
+final class _NoState extends Fake implements GoRouterState {}

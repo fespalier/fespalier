@@ -1,0 +1,9 @@
+# The same channel as cli/rust-toolchain.toml (cli/tests/versions.rs fails when they differ).
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
+# The build hook (native_toolchain_rust) requires this key and refuses a target it does not list, so the
+# host triple is listed here (rustup already has its std: nothing is downloaded). Another platform adds its
+# triple and runs `rustup target add` for it; the README says which.
+targets = ["x86_64-unknown-linux-gnu"]

@@ -1,0 +1,23 @@
+name: frb_cose_example
+description: "fespalier example: a Rust core behind flutter_rust_bridge is the CrateStack client. It seals every call as COSE_Sign1, and the device key stays in Dart."
+publish_to: none
+version: 0.1.0
+
+environment:
+  # Native assets need Dart 3.10 (hooks 2.x); the example claims what fespalier_sign_keypair needs.
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  # Five places pin this version (these two lines, rust/Cargo.toml, the codegen in the justfile and the
+  # generated header); cli/tests/versions.rs keeps them equal.
+  flutter_rust_bridge: 2.13.0
+  # The build hook (hook/build.dart) that compiles rust/ for the platform Flutter builds for.
+  flutter_rust_bridge_hooks: 2.13.0
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter

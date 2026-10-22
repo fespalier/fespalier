@@ -785,8 +785,9 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
 bool _staysWithin(GoRouter router, GoRouterState state, String within) {
   final value = router.routeInformationProvider.value;
   final info = value.state;
-  // A guard's re-run that is asked about outside its own call (an asynchronous `onEnter`) is not a
-  // navigation the app made: the flow section is no exemption for it (since 0.21.0).
+  // A guard's re-run that is asked about outside its own call (with any `onEnter`, which go_router
+  // waits for) is not a navigation the app made: the flow section is no exemption for it (since
+  // 0.21.0).
   if (isGuardRerun(router, info)) return false;
   final config = router.routerDelegate.currentConfiguration;
   final Uri? target;

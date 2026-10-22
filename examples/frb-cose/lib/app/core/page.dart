@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:frb_cose_example/src/core.dart';
 import 'package:frb_cose_example/src/core_view.dart';
+import 'package:frb_cose_example/src/device_key.dart';
 
-/// The Rust core: this device's key, whether the server registered it, and the calls the core accepted, newest last.
+/// The Rust core: this device's key and whether it is hardware-backed, whether the server registered it, and the calls
+/// the core accepted, newest last.
 ///
 /// A row says what happened and holds nothing sent or received: no arguments, no body and no server's text.
 class CorePage extends StatelessWidget {
@@ -24,6 +26,7 @@ class CorePage extends StatelessWidget {
           )
         else ...[
           Text('Device key ${view.kid}'),
+          Text(_describeKey(view.keyKind)),
           Text(
             view.registered
                 ? 'Registered with the server.'
@@ -42,6 +45,19 @@ class CorePage extends StatelessWidget {
     ),
   );
 }
+
+/// Whether the key is hardware-backed, and, when it is not, what that costs. The fallback to a software key is never
+/// silent: this line is where a person sees it.
+String _describeKey(DeviceKeyKind kind) => switch (kind) {
+  DeviceKeyKind.hardware => 'Hardware-backed: a secure element holds the key.',
+  DeviceKeyKind.software =>
+    'Not hardware-backed: the key is a software key. Linux and Windows have no keystore, '
+        "and an iOS simulator's keychain is not a secure element.",
+  DeviceKeyKind.inMemory =>
+    'Not hardware-backed: the keystore did not open, so this run uses a software key in memory. '
+        'It does not survive a restart: the next run is a new device to the server.',
+  DeviceKeyKind.none => 'No device key in this build.',
+};
 
 String _describe(JournalEntry row) {
   final sent = row.sent ? 'sent' : 'not sent';

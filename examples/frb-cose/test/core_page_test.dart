@@ -6,6 +6,7 @@ import 'package:frb_cose_example/app.main.g.dart';
 import 'package:frb_cose_example/app/core/page.dart';
 import 'package:frb_cose_example/src/core.dart';
 import 'package:frb_cose_example/src/core_view.dart';
+import 'package:frb_cose_example/src/device_key.dart';
 import 'package:frb_cose_example/src/notes.dart';
 import 'package:frb_cose_example/src/wiring.dart';
 
@@ -14,7 +15,10 @@ import 'support/fakes.dart';
 /// Opens `/core`. The route stacks the notes page beneath it, and that page reads the list when it is built, so the
 /// core is asked once before anything else: the test answers that read as an empty list, and the journal starts with
 /// its row.
-Future<FakeNotesCore> _boot(WidgetTester tester) async {
+Future<FakeNotesCore> _boot(
+  WidgetTester tester, {
+  DeviceKeyKind keyKind = DeviceKeyKind.hardware,
+}) async {
   final core = FakeNotesCore(kid: 'a1b2c3d4')
     ..next.add(const CoreAnswer(status: 200, bodyJson: '{"notes":[]}'));
   await pumpRouter(
@@ -23,6 +27,7 @@ Future<FakeNotesCore> _boot(WidgetTester tester) async {
     overrides: coreOverrides(
       core: core,
       identity: const DeviceIdentity(kid: 'a1b2c3d4', thumbprint: 'thumb'),
+      keyKind: keyKind,
     ),
     app: AppMain.app,
   );
@@ -50,7 +55,12 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(
         home: CorePage(
-          view: CoreView(kid: 'k', registered: false, journal: []),
+          view: CoreView(
+            kid: 'k',
+            keyKind: DeviceKeyKind.hardware,
+            registered: false,
+            journal: [],
+          ),
         ),
       ),
     );
@@ -93,5 +103,46 @@ void main() {
 
     expect(find.text('unreachable (sent, key k#0)'), findsOneWidget);
     expect(find.text('answered (sent, status 201, key k#1)'), findsOneWidget);
+  });
+
+  group('the page says whether the key is hardware-backed', () {
+    for (final (kind, line) in [
+      (
+        DeviceKeyKind.hardware,
+        'Hardware-backed: a secure element holds the key.',
+      ),
+      (
+        DeviceKeyKind.software,
+        'Not hardware-backed: the key is a software key. Linux and Windows have no keystore, '
+            "and an iOS simulator's keychain is not a secure element.",
+      ),
+      (
+        DeviceKeyKind.inMemory,
+        'Not hardware-backed: the keystore did not open, so this run uses a software key in memory. '
+            'It does not survive a restart: the next run is a new device to the server.',
+      ),
+    ]) {
+      testWidgets('${kind.name}: $line', (tester) async {
+        await _boot(tester, keyKind: kind);
+
+        expect(find.text(line), findsOneWidget);
+        expect(
+          find.textContaining('Hardware-backed'),
+          kind == DeviceKeyKind.hardware ? findsOneWidget : findsNothing,
+          reason: 'only a hardware key is called hardware-backed',
+        );
+      });
+    }
+
+    testWidgets('a build with no core has no key line to show', (tester) async {
+      await pumpRouter(
+        tester,
+        AppRoutes.router(initialLocation: '/core'),
+        overrides: unavailableOverrides(),
+        app: AppMain.app,
+      );
+
+      expect(find.textContaining('backed'), findsNothing);
+    });
   });
 }

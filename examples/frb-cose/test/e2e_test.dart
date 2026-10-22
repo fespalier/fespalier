@@ -23,6 +23,7 @@ import 'package:frb_cose_example/app/action.dart';
 import 'package:frb_cose_example/app/data.dart';
 import 'package:frb_cose_example/src/config.dart';
 import 'package:frb_cose_example/src/core.dart';
+import 'package:frb_cose_example/src/device_key.dart';
 import 'package:frb_cose_example/src/frb_core.dart';
 import 'package:frb_cose_example/src/notes.dart';
 import 'package:frb_cose_example/src/wiring.dart';
@@ -161,6 +162,7 @@ final class _Device {
       overrides: coreOverrides(
         core: core,
         identity: identityOf(x: x, y: y),
+        keyKind: DeviceKeyKind.software,
       ),
     );
     return _Device._(core, feed, container);

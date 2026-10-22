@@ -122,36 +122,43 @@ The defines are this example's own:
 
 **On macOS**, a sandboxed app cannot open a socket without `com.apple.security.network.client`, and the core's socket is the app's. Add it to `macos/Runner/DebugProfile.entitlements` and `Release.entitlements`, as [`examples/cose`](../cose/README.md#on-macos) does.
 
-**Where no hardware keystore is available** (a macOS sandbox without a signing certificate, an iOS simulator, the web), `startup()` falls back to a software key. That key lives in memory, so a restart makes a new device to the server, and the `kid` on the page changes, as in `examples/cose`.
+**Where no hardware keystore is available,** the app still gets a software key, and the `/core` page says so ("Not hardware-backed: ..."). Which software key depends on the platform:
+
+- **Linux and Windows** have no keystore. `flutter_sign_keypair` gives them its own pure-Dart signer, so the key is a software key in memory: `isHardwareBacked()` is false, and the page says the key is a software key.
+- **An iOS simulator's** keychain opens, but it is not a secure element: the same answer.
+- **A macOS build without a signing certificate** (a sandboxed app cannot write a keychain item without one) and **a phone whose keystore fails** make the keystore throw. `startup()` catches that and falls back to a `SoftwareDpopSigner`, a software key in memory, and the page says the keystore did not open. The fallback is not silent: it is on the page, and a debug build prints the error's class.
+
+A software key in memory does not survive a restart, so a restart is a new device to the server and the `kid` on the page changes, as in `examples/cose`. The web never reaches this code: it has no core, so it has no key (see below). A build that must have hardware passes `requireHardware: true` to `openDeviceSigner` ([`lib/src/device_key.dart`](lib/src/device_key.dart)); a device without a secure element then fails to start, and the splash screen shows the keystore's error, instead of getting a software key.
 
 **On the web** the app runs with no core: the notes page says so, Add is disabled, and no request is made. See [Not built](#not-built).
 
 ### 4. Try it
 
 1. Add a note. The first call registers the device key, then goes out sealed. The page says "Answered by the server: sealed by the Rust core, and verified there."
-2. Open **The core**. It shows the device key's `kid`, whether the server registered the key, and the journal of the calls the core accepted. Each row says what happened and holds nothing sent or received: no arguments, no body and no server's text.
+2. Open **The core**. It shows the device key's `kid`, whether the key is hardware-backed, whether the server registered it, and the journal of the calls the core accepted. Each row says what happened and holds nothing sent or received: no arguments, no body and no server's text.
 3. Stop the server and add another note. The page says "No answer yet. Kept under key …", and the list's line says "The server did not answer: the copy of …".
 4. Start the server again with the same `--server-scalar-hex` and tap **Send waiting**. The note is sent again, sealed anew by the core, under the same key. The first note is gone from the list, because the server forgot it in the restart.
 
 ## What is in it
 
-| Path                                            | What it is                                                                                                                                               |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lib/app/page.dart`, `data.dart`, `action.dart` | The notes page: `ref.serve` for the signed read, an intent for the signed write. Generated: `lib/app.g.dart`.                                            |
-| `lib/app/core/page.dart`, `data.dart`           | `/core`: the key, the registration and the journal. Its `data.dart` watches `coreChanges.any`.                                                           |
-| `lib/app/startup.dart`                          | Pins the server key, loads the core (`initRustCore`), opens the device key, and returns the overrides. On the web it returns the unavailable core first. |
-| `lib/src/core.dart`, `frb_core.dart`            | `NotesCore`, the seam the app reads; `FrbNotesCore`, the only wrapper of the generated object; `UnavailableCore`, for the web.                           |
-| `lib/src/core_transport.dart`                   | `CoreTransport`: a `CrateStackTransport` over the core, with the answer table.                                                                           |
-| `lib/src/changes.dart`                          | `coreChanges`: the one `ChangeFeed` over `core.changes()`.                                                                                               |
-| `lib/src/config.dart`, `wiring.dart`            | The server pin from the defines; the providers and the overrides.                                                                                        |
-| `lib/src/rust/`                                 | **Generated** by `flutter_rust_bridge_codegen`. Never edited.                                                                                            |
-| `rust/src/api/core.rs`                          | The surface Dart gets: structs, fieldless enums and the opaque `NotesCore`.                                                                              |
-| `rust/src/core/`                                | The engine, in pure Rust: the generated client, the signer, the registrar, the journal, the events and the error mapping.                                |
-| `rust/src/frb_generated.rs`                     | **Generated**. Never edited.                                                                                                                             |
-| `rust/tests/`                                   | `against_server.rs` (the example's server, in process) and `contracts.rs`.                                                                               |
-| `hook/build.dart`                               | The native-assets build hook.                                                                                                                            |
-| `server/`                                       | The server copy: `schema.cstack`, `src/`, `tests/envelope.rs`, its own `Cargo.lock` and toolchain.                                                       |
-| `test/`                                         | The fakes tests; `core_ffi_test.dart` (the real core against a stub server); `e2e_test.dart` (the real server).                                          |
+| Path                                            | What it is                                                                                                                                                                   |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/app/page.dart`, `data.dart`, `action.dart` | The notes page: `ref.serve` for the signed read, an intent for the signed write. Generated: `lib/app.g.dart`.                                                                |
+| `lib/app/core/page.dart`, `data.dart`           | `/core`: the key, the registration and the journal. Its `data.dart` watches `coreChanges.any`.                                                                               |
+| `lib/src/device_key.dart`                       | `openDeviceSigner`: the keystore first, then a software key where it throws (unless `requireHardware: true`), and `DeviceKeyKind`, how the key is held, which `/core` shows. |
+| `lib/app/startup.dart`                          | Pins the server key, loads the core (`initRustCore`), opens the device key, and returns the overrides. On the web it returns the unavailable core first.                     |
+| `lib/src/core.dart`, `frb_core.dart`            | `NotesCore`, the seam the app reads; `FrbNotesCore`, the only wrapper of the generated object; `UnavailableCore`, for the web.                                               |
+| `lib/src/core_transport.dart`                   | `CoreTransport`: a `CrateStackTransport` over the core, with the answer table.                                                                                               |
+| `lib/src/changes.dart`                          | `coreChanges`: the one `ChangeFeed` over `core.changes()`.                                                                                                                   |
+| `lib/src/config.dart`, `wiring.dart`            | The server pin from the defines; the providers and the overrides.                                                                                                            |
+| `lib/src/rust/`                                 | **Generated** by `flutter_rust_bridge_codegen`. Never edited.                                                                                                                |
+| `rust/src/api/core.rs`                          | The surface Dart gets: structs, fieldless enums and the opaque `NotesCore`.                                                                                                  |
+| `rust/src/core/`                                | The engine, in pure Rust: the generated client, the signer, the registrar, the journal, the events and the error mapping.                                                    |
+| `rust/src/frb_generated.rs`                     | **Generated**. Never edited.                                                                                                                                                 |
+| `rust/tests/`                                   | `against_server.rs` (the example's server, in process) and `contracts.rs`.                                                                                                   |
+| `hook/build.dart`                               | The native-assets build hook.                                                                                                                                                |
+| `server/`                                       | The server copy: `schema.cstack`, `src/`, `tests/envelope.rs`, its own `Cargo.lock` and toolchain.                                                                           |
+| `test/`                                         | The fakes tests; `core_ffi_test.dart` (the real core against a stub server); `e2e_test.dart` (the real server).                                                              |
 
 ## The bridge
 
@@ -246,7 +253,7 @@ No test here runs on a phone or a desktop, and CI builds the core on Linux only.
 
 1. The native-assets build on each platform: the three Android ABIs (with NDK 27 or later), iOS device and simulator, macOS (universal, two targets), Windows. The Android 16 KB page alignment is the hook's.
 2. `RustLib.init()` finding the packaged library by name on each platform. The host tests load it by path instead.
-3. The device key's callback into the Secure Enclave or the StrongBox signer, and a locked keystore, which should answer `null` and send nothing.
+3. The device key's callback into the Secure Enclave or the StrongBox signer, and a locked keystore, which should answer `null` and send nothing. Also what the `/core` page says about the key on each platform: hardware-backed on a phone, a software key on an iOS simulator, Linux and Windows, and the keystore-did-not-open line on a macOS build without a signing certificate.
 4. Plain `http://` from the core's own socket on Android and iOS (their cleartext and App Transport Security rules), and an `https` server through `rustls-platform-verifier` on Android.
 5. Backgrounding during a call: the 10 s signature timeout, then `Seal`, then `Offline` under the same key.
 6. The app's size per ABI, and the first-build time of each target.

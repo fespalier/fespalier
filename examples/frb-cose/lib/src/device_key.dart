@@ -1,5 +1,5 @@
 import 'package:fespalier/fespalier.dart' show Provider;
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 /// The name the device key lives under in the secure element.
@@ -19,7 +19,7 @@ enum DeviceKeyKind {
   software,
 
   /// The keystore **threw** (macOS without a signing certificate refuses the keychain; a phone's keystore may fail), so
-  /// [openDeviceSigner] fell back to a `SoftwareDpopSigner`: the key is in memory and does not survive a restart.
+  /// [openDeviceSigner] fell back to a `SoftwareKeypairSigner`: the key is in memory and does not survive a restart.
   inMemory,
 }
 
@@ -29,8 +29,8 @@ final deviceKeyKind = Provider<DeviceKeyKind>((ref) => DeviceKeyKind.none);
 
 /// Opens the signer of the device key, and says how the key is held.
 ///
-/// The keystore comes first (`SignKeypairSigner`: the Secure Enclave or the AndroidKeyStore; on Linux and Windows its
-/// own software signer). Where it throws, and [requireHardware] is false, a `SoftwareDpopSigner` takes over so the
+/// The keystore comes first (`HardwareKeypairSigner`: the Secure Enclave or the AndroidKeyStore; on Linux and Windows its
+/// own software signer). Where it throws, and [requireHardware] is false, a `SoftwareKeypairSigner` takes over so the
 /// example runs on every platform a person may try it on; the kind then says [DeviceKeyKind.inMemory] and a debug build
 /// prints the error's class (never its text).
 ///
@@ -38,14 +38,17 @@ final deviceKeyKind = Provider<DeviceKeyKind>((ref) => DeviceKeyKind.none);
 /// the keystore's own error (the splash screen shows it). Nothing falls back.
 ///
 /// [keystore] replaces the keystore signer, for a test.
-Future<({DpopSigner signer, DeviceKeyKind kind})> openDeviceSigner({
+Future<({KeypairSigner signer, DeviceKeyKind kind})> openDeviceSigner({
   bool requireHardware = false,
-  DpopSigner Function()? keystore,
+  KeypairSigner Function()? keystore,
 }) async {
   try {
     final signer =
         keystore?.call() ??
-        SignKeypairSigner(keyId: deviceKeyId, requireHardware: requireHardware);
+        HardwareKeypairSigner(
+          keyId: deviceKeyId,
+          requireHardware: requireHardware,
+        );
     await signer.publicJwk();
     final hardware = await signer.isHardwareBacked();
     return (
@@ -60,7 +63,7 @@ Future<({DpopSigner signer, DeviceKeyKind kind})> openDeviceSigner({
       );
     }
     return (
-      signer: SoftwareDpopSigner(keyId: deviceKeyId),
+      signer: SoftwareKeypairSigner(keyId: deviceKeyId),
       kind: DeviceKeyKind.inMemory,
     );
   }

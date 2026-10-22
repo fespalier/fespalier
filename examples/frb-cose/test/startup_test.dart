@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frb_cose_example/app.g.dart';
@@ -65,7 +65,7 @@ void main() {
 
   group('the device key says how it is held, and a fallback is never silent', () {
     test('a keystore key that is hardware-backed is hardware', () async {
-      final keystore = FakeDpopSigner(hardware: true);
+      final keystore = FakeKeypairSigner(hardware: true);
 
       final opened = await openDeviceSigner(keystore: () => keystore);
 
@@ -74,7 +74,7 @@ void main() {
     });
 
     test('a keystore key that is not hardware-backed is software', () async {
-      final keystore = FakeDpopSigner();
+      final keystore = FakeKeypairSigner();
 
       final opened = await openDeviceSigner(keystore: () => keystore);
 
@@ -88,7 +88,7 @@ void main() {
         final opened = await openDeviceSigner(keystore: _BrokenKeystore.new);
 
         expect(opened.kind, DeviceKeyKind.inMemory);
-        expect(opened.signer, isA<SoftwareDpopSigner>());
+        expect(opened.signer, isA<SoftwareKeypairSigner>());
         expect(await opened.signer.isHardwareBacked(), isFalse);
         expect((await opened.signer.publicJwk())['crv'], 'P-256');
       },
@@ -110,7 +110,7 @@ void main() {
     test('requireHardware keeps a hardware key', () async {
       final opened = await openDeviceSigner(
         requireHardware: true,
-        keystore: () => FakeDpopSigner(hardware: true),
+        keystore: () => FakeKeypairSigner(hardware: true),
       );
 
       expect(opened.kind, DeviceKeyKind.hardware);
@@ -173,17 +173,23 @@ void main() {
 }
 
 /// A keystore that cannot open: its key cannot be made, as on a macOS build without a signing certificate.
-final class _BrokenKeystore implements DpopSigner {
+final class _BrokenKeystore implements KeypairSigner {
+  @override
+  KeyRole get role => KeyRole.ambient;
+
   @override
   Future<Map<String, String>> publicJwk() =>
       Future.error(StateError('the keychain refused the key'));
 
   @override
-  Future<Uint8List> sign(Uint8List signingInput) =>
+  Future<Uint8List> sign(Uint8List signingInput, {String? reason}) =>
       Future.error(StateError('no key'));
 
   @override
   Future<bool> isHardwareBacked() => Future.error(StateError('no key'));
+
+  @override
+  Future<bool> exists() async => false;
 
   @override
   Future<void> deleteKey() async {}

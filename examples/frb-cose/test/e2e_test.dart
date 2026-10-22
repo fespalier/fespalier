@@ -16,8 +16,8 @@ import 'dart:typed_data';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frb_cose_example/app/action.dart';
 import 'package:frb_cose_example/app/data.dart';
@@ -151,7 +151,7 @@ final class _Device {
 
   /// Opens the core with [signer] as the device key, as `startup()` does: the device's point from the key, the
   /// server's from [pin]. Nothing is sent until the first call.
-  static Future<_Device> open(ServerPin pin, DpopSigner signer) async {
+  static Future<_Device> open(ServerPin pin, KeypairSigner signer) async {
     final jwk = await signer.publicJwk();
     final x = p256Coordinate('x', jwk['x']);
     final y = p256Coordinate('y', jwk['y']);
@@ -187,20 +187,26 @@ final class _Device {
 
 /// A signer whose key does not sign: the signature the core asks for is refused, as a locked keystore refuses it.
 /// The device's point is the real key's, so the core is opened the way it is in the app.
-final class _RefusingSigner implements DpopSigner {
+final class _RefusingSigner implements KeypairSigner {
   _RefusingSigner(this._key);
 
-  final DpopSigner _key;
+  final KeypairSigner _key;
+
+  @override
+  KeyRole get role => _key.role;
 
   @override
   Future<Map<String, String>> publicJwk() => _key.publicJwk();
 
   @override
-  Future<Uint8List> sign(Uint8List signingInput) =>
+  Future<Uint8List> sign(Uint8List signingInput, {String? reason}) =>
       Future<Uint8List>.error(StateError('the key refuses to sign'));
 
   @override
   Future<bool> isHardwareBacked() => _key.isHardwareBacked();
+
+  @override
+  Future<bool> exists() => _key.exists();
 
   @override
   Future<void> deleteKey() => _key.deleteKey();
@@ -252,7 +258,7 @@ void main() {
       final server = await start();
       final device = await _Device.open(
         server.pin,
-        FakeDpopSigner(seed: 'device a'),
+        FakeKeypairSigner(seed: 'device a'),
       );
       addTearDown(device.close);
 
@@ -284,7 +290,7 @@ void main() {
       final first = await start();
       final device = await _Device.open(
         first.pin,
-        FakeDpopSigner(seed: 'device a'),
+        FakeKeypairSigner(seed: 'device a'),
       );
       addTearDown(device.close);
 
@@ -361,7 +367,7 @@ void main() {
       final server = await start();
       final device = await _Device.open(
         server.pin,
-        _RefusingSigner(FakeDpopSigner(seed: 'device a')),
+        _RefusingSigner(FakeKeypairSigner(seed: 'device a')),
       );
       addTearDown(device.close);
 

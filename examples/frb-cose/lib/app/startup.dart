@@ -22,7 +22,7 @@ import 'package:frb_cose_example/src/wiring.dart';
 ///   memory and `isHardwareBacked()` says false (`software`);
 /// - an iOS simulator's keychain opens, but it is not a secure element: the same answer (`software`);
 /// - macOS is sandboxed, and an ad-hoc signed build cannot write a keychain item without a development certificate: the
-///   first key write throws (OSStatus -34018), and this falls back to a `SoftwareDpopSigner` (`inMemory`);
+///   first key write throws (OSStatus -34018), and this falls back to a `SoftwareKeypairSigner` (`inMemory`);
 /// - a phone's keystore that fails lands there too, and `/core` is where a person sees it.
 ///
 /// The web never gets here: it returns the unavailable core above. A software key in memory does not survive a restart,

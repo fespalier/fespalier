@@ -4,7 +4,7 @@ publish_to: none
 version: 0.1.0
 
 environment:
-  # Native assets need Dart 3.10 (hooks 2.x); the example claims what fespalier_sign_keypair needs.
+  # Native assets need Dart 3.10 (hooks 2.x); the example claims what fespalier_keypair needs (flutter_sign_keypair: Dart 3.12).
   sdk: ^3.12.0
   flutter: ">=3.44.0"
 
@@ -23,10 +23,10 @@ dependencies:
   # The core's change stream: one subscription, and the /core page rebuilt by each event (lib/src/changes.dart).
   fespalier_frb:
     path: ../../packages/fespalier_frb
-  # The device key: SignKeypairSigner (Secure Enclave, AndroidKeyStore) on a device, a software signer otherwise. Its
-  # signature is the callback the core calls (lib/src/frb_core.dart).
-  fespalier_sign_keypair:
-    path: ../../packages/fespalier_sign_keypair
+  # The device key: HardwareKeypairSigner (Secure Enclave, AndroidKeyStore) on a device, SoftwareKeypairSigner where there
+  # is none, FakeKeypairSigner in tests. Its signature is the callback the core calls (lib/src/frb_core.dart).
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
   flutter:
     sdk: flutter
 
@@ -35,17 +35,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_sign_keypair, fespalier_cratestack and fespalier_frb depend on fespalier (the first through fespalier_auth,
-# the second through fespalier_dio and fespalier_http) by repository tag, as an app does; here all are the checkout's.
+# fespalier_cratestack (through fespalier_transport) and fespalier_frb depend on fespalier by repository tag, as an app
+# does; here all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
-  fespalier_auth:
-    path: ../../packages/fespalier_auth
-  fespalier_dio:
-    path: ../../packages/fespalier_dio
-  fespalier_http:
-    path: ../../packages/fespalier_http
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

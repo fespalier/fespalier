@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
 
 import 'core.dart';
 import 'rust/api/core.dart' as rust;
@@ -17,7 +17,7 @@ Future<void> loadRustCore() => RustLib.init();
 /// registration waits for the first call.
 Future<NotesCore> openNotesCore({
   required rust.CoreConfig config,
-  required DpopSigner signer,
+  required KeypairSigner signer,
 }) async {
   final core = await rust.NotesCore.open(
     config: config,
@@ -33,7 +33,7 @@ rust.DeviceIdentity identityOf({required Uint8List x, required Uint8List y}) =>
 /// The device key's signature of the bytes the core sends it, or null. A key that refuses, a locked keystore or a
 /// throw all become null: the core then refuses the call and sends nothing. The callback never throws, because a
 /// throw in Dart would panic the generated Rust code.
-Future<Uint8List?> _signature(DpopSigner signer, Uint8List input) async {
+Future<Uint8List?> _signature(KeypairSigner signer, Uint8List input) async {
   try {
     return await signer.sign(input);
   } on Object {

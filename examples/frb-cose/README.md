@@ -7,7 +7,7 @@ It is the notes app of [`examples/cose`](../cose/README.md) with a different spl
 - **CrateStack's client, in Rust.** [`rust/src/core/client.rs`](rust/src/core/client.rs) is `include_client_schema!` over the example's own [`server/schema.cstack`](server/schema.cstack), on the `cratestack-client` 0.15.3 facade with its `cose` feature. Its sealed transport refuses redirects, verifies the server's answer and binds each request's digest, as CrateStack wrote them. Dart re-implements none of that.
 - **Offline-first logic in Dart.** [`fespalier_cratestack`](../../packages/fespalier_cratestack) runs unchanged over the core: [`lib/src/core_transport.dart`](lib/src/core_transport.dart) is its `CrateStackTransport`, `ref.serve` keeps the last list, and an intent keeps a write under its `Idempotency-Key` until the server answers.
 - **A change stream with one subscription.** The core reports its registrations, its forgotten keys and its calls on a `Stream`, and [`fespalier_frb`](../../packages/fespalier_frb) turns it into the feed the `/core` page watches.
-- **The device key in Dart.** `fespalier_sign_keypair` holds the key: the Secure Enclave or the AndroidKeyStore on a device, a software key elsewhere.
+- **The device key in Dart.** [`fespalier_keypair`](../../packages/fespalier_keypair) holds the key: a `HardwareKeypairSigner` (the Secure Enclave or the AndroidKeyStore) on a device, a `SoftwareKeypairSigner` elsewhere, as in `examples/cose`.
 
 Read it with the skills [`fespalier-cratestack`](../../skills/fespalier-cratestack/SKILL.md) (the wiring) and [`fespalier-data`](../../skills/fespalier-data/SKILL.md) (its change feeds). The guide is [`docs/examples.md`](../../docs/examples.md#frb-cose).
 
@@ -47,7 +47,7 @@ fespalier routes: /   (data.dart, action.dart)          NotesCore (opaque): open
 CoreTransport  --- call(op, args, key) ------------->   seal: cratestack-cose, COSE_Sign1, ESP256
   (a CrateStackTransport)  <--- answer (status, body) -- send: reqwest, no redirects; open and verify
 ChangeFeed     <--- Registered, Forgotten, Called ----- events, and a journal (32 rows, no payload)
-DpopSigner     <--- sign(bytes) callback -------------- signer: asks Dart; 10 s, then nothing is sent
+KeypairSigner  <--- sign(bytes) callback -------------- signer: asks Dart; 10 s, then nothing is sent
 hook/build.dart: builds the core for the target at build time
                                                         |
                                                         v  POST /rpc/<op>, COSE_Sign1 both ways
@@ -125,9 +125,9 @@ The defines are this example's own:
 
 **Where no hardware keystore is available,** the app still gets a software key, and the `/core` page says so ("Not hardware-backed: ..."). Which software key depends on the platform:
 
-- **Linux and Windows** have no keystore. `flutter_sign_keypair` gives them its own pure-Dart signer, so the key is a software key in memory: `isHardwareBacked()` is false, and the page says the key is a software key.
+- **Linux and Windows** have no keystore. `flutter_sign_keypair`, which `HardwareKeypairSigner` is built on, gives them its own pure-Dart signer, so the key is a software key in memory: `isHardwareBacked()` is false, and the page says the key is a software key.
 - **An iOS simulator's** keychain opens, but it is not a secure element: the same answer.
-- **A macOS build without a signing certificate** (a sandboxed app cannot write a keychain item without one) and **a phone whose keystore fails** make the keystore throw. `startup()` catches that and falls back to a `SoftwareDpopSigner`, a software key in memory, and the page says the keystore did not open. The fallback is not silent: it is on the page, and a debug build prints the error's class.
+- **A macOS build without a signing certificate** (a sandboxed app cannot write a keychain item without one) and **a phone whose keystore fails** make the keystore throw. `startup()` catches that and falls back to a `SoftwareKeypairSigner`, a software key in memory, and the page says the keystore did not open. The fallback is not silent: it is on the page, and a debug build prints the error's class.
 
 A software key in memory does not survive a restart, so a restart is a new device to the server and the `kid` on the page changes, as in `examples/cose`. The web never reaches this code: it has no core, so it has no key (see below). A build that must have hardware passes `requireHardware: true` to `openDeviceSigner` ([`lib/src/device_key.dart`](lib/src/device_key.dart)); a device without a secure element then fails to start, and the splash screen shows the keystore's error, instead of getting a software key.
 

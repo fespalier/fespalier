@@ -219,6 +219,16 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   a `GuardFailure`, and for an async guard gives go_router a `Future` of its own, run outside go_router's error
   zone on 17.2.3 to 18.1.0; it makes no `Future`, microtask or timer for a sync guard, and `traceGuard` inside
   still sees the guard's own result.
+- **A pushed page's guard is known by go_router's own objects (since 0.21.0).** `packages/fespalier/lib/src/guards.dart`
+  keeps a pushed entry's guards by the entry's `ImperativeRouteMatch.completer`, and tells a navigation by the
+  `RouteInformationState` it put in the provider; it listens to the delegate and to nothing else (no provider listener, no
+  zone of its own, no timer, no new microtask, only post-frame callbacks), and `test/no_timers_guards_test.dart` reads
+  the source for it. The one flag, `_landing`, lives exactly as long as the synchronous `router.replace` call of a re-run.
+  An asynchronous re-run never lands: it is dropped at its first asynchronous answer and carried on, while its entry is
+  on top, by a re-run that replays the answers by position. Six reviews failed by giving an identity to something else
+  (the provider's value, a count of its notifications, a zone, a copy of the last request, a table of re-runs), each
+  time leaking one navigation's identity into another: read the invariants in the class comment before changing it, and
+  do not add a mechanism that says which navigation is on the way.
 - **Telemetry costs nothing when off, and never makes async.** An app generated without `telemetry: true`
   passes no `TelemetrySite`, so every `telemetry:` parameter (`traceGuard`, `traceData`, `ActionNotifier`,
   `DeferredLibrary(route:)`) is null and the code behind it is compiled out; the scaffold CI job greps a

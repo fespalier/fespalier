@@ -406,8 +406,10 @@ void main() {
 - **A sign-out is synchronous**: `signOut()` sets `SignedOut(reason: SignOutReason.user)` before its first
   `await`, so guards move the user in that frame; then the store is cleared, the backend's `signOut` runs
   (its errors are swallowed) and the proof of possession is reset. A button over a page that was
-  **pushed** should navigate too (`const HomeRoute().go(context)`): a guard under a pushed page reacts only once
-  it is uncovered (see `auth-patterns.md`).
+  **pushed** needs no navigation when that page is behind the guard (the guard of a pushed page watches while the
+  page is on top, since 0.21.0, and a sign-out over a guarded base page replaces the whole stack); over a pushed
+  page with no guard of its own, navigate too (`const HomeRoute().go(context)`): the guards under a pushed page
+  react only once it is uncovered (see `auth-patterns.md`).
 - **`apiOrigins` is an allow-list** (scheme, host and port). `SessionClient` sends nothing to another host,
   so a token cannot leak to a third party. An empty list is an error the first time `authorizer` is read:
   `fespalier_auth: AuthConfig.apiOrigins is empty, so no request would carry the session; list your API's origins, e.g. apiOrigins: [Uri.parse('https://api.example.com')]`.

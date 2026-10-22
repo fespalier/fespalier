@@ -46,7 +46,7 @@ below its folder**, and the folder needs no `page.dart`: put the guard in a
   ``a guard runs outside the widget tree: take `Ref` ``). **`ref.watch` a provider
   and the guard runs again when it changes** (since 0.5.0): if the new answer differs
   from the one the navigation used, the router runs the redirects again. Signing out
-  on `/inbox` moves you to login by itself (a pushed page can stay, see "Signing out
+  on `/inbox` moves you to login by itself, a pushed page too (since 0.21.0, see "Signing out
   moves you" below).
 - **Stay sync when you can.** A guard that answers synchronously adds no frame and
   boots with no blank first frame; **any** `Future`, even a completed one, costs a
@@ -211,7 +211,7 @@ Future<List<Override>> startup() async => [
 - **Never call a vendor's async API in a guard** (PostHog's `isFeatureEnabled` is a `Future`: the entry turns pending and
   the first frame is blank). Put the value behind a `FlagSource`.
 - **`follow: false` for a flow**: with the default, turning the flag off on the page takes the user off it; a
-  pushed page can stay (fespalier/fespalier#258).
+  pushed page goes too (since 0.21.0).
 - **A guard that redirected stays subscribed until the next navigation**, so a flag's subscription outlives the page it
   gated by one navigation (a test pins it). A guarded page under a pushed page that has no guard reacts only when uncovered.
 - **A cold deep link before the source is ready sees the fallback**: await the vendor's local load in `startup()`, or

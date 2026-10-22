@@ -100,7 +100,7 @@ class LoginPage extends ConsumerWidget {
   a location), the router runs the redirects again. Signing out on `/inbox` ends on
   `/login?from=%2Finbox`, and signing in on the login page lets the same guard through.
   That also covers a session that ends elsewhere (a token expiring, another tab), on any
-  page but a pushed one (see "What to know"). Nothing is wired up by you: it works with
+  page, a pushed one included (since 0.21.0, see "What to know"). Nothing is wired up by you: it works with
   `AppRoutes.router()` and with a router of your own built from `AppRoutes.mount()`, with
   no `refreshListenable`.
 - **What to know.**

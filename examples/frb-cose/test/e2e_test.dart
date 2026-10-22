@@ -133,7 +133,9 @@ final class _Feed {
     }
   }
 
-  Future<void> close() => _subscription.cancel();
+  void close() {
+    _subscription.cancel().ignore();
+  }
 }
 
 /// A device: the core opened with its key against a server, the app's container over that core, and the core's events.
@@ -171,9 +173,11 @@ final class _Device {
 
   Future<Served<List<Note>>> read() => container.refresh(_notes.future);
 
-  Future<void> close() async {
+  /// Disposes the container. The feed's cancel is not awaited: the core's stream ends at its next event (or with the
+  /// core), so waiting for it would hang the test's teardown.
+  void close() {
     container.dispose();
-    await feed.close();
+    feed.close();
   }
 }
 
@@ -331,13 +335,11 @@ void main() {
             'the restarted server did not know the key: it was forgotten, then registered again',
       );
 
-      // The server holds the write once: a second copy would show as id 3.
+      // The server keeps its notes in memory, so the restart forgot the first one; the queued write landed once, as
+      // its first note (a second copy would be a second note).
       final read = await device.read();
       expect(read.source, ServedFrom.network);
-      expect(read.value, [
-        const Note(id: 1, text: 'first'),
-        const Note(id: 2, text: 'second'),
-      ]);
+      expect(read.value, [const Note(id: 1, text: 'second')]);
 
       // Every attempt of the queued write sent the same key, and the first write its own.
       final keys = {

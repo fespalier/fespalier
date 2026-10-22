@@ -225,7 +225,8 @@ A filtered run is feedback, not verification; `just ci` still has to pass.
   no zone that tells one navigation from another, no timer, no new microtask, only post-frame callbacks
   (`test/no_timers_guards_test.dart` reads the source for it). The one flag, `_landing`, lives exactly as long as the
   synchronous `router.replace` call of a re-run. An asynchronous re-run never lands: it is dropped at its first
-  asynchronous answer and carried on, while its entry is on top, by a re-run that replays the answers by position. Six
+  asynchronous answer and carried on, while its entry is on top and it is the entry's newest re-run, by a re-run that
+  replays the answers by position, each to the redirect (route and location) that gave it. Six
   reviews failed by giving an identity to something else (the provider's value, a count of its notifications, a zone, a
   copy of the last request, a table of re-runs), each time leaking one navigation's identity into another: read the
   invariants in the class comment before changing it, and do not add a mechanism that says which navigation is on the way.

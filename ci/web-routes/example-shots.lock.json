@@ -57,6 +57,16 @@
       "png": "59c15cd4b3054a2d74a0cffcc2fea2a9c6531c60d9e8f4854ed2748fb5bc40ad"
     }
   },
+  "frb-cose": {
+    "core.png": {
+      "spec": "2cd880e01d4b17c42dd7cfc543c599abb828438176741a19317f8b3c02d67dd8",
+      "png": "cfa0d1b3eb7ed539ce775acf5e386523140cb8c00ce85121743fe5728b2831cb"
+    },
+    "home.png": {
+      "spec": "9c026c6b92828cb420645c6984d7f0f19a06172144b069f58c8a0db9186a7750",
+      "png": "d171e420f9c058eecce94913fdc6b9490f992b0f2cf574bc35591f1bda3ceabb"
+    }
+  },
   "i18n": {
     "en.png": {
       "spec": "10fed22eaa1930b23cdc4e8b44d6dca44162633c485f34c685f223aaf2b08c9c",

@@ -251,6 +251,13 @@ final class RouterWatch {
     _base = base;
     if (_telemetry) return;
     _telemetry = true;
+    // Kept until the router is disposed, and nothing else removes it. go_router registers its
+    // provider as a platform observer while the provider has a listener, so a router the app
+    // replaced without disposing it keeps answering platform links (#264, docs/observability.md).
+    // Nothing says when the Router lets go of the provider or takes it back. The end of a frame in
+    // which another watched router commits shows that a router is off screen, but nothing shows it
+    // coming back where it was, so taking its provider off there would break a swap back. A fix
+    // needs that signal.
     router.routeInformationProvider.addListener(_requested);
     final config = router.routerDelegate.currentConfiguration;
     if (config.isEmpty && config.error == null) {

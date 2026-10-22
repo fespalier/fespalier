@@ -99,9 +99,10 @@ class LoginPage extends ConsumerWidget {
   it changes the guard runs again; if its answer is now a different one (`null` became
   a location), the router runs the redirects again. Signing out on `/inbox` ends on
   `/login?from=%2Finbox`, and signing in on the login page lets the same guard through.
-  That also covers a session that ends elsewhere (a token expiring, another tab). Nothing
-  is wired up by you: it works with `AppRoutes.router()` and with a router of your own
-  built from `AppRoutes.mount()`, with no `refreshListenable`.
+  That also covers a session that ends elsewhere (a token expiring, another tab), on any
+  page but a pushed one (see "What to know"). Nothing is wired up by you: it works with
+  `AppRoutes.router()` and with a router of your own built from `AppRoutes.mount()`, with
+  no `refreshListenable`.
 - **What to know.**
   - A guard that `ref.read`s, or takes `ProviderContainer c`, runs only when you navigate.
   - A guarded **base** page under a pushed page, guarded or not, is not watched while it is covered: it is guarded again by `GoRouter.pop` or `context.pop` of a page with no `leave.dart`, not by the app bar's back button, `Navigator.pop` or the system back. A guarded **pushed** page runs its guard again however it is uncovered. A page on top that has a guard reacts itself: with a base page under a redirect the router is refreshed first, so a sign-out replaces the whole stack, and a change only the top page's guard notices (a role revoked) can ask a dirty page's `leave()` twice, once for the refresh and once for the re-run; with none under it, the page moves alone, asked once.

@@ -119,7 +119,8 @@ class LoginPage extends ConsumerWidget {
   reaches its routes, **and again when what it `ref.watch`es changes and its answer
   is now a different one** (since 0.5.0; the `ProviderContainer` form never does).
   The router is asked to run the redirects again, so a guard that watches the session
-  moves you to login on sign-out, and back on sign-in, on any page it covers. Rules:
+  moves you to login on sign-out, and back on sign-in, on any page it covers but a pushed
+  one (fespalier/fespalier#258, below). Rules:
   - **Each navigation evaluates the guard anew**, in a fresh `autoDispose` provider:
     `ref.read` is never stale, and `extra`, lists and `Uri`s need no key. What the guard
     watches is shared with the rest of the app, so a data provider is fetched once.

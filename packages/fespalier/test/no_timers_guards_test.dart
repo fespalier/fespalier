@@ -2,7 +2,7 @@
 // since 0.21.0): everything a pushed page's guard does later is a post-frame callback, a callback of
 // a Future the guard returned (go_router's own redirect), or a callback of a provider the guard
 // watches. Identity comes from go_router's completers and requests, so there is no provider
-// listener (#264), no zone of our own and no count of notifications. This test reads the source, as
+// listener (#264), no zone that tells a re-run and no count of notifications. This test reads the source, as
 // the other no_timers tests do.
 import 'dart:io';
 
@@ -24,7 +24,7 @@ void main() {
     (r'Future.microtask', 'a microtask'),
     (r'Future(?:<[^>]*>)?\(', 'a Future of our own'),
     (r'routeInformationProvider\s*\.\s*addListener', 'a provider listener'),
-    (r'runZoned', 'a zone of our own'),
+    (r'runZoned', 'a zone that tells a re-run'),
     (r'DateTime.now', 'the wall clock'),
     (r'addListener\(_requested', 'a listener on the requests'),
   ]) {

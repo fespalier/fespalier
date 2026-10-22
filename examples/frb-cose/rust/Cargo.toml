@@ -1,0 +1,42 @@
+[package]
+name = "frb_cose_core"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.0"
+license = "MIT"
+publish = false
+description = "The Rust core of fespalier's frb-cose example: CrateStack's generated client, sealed as COSE_Sign1, behind flutter_rust_bridge"
+
+[lib]
+# The native-assets hook links whichever kind Flutter asks for (cdylib and staticlib); rlib serves the tests.
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# The same CrateStack 0.15.3 as the server copy and cose's: every cratestack-* in each lockfile at that
+# version (cli/tests/versions.rs). `default-features = false` keeps the facade's HTTP stack out of it.
+cratestack = { package = "cratestack-client", version = "=0.15.3", default-features = false, features = ["cose", "decimal-rust-decimal"] }
+flutter_rust_bridge = "=2.13.0"
+base64 = "0.23"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+
+[dev-dependencies]
+# The example's own server, in process: the tests drive `frb_cose_demo_server::build` through
+# `cratestack_server::axum::serve`. The rename keeps rustc from seeing two libraries named `cratestack` (the client
+# facade above is one, `cratestack-api` the other): E0464 otherwise.
+frb-cose-demo-server = { path = "../server" }
+cratestack_server = { package = "cratestack-api", version = "=0.15.3", default-features = false, features = ["cose"] }
+base64 = "0.23"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
+[lints.rust]
+unsafe_code = "deny"
+# flutter_rust_bridge_codegen expands the crate with `--cfg frb_expand`.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

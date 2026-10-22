@@ -24,3 +24,6 @@ node_modules/
 # The docs site (docs/, VitePress): its build output and cache
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+# frb-cose: the Rust core and the server build here when run by hand (the hook uses .dart_tool).
+examples/frb-cose/rust/target/
+examples/frb-cose/server/target/

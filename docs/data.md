@@ -438,6 +438,8 @@ expect(fake.listenCount, 1);
 
 A widget test never runs `startup()` (`pumpRouter` does not), so it needs no `RustLib.init` and no native library: the fake core is a provider override.
 
+The worked case is [`examples/frb-cose`](examples.md#frb-cose) (since 0.21.1): a Rust core that is CrateStack's client, whose `/core` page watches `coreChanges.any`. Its host tests need one thing a Dart app does not: with FRB's native-assets backend a host `flutter test` builds the core, but `RustLib.init()` does not find it by its bare name, so `test/support/host_core.dart` opens the file the build put in `build/native_assets/<os>/`.
+
 ### Decoding a core's events: `ChangeCodec`
 
 Since 0.18.0. flutter_rust_bridge mirrors a Rust enum as Dart classes and decodes them inside the `Stream` it returns, so a feed over typed events needs nothing here; a core that sends a `Vec<CoreEvent>` per message is `changes().expand((batch) => batch)`. Some cores send **raw messages** instead:

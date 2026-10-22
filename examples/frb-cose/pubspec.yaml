@@ -1,0 +1,47 @@
+name: frb_cose_example
+description: "fespalier example: a Rust core behind flutter_rust_bridge is the CrateStack client. It seals every call as COSE_Sign1, and the device key stays in Dart."
+publish_to: none
+version: 0.1.0
+
+environment:
+  # Native assets need Dart 3.10 (hooks 2.x); the example claims what fespalier_keypair needs (flutter_sign_keypair: Dart 3.12).
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  # Five places pin this version (these two lines, rust/Cargo.toml, the headers of the generated files, the codegen
+  # in the justfile, and the frb-cose job's FRB_CODEGEN_VERSION in ci.yml); cli/tests/versions.rs keeps them equal.
+  flutter_rust_bridge: 2.13.0
+  # The build hook (hook/build.dart) that compiles rust/ for the platform Flutter builds for.
+  flutter_rust_bridge_hooks: 2.13.0
+  fespalier:
+    path: ../../packages/fespalier
+  # The seam this example fills: a CrateStackTransport over the core (lib/src/core_transport.dart), reads that
+  # say how current they are (ref.serve) and writes as intents (submit).
+  fespalier_cratestack:
+    path: ../../packages/fespalier_cratestack
+  # The core's change stream: one subscription, and the /core page rebuilt by each event (lib/src/changes.dart).
+  fespalier_frb:
+    path: ../../packages/fespalier_frb
+  # The device key: HardwareKeypairSigner (Secure Enclave, AndroidKeyStore) on a device, SoftwareKeypairSigner where there
+  # is none, FakeKeypairSigner in tests. Its signature is the callback the core calls (lib/src/frb_core.dart).
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# fespalier_cratestack (through fespalier_transport) and fespalier_frb depend on fespalier by repository tag, as an app
+# does; here all are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
+
+flutter:
+  uses-material-design: true

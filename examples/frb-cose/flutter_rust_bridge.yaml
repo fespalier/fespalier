@@ -1,0 +1,9 @@
+# flutter_rust_bridge_codegen 2.13.0 reads this (`flutter_rust_bridge_codegen generate` in this folder).
+# The generated files are committed; the frb-cose CI job regenerates them and fails on a diff.
+rust_input: crate::api
+rust_root: rust/
+rust_output: rust/src/frb_generated.rs
+dart_output: lib/src/rust
+auto_upgrade_dependency: false
+web: true
+build_runner: false

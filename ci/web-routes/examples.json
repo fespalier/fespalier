@@ -947,6 +947,36 @@
         }
       ]
     },
+    "frb-cose": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "The Rust core is not in this build",
+          "note": "a web build has no core (hook/build.dart builds none for the web), so the notes page says so, makes no call and keeps nothing"
+        },
+        {
+          "path": "/core",
+          "expect": "Not built for the web",
+          "note": "the core page of a web build: no key, no registration and no journal, and no request"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "The Rust core is not in this build",
+          "title": "`/` in a web build",
+          "alt": "The frb-cose example's Notes page in a web build with no Rust core: the line Device key: none in a web build, The Rust core is not in this build, The core, No notes yet, and a New note field and an Add button, both disabled."
+        },
+        {
+          "file": "core.png",
+          "path": "/core",
+          "expect": "Not built for the web",
+          "title": "`/core` in a web build",
+          "alt": "The Rust core page in a web build: its title, and the line Not built for the web, which says there is no key, no registration and no journal."
+        }
+      ]
+    },
     "cratestack": {
       "urls": [
         {

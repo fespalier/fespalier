@@ -1,7 +1,8 @@
 # fespalier — task runner. `just ci` is the gate: it runs locally what .github/workflows/ci.yml
 # runs, and nothing is "verified" until it exits 0 on the final head. It needs Rust (the
 # toolchain in cli/rust-toolchain.toml installs itself), Flutter (see FLUTTER_VERSION in
-# ci.yml), python3, Node, `just` and `cargo-deny`.
+# ci.yml), python3, Node, `just` and `cargo-deny`. The frb-cose example's flutter test also builds its core, so it
+# needs rustup, and the targets examples/frb-cose/rust/rust-toolchain.toml lists (installed on first use, about 2 GB).
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 

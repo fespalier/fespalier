@@ -186,13 +186,17 @@ void main() {
 int? page}) get copyWith => _copyWith;`; never edit it.
 - **`go`, `push` and `replace` and the address bar** (web).
   - `go` adds a history entry and the URL is the new location.
-  - `replace` (since 0.6.0) shows the new location too and **replaces** the history entry,
-    so use it for a change that should not pile up in back (a search box). When the page
-    on top is part of the declarative stack it is `go` inside `Router.neglect`
-    (`replaceLocation(context, location)` in the runtime): the stack becomes the one the
-    new location has by itself, a page with the same path template keeps its state, and
-    `extra` is passed on. When the top page was `push`ed it is go_router's `replace`
-    (the pushed stack stays), because a `go` would drop it.
+  - `replace` (since 0.6.0) shows the new location too. When the page on top is part of the
+    declarative stack it is `go` inside `Router.neglect` (`replaceLocation(context, location)`
+    in the runtime) and **replaces** the history entry, so use it there for a change that should
+    not pile up in back (a search box): the stack becomes the one the new location has by
+    itself, a page with the same path template keeps its state, and `extra` is passed on. When
+    the top page was `push`ed it is go_router's `replace` (the pushed stack and the page's state
+    stay, because a `go` would drop them) and **adds a history entry** like `push`: go_router
+    reports every new location to the browser as a new entry, and only `Router.neglect` replaces
+    one. A search box on a pushed page then keeps its query in the page's own state, or lives on
+    a page reached with `go`. On a guarded pushed page the browser's back to an earlier location
+    of the page is held and the page is built from scratch (since 0.21.1).
   - `pushReplacement<T>` (since 0.7.0) is go_router's, with `locale:` and, for a route that has
     one, a typed `extra:`: the top page leaves and the new one is pushed under a **new page
     key**, so nothing of the old page's state or transition is kept; the future completes with

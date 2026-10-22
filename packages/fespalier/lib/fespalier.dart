@@ -51,7 +51,7 @@ export 'src/extra_codec.dart';
 export 'src/field_errors.dart';
 // Data freshness (since 0.8.1): `staleTime`, refetch on resume and reconnect.
 export 'src/freshness.dart';
-export 'src/guards.dart';
+export 'src/guards.dart' hide guardBeforeRerun, passedPageCount;
 export 'src/heroes.dart';
 export 'src/inbound.dart'
     show FespalierEnter, InboundLaunch, InboundNavigation, launchRouter;

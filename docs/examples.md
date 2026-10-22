@@ -261,7 +261,7 @@ cd examples/frb-cose && flutter test   # builds the Rust core first: rustup is n
 just frb-cose                          # the server's and the core's gates, the bindings check, then the app's tests with the server required
 ```
 
-The server keeps its notes and registrations in memory, and a restart forgets them. A web build has no core: its pages say so and make no call. The steps a device needs (the native build on each platform, the device key's callback into a hardware keystore, plain `http` from the core's socket on Android and iOS, and backgrounding during a call) are not checked by any test; the README lists them as UNCHECKED, and the device-test issue has the steps to try them.
+The server keeps its notes and registrations in memory, and a restart forgets them. A web build has no core: its pages say so and make no call. The steps a device needs (the native build on each platform, the device key's callback into a hardware keystore, plain `http` from the core's socket on Android and iOS, and backgrounding during a call) are not checked by any test; the README lists them as UNCHECKED, and the device-test issue, [fespalier/fespalier#271](https://github.com/fespalier/fespalier/issues/271), has the steps to try them.
 
 ## i18n
 

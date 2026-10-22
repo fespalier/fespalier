@@ -250,4 +250,4 @@ No test here runs on a phone or a desktop, and CI builds the core on Linux only.
 5. Backgrounding during a call: the 10 s signature timeout, then `Seal`, then `Offline` under the same key.
 6. The app's size per ABI, and the first-build time of each target.
 
-The steps to try these are in the device-test issue, labelled `good first issue` and `human-test`.
+The steps to try these are in the device-test issue, [fespalier/fespalier#271](https://github.com/fespalier/fespalier/issues/271), labelled `good first issue` and `human-test`.

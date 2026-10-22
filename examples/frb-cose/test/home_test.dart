@@ -49,6 +49,10 @@ Iterable<RecordedCall> _writes(_Server server) => server.fake.calls.where(
   (c) => FakeCrateStackTransport.nameOf(c.call) == Ops.addNote,
 );
 
+Iterable<RecordedCall> _reads(_Server server) => server.fake.calls.where(
+  (c) => FakeCrateStackTransport.nameOf(c.call) == Ops.listNotes,
+);
+
 /// What an earlier run of the app saved: the server's last list, in the device's read cache.
 Future<void> _keepCopy(_Server server, String text) async {
   await ReadCache.local(server.store).write(
@@ -147,6 +151,45 @@ void main() {
       expect(_writes(server).map((c) => c.idempotencyKey), [first, first]);
       expect(find.text('later'), findsOneWidget);
       expect(find.textContaining('Send waiting'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'a note kept offline makes the list say so: the device copy, not the server',
+    (tester) async {
+      final server = _Server();
+      await _boot(tester, server);
+
+      // The first note is answered, so the device has a copy of the list.
+      await tester.enterText(find.byType(TextField), 'first');
+      await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Answered by the server: sealed by the Rust core, and verified there.',
+        ),
+        findsOneWidget,
+      );
+
+      server.fake.offline = true;
+      await tester.enterText(find.byType(TextField), 'second');
+      await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+      await tester.pumpAndSettle();
+
+      // The write is queued, and the list was read again: the server did not answer that read either.
+      expect(
+        find.textContaining('No answer yet. Kept under key'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('The server did not answer: the copy of'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Answered by the server'), findsNothing);
+      expect(find.text('first'), findsOneWidget);
+      expect(find.text('second'), findsNothing);
+      // The boot, the accepted write and the queued one each read the list: the last read reached no server.
+      expect(_reads(server), hasLength(3));
     },
   );
 

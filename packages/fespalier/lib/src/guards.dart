@@ -673,11 +673,12 @@ final class _RouterGuards {
 
   /// Forgets the passes of the pages that have left for good: those whose key is not among the
   /// pushed pages [present] of [config], except the pages of a tab that is parked. A page is parked
-  /// when every tab around it, outermost first, is still on screen up to one that shows another
-  /// branch; one whose tab has gone (its shell is not in [config]), or whose tab shows its branch
-  /// and not the page (it was popped), is gone. The same rule as `RouterWatch` has for a page that
-  /// left, which asks it of the walk it makes, but in order: a page in an inner shell of a parked
-  /// outer tab is parked, though its inner shell is not on screen.
+  /// when, reading the tabs around it from the outermost, every shell is on screen up to one that
+  /// shows another branch than the page's. One whose shell has gone (it is not in [config]) is gone,
+  /// and so is one whose tab shows its branch and not the page (it was popped). `RouterWatch` has the
+  /// same rule for a page that left (`parked` in its `_diff`), asked of every tab at once; reading
+  /// them in order also keeps a page in an inner shell of a parked outer tab, whose inner shell is
+  /// not on screen.
   void _forgetGone(RouteMatchList config, Set<String> present) {
     Map<String, GlobalKey<NavigatorState>>? shown;
     _passed.removeWhere((key, passed) {

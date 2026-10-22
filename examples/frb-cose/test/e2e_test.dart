@@ -69,6 +69,8 @@ final class _Server {
       '127.0.0.1:$port',
       '--server-scalar-hex',
       _scalar,
+      // Stdin stays open while this test runs, so a killed test run takes the server with it.
+      '--exit-when-stdin-closes',
     ]);
     unawaited(process.stderr.drain<void>());
     final lines = process.stdout

@@ -1,7 +1,11 @@
-//! `frb-cose-demo-server --listen 127.0.0.1:0 [--audience NAME] [--server-scalar-hex 64HEX]`
+//! `frb-cose-demo-server --listen 127.0.0.1:0 [--audience NAME] [--server-scalar-hex 64HEX] [--exit-when-stdin-closes]`
 //!
 //! Prints one JSON line on stdout once it is listening, then serves until killed:
 //! `{"addr":"127.0.0.1:PORT","server_public_jwk":{...},"audience":"..."}`.
+//!
+//! `--exit-when-stdin-closes` is for a program that starts the server and holds its stdin open (the end-to-end test
+//! does): when that program dies, even by SIGKILL, the pipe closes and the server exits with it, so a killed run
+//! leaves no server behind. It is opt-in because a server started with stdin at `/dev/null` would exit at once.
 
 use std::process::ExitCode;
 
@@ -12,6 +16,7 @@ struct Args {
     listen: String,
     audience: String,
     scalar: Option<String>,
+    exit_when_stdin_closes: bool,
 }
 
 fn parse() -> Result<Args, String> {
@@ -19,6 +24,7 @@ fn parse() -> Result<Args, String> {
         listen: "127.0.0.1:0".to_owned(),
         audience: DEFAULT_AUDIENCE.to_owned(),
         scalar: None,
+        exit_when_stdin_closes: false,
     };
     let mut rest = std::env::args().skip(1);
     while let Some(flag) = rest.next() {
@@ -27,6 +33,7 @@ fn parse() -> Result<Args, String> {
             "--listen" => args.listen = value()?,
             "--audience" => args.audience = value()?,
             "--server-scalar-hex" => args.scalar = Some(value()?),
+            "--exit-when-stdin-closes" => args.exit_when_stdin_closes = true,
             other => return Err(format!("unknown flag {other}")),
         }
     }
@@ -65,6 +72,13 @@ async fn run() -> Result<(), String> {
             "audience": built.hello.audience,
         })
     );
+    if args.exit_when_stdin_closes {
+        std::thread::spawn(|| {
+            // Reads until the end of the stream: nothing is ever sent on it, so it ends when the parent's end closes.
+            let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
+            std::process::exit(0);
+        });
+    }
     cratestack::axum::serve(listener, built.router.into_make_service())
         .await
         .map_err(|error| error.to_string())

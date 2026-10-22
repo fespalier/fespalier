@@ -97,6 +97,7 @@ The first run compiles CrateStack and takes a few minutes. The server then print
 The app **pins** the `server_public_jwk`: it never learns the key from the network. The whole line works too.
 
 - `--server-scalar-hex` takes 64 hex digits and fixes the server's key. The digits above are the test suite's: a demo key, public once you print it, not for anything else. Without the flag the server draws a new key on every start, so after a restart the app's pin no longer opens its answers and the page falls back to the device's copy. Copy the new `server_public_jwk` and build again, or keep the flag.
+- `--exit-when-stdin-closes` makes the server exit when its stdin closes. A program that starts the server and holds its stdin open (the end-to-end test does) passes it, so a killed run leaves no server behind. Without the flag, a server started with stdin at `/dev/null` would exit at once, so a person running it by hand does not need it.
 - **The server keeps its notes and its registrations in memory. A restart forgets them.** After a restart the first call or two can fail (a pooled connection is dead, and a `401` makes the core forget the device key). The next call registers the key again and goes through, with no restart of the app.
 
 ### 3. Run the app

@@ -147,7 +147,7 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// 6. A redirect, a site or a `leave()` question belongs to a re-run only if the provider's request
 ///    is the re-run's own and, for `leave()`, the leaving entry is the re-run's entry.
 /// 7. An asynchronous re-run never lands: at its first asynchronous answer it is dropped, and
-///    carried on only while its entry is on top.
+///    carried on only while its entry is on top and it is the newest re-run of that entry.
 /// 8. A re-run's landing has all its answers when `leave()` is asked: a pass asks nothing, a move
 ///    asks with no exemption.
 /// 9. Every re-run's request is recorded before its landing is judged, so a landing never
@@ -221,6 +221,10 @@ final class _RouterGuards {
   /// landing clears it. A pop back to the entry is then no landing: its completer is not here any
   /// more.
   final _requests = Expando<_Request>('fespalier push requests');
+
+  /// The newest re-run of each pushed page, by the completer of its entry (invariant 7): an older
+  /// one that is carried on after a newer one started would land over it.
+  final _newest = Expando<_Rerun>('fespalier newest re-runs');
 
   FutureOr<String?> run(
     BuildContext context,
@@ -392,6 +396,7 @@ final class _RouterGuards {
       zone: Zone.current,
       replay: dropped?.answers ?? const [],
     );
+    _newest[entry.completer] = rerun;
     _landing = rerun;
     final Future<Object?> answer;
     try {
@@ -424,16 +429,21 @@ final class _RouterGuards {
   /// must not land it. The `Future` it gets never completes, so it never lands, and its `replace`
   /// `Future` never completes either.
   ///
-  /// If the entry it was about is still on top (the same completer), the re-run goes on as a new
-  /// one that replays the answers received so far by position, so every redirect answers at once
-  /// and the new `replace` lands in its own call, with all its answers (invariant 8). It starts in
-  /// the zone the first re-run started in, so it does not inherit the error zone go_router
-  /// 17.2.3 to 18.1.0 run a redirect in. If the entry has gone (a pop, a `go`, a refresh that gave
-  /// the page a new completer, another re-run that landed), nothing is carried and nothing comes
-  /// back: the person's pop is not undone by a guard that answers late.
+  /// If the entry it was about is still on top (the same completer) and this re-run is the newest of
+  /// that entry ([_newest]), the re-run goes on as a new one that replays the answers received so
+  /// far by position, so every redirect answers at once and the new `replace` lands in its own call,
+  /// with all its answers (invariant 8). It starts in the zone the first re-run started in, so it
+  /// does not inherit the error zone go_router 17.2.3 to 18.1.0 run a redirect in. If the entry has
+  /// gone (a pop, a `go`, a refresh that gave the page a new completer, another re-run that
+  /// landed), nothing is carried and nothing comes back: the person's pop is not undone by a guard
+  /// that answers late. Nor is a newer re-run of the entry: a change that started it (a role
+  /// revoked while this one waited for the server) made this one's answer stale, and carrying it
+  /// would land a page the newer one has refused.
   Future<String?> _carry(_Rerun dropped) {
     final top = _topEntry();
-    if (top != null && identical(top.completer, dropped.entry.completer)) {
+    if (top != null &&
+        identical(top.completer, dropped.entry.completer) &&
+        identical(_newest[top.completer], dropped)) {
       dropped.zone.run(() => _rerun(top, dropped));
     }
     return Completer<String?>().future;

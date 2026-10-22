@@ -2,6 +2,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+/// An import or an export of the generated bindings, however it is spelled: relative (`rust/...`, `./rust/...`,
+/// `../src/rust/...`) or by package (`package:frb_cose_example/src/rust/...`), in single or double quotes.
+final _bindingsImport = RegExp(
+  r'''(import|export)\s+['"]((package:frb_cose_example/)?(\.{1,2}/)*(src/)?rust/)''',
+);
+
 /// The generated bindings are reached through two files, and nothing else in `lib/` names them.
 ///
 /// `lib/src/core.dart` exports the data types of the core (the seam's), and `lib/src/frb_core.dart` is the one file
@@ -24,7 +30,7 @@ void main() {
   test('only core.dart and frb_core.dart import the generated bindings', () {
     final importers = [
       for (final file in app)
-        if (RegExp(r"import '(\.\./)*(src/)?rust/").hasMatch(read(file)))
+        if (_bindingsImport.hasMatch(read(file)))
           file.path.replaceAll(r'\', '/'),
     ]..sort();
 

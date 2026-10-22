@@ -234,6 +234,7 @@ The generated files are never edited. A change to `rust/src/api/` is a regenerat
 
 ## Not built
 
+- **Persistence on the device.** The app's `localStore` is the package's default, `InMemoryLocalStore`, so the read copy of the notes and the writes waiting for the server (the intents) live in memory: they last while the app runs, and an app restart drops both. The list then starts empty and a note that was never sent is lost. A durable `HiveLocalStore` (`fespalier_cratestack/hive.dart`, given to `localStore.overrideWithValue(...)` in `startup()`) is how an app keeps them; this example does not wire it, and [`examples/cose`](../cose/README.md) does not either.
 - **Persistence in the core.** The journal and the event log are in memory. The device key lives in Dart's keystore, or in memory for a software key. The server keeps notes and registrations in memory.
 - **A web core.** A web build has no native library, so it has no key, no registration, no journal and no request. Its notes page is read-only and says so.
 - **The Rust side's HTTP is not visible to the tools a Dart app has.** There is no DevTools network view, no system proxy and no Android TLS setup. HTTPS uses reqwest's platform verifier (`rustls-platform-verifier`), which needs JNI initialisation on Android; this example does not do it.

@@ -6,6 +6,9 @@ import 'core_transport.dart';
 
 /// What `startup()` returns with a core: the core, the device key's identity, the transport over the core, and the
 /// account the notes belong to (the device key's thumbprint). A test passes a fake core to the same list.
+///
+/// `localStore` is left alone, so it is the package's `InMemoryLocalStore`: the read copy and the queued writes are
+/// lost when the app restarts (README, "Not built").
 List<Override> coreOverrides({
   required NotesCore core,
   required DeviceIdentity identity,

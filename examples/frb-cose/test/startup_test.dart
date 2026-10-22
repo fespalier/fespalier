@@ -39,6 +39,23 @@ void main() {
   );
 
   test(
+    'the read copy and the queued writes are in memory: the wiring leaves localStore alone (README, Not built)',
+    () {
+      final container = ProviderContainer(
+        overrides: coreOverrides(
+          core: FakeNotesCore(),
+          identity: const DeviceIdentity(kid: 'k', thumbprint: 'thumb'),
+        ),
+      );
+      addTearDown(container.dispose);
+
+      // An app restart drops what an InMemoryLocalStore holds. Wiring a durable store (HiveLocalStore) is the change that
+      // makes this test fail, and the README's "Not built" bullet, notes.dart and docs/examples.md say the same.
+      expect(container.read(localStore), isA<InMemoryLocalStore>());
+    },
+  );
+
+  test(
     'the web wiring: no core and no account, and a call is offline without reaching anything',
     () async {
       final container = ProviderContainer(overrides: unavailableOverrides());

@@ -46,7 +46,12 @@ List<Note> notesFromWire(Object? json) => [
     Note.fromWire(note),
 ];
 
-/// How `ref.serve` saves the list on the device between runs.
+/// How `ref.serve` saves the list as the read copy.
+///
+/// **The copy and the queued writes live in memory** (the package's default `InMemoryLocalStore`; `wiring.dart` does
+/// not override `localStore`): they last while the app runs, so an offline read and a write waiting for the server both
+/// work, and an app restart drops them. A durable `HiveLocalStore` (`fespalier_cratestack/hive.dart`), given to
+/// `localStore.overrideWithValue(...)`, is how an app keeps them across runs.
 final ServedCodec<List<Note>> notesCodec = ServedCodec<List<Note>>(
   toJson: (notes) => [for (final note in notes) note.toJson()],
   fromJson: (json) => [

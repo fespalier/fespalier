@@ -186,6 +186,17 @@ Future<void> _push(WidgetTester tester, GoRouter r, String location) async {
   await _settle(tester);
 }
 
+/// Whether the readers of a held page say the page on top is held: the page's gate (`refusedView`
+/// and `leave()` ask the key) and the walk of the lifecycle watch and of DevTools (they ask the entry).
+({bool gate, bool walk}) _readers(GoRouter r) {
+  final pushed = <ImperativeRouteMatch>[];
+  pushedMatches(r.routerDelegate.currentConfiguration.matches, pushed);
+  return (
+    gate: isHeldPage(r, pushed.last.pageKey),
+    walk: refusedEntry(r, pushed.last),
+  );
+}
+
 /// What the screen shows of the counter page: built and visible, or not.
 String _shown() =>
     '${find.text('COUNT 0').evaluate().length + find.text('COUNT 1').evaluate().length}';
@@ -245,6 +256,7 @@ void main() {
             expect(back.built, 0);
             expect(_stack(r), ['/home', '/admin'], reason: 'it waits held');
             expect(back.shown, '0');
+            expect(_readers(r), (gate: true, walk: true), reason: 'they agree');
           }
           back.gate?.complete();
           await _settle(tester);
@@ -271,9 +283,11 @@ void main() {
           if (!sync) {
             expect(back.built, 0, reason: 'held while the guard waits');
             expect(back.shown, '0');
+            expect(_readers(r), (gate: true, walk: true), reason: 'they agree');
           }
           back.gate?.complete();
           await _settle(tester);
+          expect(_readers(r), (gate: false, walk: false), reason: 'it passed');
           expect(_stack(r), ['/home', '/admin']);
           expect(find.text('COUNT 0'), findsOneWidget);
           expect(_built, 2);
@@ -317,7 +331,10 @@ void main() {
             0,
             reason: 'the entry is not the page that passed',
           );
-          if (!sync) expect(back.shown, '0');
+          if (!sync) {
+            expect(back.shown, '0');
+            expect(_readers(r), (gate: true, walk: true), reason: 'they agree');
+          }
           back.gate?.complete();
           await _settle(tester);
           expect(_stack(r), ['/home', '/login']);
@@ -343,7 +360,10 @@ void main() {
             reason: 'the page that passed is `/admin2` now',
           );
           expect(back.built, sync ? 1 : 0, reason: 'then its guard passes');
-          if (!sync) expect(back.shown, '0');
+          if (!sync) {
+            expect(back.shown, '0');
+            expect(_readers(r), (gate: true, walk: true), reason: 'they agree');
+          }
           back.gate?.complete();
           await _settle(tester);
           expect(_stack(r), ['/home', '/admin']);
@@ -365,7 +385,10 @@ void main() {
           final back = await _restore(tester, r, entry);
           expect(back.first, 0);
           expect(back.built, sync ? 1 : 0, reason: 'then its guard passes');
-          if (!sync) expect(back.shown, '0');
+          if (!sync) {
+            expect(back.shown, '0');
+            expect(_readers(r), (gate: true, walk: true), reason: 'they agree');
+          }
           back.gate?.complete();
           await _settle(tester);
           expect(_stack(r).last, '/tab/admin');

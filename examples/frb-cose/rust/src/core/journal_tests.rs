@@ -35,7 +35,7 @@ fn the_journal_keeps_the_newest_rows_and_is_bounded() {
 fn each_ending_has_its_outcome_and_whether_a_sealed_request_went_out() {
     // (the result, the outcome it reads as, its status, whether a sealed request went out)
     type Case = (Result<Answer, Error>, Outcome, Option<u16>, bool);
-    let cases: [Case; 7] = [
+    let cases: [Case; 8] = [
         (
             Ok(Answer {
                 status: 400,

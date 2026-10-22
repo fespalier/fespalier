@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.21.0](https://github.com/fespalier/fespalier/compare/v0.20.0...v0.21.0) (2026-10-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* see docs/migration.md, 0.21.0, "The HTTP transport and the auth rebuild". Stored sessions from 0.20.0 are not read, so users sign in once more; refresh is renew; fespalier.auth.dpop is fespalier.auth.scheme; AuthConfig takes a transport and has no leeway; DioHttpClient and WriteGuardClient are gone; ImageCdn takes a transport and is not const.
+
+### Features
+
+* a fespalier-owned HTTP transport, a protocol-agnostic auth core and device-signed sessions ([#269](https://github.com/fespalier/fespalier/issues/269)) ([e70999b](https://github.com/fespalier/fespalier/commit/e70999b6c78cd6c9fee6421484d4ac081c0baf0f))
+* **fespalier:** a guard that fails shows its route's error.dart, and the navigation ends as error ([#256](https://github.com/fespalier/fespalier/issues/256)) ([50ed69a](https://github.com/fespalier/fespalier/commit/50ed69acb7ae9cc8d3fcfb615413fffa5d582b91))
+* **frb:** ChangeBudget, one rebuild per tick for a busy key, and keys rebuilt only by their own events ([#245](https://github.com/fespalier/fespalier/issues/245)) ([5d5f6bc](https://github.com/fespalier/fespalier/commit/5d5f6bc22a7c13578265c885572920f926eaef64))
+* **fsp:** follow typedefs and import prefixes when comparing types ([#244](https://github.com/fespalier/fespalier/issues/244)) ([92b3ddb](https://github.com/fespalier/fespalier/commit/92b3ddbab2508a256f8cb902cc42064c044e92c0))
+
+
+### Bug Fixes
+
+* **deps:** an app at its lowest dependency versions builds on Flutter 3.35 for every platform ([#252](https://github.com/fespalier/fespalier/issues/252)) ([ad3a5d4](https://github.com/fespalier/fespalier/commit/ad3a5d4fabd74193f5fe4bcd81b36274b652edb8))
+* **fespalier:** a guard holds on a pushed page, running again when its answer changes and whenever go_router shows the page without it ([#260](https://github.com/fespalier/fespalier/issues/260)) ([987ca9c](https://github.com/fespalier/fespalier/commit/987ca9cedbf63f4f94103b411420cd43804d8302))
+* **fespalier:** a replace over a lone base page keeps its guard, and a pushed page's guard is tested and documented ([#268](https://github.com/fespalier/fespalier/issues/268)) ([d6e1440](https://github.com/fespalier/fespalier/commit/d6e14404bf4bbfe9f558fab489f9f2f80f7cc42a))
+* **telemetry:** OpenObserve v1.1.2, and a Grafana rate tile says 100 % when every call failed ([#243](https://github.com/fespalier/fespalier/issues/243)) ([3da758f](https://github.com/fespalier/fespalier/commit/3da758fc2c4432b766377763e6fe85d38c77fd51))
+
+
+### Documentation
+
+* a documentation site for docs/ with VitePress and the Material 3 theme ([#261](https://github.com/fespalier/fespalier/issues/261)) ([87367cd](https://github.com/fespalier/fespalier/commit/87367cdf1452124865afd0f05fcf61eb24bd1f56))
+* **examples:** run steps that work from a fresh clone, and README claims that match the code ([#257](https://github.com/fespalier/fespalier/issues/257)) ([cedcd1a](https://github.com/fespalier/fespalier/commit/cedcd1abfdd88f4050d4a2dc0c033ac0810d14d8))
+* **examples:** screenshots of every example in its README, made by just example-screenshots ([#254](https://github.com/fespalier/fespalier/issues/254)) ([1ea9f2d](https://github.com/fespalier/fespalier/commit/1ea9f2dff92072bc35e98c10e14a17353f552324))
+* **fespalier:** a router the app replaces must be disposed when telemetry follows it ([#266](https://github.com/fespalier/fespalier/issues/266)) ([3db876d](https://github.com/fespalier/fespalier/commit/3db876dfe0a4549cb71f4be816504dc7141fd972))
+* **guards:** a pushed page's guard does not move it when its answer changes (go_router [#258](https://github.com/fespalier/fespalier/issues/258)) ([#265](https://github.com/fespalier/fespalier/issues/265)) ([5da267c](https://github.com/fespalier/fespalier/commit/5da267c09f248d1f7749f54a2d586ef85e4558f8))
+* **telemetry:** regenerate the dashboard screenshots on OpenObserve v1.1.2 and Grafana 13.2.4 ([#249](https://github.com/fespalier/fespalier/issues/249)) ([18268da](https://github.com/fespalier/fespalier/commit/18268daf49b2c603c2592e1db62a66e4cd752b35))
+
+
+### Tests
+
+* **examples:** every example opens its routes in a release web build in Chromium ([#250](https://github.com/fespalier/fespalier/issues/250)) ([4b0647a](https://github.com/fespalier/fespalier/commit/4b0647a732ff1341d6d6e3094989f508b502aec8))
+* **examples:** the wire-sizes socket test sends sealed cose calls too ([#247](https://github.com/fespalier/fespalier/issues/247)) ([68069c8](https://github.com/fespalier/fespalier/commit/68069c80e392131953bf5ea6b16a0117049a5a37))
+* **fespalier,fespalier_otel,fespalier_analytics:** every test passes in any order ([#263](https://github.com/fespalier/fespalier/issues/263)) ([8a390a9](https://github.com/fespalier/fespalier/commit/8a390a93cd53b4d18e3810b8659c7b25bb9a6b46))
+* **fespalier:** follow go_router 18.1.1 in the guard-failure and hot-reload tests ([#253](https://github.com/fespalier/fespalier/issues/253)) ([d0b3e70](https://github.com/fespalier/fespalier/commit/d0b3e7045f818bfd43911a6179e472ad68d51777))
+
+
+### Build System
+
+* **examples:** webpki-root-certs and rustls-webpki past RUSTSEC-2026-0383 in the example servers ([#259](https://github.com/fespalier/fespalier/issues/259)) ([35692ba](https://github.com/fespalier/fespalier/commit/35692baac361c351f9338c65ab212f57ae8e197b))
+* one pub workspace with Melos for the packages that claim Flutter 3.35 ([#251](https://github.com/fespalier/fespalier/issues/251)) ([0f93460](https://github.com/fespalier/fespalier/commit/0f934602316295fe85af84a3d2f8d18097f07eb4))
+* **telemetry:** OpenTelemetry Collector 0.163.1 and Grafana 13.2.4 ([#248](https://github.com/fespalier/fespalier/issues/248)) ([adfa6bd](https://github.com/fespalier/fespalier/commit/adfa6bd8d8dfbf757c7d1efd0e518a82b5134d06))
+
 ## [0.20.0](https://github.com/fespalier/fespalier/compare/v0.19.0...v0.20.0) (2026-10-19)
 
 

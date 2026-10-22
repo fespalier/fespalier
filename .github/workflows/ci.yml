@@ -70,6 +70,7 @@ jobs:
           cargo run --quiet -- check --project ../examples/maps
           cargo run --quiet -- check --project ../examples/adopt
           cargo run --quiet -- check --project ../examples/offline
+          cargo run --quiet -- check --project ../examples/device
           cargo run --quiet -- maestro --check --project ../examples/shop
       # Licences, advisories, duplicate versions, sources: cli/deny.toml.
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
@@ -126,7 +127,11 @@ jobs:
           - packages/fespalier
           - packages/fespalier_devtools
           - packages/fespalier_otel
+          - packages/fespalier_transport
           - packages/fespalier_auth
+          - packages/fespalier_oidc
+          - packages/fespalier_keypair
+          - packages/fespalier_keypair_dpop
           - packages/fespalier_sign_keypair
           - packages/fespalier_adaptive
           - packages/fespalier_flags
@@ -161,6 +166,7 @@ jobs:
           - examples/maps
           - examples/adopt
           - examples/offline
+          - examples/device
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -231,8 +237,9 @@ jobs:
   # for an app that uses all of them.
   #
   # Left out on purpose:
-  # - packages/fespalier_sign_keypair: flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so it
-  #   does not resolve on 3.35 and the package declares that floor itself.
+  # - packages/fespalier_keypair, fespalier_keypair_dpop and fespalier_sign_keypair:
+  #   flutter_sign_keypair needs Flutter 3.44 (Dart 3.12), so they do not resolve on 3.35 and the
+  #   packages declare that floor themselves.
   # - packages/fespalier_download_background: background_downloader 9.6 needs Flutter 3.47 (Dart
   #   3.13), so it does not resolve on 3.35 and the package declares that floor itself.
   # - packages/fespalier_devtools: a web app, not a package; its release build is committed and
@@ -251,7 +258,9 @@ jobs:
         dir:
           - packages/fespalier
           - packages/fespalier_otel
+          - packages/fespalier_transport
           - packages/fespalier_auth
+          - packages/fespalier_oidc
           - packages/fespalier_adaptive
           - packages/fespalier_image
           - packages/fespalier_flags
@@ -348,6 +357,8 @@ jobs:
           flutter-version: ${{ env.FLUTTER_FLOOR_VERSION }}
           cache: true
       - run: flutter --version
+      - name: The plugin list is read as the script means it (scripts/test_floor_app.py)
+        run: python3 scripts/test_floor_app.py
       - name: Copy each package out of the workspace and write the app (scripts/floor_copy.py, scripts/floor_app.py)
         run: |
           python3 scripts/floor_copy.py "$RUNNER_TEMP/floor-app/tree"
@@ -1055,6 +1066,7 @@ jobs:
           - adopt
           - offline
           - cose
+          - device
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

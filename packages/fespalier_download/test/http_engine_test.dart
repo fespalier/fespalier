@@ -6,6 +6,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpClientTransport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -35,7 +36,7 @@ void main() {
 
   Downloads make() => Downloads(
     backend: HttpDownloadBackend(
-      client: server.client,
+      transport: HttpClientTransport(server.client),
       bases: defaultBases,
       files: files,
     ),
@@ -172,7 +173,7 @@ void main() {
       );
       final d = Downloads(
         backend: HttpDownloadBackend(
-          client: signed,
+          transport: HttpClientTransport(signed),
           bases: defaultBases,
           files: files,
         ),

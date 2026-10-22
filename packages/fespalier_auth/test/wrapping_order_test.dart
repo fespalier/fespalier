@@ -1,241 +1,139 @@
-// The wrapping order docs/http.md documents, proved with the real layers:
+// The two orders a WriteGuardTransport and a SessionTransport can be stacked in:
 //
-//   ref.abortable(SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), ...)))
+//   SessionTransport(WriteGuardTransport(inner), authorizer)
+//   WriteGuardTransport(SessionTransport(inner, authorizer))
 //
-// and, for a DPoP proof of its own on every attempt, the retrier outside the session:
-//
-//   ref.abortable(RetryClient(WriteGuardClient(SessionClient(authorizer, inner: client)), ...))
-//
-// `RetryClient` sends a copy of every request as a `StreamedRequest`, and `SessionClient` sends a
-// request again after a 401 only when it is a plain `Request`. That one fact is why the first
-// order is the default: under a retrier that sits outside the session, a 401 is refreshed but
-// not replayed.
-import 'dart:async';
-
+// A write that gets a 401 is replayed once by the session in both, marked as a replay, and never
+// sent a third time; the guard still tells a write's response from a read's.
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
-import 'package:fespalier_http/fespalier_http.dart';
-import 'package:fespalier_http/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/retry.dart' as http_retry;
 
 import 'support.dart';
 
 final api = Uri.parse('https://api.example.com');
 final orders = Uri.parse('https://api.example.com/orders');
 
+typedef Stack = HttpTransport Function(HttpTransport inner, Authorizer a);
+
+HttpTransport sessionOutside(HttpTransport inner, Authorizer a) =>
+    SessionTransport(WriteGuardTransport(inner), a);
+
+HttpTransport guardOutside(HttpTransport inner, Authorizer a) =>
+    WriteGuardTransport(SessionTransport(inner, a));
+
+TransportRequest request(String method) => TransportRequest(
+  method: method,
+  uri: orders,
+  headers: const {'content-type': 'application/json'},
+);
+
 void main() {
   late ProviderContainer container;
-  late FakeHttpClient server;
   late FakeAuthBackend backend;
-  late Provider<http.Client> composed;
 
-  http_retry.RetryClient retrier(
-    http.Client inner, {
-    bool Function(Object, StackTrace)? retryError,
-  }) => http_retry.RetryClient(
-    WriteGuardClient(inner),
-    when: WriteGuardClient.readsOnly(),
-    whenError: WriteGuardClient.readErrorsOnly(retryError ?? (e, s) => false),
-    delay: (_) => Duration.zero,
-  );
+  /// Serves 401 to every credential but [good], and [status] to the good one.
+  FakeTransport serve({String good = 'fake-1', int status = 200}) =>
+      FakeTransport((request, _) {
+        final header = request.headers['x-fake-credential'];
+        final ok = header != null && header.startsWith('$good#');
+        return fakeResponse(ok ? status : 401);
+      });
 
-  /// The default order: the session outside the retrier. [answer] gets the number of the request
-  /// (1-based) and the request.
-  void serve(
-    FutureOr<http.Response> Function(int n, http.BaseRequest request) answer, {
-    bool retrierOutside = false,
-    FakeAuthBackend? use,
-    Duration? tokenLifetime,
-    bool Function(Object, StackTrace)? retryError,
-  }) {
-    var n = 0;
-    server = FakeHttpClient((request, body) => answer(++n, request));
-    backend = use ?? FakeAuthBackend();
+  void signedIn() {
+    backend = FakeAuthBackend(user: ada);
     container = containerFor(
       signedInAs: ada,
-      apiOrigins: [api],
       backend: backend,
-      tokenLifetime: tokenLifetime,
+      apiOrigins: [api],
     );
-    composed = Provider<http.Client>((ref) {
-      final authorizerOf = ref.watch(authorizer);
-      return ref.abortable(
-        retrierOutside
-            ? retrier(
-                SessionClient(authorizerOf, inner: server),
-                retryError: retryError,
-              )
-            : SessionClient(authorizerOf, inner: retrier(server)),
-      );
-    });
   }
 
-  http.Client client() => container.read(composed);
+  final stacks = <String, Stack>{
+    'the session outside the guard': sessionOutside,
+    'the guard outside the session': guardOutside,
+  };
 
-  group('the session outside the retrier', () {
-    test('a read is retried on a 503 and carries the session', () async {
-      serve((n, _) => http.Response('x', n == 1 ? 503 : 200));
-      final response = await client().get(orders);
-      expect(response.statusCode, 200);
-      expect(server.requests, hasLength(2));
-      for (final sent in server.requests) {
-        expect(sent.headers['Authorization'], startsWith('Bearer '));
-      }
-    });
+  for (final MapEntry(key: name, value: stack) in stacks.entries) {
+    group(name, () {
+      setUp(signedIn);
 
-    test('a write is not retried on a 503', () async {
-      serve((_, _) => http.Response('x', 503));
-      final response = await client().post(orders, body: 'a');
-      expect(response.statusCode, 503);
-      expect(server.requests, hasLength(1));
-    });
-
-    test('a write with an Idempotency-Key is retried', () async {
-      serve((n, _) => http.Response('x', n == 1 ? 503 : 200));
-      final response = await client().post(
-        orders,
-        headers: {'Idempotency-Key': 'k1'},
-        body: 'a',
+      test(
+        'a write that gets a 401 is replayed once, marked as a replay',
+        () async {
+          final inner = serve();
+          final transport = stack(inner, container.read(authorizer));
+          final response = await transport.send(request('POST'));
+          expect(response.statusCode, 200);
+          expect(inner.requests, hasLength(2));
+          expect(
+            inner.requests[0].request.attributes[transportReplayKey],
+            isNull,
+          );
+          expect(
+            inner.requests[1].request.attributes[transportReplayKey],
+            isTrue,
+          );
+          expect(backend.renewals, 1);
+          expect(WriteGuardTransport.isWriteResponse(response), isTrue);
+        },
       );
-      expect(response.statusCode, 200);
-      expect(server.requests, hasLength(2));
-    });
 
-    test('a read refused with a 401 is refreshed and sent again', () async {
-      serve((n, _) => http.Response('x', n == 1 ? 401 : 200));
-      final response = await client().get(orders);
-      expect(response.statusCode, 200);
-      expect(backend.refreshes, 1);
-      expect(server.requests, hasLength(2));
-      expect(
-        server.requests[0].headers['Authorization'],
-        isNot(server.requests[1].headers['Authorization']),
-        reason: 'the replay carries the refreshed token',
-      );
-    });
+      test('a write is never sent a third time', () async {
+        final inner = serve(good: 'never');
+        final transport = stack(inner, container.read(authorizer));
+        final response = await transport.send(request('POST'));
+        expect(response.statusCode, 401);
+        expect(inner.requests, hasLength(2));
+        expect(backend.renewals, 1);
+        expect(WriteGuardTransport.isWriteResponse(response), isTrue);
+      });
 
-    test('a write refused with a 401 is replayed once, and a 503 after it '
-        'is not retried', () async {
-      serve((n, _) => http.Response('x', n == 1 ? 401 : 503));
-      final response = await client().post(orders, body: 'a');
-      expect(response.statusCode, 503);
-      expect(server.requests, hasLength(2), reason: 'one replay, no retry');
-    });
+      test(
+        'a read that gets a 401 is replayed once too, and is not a write',
+        () async {
+          final inner = serve();
+          final transport = stack(inner, container.read(authorizer));
+          final response = await transport.send(request('GET'));
+          expect(response.statusCode, 200);
+          expect(inner.requests, hasLength(2));
+          expect(WriteGuardTransport.isWriteResponse(response), isFalse);
+        },
+      );
 
-    test('the abort reaches the retry that follows a 503', () async {
-      final gate = Completer<http.Response>();
-      serve((n, _) => n == 1 ? http.Response('x', 503) : gate.future);
-      final pending = client().get(orders);
-      final done = expectLater(
-        pending,
-        throwsA(isA<http.RequestAbortedException>()),
+      test(
+        'a 503 is marked as a write\'s or a read\'s, and is not replayed',
+        () async {
+          final inner = FakeTransport((_, _) => fakeResponse(503));
+          final transport = stack(inner, container.read(authorizer));
+          final write = await transport.send(request('POST'));
+          final read = await transport.send(request('GET'));
+          expect(WriteGuardTransport.isWriteResponse(write), isTrue);
+          expect(WriteGuardTransport.isWriteResponse(read), isFalse);
+          expect(
+            inner.requests,
+            hasLength(2),
+            reason: 'the session replays 401s, not 503s',
+          );
+          expect(backend.renewals, 0);
+        },
       );
-      while (server.requests.length < 2) {
-        await Future<void>.delayed(Duration.zero);
-      }
-      container.refresh(composed);
-      await done;
-      expect(
-        server.requests.every((r) => r.abortable),
-        isTrue,
-        reason: 'every send carries the trigger',
-      );
-    });
 
-    test('the abort reaches the replay that follows a 401', () async {
-      final gate = Completer<http.Response>();
-      serve((n, _) => n == 1 ? http.Response('x', 401) : gate.future);
-      final pending = client().get(orders);
-      final done = expectLater(
-        pending,
-        throwsA(isA<http.RequestAbortedException>()),
-      );
-      while (server.requests.length < 2) {
-        await Future<void>.delayed(Duration.zero);
-      }
-      container.refresh(composed);
-      await done;
-      expect(server.requests.every((r) => r.abortable), isTrue);
+      test('a write whose send fails is marked as a write\'s error', () async {
+        final inner = FakeTransport.script([const TransportBroken()]);
+        final transport = stack(inner, container.read(authorizer));
+        Object? thrown;
+        try {
+          await transport.send(request('POST'));
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<TransportBroken>());
+        expect(WriteGuardTransport.isWriteError(thrown!), isTrue);
+      });
     });
-
-    test('a retry re-sends the proof it was given', () async {
-      final proof = FakeProof();
-      serve(
-        (n, _) => http.Response('x', n == 1 ? 503 : 200),
-        use: FakeAuthBackend(proof: proof),
-      );
-      await client().get(orders);
-      expect(server.requests, hasLength(2));
-      expect(proof.proofs, hasLength(1), reason: 'one proof, sent twice');
-    });
-  });
-
-  group('the retrier outside the session, for a proof on every attempt', () {
-    test('every attempt has a proof of its own', () async {
-      final proof = FakeProof();
-      serve(
-        (n, _) => http.Response('x', n == 1 ? 503 : 200),
-        retrierOutside: true,
-        use: FakeAuthBackend(proof: proof),
-      );
-      await client().get(orders);
-      expect(server.requests, hasLength(2));
-      expect(proof.proofs, hasLength(2));
-    });
-
-    test('a 401 is refreshed but not sent again: the retrier hands the '
-        'session a streamed copy', () async {
-      serve(
-        (n, _) => http.Response('x', n == 1 ? 401 : 200),
-        retrierOutside: true,
-      );
-      final response = await client().get(orders);
-      expect(response.statusCode, 401);
-      expect(server.requests, hasLength(1));
-      expect(backend.refreshes, 1, reason: 'so that the next request works');
-      expect((await client().get(orders)).statusCode, 200);
-    });
-
-    // The package:http half of the Dio rule (docs/http.md, "The wrapping order"). Here the retrier
-    // is a RetryClient outside the session that retries a network error (a ClientException). A
-    // refused refresh is an AuthRejected, which is not one, so it is never retried; an unavailable
-    // one is an AuthUnavailable, which is, and each attempt asks again. Nothing reaches the API
-    // without the session in either case.
-    bool networkErrors(Object error, StackTrace _) =>
-        error is http.ClientException;
-
-    test('a refused refresh is not retried, and nothing is sent', () async {
-      serve(
-        (n, _) => http.Response('x', 200),
-        retrierOutside: true,
-        tokenLifetime: const Duration(seconds: -1),
-        retryError: networkErrors,
-      );
-      backend.refreshError = const AuthRejected();
-      await expectLater(client().get(orders), throwsA(isA<AuthRejected>()));
-      expect(server.requests, isEmpty);
-      expect(backend.refreshes, 1);
-    });
-
-    test('an unavailable refresh is retried, and nothing is sent without '
-        'the session', () async {
-      serve(
-        (n, _) => http.Response('x', 200),
-        retrierOutside: true,
-        tokenLifetime: const Duration(seconds: -1),
-        retryError: networkErrors,
-      );
-      backend.refreshError = AuthUnavailable(StateError('offline'));
-      await expectLater(client().get(orders), throwsA(isA<AuthUnavailable>()));
-      expect(server.requests, isEmpty);
-      expect(
-        backend.refreshes,
-        4,
-        reason: 'the first attempt and three retries',
-      );
-    });
-  });
+  }
 }

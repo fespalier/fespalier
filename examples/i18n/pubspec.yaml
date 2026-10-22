@@ -16,16 +16,24 @@ dependencies:
   # Translated texts (since 0.10.0): bundled catalogs, the locale of the route, ICU plurals.
   fespalier_tolgee:
     path: ../../packages/fespalier_tolgee
+  # The app's one transport, HttpClientTransport over package:http (lib/app/startup.dart), which
+  # TolgeeCdn fetches through.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  http: ^1.5.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
 
-# The companions depend on fespalier by repository, as an app does; here it is the checkout's.
+# The companions depend on fespalier and fespalier_transport by repository, as an app does; here both are
+# the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

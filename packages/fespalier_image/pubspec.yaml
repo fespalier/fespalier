@@ -22,6 +22,13 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.20.0 # x-release-please-version
+  # HttpTransport, which a TransportImage fetches through (since 0.21.0): the app's own, so no HTTP
+  # client is linked here (test/no_http_test.dart).
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v0.20.0 # x-release-please-version
 
 dev_dependencies:
   # Only the signing tests use it, to check each builder's payload against the providers' published

@@ -4,7 +4,9 @@
 import 'dart:async';
 
 import 'package:fespalier_download/fespalier_download.dart';
-import 'package:fespalier_http/fespalier_http.dart' show HttpCredentials;
+import 'package:fespalier_http/fespalier_http.dart' show HttpClientTransport;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show HttpCredentials;
 import 'package:http/http.dart' as http;
 
 /// The base folder every test resolves to.
@@ -46,7 +48,7 @@ class Rig implements DownloadEvents {
     HttpCredentials? credentials,
   }) : bases = basesOf ?? defaultBases,
        backend = HttpDownloadBackend(
-         client: client,
+         transport: HttpClientTransport(client),
          bases: basesOf ?? defaultBases,
          files: files,
          credentials: credentials,

@@ -1,8 +1,14 @@
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:fespalier_http/fespalier_http.dart'
-    show HttpAuthorization, HttpCredentials;
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show
+        CredentialsUnavailable,
+        HttpAuthorization,
+        HttpCredentials,
+        HttpTransport,
+        TransportRequest,
+        TransportResponse;
 
 import 'status.dart' show DownloadFailure;
 import 'transfer_files.dart';
@@ -62,22 +68,68 @@ final class TransferFailed extends TransferResult {
 
 enum _Step { verify, stop, restart, again }
 
-/// The most sends of one request that [HttpCredentials] may ask for, as `SessionClient`'s.
+// The headers a transfer sets itself: the app's own of these names are replaced.
+const Set<String> _ownHeaders = {'range', 'if-range', 'accept-encoding'};
+
+/// The most sends of one request that [HttpCredentials] may ask for, as `SessionTransport`'s.
 const int _maxSends = 3;
 
-// The body of a response and whether the transfer took it: a body nobody reads is cancelled.
+/// The most bytes of a 401's or 403's body that are read for [HttpCredentials.retry].
+const int _maxRefusalBody = 64 * 1024;
+
+// The body of a response and whether the transfer took it: a body nobody reads is cancelled. The
+// response is replaced when its body was read for the credentials, by one over the same bytes.
 final class _Body {
   _Body(this.response);
 
-  final http.StreamedResponse response;
+  TransportResponse response;
   bool taken = false;
+}
+
+// The [head] bytes already read from [rest], and the rest, as one stream again.
+Stream<List<int>> _rejoin(
+  List<int> head,
+  StreamIterator<List<int>> rest,
+) async* {
+  try {
+    yield head;
+    while (await rest.moveNext()) {
+      yield rest.current;
+    }
+  } finally {
+    await rest.cancel();
+  }
+}
+
+TransportResponse _withBody(
+  TransportResponse response,
+  Stream<List<int>> body,
+) => TransportResponse(
+  statusCode: response.statusCode,
+  headers: response.headers,
+  body: body,
+  reasonPhrase: response.reasonPhrase,
+);
+
+// [headers] with [extra] on top, matching names without regard to case (an HTTP header name has
+// none): `Authorization` from the credentials replaces an `authorization` the app set.
+Map<String, String> _merged(
+  Map<String, String> headers,
+  Map<String, String> extra,
+) {
+  final names = {for (final name in extra.keys) name.toLowerCase()};
+  return <String, String>{
+    for (final entry in headers.entries)
+      if (!names.contains(entry.key.toLowerCase())) entry.key: entry.value,
+    ...extra,
+  };
 }
 
 // Cancels a response body that is not wanted (an error status, a restart) after its first event,
 // without waiting for the rest. No `listen` here: `await for` is the subscription.
-Future<void> _abandon(http.StreamedResponse response) async {
+Future<void> _abandon(TransportResponse response) async {
   try {
-    await for (final _ in response.stream) {
+    await for (final _ in response.body) {
       break;
     }
   } catch (_) {
@@ -99,9 +151,9 @@ Future<void> _abandon(http.StreamedResponse response) async {
 /// file it no longer has the end of gets one restart too.
 ///
 /// It starts no timer and listens to nothing: the response body is read with `await for`, which
-/// ends when the transfer is paused or stopped, because both abort the request through
-/// `http.Abortable` (the [http.Client] must honour it, as the `package:http` clients do), so a
-/// connection that sends nothing cannot hold them up.
+/// ends when the transfer is paused or stopped, because both abort the request through its
+/// `abortTrigger` (every `HttpTransport` honours it, `fespalier_http`'s and `fespalier_dio`'s
+/// among them), so a connection that sends nothing cannot hold them up.
 ///
 /// It reports nothing to telemetry: whoever owns the transfer does, and a URL, a path or a
 /// header never leave it.
@@ -112,7 +164,7 @@ class HttpTransfer {
   /// [onProgress] hears the bytes received and the size when known, [onVerifying] hears that the
   /// body is whole and is being checked.
   HttpTransfer({
-    required http.Client client,
+    required HttpTransport transport,
     required TransferFiles files,
     required this.url,
     required this.destination,
@@ -122,10 +174,10 @@ class HttpTransfer {
     this.onProgress,
     this.onVerifying,
     this.credentials,
-  }) : _client = client,
+  }) : _transport = transport,
        _files = files;
 
-  final http.Client _client;
+  final HttpTransport _transport;
   final TransferFiles _files;
 
   /// Where the file is fetched from.
@@ -153,7 +205,7 @@ class HttpTransfer {
   /// (`retry`), for this foreground transfer only: the app is running, so its session is there.
   /// A transfer sends one `GET`, which is safe to send again; at most three sends per request.
   /// Null sends [headers] alone. A throw from the credentials ends the transfer `unauthorized`,
-  /// except an `http.ClientException` (the session could not be reached, as `AuthUnavailable`
+  /// except a `CredentialsUnavailable` (the session could not be reached, as `AuthUnavailable`
   /// is when a token cannot refresh offline), which ends it `network` (since 0.16.0): nothing was
   /// refused, and `Downloads.retry` goes on from the partial file.
   final HttpCredentials? credentials;
@@ -318,23 +370,33 @@ class HttpTransfer {
     // Aborted by a pause or a stop or, when the transfer is done with the response, by this
     // request's own completer, so a body that never sends a byte is freed.
     final done = Completer<void>();
-    final request = http.AbortableRequest(
-      'GET',
-      url,
-      abortTrigger: Future.any([_abort.future, done.future]),
-    );
-    request.headers.addAll(headers);
+    // Offsets count the bytes on the wire: a compressed body would make them mean nothing.
+    var wire = <String, String>{
+      for (final entry in headers.entries)
+        if (!_ownHeaders.contains(entry.key.toLowerCase()))
+          entry.key: entry.value,
+    };
+    wire['accept-encoding'] = 'identity';
+    if (offset > 0) {
+      wire['range'] = 'bytes=$offset-';
+      if (tag != null) wire['if-range'] = tag;
+    }
+    final abortTrigger = Future.any<void>([_abort.future, done.future]);
     final session = credentials;
     if (session != null) {
       try {
         final attempt = _attempt = await session.authorize(
-          'GET',
-          url,
+          TransportRequest(
+            method: 'GET',
+            uri: url,
+            headers: Map<String, String>.of(wire),
+            body: Uint8List(0),
+          ),
           previous: _attempt,
         );
         _sends++;
-        request.headers.addAll(attempt.headers);
-      } on http.ClientException {
+        wire = _merged(wire, attempt.headers);
+      } on CredentialsUnavailable {
         // The session could not be reached (no network while its token refreshes,
         // `AuthUnavailable`): nothing was refused, so this is not a lost session.
         done.complete();
@@ -346,17 +408,16 @@ class HttpTransfer {
         return _Step.stop;
       }
     }
-    request.headers.remove('range');
-    request.headers.remove('if-range');
-    // Offsets count the bytes on the wire: a compressed body would make them mean nothing.
-    request.headers['accept-encoding'] = 'identity';
-    if (offset > 0) {
-      request.headers['range'] = 'bytes=$offset-';
-      if (tag != null) request.headers['if-range'] = tag;
-    }
-    final http.StreamedResponse response;
+    final TransportResponse response;
     try {
-      response = await _client.send(request);
+      response = await _transport.send(
+        TransportRequest(
+          method: 'GET',
+          uri: url,
+          headers: wire,
+          abortTrigger: abortTrigger,
+        ),
+      );
     } catch (_) {
       if (_stopped) return _Step.stop;
       if (_pausing) {
@@ -368,7 +429,7 @@ class HttpTransfer {
     }
     final body = _Body(response);
     try {
-      final again = await _askAgain(response);
+      final again = await _askAgain(body);
       if (again == null) return _Step.stop;
       if (again) return _Step.again;
       // The response stands: the next request (a restart) starts its sends from one.
@@ -376,7 +437,7 @@ class HttpTransfer {
       _sends = 0;
       return await _handle(offset, tag, body);
     } finally {
-      if (!body.taken) unawaited(_abandon(response));
+      if (!body.taken) unawaited(_abandon(body.response));
       if (!done.isCompleted) done.complete();
     }
   }
@@ -384,7 +445,8 @@ class HttpTransfer {
   // Whether the credentials want the request sent once more after this response: true (send
   // again), false (handle it), null (the credentials threw: the transfer failed). Only a refusal
   // is put to them, and only while sends are left.
-  Future<bool?> _askAgain(http.StreamedResponse response) async {
+  Future<bool?> _askAgain(_Body body) async {
+    final response = body.response;
     final session = credentials;
     final attempt = _attempt;
     final code = response.statusCode;
@@ -395,14 +457,10 @@ class HttpTransfer {
       return false;
     }
     try {
-      final again = await session.retry(
-        attempt,
-        statusCode: code,
-        headers: response.headers,
-      );
+      final again = await session.retry(attempt, await _forCredentials(body));
       if (again && !_stopped && !_abort.isCompleted) return true;
       return false;
-    } on http.ClientException {
+    } on CredentialsUnavailable {
       // As for authorize: the refresh could not run, which says nothing about the session.
       if (!_stopped) _fail(DownloadFailure.network);
       return null;
@@ -410,6 +468,56 @@ class HttpTransfer {
       if (!_stopped) _fail(DownloadFailure.unauthorized);
       return null;
     }
+  }
+
+  // The response as the credentials see it. A 401 or a 403 is read (up to 64 KiB, so a server's
+  // reason or nonce can be looked at) and [body] is made again over the same bytes, so the
+  // transfer handles the answer exactly as before; any other refusal, and a body that is longer,
+  // goes unbuffered.
+  Future<TransportResponse> _forCredentials(_Body body) async {
+    final response = body.response;
+    final code = response.statusCode;
+    final declared = int.tryParse(response.headers['content-length'] ?? '');
+    TransportResponse bodiless() => TransportResponse(
+      statusCode: code,
+      headers: response.headers,
+      body: const Stream<List<int>>.empty(),
+      reasonPhrase: response.reasonPhrase,
+    );
+    if ((code != 401 && code != 403) ||
+        (declared != null && declared > _maxRefusalBody)) {
+      return bodiless();
+    }
+    final rest = StreamIterator<List<int>>(response.body);
+    final read = BytesBuilder(copy: false);
+    var whole = true;
+    try {
+      while (await rest.moveNext()) {
+        read.add(rest.current);
+        if (read.length > _maxRefusalBody) {
+          whole = false;
+          break;
+        }
+      }
+    } catch (_) {
+      // The body broke off (the connection, an abort): the refusal stands, and its body is of no
+      // use to the transfer, which never reads one.
+      body.response = _withBody(response, const Stream<List<int>>.empty());
+      return bodiless();
+    }
+    final head = read.takeBytes();
+    if (!whole) {
+      body.response = _withBody(response, _rejoin(head, rest));
+      return bodiless();
+    }
+    final buffered = TransportResponse.fromBytes(
+      statusCode: code,
+      headers: response.headers,
+      bytes: head,
+      reasonPhrase: response.reasonPhrase,
+    );
+    body.response = buffered;
+    return buffered;
   }
 
   Future<_Step> _handle(int offset, String? tag, _Body body) async {
@@ -450,7 +558,7 @@ class HttpTransfer {
         append = offset > 0;
       case 200:
         // The whole body: the server ignored Range, or If-Range said the file changed.
-        final length = response.contentLength;
+        final length = int.tryParse(response.headers['content-length'] ?? '');
         total = length != null && length > 0 ? length : null;
         offset = 0;
       default:
@@ -496,7 +604,7 @@ class HttpTransfer {
       var reported = received;
       final step = expected == null ? _reportStep : expected ~/ 200;
       try {
-        await for (final chunk in response.stream) {
+        await for (final chunk in response.body) {
           if (_stopped) break;
           try {
             await sink!.add(chunk);

@@ -4,8 +4,9 @@ library;
 import 'package:fespalier/testing.dart' show Override;
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
 import 'package:fespalier_tolgee/in_context.dart' show TranslationEditor;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show TransportUnsent;
 import 'package:flutter/foundation.dart' show FlutterError, FlutterErrorDetails;
-import 'package:http/http.dart' as http;
 
 export 'package:fespalier/fespalier.dart' show MemoryDataStorage;
 export 'package:fespalier_tolgee/in_context.dart' show TranslationEditor;
@@ -34,7 +35,7 @@ final class FakeTranslations implements TranslationSource {
     _messages[locale] = {...messages};
   }
 
-  /// From now on, `fetch` throws an `http.ClientException`.
+  /// From now on, `fetch` throws a `TransportUnsent`.
   void offline() => _offline = true;
 
   /// From now on, `fetch` answers like a 304: null.
@@ -53,7 +54,7 @@ final class FakeTranslations implements TranslationSource {
   Future<RemoteCatalog?> fetch(String locale, {String? etag}) {
     _fetches[locale] = fetchCount(locale) + 1;
     if (_offline) {
-      return Future.error(http.ClientException('FakeTranslations is offline'));
+      return Future.error(const TransportUnsent('FakeTranslations is offline'));
     }
     final messages = _messages[locale];
     if (_notModified || messages == null) return Future.value();

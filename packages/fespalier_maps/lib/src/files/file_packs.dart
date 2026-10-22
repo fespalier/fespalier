@@ -10,7 +10,8 @@ import 'package:fespalier_download/fespalier_download.dart'
         TransferFailed,
         TransferPaused,
         TransferStopped;
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show HttpTransport;
 
 import '../offline/status.dart';
 import '../offline/tile_packs.dart' show StorageUse;
@@ -19,13 +20,15 @@ import 'request.dart';
 import 'store.dart';
 import 'transfer_adapter.dart';
 
-/// The HTTP client file packs download with. It has **no default**: the app overrides it with
-/// the client it already has (one with its own timeouts, certificates and proxy), and a test with
-/// a `MockClient`. `FilePacks` never closes it.
-final Provider<http.Client> packHttpClient = Provider<http.Client>(
+/// The transport file packs download through (since 0.21.0; it was `packHttpClient`, an
+/// `http.Client`). It has **no default**: the app overrides it with the transport it already has
+/// (`HttpClientTransport` over its `http.Client`, `DioTransport`, or a chain that signs, with its
+/// own timeouts, certificates and proxy), and a test with a `FakeTransport`. `FilePacks` never
+/// closes it.
+final Provider<HttpTransport> packTransport = Provider<HttpTransport>(
   (ref) => throw StateError(
-    'packHttpClient has no default: override it in the ProviderScope with the app\'s '
-    'http.Client, or a MockClient in a test.',
+    'packTransport has no default: override it in the ProviderScope with the app\'s '
+    'HttpTransport, or a FakeTransport in a test.',
   ),
 );
 
@@ -192,7 +195,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   /// uses, ends in [Failed] with [PackFailure.invalidRequest], and nothing is read or sent.
   ///
   /// **Completes when the transfer stops**: with the pack [Complete], [Failed], [Paused] (see
-  /// [pause]) or removed. Never throws for a failure of the transfer; when [packHttpClient] was
+  /// [pause]) or removed. Never throws for a failure of the transfer; when [packTransport] was
   /// not overridden it throws the `ProviderException` Riverpod wraps the explaining `StateError`
   /// in. Do not `await` it in a button handler that has to stay responsive; the state is what
   /// the page watches.
@@ -205,7 +208,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
 
   Future<void> _begin(FilePackRequest request) async {
     final key = request.key;
-    final client = ref.read(packHttpClient);
+    final transport = ref.read(packTransport);
     if (!request.isValid) {
       if (key.isNotEmpty) _set(key, const Failed(PackFailure.invalidRequest));
       return;
@@ -249,7 +252,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       // two never write the same one.
       if (earlier != null) await earlier.done.future;
       if (!_current(key, generation)) return;
-      await _work(request, generation, client, run);
+      await _work(request, generation, transport, run);
     } catch (error) {
       if (_current(key, generation)) {
         _fail(
@@ -268,13 +271,13 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
   Future<void> _work(
     FilePackRequest r,
     int generation,
-    http.Client client,
+    HttpTransport transport,
     _Run run,
   ) async {
     final key = r.key;
     if (run.stopped || !_current(key, generation)) return;
     final transfer = HttpTransfer(
-      client: client,
+      transport: transport,
       files: _transferFiles,
       url: r.url,
       destination: r.destination,
@@ -315,7 +318,7 @@ class FilePacks extends Notifier<Map<String, PackStatus>> {
       : (received / expected).clamp(0.0, 1.0);
 
   /// Pauses a running transfer: the request is aborted (so a connection that sends nothing cannot
-  /// hold it, provided [packHttpClient] honours `http.Abortable`), the partial file is kept, and
+  /// hold it, every `HttpTransport` honours the request's `abortTrigger`), the partial file is kept, and
   /// the pack becomes [Paused]. Completes when the transfer has stopped. Does nothing when the pack
   /// is not [Downloading]. A transfer that is already checking its file finishes instead.
   Future<void> pause(String key) async {

@@ -6,6 +6,7 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_maps/fespalier_maps.dart';
 import 'package:fespalier_maps/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpClientTransport;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'pack_server.dart';
@@ -36,7 +37,7 @@ void main() {
     files = FakePackFiles();
     container = ProviderContainer(
       overrides: [
-        packHttpClient.overrideWithValue(server.client),
+        packTransport.overrideWithValue(HttpClientTransport(server.client)),
         packFileStore.overrideWithValue(files),
       ],
     );

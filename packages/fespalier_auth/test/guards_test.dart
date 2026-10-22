@@ -181,9 +181,7 @@ void main() {
           overrides: fakeAuth(),
         );
         expect(currentLocation(tester), '/sign-in?from=%2Forders%2F1');
-        await container
-            .read(authSession.notifier)
-            .signIn(const PasswordSignIn(username: 'ada', password: 'ada'));
+        await container.read(authSession.notifier).signIn(const TestSignIn());
         await tester.pumpAndSettle();
         expect(currentLocation(tester), '/orders/1');
         expect(find.text('page /orders/1'), findsOneWidget);
@@ -259,9 +257,9 @@ void main() {
       expect(find.text('page /'), findsOneWidget);
     });
 
-    testWidgets('a token refresh does not run any guard again', (tester) async {
+    testWidgets('a renewal does not run any guard again', (tester) async {
       final backend = FakeAuthBackend(
-        tokenLifetime: const Duration(minutes: 5),
+        credentialLifetime: const Duration(minutes: 5),
       );
       final container = await pumpRouter(
         tester,
@@ -272,11 +270,11 @@ void main() {
       final before = Map<String, int>.of(runs);
       expect(before['/admin'], 1);
       await tester.pump(const Duration(minutes: 6));
-      final tokens = container.read(authSession.notifier).tokens();
-      expect(tokens, isA<Future<AuthTokens>>());
-      await tokens;
+      final credential = container.read(authSession.notifier).credential();
+      expect(credential, isA<Future<SessionCredential>>());
+      await credential;
       await tester.pumpAndSettle();
-      expect(backend.refreshes, 1);
+      expect(backend.renewals, 1);
       expect(
         runs,
         before,
@@ -289,14 +287,14 @@ void main() {
       tester,
     ) async {
       final backend = FakeAuthBackend(
-        tokenLifetime: const Duration(minutes: 5),
+        credentialLifetime: const Duration(minutes: 5),
       );
       final container = await pumpRouter(
         tester,
         router(initial: '/admin'),
         overrides: fakeAuth(signedInAs: ada, backend: backend),
       );
-      // The server took the role away: the refresh brings a user without it.
+      // The server took the role away: the user the app adopts has lost it.
       final notifier = container.read(authSession.notifier);
       final current = notifier.session!;
       await notifier.adopt(
@@ -314,6 +312,7 @@ void main() {
         final session = fakeSession(ada);
         final overrides = restoreAuth(
           AuthConfig(
+            transport: noTransport,
             backend: FakeAuthBackend(),
             store: MemoryTokenStore(jsonEncode(session.toJson())),
           ),
@@ -342,6 +341,7 @@ void main() {
         overrides: [
           authConfig.overrideWithValue(
             AuthConfig(
+              transport: noTransport,
               backend: FakeAuthBackend(),
               store: GatedStore(gate, jsonEncode(session.toJson())),
             ),
@@ -424,6 +424,7 @@ void main() {
           overrides: [
             authConfig.overrideWithValue(
               AuthConfig(
+                transport: noTransport,
                 backend: FakeAuthBackend(),
                 store: GatedStore(gate, jsonEncode(fakeSession(ada).toJson())),
               ),
@@ -472,7 +473,11 @@ void main() {
         final container = ProviderContainer(
           overrides: [
             authConfig.overrideWithValue(
-              AuthConfig(backend: FakeAuthBackend(), store: GatedStore(gate)),
+              AuthConfig(
+                transport: noTransport,
+                backend: FakeAuthBackend(),
+                store: GatedStore(gate),
+              ),
             ),
           ],
         );

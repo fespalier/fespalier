@@ -6,7 +6,7 @@ import 'package:cose_example/src/wiring.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart' show ReadCache;
 import 'package:fespalier_cratestack/testing.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -34,7 +34,7 @@ class _Server {
 }
 
 Future<List<Override>> _overrides(_Server server) async {
-  final identity = await CoseSealer(FakeDpopSigner()).identity();
+  final identity = await CoseSealer(FakeKeypairSigner()).identity();
   return [
     ...crateStackTestOverrides(
       transport: server.fake,
@@ -51,7 +51,7 @@ Iterable<RecordedCall> _writes(_Server server) => server.fake.calls.where(
 
 /// What an earlier run of the app saved: the server's last list, in the device's read cache.
 Future<void> _keepCopy(_Server server, String text) async {
-  final identity = await CoseSealer(FakeDpopSigner()).identity();
+  final identity = await CoseSealer(FakeKeypairSigner()).identity();
   await ReadCache.local(server.store).write(
     thumbprintHex(identity),
     'notes',

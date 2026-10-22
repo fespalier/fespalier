@@ -195,7 +195,7 @@ void within(Object? token, Object? Function() body) => body();
 
 `FespalierOtel` overrides it with `Context.current.withSpan(span).runSync(body)`, so the spans of Dartastic's
 `otel_http` and `otel_dio` made inside `data()` or an action, after an `await` too, are children of its
-span. The rules for a sink of your own:
+span, and so are those of `OtelTransport` (since 0.21.0, below). The rules for a sink of your own:
 
 - **Call `body` once, synchronously, before you return.** It returns what the operation returned (null if it
   threw) so you may observe it, for example hand a `Future` to a vendor API that ends a span when it
@@ -221,6 +221,34 @@ in `app.g.dart` instead of `traceData(ref, 'dOrdersId', id, data(ref, id: id), t
 `data()` that throws before it returns now has a `data` span (`fespalier.data.state = error`,
 `fespalier.async = false`). An app without `telemetry: true` is unchanged. A sink that already had a member
 called `within` with another signature must rename it.
+
+## Spans around requests: `OtelTransport` (since 0.21.0)
+
+Everything fespalier sends goes through an `HttpTransport`, so one decorator puts every request in the trace, with no
+`otel_http` and no `otel_dio` (and the same span for `package:http`, Dio and a client of your own):
+
+```dart
+final transport = OtelTransport(
+  WriteGuardTransport(HttpClientTransport(client)),
+  isReady: () => observability.isReady,
+  propagateTo: [Uri.parse('https://api.example.com')],
+);
+```
+
+- **One `CLIENT` span per request sent**, named by the method (`GET`), a child of the span that is current, so a request
+  made by `data()` or an action is a child of its `data` or `action` span, in the same trace. Its attributes are
+  OpenTelemetry's HTTP client ones plus `fespalier.operation` `http` (the table is in
+  [`conventions.md`](conventions.md)); `http.request.resend_count` marks a send that repeats a request.
+- **Put it below the session**, between `SessionTransport` and the network (`authTransport` wraps whatever you give
+  `AuthConfig.transport`, so give it the `OtelTransport`): a replay after a 401 then reaches it and is a span of its
+  own, where above the session it would be hidden inside one. A retrier goes above the session. The whole order is in
+  [`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#decorators-and-their-order).
+- **`propagateTo`** lists the origins that get `traceparent` and `tracestate`, none by default: on the web a header makes
+  a request cross-origin, and it tells a third party about your trace. **`isReady`** makes it emit nothing until the SDK is up.
+- **Never recorded**: a query or fragment, a header value, a body, a credential, a failure's text. It reads no response
+  body, starts no timer, and passes `TransportRequest.attributes` through unchanged.
+- **Do not also add `otel_http` or `otel_dio`** to the same requests: each would be reported twice.
+- **`fsp create` writes this chain** (since 0.21.0): with the `otel` feature the app's one transport is `OtelTransport(..., isReady: () => AppMain.observability.isReady)` around the write guard (with `sentry` too, `OtelTransport(SentryTransport(WriteGuardTransport(HttpClientTransport(http.Client()))))`), and `authTransport`'s session is outside both. A test that never starts the SDK makes no span.
 
 ## `navigateFrom`: where a navigation came from (since 0.9.0)
 

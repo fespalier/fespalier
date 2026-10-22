@@ -1,9 +1,14 @@
 // What the tests share: a container with the package's overrides, a Ref to call `serve` with, and
 // an intent to submit.
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart' show Override;
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_cratestack/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show TransportStatusError;
 import 'package:flutter_test/flutter_test.dart';
 
 /// A container wired with [crateStackTestOverrides] (and [extra]), disposed after the test.
@@ -82,3 +87,22 @@ final class AsyncStore implements LocalStore {
   @override
   Future<void> clear(String prefix) async => inner.clear(prefix);
 }
+
+/// The HTTP error answer a transport chain produces: [status], with [data] as the body (a map is
+/// JSON with a JSON `content-type`; a string is text) and the lower-cased [headers].
+TransportStatusError statusError(
+  int status, {
+  Object? data,
+  Map<String, String> headers = const {},
+}) => TransportStatusError(
+  statusCode: status,
+  headers: {
+    if (data is Map<Object?, Object?>) 'content-type': 'application/json',
+    ...headers,
+  },
+  body: Uint8List.fromList(
+    data == null
+        ? const []
+        : utf8.encode(data is String ? data : jsonEncode(data)),
+  ),
+);

@@ -346,7 +346,7 @@ final class RecordingTelemetry extends FespalierTelemetry {
       TelemetryOp.auth =>
         '${start.authStep} backend=${start.authBackend}'
             '${start.authTrigger == null ? '' : ' trigger=${start.authTrigger}'}'
-            '${start.authDpop ? ' dpop' : ''}',
+            '${start.authScheme == null ? '' : ' scheme=${start.authScheme}'}',
       TelemetryOp.image =>
         '${start.imageCdn} w=${start.imageWidth}'
             '${start.imagePreload ? ' preload' : ''}',

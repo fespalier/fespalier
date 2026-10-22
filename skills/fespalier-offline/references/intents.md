@@ -23,7 +23,7 @@ conflict, never the server's message) and `failures` (stored `5xx` answers).
 ## What a send does with each answer
 
 `submit` and `drain` classify what the transport throws with `crateStackErrors` (your reader first, then
-`DioFailures.read`), then:
+`TransportFailures.read`, which is `DioFailures.read` until 0.20.0), then:
 
 | The server answers                                                                  | Classified as               | The intent                                |
 | ----------------------------------------------------------------------------------- | --------------------------- | ----------------------------------------- |

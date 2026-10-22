@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
-import 'package:fespalier_http/fespalier_http.dart' show HttpWrites;
+import 'package:fespalier_transport/fespalier_transport.dart' show HttpWrites;
 import 'package:flutter/foundation.dart' show debugPrint;
 
 /// M-D1: what a debug build prints, once per request, when [WriteGuard] refuses to send a write
@@ -52,7 +52,7 @@ final class WriteGuard extends Interceptor {
       ..insert(0, const WriteGuard());
   }
 
-  /// Whether [options] is a write by the rule above (`HttpWrites`, the one `WriteGuardClient`
+  /// Whether [options] is a write by the rule above (`HttpWrites`, the one `WriteGuardTransport`
   /// uses too).
   ///
   /// `extra[write]` makes a request one, and an `Idempotency-Key` header or `extra[idempotent]`

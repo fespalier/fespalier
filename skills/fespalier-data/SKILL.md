@@ -1,6 +1,6 @@
 ---
 name: fespalier-data
-description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 validate() with FieldErrors and optimistic(), and its forms: form() and useForm, which are the fespalier_forms package since 0.11.0 and a breaking move out of fespalier, with opt-in drafts: FormDraft, formDraftStorage, formDraftScope, clearFormDrafts, DraftCodec), and since 0.9.0 fespalier_dio and fespalier_http (the package:http half since 0.15.0, on 0.14.0 and earlier fespalier_dio/http.dart), which tie Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice), and since 0.13.0 fespalier_frb (a Rust core's change stream held in one subscription, a topic provider that a data.dart watches so a matching event rebuilds it, InvalidationTable, initRustCore for startup(), and since 0.18.0 ChangeCodec, which decodes a core's raw or batched messages and skips a bad or unknown one without ending the feed, and since 0.21.0 ChangeBudget, which holds a busy key to one rebuild per tick of a provider the app fires), and since 0.13.0 fespalier_riverpod (a provider per page instance: two pushes of one route are two states, a query change or a remount is one, holdForPage keeps state the page reads but does not watch, usePageInstance), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack), and since 0.17.0 how models, immutable collections, validation libraries and results meet it (freezed, dart_mappable, fast_immutable_collections, acanthis, result_dart). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
+description: "How fespalier routes load data — data.dart and its three forms (a function, a selector of a provider you already have, or a provider you write), how segments and query parameters key the provider, loading.dart and error.dart, keep_previous and data_retry, section data and the typed Section handle, prefetch handles and preload (the whole page's data behind one handle, as RouteLink uses it), the typed watch/read/refresh helpers, AppRoutes.dataAt and match, and how it all sits on Riverpod 3 — freshness and the data cache (since 0.8.1: staleTime, refetch on resume and reconnect, dataCache, DataCache, MemoryDataStorage, keepDataOnError; since 0.9.0 the fespalier_storage package: PrefsDataStorage and HiveDataStorage, a saved value on the first frame, size budgets and eviction, and the fespalier_connectivity package: reconnectSignal from connectivity_plus, hasNetwork for offline banners, connectivity versus reachability), and action.dart, the write side (typed submit and useAction, pending and error state, what a success invalidates, and since 0.8.1 validate() with FieldErrors and optimistic(), and its forms: form() and useForm, which are the fespalier_forms package since 0.11.0 and a breaking move out of fespalier, with opt-in drafts: FormDraft, formDraftStorage, formDraftScope, clearFormDrafts, DraftCodec), and since 0.9.0 fespalier_dio and fespalier_http (the package:http half since 0.15.0, on 0.14.0 and earlier fespalier_dio/http.dart), which tie Dio and package:http to the data and the write (a load cancelled with its page, a server's validation error as the form's FieldErrors, a write that a retry interceptor never sends twice; since 0.21.0 both sit on fespalier_transport: HttpClientTransport, TransportClient, DioTransport, TransportAdapter and WriteGuardTransport, with the validation decoders in package:fespalier/problem.dart), and since 0.13.0 fespalier_frb (a Rust core's change stream held in one subscription, a topic provider that a data.dart watches so a matching event rebuilds it, InvalidationTable, initRustCore for startup(), and since 0.18.0 ChangeCodec, which decodes a core's raw or batched messages and skips a bad or unknown one without ending the feed, and since 0.21.0 ChangeBudget, which holds a busy key to one rebuild per tick of a provider the app fires), and since 0.13.0 fespalier_riverpod (a provider per page instance: two pushes of one route are two states, a query change or a remount is one, holdForPage keeps state the page reads but does not watch, usePageInstance), and since 0.10.0 offline-first reads and queued writes (fespalier_cratestack: see fespalier-offline and fespalier-cratestack), and since 0.17.0 how models, immutable collections, validation libraries and results meet it (freezed, dart_mappable, fast_immutable_collections, acanthis, result_dart). Load before writing or changing a data.dart or an action.dart, a loading or error view, a retry policy, or an app-level prefetch queue, or when a page flashes loading.dart, shows a stale value or does not refresh after a write."
 ---
 
 # fespalier-data
@@ -243,7 +243,12 @@ The core has no HTTP client. `package:fespalier_dio` (Dio) and, **since 0.15.0**
 (`package:http`; on 0.14.0 and earlier it was `package:fespalier_dio/http.dart`, **removed in 0.15.0, not
 deprecated**: change the import to `package:fespalier_http/fespalier_http.dart`), repository dependencies next to
 fespalier with **the same `url` and `ref`**, make the two clients keep three promises. They change no generated code,
-file kind, key or command, and start no timer.
+file kind, key or command, and start no timer. **Since 0.21.0 both sit on `fespalier_transport`** (pure Dart): an
+`HttpTransport` with one method, `send(TransportRequest)`, that a session, a write guard, tracing and a download decorate;
+`HttpClientTransport(client)` (`fespalier_http`) and `DioTransport(dio)` (`fespalier_dio`) are its ends, and
+`TransportClient(transport)` and `TransportAdapter(transport)` give an `http.Client` or a Dio over a chain. The interface,
+the order of the decorators and the failures are
+[`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#the-interface).
 
 ```dart
 final cancel = ref.cancelToken();                       // Dio, in a data.dart: before the first await
@@ -266,18 +271,26 @@ WriteGuard.install(dio);                                // the last call on the 
   Anything else rethrows the same error.
 - **A write is never sent twice.** `dio_smart_retry` and `RetryClient` retry writes by default. `WriteGuard.install(dio)`
   puts a guard **first** that refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS`, `TRACE`, unless
-  it has an `Idempotency-Key` header or `extra[WriteGuard.idempotent]`) and returns the first error, except after a 401
-  (an auth refresh); `HttpWrites.isWrite` is that one rule for both clients (since 0.15.0). `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put
-  `WriteGuardClient(inner)` inside the `RetryClient` and pass it `when: WriteGuardClient.readsOnly()` and
-  `whenError: WriteGuardClient.readErrorsOnly(rule)`. A retrier **before** the guard gives `WriteNotRetried`.
+  it has an `Idempotency-Key` header or `extra[WriteGuard.idempotent]`) and returns the first error, except after a 401;
+  `HttpWrites.isWrite` is that one rule for both clients (since 0.15.0; in `fespalier_transport` since 0.21.0).
+  `WriteGuard.readsOnly(evaluator)` keeps the retrier from trying. For `package:http`, put a
+  `WriteGuardTransport` in the chain under a `TransportClient` (was `WriteGuardClient` until 0.20.0), and pass the
+  `RetryClient` above it `when: TransportClient.readsOnly()` and `whenError: TransportClient.readErrorsOnly(rule)`.
+  A retrier **before** the guard gives `WriteNotRetried`.
 - **Keep one retry layer**: Riverpod's data retry and an HTTP retrier multiply each other's attempts.
-- **The layers, outside in (since 0.15.0, proved by a test):** `ref.abortable(...)`, then
-  `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), ...))`. A retrier _outside_ the session
-  sends the session a streamed copy that it will not send again after a 401, so use it only for DPoP. Any
-  `http.Client` fits the seam, `DioHttpClient(dio)` (`package:fespalier_dio/client.dart`) included; `HttpCredentials`
-  (`Authorizer` implements it) is the session for a transfer that is not an `http.Client`. Do not claim
-  `cupertino_http` honours an abort: it is unchecked.
-- **Not in it:** a retry policy of its own (a backoff needs a timer), logging, tracing (use `otel_dio` or `sentry_dio`).
+- **The layers, outside in (since 0.21.0, proved by a test):** `ref.abortable(...)`, a retrier, the client
+  (`TransportClient`, or the Dio with a `TransportAdapter`), then
+  `SessionTransport(WriteGuardTransport(HttpClientTransport(client)), authorizer)`. The session is **below** the retrier
+  (it was above it until 0.20.0, as `SessionClient`), so a signature is new on every send. A `RetryClient` sends a
+  streamed copy of each request: the session reads that body once, renews on a 401 and returns it instead of replaying
+  (a Dio retrier does not cost the replay: its body is bytes). `DioHttpClient` (Dio as an `http.Client`) is gone: send
+  through `DioTransport`. `HttpCredentials` (`authorize(request, {previous})`, `retry(attempt, response)`; `Authorizer`
+  implements it) is the session for a transfer that is not a transport. Do not claim `cupertino_http` honours an abort: it
+  is unchecked.
+- **Not in it:** a retry policy of its own (a backoff needs a timer), logging. Tracing is a decorator: `OtelTransport` and
+  `SentryTransport` (since 0.21.0; `otel_dio` or `sentry_dio` before). The validation decoders
+  (`FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`) are `package:fespalier/problem.dart` since 0.21.0
+  (`package:fespalier_http/problem.dart` before).
 
 [`references/http.md`](references/http.md) has the samples that compile and every rule; its tests are in
 [`fespalier-testing`](../fespalier-testing/SKILL.md) (its `http.md`), its messages in

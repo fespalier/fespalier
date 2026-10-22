@@ -423,10 +423,10 @@ void main() {
           parent: nav,
           keyed: true,
           dataAttempt: 3,
-          authStep: 'refresh',
+          authStep: 'renew',
           authBackend: 'oidc',
           authTrigger: 'expired',
-          authDpop: true,
+          authScheme: 'dpop',
           source: NavigationSource.notification,
           imageCdn: 'emgr',
           imageWidth: 640,
@@ -446,10 +446,10 @@ void main() {
           expect(copy.parent, parent);
           expect(copy.keyed, isTrue);
           expect(copy.dataAttempt, 3);
-          expect(copy.authStep, 'refresh');
+          expect(copy.authStep, 'renew');
           expect(copy.authBackend, 'oidc');
           expect(copy.authTrigger, 'expired');
-          expect(copy.authDpop, isTrue);
+          expect(copy.authScheme, 'dpop');
           expect(copy.source, NavigationSource.notification);
           expect(copy.imageCdn, 'emgr');
           expect(copy.imageWidth, 640);

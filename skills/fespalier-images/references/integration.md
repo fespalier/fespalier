@@ -85,11 +85,15 @@ server must send CORS headers on the image **and on the redirect target**. EmgR 
 `Access-Control-Allow-Origin: *` on every route (its `CDN_BASE_URL` host must too). imgproxy:
 `IMGPROXY_ALLOW_ORIGIN`. A blank image on the web and fine elsewhere is missing CORS.
 
-- `ImageCdn.webHtmlElementStrategy` (default `never`, Flutter's): `fallback` shows an `<img>` platform view when
-  the fetch fails (no CORS needed, but a platform view per image, costly in long lists, and no headers);
-  `prefer` always uses `<img>`. Leave `never` unless the server cannot send CORS.
-- The browser's HTTP cache works for XHR, so EmgR's `immutable` downloads are cached across reloads.
-  `ResizeImage` does not shrink a web `NetworkImage`, so a `DirectUrlBuilder` saves no memory there.
+- **A transport fetch needs CORS on the web (since 0.21.0).** `ImageCdn(transport:)` loads a `TransportImage`, which sends
+  a GET through the transport chain (`fetch` or XHR under `package:http`'s `BrowserClient`, or Dio's adapter): the image
+  host must send CORS headers. `ImageCdn.webHtmlElementStrategy` (default `never`; `fallback` showed an `<img>` platform
+  view when the fetch failed, `prefer` always used it) is **removed**, because a `TransportImage` has no `<img>` fallback.
+  For an image host you do not control that sends no CORS headers, use the escape hatch and give up the transport chain
+  for the images: `providerFactory: (url) => NetworkImage(url, webHtmlElementStrategy: WebHtmlElementStrategy.fallback)`
+  (a platform view per image, costly in long lists, and no headers).
+- The browser's HTTP cache works for these requests, so EmgR's `immutable` downloads are cached across reloads.
+  `ResizeImage` does not shrink a web image, so a `DirectUrlBuilder` saves no memory there.
 - Browser zoom changes `devicePixelRatio`: the bucket grows, never shrinks.
 - `auto` formats: a browser's XHR sends `Accept: */*`, so `.auto` can answer AVIF. Do not use it.
 - The package's code lands in `main.dart.js` when an eager page uses it; the shop's size budgets are in
@@ -99,8 +103,8 @@ server must send CORS headers on the image **and on the redirect target**. EmgR 
 
 - **Default:** Flutter's in-memory `ImageCache` (1000 images, 100 MB). A 640×640 image is 1.6 MB decoded; a
   3840² one 59 MB, hence `maxPixelRatio` (3) and the last bucket.
-- **No disk cache** on Android, iOS or desktop: `dart:io`'s `HttpClient` has no HTTP cache, so a restart
-  downloads again. The recipe (the app adds the dependency; Flutter 3.44 and Dart 3.12 or newer):
+- **No disk cache** on Android, iOS or desktop: `dart:io`'s `HttpClient` has no HTTP cache and a `TransportImage` keeps
+  only Flutter's in-memory cache, so a restart downloads again. The recipe (the app adds the dependency; Flutter 3.44 and Dart 3.12 or newer):
 
   ```dart
   // startup.dart with cached_network_image, which is the app's own dependency (a fragment)
@@ -118,7 +122,8 @@ server must send CORS headers on the image **and on the redirect target**. EmgR 
 
   `extended_image`'s `ExtendedNetworkImageProvider(url, cache: true)` is the alternative without `sqflite`.
   A provider from a factory takes part in the stand-in, the precache and the flight as long as its key is
-  available synchronously (`NetworkImage`'s is).
+  available synchronously (`NetworkImage`'s and `TransportImage`'s are). **A `providerFactory` replaces the transport**
+  (since 0.21.0): the cache package fetches with its own client, so those images are not signed, traced or counted by the chain.
 
 - **The web:** the browser's cache.
 
@@ -205,8 +210,9 @@ void main() {
 
 A pending load is `FakeImages()` without an image: `expect(fakes.isPending(url), isTrue)`, then
 `fakes.complete(url, image)` and `await tester.pump()`, or `fakes.fail(url)` for the error view. Tests that
-reach an image without the override go through flutter_test's fake `HttpClient` (every request is a 400, with
-its own warning) and, with no CDN, print the "not a URL" message.
+reach an image without the override send through the `ImageCdn`'s transport, or, with `const ImageCdn()`, report an
+`ImageUrlError` (a `FakeTransport` from `package:fespalier_transport/testing.dart` answers a `TransportImage` test of
+your own); with no CDN they also print the "not a URL" message.
 
 ## Telemetry
 

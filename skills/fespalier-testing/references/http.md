@@ -1,20 +1,23 @@
 # Testing Dio and `package:http` with `fespalier_dio` and `fespalier_http`
 
-Since 0.9.0 (`package:http` helpers moved from `fespalier_dio/http.dart` to `fespalier_http` in 0.15.0). A test of a `data.dart` or an `action.dart` that goes over HTTP needs no network and no sleeping: a **fake
+Since 0.9.0 (`package:http` helpers moved from `fespalier_dio/http.dart` to `fespalier_http` in 0.15.0, and the seam
+became `HttpTransport` in 0.21.0). A test of a `data.dart` or an `action.dart` that goes over HTTP needs no network and no
+sleeping: a **`FakeTransport`** under anything that takes an `HttpTransport` (since 0.21.0), a **fake
 `HttpClientAdapter`** under Dio, a **`MockClient`** under `package:http`, and **zero delays** in the retriers. What the
 package does is explained in [`fespalier-data`](../../fespalier-data/references/http.md); this page is the traps of
 testing it, and a test of each piece that compiles.
 
-| Trap                                                                         | What to do                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dio's chain starts with `Timer.run`, so a request never moves in a test      | A plain `test()` (a real event loop) works as it is. In `testWidgets`, `pumpAndSettle()` runs it, and to look at a request that is held open use `await tester.pump(Duration.zero)`: a bare `pump()` does not elapse the zero-length timers                                                                                                                                                                                                              |
-| A request that nobody answers is a test that hangs                           | Answer from the adapter at once, or hold it on a `Completer` you complete yourself. `cancelFuture` (the adapter's third argument) completes when the request's `CancelToken` is cancelled, so it is how a test sees a cancellation                                                                                                                                                                                                                       |
-| `MockClient` does not abort by itself                                        | "It is the handler's responsibility": race `(request as Abortable).abortTrigger` and throw `RequestAbortedException`, as a real client does. `ref.abortable(mock)` hands the handler an `AbortableRequest`                                                                                                                                                                                                                                               |
-| `MockClient` does not abort, and a test wants to count aborts (since 0.15.0) | `FakeHttpClient(handler)` from `package:fespalier_http/testing.dart` races `abortTrigger` with the handler (no timer), throws `RequestAbortedException`, records every request in `requests` and counts `abortCount`; a trigger that fires after the answer still counts, so assert on the request that was held open. `FakeHttpCredentials(origins: [...])` is an `HttpCredentials` with a canned header that records `authorizeCalls` and `retryCalls` |
-| `MockClient`'s responses carry no `request`, and are new objects             | Not a problem for `WriteGuardClient`, which marks what it saw by identity. A test that wants `response.request` sets `request:` on the `StreamedResponse` itself                                                                                                                                                                                                                                                                                         |
-| `dio_smart_retry` waits 1 s, 3 s and 5 s, and `RetryClient` 500 ms and up    | Make the delays a provider and override it with zero: `retryDelays: const [Duration.zero]`, `RetryClient.withDelays(inner, const [Duration.zero])`. They still await a real zero-length timer, so these tests are plain `test()`                                                                                                                                                                                                                         |
-| A write must be sent **once**                                                | Count the requests the adapter or the `MockClient` handler saw, not what the caller got: the caller gets the first error either way                                                                                                                                                                                                                                                                                                                      |
-| A test that leaves a `ProviderContainer` open                                | `addTearDown(container.dispose)`: the `dio` provider closes its client in `onDispose`, and `ref.abortable` fires its trigger there                                                                                                                                                                                                                                                                                                                       |
+| Trap                                                                         | What to do                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Dio's chain starts with `Timer.run`, so a request never moves in a test      | A plain `test()` (a real event loop) works as it is. In `testWidgets`, `pumpAndSettle()` runs it, and to look at a request that is held open use `await tester.pump(Duration.zero)`: a bare `pump()` does not elapse the zero-length timers                                                                                                                                                                                                                                                                        |
+| A request that nobody answers is a test that hangs                           | Answer from the adapter at once, or hold it on a `Completer` you complete yourself. `cancelFuture` (the adapter's third argument) completes when the request's `CancelToken` is cancelled, so it is how a test sees a cancellation                                                                                                                                                                                                                                                                                 |
+| A transport test needs no client at all (since 0.21.0)                       | `FakeTransport(handler)` or `FakeTransport.script([...])` (`package:fespalier_transport/testing.dart`): the handler gets the `TransportRequest` and its body bytes; a script entry is a `TransportResponse` (`fakeResponse(503, body: ...)`) or a `TransportFailure` to throw (`const TransportUnsent()`); it honours `abortTrigger` with no timer (`abortCount`), and `requests` records every send. A script that runs out is a `StateError`: `FakeTransport: no answer scripted for request N (METHOD uri)`     |
+| `MockClient` does not abort by itself                                        | "It is the handler's responsibility": race `(request as Abortable).abortTrigger` and throw `RequestAbortedException`, as a real client does. `ref.abortable(mock)` hands the handler an `AbortableRequest`                                                                                                                                                                                                                                                                                                         |
+| `MockClient` does not abort, and a test wants to count aborts (since 0.15.0) | `FakeHttpClient(handler)` from `package:fespalier_http/testing.dart` races `abortTrigger` with the handler (no timer), throws `RequestAbortedException`, records every request in `requests` and counts `abortCount`; a trigger that fires after the answer still counts, so assert on the request that was held open. `FakeHttpCredentials(origins: [...])` (`package:fespalier_transport/testing.dart` since 0.21.0) is an `HttpCredentials` with a canned header that records `authorizeCalls` and `retryCalls` |
+| `MockClient`'s responses carry no `request`, and are new objects             | Not a problem for `WriteGuardTransport`, which marks what it saw by identity. A test that wants `response.request` sets `request:` on the `StreamedResponse` itself                                                                                                                                                                                                                                                                                                                                                |
+| `dio_smart_retry` waits 1 s, 3 s and 5 s, and `RetryClient` 500 ms and up    | Make the delays a provider and override it with zero: `retryDelays: const [Duration.zero]`, `RetryClient.withDelays(inner, const [Duration.zero])`. They still await a real zero-length timer, so these tests are plain `test()`                                                                                                                                                                                                                                                                                   |
+| A write must be sent **once**                                                | Count the requests the adapter, the `MockClient` handler or the `FakeTransport` (`requests`) saw, not what the caller got: the caller gets the first error either way                                                                                                                                                                                                                                                                                                                                              |
+| A test that leaves a `ProviderContainer` open                                | `addTearDown(container.dispose)`: the `dio` provider closes its client in `onDispose`, and `ref.abortable` fires its trigger there                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ```yaml
 # pubspec.yaml dependencies
@@ -30,6 +33,7 @@ import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_dio/fespalier_dio.dart';
 import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/retry.dart';
 
@@ -63,13 +67,14 @@ final httpInner = Provider<http.Client>((ref) {
   return client;
 });
 
-/// package:http, with the same policy.
+/// package:http, with the same policy: the write guard is a transport (WriteGuardTransport was
+/// WriteGuardClient until 0.20.0), and TransportClient makes a client out of the chain.
 final httpClient = Provider<http.Client>((ref) {
   final client = RetryClient.withDelays(
-    WriteGuardClient(ref.watch(httpInner)),
+    TransportClient(WriteGuardTransport(HttpClientTransport(ref.watch(httpInner)))),
     ref.watch(retryDelays),
-    when: WriteGuardClient.readsOnly(),
-    whenError: WriteGuardClient.readErrorsOnly(
+    when: TransportClient.readsOnly(),
+    whenError: TransportClient.readErrorsOnly(
       (error, stackTrace) => error is http.ClientException,
     ),
   );
@@ -202,6 +207,63 @@ void main() {
 
       expect(await outcome.future, isA<http.RequestAbortedException>());
     });
+  });
+}
+```
+
+## A `FakeTransport` under code that takes an `HttpTransport` (since 0.21.0)
+
+Everything fespalier sends (the session, the downloads, the image CDN, the translations, the map packs) takes an
+`HttpTransport`, so a test of your own code over one needs no client and no adapter:
+
+```dart
+// lib/orders_api.dart
+import 'dart:convert';
+
+import 'package:fespalier_transport/fespalier_transport.dart';
+
+/// Reads the orders. A status is an answer, not an error: this one turns a refusal into a
+/// TransportStatusError, and a transport that could not send throws a TransportFailure.
+Future<List<String>> loadOrders(HttpTransport transport) async {
+  final response = await transport.send(
+    TransportRequest(method: 'GET', uri: Uri.parse('https://api.example.com/orders')),
+  );
+  final bytes = await response.bytes();
+  if (response.statusCode != 200) {
+    throw TransportStatusError(
+      statusCode: response.statusCode,
+      headers: response.headers,
+      body: bytes,
+    );
+  }
+  return (jsonDecode(utf8.decode(bytes)) as List<Object?>).cast<String>();
+}
+```
+
+```dart
+// test/orders_api_test.dart
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/orders_api.dart';
+
+void main() {
+  test('a refusal, a dead network and an answer, in the order they are scripted', () async {
+    final transport = FakeTransport.script([
+      fakeResponse(503),
+      const TransportUnsent(), // it never left: sending it again is always safe
+      fakeResponse(200, body: '["order 1"]'),
+    ]);
+
+    await expectLater(
+      loadOrders(transport),
+      throwsA(isA<TransportStatusError>().having((e) => e.statusCode, 'status', 503)),
+    );
+    await expectLater(loadOrders(transport), throwsA(isA<TransportUnsent>()));
+    expect(await loadOrders(transport), ['order 1']);
+
+    expect(transport.requests, hasLength(3));
+    expect(transport.requests.first.url.path, '/orders');
   });
 }
 ```

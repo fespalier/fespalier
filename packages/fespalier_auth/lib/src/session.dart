@@ -57,7 +57,7 @@ final class SignedIn extends SessionState {
   /// Signed in with [session].
   const SignedIn(this.session);
 
-  /// The session: its tokens, its user and what they are bound to.
+  /// The session: its credential and its user.
   final AuthSession session;
 
   @override
@@ -76,124 +76,17 @@ enum SignOutReason {
   /// `signOut()` was called.
   user,
 
-  /// The server refused the refresh token, or the stored one had expired.
+  /// The server refused to renew the session, or the stored one had expired.
   expired,
 
-  /// The device key the tokens were bound to (DPoP) is gone, or another one.
+  /// The device key the credential was bound to is gone, or another one.
   keyLost,
+
+  /// The server says this device or session is revoked (since 0.21.0).
+  revoked,
 }
 
-/// The tokens of a session. `toString` never shows a token.
-final class AuthTokens {
-  /// Tokens with an [accessToken]; the rest is what the server returned.
-  const AuthTokens({
-    required this.accessToken,
-    this.tokenType = 'Bearer',
-    this.refreshToken,
-    this.idToken,
-    this.expiresAt,
-    this.refreshExpiresAt,
-    this.scope,
-  });
-
-  /// Reads what [toJson] wrote. Throws [FormatException] on anything else.
-  factory AuthTokens.fromJson(Map<String, Object?> json) => AuthTokens(
-    accessToken: _string(json, 'accessToken')!,
-    tokenType: _string(json, 'tokenType', required: false) ?? 'Bearer',
-    refreshToken: _string(json, 'refreshToken', required: false),
-    idToken: _string(json, 'idToken', required: false),
-    expiresAt: _date(json, 'expiresAt'),
-    refreshExpiresAt: _date(json, 'refreshExpiresAt'),
-    scope: _string(json, 'scope', required: false),
-  );
-
-  /// The token to send to the API.
-  final String accessToken;
-
-  /// `Bearer`, or `DPoP` for a DPoP-bound token (as the token response said).
-  final String tokenType;
-
-  /// What gets new tokens; null when the server gave none (the session ends with the access
-  /// token).
-  final String? refreshToken;
-
-  /// The OpenID Connect ID token, when there is one.
-  final String? idToken;
-
-  /// When the access token expires (`expires_in`, read against `clock.now()`); null: unknown, so
-  /// it is sent until a server answers 401.
-  final DateTime? expiresAt;
-
-  /// When the refresh token expires (Keycloak's `refresh_expires_in`; 0 means never); null:
-  /// unknown.
-  final DateTime? refreshExpiresAt;
-
-  /// The scopes the server granted.
-  final String? scope;
-
-  /// Whether the token type is DPoP (case-insensitive).
-  bool get isDpop => tokenType.toLowerCase() == 'dpop';
-
-  /// Whether the access token has expired at [now], counting [leeway] early.
-  bool isExpiredAt(DateTime now, {Duration leeway = Duration.zero}) {
-    final at = expiresAt;
-    return at != null && !at.subtract(leeway).isAfter(now);
-  }
-
-  /// [refreshed] over these: a refresh response that leaves out the refresh token or the ID
-  /// token keeps this one's.
-  AuthTokens merge(AuthTokens refreshed) => AuthTokens(
-    accessToken: refreshed.accessToken,
-    tokenType: refreshed.tokenType,
-    refreshToken: refreshed.refreshToken ?? refreshToken,
-    idToken: refreshed.idToken ?? idToken,
-    expiresAt: refreshed.expiresAt,
-    refreshExpiresAt: refreshed.refreshToken == null
-        ? refreshExpiresAt
-        : refreshed.refreshExpiresAt,
-    scope: refreshed.scope ?? scope,
-  );
-
-  /// JSON-encodable, for the token store.
-  Map<String, Object?> toJson() => {
-    'accessToken': accessToken,
-    'tokenType': tokenType,
-    'refreshToken': refreshToken,
-    'idToken': idToken,
-    'expiresAt': expiresAt?.toUtc().toIso8601String(),
-    'refreshExpiresAt': refreshExpiresAt?.toUtc().toIso8601String(),
-    'scope': scope,
-  };
-
-  @override
-  bool operator ==(Object other) =>
-      other is AuthTokens &&
-      other.accessToken == accessToken &&
-      other.tokenType == tokenType &&
-      other.refreshToken == refreshToken &&
-      other.idToken == idToken &&
-      other.expiresAt == expiresAt &&
-      other.refreshExpiresAt == refreshExpiresAt &&
-      other.scope == scope;
-
-  @override
-  int get hashCode => Object.hash(
-    accessToken,
-    tokenType,
-    refreshToken,
-    idToken,
-    expiresAt,
-    refreshExpiresAt,
-    scope,
-  );
-
-  @override
-  String toString() =>
-      'AuthTokens(type: $tokenType, expiresAt: ${expiresAt?.toUtc().toIso8601String()}, '
-      'refresh: ${refreshToken == null ? 'no' : 'yes'}, id: ${idToken == null ? 'no' : 'yes'})';
-}
-
-/// Who is signed in. Equality is deep over every field, so a token refresh that changes nothing
+/// Who is signed in. Equality is deep over every field, so a renewal that changes nothing
 /// about the user does not notify `authUser`'s listeners.
 final class AuthUser {
   /// A user with [id]; [roles], [claims], [email] and [name] when known.
@@ -204,32 +97,6 @@ final class AuthUser {
     this.email,
     this.name,
   });
-
-  /// From token claims: the id is `sub`, [email] is `email` and [name] is `name`, else
-  /// `preferred_username`. The [volatileClaims] are dropped.
-  factory AuthUser.fromClaims(
-    Map<String, Object?> claims, {
-    Set<String> roles = const {},
-  }) {
-    final id = claims['sub'];
-    if (id is! String || id.isEmpty) {
-      throw const FormatException(
-        'fespalier_auth: the token has no "sub" claim',
-      );
-    }
-    final email = claims['email'];
-    final name = claims['name'] ?? claims['preferred_username'];
-    return AuthUser(
-      id: id,
-      roles: roles,
-      email: email is String ? email : null,
-      name: name is String ? name : null,
-      claims: {
-        for (final e in claims.entries)
-          if (!volatileClaims.contains(e.key)) e.key: e.value,
-      },
-    );
-  }
 
   /// Reads what [toJson] wrote. Throws [FormatException] on anything else.
   factory AuthUser.fromJson(Map<String, Object?> json) {
@@ -255,36 +122,20 @@ final class AuthUser {
     );
   }
 
-  /// The claims that change with every token, and would make every refresh look like another
-  /// user.
-  static const Set<String> volatileClaims = {
-    'iat',
-    'exp',
-    'nbf',
-    'auth_time',
-    'jti',
-    'at_hash',
-    'c_hash',
-    'sid',
-    'session_state',
-    'nonce',
-    'typ',
-    'azp',
-  };
-
-  /// The account's stable id (the `sub` claim).
+  /// The account's stable id (a token's `sub` claim, for instance).
   final String id;
 
   /// What the user may do, as the backend names it.
   final Set<String> roles;
 
-  /// The rest of what the token said, without the [volatileClaims].
+  /// The rest of what the backend knows about the user (a token's claims, without the ones that
+  /// change with every token).
   final Map<String, Object?> claims;
 
-  /// The e-mail address, when the token has one.
+  /// The e-mail address, when the backend knows it.
   final String? email;
 
-  /// The display name, when the token has one.
+  /// The display name, when the backend knows it.
   final String? name;
 
   /// Whether [role] is one of [roles].
@@ -320,81 +171,100 @@ final class AuthUser {
       'AuthUser(roles: {${(roles.toList()..sort()).join(', ')}})';
 }
 
+/// What proves a session to the API (since 0.21.0). Each scheme has its own: `TokenCredential`
+/// (`package:fespalier_oidc`) holds an access token, `DeviceCredential`
+/// (`package:fespalier_sign_keypair`) a device attestation. `fespalier_auth` knows only this
+/// interface, so it never reads a token and never signs anything.
+///
+/// Equality is value-based (a credential a server rejected is compared with the one the session
+/// holds now), and `toString` never shows a secret.
+abstract interface class SessionCredential {
+  /// When it stops working unless renewed; null: unknown, so it is used until a server says 401.
+  DateTime? get expiresAt;
+
+  /// When renewal itself is no longer possible (a refresh token's expiry); null: unknown, or
+  /// never. `restoreAuth` drops a session past it as `SignOutReason.expired`.
+  DateTime? get renewableUntil;
+
+  /// Whether the backend can renew it without the user (a refresh token, a device key).
+  bool get renewable;
+
+  /// JSON-encodable, for the store; `AuthBackend.readCredential` reads it back.
+  Map<String, Object?> toJson();
+}
+
 /// A signed-in session: what the token store keeps.
 final class AuthSession {
-  /// A session made by the backend [backend], for [user].
+  /// A session made by the backend [backend], for [user], proved by [credential].
   const AuthSession({
     required this.backend,
-    required this.tokens,
+    required this.credential,
     required this.user,
-    this.binding,
   });
 
-  /// Reads what [toJson] wrote. Throws [FormatException] on anything else, an unknown `"v"`
-  /// included.
-  factory AuthSession.fromJson(Map<String, Object?> json) {
-    if (json['v'] != 1) {
+  /// Reads what [toJson] wrote, the credential through [readCredential] (the backend's). Throws
+  /// [FormatException] on anything else, an unknown `"v"` included: a session stored by 0.20.0
+  /// and before (`"v": 1`) is not read, and its user signs in once more.
+  static AuthSession fromJson(
+    Map<String, Object?> json,
+    SessionCredential Function(Map<String, Object?> json) readCredential,
+  ) {
+    if (json['v'] != 2) {
       throw FormatException(
         'fespalier_auth: unknown stored session version ${json['v']}',
       );
     }
-    final tokens = json['tokens'];
+    final credential = json['credential'];
     final user = json['user'];
-    if (tokens is! Map<String, Object?> || user is! Map<String, Object?>) {
+    if (credential is! Map<String, Object?> || user is! Map<String, Object?>) {
       throw const FormatException(
         'fespalier_auth: a stored session is malformed',
       );
     }
     return AuthSession(
       backend: _string(json, 'backend')!,
-      tokens: AuthTokens.fromJson(tokens),
+      credential: readCredential(credential),
       user: AuthUser.fromJson(user),
-      binding: _string(json, 'binding', required: false),
     );
   }
 
   /// The `AuthBackend.name` that made it. `restoreAuth` drops a session of another backend.
   final String backend;
 
-  /// The access token and the rest.
-  final AuthTokens tokens;
+  /// What proves it to the API.
+  final SessionCredential credential;
 
   /// Who is signed in.
   final AuthUser user;
 
-  /// The DPoP key thumbprint (RFC 7638) the tokens are bound to; null when they are not bound.
-  final String? binding;
+  /// This session with a new [credential] or a new [user].
+  AuthSession copyWith({SessionCredential? credential, AuthUser? user}) =>
+      AuthSession(
+        backend: backend,
+        credential: credential ?? this.credential,
+        user: user ?? this.user,
+      );
 
-  /// This session with new [tokens] or a new [user].
-  AuthSession copyWith({AuthTokens? tokens, AuthUser? user}) => AuthSession(
-    backend: backend,
-    tokens: tokens ?? this.tokens,
-    user: user ?? this.user,
-    binding: binding,
-  );
-
-  /// `{"v": 1, "backend": …, "tokens": {…}, "user": {…}, "binding": …}`.
+  /// `{"v": 2, "backend": …, "credential": {…}, "user": {…}}`.
   Map<String, Object?> toJson() => {
-    'v': 1,
+    'v': 2,
     'backend': backend,
-    'tokens': tokens.toJson(),
+    'credential': credential.toJson(),
     'user': user.toJson(),
-    'binding': binding,
   };
 
   @override
   bool operator ==(Object other) =>
       other is AuthSession &&
       other.backend == backend &&
-      other.tokens == tokens &&
-      other.user == user &&
-      other.binding == binding;
+      other.credential == credential &&
+      other.user == user;
 
   @override
-  int get hashCode => Object.hash(backend, tokens, user, binding);
+  int get hashCode => Object.hash(backend, credential, user);
 
   @override
-  String toString() => 'AuthSession(backend: $backend, $tokens, $user)';
+  String toString() => 'AuthSession(backend: $backend, $credential, $user)';
 }
 
 String? _string(Map<String, Object?> json, String key, {bool required = true}) {
@@ -402,14 +272,4 @@ String? _string(Map<String, Object?> json, String key, {bool required = true}) {
   if (value is String) return value;
   if (value == null && !required) return null;
   throw FormatException('fespalier_auth: "$key" is missing or not a string');
-}
-
-DateTime? _date(Map<String, Object?> json, String key) {
-  final text = _string(json, key, required: false);
-  if (text == null) return null;
-  final date = DateTime.tryParse(text);
-  if (date == null) {
-    throw FormatException('fespalier_auth: "$key" is not a date');
-  }
-  return date.toUtc();
 }

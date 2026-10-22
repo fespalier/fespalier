@@ -1,10 +1,13 @@
 import 'package:fespalier/fespalier.dart' show Provider;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show HttpTransport;
 import 'package:flutter/widgets.dart';
 
 import 'buckets.dart';
 import 'builder.dart';
 import 'builders/direct.dart';
 import 'request.dart';
+import 'transport_image.dart';
 
 /// Makes the image provider of a URL (since 0.9.0).
 typedef ImageProviderFactory = ImageProvider<Object> Function(String url);
@@ -14,7 +17,9 @@ typedef ResponsiveImageErrorBuilder =
     Widget Function(BuildContext context, Object error, VoidCallback retry);
 
 /// The app's image CDN and its defaults (since 0.9.0). `const ImageCdn()` is no CDN: sources are
-/// URLs, fetched as they are.
+/// URLs, used as they are. Images are fetched through [transport] (since 0.21.0) unless a
+/// [providerFactory] says otherwise; with neither, a `ResponsiveImage` shows its error view and
+/// reports an `ImageUrlError` that says so.
 ///
 /// ```dart
 /// imageCdnProvider.overrideWithValue(
@@ -32,8 +37,8 @@ final class ImageCdn {
     this.format = ImageFormat.webp,
     this.quality,
     this.maxPixelRatio = 3,
+    this.transport,
     this.providerFactory,
-    this.webHtmlElementStrategy = WebHtmlElementStrategy.never,
     this.placeholder,
     this.errorBuilder,
     this.fadeIn = Duration.zero,
@@ -54,13 +59,15 @@ final class ImageCdn {
   /// Device pixel ratios above it ask for this one's width (bytes and memory on 3.5× phones).
   final double maxPixelRatio;
 
-  /// The provider of a URL; null: `NetworkImage(url, webHtmlElementStrategy:
-  /// webHtmlElementStrategy)`. Plug a disk cache in here (`CachedNetworkImageProvider.new`).
-  final ImageProviderFactory? providerFactory;
+  /// What images are fetched through (a [TransportImage]), when [providerFactory] is null: the
+  /// app's own chain, so a request is signed, traced and counted like the others. On the web it
+  /// needs CORS on the image host (see [TransportImage]).
+  final HttpTransport? transport;
 
-  /// On the web, whether a failed fetch falls back to an `<img>` element (docs/responsive-images.md,
-  /// "Images on the web").
-  final WebHtmlElementStrategy webHtmlElementStrategy;
+  /// The provider of a URL, instead of a [TransportImage] over [transport]: the escape hatch. Plug
+  /// a disk cache in here (`CachedNetworkImageProvider.new`), or `NetworkImage` (with its
+  /// `webHtmlElementStrategy`, for a web CDN that sends no CORS headers).
+  final ImageProviderFactory? providerFactory;
 
   /// What shows while an image loads; null: a box in the theme's `surfaceContainerHighest`.
   final WidgetBuilder? placeholder;
@@ -78,8 +85,8 @@ final class ImageCdn {
     ImageFormat? format,
     int? quality,
     double? maxPixelRatio,
+    HttpTransport? transport,
     ImageProviderFactory? providerFactory,
-    WebHtmlElementStrategy? webHtmlElementStrategy,
     WidgetBuilder? placeholder,
     ResponsiveImageErrorBuilder? errorBuilder,
     Duration? fadeIn,
@@ -89,9 +96,8 @@ final class ImageCdn {
     format: format ?? this.format,
     quality: quality ?? this.quality,
     maxPixelRatio: maxPixelRatio ?? this.maxPixelRatio,
+    transport: transport ?? this.transport,
     providerFactory: providerFactory ?? this.providerFactory,
-    webHtmlElementStrategy:
-        webHtmlElementStrategy ?? this.webHtmlElementStrategy,
     placeholder: placeholder ?? this.placeholder,
     errorBuilder: errorBuilder ?? this.errorBuilder,
     fadeIn: fadeIn ?? this.fadeIn,
@@ -144,17 +150,22 @@ final class ImageCdn {
     return ResolvedImage(request, b.url(request), b);
   }
 
-  /// The image provider of [image]: [providerFactory]'s or a `NetworkImage`, in a `ResizeImage`
-  /// of the request's width (`ResizeImagePolicy.fit`, no upscaling) when the builder doesn't
-  /// resize.
+  /// The image provider of [image]: [providerFactory]'s or a [TransportImage] over [transport],
+  /// in a `ResizeImage` of the request's width (`ResizeImagePolicy.fit`, no upscaling) when the
+  /// builder doesn't resize. Throws an [ImageUrlError] when the CDN has neither.
   ImageProvider<Object> providerFor(ResolvedImage image) {
     final factory = providerFactory;
+    final through = transport;
+    if (factory == null && through == null) {
+      throw ImageUrlError(
+        'fespalier_image: the ImageCdn has no transport and no providerFactory, so it cannot '
+        'fetch "${image.request.source}". Give it ImageCdn(transport: ...) in startup() '
+        '(docs/responsive-images.md, "Images").',
+      );
+    }
     final provider = factory != null
         ? factory(image.url)
-        : NetworkImage(
-            image.url,
-            webHtmlElementStrategy: webHtmlElementStrategy,
-          );
+        : TransportImage(image.url, transport: through!);
     if (image.builder.resizes) return provider;
     return ResizeImage(
       provider,
@@ -171,8 +182,8 @@ final class ImageCdn {
       other.format == format &&
       other.quality == quality &&
       other.maxPixelRatio == maxPixelRatio &&
+      other.transport == transport &&
       other.providerFactory == providerFactory &&
-      other.webHtmlElementStrategy == webHtmlElementStrategy &&
       other.placeholder == placeholder &&
       other.errorBuilder == errorBuilder &&
       other.fadeIn == fadeIn;
@@ -184,8 +195,8 @@ final class ImageCdn {
     format,
     quality,
     maxPixelRatio,
+    transport,
     providerFactory,
-    webHtmlElementStrategy,
     placeholder,
     errorBuilder,
     fadeIn,

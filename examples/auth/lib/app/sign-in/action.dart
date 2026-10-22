@@ -1,5 +1,6 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
 
 /// The input of the action, and so the fields of its form.
 typedef SignInFields = ({String username, String password});

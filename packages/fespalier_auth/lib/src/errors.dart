@@ -1,13 +1,16 @@
 import 'package:fespalier/fespalier.dart' show DataRefusal;
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show CredentialsUnavailable;
 
-/// The server refused the session: an OAuth error such as `invalid_grant` (since 0.9.0). The
+import 'session.dart';
+
+/// The server refused the session: an error such as `invalid_grant` (since 0.9.0). The
 /// session is over, and the user has to sign in again. A [DataRefusal] (since 0.13.1).
 final class AuthRejected implements Exception, DataRefusal {
   /// The refusal: the OAuth [error] code, and the server's [description] when it gave one.
   const AuthRejected([this.error = 'invalid_grant', this.description]);
 
-  /// The OAuth error code (`invalid_grant`, `invalid_client`, ...).
+  /// The error code (`invalid_grant`, `invalid_client`, ...).
   final String error;
 
   /// The server's `error_description`, when there is one.
@@ -19,25 +22,48 @@ final class AuthRejected implements Exception, DataRefusal {
       '${description == null ? '' : ': $description'})';
 }
 
-/// The session could not be refreshed for now (offline, a 5xx): the session stays, and the next
+/// The session could not be renewed for now (offline, a 5xx): the session stays, and the next
 /// request tries again (since 0.9.0).
 ///
-/// A [http.ClientException], so code that catches `package:http`'s network errors catches this
-/// one too. Its text never names the server.
-final class AuthUnavailable extends http.ClientException {
-  /// Wraps what stopped the refresh: [cause].
-  AuthUnavailable(this.cause, [Uri? uri])
-    : super(
-        "fespalier_auth: couldn't refresh the session: ${_describe(cause)}",
-        uri,
-      );
+/// A `CredentialsUnavailable` (`package:fespalier_transport`), so a transfer that asked for the
+/// credentials reports a network failure, not a lost session. Its text never names the server.
+final class AuthUnavailable implements Exception, CredentialsUnavailable {
+  /// Wraps what stopped the renewal: [cause].
+  const AuthUnavailable(this.cause);
 
-  /// What stopped it: a socket error, a timeout, a 5xx.
+  /// What stopped it: a transport failure, a timeout, a 5xx.
+  @override
   final Object cause;
 
-  static String _describe(Object cause) => cause is http.ClientException
-      ? 'ClientException: ${cause.message}'
-      : '$cause';
+  @override
+  String toString() => "AuthUnavailable: couldn't renew the session: $cause";
+}
+
+/// What a backend throws from `AuthBackend.renew` when the server ended the session for a reason
+/// other than `SignOutReason.expired` (since 0.21.0): a revoked device, say. The state becomes
+/// `SignedOut(reason: reason)`, and whoever asked for the renewal gets an [AuthRejected] with
+/// [error] and [description].
+final class AuthEnded implements Exception {
+  /// The session ended for [reason]; [error] and [description] are what the server said.
+  const AuthEnded(
+    this.reason, {
+    this.error = 'invalid_grant',
+    this.description,
+  });
+
+  /// Why the session ended.
+  final SignOutReason reason;
+
+  /// The error code the server gave.
+  final String error;
+
+  /// The server's description, when there is one.
+  final String? description;
+
+  @override
+  String toString() =>
+      'AuthEnded: the session ended (${reason.name}: $error'
+      '${description == null ? '' : ': $description'})';
 }
 
 /// The user closed or cancelled the sign-in (since 0.9.0). Not an error to report: a form shows
@@ -50,7 +76,7 @@ final class AuthCancelled implements Exception {
   String toString() => 'AuthCancelled: the sign-in was cancelled';
 }
 
-/// `tokens()` was asked while nobody is signed in, or the session ended while a request waited
+/// `credential()` was asked while nobody is signed in, or the session ended while a request waited
 /// for it (since 0.9.0).
 final class NotSignedIn extends StateError {
   /// The error for a request made with no session.

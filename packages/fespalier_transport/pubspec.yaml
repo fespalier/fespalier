@@ -1,0 +1,23 @@
+name: fespalier_transport
+description: The seam fespalier's networking packages share — an HTTP transport interface, its request and response, the session credentials contract and the one write rule. Pure Dart, no dependencies.
+version: 0.20.0 # x-release-please-version
+# Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
+publish_to: 'none'
+homepage: https://github.com/fespalier/fespalier
+repository: https://github.com/fespalier/fespalier/tree/main/packages/fespalier_transport
+issue_tracker: https://github.com/fespalier/fespalier/issues
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
+resolution: workspace
+
+# No dependencies on purpose: this is the interface every networking package builds on, so it can
+# be implemented by `package:http`, by Dio or by an app's own client without linking either.
+# test/no_http_test.dart checks it.
+dependencies:
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter

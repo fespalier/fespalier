@@ -1,10 +1,17 @@
 # `fespalier_auth`: signed-in routes
 
 Since 0.9.0. fespalier's core has no auth feature; `package:fespalier_auth` is the pattern of
-[`auth-patterns.md`](auth-patterns.md) packaged: a session provider, `restoreAuth` for `startup()`, token
-storage, lazy single-flight refresh, the guard helpers and an authenticated HTTP client, behind one
+[`auth-patterns.md`](auth-patterns.md) packaged: a session provider, `restoreAuth` for `startup()`, session
+storage, lazy single-flight renewal, the guard helpers and a transport that carries the session, behind one
 `AuthBackend`. It changes **no** generated code, adds no file kind, no `fespalier:` key and no `fsp`
 command: an app that does not import it is byte-for-byte what it was.
+
+**Since 0.21.0 the package is the protocol-agnostic core.** It knows a `SessionCredential`, a `RequestAuthenticator`
+and an `AuthBackend`, and no token, no OpenID Connect flow and no key; what proves a session to your API is a
+**backend** you add next to it (`fespalier_oidc`, `fespalier_sign_keypair`, or one of your own), and what sends is an
+`HttpTransport` ([`fespalier_transport`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md)) you give
+`AuthConfig`. Until 0.20.0 the package held the token flow and a `package:http` client; the old names are in
+`fespalier-migration`.
 
 ```yaml
 # pubspec.yaml: the same url and the same ref as fespalier, or pub refuses to resolve
@@ -19,38 +26,51 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
       ref: <the same tag>
+  fespalier_http: # a transport implementation (or fespalier_dio, for Dio)
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: <the same tag>
 ```
 
-(That block is a fragment, not a sample: pub resolves the pair only at a release tag.) A mismatch fails with
+(That block is a fragment, not a sample: pub resolves the packages only at a release tag. Add `fespalier_oidc` or
+`fespalier_sign_keypair` the same way when you use them. `fespalier_transport` comes with them.) A mismatch fails with
 pub's own `Because every version of fespalier_auth from path depends on fespalier from git ... at v0.7.0 ...
-and demo depends on fespalier from git ... at v0.6.0 ..., fespalier_auth from path is forbidden.` Give both
-dependencies the same `url` (no `.git`) and the same `ref`.
+and demo depends on fespalier from git ... at v0.6.0 ..., fespalier_auth from path is forbidden.` Give every
+dependency the same `url` (no `.git`) and the same `ref`.
 
 ## What it is made of
 
-| Piece                                           | What it does                                                                                                                                                                                                  |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authSession`                                   | The session: a `NotifierProvider<AuthSessionNotifier, SessionState>`. `SessionState` is sealed: `SessionRestoring`, `SignedOut(reason)`, `SignedIn(session)`                                                  |
-| `isSignedIn`, `authUser`, `authUserId`          | Derived providers. Riverpod filters updates with `==`, so none of them notifies on a token refresh                                                                                                            |
-| `restoreAuth(config)`                           | For `startup()`: reads the stored session and returns the overrides. Synchronous with a synchronous store, and **never** touches the network                                                                  |
-| `AuthConfig`                                    | `backend`, `store` (`SecureTokenStore` by default, `MemoryTokenStore`), `apiOrigins` and `leeway` (30 s)                                                                                                      |
-| `AuthBackend`                                   | `signIn`, `refresh`, `signOut`, and `name`; `proof` for DPoP and `keepsOwnSession` for Firebase and Supabase. Sign-in requests are typed (`BrowserSignIn`, `PasswordSignIn`, or your own subclass)            |
-| `requireSignedIn`, `requireRole`, `requireUser` | For a `guard.dart`: null, or the sign-in location with the requested one as `from`                                                                                                                            |
-| `redirectIfSignedIn`                            | For the **sign-in route's own** `guard.dart`: signing in sends the user back by itself                                                                                                                        |
-| `authHttpClient`, `SessionClient`, `Authorizer` | A `package:http` client whose requests to `apiOrigins` carry the session, refresh once on expiry, and are sent again once after a 401                                                                         |
-| `package:fespalier_auth/oidc.dart`              | `OidcBackend`: the authorization code flow with PKCE for a public client, Keycloak's endpoints and roles, refresh-token rotation, DPoP on the token endpoint. See [`auth-backends.md`](auth-backends.md)      |
-| `package:fespalier_auth/dio.dart`               | `SessionInterceptor(authorizer, dio)`: the policy of `authHttpClient` on dio's types (since 0.9.0); a request whose session was refused or ended is not sent again without it, under a retrier (since 0.19.0) |
-| `package:fespalier_sign_keypair`                | `DpopProof`: DPoP proofs signed by a device key, for `OidcBackend(proof: ...)`. A separate package; see [`auth-dpop.md`](auth-dpop.md)                                                                        |
-| `package:fespalier_auth/testing.dart`           | `FakeAuthBackend`, `FakeProof`, `fakeSession`, `fakeAuth`                                                                                                                                                     |
+| Piece                                             | What it does                                                                                                                                                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `authSession`                                     | The session: a `NotifierProvider<AuthSessionNotifier, SessionState>`. `SessionState` is sealed: `SessionRestoring`, `SignedOut(reason)`, `SignedIn(session)`. The notifier has `signIn`, `adopt`, `signOut`, `endSession(reason)` and `credential()`               |
+| `isSignedIn`, `authUser`, `authUserId`            | Derived providers. Riverpod filters updates with `==`, so none of them notifies on a renewal                                                                                                                                                                       |
+| `restoreAuth(config)`                             | For `startup()`: reads the stored session and returns the overrides. Synchronous with a synchronous store, and **never** touches the network                                                                                                                       |
+| `AuthConfig`                                      | `backend`, **`transport`** (required: what requests, and the backend's own calls, go through), `store` (`SecureTokenStore` by default, `MemoryTokenStore`) and `apiOrigins`. `leeway` is gone: when a credential counts as expired is `AuthBackend.renewAhead`     |
+| `AuthBackend`                                     | `name`, `scheme`, `authenticator`, `readCredential`, `renewAhead`, `signIn`, `renew` (was `refresh` until 0.20.0), `check`, `signOut`, `discard`; `keepsOwnSession` and `currentSession()` for Firebase and Supabase. Sign-in requests are typed (`SignInRequest`) |
+| `SessionCredential`, `RequestAuthenticator`       | What proves a session (`expiresAt`, `renewableUntil`, `renewable`, `toJson`), and what adds it to each send (`headers`) and reads each answer (`judge` returns an `AuthVerdict`: `Accept`, `Resend`, `Renew`, `SessionEnded`)                                      |
+| `requireSignedIn`, `requireRole`, `requireUser`   | For a `guard.dart`: null, or the sign-in location with the requested one as `from`                                                                                                                                                                                 |
+| `redirectIfSignedIn`                              | For the **sign-in route's own** `guard.dart`: signing in sends the user back by itself                                                                                                                                                                             |
+| `authTransport`, `SessionTransport`, `Authorizer` | An `HttpTransport` whose requests to `apiOrigins` carry the session, renew once on expiry and are sent again after a verdict that says so. `Authorizer` is an `HttpCredentials`, for a client that is not a transport                                              |
+| `package:fespalier_oidc`                          | `OidcBackend`, `BearerAuthenticator`, `TokenCredential`, `BrowserSignIn`, `PasswordSignIn`: OpenID Connect and Keycloak, bearer tokens. A separate package since 0.21.0. See [`auth-backends.md`](auth-backends.md)                                                |
+| `package:fespalier_keypair_dpop`                  | `DpopProof`: DPoP proofs for `OidcBackend(proof: ...)`, on a key from `fespalier_keypair`. See [`auth-dpop.md`](auth-dpop.md)                                                                                                                                      |
+| `package:fespalier_sign_keypair`                  | `DeviceAuthBackend`: a session with no token, proved by a signature from the device key over each request (since 0.21.0). See [`auth-device-sessions.md`](auth-device-sessions.md)                                                                                 |
+| `package:fespalier_auth/testing.dart`             | `FakeAuthBackend`, `FakeCredential`, `FakeAuthenticator`, `fakeSession`, `fakeAuth`                                                                                                                                                                                |
 
 Signing in with **OpenID Connect or Keycloak, Firebase, Supabase, or your own API** is
-[`auth-backends.md`](auth-backends.md), binding the tokens to the device (DPoP) is [`auth-dpop.md`](auth-dpop.md); this page is the package and a starter over a JSON API.
-`examples/auth` runs all of it with an in-process demo API and tests, and has a Keycloak realm.
+[`auth-backends.md`](auth-backends.md), binding the tokens to the device (DPoP) is [`auth-dpop.md`](auth-dpop.md), a
+session with no token at all is [`auth-device-sessions.md`](auth-device-sessions.md); this page is the package and a
+starter over a JSON API. `examples/auth` runs all of it with an in-process demo API and tests, and has a Keycloak realm.
 
 ## The starter
 
-Five files and a backend (`clock` and `http` are the app's own dependencies here). `sign-in/` sits **beside**
-`(signed-in)/`: a guard on the sign-in page would send the user to the sign-in page.
+Five files and a backend. `sign-in/` sits **beside** `(signed-in)/`: a guard on the sign-in page would send the user to
+the sign-in page. The backend is complete: a credential (an access token and a refresh token), what adds it to a request
+(`ApiAuthenticator`) and the backend that makes, renews and ends sessions over `POST /auth/login`, `/auth/renew` and
+`/auth/logout`. `PasswordSignIn` is a plain carrier for a user name and a password that lives in `fespalier_oidc`
+(pure Dart, no plugin); an app that would rather not depend on that package for it writes a `SignInRequest` of its own.
+If your tokens are standard, `TokenCredential` and `BearerAuthenticator` from `fespalier_oidc` already are the first two
+classes.
 
 ```yaml
 # pubspec.yaml dependencies
@@ -61,81 +81,185 @@ Five files and a backend (`clock` and `http` are the app's own dependencies here
 ```dart
 // lib/auth_setup.dart
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart' show PasswordSignIn;
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/http.dart' as http;
 
-/// Your own API: POST /auth/login and POST /auth/refresh, answering
+/// What proves a session to the API: two tokens and when the access token runs out. `toString`
+/// shows no secret, and equality is by value (the core compares a credential a server refused
+/// with the one the session holds now).
+final class ApiCredential implements SessionCredential {
+  const ApiCredential({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.expiresAt,
+  });
+
+  /// Reads what [toJson] wrote; a `FormatException` drops the stored session at restore.
+  factory ApiCredential.fromJson(Map<String, Object?> json) {
+    final access = json['accessToken'];
+    final refresh = json['refreshToken'];
+    final expires = json['expiresAt'];
+    if (access is! String || refresh is! String || expires is! String) {
+      throw const FormatException('ApiCredential: a stored credential is malformed');
+    }
+    return ApiCredential(
+      accessToken: access,
+      refreshToken: refresh,
+      expiresAt: DateTime.parse(expires),
+    );
+  }
+
+  final String accessToken;
+  final String refreshToken;
+
+  @override
+  final DateTime expiresAt;
+
+  @override
+  DateTime? get renewableUntil => null;
+
+  @override
+  bool get renewable => true;
+
+  @override
+  Map<String, Object?> toJson() => {
+    'accessToken': accessToken,
+    'refreshToken': refreshToken,
+    'expiresAt': expiresAt.toUtc().toIso8601String(),
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is ApiCredential &&
+      other.accessToken == accessToken &&
+      other.refreshToken == refreshToken &&
+      other.expiresAt == expiresAt;
+
+  @override
+  int get hashCode => Object.hash(accessToken, refreshToken, expiresAt);
+
+  @override
+  String toString() => 'ApiCredential()';
+}
+
+/// What a send carries, and what a response means. Called for every send, with the exact body
+/// bytes in `request.body`, so a scheme that signs signs what goes out.
+final class ApiAuthenticator implements RequestAuthenticator {
+  const ApiAuthenticator();
+
+  @override
+  Future<Map<String, String>> headers(AuthSession session, TransportRequest request) async {
+    final credential = session.credential as ApiCredential;
+    return {'Authorization': 'Bearer ${credential.accessToken}'};
+  }
+
+  /// A 401 says the access token was refused: renew, then send once more. Anything else stands,
+  /// so a session is never wiped by an answer that may be about something else.
+  @override
+  AuthVerdict judge(
+    AuthSession session,
+    TransportRequest request, {
+    required int statusCode,
+    required Map<String, String> headers,
+    String? body,
+    required bool retried,
+  }) => statusCode == 401 ? const Renew() : const Accept();
+}
+
+/// Your own API: POST /auth/login, /auth/renew and /auth/logout, answering
 /// {"access_token", "refresh_token", "expires_in", "user": {"id", "name", "roles"}}.
 final class ApiBackend extends AuthBackend {
-  ApiBackend(this.base, {http.Client? client}) : _client = client ?? http.Client();
+  const ApiBackend(this.base, this.transport);
 
   final Uri base;
-  final http.Client _client;
+
+  /// The app's transport, without the session: the login call must not wait for a session.
+  final HttpTransport transport;
 
   @override
   String get name => 'api';
+
+  @override
+  ApiAuthenticator get authenticator => const ApiAuthenticator();
+
+  /// Renew an access token this long before it runs out; a request that finds it so renews it.
+  @override
+  Duration get renewAhead => const Duration(seconds: 30);
+
+  @override
+  ApiCredential readCredential(Map<String, Object?> json) => ApiCredential.fromJson(json);
 
   @override
   Future<AuthSession> signIn(SignInRequest request) async {
     if (request is! PasswordSignIn) {
       throw UnsupportedError('ApiBackend signs in with PasswordSignIn');
     }
-    final response = await _post('/auth/login', {
+    final answer = await _post('/auth/login', {
       'username': request.username,
       'password': request.password,
     });
     // A form shows this under the password field: nothing to catch in the page.
-    if (response.statusCode == 401) {
+    if (answer.status == 401) {
       throw const FieldErrors({'password': 'Wrong user name or password'});
     }
-    return _session(response);
+    return _session(answer);
   }
 
+  /// The server refused the refresh token: the session is over (`AuthRejected`). Anything else
+  /// thrown here (a TransportFailure, a 503) keeps the session and is tried again.
   @override
-  Future<AuthSession> refresh(AuthSession session) async {
-    final response = await _post('/auth/refresh', {
-      'refresh_token': session.tokens.refreshToken,
-    });
-    // The server refused the refresh token: the session is over. Anything else
-    // thrown here (a socket error, a 503) keeps the session and is tried again.
-    if (response.statusCode == 400 || response.statusCode == 401) {
-      throw const AuthRejected();
-    }
-    return _session(response, previous: session);
+  Future<AuthSession> renew(AuthSession session, {Object? hint}) async {
+    final credential = session.credential as ApiCredential;
+    final answer = await _post('/auth/renew', {'refresh_token': credential.refreshToken});
+    if (answer.status == 400 || answer.status == 401) throw const AuthRejected();
+    return _session(answer, previous: session);
   }
 
+  /// Best effort: the local sign-out has already happened.
   @override
   Future<void> signOut(AuthSession session) async {
-    await _post('/auth/logout', {'refresh_token': session.tokens.refreshToken});
+    final credential = session.credential as ApiCredential;
+    await _post('/auth/logout', {'refresh_token': credential.refreshToken});
   }
 
-  Future<http.Response> _post(String path, Map<String, Object?> body) async {
-    final response = await _client.post(
-      base.resolve(path),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode(body),
+  Future<({int status, String body})> _post(String path, Map<String, Object?> json) async {
+    final response = await transport.send(
+      TransportRequest(
+        method: 'POST',
+        uri: base.resolve(path),
+        headers: const {'content-type': 'application/json'},
+        body: Uint8List.fromList(utf8.encode(jsonEncode(json))),
+      ),
     );
+    final bytes = await response.bytes();
     if (response.statusCode >= 500) {
-      throw http.ClientException('HTTP ${response.statusCode}', base.resolve(path));
+      throw TransportStatusError(
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body: bytes,
+      );
     }
-    return response;
+    return (status: response.statusCode, body: utf8.decode(bytes));
   }
 
-  AuthSession _session(http.Response response, {AuthSession? previous}) {
-    final json = jsonDecode(response.body) as Map<String, Object?>;
+  AuthSession _session(({int status, String body}) answer, {AuthSession? previous}) {
+    final json = jsonDecode(answer.body) as Map<String, Object?>;
     final user = json['user'] as Map<String, Object?>?;
-    final tokens = AuthTokens(
-      accessToken: json['access_token'] as String,
-      refreshToken: json['refresh_token'] as String?,
-      // clock.now(), not DateTime.now(): a test's fake clock ages the token.
-      expiresAt: clock.now().add(Duration(seconds: json['expires_in'] as int)),
-    );
     return AuthSession(
       backend: name,
-      tokens: tokens,
+      credential: ApiCredential(
+        accessToken: json['access_token'] as String,
+        refreshToken: json['refresh_token'] as String,
+        // clock.now(), not DateTime.now(): a test's fake clock ages the token.
+        expiresAt: clock.now().add(Duration(seconds: json['expires_in'] as int)),
+      ),
       user: user == null
           ? previous!.user
           : AuthUser(
@@ -147,8 +271,12 @@ final class ApiBackend extends AuthBackend {
   }
 }
 
+/// One transport, built once: no session on it. `authTransport` wraps it in the session.
+final HttpTransport transport = HttpClientTransport(http.Client());
+
 AuthConfig authSetup() => AuthConfig(
-  backend: ApiBackend(Uri.parse('https://api.example.com')),
+  backend: ApiBackend(Uri.parse('https://api.example.com'), transport),
+  transport: transport,
   apiOrigins: [Uri.parse('https://api.example.com')],
 );
 ```
@@ -194,6 +322,7 @@ The sign-in page is a form, so the app also lists `fespalier_forms` (since 0.11.
 // lib/app/sign-in/action.dart
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart' show PasswordSignIn;
 
 typedef SignInFields = ({String username, String password});
 
@@ -265,13 +394,14 @@ import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_http/fespalier_http.dart';
 
 Future<List<String>> data(Ref ref) async {
-  // Another user loads this again; a token refresh does not.
+  // Another user loads this again; a renewal does not.
   ref.watch(authUserId);
-  final response = await ref
-      .watch(authHttpClient)
-      .get(Uri.parse('https://api.example.com/orders'));
+  // An http.Client over the session: the request carries it, renewed once if it has expired.
+  final client = TransportClient(ref.watch(authTransport));
+  final response = await client.get(Uri.parse('https://api.example.com/orders'));
   if (response.statusCode != 200) {
     throw StateError('orders: HTTP ${response.statusCode}');
   }
@@ -302,10 +432,10 @@ import 'dart:async';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart' show PasswordSignIn;
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'package:my_app/app.g.dart';
 
 final api = Uri.parse('https://api.example.com');
@@ -324,15 +454,17 @@ void main() {
       overrides: fakeAuth(
         signedInAs: const AuthUser(id: 'ada'),
         apiOrigins: [api],
-        client: MockClient((request) async {
-          sent = request.headers['Authorization'];
-          return http.Response('["order 1", "order 2"]', 200);
+        // A FakeTransport answers from a handler and records what it was sent.
+        transport: FakeTransport((request, body) {
+          sent = request.headers['x-fake-credential'];
+          return fakeResponse(200, body: '["order 1", "order 2"]');
         }),
       ),
     );
     expect(currentLocation(tester), '/orders');
     expect(find.text('order 2'), findsOneWidget);
-    expect(sent, 'Bearer fake-access-0');
+    // FakeAuth's authenticator signs the credential `fake-0`, send number 1.
+    expect(sent, 'fake-0#1');
   });
 
   testWidgets('signing in sends the user back, with no navigation code in the page', (tester) async {
@@ -341,7 +473,7 @@ void main() {
       AppRoutes.router(initialLocation: '/orders'),
       overrides: fakeAuth(
         apiOrigins: [api],
-        client: MockClient((_) async => http.Response('["order 1"]', 200)),
+        transport: FakeTransport((_, _) => fakeResponse(200, body: '["order 1"]')),
       ),
     );
     await container
@@ -388,59 +520,69 @@ void main() {
 
 ## Behaviour to rely on
 
-- **No `refreshing` state.** A refresh keeps `SignedIn` and swaps the tokens. Expiry is
-  `SignedOut(reason: SignOutReason.expired)`, a server's refusal of the refresh token (`AuthRejected`,
-  `invalid_grant`); a network error or a 5xx (`AuthUnavailable`) keeps the session and is tried again by
-  the next request.
-- **`tokens()` is synchronous while the access token is good** (`expiresAt - leeway` still ahead of
-  `clock.now()`), and one shared refresh otherwise: any number of requests that find it expired wait for the
-  same `Future`. That is what refresh-token rotation needs (Keycloak's "Revoke Refresh Token" refuses a
-  second refresh with the same token). There is **no timer**: nothing refreshes in the background, and a
-  test greps `lib/` for `Timer(`, `Future.delayed`, `.listen(` and `DateTime.now()`.
-- **`restoreAuth` does no network.** An expired access token is refreshed by the first request that needs
-  it, so an offline start works. It drops a stored session of another backend, one whose refresh token has
-  expired (`SignedOut(expired)`), and one bound to a DPoP key that is gone (`SignedOut(keyLost)`).
+- **No `renewing` state.** A renewal keeps `SignedIn` and swaps the credential. A refusal of the renewal
+  (`AuthRejected`, an OAuth `invalid_grant`) is `SignedOut(reason: SignOutReason.expired)`; a backend that throws
+  `AuthEnded(reason)` gives another reason (`revoked`). A renewal that could not run (offline, a 5xx:
+  `AuthUnavailable`) keeps the session and is tried again by the next request.
+- **`credential()` is synchronous while the credential is good** (`expiresAt - AuthBackend.renewAhead` still ahead of
+  `clock.now()`; was `tokens()` and `AuthConfig.leeway`, 30 s, until 0.20.0), and one shared renewal otherwise: any
+  number of requests that find it expired wait for the same `Future`. That is what refresh-token rotation needs
+  (Keycloak's "Revoke Refresh Token" refuses a second renewal with the same token). There is **no timer**: nothing
+  renews in the background, and a test greps `lib/` for `Timer(`, `Future.delayed`, `.listen(` and `DateTime.now()`.
+- **`restoreAuth` does no network.** An expired credential is renewed by the first request that needs it, so an
+  offline start works. It drops a stored session of another backend (`AuthBackend.name` differs), one that cannot be
+  renewed any more (`SignedOut(expired)`), and one the backend's `check` refuses: a device key that is gone is
+  `SignedOut(keyLost)`.
+- **A session stored by 0.20.0 or earlier is dropped (since 0.21.0).** The stored session is `{"v": 2, "backend",
+"credential", "user"}`; a `"v": 1` one (tokens in it) throws a `FormatException` (`fespalier_auth: unknown stored
+session version 1`) that `restoreAuth` reports (`FlutterError.reportError`, context `while restoring the stored
+session`), deletes and answers `SignedOut()`: the user signs in once more. A widget test that restores a v1 session fails
+  on the report until it calls `tester.takeException()`.
 - **Without `restoreAuth`** in `startup()` the session restores itself at the first read: the state is
   `SessionRestoring` while an async store answers, and the guard helpers return a `Future` for that long
   (a blank first frame on a cold deep link). Read the store in `startup()` to avoid it.
 - **A sign-out is synchronous**: `signOut()` sets `SignedOut(reason: SignOutReason.user)` before its first
-  `await`, so guards move the user in that frame; then the store is cleared, the backend's `signOut` runs
-  (its errors are swallowed) and the proof of possession is reset. A button over a page that was
-  **pushed** needs no navigation when that page is behind the guard (the guard of a pushed page watches while the
-  page is on top, since 0.21.0, and a sign-out over a guarded base page replaces the whole stack); over a pushed
-  page with no guard of its own, navigate too (`const HomeRoute().go(context)`): the guards under a pushed page
-  react only once it is uncovered (see `auth-patterns.md`).
-- **`apiOrigins` is an allow-list** (scheme, host and port). `SessionClient` sends nothing to another host,
-  so a token cannot leak to a third party. An empty list is an error the first time `authorizer` is read:
+  `await`, so guards move the user in that frame; then the
+  store is cleared, the backend's `signOut` runs (its errors are swallowed) and its `discard` forgets what was
+  bound to the session (a DPoP key, a device's keys). `endSession(reason)` (since 0.21.0) is the same without
+  the server call, for an app whose own API says the device is revoked (`SignOutReason.revoked`). A button over
+  a page that was **pushed** needs no navigation when that page is behind the guard (the guard of a pushed page
+  watches while the page is on top, since 0.21.0, and a sign-out over a guarded base page replaces the whole stack);
+  over a pushed page with no guard of its own, navigate too (`const HomeRoute().go(context)`): the guards under a
+  pushed page react only once it is uncovered (see `auth-patterns.md`).
+- **`apiOrigins` is an allow-list** (scheme, host and port). `SessionTransport` sends nothing to another host,
+  so a credential cannot leak to a third party. An empty list is an error the first time `authorizer` is read:
   `fespalier_auth: AuthConfig.apiOrigins is empty, so no request would carry the session; list your API's origins, e.g. apiOrigins: [Uri.parse('https://api.example.com')]`.
-- **At most three sends per request**: the first, one after a DPoP nonce challenge, one after a 401 and a
-  refresh. A request that cannot be sent again (a `MultipartRequest`, a `StreamedRequest`) is sent once, and
-  its caller gets the 401 after the refresh, so the next attempt works.
-- **The replay after a 401 is marked, and keeps its abort trigger.** For `SessionClient`,
-  `isAuthReplay(request)` is true for a request that the authorizer sends again (after a 401 and a refresh,
-  or after a DPoP nonce challenge) and false for the first send; for `SessionInterceptor` it is `options.extra[authReplayKey]`
-  (`'fespalier.auth.replay'`). A guard against re-sent writes (an idempotency check, a dio interceptor of your
-  own) lets that one through. A request made with `http.AbortableRequest(..., abortTrigger: future)`
-  (`package:http` 1.5.0 and later) is copied with the same trigger, so aborting a page's request also cancels
-  its replay.
-- **A request is never sent again without the session it had (`SessionInterceptor`, since 0.19.0).** A
-  retrier (`dio_smart_retry`) calls `dio.fetch` with the very same `RequestOptions`, so the interceptor keeps
-  marks in `options.extra`: `authRefusedKey` (`'fespalier_auth.refused'`) holds the `AuthRejected` that
-  stopped the request, and the request is refused again with it, with no refresh and no send;
-  `authWantedKey` (`'fespalier_auth.wanted'`) is `true` once the authorizer failed for it (an
-  `AuthUnavailable` is not stored as refused: the retrier may ask again). A request that had the session and
-  would now go out without it (a sign-out between a 503 and its retry), or as another user (a sign-in
-  between), is refused with an `AuthRejected`, and the previous send's `Authorization` and `DPoP` headers
-  never stay on the next one. `SessionClient` cannot do this: a `RetryClient` outside it makes a new request
-  for each attempt, and one inside it re-sends a stale Bearer token after a sign-out; `ref.abortable(...)`
-  outermost with a `data.dart` that watches `authUserId` stops both. Its own replay after a 401 is refused
-  once the user signed out.
-- **`RetryClient` goes over the session, never under it.** `RetryClient(ref.watch(authHttpClient))` asks the
-  authorizer again for each attempt. `authBaseClient` wrapped in a `RetryClient` re-sends the same
-  `Authorization` and `DPoP` headers, the same proof, and a DPoP server refuses a reused `jti` (Keycloak:
-  `invalid_request`, `DPoP proof has already been used`; see `fespalier-troubleshooting`).
-- **Tokens, ids and e-mails never reach a log, a telemetry attribute or an error text**: `AuthTokens`,
-  `AuthUser`, `AuthSession` and `PasswordSignIn` print without them.
+- **`authTransport` is `SessionTransport(AuthConfig.transport, authorizer)`.** A client that is not a transport sits on
+  top of it: `TransportClient(ref.watch(authTransport))` (`fespalier_http`) is an `http.Client`,
+  `TransportAdapter(ref.watch(authTransport))` (`fespalier_dio`) a Dio adapter. Until 0.20.0 these were `authHttpClient`
+  (and `authBaseClient`, `SessionClient`) and `package:fespalier_auth/dio.dart`'s `SessionInterceptor`.
+- **What a response means is the authenticator's to say.** `judge` answers `Accept` (the response stands: anything
+  ambiguous is this), `Resend` (same session, new headers: a DPoP nonce, a clock correction), `Renew` (renew, then send
+  once more) or `SessionEnded(reason)` (sign out and fail the request with `AuthRejected`).
+- **At most three sends per request**: the first, one after a `Resend`, and one after a `Renew`. **Every send is
+  authorized again with the exact bytes of the body**, so a signature is fresh each time. A request whose body is a
+  stream (`TransportRequest.replayable` false) is sent once, and its caller gets the 401, after the renewal, so its next
+  attempt works.
+- **The replay is marked, and keeps its abort trigger.** A send that followed a verdict carries
+  `transportReplayKey` (`'fespalier.auth.replay'`) in `TransportRequest.attributes`, so a guard against re-sent writes
+  (`WriteGuardTransport`, Dio's `WriteGuard`) lets that one through; the first send is not a replay. It was
+  `isAuthReplay(request)` and `options.extra[authReplayKey]` until 0.20.0.
+- **A request is never sent again without the session it had.** A retrier (`dio_smart_retry`, `RetryClient`) calls the
+  session again for the same logical request, and the request's `TransportMemo` (`attributes['fespalier.memo']`)
+  carries what the session settled the first time: a request it refused is refused again with the same `AuthRejected`
+  (no renewal, no send); a request authorized for one user is never sent again as another or with nobody signed in; and
+  a request renews at most once. A client that keeps no memo makes every send a first one: `TransportAdapter` and
+  `TransportClient` keep one ([`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#the-memo)
+  says where it breaks). `authRefusedKey` and `authWantedKey`, the `options.extra` marks of 0.19.0 to 0.20.0, are gone.
+- **A retrier goes over the session, never under it.** Under a session that signs requests it would send the same
+  signature again (with DPoP, the same proof, and the server refuses a reused `jti`: Keycloak `invalid_request`,
+  `DPoP proof has already been used`; see `fespalier-troubleshooting`). Above it, every retry calls the session. The
+  order of the whole chain is in `fespalier-observability` (`references/telemetry.md`) and
+  [`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#decorators-and-their-order).
+- **Credentials, ids and e-mails never reach a log, a telemetry attribute or an error text**: `TokenCredential`,
+  `AuthUser`, `AuthSession` and `PasswordSignIn` print without them, and a `SessionCredential`'s `toString` shows no
+  secret (yours must not either).
 - **User data and persistence.** A `data.dart` whose data belongs to the user should
   `ref.watch(authUserId)`; a `dataCache` (since 0.8.1) keeps the previous user's data until it loads again, so
   clear the cache storage on sign-out.
@@ -450,18 +592,23 @@ void main() {
 ref.read(crateStackAccount).clear()` and then `ref.read(authSession.notifier).signOut()`. `signOut()` sets `SignedOut`
   before its first `await`, so `crateStackScope` is already `null` afterwards and a late `clear()` finds no account; after
   it, name the account you left, `clear(scope: leavingId)`. A queued call answered `401` keeps its idempotency key (the
-  session is being renewed, and the refresh being lazy is why a server that namespaces keys by the
+  session is being renewed, and the renewal being lazy is why a server that namespaces keys by the
   `Authorization` header can run a call twice: `fespalier-cratestack`, `references/server-contract.md`).
 - **One isolate.** The single flight is per `ProviderContainer`. A second isolate or a second web tab that
-  refreshes the same rotating token gets `invalid_grant` and signs the user out: refresh in one place, or do
+  renews the same rotating token gets `invalid_grant` and signs the user out: renew in one place, or do
   not turn rotation on.
 
 ## Testing
 
-`fakeAuth(signedInAs: ..., backend: ..., store: ..., apiOrigins: ..., client: ..., tokenLifetime: ...)` returns
+`fakeAuth(signedInAs: ..., backend: ..., store: ..., apiOrigins: ..., transport: ..., credentialLifetime: ...)` returns
 the overrides for `pumpRouter`; call it **inside the test body**, where the fake clock starts, so
-`tester.pump(const Duration(minutes: 6))` ages a session that has a `tokenLifetime`. `FakeAuthBackend` counts
-`signIns`, `refreshes` and `signOuts`, fails with `signInError` and `refreshError`, and holds a call open with
-`gate` (a `Completer<void>`): the way to see a pending state. In `fsp test`'s `setup.dart`,
+`tester.pump(const Duration(minutes: 6))` ages a session that has a `credentialLifetime`. The `transport:` is a
+`FakeTransport` (`package:fespalier_transport/testing.dart`; it was `client:` with a `MockClient` until 0.20.0);
+`fakeResponse(status, body: ...)` makes its answers. `FakeAuthBackend` counts `signIns`, `renewals`, `signOuts`
+and `discards`, fails with `signInError` and `renewError` (`AuthRejected()` ends the session as `expired`,
+`AuthEnded(SignOutReason.revoked)` as `revoked`, anything else keeps it), answers `check` with `checkResult`, and holds a
+call open with `gate` (a `Completer<void>`): the way to see a pending state. Its credentials are numbered
+`FakeCredential`s (`fake-1`, no secret), and its `FakeAuthenticator` adds `x-fake-credential: <id>#<n>` to every send
+(`signed` has the requests), so a test sees that each send was authorized afresh. In `fsp test`'s `setup.dart`,
 `List<Override> overrides(String pattern) => fakeAuth(signedInAs: ...)` makes every guarded route render.
-`RecordingTelemetry` sees the `auth` spans (`#2 start auth refresh backend=fake trigger=expired`).
+`RecordingTelemetry` sees the `auth` spans (`#1 start auth renew backend=fake trigger=expired scheme=fake`).

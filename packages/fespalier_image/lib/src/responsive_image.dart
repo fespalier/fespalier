@@ -152,7 +152,13 @@ class ResponsiveImage extends ConsumerStatefulWidget {
       return SynchronousFuture<void>(null);
     }
     if (resolved == null) return SynchronousFuture<void>(null);
-    final provider = cdn.providerFor(resolved);
+    final ImageProvider<Object> provider;
+    try {
+      provider = cdn.providerFor(resolved);
+    } on ImageUrlError catch (error, stack) {
+      reportUrlError(error, stack, 'while precaching the image "$source"');
+      return SynchronousFuture<void>(null);
+    }
     ImageVariants.register(resolved, cdn.providerFactory, provider);
     if (imageTelemetryOn) {
       traceImageLoad(
@@ -294,8 +300,8 @@ class _ResponsiveImageState extends ConsumerState<ResponsiveImage> {
       a.format == b.format &&
       a.quality == b.quality &&
       a.maxPixelRatio == b.maxPixelRatio &&
-      a.providerFactory == b.providerFactory &&
-      a.webHtmlElementStrategy == b.webHtmlElementStrategy;
+      a.transport == b.transport &&
+      a.providerFactory == b.providerFactory;
 
   void _retryLoad() {
     final provider = _provider;
@@ -356,7 +362,21 @@ class _ResponsiveImageState extends ConsumerState<ResponsiveImage> {
     if (resolved.builder is DirectUrlBuilder && !hasScheme(widget.source)) {
       warnUnconfigured(widget.source);
     }
-    final provider = cdn.providerFor(resolved);
+    final ImageProvider<Object> provider;
+    try {
+      provider = cdn.providerFor(resolved);
+    } on ImageUrlError catch (error, stack) {
+      _urlError = error;
+      if (!_urlErrorReported) {
+        _urlErrorReported = true;
+        reportUrlError(
+          error,
+          stack,
+          'while choosing the provider of the image "${widget.source}"',
+        );
+      }
+      return;
+    }
     _chosen = resolved;
     _provider = provider;
     ImageVariants.register(resolved, cdn.providerFactory, provider);

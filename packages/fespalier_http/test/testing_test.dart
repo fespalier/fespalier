@@ -1,8 +1,8 @@
-// FakeHttpClient and FakeHttpCredentials, the fakes other packages' tests lean on.
+// FakeHttpClient, the fake other packages' tests lean on. (FakeHttpCredentials and FakeTransport
+// are fespalier_transport's.)
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:fespalier_http/fespalier_http.dart';
 import 'package:fespalier_http/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -90,79 +90,4 @@ void main() {
       expect(client.abortCount, 0);
     });
   });
-
-  group('FakeHttpCredentials', () {
-    final origin = Uri.parse('https://api.example.com');
-
-    test('covers its origins only, and attaches headers to those', () async {
-      final credentials = FakeHttpCredentials(origins: [origin]);
-      expect(credentials.covers(url), isTrue);
-      expect(
-        credentials.covers(Uri.parse('https://other.example.com/x')),
-        isFalse,
-      );
-      expect(credentials.covers(Uri.parse('/relative')), isFalse);
-      final covered = await credentials.authorize('GET', url);
-      expect(covered.headers, {'Authorization': 'Bearer fake'});
-      expect(covered.isReplay, isFalse);
-      final other = await credentials.authorize(
-        'GET',
-        Uri.parse('https://other.example.com/x'),
-      );
-      expect(other.headers, isEmpty);
-      expect(credentials.authorizeCalls, hasLength(2));
-    });
-
-    test(
-      'asks for one re-send on a retryOn status, counted through previous',
-      () async {
-        final credentials = FakeHttpCredentials(origins: [origin]);
-        final first = await credentials.authorize('GET', url);
-        expect(
-          await credentials.retry(first, statusCode: 200, headers: {}),
-          isFalse,
-        );
-        expect(
-          await credentials.retry(first, statusCode: 401, headers: {}),
-          isTrue,
-        );
-        final second = await credentials.authorize('GET', url, previous: first);
-        expect(second.isReplay, isTrue);
-        expect(
-          await credentials.retry(second, statusCode: 401, headers: {}),
-          isFalse,
-        );
-        expect(credentials.retryCalls, [200, 401, 401]);
-      },
-    );
-
-    test('refuses an attempt of another implementation', () async {
-      final credentials = FakeHttpCredentials(origins: [origin]);
-      final foreign = await FakeHttpCredentials(
-        origins: [origin],
-      ).authorize('GET', url);
-      // Its own kind of attempt is accepted from any instance; a stranger is not.
-      expect(
-        credentials.authorize('GET', url, previous: _Stranger(url)),
-        throwsArgumentError,
-      );
-      expect(
-        credentials.retry(_Stranger(url), statusCode: 401, headers: {}),
-        throwsArgumentError,
-      );
-      expect(foreign.headers, isNotEmpty);
-    });
-  });
-}
-
-final class _Stranger implements HttpAuthorization {
-  _Stranger(this.uri);
-  @override
-  final Uri uri;
-  @override
-  String get method => 'GET';
-  @override
-  Map<String, String> get headers => const {};
-  @override
-  bool get isReplay => false;
 }

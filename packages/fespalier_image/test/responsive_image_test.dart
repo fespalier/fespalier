@@ -361,37 +361,37 @@ void main() {
     expect(placeholder, findsOneWidget);
   });
 
-  testWidgets(
-    '(h) an unconfigured app fetches a path as it is and says so once',
-    (tester) async {
-      final printed = <String>[];
-      final saved = debugPrint;
-      debugPrint = (message, {wrapWidth}) => printed.add(message ?? '');
-      final fakes = FakeImages(image: testImage);
-      try {
-        await tester.pumpWidget(
-          imageApp(
-            fakes,
-            const Column(
-              children: [
-                ResponsiveImage('products/1.jpg', width: 40),
-                ResponsiveImage('products/2.jpg', width: 40),
-              ],
-            ),
-            cdn: const ImageCdn(),
+  testWidgets('(h) an unconfigured app says once that a path cannot be fetched', (
+    tester,
+  ) async {
+    final printed = <String>[];
+    final saved = debugPrint;
+    debugPrint = (message, {wrapWidth}) => printed.add(message ?? '');
+    final fakes = FakeImages(image: testImage);
+    try {
+      await tester.pumpWidget(
+        imageApp(
+          fakes,
+          const Column(
+            children: [
+              ResponsiveImage('products/1.jpg', width: 40),
+              ResponsiveImage('products/2.jpg', width: 40),
+            ],
           ),
-        );
-      } finally {
-        debugPrint = saved;
-      }
-      expect(fakes.requested, ['products/1.jpg', 'products/2.jpg']);
-      expect(printed, [
-        'fespalier_image: "products/1.jpg" is not a URL and no image CDN is configured, '
-            'so it is fetched as it is. Override imageCdnProvider in startup() '
-            '(docs/responsive-images.md, "Images").',
-      ]);
-    },
-  );
+          cdn: const ImageCdn(),
+        ),
+      );
+    } finally {
+      debugPrint = saved;
+    }
+    expect(fakes.requested, ['products/1.jpg', 'products/2.jpg']);
+    expect(printed, [
+      'fespalier_image: "products/1.jpg" is not a URL and no image CDN is configured, '
+          'so nothing is fetched: without an ImageCdn that has a transport the image shows its '
+          'error view and an ImageUrlError is reported. Override imageCdnProvider in startup() '
+          '(docs/responsive-images.md, "Images").',
+    ]);
+  });
 
   testWidgets('a URL needs no CDN and says nothing', (tester) async {
     final printed = <String>[];

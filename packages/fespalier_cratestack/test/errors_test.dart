@@ -1,8 +1,7 @@
 // The one classification everything else reads, and the field errors of a validation refusal.
-import 'package:dio/dio.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_cratestack/dio.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
@@ -23,25 +22,6 @@ CrateStackFailure envelope(
 
 CrateStackFailure validation(String message, {Object? details}) =>
     envelope(422, code: 'VALIDATION_ERROR', message: message, details: details);
-
-DioException dioError(
-  int status, {
-  Object? data,
-  Map<String, List<String>> headers = const {},
-  DioExceptionType type = DioExceptionType.badResponse,
-}) {
-  final options = RequestOptions(path: '/x');
-  return DioException(
-    requestOptions: options,
-    type: type,
-    response: Response<Object?>(
-      requestOptions: options,
-      statusCode: status,
-      data: data,
-      headers: Headers.fromMap(headers),
-    ),
-  );
-}
 
 void main() {
   group('the status and code table', () {
@@ -153,57 +133,66 @@ void main() {
     });
   });
 
-  group('DioFailures', () {
-    test('connection errors and timeouts are offline', () {
-      for (final type in [
-        DioExceptionType.connectionError,
-        DioExceptionType.connectionTimeout,
-        DioExceptionType.sendTimeout,
-        DioExceptionType.receiveTimeout,
+  group('TransportFailures', () {
+    test('no response: unsent, timed out and a portal are offline', () {
+      for (final error in <Object>[
+        const TransportUnsent('refused'),
+        const TransportTimedOut('slow'),
+        const TransportPortal(),
       ]) {
-        final error = DioException(
-          requestOptions: RequestOptions(),
-          type: type,
-        );
         expect(
-          DioFailures.read(error),
+          TransportFailures.read(error),
           isA<CrateStackOffline>(),
-          reason: '$type',
+          reason: '$error',
         );
       }
     });
-    test('a cancel is cancelled', () {
-      final error = DioException.requestCancelled(
-        requestOptions: RequestOptions(),
-        reason: 'x',
+    test('an abort is cancelled', () {
+      expect(
+        TransportFailures.read(const TransportAborted()),
+        isA<CrateStackCancelled>(),
       );
-      expect(DioFailures.read(error), isA<CrateStackCancelled>());
+    });
+    test('a broken exchange is unknown, not offline', () {
+      expect(TransportFailures.read(const TransportBroken('cert')), isNull);
+    });
+    test('a refused certificate is unknown, not offline', () {
+      expect(TransportFailures.read(const TransportUntrusted('cert')), isNull);
     });
     test(
       'gateway pages and a bare 500 are offline; a 500 with an envelope is not',
       () {
-        expect(DioFailures.read(dioError(502)), isA<CrateStackOffline>());
-        expect(DioFailures.read(dioError(504)), isA<CrateStackOffline>());
         expect(
-          DioFailures.read(
-            dioError(
+          TransportFailures.read(statusError(502)),
+          isA<CrateStackOffline>(),
+        );
+        expect(
+          TransportFailures.read(statusError(504)),
+          isA<CrateStackOffline>(),
+        );
+        expect(
+          TransportFailures.read(
+            statusError(
               200,
               data: '<html>',
-              headers: {
-                'content-type': ['text/html'],
-              },
+              headers: {'content-type': 'text/html'},
             ),
           ),
           isA<CrateStackOffline>(),
         );
-        expect(DioFailures.read(dioError(500)), isA<CrateStackOffline>());
         expect(
-          DioFailures.read(dioError(500, data: 'Internal Server Error')),
+          TransportFailures.read(statusError(500)),
           isA<CrateStackOffline>(),
         );
         expect(
-          DioFailures.read(
-            dioError(500, data: {'code': 'INTERNAL', 'message': 'oops'}),
+          TransportFailures.read(
+            statusError(500, data: 'Internal Server Error'),
+          ),
+          isA<CrateStackOffline>(),
+        );
+        expect(
+          TransportFailures.read(
+            statusError(500, data: {'code': 'INTERNAL', 'message': 'oops'}),
           ),
           isA<CrateStackUnavailable>(),
         );
@@ -214,35 +203,37 @@ void main() {
       () {
         final body = {'code': 'IDEMPOTENCY_IN_FLIGHT', 'message': 'wait'};
         expect(
-          DioFailures.read(
-            dioError(
-              409,
-              data: body,
-              headers: {
-                'retry-after': ['1'],
-              },
-            ),
+          TransportFailures.read(
+            statusError(409, data: body, headers: {'retry-after': '1'}),
           ),
           isA<CrateStackInFlight>(),
         );
         expect(
-          DioFailures.read(dioError(409, data: body)),
+          TransportFailures.read(statusError(409, data: body)),
           isA<CrateStackConflict>(),
         );
         expect(
-          DioFailures.read(
-            dioError(403, data: {'code': 'FORBIDDEN', 'message': 'no'}),
+          TransportFailures.read(
+            statusError(403, data: {'code': 'FORBIDDEN', 'message': 'no'}),
           ),
           isA<CrateStackRefused>().having((e) => e.code, 'code', 'FORBIDDEN'),
         );
       },
     );
-    test('anything else is not its to read', () {
-      expect(DioFailures.read(StateError('x')), isNull);
+    test('a body that says it is JSON and is not is no envelope', () {
       expect(
-        DioFailures.read(DioException(requestOptions: RequestOptions())),
-        isNull,
+        TransportFailures.read(
+          statusError(
+            500,
+            data: '{oops',
+            headers: {'content-type': 'application/json'},
+          ),
+        ),
+        isA<CrateStackOffline>(),
       );
+    });
+    test('anything else is not its to read', () {
+      expect(TransportFailures.read(StateError('x')), isNull);
     });
   });
 

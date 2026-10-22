@@ -7,7 +7,8 @@ import 'package:cose_example/src/notes.dart';
 import 'package:cose_example/src/payload.dart';
 import 'package:cose_example/src/wiring.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -24,7 +25,7 @@ Future<({CoseTransport transport, DeviceRegistrar registrar})> _app(
   bool register = true,
   http.Client? client,
 }) async {
-  final signer = FakeDpopSigner();
+  final signer = FakeKeypairSigner();
   final sealer = CoseSealer(signer);
   late final CoseTransport transport;
   final registrar = DeviceRegistrar(
@@ -35,7 +36,7 @@ Future<({CoseTransport transport, DeviceRegistrar registrar})> _app(
   transport = CoseTransport(
     config: await server.config(),
     sealer: sealer,
-    client: client ?? server.client,
+    http: HttpClientTransport(client ?? server.client),
     beforeSigned: beforeSigned ?? (register ? registrar.ensure : null),
     onUnauthenticated: registrar.reset,
   );
@@ -135,7 +136,7 @@ void main() {
     'a sealed answer that does not open is Offline, never Unavailable (no next key)',
     () async {
       final server = FakeCoseServer()
-        ..impostor = CoseSealer(FakeDpopSigner(seed: 'someone else'));
+        ..impostor = CoseSealer(FakeKeypairSigner(seed: 'someone else'));
       final app = await _app(server);
       await expectLater(
         app.transport.send(_add, idempotencyKey: 'a#0'),
@@ -331,7 +332,7 @@ void main() {
   test('registration is plain CBOR, once, and a failure is retried', () async {
     final server = FakeCoseServer();
     var failures = 1;
-    final signer = FakeDpopSigner();
+    final signer = FakeKeypairSigner();
     final sealer = CoseSealer(signer);
     late final CoseTransport transport;
     final registrar = DeviceRegistrar(
@@ -345,7 +346,7 @@ void main() {
     transport = CoseTransport(
       config: await server.config(),
       sealer: sealer,
-      client: server.client,
+      http: HttpClientTransport(server.client),
     );
     await expectLater(registrar.ensure(), throwsA(isA<CrateStackOffline>()));
     expect(registrar.isRegistered, isFalse);
@@ -357,7 +358,7 @@ void main() {
   test(
     'a registration the server answers for another key is refused',
     () async {
-      final signer = FakeDpopSigner();
+      final signer = FakeKeypairSigner();
       final sealer = CoseSealer(signer);
       final registrar = DeviceRegistrar(
         signer: signer,

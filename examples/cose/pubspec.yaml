@@ -1,10 +1,10 @@
 name: cose_example
-description: fespalier example — CrateStack calls sealed as COSE_Sign1 by a device key (fespalier_sign_keypair), against a server that checks them.
+description: fespalier example — CrateStack calls sealed as COSE_Sign1 by a device key (fespalier_keypair), against a server that checks them.
 publish_to: none
 version: 0.1.0
 
 environment:
-  # fespalier_sign_keypair needs Dart 3.12 (Flutter 3.44).
+  # fespalier_keypair needs Dart 3.12 (Flutter 3.44): flutter_sign_keypair does.
   sdk: ^3.12.0
   flutter: ">=3.44.0"
 
@@ -18,10 +18,17 @@ dependencies:
   # as intents (submit).
   fespalier_cratestack:
     path: ../../packages/fespalier_cratestack
-  # The device key: SignKeypairSigner (Secure Enclave, AndroidKeyStore) on a device, a software
-  # signer in tests (a DpopSigner, whose sign() is exactly ESP256's r||s).
-  fespalier_sign_keypair:
-    path: ../../packages/fespalier_sign_keypair
+  # The transport startup() builds once (HttpClientTransport over package:http), and the
+  # HttpTransport every call is sent through.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  # The device key: HardwareKeypairSigner (Secure Enclave, AndroidKeyStore) on a device, a
+  # SoftwareKeypairSigner where there is none, FakeKeypairSigner in tests (its sign() is exactly
+  # ESP256's r||s).
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
   flutter:
     sdk: flutter
   http: ^1.5.0
@@ -31,7 +38,7 @@ dependencies:
 dev_dependencies:
   flutter_lints: ^6.0.0
   # The test keys of the vectors are imported into its software signer. The same commit as
-  # fespalier_sign_keypair's pin.
+  # fespalier_keypair's pin.
   flutter_sign_keypair:
     git:
       url: https://github.com/vaam-apps/flutter-sign-keypair
@@ -39,18 +46,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_sign_keypair and fespalier_cratestack depend on fespalier (the first through
-# fespalier_auth, the second through fespalier_dio and fespalier_http) by repository tag, as an app does; here all
-# are the checkout's.
+# fespalier_cratestack depends on fespalier and fespalier_transport by repository tag, as an app does;
+# here both are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
-  fespalier_auth:
-    path: ../../packages/fespalier_auth
-  fespalier_dio:
-    path: ../../packages/fespalier_dio
-  fespalier_http:
-    path: ../../packages/fespalier_http
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

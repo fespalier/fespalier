@@ -8,10 +8,9 @@ import 'package:fespalier/fespalier.dart' show GoRouter;
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_auth/testing.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 const ada = AuthUser(id: 'ada-id', name: 'Ada Example', roles: {'admin'});
 const bob = AuthUser(id: 'bob-id', name: 'Bob Example');
@@ -20,7 +19,7 @@ const bob = AuthUser(id: 'bob-id', name: 'Bob Example');
 List<Override> signedIn(AuthUser user) => fakeAuth(
   signedInAs: user,
   apiOrigins: [apiOrigin],
-  client: MockClient((request) async => http.Response('[]', 200)),
+  transport: FakeTransport((request, body) => fakeResponse(200, body: '[]')),
 );
 
 void main() {

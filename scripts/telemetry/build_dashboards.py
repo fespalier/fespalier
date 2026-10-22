@@ -73,7 +73,6 @@ BOOLEAN_ATTRS = {
     "fespalier.async",
     "fespalier.navigation.redirected",
     "fespalier.data.keyed",
-    "fespalier.auth.dpop",
     "fespalier.image.preload",
     "fespalier.action.rolled_back",
     "fespalier.action.invalid",

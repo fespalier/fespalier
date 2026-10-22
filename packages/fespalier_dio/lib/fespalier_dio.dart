@@ -1,8 +1,10 @@
 /// Dio for fespalier (since 0.9.0): requests cancelled with the provider that made them, server
-/// validation errors as an action's `FieldErrors`, and writes that are never retried.
+/// validation errors as an action's `FieldErrors`, writes that are never retried, and (since
+/// 0.21.0) Dio on both sides of `package:fespalier_transport`: [DioTransport] sends a transport's
+/// requests through your Dio, and [TransportAdapter] lets your Dio send through a transport chain.
 ///
-/// A separate library from `package:fespalier_http/fespalier_http.dart`, so an app that uses `package:http`
-/// links no Dio, and the other way round.
+/// The server's validation-error decoders (`fieldErrorsOf`, `FieldErrorsDecoders`) live in
+/// `package:fespalier/problem.dart`; import them from there.
 ///
 /// ```dart
 /// final dio = Provider<Dio>((ref) {
@@ -14,7 +16,9 @@
 /// ```
 library;
 
-export 'package:fespalier_http/problem.dart';
 export 'src/dio_cancel.dart' show FespalierDioRef;
+export 'src/dio_errors.dart' show DioErrors;
 export 'src/dio_field_errors.dart' show FespalierDioFieldErrors;
+export 'src/dio_transport.dart' show DioTransport;
+export 'src/transport_adapter.dart' show TransportAdapter;
 export 'src/write_guard.dart' show WriteGuard, WriteNotRetried;

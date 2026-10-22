@@ -19,3 +19,4 @@ export 'src/cdn.dart';
 export 'src/heroes.dart';
 export 'src/request.dart';
 export 'src/responsive_image.dart';
+export 'src/transport_image.dart';

@@ -26,7 +26,7 @@
 //     and the output says so.
 //   - A page with a block that imports `package:fespalier_<name>/` (since 0.9.0), for
 //     every `packages/fespalier_<name>/pubspec.yaml` of this checkout (fespalier_auth,
-//     fespalier_sign_keypair, fespalier_adaptive, fespalier_flags, ...: generic, so a new
+//     fespalier_oidc, fespalier_transport, fespalier_adaptive, fespalier_flags, ...: generic, so a new
 //     companion package needs no edit here), gets that package as a path dependency of
 //     this checkout, and a `dependency_overrides:` block pointing `fespalier` and the
 //     companions at it: the companions pin fespalier by repository tag, which a path

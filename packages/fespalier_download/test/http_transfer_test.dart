@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download/testing.dart';
+import 'package:fespalier_http/fespalier_http.dart' show HttpClientTransport;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -299,6 +300,7 @@ void main() {
               Stream.value(body.sublist(0, 200)),
               200,
               contentLength: 450,
+              headers: {'content-length': '450'},
             ),
             server,
           ),
@@ -879,7 +881,7 @@ void main() {
       final c = make();
       expect(await c.backend.resolve(loc), dest);
       final trailing = HttpDownloadBackend(
-        client: server.client,
+        transport: HttpClientTransport(server.client),
         bases: (_) async => '/packs/',
         files: files,
       );

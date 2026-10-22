@@ -24,7 +24,8 @@ flutter run
 ```
 
 The product photos come from an [EmgR](https://github.com/vaam-apps/image-resizer) on this computer, unsigned.
-`lib/images.dart` says how to run it. Without a server each photo fails and shows the product's initial.
+`lib/images.dart` says how to run it. Without a server each photo fails and shows the product's initial. The photos
+are fetched through the app's one transport, built in `lib/app/startup.dart` (`HttpClientTransport` over `package:http`).
 
 ## Things to try
 

@@ -226,6 +226,18 @@ Future<void> guarded(Future<void> Function() body) =>
 
 - `FespalierOtel(isReady:)` emits nothing until the SDK is up; an app that starts the SDK itself leaves it out.
 - `recordLocations: true` adds the committed location and a guard's redirect target to the spans (segment and query values are app data, so it is off).
+- `OtelTransport(inner, {isReady, propagateTo})` (since 0.21.0) puts the requests of a [transport chain](transport.md#decorators-and-their-order) in the same trace, with no `otel_http` or `otel_dio`:
+
+  ```dart
+  final transport = OtelTransport(
+    WriteGuardTransport(HttpClientTransport(client)),
+    isReady: () => observability.isReady,
+    propagateTo: [Uri.parse('https://api.example.com')],
+  );
+  ```
+
+  It makes one `CLIENT` span for each request it sends, named by the method (`GET`) and a child of the span that is current, so a request made by `data()` or an action is a child of its span, in the same trace. It carries OpenTelemetry's HTTP semantic attributes (`http.request.method`, `server.address`, `server.port`, `url.scheme`, `url.path`, `http.response.status_code`, and `error.type` with an error status for a 4xx, a 5xx or no answer), `fespalier.operation` `http`, and `http.request.resend_count` on a send that repeats a request (an auth replay, a retry): [Telemetry conventions](telemetry-conventions.md) has the table. **Never** the query, the fragment, a header value, a body or an error's text, and no `url.full`. `traceparent` and `tracestate` are added only for the origins in `propagateTo` (none by default: on the web a header makes a request cross-origin, and it tells a third party your trace id). The span ends when the response headers arrive. Put it **below** the `SessionTransport` ([the order](transport.md#decorators-and-their-order)), so a replay after a 401 reaches it and each send is a span of its own, with `http.request.resend_count` on the second; and do not also instrument the same requests with `otel_http` or `otel_dio`, or each is reported twice.
+  `fsp create` writes this chain for you (since 0.21.0): with the `otel` feature the app's one transport is `OtelTransport(..., isReady: () => AppMain.observability.isReady)` around the write guard, and with `sentry` a `SentryTransport` sits between them (`OtelTransport(SentryTransport(WriteGuardTransport(HttpClientTransport(http.Client()))))` with both), so the session (`authTransport`) is outside both and a test that never starts the SDK makes no span.
   `FespalierOtel.endpoint()` is the `--dart-define=OTEL_EXPORTER_OTLP_ENDPOINT=...` value when there is one. Without it a debug build exports to `http://10.0.2.2:4318` on Android (the emulator's host) and `http://localhost:4318` elsewhere; a release build gets `''`, which `otel_zone` takes as "telemetry off", so a store build never sends to a developer's computer.
 
 **On the web (since otel_zone v0.8.1).** `OtelZone.runGuarded` runs its body in a browser from v0.8.1 on, so `guarded` above needs no `kIsWeb` branch. An older `otel_zone` never ran it there: it built a `ReceivePort`, which `dart:isolate` does not support on the web, so the app stayed blank (`start()` works). On an older one, return the body without `runGuarded` when `kIsWeb` is true. On the web the zone reports framework errors and uncaught async errors; there is no isolate error listener, because a browser has no isolates. In a release web build those errors go to `otel_zone`'s sink only (its console printing and Flutter's own error dump are on in debug only), so without `OTEL_EXPORTER_OTLP_ENDPOINT` they are seen nowhere, as on mobile.
@@ -284,7 +296,7 @@ Since 0.9.0. A sink can make the span of a data load or an action the **current*
 void within(Object? token, Object? Function() body) => body();
 ```
 
-`FespalierOtel` overrides it with `Context.current.withSpan(span).runSync(body)`, so what `otel_http` and `otel_dio` instrument inside a `data()` or an action takes that span as its parent. A sink of your own overrides it the same way (a member already named `within` with another signature must be renamed). The rules:
+`FespalierOtel` overrides it with `Context.current.withSpan(span).runSync(body)`, so what `otel_http`, `otel_dio` and, since 0.21.0, `OtelTransport` ([below](#opentelemetry-with-otel_zone)) instrument inside a `data()` or an action takes that span as its parent. A sink of your own overrides it the same way (a member already named `within` with another signature must be renamed). The rules:
 
 Call `body` once, synchronously, before you return. It returns what the operation returned (null when it threw, which `end` says), so you may observe it, e.g. hand a `Future` to a vendor API that ends a span when it settles. It never throws; fespalier rethrows what the operation threw after your method returns.
 fespalier returns the operation's **own** result, the very object, whatever `within` does: a sync `data()` is never made a `Future`, no microtask is scheduled, and a sink cannot replace the `Future` Riverpod awaits. `body` runs exactly once, even for a sink that never calls it, calls it twice or throws.
@@ -429,6 +441,16 @@ dependencies:
 The app also depends on `sentry_flutter` for `SentryFlutter.init`, in the range this package accepts:
 `>=9.26.0 <10.0.0`.
 
+**Requests** (since 0.21.0). `SentryTransport(inner, {hub, tracing, captureFailedRequests, tracePropagationTargets})` decorates a [transport chain](transport.md#decorators-and-their-order), errors first like the rest of this package: by default each request leaves **one breadcrumb** (category `http`: the method, the URL without its query and fragment, the status, how long it took) and nothing else, so an error reads as a story. A request with no response (an abort excepted) or a `5xx` is also an error event only with `captureFailedRequests: true`. With `tracing: true` (the same opt-in as `FespalierSentry(tracing: true)`, and the SDK's tracing on) each send is an `http.client` span, a child of the active `data` or `action` span with `traceLifecycle: stream` and of the screen's transaction with `static`, and a re-send (an auth replay, a retry) is a span of its own. `sentry-trace` and `baggage` go only to the origins in `tracePropagationTargets` (none by default). Never a query value, a header value, a body or an error's text. Do not also put `SentryHttpClient` or `sentry_dio` on the same requests: each would be reported twice.
+
+```dart
+final transport = SentryTransport(
+  WriteGuardTransport(HttpClientTransport(client)),
+  tracing: true,
+  tracePropagationTargets: [Uri.parse('https://api.example.com')],
+);
+```
+
 How an error travels, from the call that failed to sentry.io (every arrow into the sink is a plain synchronous call; every SDK call that returns a `Future` is fired and forgotten):
 
 ```text
@@ -557,7 +579,7 @@ Each navigation is then a `ui.load` transaction named by the route pattern, star
 
 **The first screen.** On Android and iOS it has a transaction already: with tracing on and Sentry's defaults, its own app start is the first screen's `ui.load` (from the process start to the first frame, with the native spans). The sink opens none for that screen, and tells it when the screen's data is in (`SentryFlutter.currentDisplay()?.reportFullyDisplayed()`); that screen's guard and data spans are not recorded. With `enableStandaloneAppStartTracing: true` (Sentry 9.26.0, experimental) app start is a trace of its own, and the first screen is an ordinary one with all its spans: **recommended** with `tracing: true`. On the web and on the desktop the first screen is an ordinary one.
 
-With `traceLifecycle: static`, an HTTP span made inside `data()` is a child of the screen's transaction, beside the data span, and not of the data span: Sentry's HTTP integrations parent to the scope's span. (`fespalier_otel` next to it parents them to the data span.)
+With `traceLifecycle: static`, an HTTP span made inside `data()` (by `SentryTransport(tracing: true)` or Sentry's HTTP integrations) is a child of the screen's transaction, beside the data span, and not of the data span: Sentry's static API cannot make a span current for the body of a function, so they parent to the scope's span. (`fespalier_otel` next to it parents them to the data span.)
 
 ### Span streaming
 
@@ -582,7 +604,7 @@ FespalierTelemetry.install(FespalierSentry(tracing: true));
 
 Every segment of a session is in the trace of the scope's propagation context, exactly as `static`'s transactions are: a screen is not a trace of its own. `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews the trace on each navigation, and so does the SDK after the app has been in the background, when no navigator observer exists. UNCHECKED: whether Sentry's Screen Loads and trace views are right with one trace for many screens.
 
-**HTTP spans are under the data span** (since 0.19.0). Sentry's HTTP integrations (`SentryHttpClient`, `sentry_dio`) parent to the _active_ span of the running zone. With `tracing: true` on a streaming SDK the sink makes the span of a `data()` and of an action around the code it runs (`within`, see "Several sinks"), so a request made there, after an `await` too, is a child of it, and two loads at once keep their own. The span still ends with fespalier's own outcome and attributes (`fespalier.data.state`, `fespalier.action.result`), when `data()`'s `Future` settles, the load is disposed or the next navigation starts before the screen has its data (then with status `error`), never earlier. An action with no screen open is a segment, and its requests are its children. A request that ends before the navigation commits carries `sentry.segment.name` `navigate`: Sentry ends its span, and only the spans the sink makes wait for the route's name. The `static` lifecycle is unchanged: its HTTP spans stay under the screen's transaction, because a transaction can only be made current by binding it to the one global scope, which two loads at once would share.
+**HTTP spans are under the data span** (since 0.19.0). Sentry's HTTP integrations (`SentryHttpClient`, `sentry_dio`, and `SentryTransport` since 0.21.0) parent to the _active_ span of the running zone. With `tracing: true` on a streaming SDK the sink makes the span of a `data()` and of an action around the code it runs (`within`, see "Several sinks"), so a request made there, after an `await` too, is a child of it, and two loads at once keep their own. The span still ends with fespalier's own outcome and attributes (`fespalier.data.state`, `fespalier.action.result`), when `data()`'s `Future` settles, the load is disposed or the next navigation starts before the screen has its data (then with status `error`), never earlier. An action with no screen open is a segment, and its requests are its children. A request that ends before the navigation commits carries `sentry.segment.name` `navigate`: Sentry ends its span, and only the spans the sink makes wait for the route's name. The `static` lifecycle is unchanged: its HTTP spans stay under the screen's transaction, because a transaction can only be made current by binding it to the one global scope, which two loads at once would share.
 
 ### Sentry defaults and privacy
 

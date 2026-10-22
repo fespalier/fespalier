@@ -1,4 +1,5 @@
 import 'package:fespalier_image/fespalier_image.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 
 /// Where the images are served from: `--dart-define=IMAGES_URL=https://img.example.com`. A public
 /// address, never a key (docs/responsive-images.md, "Signed image URLs").
@@ -10,7 +11,14 @@ const String imagesUrl = String.fromEnvironment(
 /// How the app asks for an image: a URL template, with the width the box needs in `{width}`.
 /// Swap the builder for your CDN's (`ImgproxyUrlBuilder`, `CloudinaryUrlBuilder`, `ImgixUrlBuilder`,
 /// `ThumborUrlBuilder`): docs/responsive-images.md, "URL builders".
-const ImageCdn appImages = ImageCdn(
-  builder: TemplateUrlBuilder('$imagesUrl/{source}?w={width}&q={quality}'),
+///
+/// The images are fetched through [transport], the app's one (`startup()` builds it and hands it
+/// to every package that sends), so an image request is signed, traced and counted like the
+/// others. That is why the CDN is no longer `const`.
+ImageCdn appImages(HttpTransport transport) => ImageCdn(
+  builder: const TemplateUrlBuilder(
+    '$imagesUrl/{source}?w={width}&q={quality}',
+  ),
   quality: 80,
+  transport: transport,
 );

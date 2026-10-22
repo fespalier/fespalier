@@ -140,8 +140,9 @@ The rules that keep it honest:
   reaches another; while nobody is signed in nothing is read or saved.
 - **A gateway or a captive portal counts as offline**: an HTML page where JSON was expected, or any `5xx` with no
   CrateStack envelope (since 0.16.0 a bare `500` too: whoever answered may have done so after the commit; before
-  0.16.0 only `502`, `503`, `504` and `511`). A `5xx` in the envelope does not (the server did answer). With Dio add
-  `CrateStackPortalInterceptor` (`fespalier-cratestack`).
+  0.16.0 only `502`, `503`, `504` and `511`). A `5xx` in the envelope does not (the server did answer). Put
+  `PortalTransport` in the transport chain for the HTML page (since 0.21.0; it was `CrateStackPortalInterceptor` on the Dio
+  until 0.20.0) (`fespalier-cratestack`).
 - **`Freshness` says _when_ a read runs again; `serve` says _where_ its answer comes from. Never combine `serve` with
   `dataCache`**: `serve` keeps its own copy, per account.
 - Show the time, not the word "stale": `Offline copy, as of 10:42`. `stale` only follows the `maxAge` you pass.

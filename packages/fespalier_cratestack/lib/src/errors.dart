@@ -134,7 +134,7 @@ final class CrateStackRefused extends CrateStackFailure implements DataRefusal {
   /// The HTTP status.
   final int status;
 
-  /// The wire code, e.g. `VALIDATION_ERROR`.
+  /// The wire code: `VALIDATION_ERROR` over REST, `invalid_argument` over RPC.
   final String code;
 
   /// The server's message.

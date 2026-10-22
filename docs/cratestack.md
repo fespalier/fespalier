@@ -42,6 +42,14 @@ cratestack generate-dart \
 Commit the output as a path dependency of the app, and gate it in the app's CI with
 `cratestack generate-dart ... --check`, so a schema change cannot leave it stale.
 
+The preset is the one that matters here. `--preset riverpod` writes a client on Dio (sections 3 and 4 below). With
+`--preset fespalier` (merged in CrateStack in cratestack/cratestack#1206, in no release after 0.15.4 yet, so the CLI comes
+from that commit) the client sends through fespalier's [`HttpTransport`](transport.md) and links no Dio: its
+`<prefix>TransportProvider` and `<prefix>BaseUriProvider` are the two seams the app overrides, typically with
+`ref.watch(authTransport)`. [`examples/cratestack`](https://github.com/fespalier/fespalier/blob/main/examples/cratestack/README.md)
+is the example with a generated client: that preset, a Rust server, device-signed sessions, and a script that generates the
+client again in CI and compares. It also lists what the generated calls cannot do yet and what to do about each.
+
 Use the **RPC transport**. Every procedure takes a per-call options object that carries the idempotency key,
 and RPC errors are typed (`CratestackRpcException` with a status, a code and a message). REST works for
 reads; a REST intent works too (`RestCall`) but REST has no typed error, so the classification below has
@@ -278,7 +286,7 @@ Future<IntentOutcome<Order>> cancel(Ref ref, {required CancelInput input}) => re
 - A replay of a finished request returns the stored answer with `Idempotency-Replayed: true`.
 - A key that is still being answered gets `409` with `Retry-After: 1`. The package treats that as "same key,
   try later".
-- The same key with a different body is `422` `VALIDATION_ERROR` with a message starting
+- The same key with a different body is `422` `VALIDATION_ERROR` (`invalid_argument` over RPC) with a message starting
   `idempotency_key_conflict`. That is a bug in the caller; the package never shows it as a form error.
 - A TTL bounds the reservation. An intent never expires on the device, so the server's TTL is the only bound on
   "never".
@@ -320,7 +328,7 @@ answer, as it does on a `502`. A drain also reads each intent from the store aga
 0.16.0): an intent that a concurrent `submit` got accepted, that the person discarded or that a sign-out wiped while
 the drain was busy with an earlier one is not sent.
 
-**Validation errors become form errors.** `withCrateStackFieldErrors(ref)` turns a `422` `VALIDATION_ERROR` into
+**Validation errors become form errors.** `withCrateStackFieldErrors(ref)` turns a `422` `VALIDATION_ERROR` (REST) or `invalid_argument` (RPC: CrateStack's RPC codes are gRPC-style; read as a field error since 0.21.0) into
 fespalier's `FieldErrors`, like `withFieldErrors` in `fespalier_http` and `fespalier_dio` do. CrateStack documents the message
 (`field 'email' is not a valid email address`) but no per-field structure for `details`, so the package reads
 `details` when it is a map of field to message or a list of `{field|path, message}`, and falls back to the

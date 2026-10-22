@@ -968,6 +968,8 @@
         "examples/offline",
         "docs/examples.md#cose",
         "examples/cose",
+        "docs/examples.md#cratestack",
+        "examples/cratestack",
         "docs/examples.md#wire-sizes",
         "examples/wire-sizes",
         "docs/examples.md#frb-cose",

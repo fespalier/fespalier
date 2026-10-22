@@ -107,14 +107,14 @@ entitlement requires a real development certificate — an ad-hoc signed build (
 "-"`, what `flutter create` produces) fails the build outright if you add it. Without it the key
 write fails with `OSStatus -34018`, which `startup.dart` catches and turns into a software key. The
 software key is not hardware-backed and does not survive a restart: the page shows the key's `kid`,
-which changes, and a restarted app is a *new device* to the server. `lib/app/startup.dart` says all of this.
+which changes, and a restarted app is a _new device_ to the server. `lib/app/startup.dart` says all of this.
 
 ### Where the hardware key is not available
 
 `startup.dart` opens a `HardwareKeypairSigner` and falls back to a `SoftwareKeypairSigner` when the keystore
 refuses: the web, Windows and Linux have no keystore, a macOS sandbox without a signing certificate
 cannot write the keychain (above), and an iOS simulator's keychain is not a secure element. A build
-that must *require* hardware passes `requireHardware: true` and takes the failure instead of the
+that must _require_ hardware passes `requireHardware: true` and takes the failure instead of the
 fallback.
 
 The server forgets devices and notes when it restarts. The app registers its key at the first signed call of a run, so
@@ -289,21 +289,22 @@ sequenceDiagram
 
 All of these are observed in `test/e2e_test.dart` against the real binary.
 
-| The request                                                       | Status | Sealed? | The app's `CrateStackFailure`                       |
-| ----------------------------------------------------------------- | ------ | ------- | --------------------------------------------------- |
-| registration, plain CBOR                                          | 200    | no      | (the answer)                                        |
-| a signed call by a registered key                                 | 200    | yes     | (the answer, verified)                              |
-| signed by an unregistered key                                     | 401    | no      | `CrateStackUnauthenticated`                         |
-| payload, protected header or signature changed in transit         | 401    | no      | `CrateStackUnauthenticated`                         |
-| the same bytes twice (the second)                                 | 401    | no      | `CrateStackUnauthenticated`                         |
-| `iat` more than 300 seconds off                                   | 401    | no      | `CrateStackUnauthenticated`                         |
-| an `Idempotency-Key` header the signature does not cover          | 401    | no      | `CrateStackUnauthenticated`                         |
-| plain `application/cbor` to a signed operation                    | 401    | no      | `CrateStackUnauthenticated`                         |
-| a COSE body to `registerDevice` (it is the plain operation)       | 415    | no      | `CrateStackRefused` (`HTTP_415`)                    |
-| a `Cratestack-Contract` that names no contract the server accepts | 426    | no      | `CrateStackRefused` (`HTTP_426`, update the client) |
-| a registered device's bad input (`addNote` without `text`)        | 400    | yes     | `CrateStackRefused`, code `invalid_argument`        |
-| a registration that is not a P-256 point                          | 422    | no      | `CrateStackRefused`                                 |
-| a sealed answer that does not open (another server key)           | -      | -       | `CrateStackOffline`                                 |
+| The request                                                          | Status | Sealed? | The app's `CrateStackFailure`                                           |
+| -------------------------------------------------------------------- | ------ | ------- | ----------------------------------------------------------------------- |
+| registration, plain CBOR                                             | 200    | no      | (the answer)                                                            |
+| a signed call by a registered key                                    | 200    | yes     | (the answer, verified)                                                  |
+| signed by an unregistered key                                        | 401    | no      | `CrateStackUnauthenticated`                                             |
+| payload, protected header or signature changed in transit            | 401    | no      | `CrateStackUnauthenticated`                                             |
+| the same bytes twice (the second)                                    | 401    | no      | `CrateStackUnauthenticated`                                             |
+| `iat` more than 300 seconds off                                      | 401    | no      | `CrateStackUnauthenticated`                                             |
+| an `Idempotency-Key` header the signature does not cover             | 401    | no      | `CrateStackUnauthenticated`                                             |
+| plain `application/cbor` to a signed operation                       | 401    | no      | `CrateStackUnauthenticated`                                             |
+| a COSE body to `registerDevice` (it is the plain operation)          | 415    | no      | `CrateStackRefused` (`HTTP_415`)                                        |
+| a `Cratestack-Contract` that names no contract the server accepts    | 426    | no      | `CrateStackRefused` (`HTTP_426`, update the client)                     |
+| a registered device's bad input (`addNote` without `text`)           | 400    | yes     | `CrateStackRefused`, code `invalid_argument`                            |
+| a procedure's own validation refusal (`CratestackError::Validation`) | 422    | yes     | `CrateStackRefused`, code `invalid_argument` (`fieldErrorsOf` reads it) |
+| a registration that is not a P-256 point                             | 422    | no      | `CrateStackRefused`                                                     |
+| a sealed answer that does not open (another server key)              | -      | -       | `CrateStackOffline`                                                     |
 
 Every unsigned `401` has the same body, `{"code": "unauthenticated", "message": "request could not be authenticated"}`: the
 server does not say which check failed. `Accept: application/json` on a signed call is not refused: it is answered sealed.

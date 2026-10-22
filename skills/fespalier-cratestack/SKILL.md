@@ -80,6 +80,15 @@ schema change cannot leave it stale. **Use the RPC transport**: every procedure 
 carries the idempotency key, and RPC errors are typed (`CratestackRpcException`: status, code, message). REST works for
 reads and for a `RestCall` intent, but REST has no typed error, so the classification has only the HTTP status to go on.
 
+**`--preset fespalier`** (CrateStack's cratestack/cratestack#1206, merged and in no release after 0.15.4, so the CLI is built
+from that commit) writes the same Riverpod client **with no Dio**: it sends through fespalier's `HttpTransport`, and the app
+overrides `<prefix>TransportProvider` (typically `ref.watch(authTransport)`) and `<prefix>BaseUriProvider`; the adapter
+provider defaults to the HTTP adapter over them. The pubspec pins `fespalier_transport` by git (`--fespalier-ref`; a commit
+until fespalier 0.21.0 is released, overridden with the checkout inside this repository). Things the generated calls cannot do
+yet, with what to do: a call carries no attributes for a signer (put a header on it and turn it into `TransportRequest.attributes`
+in a decorator above the session); a generated exception wraps the transport's failure as its `cause`
+(read the cause with `TransportFailures.read`). `examples/cratestack` does all of it.
+
 ## 2. The two seams
 
 The generated types (`CratestackRpcAdapter`, `CratestackRpcCallOptions`, `CratestackRpcException`) live in **your**
@@ -340,7 +349,7 @@ Future<IntentOutcome<Order>> cancel(Ref ref, {required CancelInput input}) => re
 
 `submit` returns `Accepted` or `Queued`; a refusal on the spot is thrown and nothing is kept; the call must be
 JSON-native; a subject is ordered (`fespalier-offline`, [`fespalier-offline`](../fespalier-offline/SKILL.md) (its `intents.md` page)).
-`withCrateStackFieldErrors(ref, fieldName: ...)` turns a `422` `VALIDATION_ERROR` into `FieldErrors`; the shape of
+`withCrateStackFieldErrors(ref, fieldName: ...)` turns a `422` `VALIDATION_ERROR` (REST) or `invalid_argument` (RPC, since 0.21.0) into `FieldErrors`; the shape of
 `details` is an **assumption** (CrateStack documents the message, not a structure).
 
 ## 6. Retries: one layer
@@ -417,15 +426,24 @@ isolate.
 
 ## References
 
-| Need                                                                                                  | Page                                                             |
-| ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                   | [`references/wiring.md`](references/wiring.md)                   |
-| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do | [`references/server-contract.md`](references/server-contract.md) |
-| Where CrateStack's embedded SQLite mode fits and where it does not                                    | [`references/embedded-mode.md`](references/embedded-mode.md)     |
-| Reads, intents, owned rows, sync, testing                                                             | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
-| A transport that signs every request and a server that checks it, end to end                          | [`examples/cose`](../../examples/cose/README.md)                 |
-| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                    | [`examples/frb-cose`](../../examples/frb-cose/README.md)         |
-| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)        | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
+| Need                                                                                                    | Page                                                             |
+| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                     | [`references/wiring.md`](references/wiring.md)                   |
+| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do   | [`references/server-contract.md`](references/server-contract.md) |
+| Where CrateStack's embedded SQLite mode fits and where it does not                                      | [`references/embedded-mode.md`](references/embedded-mode.md)     |
+| Reads, intents, owned rows, sync, testing                                                               | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
+| A transport that signs every request and a server that checks it, end to end                            | [`examples/cose`](../../examples/cose/README.md)                 |
+| A generated client (`--preset fespalier`, no Dio), a Rust server and device-signed sessions, end to end | [`examples/cratestack`](../../examples/cratestack/README.md)     |
+| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)          | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
+| Need                                                                                                    | Page                                                             |
+| -----------------------------------------------------------------------------------------------------   | ---------------------------------------------------------------- |
+| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                     | [`references/wiring.md`](references/wiring.md)                   |
+| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do   | [`references/server-contract.md`](references/server-contract.md) |
+| Where CrateStack's embedded SQLite mode fits and where it does not                                      | [`references/embedded-mode.md`](references/embedded-mode.md)     |
+| Reads, intents, owned rows, sync, testing                                                               | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
+| A transport that signs every request and a server that checks it, end to end                            | [`examples/cose`](../../examples/cose/README.md)                 |
+| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                      | [`examples/frb-cose`](../../examples/frb-cose/README.md)         |
+| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)          | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
 
 ## Where the code is
 

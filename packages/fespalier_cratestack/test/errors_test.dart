@@ -20,8 +20,15 @@ CrateStackFailure envelope(
   details: details,
 );
 
-CrateStackFailure validation(String message, {Object? details}) =>
-    envelope(422, code: 'VALIDATION_ERROR', message: message, details: details);
+CrateStackFailure validation(
+  String message, {
+  Object? details,
+  String code = 'VALIDATION_ERROR',
+}) => envelope(422, code: code, message: message, details: details);
+
+/// The same refusal as CrateStack's RPC transport spells it (gRPC-style code).
+CrateStackFailure rpcValidation(String message, {Object? details}) =>
+    validation(message, details: details, code: 'invalid_argument');
 
 void main() {
   group('the status and code table', () {
@@ -303,15 +310,52 @@ void main() {
       );
     });
 
-    test('anything but a 422 VALIDATION_ERROR is not a field error', () {
-      expect(errors.fieldErrorsOf(envelope(422, code: 'OTHER')), isNull);
-      expect(
-        errors.fieldErrorsOf(envelope(400, code: 'VALIDATION_ERROR')),
-        isNull,
-      );
-      expect(errors.fieldErrorsOf(const CrateStackOffline()), isNull);
-      expect(errors.fieldErrorsOf(StateError('x')), isNull);
-    });
+    test(
+      'an RPC 422 invalid_argument is read like REST\'s VALIDATION_ERROR',
+      () {
+        expect(
+          errors.fieldErrorsOf(rpcValidation("field 'email' is not valid")),
+          isA<FieldErrors>().having((e) => e.fields.keys, 'fields', ['email']),
+        );
+        expect(
+          errors
+              .fieldErrorsOf(
+                rpcValidation('x', details: {'email': 'Too short'}),
+              )
+              ?.fields,
+          {'email': 'Too short'},
+        );
+        expect(
+          errors.fieldErrorsOf(rpcValidation('something is wrong'))?.message,
+          'something is wrong',
+        );
+        expect(
+          errors.fieldErrorsOf(
+            rpcValidation(
+              'idempotency_key_conflict: the key was used with another body',
+            ),
+          ),
+          isNull,
+        );
+      },
+    );
+
+    test(
+      'anything but a 422 VALIDATION_ERROR or invalid_argument is not a field error',
+      () {
+        expect(errors.fieldErrorsOf(envelope(422, code: 'OTHER')), isNull);
+        expect(
+          errors.fieldErrorsOf(envelope(400, code: 'invalid_argument')),
+          isNull,
+        );
+        expect(
+          errors.fieldErrorsOf(envelope(400, code: 'VALIDATION_ERROR')),
+          isNull,
+        );
+        expect(errors.fieldErrorsOf(const CrateStackOffline()), isNull);
+        expect(errors.fieldErrorsOf(StateError('x')), isNull);
+      },
+    );
 
     test(
       'withCrateStackFieldErrors throws FieldErrors for a validation refusal',

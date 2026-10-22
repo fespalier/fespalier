@@ -12,13 +12,13 @@ members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | sed 's/ *#.*
 
 # Resolved on their own, outside the workspace: the packages that need a newer Flutter, the DevTools extension
 # (its lockfile is committed) and every example. cli/tests/versions.rs keeps this list complete.
-outside_dirs := "packages/fespalier_devtools packages/fespalier_keypair packages/fespalier_keypair_dpop packages/fespalier_sign_keypair packages/fespalier_download_background examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose examples/device examples/frb-cose"
+outside_dirs := "packages/fespalier_devtools packages/fespalier_keypair packages/fespalier_keypair_dpop packages/fespalier_sign_keypair packages/fespalier_download_background examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose examples/device examples/frb-cose examples/cratestack"
 
 # Every Dart folder: the workspace's packages, then the ones outside it. pub get, dart format, flutter analyze, flutter test.
 dart_dirs := members + outside_dirs
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
-examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose device frb-cose"
+examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose device frb-cose cratestack"
 
 # List recipes
 default:
@@ -249,6 +249,43 @@ cose: cose-server
         | xargs -0 dart format --output=none --set-exit-if-changed
     flutter analyze
     COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
+
+# The cratestack example's server (examples/cratestack/server, a standalone Rust crate on cratestack-api 0.15.4):
+# fmt, clippy, tests (the verifier's unit tests and the router driven in process, with a Rust device that signs as
+# Dart's DeviceSigner does), a locked build and cargo-deny. A cold build compiles cratestack and takes a couple of
+# minutes, so it is not part of `just ci`.
+[working-directory: 'examples/cratestack/server']
+cratestack-server:
+    cargo fmt --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+    cargo build --locked
+    cargo deny --config deny.toml check
+
+# Installs the `cratestack` CLI the example's client is generated with, from the commit scripts/cratestack-client.sh
+# names: the `--preset fespalier` is merged there and is in no release yet. A cold build takes a few minutes.
+cratestack-cli:
+    scripts/cratestack-client.sh install
+
+# Regenerates examples/cratestack/client from server/schema.cstack (needs `just cratestack-cli` and network); commit the result
+cratestack-client:
+    scripts/cratestack-client.sh generate
+
+# What CI's `cratestack` job runs: the server (`cratestack-server`), the committed client compared with a fresh
+# `cratestack generate-dart --preset fespalier` (needs `just cratestack-cli`), then the app in examples/cratestack against
+# the binary it built: dart format, analyze and every test, with the cross-language end-to-end test required (it fails
+# instead of skipping). Needs Rust (examples/cratestack/server/rust-toolchain.toml), cargo-deny and Flutter; not part
+# of `just ci` (`just flutter` runs the app's tests too, the end-to-end one skipped)
+cratestack: cratestack-server
+    #!/usr/bin/env bash
+    set -euo pipefail
+    scripts/cratestack-client.sh check
+    cd examples/cratestack
+    flutter pub get
+    find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 \
+        | xargs -0 dart format --output=none --set-exit-if-changed
+    flutter analyze
+    ORDERS_SERVER_BIN="$PWD/server/target/debug/orders-demo-server" FSP_REQUIRE_ORDERS_SERVER=1 flutter test
 
 # The frb-cose example's server (examples/frb-cose/server, a copy of examples/cose/server kept apart on purpose:
 # its own crate, audience and Cargo.lock, on cratestack-api 0.15.3): fmt, clippy, the copied tests (the

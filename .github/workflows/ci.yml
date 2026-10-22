@@ -169,6 +169,7 @@ jobs:
           - examples/offline
           - examples/device
           - examples/frb-cose
+          - examples/cratestack
     defaults:
       run:
         working-directory: ${{ matrix.dir }}
@@ -1062,6 +1063,81 @@ jobs:
           FSP_REQUIRE_FRB_COSE_SERVER: "1"
         run: flutter test
 
+  # examples/cratestack: a CrateStack server (a Rust crate of its own, examples/cratestack/server) that checks the
+  # device signature of every request, the Flutter client generated from its schema by `cratestack generate-dart
+  # --preset fespalier` (examples/cratestack/client), and the app that signs in with a device key and calls it.
+  # The `dart` job above already runs the app's tests (its end-to-end test skips there: no server binary); this job
+  # builds the server and runs that test against it with FSP_REQUIRE_ORDERS_SERVER=1, which fails the test instead of
+  # skipping it, so the job cannot go green by not running the server. Dart signs and Rust verifies: that is the
+  # cross-language check. It also generates the client again, with the CLI built from the CrateStack commit that
+  # scripts/cratestack-client.sh names (the preset is in no release yet), and fails when the committed client differs.
+  # It is not in the `floor` job: fespalier_sign_keypair needs Flutter 3.44. `just cratestack` runs the same steps.
+  cratestack:
+    name: CrateStack example (server, generated client and app, end to end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server crate pins its own toolchain (cli/tests/versions.rs checks it equals the
+      # generator's); this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/cratestack/server/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/cratestack/server
+      # Tests include the verifier's (a good request passes; a changed body, query, path, method or audience, a
+      # reused jti, an old signature and a jwk that is not the attested key are refused) and the router driven in
+      # process by a Rust device.
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/cratestack/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      # Licences, advisories, sources: examples/cratestack/server/deny.toml (cratestack's graph brings a few
+      # more licences than the generator's).
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/cratestack/server/Cargo.toml
+          command: check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      # The CLI at a commit, not a tag or a release: `--preset fespalier` (cratestack/cratestack#1206) is not in 0.15.4.
+      - name: Install the cratestack CLI (the pinned commit)
+        run: scripts/cratestack-client.sh install
+      - name: The committed client is what the schema generates
+        run: scripts/cratestack-client.sh check
+      - name: App (pub get, dart format, analyze)
+        working-directory: examples/cratestack
+        run: |
+          flutter pub get
+          find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 |
+            xargs -0 dart format --output=none --set-exit-if-changed
+          flutter analyze
+      # Plain `test`s over real sockets: enrol with the Dart keys, signed reads and writes, the user-present rule,
+      # a write under an Idempotency-Key, renewal (a real 401 attestation_expired), revocation, and every refusal
+      # (a replay, a changed body or path, no credential at all).
+      - name: App tests, the end-to-end one against the server binary
+        working-directory: examples/cratestack
+        env:
+          ORDERS_SERVER_BIN: ${{ github.workspace }}/examples/cratestack/server/target/debug/orders-demo-server
+          FSP_REQUIRE_ORDERS_SERVER: "1"
+        run: flutter test
+
   # examples/wire-sizes: a CrateStack server (a Rust crate of its own, examples/wire-sizes/server) that
   # serves one schema as JSON, CBOR and COSE_Sign1 CBOR with every call measured as the handler stack
   # sees it (a count of the HTTP message, not of bytes on a socket), and the runner that drives it in
@@ -1194,6 +1270,7 @@ jobs:
           - cose
           - device
           - frb-cose
+          - cratestack
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

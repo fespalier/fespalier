@@ -1,0 +1,7 @@
+analyzer:
+  exclude:
+    - build/**
+    # The generated client (scripts/cratestack-client.sh) is checked against the schema, not linted
+    # as the app's own code.
+    - client/**
+include: package:flutter_lints/flutter.yaml

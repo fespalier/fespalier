@@ -1088,20 +1088,13 @@ FutureOr<String?> _redirect(GuardResult Function() redirect, _Rerun? rerun) {
   }
   if (rerun == null) return result.then<String?>(_same, onError: _fail);
   final guards = rerun.guards;
-  // A `Future` that completes inside the call (a `SynchronousFuture`) is a synchronous answer.
   return result.then<String?>(
     (location) {
       rerun.record(location);
-      return identical(guards._landing, rerun)
-          ? location
-          : guards._carry(rerun);
+      return guards._carry(rerun);
     },
     onError: (Object error, StackTrace stackTrace) {
-      final failure = _failure(error, stackTrace);
-      rerun.record(failure);
-      if (identical(guards._landing, rerun)) {
-        Error.throwWithStackTrace(failure, failure.stackTrace);
-      }
+      rerun.record(_failure(error, stackTrace));
       return guards._carry(rerun);
     },
   );

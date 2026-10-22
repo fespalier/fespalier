@@ -42,8 +42,9 @@ var _sync = false;
 var _built = 0;
 final _asked = <String>[];
 
-/// The tab layout's shell.
+/// The tab layout's shell, and, in the nested layout, the shell inside its first tab.
 StatefulNavigationShell? _shell;
+StatefulNavigationShell? _inner;
 
 /// How often an `observe.dart` `onEnter` of `/admin` ran.
 var _entered = 0;
@@ -126,6 +127,54 @@ GoRouter _tabs() => GoRouter(
   ],
 );
 
+/// Tabs inside a tab: the first tab of the outer shell (`/a`, `/b`) is a shell of its own, and the
+/// guarded page, `/b/admin`, lives in the inner shell's second tab.
+GoRouter _nested() => GoRouter(
+  initialLocation: '/a',
+  routes: [
+    GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, shell) {
+        _shell = shell;
+        return shell;
+      },
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            StatefulShellRoute.indexedStack(
+              builder: (context, state, shell) {
+                _inner = shell;
+                return shell;
+              },
+              branches: [
+                StatefulShellBranch(
+                  routes: [
+                    GoRoute(path: '/a', builder: (_, _) => const Text('A')),
+                  ],
+                ),
+                StatefulShellBranch(
+                  routes: [
+                    GoRoute(
+                      path: '/b',
+                      builder: (_, _) => const Text('B'),
+                      routes: [_page('admin', 'g@b-admin', 'b-admin')],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/other', builder: (_, _) => const Text('OTHER')),
+          ],
+        ),
+      ],
+    ),
+  ],
+);
+
 Future<void> _settle(WidgetTester tester) async {
   await tester.pump();
   await tester.pump();
@@ -167,6 +216,7 @@ void main() {
     _built = 0;
     _asked.clear();
     _shell = null;
+    _inner = null;
     _entered = 0;
   });
 
@@ -321,6 +371,42 @@ void main() {
           expect(_stack(r).last, '/tab/admin');
           expect(find.text('COUNT 0'), findsOneWidget);
           expect(_built, 2);
+        });
+
+        testWidgets('a page of a tab inside a parked tab is kept with its state '
+            'and not held when the tabs come back', (tester) async {
+          final r = _nested();
+          await pumpRouter(tester, attached(r));
+          _inner!.goBranch(1);
+          await _settle(tester);
+          expect(find.text('B'), findsOneWidget);
+          await _push(tester, r, '/b/admin');
+          await tester.tap(find.text('COUNT 0'));
+          await tester.pump();
+          expect(find.text('COUNT 1'), findsOneWidget);
+          _shell!.goBranch(1);
+          await _settle(tester);
+          expect(find.text('OTHER'), findsOneWidget);
+          expect(
+            passedPageCount(r),
+            1,
+            reason: 'the inner shell is not on screen, its tab is parked',
+          );
+          // The tab comes back: go_router restores the page without its redirect, and the guard
+          // waits (when it does) with the page on screen.
+          final gate = _sync ? null : Completer<void>();
+          if (gate != null) _gates.add(gate);
+          _shell!.goBranch(0);
+          await _settle(tester);
+          expect(
+            find.text('COUNT 1'),
+            findsOneWidget,
+            reason: 'the page passed before and is back with its tab',
+          );
+          gate?.complete();
+          await _settle(tester);
+          expect(find.text('COUNT 1'), findsOneWidget);
+          expect(_built, 1, reason: 'the page was never made again');
         });
 
         testWidgets(

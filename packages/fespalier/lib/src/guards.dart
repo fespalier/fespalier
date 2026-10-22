@@ -122,19 +122,17 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// Since 0.21.0 it also holds the pushed pages of the router (fespalier/fespalier#258). go_router
 /// restores a pushed page on a refresh, a restore, a pop back or a hot-reload swap without running
 /// its redirect, and a page whose redirect threw is restored as if it had passed. So this class
-/// runs the guard of the page on top again (`replace`, which runs the redirects of its entry and
-/// keeps its page key), and holds back a page whose guard has not passed in a navigation that
-/// pushed it: the router builds nothing for it (`refusedView`).
+/// runs the guard of the page on top again (a `replace` of the page with its own location, which
+/// runs the redirects of its entry and keeps its page key: a re-run), and holds back a page whose
+/// guard has not passed in a navigation that pushed it (`refusedView`).
 ///
 /// **Identity comes only from go_router's own objects.** An entry is known by its
 /// `ImperativeRouteMatch.completer`, a navigation by the `RouteInformationState` it put in the
-/// route information provider (its completer is the one of the entry the navigation puts on the
-/// stack). There is no listener on that provider, no zone of our own, no count of notifications, no
-/// timer and no new microtask: the only deferred work is post-frame callbacks. What was tried
-/// before (the provider's value, the notifications, a zone, a copy of the last request) failed in
-/// six reviews, each time by leaking one navigation's identity into another.
+/// route information provider (its completer is the one of the entry it puts on the stack). Nothing
+/// else says which navigation is on the way: six reviews found a leak in each of the provider's
+/// value, a count of its notifications, a zone and a table of re-runs. Do not add one.
 ///
-/// The invariants, each pinned by test/pushed_guard_test.dart or test/leave_test.dart:
+/// The invariants (pushed_guard_*_test.dart, leave_test.dart and no_timers_guards_test.dart pin them):
 ///
 /// 1. A site is owned by the entry whose navigation evaluated it (or by the base), and the first
 ///    commit that shows another entry on top closes it.
@@ -325,21 +323,16 @@ final class _RouterGuards {
 
     // go_router restores the pages under the one on top without their redirects, so a base page that
     // is under a redirect must be asked again too, whichever site pinged: a sign-out that only moved
-    // the top page would leave the base under it, and the system back would land on it signed out.
-    // `refresh()` asks the base. When its redirect moves it, the whole stack is replaced, as it was
-    // before the pushed page's guard watched anything (before 0.21.0). When it keeps its place, the
-    // commit of the refresh shows the pushed page as a restored one, and it runs its guard again after
-    // the frame (invariant 4). A base under no redirect has nothing to ask, so the pushed page alone is
-    // run again, at once.
+    // the top page would leave the base under it. `refresh()` asks the base. When its redirect moves
+    // it, the whole stack is replaced, as before 0.21.0. When it keeps its place, the commit of the
+    // refresh shows the pushed page as a restored one and it runs its guard after the frame
+    // (invariant 4). A base under no redirect has nothing to ask: the pushed page alone is run again.
     //
-    // The price, over a base that is under a redirect: a change that only the pushed page's guard
-    // notices (a role revoked while the session holds) is a refresh, for which go_router restores the
-    // pushed page with a new entry (and asks it to leave), and then the re-run that moves it. A dirty
-    // page's `leave()` can be asked twice, once for each; a guard that passes again asks it once, for
-    // the refresh alone. A base that redirects asks it once, as before 0.21.0. docs/guards.md says
-    // so. Telling the two apart in advance means reading the base's guards where they are, and an
-    // asynchronous guard or a `redirect:` that is no fespalier guard cannot be read: it was tried,
-    // and the bookkeeping it needed was wrong in more places than the question it saved.
+    // The price, over a base under a redirect: a change that only the pushed page's guard notices
+    // is a refresh (go_router restores the pushed page with a new entry and asks it to leave) and then
+    // the re-run that moves it, so a dirty page can be asked twice. docs/guards.md says so. Telling
+    // the two apart in advance means reading the base's guards, and an async guard or a hand-written
+    // `redirect:` cannot be read.
     final VoidCallback run = top == null || _baseGuarded()
         ? _router.refresh
         : () => _rerun(top);
@@ -504,26 +497,22 @@ final class _RouterGuards {
   /// the rest are no longer watched. See [_judge].
   void _committed() => _judgeNow();
 
-  /// Judges the committed [config] once (since 0.21.0). The commit is a push when its top entry
-  /// was put there by a request whose redirects ran ([_requestThatPut]): that page passed or failed
+  /// Judges the committed [config] once (since 0.21.0). The commit is a push when its top entry was
+  /// put there by a request whose redirects ran ([_requestThatPut]): that page passed or failed
   /// them. Any other commit (a refresh, a restore, a pop back, a tab, a swap) shows a page whose
   /// redirects did not run.
   ///
-  /// - A failed commit closes every site: a page that never showed has nothing to keep up to date (a
-  ///   refresh that one of them asked for would show the guarded page, #258).
-  /// - A site evaluated by a navigation (not a re-run) is bound to the top entry when its request is
-  ///   the one that put the entry there, and to the base when the navigation made no request. A site
-  ///   of a request that did not put the top entry there is closed (invariant 1).
-  /// - A site bound to an entry stays while that entry is on top, and is closed as soon as another
-  ///   entry, or none, is. A site bound to the base stays only for the commit of the navigation that
-  ///   evaluated it, as before 0.21.0: a guarded page under a pushed page waits for the pop. A change
-  ///   only the pushed page's guard notices asks the base with a refresh when the base is under a
-  ///   redirect (see [_act]).
+  /// - A failed commit closes every site: a page that never showed has nothing to keep up to date.
+  /// - A site that a navigation (not a re-run) evaluated goes to the top entry when its request put
+  ///   the entry there, to the base when the navigation made no request or left no pushed page, and
+  ///   is closed otherwise (invariant 1).
+  /// - A site bound to an entry stays while that entry is on top. A site bound to the base stays
+  ///   only for the commit of the navigation that evaluated it, as before 0.21.0.
   /// - A re-run's landing moves the sites of the entry it replaced to the entry it put there (the
-  ///   page key is the same). The sites that answered a location are closed when a push or a re-run
-  ///   puts its page on top: a guard that sent the page elsewhere does not belong to it.
-  /// - A pushed page that is on top and was not put there by a push runs its guard again, after the
-  ///   frame (invariant 4).
+  ///   page key is the same). Sites that answered a location are closed when a push or a re-run puts
+  ///   its page on top: a guard that sent the page elsewhere does not belong to it.
+  /// - A guarded pushed page that is on top and no push put there is run again after the frame
+  ///   (invariant 4).
   void _judge(RouteMatchList config) {
     if (identical(config, _judged)) return;
     _judged = config;
@@ -876,13 +865,9 @@ final class _Live {
   /// page while the entry is on top (invariant 1).
   ///
   /// A site belongs to one entry, the last that evaluated it. A route nested under a guarded parent
-  /// shares the parent's site: a push of the child evaluates it again, and that evaluation replaces
-  /// the base's, bound to the pushed entry when the push commits. That is harmless. The ping of a
-  /// site bound to a pushed entry refreshes the router when the base is under a redirect, and a base
-  /// that shares the guard is under one, so the base's redirect runs in the refresh whichever entry
-  /// the site is bound to; when the base is under none, the site was never its own. When the pushed
-  /// page goes, the commit closes the site (its entry is gone), and the base's guard is watched again
-  /// when a navigation evaluates it, as for any page that was pushed over the base.
+  /// shares the parent's site, so a push of the child takes it from the base. That is harmless: the
+  /// ping of a site bound to an entry refreshes the router when the base is under a redirect, and a
+  /// base that shares the guard is under one.
   Completer<Object?>? owner;
 
   /// The completer of the push-type request the guard was evaluated under (the entry that request

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.21.1](https://github.com/fespalier/fespalier/compare/v0.21.0...v0.21.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **cratestack:** read a CrateStack RPC validation error as field errors, and an examples/cratestack with a generated client and device-signed sessions ([#277](https://github.com/fespalier/fespalier/issues/277)) ([6fb34fb](https://github.com/fespalier/fespalier/commit/6fb34fbe9d7865d4c9118058339c77e63ac995f4))
+* **fespalier:** a guarded pushed page that the browser brings back is held until its guard answers ([#279](https://github.com/fespalier/fespalier/issues/279)) ([7949916](https://github.com/fespalier/fespalier/commit/79499160c055a9881e2bfdce98eab431f722933e))
+
+
+### Documentation
+
+* **examples:** an frb-cose example, a Rust core behind flutter_rust_bridge that is the CrateStack client and seals every call ([#270](https://github.com/fespalier/fespalier/issues/270)) ([ec44c8c](https://github.com/fespalier/fespalier/commit/ec44c8c922546f8076aa2108aaf861d581532e65))
+
 ## [0.21.0](https://github.com/fespalier/fespalier/compare/v0.20.0...v0.21.0) (2026-10-22)
 
 

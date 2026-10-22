@@ -1,6 +1,6 @@
 name: fespalier_connectivity
 description: "fespalier's reconnectSignal from connectivity_plus, so refetchOnReconnect works, and a hasNetwork provider for offline banners."
-version: 0.21.0 # x-release-please-version
+version: 0.21.1 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -25,7 +25,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.21.0 # x-release-please-version
+      ref: v0.21.1 # x-release-please-version
   # Not imported. connectivity_plus 6.0.1 allows web 0.3.0, whose JS interop does not compile for the web on
   # Dart 3.9 (`The type 'JSObject' can't be used as supertype`): an app's `flutter pub downgrade` picks it and
   # a web build fails. Depending on it steers every app's resolution to 0.4.0 or newer.

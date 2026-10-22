@@ -72,6 +72,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('No notes yet.'), findsOneWidget);
+      expect(find.text('Device key: none in a web build'), findsOneWidget);
       final add = tester.widget<FilledButton>(
         find.widgetWithText(FilledButton, 'Add'),
       );

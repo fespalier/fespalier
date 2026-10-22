@@ -47,7 +47,11 @@ class HomePage extends HookConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('Device key ${identity.kid}'),
+          Text(
+            core.available
+                ? 'Device key ${identity.kid}'
+                : 'Device key: none in a web build',
+          ),
           Text(
             !core.available
                 ? 'The Rust core is not in this build: no call is made, and nothing is saved.'

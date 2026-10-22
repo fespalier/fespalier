@@ -248,6 +248,18 @@ cose: cose-server
     flutter analyze
     COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
 
+# The frb-cose example's server (examples/frb-cose/server, a copy of examples/cose/server kept apart on purpose:
+# its own crate, audience and Cargo.lock, on cratestack-api 0.15.3): fmt, clippy, the copied tests (the
+# end-to-end envelope tests and the support module), a locked build and cargo-deny. A cold build compiles
+# cratestack and takes a couple of minutes, so it is not part of `just ci`.
+[working-directory: 'examples/frb-cose/server']
+frb-cose-server:
+    cargo fmt --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+    cargo build --locked
+    cargo deny --config deny.toml check
+
 # The wire-sizes example's server (examples/wire-sizes/server, a standalone Rust crate on cratestack-api 0.15.3):
 # fmt, clippy, tests (the runner drives the router in process, and tests/socket.rs checks one request over a
 # real socket), a locked build and cargo-deny, then the report regenerated and compared with the committed

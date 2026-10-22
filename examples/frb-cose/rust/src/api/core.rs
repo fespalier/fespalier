@@ -177,7 +177,7 @@ impl NotesCore {
     }
 
     /// The engine's events: the last few so far, then each new one. The stream ends when the core is dropped, or
-    /// when the next event finds that the Dart side has cancelled (flutter_rust_bridge has no signal for a cancel
+    /// when the next event finds that the Dart side has cancelled (`flutter_rust_bridge` has no signal for a cancel
     /// before that), so a cancelled listener costs one waiting task until then.
     // Async only so that flutter_rust_bridge runs it on its async runtime, where `spawn` has a reactor. The body
     // has nothing to await: subscribing and forwarding never block.

@@ -148,7 +148,10 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// 6. A redirect, a site or a `leave()` question belongs to a re-run only if the provider's request
 ///    is the re-run's own and, for `leave()`, the leaving entry is the re-run's entry.
 /// 7. An asynchronous re-run never lands: at its first asynchronous answer it is dropped, and
-///    carried on only while its entry is on top and it is the newest re-run of that entry.
+///    carried on only while its entry is on top and it is the newest re-run of that entry. The one
+///    exception is a chain of carried runs whose replay met another redirect than the one that gave
+///    the answer twice (the app's own redirect keeps changing its answer): that run lands as
+///    go_router lands it, and nothing repeats by itself.
 /// 8. A re-run's landing has all its answers when `leave()` is asked: a pass asks nothing, a move
 ///    asks with no exemption.
 /// 9. Every re-run's request is recorded before its landing is judged, so a landing never
@@ -432,6 +435,7 @@ final class _RouterGuards {
       before: _router.routeInformationProvider.value.state,
       zone: Zone.current,
       replay: dropped?.answers ?? const [],
+      carriedMismatches: dropped?.mismatches ?? 0,
     );
     _newest[entry.completer] = rerun;
     _landing = rerun;
@@ -480,11 +484,19 @@ final class _RouterGuards {
   /// re-run of the entry: a change that started it (a role revoked while this one waited for the
   /// server) made this one's answer stale, and carrying it would land a page the newer one has
   /// refused.
-  Future<String?> _carry(_Rerun dropped) {
+  ///
+  /// A redirect of the app's own that answers differently each time it is asked would make the
+  /// carry repeat by itself, on microtasks and timers, with no user action. So a chain of carried
+  /// runs ends at the second time its replay meets a redirect other than the one that gave the
+  /// answer ([_Rerun.exhausted]): the run is not carried again, this returns null, and the caller
+  /// hands go_router the real answer, which lands the run as it lands any redirect (the same as with
+  /// an `onEnter`, docs/guards.md, limit 3).
+  Future<String?>? _carry(_Rerun dropped) {
     final top = _topEntry();
     if (top != null &&
         identical(top.completer, dropped.entry.completer) &&
         identical(_newest[top.completer], dropped)) {
+      if (dropped.exhausted) return null;
       dropped.zone.run(() => _rerun(top, dropped));
     }
     return Completer<String?>().future;
@@ -839,6 +851,7 @@ final class _Rerun {
     required this.before,
     required this.zone,
     required this.replay,
+    required this.carriedMismatches,
   }) : uri = entry.matches.uri;
 
   /// The guards of the router the re-run is on.
@@ -866,6 +879,17 @@ final class _Rerun {
   /// Whether the replay still holds: it ends at the first redirect that is not the one that gave the
   /// answer recorded at its position (see [replayAt]), and every redirect after it runs for real.
   bool replaying = true;
+
+  /// How many times the chain of carried runs that leads to this one met a redirect other than the
+  /// one that gave the answer at its position, before this run.
+  final int carriedMismatches;
+
+  /// [carriedMismatches], and this run's own: a run whose replay ended met one.
+  int get mismatches => carriedMismatches + (replaying ? 0 : 1);
+
+  /// Whether the chain has met a redirect other than the one that gave the answer twice: this run
+  /// is not carried on again (see [_RouterGuards._carry]).
+  bool get exhausted => mismatches >= 2;
 
   /// The `RouteInformationState` the `replace` of the re-run put in the provider: the identity of
   /// its navigation. Null until the first redirect, site or question of the call asks for it.
@@ -1178,11 +1202,14 @@ FutureOr<String?> _redirect(
   return result.then<String?>(
     (location) {
       rerun.record(_Answer.of(state, location));
-      return guards._carry(rerun);
+      return guards._carry(rerun) ?? location;
     },
     onError: (Object error, StackTrace stackTrace) {
-      rerun.record(_Answer.of(state, _failure(error, stackTrace)));
-      return guards._carry(rerun);
+      final failure = _failure(error, stackTrace);
+      rerun.record(_Answer.of(state, failure));
+      final carried = guards._carry(rerun);
+      if (carried != null) return carried;
+      Error.throwWithStackTrace(failure, failure.stackTrace);
     },
   );
 }

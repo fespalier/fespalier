@@ -260,6 +260,18 @@ frb-cose-server:
     cargo build --locked
     cargo deny --config deny.toml check
 
+# The frb-cose example's Rust core (examples/frb-cose/rust): fmt, clippy, the unit tests, the tests against the
+# example's own server (in process, a dev-dependency: its cold build compiles cratestack), a locked build and
+# cargo-deny. The Flutter hook builds the same crate for every `flutter test`; this runs its Rust gates by hand.
+# rustup installs the targets of rust/rust-toolchain.toml the first time it runs here (about 2 GB, once).
+[working-directory: 'examples/frb-cose/rust']
+frb-cose-core:
+    cargo fmt --check
+    cargo clippy --locked --all-targets -- -D warnings
+    cargo test --locked
+    cargo build --locked
+    cargo deny --config deny.toml check
+
 # The wire-sizes example's server (examples/wire-sizes/server, a standalone Rust crate on cratestack-api 0.15.3):
 # fmt, clippy, tests (the runner drives the router in process, and tests/socket.rs checks one request over a
 # real socket), a locked build and cargo-deny, then the report regenerated and compared with the committed

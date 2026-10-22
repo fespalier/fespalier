@@ -51,10 +51,12 @@ pub struct CoreError {
     pub message: String,
 }
 
-/// A sealed answer, opened.
+/// A sealed answer, opened. A non-2xx status is an answer too: its body carries the server's error code.
 pub struct CoreAnswer {
     /// The status the server sealed.
     pub status: u16,
+    /// The `Retry-After` in seconds, when the server sent one in that form. It is a hint, not sealed.
+    pub retry_after: Option<u32>,
     /// The body, as JSON.
     pub body_json: String,
 }
@@ -63,7 +65,9 @@ pub struct CoreAnswer {
 pub enum CoreEventKind {
     /// The device's key was registered with the server.
     Registered,
-    /// A sealed call was answered.
+    /// The server stopped knowing the device's key, so the next call registers again.
+    Forgotten,
+    /// A call the engine accepted ended. Its journal row is written first.
     Called,
 }
 
@@ -71,8 +75,40 @@ pub enum CoreEventKind {
 pub struct CoreEvent {
     /// What happened.
     pub kind: CoreEventKind,
-    /// The op of a `Called` event; empty for `Registered`.
+    /// The op of a `Called` event; empty otherwise.
     pub op: String,
+}
+
+/// How an accepted call ended.
+pub enum JournalOutcome {
+    /// The server sealed its answer, and it opened: `status` is the sealed one.
+    Answered,
+    /// The server answered without a COSE envelope: `status` is its own.
+    Unsigned,
+    /// The answer did not verify, so it is not the server's word.
+    Unverified,
+    /// The device key did not sign. Nothing sealed was sent.
+    NotSigned,
+    /// The device was not registered. Nothing sealed was sent.
+    NotRegistered,
+    /// The sealed request got no usable answer.
+    Unreachable,
+    /// The engine refused the call while it was sending it. Nothing sealed was sent.
+    Rejected,
+}
+
+/// One row of the journal. It holds no payload: no arguments and no body.
+pub struct JournalEntry {
+    /// The op.
+    pub op: String,
+    /// The idempotency key the call used; empty for a read.
+    pub idempotency_key: String,
+    /// How the call ended.
+    pub outcome: JournalOutcome,
+    /// The HTTP status, when the server answered.
+    pub status: Option<u16>,
+    /// Whether a sealed request went to the network.
+    pub sent: bool,
 }
 
 /// The engine's state, read without a call.
@@ -133,11 +169,11 @@ impl NotesCore {
         args_json: String,
         idempotency_key: String,
     ) -> Result<CoreAnswer, CoreError> {
-        let answer = self.core.call(&op, &args_json, &idempotency_key).await?;
-        Ok(CoreAnswer {
-            status: answer.status,
-            body_json: answer.body_json,
-        })
+        Ok(self
+            .core
+            .call(&op, &args_json, &idempotency_key)
+            .await?
+            .into())
     }
 
     /// The engine's events: the last few so far, then each new one, until the Dart side cancels.
@@ -167,6 +203,12 @@ impl NotesCore {
                 }
             }
         });
+    }
+
+    /// The journal: the rows of the calls the engine accepted, oldest first, the newest 32 of them.
+    #[frb(sync)]
+    pub fn journal(&self) -> Vec<JournalEntry> {
+        self.core.journal().into_iter().map(Into::into).collect()
     }
 
     /// The engine's state, without a call.
@@ -213,6 +255,7 @@ impl From<engine::Answer> for CoreAnswer {
     fn from(answer: engine::Answer) -> Self {
         Self {
             status: answer.status,
+            retry_after: answer.retry_after,
             body_json: answer.body_json,
         }
     }
@@ -220,15 +263,40 @@ impl From<engine::Answer> for CoreAnswer {
 
 impl From<engine::Event> for CoreEvent {
     fn from(event: engine::Event) -> Self {
-        match event {
-            engine::Event::Registered => Self {
-                kind: CoreEventKind::Registered,
-                op: String::new(),
-            },
-            engine::Event::Called { op } => Self {
-                kind: CoreEventKind::Called,
-                op,
-            },
+        let (kind, op) = match event {
+            engine::Event::Registered => (CoreEventKind::Registered, ""),
+            engine::Event::Forgotten => (CoreEventKind::Forgotten, ""),
+            engine::Event::Called { op } => (CoreEventKind::Called, op),
+        };
+        Self {
+            kind,
+            op: op.to_owned(),
+        }
+    }
+}
+
+impl From<engine::JournalEntry> for JournalEntry {
+    fn from(entry: engine::JournalEntry) -> Self {
+        Self {
+            op: entry.op.to_owned(),
+            idempotency_key: entry.idempotency_key,
+            outcome: entry.outcome.into(),
+            status: entry.status,
+            sent: entry.sent,
+        }
+    }
+}
+
+impl From<engine::JournalOutcome> for JournalOutcome {
+    fn from(outcome: engine::JournalOutcome) -> Self {
+        match outcome {
+            engine::JournalOutcome::Answered => Self::Answered,
+            engine::JournalOutcome::Unsigned => Self::Unsigned,
+            engine::JournalOutcome::Unverified => Self::Unverified,
+            engine::JournalOutcome::NotSigned => Self::NotSigned,
+            engine::JournalOutcome::NotRegistered => Self::NotRegistered,
+            engine::JournalOutcome::Unreachable => Self::Unreachable,
+            engine::JournalOutcome::Rejected => Self::Rejected,
         }
     }
 }

@@ -4,9 +4,10 @@
 // ignore_for_file: invalid_use_of_internal_member, unused_import, unnecessary_import
 
 import '../frb_generated.dart';
+
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`, `from`, `from`, `from`, `from`
 
 /// The kid and thumbprint of a device key, from its public x and y.
 DeviceIdentity deviceIdentity({
@@ -34,6 +35,9 @@ abstract class NotesCore implements RustOpaqueInterface {
   /// The engine's events: the last few so far, then each new one, until the Dart side cancels.
   Stream<CoreEvent> changes();
 
+  /// The journal: the rows of the calls the engine accepted, oldest first, the newest 32 of them.
+  List<JournalEntry> journal();
+
   /// Opens the engine. `sign` is the device key: it receives the bytes to sign and answers the signature, or
   /// null when the key does not sign. Nothing is sent and the callback is not called until the first call.
   ///
@@ -51,18 +55,25 @@ abstract class NotesCore implements RustOpaqueInterface {
   CoreStatus status();
 }
 
-/// A sealed answer, opened.
+/// A sealed answer, opened. A non-2xx status is an answer too: its body carries the server's error code.
 class CoreAnswer {
   /// The status the server sealed.
   final int status;
 
+  /// The `Retry-After` in seconds, when the server sent one in that form. It is a hint, not sealed.
+  final int? retryAfter;
+
   /// The body, as JSON.
   final String bodyJson;
 
-  const CoreAnswer({required this.status, required this.bodyJson});
+  const CoreAnswer({
+    required this.status,
+    this.retryAfter,
+    required this.bodyJson,
+  });
 
   @override
-  int get hashCode => status.hashCode ^ bodyJson.hashCode;
+  int get hashCode => status.hashCode ^ retryAfter.hashCode ^ bodyJson.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -70,6 +81,7 @@ class CoreAnswer {
       other is CoreAnswer &&
           runtimeType == other.runtimeType &&
           status == other.status &&
+          retryAfter == other.retryAfter &&
           bodyJson == other.bodyJson;
 }
 
@@ -176,7 +188,7 @@ class CoreEvent {
   /// What happened.
   final CoreEventKind kind;
 
-  /// The op of a `Called` event; empty for `Registered`.
+  /// The op of a `Called` event; empty otherwise.
   final String op;
 
   const CoreEvent({required this.kind, required this.op});
@@ -198,7 +210,10 @@ enum CoreEventKind {
   /// The device's key was registered with the server.
   registered,
 
-  /// A sealed call was answered.
+  /// The server stopped knowing the device's key, so the next call registers again.
+  forgotten,
+
+  /// A call the engine accepted ended. Its journal row is written first.
   called,
 }
 
@@ -244,4 +259,73 @@ class DeviceIdentity {
           runtimeType == other.runtimeType &&
           kid == other.kid &&
           thumbprint == other.thumbprint;
+}
+
+/// One row of the journal. It holds no payload: no arguments and no body.
+class JournalEntry {
+  /// The op.
+  final String op;
+
+  /// The idempotency key the call used; empty for a read.
+  final String idempotencyKey;
+
+  /// How the call ended.
+  final JournalOutcome outcome;
+
+  /// The HTTP status, when the server answered.
+  final int? status;
+
+  /// Whether a sealed request went to the network.
+  final bool sent;
+
+  const JournalEntry({
+    required this.op,
+    required this.idempotencyKey,
+    required this.outcome,
+    this.status,
+    required this.sent,
+  });
+
+  @override
+  int get hashCode =>
+      op.hashCode ^
+      idempotencyKey.hashCode ^
+      outcome.hashCode ^
+      status.hashCode ^
+      sent.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is JournalEntry &&
+          runtimeType == other.runtimeType &&
+          op == other.op &&
+          idempotencyKey == other.idempotencyKey &&
+          outcome == other.outcome &&
+          status == other.status &&
+          sent == other.sent;
+}
+
+/// How an accepted call ended.
+enum JournalOutcome {
+  /// The server sealed its answer, and it opened: `status` is the sealed one.
+  answered,
+
+  /// The server answered without a COSE envelope: `status` is its own.
+  unsigned,
+
+  /// The answer did not verify, so it is not the server's word.
+  unverified,
+
+  /// The device key did not sign. Nothing sealed was sent.
+  notSigned,
+
+  /// The device was not registered. Nothing sealed was sent.
+  notRegistered,
+
+  /// The sealed request got no usable answer.
+  unreachable,
+
+  /// The engine refused the call while it was sending it. Nothing sealed was sent.
+  rejected,
 }

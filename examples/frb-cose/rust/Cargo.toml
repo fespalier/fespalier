@@ -22,6 +22,15 @@ serde_json = "1"
 tokio = { version = "1", features = ["rt", "sync", "time"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 
+[dev-dependencies]
+# The example's own server, in process: the tests drive `frb_cose_demo_server::build` through
+# `cratestack_server::axum::serve`. The rename keeps rustc from seeing two libraries named `cratestack` (the client
+# facade above is one, `cratestack-api` the other): E0464 otherwise.
+frb-cose-demo-server = { path = "../server" }
+cratestack_server = { package = "cratestack-api", version = "=0.15.3", default-features = false, features = ["cose"] }
+base64 = "0.23"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
 [lints.rust]
 unsafe_code = "deny"
 # flutter_rust_bridge_codegen expands the crate with `--cfg frb_expand`.

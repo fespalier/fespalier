@@ -9,8 +9,8 @@ environment:
   flutter: ">=3.44.0"
 
 dependencies:
-  # Five places pin this version (these two lines, rust/Cargo.toml, the codegen in the justfile and the
-  # generated header); cli/tests/versions.rs keeps them equal.
+  # Five places pin this version (these two lines, rust/Cargo.toml, the headers of the generated files, the codegen
+  # in the justfile, and the frb-cose job's FRB_CODEGEN_VERSION in ci.yml); cli/tests/versions.rs keeps them equal.
   flutter_rust_bridge: 2.13.0
   # The build hook (hook/build.dart) that compiles rust/ for the platform Flutter builds for.
   flutter_rust_bridge_hooks: 2.13.0

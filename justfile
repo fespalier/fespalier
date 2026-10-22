@@ -311,7 +311,8 @@ frb-cose: frb-cose-server frb-cose-core frb-cose-bindings
     find . -name '*.dart' ! -name '*.g.dart' -not -path './.dart_tool/*' -not -path './build/*' -print0 \
         | xargs -0 dart format --output=none --set-exit-if-changed
     flutter analyze
-    FRB_COSE_SERVER_BIN="$PWD/server/target/debug/frb-cose-demo-server" FSP_REQUIRE_FRB_COSE_SERVER=1 flutter test
+    # The server binary is where cargo put it: under CARGO_TARGET_DIR when that is set (an absolute path), else server/target.
+    FRB_COSE_SERVER_BIN="${CARGO_TARGET_DIR:-$PWD/server/target}/debug/frb-cose-demo-server" FSP_REQUIRE_FRB_COSE_SERVER=1 flutter test
 
 # The wire-sizes example's server (examples/wire-sizes/server, a standalone Rust crate on cratestack-api 0.15.3):
 # fmt, clippy, tests (the runner drives the router in process, and tests/socket.rs checks one request over a

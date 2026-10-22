@@ -209,10 +209,21 @@ final class _RouterGuards {
   /// of the old one), and it writes it into the history entry, so the browser's back and forward
   /// restore a page that is gone with the key it had. So a pass is for a location ([_Passed.uri]; the
   /// landing of a replace gives the key its new one), and a key is forgotten as soon as its page has
-  /// left the configuration for good ([_forgetGone], in [_judge]). The one page that is not in the
-  /// configuration and comes back, with its state, is a pushed page of a tab that is not on screen:
-  /// its key is kept while its tab is parked, and forgetting it held the page back when the tab came
-  /// back and dropped a dirty page's `leave()` question.
+  /// left the configuration for good ([_forgetGone], in [_judge]).
+  ///
+  /// The location is compared exactly, on purpose: a page that moved with `replace` to another query
+  /// or other parameters, and that the browser brings back at an earlier address, is a move. It is
+  /// held until its guard answers and then made again, with none of its state, and a guard about one
+  /// resource (`/doc/1`) that was not watched while the page showed `/doc/2` never lets an earlier
+  /// pass show the page at `/doc/1`. The lifecycle hooks of the page say the same in every order
+  /// (`onLeave` for the frame that shows the box, `onEnter` when it is made again, see
+  /// [guardBeforeRerun]).
+  ///
+  /// The one page that is not in the configuration and comes back is a pushed page of a tab that is
+  /// not on screen: it comes back with its tab, and with its state when the container keeps its
+  /// branches alive (the default `indexedStack`; a container that builds only the branch on screen
+  /// builds it again). Its key is kept while its tab is parked, and forgetting it held the page back
+  /// when the tab came back and dropped a dirty page's `leave()` question.
   ///
   /// So the set holds at most the guarded pages the router can show again: the pushed pages on the
   /// screen and those of the tabs that are parked. It does not grow with the pages pushed in the life
@@ -522,12 +533,32 @@ final class _RouterGuards {
     if (!_scheduled.add(key)) return;
     SchedulerBinding.instance.addPostFrameCallback((_) {
       _scheduled.remove(key);
+      _lifecycleFirst();
       final top = _topEntry();
       if (top == null || top.pageKey.value != key || top.matches.isError) {
         return;
       }
       _rerun(top);
     });
+  }
+
+  /// The lifecycle watch's diff of the commit that scheduled a re-run, before the re-run replaces
+  /// its page ([guardBeforeRerun]): a page held in the frame that was just built has left, and the
+  /// one the re-run lets show is entered when it is made again, whoever read the commit first. A
+  /// failure of the diff is reported and never costs the re-run.
+  void _lifecycleFirst() {
+    try {
+      guardBeforeRerun[_router]?.call();
+    } catch (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'fespalier',
+          context: ErrorDescription('while running the lifecycle hooks'),
+        ),
+      );
+    }
   }
 
   /// Completes [target], the `Future` of the push that opened a page, with [value], what the page
@@ -1171,6 +1202,14 @@ Future<void>? guardsIdle(GoRouter router) => _guardsOf[router]?.idle();
 /// router: the hook runs it with the bypass on.
 final guardRefreshHooks = Expando<void Function(void Function() refresh)>(
   'fespalier guard refresh',
+);
+
+/// Runs the lifecycle watch's diff of the commits that wait for the end of the frame, when the router
+/// has a watch (since 0.21.1): `RouterWatch` sets it, and a re-run of a pushed page calls it before it
+/// replaces the page, so the diff of the commit that scheduled the re-run sees what the frame showed
+/// whatever reader of the commit registered its post-frame callback first.
+final guardBeforeRerun = Expando<void Function()>(
+  'fespalier guard before re-run',
 );
 
 /// What go_router gets when a guard or a `redirect.dart` fails (since 0.21.0): it threw, or the

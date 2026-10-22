@@ -184,8 +184,14 @@ have one, and under `AppRoutes.mount(at:)` the prefix is skipped when looking fo
 ## Behaviours worth knowing before you debug
 
 - **`replace` and `push` on the web** (since 0.6.0): `ProductRoute(id: 1).replace(context)` puts
-  its location in the address bar and replaces the history entry (over a page that was pushed it
-  keeps the stack instead). A `push` stays out of the address bar unless the pubspec has
+  its location in the address bar and, over a page of the declarative stack, replaces the history
+  entry. Over a page that was pushed it is go_router's `replace`: the pushed stack and the page's
+  state stay, and **each call adds a history step** (go_router reports every new location as a new
+  entry; only `Router.neglect` replaces one), so the back button brings the earlier query back. A
+  search box on a pushed page keeps its query in the page's own state, or lives on a page reached
+  with `go`, if that step is unwanted. On a guarded pushed page the browser's back to an earlier
+  location of the page is held (an empty box until the guard answers) and the page is built from
+  scratch, its state lost (since 0.21.1). A `push` stays out of the address bar unless the pubspec has
   `push_updates_url: true` (a reload then builds that URL's own stack). On 0.5.0 use `go` for URL
   state. See `references/typed-routes-and-extra.md`.
 - **`pushReplacement`** (since 0.7.0): `ProductRoute(id: 1).pushReplacement<T>(context)` is

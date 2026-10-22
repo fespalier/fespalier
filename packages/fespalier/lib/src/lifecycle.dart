@@ -16,7 +16,8 @@ import 'package:flutter/widgets.dart' show BuildContext, ErrorDescription;
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-import 'guards.dart' show GuardFailure, isGuardRerun, refusedEntry;
+import 'guards.dart'
+    show GuardFailure, guardBeforeRerun, isGuardRerun, refusedEntry;
 import 'inbound.dart' show clearPlatformLink, platformLinkSource;
 import 'navigation_kind.dart';
 import 'route_info.dart' show pathTemplate;
@@ -204,6 +205,7 @@ final class _Nav {
 final class RouterWatch {
   RouterWatch._(this.router) {
     router.routerDelegate.addListener(_committed);
+    guardBeforeRerun[router] = _flush;
   }
 
   static final Expando<RouterWatch> _watches = Expando<RouterWatch>(
@@ -226,7 +228,11 @@ final class RouterWatch {
   /// The app's container, when `observeAttach` was given one.
   ProviderContainer? container;
 
-  bool _pending = false;
+  /// The post-frame callback that runs [_diff] is waiting for the end of the frame: the number of
+  /// that callback, null when none is. A [_flush] runs the diff before its callback does, and the
+  /// callback then finds another number, or none.
+  int? _pending;
+  int _callbacks = 0;
   final Map<String, _Entered> _entered = {};
   String? _top;
 
@@ -361,13 +367,27 @@ final class RouterWatch {
   }
 
   void _schedule() {
-    if (_pending) return;
-    _pending = true;
-    SchedulerBinding.instance.addPostFrameCallback((_) => _diff());
+    if (_pending != null) return;
+    final callback = _pending = ++_callbacks;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (_pending == callback) _diff();
+    });
+  }
+
+  /// Runs the diff of the commits that wait for the end of the frame now (since 0.21.1), as a
+  /// guard's re-run is about to replace the page the last commit shows. Whoever reads a commit
+  /// first registers its post-frame callbacks first: DevTools and telemetry read it as it happens,
+  /// the guards' judgment of it registers the re-run's, and the watch's own callback, registered
+  /// after, would run after a synchronous re-run had landed. The diff would then see the page that
+  /// was held (an empty box in the frame that was just built) already passed and show, and report
+  /// nothing: neither the `onLeave` of the page that was gone for that frame nor the `onEnter` of
+  /// the page made again. Run first, the diff of a commit sees what the frame showed, in every order.
+  void _flush() {
+    if (_pending != null) _diff();
   }
 
   void _diff() {
-    _pending = false;
+    _pending = null;
     final RouteMatchList config;
     final _Walk walk;
     try {

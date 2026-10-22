@@ -236,6 +236,27 @@ void main() {
       expect(currentLocation(tester), '/in/1');
     });
 
+    testWidgets('adds a history entry each time, where over a page of the '
+        'declarative stack it replaces one', (tester) async {
+      final (router, history) = await boot(tester, '/');
+      unawaited(const ItemLoc(1).push<void>(tester.element(find.text('Home'))));
+      await tester.pumpAndSettle();
+      history.clear();
+
+      const ItemLoc(2).replace(top(tester));
+      await tester.pumpAndSettle();
+      const ItemLoc(3).replace(top(tester));
+      await tester.pumpAndSettle();
+
+      expect(currentLocation(tester), '/items/3');
+      expect(addressBar(router), '/');
+      // go_router tells the platform about a new location as a new entry; only `Router.neglect`
+      // (the declarative case above) asks it to replace one. So the back button gets a step for
+      // each `replace` over a pushed page, and brings the earlier location back.
+      expect(history, hasLength(2));
+      expect(history.map((h) => h.replace), everyElement(isFalse));
+    });
+
     testWidgets('is not in the address bar unless go_router is told', (
       tester,
     ) async {

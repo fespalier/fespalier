@@ -40,7 +40,8 @@ abstract class TypedLocation {
   /// The address bar and the browser's history follow on the web: when the page on top
   /// is a route of the declarative stack, the entry is replaced (no new history entry)
   /// and shows this location, see [replaceLocation]. Over a page that was pushed it is
-  /// go_router's `replace`, which keeps the pushed stack.
+  /// go_router's `replace`, which keeps the pushed stack and the page's state, and adds a
+  /// history entry: each call is one more step for the back button.
   ///
   /// The optional [locale] picks one of the route's localized spellings.
   void replace(BuildContext context, {String? locale}) =>
@@ -90,7 +91,10 @@ abstract class TypedLocation {
 /// When the page on top was pushed (`push`), it is `GoRouter.replace`, because a `go`
 /// would drop the pushed stack. go_router shows that location in the address bar only
 /// when `GoRouter.optionURLReflectsImperativeAPIs` is true (the pubspec's
-/// `push_updates_url: true` sets it).
+/// `push_updates_url: true` sets it), and it adds a history entry whether it does or not
+/// (go_router reports each new location as a new entry, and only `Router.neglect` asks the
+/// browser to replace one). A search box over a pushed page keeps its query in the page's
+/// own state if that step is unwanted.
 ///
 /// [extra] goes to the new location, as for `go`. The answer of `GoRouter.replace`
 /// (what the page pops with) is not given: nothing waits on a replaced page.

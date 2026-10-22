@@ -41,7 +41,8 @@ enum LinkMethod {
   push,
 
   /// `TypedLocation.replace`: the page takes the place of the current one, and on the
-  /// web its location replaces the history entry (see `replaceLocation`).
+  /// web its location replaces the history entry (see `replaceLocation`; over a pushed
+  /// page it adds one).
   replace,
 }
 

@@ -18,7 +18,7 @@ Install and the short version: [`packages/fespalier_cratestack/README.md`](https
 - **Pre-1.0 upstream.** CrateStack is pre-1.0. This page was written against its `generate-dart` client and
   its documented behaviour; where something is an assumption it says so.
 
-**A Rust core that is the client** (since 0.22.0). The seams above are for a Dart client. When the network layer is a
+**A Rust core that is the client** (since 0.21.1). The seams above are for a Dart client. When the network layer is a
 Rust core, CrateStack's own generated Rust client can be that core: [`examples/frb-cose`](examples.md#frb-cose) is the
 generated client of its schema, on `cratestack-client` with its `cose` feature, behind flutter_rust_bridge, sealing every
 call as `COSE_Sign1`. Its `CoreTransport` is the same `CrateStackTransport` over the core, so `ref.serve` and the intents

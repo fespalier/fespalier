@@ -14,7 +14,7 @@ It shows, end to end and with tests on both sides:
 - a Dart **COSE sealer and opener** ([`lib/src/cose/`](lib/src/cose)), checked byte for byte against
   `cratestack-cose`'s own test vectors ([`test_vectors/`](test_vectors)). CrateStack shipped no Dart COSE at 0.15.3; its
   0.15.4 Dart COSE has no device-key signer, so this example still writes its own. [`examples/frb-cose`](../frb-cose/README.md)
-  takes the other route (since 0.22.0): the sealing is CrateStack's Rust, behind flutter_rust_bridge;
+  takes the other route (since 0.21.1): the sealing is CrateStack's Rust, behind flutter_rust_bridge;
 - a Rust **server** ([`server/`](server)) on `cratestack-api` 0.15.3 with no database: an envelope layer that verifies
   the signature, the audience, the operation's contract, the clock and the replay of every request.
 

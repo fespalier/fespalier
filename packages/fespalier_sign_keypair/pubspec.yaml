@@ -1,6 +1,6 @@
 name: fespalier_sign_keypair
 description: Token-free device-signed sessions for fespalier_auth — enrol a device key, then sign every request with it (an attestation plus a per-send signature over the method, path, query and body), and a verifier for tests.
-version: 0.20.0 # x-release-please-version
+version: 0.21.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -27,25 +27,25 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # The session core this package is a backend for.
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # The keys and signers a request is signed with.
   fespalier_keypair:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_keypair
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # TransportRequest, which the signer signs. Pure Dart: no HTTP client.
   fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_transport
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
 
 dev_dependencies:
   # TransportAdapter, which lets the tests' own Dio (and dio_smart_retry) send through a SessionTransport.
@@ -53,13 +53,13 @@ dev_dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # HttpClientTransport and TransportClient: package:http code sending through a SessionTransport.
   fespalier_http:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # For fespalier_dio's TransportAdapter; fespalier_dio's constraint.
   dio: ^5.7.0
   # The retrier the tests run the device signature under; fespalier_dio's constraint.

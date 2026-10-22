@@ -1,6 +1,6 @@
 name: fespalier_transport
 description: The seam fespalier's networking packages share — an HTTP transport interface, its request and response, the session credentials contract and the one write rule. Pure Dart, no dependencies.
-version: 0.20.0 # x-release-please-version
+version: 0.21.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier

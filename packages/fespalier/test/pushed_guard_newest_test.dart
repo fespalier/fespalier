@@ -43,6 +43,10 @@ var _secureRuns = 0;
 /// Whether the app's own top-level redirect (not a fespalier guard) sends `/admin` to `/secure`.
 var _maintenance = false;
 
+/// Whether the app is signed in, for the other sign-in pattern of go_router: a `refreshListenable`
+/// and a top-level `redirect` of the app's own, no fespalier guard (see `_router`'s `appAuth`).
+final _appAuth = ValueNotifier<bool>(true);
+
 List<String> _stack(GoRouter r) {
   final pushed = <ImperativeRouteMatch>[];
   pushedMatches(r.routerDelegate.currentConfiguration.matches, pushed);
@@ -68,14 +72,20 @@ var _homeRuns = 0;
 
 /// A router whose base page `/home` has no redirect, so a pushed page's guard is run again alone,
 /// or, with [guardedBase], a guard of its own on the session (answered at once, or with a `Future`
-/// when [asyncBase]): a sign-out is then asked of the base too.
+/// when [asyncBase]): a sign-out is then asked of the base too. With [appAuth] the sign-in is the
+/// app's own, `_appAuth`, a `refreshListenable` and a top-level `redirect`.
 GoRouter _router({
   bool guardedBase = false,
   bool asyncBase = false,
+  bool appAuth = false,
 }) => GoRouter(
   initialLocation: '/home',
-  redirect: (context, state) =>
-      _maintenance && state.uri.path == '/admin' ? '/secure' : null,
+  refreshListenable: appAuth ? _appAuth : null,
+  redirect: appAuth
+      ? (context, state) =>
+            _appAuth.value || state.uri.path == '/login' ? null : '/login'
+      : (context, state) =>
+            _maintenance && state.uri.path == '/admin' ? '/secure' : null,
   routes: [
     GoRoute(
       path: '/home',
@@ -217,6 +227,7 @@ void main() {
     _homeRuns = 0;
     _secureRuns = 0;
     _maintenance = false;
+    _appAuth.value = true;
     _asked.clear();
     _server = null;
     _secureServer = null;
@@ -463,6 +474,78 @@ void main() {
         await _settle(tester);
         expect(find.text('SECURE'), findsNothing);
         expect(_stack(r), ['/home', '/login']);
+      });
+    });
+
+    // Limit 9 of the re-run (docs/guards.md): go_router's usual sign-in, a `refreshListenable` and a
+    // top-level `redirect` of the app's own, is not fespalier's. Its refresh is parsed with what the
+    // route information provider holds, and that depends on which reader of the commit registered
+    // the Router's report first (test/support/attach_order.dart). Where the provider still holds the
+    // request of a re-run that waits, the refresh parses that request: the top-level redirect moves
+    // the pushed page alone, and the page under it stays. Elsewhere it restores the stack, and the
+    // sign-out replaces all of it. The tests pin this as documented; they are no promise that it
+    // stays so, and the fix is to write the sign-out as a fespalier guard (the tests above).
+    group('a refresh of your own while a re-run waits', () {
+      testWidgets('a refreshListenable sign-out with a top-level redirect: '
+          'only the pushed page moves in some orders', (tester) async {
+        final r = _router(appAuth: true);
+        await pumpRouter(tester, attached(r));
+        await _push(tester, r, '/admin');
+        await _push(tester, r, '/x');
+        _server = Completer<void>();
+        r.pop();
+        await _settle(tester);
+        expect(find.text('ADMIN'), findsOneWidget, reason: 'the re-run waits');
+        _appAuth.value = false;
+        await _settle(tester);
+        _server!.complete();
+        await _settle(tester);
+        await tester.pumpAndSettle();
+        final providerHoldsTheRerun =
+            attachFirst == AttachFirst.nothing ||
+            attachFirst == AttachFirst.observe;
+        expect(
+          _stack(r),
+          providerHoldsTheRerun ? ['/home', '/login'] : ['/login'],
+          reason:
+              'the page under the pushed one stays where the refresh '
+              'parsed the re-run',
+        );
+        expect(find.text('ADMIN'), findsNothing);
+        expect(find.text('LOGIN'), findsOneWidget);
+      });
+
+      testWidgets('with no re-run in flight the whole stack goes (control)', (
+        tester,
+      ) async {
+        final r = _router(appAuth: true);
+        await pumpRouter(tester, attached(r));
+        await _push(tester, r, '/admin');
+        _appAuth.value = false;
+        await _settle(tester);
+        expect(_stack(r), ['/login']);
+      });
+
+      testWidgets('a refresh() with nothing changed leaves the page and goes '
+          'quiet', (tester) async {
+        final r = _router();
+        await pumpRouter(tester, attached(r));
+        await _push(tester, r, '/admin');
+        await _push(tester, r, '/x');
+        _server = Completer<void>();
+        r.pop();
+        await _settle(tester);
+        r.refresh();
+        await _settle(tester);
+        _server!.complete();
+        await _settle(tester);
+        final runs = _runs;
+        for (var i = 0; i < 50; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(_stack(r), ['/home', '/admin']);
+        expect(_runs, runs, reason: 'nothing runs again by itself');
+        expect(tester.binding.hasScheduledFrame, isFalse);
       });
     });
   });

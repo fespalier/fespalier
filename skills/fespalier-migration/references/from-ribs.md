@@ -47,7 +47,7 @@ lib/app/
     game/page.dart           → /game   TicTacToe
 ```
 
-Signing out needs no code (the guard runs again; a pushed page can stay, fespalier/fespalier#258); the login page
+Signing out needs no code (the guard runs again, on a pushed page too since 0.21.0); the login page
 finishes with `context.go(returnTo(from))`; with `fespalier_auth` the guard is
 `requireSignedIn(ref, uri, signIn: (from) => LoginRoute(from: from))`. The rules for guards, `returnTo` and the
 session are in [`fespalier-guards`](../../fespalier-guards/).

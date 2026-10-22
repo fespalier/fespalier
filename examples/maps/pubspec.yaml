@@ -21,14 +21,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_maps depends on fespalier by repository, as an app does; here it is the checkout's.
+# fespalier_maps depends on fespalier, fespalier_download and fespalier_transport by repository, as an app does;
+# here all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
   fespalier_download:
     path: ../../packages/fespalier_download
-  fespalier_http:
-    path: ../../packages/fespalier_http
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

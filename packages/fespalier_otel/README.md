@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_otel:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_otel
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 <!-- x-release-please-end -->
 
@@ -113,7 +113,10 @@ deferred spans under its own navigation span.
 
 `FespalierOtel` makes a data span and an action span the **current** span while `data()` or the action runs
 (`Context.current.withSpan(span).runSync`), so the spans that `otel_http` and `otel_dio` make inside them,
-after an `await` too, are their children. A navigation that `navigateFrom` marked (a notification, a
+after an `await` too, are their children. `OtelTransport(inner, propagateTo: [...])` (since 0.21.0) does the same
+for a `fespalier_transport` chain without `otel_http` or `otel_dio`: one `CLIENT` span named by the method
+(`GET`) with OpenTelemetry's HTTP attributes, `url.path` but never a query, a header value or a body, and
+`traceparent` only for the origins in `propagateTo`. A navigation that `navigateFrom` marked (a notification, a
 shortcut, a widget, a link) carries `fespalier.navigation.source`. The docs'
 [Spans around data() and actions](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#spans-around-data-and-actions) and
 [Where a navigation came from](https://github.com/fespalier/fespalier/blob/main/docs/observability.md#where-a-navigation-came-from-navigatefrom)

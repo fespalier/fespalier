@@ -263,9 +263,13 @@ fn the_runtime_knows_its_version() {
 
 /// The companion packages that are released with fespalier (the OpenTelemetry adapter, and the
 /// ones that follow it): each has the version of the CLI and pins fespalier by a `ref: v…`.
-const COMPANIONS: [&str; 23] = [
+const COMPANIONS: [&str; 27] = [
     "packages/fespalier_otel/pubspec.yaml",
+    "packages/fespalier_transport/pubspec.yaml",
     "packages/fespalier_auth/pubspec.yaml",
+    "packages/fespalier_oidc/pubspec.yaml",
+    "packages/fespalier_keypair/pubspec.yaml",
+    "packages/fespalier_keypair_dpop/pubspec.yaml",
     "packages/fespalier_sign_keypair/pubspec.yaml",
     "packages/fespalier_adaptive/pubspec.yaml",
     "packages/fespalier_flags/pubspec.yaml",
@@ -314,8 +318,13 @@ fn the_companion_packages_have_the_cli_version() {
             "{file}:{version_line}: the version is not annotated"
         );
         let refs = versions_after(&text, "ref: v");
+        // fespalier_transport depends on nothing at all, on purpose (its own test checks it), so
+        // it pins nothing; fespalier_keypair depends on no other fespalier package either (it has
+        // no auth concept), only on flutter-sign-keypair, pinned by commit.
         assert!(
-            !refs.is_empty(),
+            !refs.is_empty()
+                || file.contains("fespalier_transport")
+                || file.contains("fespalier_keypair/"),
             "{file} no longer pins fespalier with a `ref: v…`"
         );
         for (line, v) in refs {
@@ -415,7 +424,11 @@ fn the_readmes_pin_this_version() {
         "README.md",
         "packages/fespalier/README.md",
         "packages/fespalier_otel/README.md",
+        "packages/fespalier_transport/README.md",
         "packages/fespalier_auth/README.md",
+        "packages/fespalier_oidc/README.md",
+        "packages/fespalier_keypair/README.md",
+        "packages/fespalier_keypair_dpop/README.md",
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_adaptive/README.md",
         "packages/fespalier_flags/README.md",
@@ -470,8 +483,16 @@ fn every_spelled_out_version_is_annotated_for_release_please() {
         "packages/fespalier/README.md",
         "packages/fespalier_otel/pubspec.yaml",
         "packages/fespalier_otel/README.md",
+        "packages/fespalier_transport/pubspec.yaml",
+        "packages/fespalier_transport/README.md",
         "packages/fespalier_auth/pubspec.yaml",
         "packages/fespalier_auth/README.md",
+        "packages/fespalier_oidc/pubspec.yaml",
+        "packages/fespalier_oidc/README.md",
+        "packages/fespalier_keypair/pubspec.yaml",
+        "packages/fespalier_keypair/README.md",
+        "packages/fespalier_keypair_dpop/pubspec.yaml",
+        "packages/fespalier_keypair_dpop/README.md",
         "packages/fespalier_sign_keypair/pubspec.yaml",
         "packages/fespalier_sign_keypair/README.md",
         "packages/fespalier_adaptive/pubspec.yaml",

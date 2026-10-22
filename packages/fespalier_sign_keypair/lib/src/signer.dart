@@ -1,209 +1,318 @@
+import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:flutter_sign_keypair/flutter_sign_keypair.dart';
+import 'package:clock/clock.dart';
+import 'package:crypto/crypto.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 
-/// The key id the DPoP key lives under, in the secure element or the software store.
-const String defaultDpopKeyId = 'fespalier_dpop';
+import 'credential.dart';
+import 'errors.dart';
+import 'keys.dart';
+import 'profile.dart';
 
-/// Signs DPoP proofs with an ES256 (P-256) key (since 0.9.0).
-///
-/// `DpopProof` makes proofs with it. An app implements it to put the key somewhere else (a key
-/// held by a server-side HSM, for one); the two in this package are [SignKeypairSigner] and
-/// [SoftwareDpopSigner].
-abstract interface class DpopSigner {
-  /// The public key as a JWK: `{crv: P-256, kty: EC, x, y}`. Makes the key on first use.
-  Future<Map<String, String>> publicJwk();
+/// Which key signs a request (since 0.21.0). A user-present key prompts on every use, so a policy
+/// must never choose it for background or queued work: only for a call the user is looking at.
+typedef KeyRolePolicy = KeyRole Function(TransportRequest request);
 
-  /// A 64-byte IEEE P1363 `r||s` ES256 signature of [signingInput] (the signer hashes it with
-  /// SHA-256).
-  Future<Uint8List> sign(Uint8List signingInput);
-
-  /// Whether the key is held by a secure element (StrongBox, TEE or Secure Enclave).
-  Future<bool> isHardwareBacked();
-
-  /// Deletes the key; the next [publicJwk] makes a new one.
-  Future<void> deleteKey();
-}
-
-/// The four operations a key store gives: flutter_sign_keypair's facade and its software signer
-/// both have them.
-final class _Keys {
-  const _Keys({
-    required this.get,
-    required this.generate,
-    required this.sign,
-    required this.delete,
+/// A refusal a server answered, as a classifier reads it (since 0.21.0).
+final class DeviceRefusal {
+  /// A refusal: the [role] of the key the request was signed with, the [statusCode], the
+  /// lower-case-named [headers], the response [body] when it was read, and whether this send
+  /// [retried] after a renewal or a resend.
+  const DeviceRefusal({
+    required this.role,
+    required this.statusCode,
+    required this.headers,
+    required this.body,
+    required this.retried,
   });
 
-  final Future<SecureKey?> Function(String keyId) get;
-  final Future<SecureKey> Function(String keyId, bool requireHardware) generate;
-  final Future<Uint8List> Function(String keyId, Uint8List input) sign;
-  final Future<void> Function(String keyId) delete;
+  /// The key the refused request was signed with.
+  final KeyRole role;
+
+  /// The HTTP status.
+  final int statusCode;
+
+  /// The response headers, with lower-case names.
+  final Map<String, String> headers;
+
+  /// The response body as text, when it was read (a 401 or a 403 is); else null.
+  final String? body;
+
+  /// Whether this send already followed a renewal or a resend.
+  final bool retried;
+
+  /// The `error` member of a JSON object body (`{"error": "attestation_expired"}`), lower-cased;
+  /// null for any other body.
+  String? get error {
+    final text = body;
+    if (text == null || text.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(text);
+      final error = decoded is Map<String, Object?> ? decoded['error'] : null;
+      return error is String ? error.toLowerCase() : null;
+    } on FormatException {
+      return null;
+    }
+  }
 }
 
-/// What the two signers share: the key is made once, on first use, and two callers that arrive
-/// together wait for the same creation.
-final class _KeyHolder {
-  _KeyHolder(this._keys, this.keyId, this.requireHardware);
+/// Reads a refusal and says what it means for the session (since 0.21.0).
+typedef DeviceRefusalClassifier = AuthVerdict Function(DeviceRefusal refusal);
 
-  final _Keys _keys;
-  final String keyId;
-  final bool requireHardware;
-
-  Future<SecureKey>? _key;
-
-  /// The key, made when there is none. A failure is not remembered: the next call tries again.
-  Future<SecureKey> key() {
-    final known = _key;
-    if (known != null) return known;
-    final made = _make();
-    _key = made;
-    made.then<void>(
-      (_) {},
-      onError: (Object _) {
-        if (identical(_key, made)) _key = null;
-      },
-    );
-    return made;
+/// Webank's reading of a refusal, the default of [DeviceSigner]:
+///
+/// * 401 `attestation_expired` or `device_not_active`: [Renew] the attestation of the key that
+///   signed (the hint is its [KeyRole]), then send again, once.
+/// * 401 `key_not_bound`, `bad_jwk` or `missing_credential`: the server confirms the key is not
+///   the one enrolled, so [SessionEnded] with `SignOutReason.keyLost`.
+/// * 403 `DEVICE_REVOKED`: [SessionEnded] with `SignOutReason.revoked`.
+/// * Anything else: [Accept]. It is ambiguous, so the session is never wiped and a request never
+///   loops on it.
+AuthVerdict webankRefusals(DeviceRefusal refusal) {
+  final error = refusal.error;
+  if (error == null) return const Accept();
+  if (refusal.statusCode == 401) {
+    return switch (error) {
+      'attestation_expired' || 'device_not_active' => Renew(hint: refusal.role),
+      'key_not_bound' ||
+      'bad_jwk' ||
+      'missing_credential' => const SessionEnded(SignOutReason.keyLost),
+      _ => const Accept(),
+    };
   }
+  if (refusal.statusCode == 403 && error == 'device_revoked') {
+    return const SessionEnded(SignOutReason.revoked);
+  }
+  return const Accept();
+}
 
-  Future<SecureKey> _make() async {
-    final existing = await _keys.get(keyId);
-    if (existing != null) return existing;
-    try {
-      return await _keys.generate(keyId, requireHardware);
-    } on SecureSignerException catch (e) {
-      // Another isolate (or a restart in between) made it first: use that one.
-      if (e.code == SignerErrorCode.keyAlreadyExists) {
-        final again = await _keys.get(keyId);
-        if (again != null) return again;
-      }
-      rethrow;
+/// Signs every request with the device key and reads the refusals (since 0.21.0): the
+/// `RequestAuthenticator` of `DeviceAuthBackend`. A request leaves with two headers and **no
+/// `Authorization`**:
+///
+/// * `X-Attestation`: the attestation of the chosen key, unchanged;
+/// * `X-Signature`: a compact JWS, header `{"alg":"ES256","jwk":{crv,kty,x,y}}`, claims `iat`,
+///   `exp` (`iat` plus the profile's lifetime, at most five minutes), `jti` (fresh on every send,
+///   retries and replays included), `mth` (the method, upper-case), `pth` (`uri.path`), `qsh` (the
+///   lower-case hex SHA-256 of the raw query, left out when there is none), `bdh` (the same
+///   of the exact body bytes, left out when empty) and `aud`.
+///
+/// The body is hashed as it is on the wire: JSON, CBOR and a finalized multipart alike. A body
+/// that is a stream cannot be hashed before it is sent, so a request with one is refused with an
+/// `ArgumentError` (a request with no body, a stream of known length 0, or a method that carries
+/// none is fine).
+///
+/// Which key signs is the [policy]'s call: by default the ambient key, or the role in the request's
+/// [roleAttribute] (a request made with `Options(extra: {DeviceSigner.roleAttribute:
+/// KeyRole.userPresent})` under Dio). A user-present signature prompts; a refused prompt is a
+/// [UserPresenceRefused] that fails that one request and leaves the session alone.
+final class DeviceSigner implements RequestAuthenticator {
+  /// A signer over the device's [keys] for the API in [profile].
+  ///
+  /// [classify] reads refusals (Webank's rules by default). The calls in [unsignedPaths] (exact
+  /// `uri.path` matches), or for which [unsigned] answers true, carry no headers at all: the
+  /// enrolment and renewal legs, when they go through the session's transport. [random] makes the
+  /// `jti`s; it is `Random.secure()` unless a test passes one. Throws an `ArgumentError` when the
+  /// profile's lifetime is not positive or is longer than five minutes.
+  DeviceSigner({
+    required this.keys,
+    required this.profile,
+    this.policy = requestedRole,
+    this.classify = webankRefusals,
+    Iterable<String> unsignedPaths = const <String>[],
+    this.unsigned,
+    Random? random,
+  }) : unsignedPaths = Set<String>.unmodifiable(unsignedPaths),
+       _random = random ?? Random.secure() {
+    final lifetime = profile.lifetime;
+    if (lifetime <= Duration.zero ||
+        lifetime > DeviceSignatureProfile.maxLifetime) {
+      throw ArgumentError.value(
+        lifetime,
+        'profile.lifetime',
+        'a signature lives for more than zero and at most five minutes',
+      );
     }
   }
 
-  Future<Map<String, String>> publicJwk() async {
-    final json = (await key()).publicKey.toJson();
+  /// This signer with another [policy], sharing everything else (keys, profile, classifier,
+  /// unsigned calls and the `jti` source).
+  DeviceSigner withPolicy(KeyRolePolicy policy) => DeviceSigner(
+    keys: keys,
+    profile: profile,
+    policy: policy,
+    classify: classify,
+    unsignedPaths: unsignedPaths,
+    unsigned: unsigned,
+    random: _random,
+  );
+
+  /// The request attribute that names the key that signs it: a [KeyRole]. Under Dio it is
+  /// `Options(extra: {DeviceSigner.roleAttribute: KeyRole.userPresent})`.
+  static const String roleAttribute = 'fespalier.device.role';
+
+  /// The request attribute that captions the user-present prompt: a `String`.
+  static const String reasonAttribute = 'fespalier.device.reason';
+
+  /// The default [policy]: the request's [roleAttribute], the ambient key when it has none.
+  static KeyRole requestedRole(TransportRequest request) {
+    final role = request.attributes[roleAttribute];
+    return role is KeyRole ? role : KeyRole.ambient;
+  }
+
+  /// The device's keys.
+  final DeviceKeys keys;
+
+  /// The API the signatures are for, and the two header names.
+  final DeviceSignatureProfile profile;
+
+  /// Which key signs a request.
+  final KeyRolePolicy policy;
+
+  /// How a refusal is read.
+  final DeviceRefusalClassifier classify;
+
+  /// The `uri.path`s whose calls are sent unsigned.
+  final Set<String> unsignedPaths;
+
+  /// Whether a call is sent unsigned, besides [unsignedPaths]; null: none is.
+  final bool Function(TransportRequest request)? unsigned;
+
+  final Random _random;
+
+  bool _isUnsigned(TransportRequest request) =>
+      unsignedPaths.contains(request.uri.path) ||
+      (unsigned?.call(request) ?? false);
+
+  @override
+  Future<Map<String, String>> headers(
+    AuthSession session,
+    TransportRequest request,
+  ) async {
+    if (_isUnsigned(request)) return const <String, String>{};
+    return signFor(_credential(session), request);
+  }
+
+  /// The two headers for one send of [request], signed with the key of [role] (the [policy]'s
+  /// choice when null) and carrying that role's attestation from [credential]. A fresh `jti`
+  /// each call.
+  ///
+  /// `DeviceAuthServer.revoke` uses it to sign its own call. Throws a `StateError` when the
+  /// device has no key, or [credential] no attestation, for the role; an `ArgumentError` for a
+  /// stream body; a [UserPresenceRefused] when a user-present prompt is refused.
+  Future<Map<String, String>> signFor(
+    DeviceCredential credential,
+    TransportRequest request, {
+    KeyRole? role,
+  }) async {
+    final chosen = role ?? policy(request);
+    final attestation = credential.attestation(chosen);
+    final signer = keys[chosen];
+    if (signer == null || attestation == null) {
+      throw StateError(
+        'fespalier_sign_keypair: this request is to be signed with the ${chosen.name} key, '
+        'but this device has ${signer == null ? 'no such key' : 'no attestation for it'}. '
+        'A user-present call needs a device that enrolled with a user-present key '
+        '(not the web, and not a device without a screen lock)',
+      );
+    }
+    final body = _body(request);
+    final jwk = await signer.publicJwk();
+    final now = clock.now().millisecondsSinceEpoch ~/ 1000;
+    final query = request.uri.query;
+    final claims = <String, Object?>{
+      'iat': now,
+      'exp': now + profile.lifetime.inSeconds,
+      'jti': _jti(),
+      'mth': request.method.toUpperCase(),
+      'pth': request.uri.path.isEmpty ? '/' : request.uri.path,
+      if (query.isNotEmpty) 'qsh': _hex(utf8.encode(query)),
+      if (body.isNotEmpty) 'bdh': _hex(body),
+      'aud': profile.audience,
+    };
+    final reason = request.attributes[reasonAttribute];
+    final signature = await refusingPrompts(
+      chosen,
+      () => compactJws(
+        <String, Object?>{
+          'alg': 'ES256',
+          'jwk': <String, String>{
+            'crv': jwk['crv']!,
+            'kty': jwk['kty']!,
+            'x': jwk['x']!,
+            'y': jwk['y']!,
+          },
+        },
+        claims,
+        signer,
+        reason: reason is String ? reason : null,
+      ),
+    );
     return <String, String>{
-      for (final e in json.entries) e.key: e.value as String,
+      profile.attestationHeader: attestation.jws,
+      profile.signatureHeader: signature,
     };
   }
 
-  Future<Uint8List> sign(Uint8List input) async {
-    await key();
-    return _keys.sign(keyId, input);
-  }
-
-  Future<bool> isHardwareBacked() async => (await key()).isHardwareBacked;
-
-  Future<void> deleteKey() async {
-    _key = null;
-    await _keys.delete(keyId);
-  }
-}
-
-/// The hardware key of flutter-sign-keypair (since 0.9.0): StrongBox or the TEE on Android, the
-/// Secure Enclave on iOS and macOS. It is an *ambient* key (`KeyProtection.ambient`): it never
-/// prompts, because a proof is made for every request and a refresh runs with no screen to show
-/// a prompt on.
-///
-/// The key is made on first use, under [keyId], and found again at the next start.
-/// [requireHardware] makes a device that has no secure element fail with a
-/// `SecureSignerException` (`hardwareUnavailable`) instead of getting a software key; the iOS
-/// simulator, whose keychain is not a secure element, is such a device.
-final class SignKeypairSigner implements DpopSigner {
-  /// A signer for the key [keyId]. [signKeypair] is for a test (give it a `SignKeypair` made
-  /// with a fake platform); the default is the one for this device, made on first use.
-  SignKeypairSigner({
-    this.keyId = defaultDpopKeyId,
-    this.requireHardware = false,
-    SignKeypair? signKeypair,
-  }) : _given = signKeypair {
-    _holder = _KeyHolder(
-      _Keys(
-        get: (id) => _facade.getKey(keyId: id),
-        generate: (id, hardware) =>
-            _facade.generateKey(keyId: id, requireHardware: hardware),
-        sign: (id, input) => _facade.signRaw(signingInput: input, keyId: id),
-        delete: (id) => _facade.deleteKey(keyId: id),
+  @override
+  AuthVerdict judge(
+    AuthSession session,
+    TransportRequest request, {
+    required int statusCode,
+    required Map<String, String> headers,
+    String? body,
+    required bool retried,
+  }) {
+    if (_isUnsigned(request)) return const Accept();
+    return classify(
+      DeviceRefusal(
+        role: policy(request),
+        statusCode: statusCode,
+        headers: headers,
+        body: body,
+        retried: retried,
       ),
-      keyId,
-      requireHardware,
     );
   }
 
-  /// The key id.
-  final String keyId;
-
-  /// Whether a device without a secure element fails instead of getting a software key.
-  final bool requireHardware;
-
-  final SignKeypair? _given;
-  SignKeypair? _made;
-  late final _KeyHolder _holder;
-
-  SignKeypair get _facade => _given ?? (_made ??= SignKeypair());
-
-  @override
-  Future<Map<String, String>> publicJwk() => _holder.publicJwk();
-
-  @override
-  Future<Uint8List> sign(Uint8List signingInput) => _holder.sign(signingInput);
-
-  @override
-  Future<bool> isHardwareBacked() => _holder.isHardwareBacked();
-
-  @override
-  Future<void> deleteKey() => _holder.deleteKey();
-}
-
-/// flutter-sign-keypair's pure-Dart signer as a DPoP key (since 0.9.0): the private scalar is
-/// in memory, so it is not bound to a device in any way a thief of the process could not copy.
-/// It is for the web, Windows and Linux (`DpopFallback.software`), and for tests.
-///
-/// Without a [store] the key lives as long as the signer: a web page that reloads makes a new
-/// key and its session is signed out (the refresh token is bound to the old one). A
-/// `SoftwareKeyStore` of your own (`flutter_secure_storage`, an encrypted file) keeps the key,
-/// and its safety is the store's.
-final class SoftwareDpopSigner implements DpopSigner {
-  /// A signer for the key [keyId], kept in [store] (in memory when null).
-  SoftwareDpopSigner({
-    this.keyId = defaultDpopKeyId,
-    SoftwareKeyStore? store,
-    SoftwareSecureSigner? signer,
-  }) : _signer = signer ?? SoftwareSecureSigner(store: store) {
-    _holder = _KeyHolder(
-      _Keys(
-        get: _signer.getKey,
-        generate: (id, hardware) => _signer.generateKey(
-          keyId: id,
-          requireHardware: hardware,
-          overwrite: false,
-          protection: KeyProtection.ambient,
-        ),
-        sign: (id, input) => _signer.sign(keyId: id, payload: input),
-        delete: _signer.deleteKey,
-      ),
-      keyId,
-      false,
-    );
+  DeviceCredential _credential(AuthSession session) {
+    final credential = session.credential;
+    if (credential is! DeviceCredential) {
+      throw StateError(
+        'fespalier_sign_keypair: the session holds a ${credential.runtimeType}, not a '
+        'DeviceCredential: a DeviceSigner belongs to a DeviceAuthBackend',
+      );
+    }
+    return credential;
   }
 
-  /// The key id.
-  final String keyId;
+  /// The exact bytes of the body, empty when there is none. A stream that cannot be hashed
+  /// before it is sent is an `ArgumentError`.
+  Uint8List _body(TransportRequest request) {
+    if (request.bodyStream != null) {
+      const bodiless = {'GET', 'HEAD', 'OPTIONS', 'TRACE'};
+      if (request.contentLength == 0 ||
+          bodiless.contains(request.method.toUpperCase())) {
+        return Uint8List(0);
+      }
+      throw ArgumentError.value(
+        request.bodyStream,
+        'request.bodyStream',
+        'a streamed body cannot be signed: its bytes are not known before they are sent, and the '
+            'signature covers them. Send the body as bytes (TransportRequest.body; under Dio, '
+            'JSON, a form, FormData or a List<int> as data) instead of a Stream',
+      );
+    }
+    return request.body ?? Uint8List(0);
+  }
 
-  final SoftwareSecureSigner _signer;
-  late final _KeyHolder _holder;
+  String _jti() => base64UrlNoPad(
+    List<int>.generate(16, (_) => _random.nextInt(256), growable: false),
+  );
 
-  @override
-  Future<Map<String, String>> publicJwk() => _holder.publicJwk();
-
-  @override
-  Future<Uint8List> sign(Uint8List signingInput) => _holder.sign(signingInput);
-
-  @override
-  Future<bool> isHardwareBacked() async => false;
-
-  @override
-  Future<void> deleteKey() => _holder.deleteKey();
+  static String _hex(List<int> bytes) => sha256.convert(bytes).toString();
 }

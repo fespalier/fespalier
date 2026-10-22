@@ -4,6 +4,7 @@ import 'package:auth/app.g.dart';
 import 'package:auth/auth_setup.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
 import 'package:flutter/material.dart';
 
 /// The sign-in form, and a "Sign in with Keycloak" button when the app is built with

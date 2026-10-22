@@ -71,11 +71,11 @@ abstract final class SentryKeys {
   /// The auth backend's constant name.
   static const String authBackend = 'fespalier.auth.backend';
 
-  /// What asked for a refresh.
+  /// What asked for a renewal.
   static const String authTrigger = 'fespalier.auth.trigger';
 
-  /// Whether the backend binds its tokens with DPoP.
-  static const String authDpop = 'fespalier.auth.dpop';
+  /// How the backend authenticates requests (`bearer`, `dpop`, `device`).
+  static const String authScheme = 'fespalier.auth.scheme';
 
   /// The image URL builder's name.
   static const String imageCdn = 'fespalier.image.cdn';
@@ -149,6 +149,12 @@ abstract final class SentryKeys {
 
   /// The transaction operation of an action that no screen transaction is open for.
   static const String actionOp = 'fespalier.action';
+
+  /// The span operation of one HTTP request `SentryTransport` sends, Sentry's own.
+  static const String httpOp = 'http.client';
+
+  /// The trace origin of an HTTP span `SentryTransport` makes.
+  static const String httpOrigin = 'auto.http.fespalier';
 
   /// The category of a page breadcrumb (Sentry's own, so its UI draws it as a navigation).
   static const String navigationCategory = 'navigation';

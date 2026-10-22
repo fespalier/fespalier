@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:cose_example/src/cose/cose.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
-import 'package:fespalier_sign_keypair/testing.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
+import 'package:fespalier_keypair/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
@@ -17,16 +17,28 @@ CoseBinding _binding({String audience = 'demo', String? idempotencyKey}) =>
     );
 
 /// Signs like a signer that does not promise low-s: it flips to the high twin half the time.
-final class _HighSSigner implements DpopSigner {
+final class _HighSSigner implements KeypairSigner {
   _HighSSigner(this._inner);
-  final DpopSigner _inner;
+  final KeypairSigner _inner;
+
+  @override
+  KeyRole get role => _inner.role;
 
   @override
   Future<Map<String, String>> publicJwk() => _inner.publicJwk();
 
   @override
-  Future<Uint8List> sign(Uint8List signingInput) async {
-    final low = normalizeLowS(await _inner.sign(signingInput));
+  Future<bool> isHardwareBacked() => _inner.isHardwareBacked();
+
+  @override
+  Future<bool> exists() => _inner.exists();
+
+  @override
+  Future<void> deleteKey() => _inner.deleteKey();
+
+  @override
+  Future<Uint8List> sign(Uint8List signingInput, {String? reason}) async {
+    final low = normalizeLowS(await _inner.sign(signingInput, reason: reason));
     // n - s, on the 32-byte big-endian s.
     final n = BigInt.parse(
       'ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551',
@@ -44,17 +56,11 @@ final class _HighSSigner implements DpopSigner {
     }
     return out;
   }
-
-  @override
-  Future<bool> isHardwareBacked() => _inner.isHardwareBacked();
-
-  @override
-  Future<void> deleteKey() => _inner.deleteKey();
 }
 
 void main() {
   test('a request seals and opens with the signer\'s own key', () async {
-    final signer = FakeDpopSigner();
+    final signer = FakeKeypairSigner();
     final sealer = CoseSealer(signer, nowSeconds: () => 1790000000);
     final me = await sealer.identity();
     final bind = _binding(idempotencyKey: 'intent-1#0');
@@ -71,7 +77,7 @@ void main() {
   test(
     'every request gets a fresh cti, and none is opened for another binding',
     () async {
-      final sealer = CoseSealer(FakeDpopSigner());
+      final sealer = CoseSealer(FakeKeypairSigner());
       final bind = _binding();
       final a = await sealer.sealRequest([1], bind);
       final b = await sealer.sealRequest([1], bind);
@@ -94,7 +100,7 @@ void main() {
   test(
     'a high-s signature from the signer is sent as low-s and verifies',
     () async {
-      final sealer = CoseSealer(_HighSSigner(FakeDpopSigner()));
+      final sealer = CoseSealer(_HighSSigner(FakeKeypairSigner()));
       final bind = _binding();
       final sealed = await sealer.sealRequest([9], bind);
       final me = await sealer.identity();
@@ -110,7 +116,7 @@ void main() {
 
   test('the verifier refuses a high-s signature the signer produced', () async {
     // The twin of a valid signature is refused even though it verifies mathematically.
-    final signer = _HighSSigner(FakeDpopSigner());
+    final signer = _HighSSigner(FakeKeypairSigner());
     final me = Esp256VerifyKey.jwk(await signer.publicJwk());
     final tbs = Uint8List.fromList([1, 2, 3]);
     final high = await signer.sign(tbs);
@@ -119,7 +125,7 @@ void main() {
   });
 
   test('misuse is found before anything is signed', () async {
-    final signer = FakeDpopSigner();
+    final signer = FakeKeypairSigner();
     final sealer = CoseSealer(signer);
     await expectLater(
       sealer.sealRequest([1], _binding(audience: '')),
@@ -135,7 +141,7 @@ void main() {
   test(
     'the kid is the first 8 bytes of the key\'s RFC 9679 thumbprint',
     () async {
-      final signer = FakeDpopSigner();
+      final signer = FakeKeypairSigner();
       final jwk = await signer.publicJwk();
       final c = p256CoordinatesOfJwk(jwk);
       final thumb = ec2P256Thumbprint(c.x, c.y);

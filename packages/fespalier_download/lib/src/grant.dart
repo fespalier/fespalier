@@ -5,8 +5,8 @@ import 'request.dart';
 /// What the app got from its server for one download (since 0.15.0): a short-lived address of
 /// one file, and/or headers that are good for that download alone.
 ///
-/// A grant is made in the foreground, with the app's own signed request (a `fespalier_http`
-/// client, so the session's credentials and proofs apply there), and it is the only credential the
+/// A grant is made in the foreground, with the app's own signed request (through a
+/// `fespalier_transport` chain, so the session's credentials and proofs apply there), and it is the only credential the
 /// transfer carries: the operating system's download service sends it later with no access to the
 /// app's session. Make it expire in minutes and name one file; **never put a refresh token or a
 /// long-lived bearer in one**, because a background backend may keep a request in plaintext on
@@ -60,8 +60,8 @@ final class DownloadGrant {
 ///
 /// Return null to send the request as it is. A throw ends the download
 /// `Failed(unauthorized)` (the engine never crashes on it and keeps nothing of the error), except
-/// an `http.ClientException` (no network, or a session that could not refresh offline, which is
-/// `fespalier_auth`'s `AuthUnavailable`; since 0.16.0): that ends it `Failed(network)`, because
+/// a `TransportFailure` or a `CredentialsUnavailable` (no network, or a session that could not
+/// refresh offline, which is `fespalier_auth`'s `AuthUnavailable`; since 0.16.0): that ends it `Failed(network)`, because
 /// nothing was refused, and `retry` asks again. A paused download whose resume cannot reach the
 /// grantor stays paused, and `resume` returns false. Make the signed request with the app's
 /// session here, and return only what the server meant for this file.

@@ -540,7 +540,8 @@ final class FespalierSentry extends FespalierTelemetry {
         if (step != null) span.set(SentryKeys.authOperation, step);
         if (backend != null) span.set(SentryKeys.authBackend, backend);
         if (trigger != null) span.set(SentryKeys.authTrigger, trigger);
-        span.set(SentryKeys.authDpop, s.authDpop);
+        final scheme = s.authScheme;
+        if (scheme != null) span.set(SentryKeys.authScheme, scheme);
       case TelemetryOp.image:
         final width = s.imageWidth;
         final cdn = s.imageCdn;

@@ -1,0 +1,53 @@
+name: device
+description: fespalier example — signing in by enrolling a device (fespalier_sign_keypair), with no token stored and no Authorization header sent; every request is signed by the device key.
+publish_to: none
+version: 0.1.0
+
+environment:
+  # fespalier_keypair (the device keys) needs Dart 3.12 (Flutter 3.44): flutter_sign_keypair does.
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
+
+dependencies:
+  # What the demo server reads the time from, so a test's fake clock ages the attestations.
+  clock: ^1.1.1
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_auth:
+    path: ../../packages/fespalier_auth
+  # The one transport the app sends through: HttpClientTransport over package:http, built once in
+  # startup.dart and handed to AuthConfig.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  # The device keys: KeypairSigners.device (Secure Enclave, AndroidKeyStore, a browser's CryptoKey),
+  # and the demo server's issuer key and its ES256 checks.
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
+  # DeviceAuthBackend and DeviceSigner, and verifyDeviceSignature for the demo server.
+  fespalier_sign_keypair:
+    path: ../../packages/fespalier_sign_keypair
+  # HttpTransport, the type the one transport has.
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
+  flutter:
+    sdk: flutter
+  http: ^1.5.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# The packages depend on fespalier and on each other by git, as an app does; here all are the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_auth:
+    path: ../../packages/fespalier_auth
+  fespalier_keypair:
+    path: ../../packages/fespalier_keypair
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
+
+flutter:
+  uses-material-design: true

@@ -100,7 +100,8 @@ class FileServer {
       _emit(slice, cut, abort, request.url),
       status,
       contentLength: slice.length,
-      headers: headers,
+      // The header too, as a real client has it: a transport reads the length from it.
+      headers: {...headers, 'content-length': '${slice.length}'},
     );
   });
 

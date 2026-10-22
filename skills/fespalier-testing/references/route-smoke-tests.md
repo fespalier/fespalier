@@ -77,6 +77,7 @@ List<Override> overrides(String pattern) => [
   `No TranslationScope found above this widget.` A `$lang` route also needs a sample, like any dynamic route
   ([`fespalier-i18n`](../../fespalier-i18n/references/testing.md)).
 - A hand-written test boots the same way: `pumpRouter(tester, router, overrides: ..., app: setup.app)`.
+- **`fsp create` writes one** with the `image` feature (since 0.21.0): `overrides` boots `/photo` over a fake CDN (`FakeImages` over a `FakeTransport` that sends nothing). A setup file makes `fsp test` run guarded routes, so `fsp create` then lists `/account` and `/sign-in` (`auth`) and `/labs` (`flags`) under `test: skip:`, each with the test that opens it; without the `image` feature there is no setup file and `fsp test` skips a guarded route itself.
 
 ## Skips and samples
 

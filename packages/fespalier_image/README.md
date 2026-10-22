@@ -22,12 +22,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_image:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_image
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 
 <!-- x-release-please-end -->
@@ -43,8 +43,9 @@ Choose the CDN once, in `startup()`:
 // lib/app/startup.dart
 Future<List<Override>> startup() async => [
   imageCdnProvider.overrideWithValue(
-    const ImageCdn(
-      builder: ImgproxyUrlBuilder.emgr(
+    ImageCdn(
+      transport: transport, // the app's HttpTransport chain (fespalier_transport)
+      builder: const ImgproxyUrlBuilder.emgr(
         baseUrl: 'https://img.example.com',
         sourceBase: 'https://images.example.com/',
       ),
@@ -52,6 +53,14 @@ Future<List<Override>> startup() async => [
   ),
 ];
 ```
+
+Images load through `ImageCdn.transport` (since 0.21.0): a `TransportImage`, which is `NetworkImage` over your
+`HttpTransport` chain (so its requests are signed and traced like the others), decoded with the image cache's own
+decoder and reporting a bad status as `NetworkImageLoadException`. A CDN with neither `transport` nor `providerFactory`
+reports an `ImageUrlError`. `providerFactory` stays the escape hatch for a disk cache or a plain `NetworkImage`.
+**On the web a transport fetch needs CORS** on the image host, which `NetworkImage`'s `<img>` fallback did not: for a
+host that sends none, pass `providerFactory: (url) => NetworkImage(url, webHtmlElementStrategy:
+WebHtmlElementStrategy.fallback)` (the field `webHtmlElementStrategy` of `ImageCdn` is gone).
 
 Then show an image at the size its layout gives it. Say the shape with `aspectRatio`, so the server crops and
 the CDN caches one URL per bucket and not one per pixel of padding:

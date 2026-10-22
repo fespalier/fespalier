@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
+import 'package:fespalier_keypair/fespalier_keypair.dart';
 
 import 'binding.dart';
 import 'errors.dart';
@@ -19,8 +19,8 @@ Uint8List secureCti([Random? random]) {
 int _systemSeconds() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
 /// Seals a payload as a COSE_Sign1 that cratestack's envelope layer accepts (ESP256, binding
-/// version 2), with a device key behind a [DpopSigner]: the Secure Enclave or the AndroidKeyStore
-/// through `SignKeypairSigner`, or `SoftwareDpopSigner` in a test.
+/// version 2), with a device key behind a [KeypairSigner] (`fespalier_keypair`): the Secure Enclave
+/// or the AndroidKeyStore through `HardwareKeypairSigner`, or `SoftwareKeypairSigner` in a test.
 ///
 /// A sealer starts no timer and reads no listener: sealing is one signature per call. Every
 /// request is sealed fresh (a new `iat` and `cti`), so a retry of the same call is a new message
@@ -36,7 +36,7 @@ final class CoseSealer {
        _cti = newCti ?? secureCti;
 
   /// The key's signer: `sign` takes the Sig_structure and returns a 64-byte `r||s`.
-  final DpopSigner signer;
+  final KeypairSigner signer;
 
   final int Function() _now;
   final Uint8List Function() _cti;

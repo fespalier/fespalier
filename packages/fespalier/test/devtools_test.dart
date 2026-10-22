@@ -264,7 +264,7 @@ void main() {
           GoRoute(
             path: '/guarded',
             redirect: (context, state) =>
-                runRedirect(() => throw StateError('boom')),
+                runRedirect(state, () => throw StateError('boom')),
             builder: (context, state) =>
                 refusedView(context, state) ?? page('GUARDED'),
           ),

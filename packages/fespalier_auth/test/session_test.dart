@@ -2,180 +2,60 @@
 import 'dart:convert';
 
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_auth/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
 
 void main() {
   final expires = DateTime.utc(2026, 3, 1, 12, 5);
-  final tokens = AuthTokens(
-    accessToken: 'access-secret',
-    tokenType: 'DPoP',
-    refreshToken: 'refresh-secret',
-    idToken: 'id-secret',
+  final credential = FakeCredential(
+    id: 'fake-7',
     expiresAt: expires,
-    refreshExpiresAt: DateTime.utc(2026, 3, 1, 12, 30),
-    scope: 'openid email',
+    renewableUntil: DateTime.utc(2026, 3, 1, 12, 30),
   );
 
-  group('AuthTokens', () {
-    test('survive a JSON round trip, dates in UTC', () {
-      final back = AuthTokens.fromJson(
-        jsonDecode(jsonEncode(tokens.toJson())) as Map<String, Object?>,
-      );
-      expect(back, tokens);
-      expect(back.hashCode, tokens.hashCode);
-      expect(back.expiresAt!.isUtc, isTrue);
-    });
-
-    test('a token type is Bearer unless the response said otherwise', () {
-      expect(const AuthTokens(accessToken: 'a').tokenType, 'Bearer');
-      expect(const AuthTokens(accessToken: 'a').isDpop, isFalse);
-      expect(tokens.isDpop, isTrue);
-      expect(
-        const AuthTokens(accessToken: 'a', tokenType: 'dpop').isDpop,
-        isTrue,
-      );
-    });
-
-    test('expiry counts the leeway early, and unknown never expires', () {
-      expect(
-        tokens.isExpiredAt(expires.subtract(const Duration(seconds: 1))),
-        isFalse,
-      );
-      expect(tokens.isExpiredAt(expires), isTrue);
-      expect(
-        tokens.isExpiredAt(
-          expires.subtract(const Duration(seconds: 29)),
-          leeway: const Duration(seconds: 30),
-        ),
-        isTrue,
-      );
-      expect(
-        tokens.isExpiredAt(
-          expires.subtract(const Duration(seconds: 31)),
-          leeway: const Duration(seconds: 30),
-        ),
-        isFalse,
-      );
-      expect(const AuthTokens(accessToken: 'a').isExpiredAt(expires), isFalse);
-    });
-
-    test('merge keeps the refresh and ID tokens a response left out', () {
-      final refreshed = AuthTokens(
-        accessToken: 'new-access',
-        tokenType: 'DPoP',
-        expiresAt: expires.add(const Duration(minutes: 5)),
-      );
-      final merged = tokens.merge(refreshed);
-      expect(merged.accessToken, 'new-access');
-      expect(merged.refreshToken, 'refresh-secret');
-      expect(merged.idToken, 'id-secret');
-      expect(merged.refreshExpiresAt, tokens.refreshExpiresAt);
-      expect(merged.scope, 'openid email');
-      expect(merged.expiresAt, refreshed.expiresAt);
-    });
-
-    test('merge takes a rotated refresh token and its expiry', () {
-      final later = DateTime.utc(2026, 3, 1, 13);
-      final merged = tokens.merge(
-        AuthTokens(
-          accessToken: 'n',
-          refreshToken: 'rotated',
-          refreshExpiresAt: later,
-        ),
-      );
-      expect(merged.refreshToken, 'rotated');
-      expect(merged.refreshExpiresAt, later);
-    });
-
-    test('toString never shows a token', () {
-      final text = '$tokens';
-      expect(text, isNot(contains('secret')));
-      expect(text, contains('type: DPoP'));
-      expect(text, contains('refresh: yes'));
-      expect(text, contains('id: yes'));
-    });
-  });
-
   group('AuthUser', () {
-    test(
-      'fromClaims reads the id, e-mail and name, and drops volatile claims',
-      () {
-        final user = AuthUser.fromClaims(
-          {
-            'sub': 'u-1',
-            'email': 'ada@example.com',
-            'preferred_username': 'ada',
-            'iat': 1,
-            'exp': 2,
-            'jti': 'x',
-            'sid': 's',
-            'nonce': 'n',
-            'azp': 'app',
-            'locale': 'fr',
-          },
-          roles: {'admin'},
-        );
-        expect(user.id, 'u-1');
-        expect(user.email, 'ada@example.com');
-        expect(user.name, 'ada');
-        expect(user.roles, {'admin'});
-        expect(user.claims, {
-          'sub': 'u-1',
-          'email': 'ada@example.com',
-          'preferred_username': 'ada',
-          'locale': 'fr',
-        });
-      },
-    );
-
-    test(
-      'name wins over preferred_username, and a claim with no sub is refused',
-      () {
-        expect(
-          AuthUser.fromClaims({
-            'sub': 'u',
-            'name': 'Ada L',
-            'preferred_username': 'ada',
-          }).name,
-          'Ada L',
-        );
-        expect(() => AuthUser.fromClaims({'name': 'x'}), throwsFormatException);
-        expect(() => AuthUser.fromClaims({'sub': ''}), throwsFormatException);
-      },
-    );
-
-    test('equality is deep, and ignores iat and exp churn', () {
-      final a = AuthUser.fromClaims({
-        'sub': 'u',
-        'iat': 1,
-        'exp': 2,
-        'groups': ['a', 'b'],
-      });
-      final b = AuthUser.fromClaims({
-        'sub': 'u',
-        'iat': 99,
-        'exp': 100,
-        'groups': ['a', 'b'],
-      });
+    test('equality is deep over roles and claims', () {
+      const a = AuthUser(
+        id: 'u',
+        roles: {'a', 'b'},
+        claims: {
+          'groups': ['a', 'b'],
+        },
+      );
+      const b = AuthUser(
+        id: 'u',
+        roles: {'b', 'a'},
+        claims: {
+          'groups': ['a', 'b'],
+        },
+      );
       expect(a, b);
       expect(a.hashCode, b.hashCode);
       expect(
         a,
         isNot(
-          AuthUser.fromClaims({
-            'sub': 'u',
-            'groups': ['a'],
-          }),
+          const AuthUser(
+            id: 'u',
+            roles: {'a', 'b'},
+            claims: {
+              'groups': ['a'],
+            },
+          ),
         ),
       );
       expect(
-        const AuthUser(id: 'u', roles: {'a', 'b'}),
-        const AuthUser(id: 'u', roles: {'b', 'a'}),
+        const AuthUser(id: 'u', roles: {'a'}),
+        isNot(const AuthUser(id: 'u')),
+      );
+      expect(const AuthUser(id: 'u'), isNot(const AuthUser(id: 'v')));
+      expect(
+        const AuthUser(id: 'u', email: 'a@b.c'),
+        isNot(const AuthUser(id: 'u')),
       );
       expect(
-        const AuthUser(id: 'u', roles: {'a'}),
+        const AuthUser(id: 'u', name: 'A'),
         isNot(const AuthUser(id: 'u')),
       );
     });
@@ -195,6 +75,11 @@ void main() {
       expect(back.hasRole('staff'), isFalse);
     });
 
+    test('roles are written sorted, so the stored text is stable', () {
+      const user = AuthUser(id: 'u', roles: {'z', 'a', 'm'});
+      expect(user.toJson()['roles'], ['a', 'm', 'z']);
+    });
+
     test('a stored user that is malformed is a FormatException', () {
       expect(() => AuthUser.fromJson({'id': 'u'}), throwsFormatException);
       expect(
@@ -205,81 +90,209 @@ void main() {
         }),
         throwsFormatException,
       );
+      expect(
+        () => AuthUser.fromJson({
+          'id': 1,
+          'roles': <Object?>[],
+          'claims': <String, Object?>{},
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => AuthUser.fromJson({
+          'id': 'u',
+          'roles': <Object?>[],
+          'claims': <String, Object?>{},
+          'email': 3,
+        }),
+        throwsFormatException,
+      );
     });
   });
 
   group('AuthSession', () {
     final session = AuthSession(
-      backend: 'oidc',
-      tokens: tokens,
+      backend: 'fake',
+      credential: credential,
       user: ada,
-      binding: 'thumb',
     );
 
-    test('survives a JSON round trip', () {
+    test('survives a JSON round trip, the credential read by the backend', () {
       final text = jsonEncode(session.toJson());
       final back = AuthSession.fromJson(
         jsonDecode(text) as Map<String, Object?>,
+        FakeCredential.fromJson,
       );
       expect(back, session);
-      expect(back.binding, 'thumb');
-      expect(session.toJson()['v'], 1);
+      expect(back.hashCode, session.hashCode);
+      expect(back.credential, credential);
+      expect(back.backend, 'fake');
+      expect(session.toJson()['v'], 2);
+    });
+
+    test('the credential is read through the function it is given', () {
+      final read = <Map<String, Object?>>[];
+      AuthSession.fromJson(session.toJson(), (json) {
+        read.add(json);
+        return FakeCredential.fromJson(json);
+      });
+      expect(read, [credential.toJson()]);
+    });
+
+    test('a credential the reader refuses is a FormatException', () {
+      final json = session.toJson();
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'credential': <String, Object?>{'id': 1},
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
     });
 
     test(
-      'an unknown version, a missing part or a wrong type is a FormatException',
+      'version 1 (0.20.0 and before) and any unknown version is refused',
       () {
         final json = session.toJson();
+        for (final v in <Object?>[1, 3, null, '2']) {
+          expect(
+            () => AuthSession.fromJson({
+              ...json,
+              'v': v,
+            }, FakeCredential.fromJson),
+            throwsFormatException,
+            reason: 'v: $v',
+          );
+        }
         expect(
-          () => AuthSession.fromJson({...json, 'v': 2}),
-          throwsFormatException,
-        );
-        expect(
-          () => AuthSession.fromJson({...json, 'v': null}),
-          throwsFormatException,
-        );
-        expect(
-          () => AuthSession.fromJson({...json, 'tokens': 'x'}),
-          throwsFormatException,
-        );
-        expect(
-          () => AuthSession.fromJson({...json, 'backend': 1}),
-          throwsFormatException,
-        );
-        expect(
-          () => AuthSession.fromJson({
-            ...json,
-            'tokens': {...tokens.toJson(), 'expiresAt': 'yesterday'},
-          }),
+          () => AuthSession.fromJson(<String, Object?>{
+            'v': 1,
+            'backend': 'oidc',
+            'tokens': <String, Object?>{'accessToken': 'a'},
+            'user': ada.toJson(),
+          }, FakeCredential.fromJson),
           throwsFormatException,
         );
       },
     );
 
-    test('copyWith swaps the tokens and keeps the binding', () {
-      final next = session.copyWith(tokens: const AuthTokens(accessToken: 'n'));
-      expect(next.tokens.accessToken, 'n');
-      expect(next.user, ada);
-      expect(next.binding, 'thumb');
-      expect(next, isNot(session));
+    test('a missing part or a wrong type is a FormatException', () {
+      final json = session.toJson();
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'credential': 'x',
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'credential': null,
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'user': null,
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'backend': 1,
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'backend': null,
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
+      expect(
+        () => AuthSession.fromJson({
+          ...json,
+          'credential': {...credential.toJson(), 'expiresAt': 'yesterday'},
+        }, FakeCredential.fromJson),
+        throwsFormatException,
+      );
     });
 
-    test('toString shows no token, id or e-mail', () {
-      final text = '$session';
-      for (final secret in ['secret', 'ada-id', 'ada@example.com']) {
-        expect(text, isNot(contains(secret)));
-      }
+    test('copyWith swaps the credential or the user and keeps the rest', () {
+      const next = FakeCredential(id: 'fake-9');
+      final renewed = session.copyWith(credential: next);
+      expect(renewed.credential, next);
+      expect(renewed.user, ada);
+      expect(renewed.backend, 'fake');
+      expect(renewed, isNot(session));
+
+      final other = session.copyWith(user: bob);
+      expect(other.user, bob);
+      expect(other.credential, credential);
+      expect(other.backend, 'fake');
+
+      expect(session.copyWith(), session);
+    });
+
+    test('equality covers the backend, the credential and the user', () {
+      final same = AuthSession(
+        backend: 'fake',
+        credential: credential,
+        user: ada,
+      );
+      expect(session, same);
+      expect(
+        session,
+        isNot(AuthSession(backend: 'other', credential: credential, user: ada)),
+      );
+      expect(
+        session,
+        isNot(AuthSession(backend: 'fake', credential: credential, user: bob)),
+      );
+    });
+
+    test(
+      'toString shows no user id or e-mail, and leaves the credential its own',
+      () {
+        final text = '$session';
+        for (final secret in ['ada-id', 'ada@example.com', 'Ada']) {
+          expect(text, isNot(contains(secret)));
+        }
+        expect(text, contains('backend: fake'));
+        expect(text, contains('$credential'));
+      },
+    );
+
+    test('the stored text holds the version, the backend and both parts', () {
+      final json = jsonDecode(jsonEncode(session.toJson()));
+      expect(json, isA<Map<String, Object?>>());
+      expect((json as Map<String, Object?>).keys.toSet(), {
+        'v',
+        'backend',
+        'credential',
+        'user',
+      });
     });
   });
 
   group('SessionState', () {
+    final session = AuthSession(
+      backend: 'fake',
+      credential: credential,
+      user: ada,
+    );
+
     test('says who is signed in', () {
-      final session = AuthSession(backend: 'b', tokens: tokens, user: ada);
       expect(SignedIn(session).isSignedIn, isTrue);
       expect(SignedIn(session).user, ada);
       expect(const SignedOut().isSignedIn, isFalse);
       expect(const SignedOut().user, isNull);
       expect(const SessionRestoring().user, isNull);
+      expect(const SessionRestoring().isSignedIn, isFalse);
     });
 
     test('SignedOut equals by reason, SignedIn by session', () {
@@ -292,42 +305,59 @@ void main() {
         const SignedOut(),
         isNot(const SignedOut(reason: SignOutReason.user)),
       );
-      final one = AuthSession(backend: 'b', tokens: tokens, user: ada);
-      final two = AuthSession(backend: 'b', tokens: tokens, user: ada);
+      final one = AuthSession(backend: 'b', credential: credential, user: ada);
+      final two = AuthSession(backend: 'b', credential: credential, user: ada);
       expect(SignedIn(one), SignedIn(two));
       expect(SignedIn(one).hashCode, SignedIn(two).hashCode);
+      expect(SignedIn(one), isNot(SignedIn(one.copyWith(user: bob))));
+    });
+
+    test('toString names the state', () {
+      expect('${const SessionRestoring()}', 'SessionRestoring()');
+      expect('${const SignedOut()}', 'SignedOut()');
+      expect(
+        '${const SignedOut(reason: SignOutReason.revoked)}',
+        'SignedOut(revoked)',
+      );
+      expect('${SignedIn(session)}', isNot(contains('ada-id')));
     });
   });
 
-  group('PasswordSignIn', () {
-    test('toString hides the user name and the password', () {
-      const request = PasswordSignIn(username: 'ada', password: 'hunter2');
-      expect('$request', isNot(contains('ada')));
-      expect('$request', isNot(contains('hunter2')));
+  group('SignOutReason', () {
+    test('has user, expired, keyLost and revoked', () {
+      expect(SignOutReason.values.map((r) => r.name), [
+        'user',
+        'expired',
+        'keyLost',
+        'revoked',
+      ]);
+    });
+
+    test('revoked is its own state, not equal to expired', () {
+      expect(
+        const SignedOut(reason: SignOutReason.revoked),
+        const SignedOut(reason: SignOutReason.revoked),
+      );
+      expect(
+        const SignedOut(reason: SignOutReason.revoked),
+        isNot(const SignedOut(reason: SignOutReason.expired)),
+      );
     });
   });
 
-  group('unverifiedJwtClaims', () {
-    String part(Object json) =>
-        base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
-
-    test('reads the payload of a JWT built at run time', () {
-      final token =
-          '${part({'alg': 'none'})}.${part({
-            'sub': 'u',
-            'roles': ['a'],
-          })}.sig';
-      expect(unverifiedJwtClaims(token), {
-        'sub': 'u',
-        'roles': ['a'],
-      });
+  group('FakeCredential', () {
+    test('survives a JSON round trip, dates in UTC', () {
+      final back = FakeCredential.fromJson(
+        jsonDecode(jsonEncode(credential.toJson())) as Map<String, Object?>,
+      );
+      expect(back, credential);
+      expect(back.hashCode, credential.hashCode);
+      expect(back.expiresAt!.isUtc, isTrue);
+      expect(back.renewable, isTrue);
     });
 
-    test('is null for anything that is not a JWT', () {
-      expect(unverifiedJwtClaims('abc'), isNull);
-      expect(unverifiedJwtClaims('a.b.c'), isNull);
-      expect(unverifiedJwtClaims('a.${part([1])}.c'), isNull);
-      expect(unverifiedJwtClaims('a.${part('text')}.c'), isNull);
+    test('toString shows the id and nothing else', () {
+      expect('$credential', 'FakeCredential(fake-7)');
     });
   });
 }

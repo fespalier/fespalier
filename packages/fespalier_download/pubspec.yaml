@@ -1,6 +1,6 @@
 name: fespalier_download
-description: "Downloads for fespalier: the request, status and port model of a file transfer that survives the app, with fakes. Pure Dart over package:http."
-version: 0.20.0 # x-release-please-version
+description: "Downloads for fespalier: the request, status and port model of a file transfer that survives the app, with fakes. Pure Dart over fespalier_transport's HttpTransport."
+version: 0.21.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -22,20 +22,29 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0 # x-release-please-version
-  # HttpCredentials, which the foreground backend authorizes each send with (since 0.15.0).
-  fespalier_http:
+      ref: v0.21.0 # x-release-please-version
+  # HttpTransport, which the foreground backend sends through (since 0.21.0; it took an http.Client
+  # before), and HttpCredentials, which it authorizes each send with (since 0.15.0 in fespalier_http;
+  # fespalier_transport's since 0.21.0).
+  # test/no_http_test.dart checks that neither package:http nor Dio is a dependency.
+  fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
-      path: packages/fespalier_http
-      ref: v0.20.0 # x-release-please-version
-  # 1.5.0: abortable requests, which the foreground backend aborts a pause or a cancel with.
-  http: ^1.5.0
+      path: packages/fespalier_transport
+      ref: v0.21.0 # x-release-please-version
   # The SHA-256 of a finished file (3.0.6 is the first release whose floor is Dart 3.4).
   crypto: ^3.0.6
 
 dev_dependencies:
+  # HttpClientTransport, which the tests put over package:http's MockClient and FakeHttpClient to
+  # answer the foreground backend (a test dependency only: lib/ imports neither package).
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.21.0 # x-release-please-version
   flutter_lints: ^6.0.0
+  http: ^1.5.0
   flutter_test:
     sdk: flutter
   # Flutter's own flutter_test pins the version (3.0.10 on Flutter 3.35, the floor), so the constraint

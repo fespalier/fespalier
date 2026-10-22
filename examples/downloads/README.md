@@ -152,9 +152,10 @@ lib/
   `FespalierDownload.configure(backend:, store:, files:, grantor:, route:)` (see
   [`lib/setup.dart`](lib/setup.dart) and [Notification taps](../../docs/downloads.md#notification-taps)). The app has no
   `startup.dart`: the adapter binds `downloadsEngine`.
-- The **foreground** `HttpDownloadBackend` runs the transfer in the app's process over `package:http`. It can pause and
-  resume (HTTP `Range`) and it stops when the app is closed. It shows no notification, so on a phone nothing taps a
-  notification here; the tests play the tap.
+- The **foreground** `HttpDownloadBackend` runs the transfer in the app's process, through the app's one
+  `HttpTransport` (`main.dart` builds it: `HttpClientTransport(http.Client())`). It can pause and resume (HTTP `Range`)
+  and it stops when the app is closed. It shows no notification, so on a phone nothing taps a notification here; the
+  tests play the tap.
 - `FileDownloadStore` is the registry, a JSON file in the support folder, so after a restart the engine knows what was
   asked and settles it (`Failed (killed)` for a download that was running). Folders come from `path_provider`
   (`bases` in `setup.dart`): the package has no plugin of its own.

@@ -1,6 +1,6 @@
 ---
 name: fespalier-testing
-description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), a restart over a disk cache (fakePrefsStore and memoryBox from fespalier_storage, since 0.9.0), reconnects and offline banners (FakeConnectivity from fespalier_connectivity, since 0.9.0), translated routes (fakeTranslations, FakeTranslations.strict, RecordingEditor from fespalier_tolgee, since 0.10.0), offline and queued writes (FakeCrateStackTransport, FakeRowServer, ManualSyncTicker, crateStackTestOverrides from fespalier_cratestack, since 0.10.0), the window size of an adaptive layout (fespalier_adaptive, since 0.9.0), Dio and package:http without a network (a fake HttpClientAdapter, a MockClient that races the abort trigger, retriers with zero delays; fespalier_dio, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), accessibility guidelines in it (test: a11y, tap targets, labels, contrast, routeA11yGuidelines; since 0.16.0), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
+description: "Testing an app built with fespalier — package:fespalier/testing.dart (pumpRouter and currentLocation), booting the generated router at any location, deep links, typed navigation, not-found views and unparsable segments, loading and error states, faking a backend with provider overrides, guards and sign-in (fakeAuth from fespalier_auth, since 0.9.0; DPoP proofs with FakeKeypairSigner; device-signed sessions with FakeDeviceAuthServer, since 0.21.0), flagged routes (FakeFlags from fespalier_flags, since 0.9.0), a restart over a disk cache (fakePrefsStore and memoryBox from fespalier_storage, since 0.9.0), reconnects and offline banners (FakeConnectivity from fespalier_connectivity, since 0.9.0), translated routes (fakeTranslations, FakeTranslations.strict, RecordingEditor from fespalier_tolgee, since 0.10.0), offline and queued writes (FakeCrateStackTransport, FakeRowServer, ManualSyncTicker, crateStackTestOverrides from fespalier_cratestack, since 0.10.0), the window size of an adaptive layout (fespalier_adaptive, since 0.9.0), HTTP without a network (a FakeTransport under anything that takes an HttpTransport, since 0.21.0; a fake HttpClientAdapter, a MockClient that races the abort trigger, retriers with zero delays; fespalier_dio, since 0.9.0), pure tests of locations, dataAt and match, a generated smoke test per route (fsp test, setup.dart, smokeTestRoute), accessibility guidelines in it (test: a11y, tap targets, labels, contrast, routeA11yGuidelines; since 0.16.0), Maestro on a device or the web (semantics_ids, fsp maestro), local telemetry dashboards (fsp telemetry, OpenObserve, Grafana), and the traps that hang or fail a test (pending timers, retries, stale app.g.dart). Load before writing or changing a widget test that touches the router, or when a routing test hangs, leaves a timer pending, or reports the wrong location."
 ---
 
 # fespalier-testing
@@ -38,8 +38,9 @@ testWidgets('shows a product', (tester) async {
 - **Signed-in routes (since 0.9.0).** With `package:fespalier_auth`, `overrides: fakeAuth(signedInAs: ...)`
   (from `package:fespalier_auth/testing.dart`) signs a test in, or out with no argument, on a
   `FakeAuthBackend` and a `MemoryTokenStore`: no `startup()`, no network, no timer. Call it **inside the test
-  body**, where the fake clock starts; `tokenLifetime:` plus `tester.pump(const Duration(minutes: 6))` ages the
-  session. See "Signed-in routes" in [`references/recipes.md`](references/recipes.md).
+  body**, where the fake clock starts; `credentialLifetime:` (was `tokenLifetime:` until 0.20.0) plus
+  `tester.pump(const Duration(minutes: 6))` ages the session, and `transport:` takes a `FakeTransport` for the API calls
+  (was `client:` with a `MockClient` until 0.20.0). See "Signed-in routes" in [`references/recipes.md`](references/recipes.md).
 - **Flagged routes (since 0.9.0).** With `package:fespalier_flags`, `overrides: [flagSource.overrideWithValue(FakeFlags({'labs': true}))]`
   (from `package:fespalier_flags/testing.dart`) turns a flag on for a `pumpRouter` test; `flags.set('labs', false)` then
   `await tester.pump()` takes the app off the flagged route. `FakeFlags.strict` fails a test on a key typo. See
@@ -63,20 +64,30 @@ FakeTranslations.strict())` (from `package:fespalier_tolgee/testing.dart`) **and
   `loseAnswer('op')` replays under the same key without running twice; `ManualSyncTicker.tick()` is the app's tick and
   `FakeRowServer` is the row server. The fakes are all `Future.value`s: a pending timer is **your own ticker**. See
   [`fespalier-offline`](../fespalier-offline/SKILL.md) (its `testing.md` page).
-- **DPoP proofs (since 0.9.0).** With `package:fespalier_sign_keypair`, `FakeDpopSigner` (from
-  `package:fespalier_sign_keypair/testing.dart`) is a software key from a fixed scalar (the same on every run, no
-  platform), and `verifyDpopProof` is what a fake server checks every proof with. See "DPoP proofs" in
+- **DPoP proofs (since 0.9.0).** With `package:fespalier_keypair_dpop`, `DpopProof(signer: FakeKeypairSigner())`
+  (`FakeKeypairSigner` is in `package:fespalier_keypair/testing.dart`; it was `FakeDpopSigner` in
+  `package:fespalier_sign_keypair/testing.dart` until 0.20.0) is a proof maker over a software key from a fixed scalar (the
+  same on every run, no platform), and `verifyDpopProof` (`package:fespalier_keypair_dpop/verify.dart`) is what a fake server
+  checks every proof with. `FakeProof` (`package:fespalier_oidc/testing.dart`) is a proof with no crypto. See "DPoP proofs" in
   [`references/recipes.md`](references/recipes.md).
+- **Device-signed sessions (since 0.21.0).** With `package:fespalier_sign_keypair`, `FakeDeviceAuthServer`
+  (`package:fespalier_sign_keypair/testing.dart`) plays your enrolment and renewal endpoints and issues real attestations,
+  `FakeKeypairSigner` counts the user-present prompts, and `verifyDeviceSignature` is what a fake API checks every request
+  with. See "Device-signed sessions" in [`references/recipes.md`](references/recipes.md).
 - **Window size (since 0.9.0).** With `package:fespalier_adaptive`, Flutter's default 800 x 600 test window is a
   **rail**; set `tester.view.physicalSize` (and `devicePixelRatio = 1`, and `addTearDown(tester.view.reset)`) for a
   bar (under 600) or a drawer (1200 and up). See "An adaptive layout" in
   [`references/recipes.md`](references/recipes.md).
-- **HTTP without a network (since 0.9.0).** With `package:fespalier_dio` or `package:fespalier_http` (the `package:http`
-  half, since 0.15.0; `FakeHttpClient` and `FakeHttpCredentials` are in `package:fespalier_http/testing.dart`), a fake `HttpClientAdapter` under Dio and a
+- **HTTP without a network (since 0.9.0).** Since 0.21.0 everything that sends takes an `HttpTransport`, and
+  `FakeTransport` (`package:fespalier_transport/testing.dart`; `FakeTransport.script([...])` answers a `TransportResponse`
+  or throws a `TransportFailure` per request, `fakeResponse(status, body:)` makes the answers) stands in for it under the
+  session, the downloads, the image CDN, the translations and the map packs. With `package:fespalier_dio` or
+  `package:fespalier_http` (the `package:http` half, since 0.15.0; `FakeHttpClient` is in `package:fespalier_http/testing.dart`,
+  `FakeHttpCredentials` in `package:fespalier_transport/testing.dart` since 0.21.0), a fake `HttpClientAdapter` under Dio and a
   `MockClient` under `package:http` answer with no network. Dio's chain starts with `Timer.run`: use a plain `test()`,
   `pumpAndSettle()`, or `pump(Duration.zero)` (a bare `pump()` does not run it). A `MockClient` does not abort by itself:
-  its handler races `abortTrigger`. Give the retriers zero delays, and count what the adapter saw: a write must be sent
-  **once**. See [`references/http.md`](references/http.md).
+  its handler races `abortTrigger` (a `FakeTransport` does it for you). Give the retriers zero delays, and count what the
+  adapter saw: a write must be sent **once**. See [`references/http.md`](references/http.md).
 - **Hooks and telemetry (since 0.8.1).** An `observe.dart` hook fires at the end of the first frame that
   shows a change, so `await tester.pump()` before asserting what it did; `RecordingTelemetry` is a
   `FespalierTelemetry` that keeps lines for a test (`FespalierTelemetry.install` in `setUp`, `install(null)`
@@ -156,7 +167,7 @@ disposed`). A `for` loop that declares one `testWidgets` per location is the eas
 | Typed navigation                                           | `ProductRoute(id: 1).go(tester.element(find.byType(ProductsPage)))`, then `pumpAndSettle`                                                                                                     |
 | A guard                                                    | `c.read(session.notifier).signIn()` through the returned container, then navigate (or `pumpAndSettle`: a `Ref` guard that watches moves by itself)                                            |
 | A signed-in route (0.9.0, `fespalier_auth`)                | `overrides: fakeAuth(signedInAs: const AuthUser(id: 'ada'))`; signed out: `fakeAuth()`, and the route lands on `/sign-in?from=...`                                                            |
-| HTTP or a retry (0.9.0, `fespalier_dio`, `fespalier_http`) | a fake `HttpClientAdapter` or `MockClient`, no network; count what it saw, zero delays for retriers (`references/http.md`)                                                                    |
+| HTTP or a retry (0.9.0, `fespalier_dio`, `fespalier_http`) | a `FakeTransport` (0.21.0), a fake `HttpClientAdapter` or a `MockClient`, no network; count what it saw, zero delays for retriers (`references/http.md`)                                      |
 | A flagged route (0.9.0, `fespalier_flags`)                 | `overrides: [flagSource.overrideWithValue(FakeFlags({'labs': true}))]`; `flags.set('labs', false)`, then `pump()`: the app leaves it                                                          |
 | A restart over a disk cache (0.9.0)                        | `setUp(fakePrefsStore)`, then two `PrefsDataStorage.open()`s; the 2nd `pumpRouter(settle: false)` shows the saved value                                                                       |
 | A reconnect or an offline banner (0.9.0)                   | `connectivitySource.overrideWithValue(FakeConnectivity())`; `fake.offline()` then `fake.online()`, then `pump()`                                                                              |

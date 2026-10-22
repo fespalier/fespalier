@@ -1,7 +1,6 @@
 import 'package:fespalier/fespalier.dart' show FieldErrors;
+import 'package:fespalier/problem.dart';
 import 'package:http/http.dart' as http;
-
-import 'problem.dart';
 
 /// Server validation errors as an action's [FieldErrors] (since 0.9.0).
 extension FespalierHttpFieldErrors on Future<http.Response> {

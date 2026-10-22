@@ -1,9 +1,15 @@
 # fespalier_auth
 
 Signed-in routes for [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): a session
-provider, guards for `guard.dart`, token storage, lazy single-flight refresh and an authenticated
-HTTP client, behind one `AuthBackend` interface. fespalier's core has no auth; this package is the
+provider, guards for `guard.dart`, session storage, lazy single-flight renewal and an authenticated
+transport, behind one `AuthBackend` interface. fespalier's core has no auth; this package is the
 pattern the guards documentation describes, packaged.
+
+Since 0.21.0 it is the **protocol-agnostic core**: it knows a `SessionCredential`, a
+`RequestAuthenticator` and an `AuthBackend`, and no token, no OpenID Connect flow and no key.
+[`fespalier_oidc`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_oidc/README.md)
+is the token backend (PKCE, Keycloak, bearer and DPoP). It sends only through
+`fespalier_transport`'s `HttpTransport`, so it links neither `package:http` nor Dio.
 
 The docs cover all of it:
 [Authentication](https://github.com/fespalier/fespalier/blob/main/docs/auth.md) (the session, restoring at
@@ -22,21 +28,20 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 <!-- x-release-please-end -->
 
-Needs Dart 3.9 and Flutter 3.35 or newer. `flutter_secure_storage` (the token store) is the only
-plugin it brings; on Android its minSdk is 24. The rest is pure Dart: `http`, `crypto` (PKCE), `clock`
-and `dio` (tree-shaken unless you import `package:fespalier_auth/dio.dart`). It depends on
-`fespalier_http` (at the same tag, which pub resolves for you) for one interface: since 0.15.0 the
-`Authorizer` is an `HttpCredentials`, and an `AuthAttempt` an `HttpAuthorization`, so a transfer
-that is not an `http.Client` can take it as it is.
+Needs Dart 3.9 and Flutter 3.35 or newer. `flutter_secure_storage` (the session store) is the only
+plugin it brings; on Android its minSdk is 24. The rest is pure Dart: `clock` and
+`fespalier_transport` (at the same tag, which pub resolves for you): the `Authorizer` is an
+`HttpCredentials`, and an `AuthAttempt` an `HttpAuthorization`, so a transfer that is not a transport
+can take it as it is. There is no `http` and no `dio` in its dependencies (`test/no_http_test.dart`).
 
 ## Wire it
 
@@ -53,6 +58,7 @@ import 'package:fespalier_auth/fespalier_auth.dart';
 FutureOr<List<Override>> startup() => restoreAuth(
   AuthConfig(
     backend: MyBackend(), // an AuthBackend: see below
+    transport: HttpClientTransport(http.Client()), // or DioTransport(dio): what requests go through
     apiOrigins: [Uri.parse('https://api.example.com')],
   ),
 );
@@ -71,40 +77,42 @@ GuardResult guard(Ref ref, {String? from}) => redirectIfSignedIn(ref, from: from
 
 Keep `sign-in/` beside `(signed-in)/`, not inside it: a guard on the sign-in page would send the
 user to the sign-in page. The page calls
-`ref.read(authSession.notifier).signIn(const PasswordSignIn(...))` and has no navigation code.
+`ref.read(authSession.notifier).signIn(...)` (a `BrowserSignIn` or `PasswordSignIn` from
+`fespalier_oidc`, or a request of your backend's own) and has no navigation code.
 
 ## Call your API
 
 ```dart
 // lib/app/(signed-in)/orders/data.dart
 Future<List<Order>> data(Ref ref) async {
-  ref.watch(authUserId); // another user: load again; a token refresh: nothing
-  final response = await ref.watch(authHttpClient).get(Uri.parse('https://api.example.com/orders'));
+  ref.watch(authUserId); // another user: load again; a renewal: nothing
+  final client = TransportClient(ref.watch(authTransport)); // fespalier_http, for package:http code
+  final response = await client.get(Uri.parse('https://api.example.com/orders'));
   return Order.listFromJson(response.body);
 }
 ```
 
-`authHttpClient` attaches the session to requests to `AuthConfig.apiOrigins` only, waits for one
-shared refresh when the access token has expired, and sends a request once more after a 401. That one
-replay is marked: `isAuthReplay(request)` (`options.extra[authReplayKey]` on dio), so a guard against
-re-sent writes can let it through. A request made with `http.AbortableRequest` keeps its abort trigger
-on the replay. Do not put `RetryClient` under it (it would re-send the same signature, which a DPoP server
-refuses); wrap it: `RetryClient(ref.watch(authHttpClient))`.
-
-With dio: `dio.interceptors.add(SessionInterceptor(ref.watch(authorizer), dio))`, from
-`package:fespalier_auth/dio.dart`.
+`authTransport` is a `SessionTransport` over `AuthConfig.transport`. It attaches the session to
+requests to `AuthConfig.apiOrigins` only, waits for one shared renewal when the credential has
+expired, and sends a request once more after a verdict that says so (a 401, a nonce challenge). Every
+send is authorized again with the exact bytes of its body, so a signature is fresh each time; the one
+replay is marked in `TransportRequest.attributes` (`transportReplayKey`), so a guard against re-sent
+writes can let it through. A request with a streamed body is sent once. With Dio, put the session
+below `TransportAdapter(authTransport)` (from `fespalier_dio`), so a retrier above it sends through it
+again.
 
 ## Backends
 
-An `AuthBackend` says how to sign in, refresh and sign out; the package keeps the session, the
+An `AuthBackend` says how to sign in, renew and sign out, what proves each request (its
+`RequestAuthenticator`), and what to forget when the session ends; the package keeps the session, the
 store and the single flight. `FakeAuthBackend` (in `package:fespalier_auth/testing.dart`) is the
 smallest example.
 
-- **OpenID Connect and Keycloak**, in the package: `OidcBackend` in `package:fespalier_auth/oidc.dart`,
-  the authorization code flow with PKCE for a public client, with Keycloak's endpoints, roles and
-  refresh-token rotation. The browser step is a function you give it (`flutter_web_auth_2` is the usual
-  one), so the package links no plugin for it. Read against Keycloak 26.8.0; `examples/auth` has the
-  realm and a Docker command.
+- **OpenID Connect and Keycloak**, in `fespalier_oidc`: `OidcBackend`, the authorization code flow
+  with PKCE for a public client, with Keycloak's endpoints, roles and refresh-token rotation. The
+  browser step is a function you give it (`flutter_web_auth_2` is the usual one), so the package
+  links no plugin for it. Read against Keycloak 26.8.0; `examples/auth` has the realm and a Docker
+  command.
 - **Firebase, Supabase and your own API**, as recipes: `skills/fespalier-guards/references/auth-backends.md`
   has code that is compiled by CI. `examples/auth/lib/demo/demo_backend.dart` is a username-and-password
   backend with tests.
@@ -126,7 +134,7 @@ testWidgets('a member sees the orders', (tester) async {
 
 ## What it costs
 
-The package starts no timer, no listener and no `Future.delayed`: a refresh is lazy (the first
-request that finds the token expired) and shared, and a test greps the library for those calls. A
+The package starts no timer, no listener and no `Future.delayed`: a renewal is lazy (the first
+request that finds the credential expired) and shared, and a test greps the library for those calls. A
 synchronous guard stays synchronous, and with `MemoryTokenStore` or a backend that keeps its own
 session, so does `restoreAuth`. An app that does not import it is unchanged.

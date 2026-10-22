@@ -12,13 +12,13 @@ members := `sed -n '/^workspace:/,/^[^ ]/s/^  - //p' pubspec.yaml | sed 's/ *#.*
 
 # Resolved on their own, outside the workspace: the packages that need a newer Flutter, the DevTools extension
 # (its lockfile is committed) and every example. cli/tests/versions.rs keeps this list complete.
-outside_dirs := "packages/fespalier_devtools packages/fespalier_sign_keypair packages/fespalier_download_background examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose examples/frb-cose"
+outside_dirs := "packages/fespalier_devtools packages/fespalier_keypair packages/fespalier_keypair_dpop packages/fespalier_sign_keypair packages/fespalier_download_background examples/shop examples/features examples/tabs examples/minimal examples/telemetry examples/auth examples/plugins examples/downloads examples/i18n examples/maps examples/adopt examples/offline examples/cose examples/device examples/frb-cose"
 
 # Every Dart folder: the workspace's packages, then the ones outside it. pub get, dart format, flutter analyze, flutter test.
 dart_dirs := members + outside_dirs
 
 # The examples whose committed lib/app.g.dart must match what `fsp gen` writes.
-examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose frb-cose"
+examples := "shop features tabs minimal telemetry auth plugins downloads i18n maps adopt offline cose device frb-cose"
 
 # List recipes
 default:
@@ -123,6 +123,7 @@ floor sdk=env("FLUTTER_FLOOR", ""):
     fi
     export PATH="$sdk/bin:$PATH"
     root="$(pwd)"
+    python3 scripts/test_floor_app.py
     # Inside the workspace a pub downgrade moves every package together (one resolution): each package runs
     # in a copy outside it, on its own (scripts/floor_copy.py), removed afterwards.
     work="$(mktemp -d)"

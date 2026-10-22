@@ -6,7 +6,8 @@ import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_download/fespalier_download.dart';
 import 'package:fespalier_download/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show TransportUnsent, TransportUntrusted;
 
 const _loc = DownloadLocation(DownloadBase.support, 'f/a.bin');
 
@@ -138,13 +139,13 @@ void main() {
     });
 
     test(
-      'a grantor that cannot reach the network (a ClientException) ends Failed(network)',
+      'a grantor that cannot reach the network (a TransportFailure) ends Failed(network)',
       () async {
         final g = _Grantor();
         final r = await _opened(grantor: g.call);
         final started = r.engine.start(_req());
         await pumpEventQueue();
-        g.fail(0, http.ClientException("couldn't refresh the session"));
+        g.fail(0, const TransportUnsent("couldn't refresh the session"));
         await started;
         expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
         expect(r.backend.enqueued, isEmpty);
@@ -159,10 +160,10 @@ void main() {
       },
     );
 
-    test('a ClientException thrown at once is the same', () async {
+    test('a TransportFailure thrown at once is the same', () async {
       final r = await _opened(
         grantor: (request, {required renewal}) =>
-            throw http.ClientException('offline'),
+            throw const TransportUnsent('offline'),
       );
       await r.engine.start(_req());
       expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
@@ -275,7 +276,7 @@ void main() {
         var offline = false;
         final r = await _opened(
           grantor: (request, {required renewal}) {
-            if (offline) throw http.ClientException('offline');
+            if (offline) throw const TransportUnsent('offline');
             return null;
           },
         );
@@ -292,6 +293,25 @@ void main() {
         offline = false;
         expect(await r.engine.resume('a'), isTrue);
         expect(r.backend.resumed, ['a']);
+      },
+    );
+
+    test(
+      'a grantor whose certificate is refused ends Failed(network), not paused',
+      () async {
+        var untrusted = false;
+        final r = await _opened(
+          grantor: (request, {required renewal}) {
+            if (untrusted) throw const TransportUntrusted('cert');
+            return null;
+          },
+        );
+        await r.engine.start(_req());
+        untrusted = true;
+        r.backend.emit('a', const Paused(1, 10));
+        expect(await r.engine.resume('a'), isFalse);
+        expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
+        expect(r.backend.resumed, isEmpty);
       },
     );
 
@@ -478,7 +498,7 @@ void main() {
           httpStatus: 403,
         );
         await pumpEventQueue();
-        g.fail(1, http.ClientException('offline'));
+        g.fail(1, const TransportUnsent('offline'));
         await pumpEventQueue();
         expect(r.engine.statusOf('a'), const Failed(DownloadFailure.network));
         expect(r.backend.enqueued, hasLength(1));

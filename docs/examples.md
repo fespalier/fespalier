@@ -170,14 +170,37 @@ route, its file and the OpenTelemetry trace of the same call.
 - a sign-in form on an action;
 - a `requireSignedIn` guard that comes back to where the user was going, and a `requireRole` one for
   `/admin`;
-- orders pages whose two `data.dart` files call an API through `authHttpClient` (an expired token is
-  refreshed once);
+- orders pages whose two `data.dart` files call an API through `authTransport` (`TransportClient(ref.watch(authTransport))`; an expired token is
+  renewed once);
 - a first frame that is the app, not a splash, because `startup()` restores the session with no network.
 
 The API is an in-process server, so it runs and is tested with no network. To run against Keycloak, use
 `--dart-define=OIDC_ISSUER=...` and the realm in `examples/auth/keycloak/`. With
 `--dart-define=OIDC_ISSUER=demo --dart-define=DPOP=true` it signs in against the demo server's own
 provider with device-bound tokens (DPoP), and its tests check every proof the way a server does.
+
+The device-sessions example, [`examples/device`](#device), is where the token-free scheme of `fespalier_sign_keypair` runs: enrolling a device, signed requests and renewal by re-attestation ([Device-signed sessions](auth.md#device-signed-sessions-fespalier_sign_keypair)).
+
+## device
+
+[`examples/device`](https://github.com/fespalier/fespalier/tree/main/examples/device) (since 0.21.0) is [`fespalier_sign_keypair`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_sign_keypair) end to end: a session with **no token** ([fespalier#267](https://github.com/fespalier/fespalier/issues/267), [Device-signed sessions](auth.md#device-signed-sessions-fespalier_sign_keypair)). Nothing stored works without the device's key, and no `Authorization` header is ever sent: every request carries `X-Attestation` and an `X-Signature` over its method, path, query and exact body bytes. Its [README](https://github.com/fespalier/fespalier/blob/main/examples/device/README.md) has a sequence diagram of an enrolment and a state diagram of the session.
+
+- an enrolment page (`/enrol`): a phone number, then the one-time code (always `123456`), over a `DeviceAuthBackend` and a `DeviceAuthServer` of your own (`lib/device_server.dart`); a wrong number or code is the `FieldErrors` the server answered, under its field, and `redirectIfSignedIn` takes the user back to where they were going;
+- a signed-in account: `requireSignedIn` means "this device is enrolled", and `/account` loads `GET /me` through `authTransport`, which renews the attestation once, silently, when it is within 12 hours of its end;
+- a user-present action, `/transfer` (send money): its request asks for the user-present key through its attributes (`DeviceSigner.roleAttribute`), so the signature is made behind a biometric or the device credential, and a cancelled prompt fails that one request;
+- a sign-out that revokes the device on the server, then deletes both keys; a key that was swapped or wiped is `SignedOut(keyLost)` at the next start;
+- a demo server in pure Dart (`lib/demo/demo_api.dart`, in process, so the app runs with no network) that does what your server does: it issues an attestation per key, bound to it by `cnf.jkt`, and verifies **every** API request with `verifyDeviceSignature` and an in-memory set of `jti`s, so a signature is good once.
+
+```sh
+cd examples/device
+flutter create --empty . --platforms=android,ios,web   # adds the platform folders, .gitignore and .metadata
+flutter pub get
+flutter run
+```
+
+Enrol with any phone number and the code `123456`. The keys are in the Secure Enclave or the AndroidKeyStore where the platform has them; the web has the ambient key only, so the transfer page says it cannot confirm.
+
+Its tests run against the demo server, on a fake clock and `FakeKeypairSigner` keys: the enrolment and its field errors, every request verifying with no `Authorization` header and a signature accepted once, one renewal for two requests, a restore with no network (and `keyLost` after a key swap), the user-present prompt and its refusal, and the sign-out. **No test touches a secure element**: the real prompt, a device with no screen lock and biometric invalidation are unchecked on a device.
 
 ## plugins
 
@@ -212,7 +235,7 @@ The [README](https://github.com/fespalier/fespalier/blob/main/examples/downloads
 
 ## cose
 
-[`examples/cose`](https://github.com/fespalier/fespalier/tree/main/examples/cose) is a full stack: a [`fespalier_cratestack`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_cratestack) app and the CrateStack server it talks to, in which every request is a **COSE_Sign1** message signed by a device key ([`fespalier_sign_keypair`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_sign_keypair)) and every answer is a COSE_Sign1 message signed by the server. Its [README](https://github.com/fespalier/fespalier/blob/main/examples/cose/README.md) has the design as built, a sequence diagram of a signed call, the life of the device key, and every status the server answers with.
+[`examples/cose`](https://github.com/fespalier/fespalier/tree/main/examples/cose) is a full stack: a [`fespalier_cratestack`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_cratestack) app and the CrateStack server it talks to, in which every request is a **COSE_Sign1** message signed by a device key ([`fespalier_keypair`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_keypair)) and every answer is a COSE_Sign1 message signed by the server. The transport sends through the app's one [`HttpTransport`](http.md) (`TransportRequest` in, `TransportResponse` out; `startup()` builds it over `package:http`), so no `http.Client` is named outside `startup.dart`. Its [README](https://github.com/fespalier/fespalier/blob/main/examples/cose/README.md) has the design as built, a sequence diagram of a signed call, the life of the device key, and every status the server answers with.
 
 - a `CoseTransport` that signs at send time, so an [intent](cratestack.md#5-actions)'s retries are new messages (a fresh `iat` and `cti`) over the same payload under the same `Idempotency-Key`, and a sealed answer that does not open is `CrateStackOffline` (the same key, never the next);
 - a notes page whose read is `ref.serve` and whose write is an intent, with widget tests over `FakeCrateStackTransport`;
@@ -225,7 +248,7 @@ cd examples/cose && flutter pub get && flutter test                         # th
 just cose                                                                   # the server's gates, then the app's with the server required
 ```
 
-`SignKeypairSigner` (the hardware key) is not run by any test: they use a software key.
+`HardwareKeypairSigner` (the hardware key) is not run by any test: they use a software key.
 
 ## wire-sizes
 

@@ -2,43 +2,44 @@
 
 The [README](https://github.com/fespalier/fespalier/blob/main/README.md) is the 60-second path. These pages are the reference, one topic each.
 
-| Page                                                               | What is in it                                                                                         |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| [Installation and setup](getting-started.md)                       | Install options, companion packages, `fsp create`, `fsp init`, CI, platform notes                     |
-| [Configuration](configuration.md)                                  | Every `fespalier:` key of `pubspec.yaml`, and `route.dart`                                            |
-| [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, exports and receives                                              |
-| [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed per release                                   |
-| [Coming from RIBs](coming-from-ribs.md)                            | What a RIB's router, interactor, builder and workflows become, and moving a feature over              |
-| [Routing](routing.md)                                              | Segments, enums, catch-alls, query parameters, case, localized paths, groups, not-found, the manifest |
-| [Navigation](navigation.md)                                        | Typed navigation, `of` and `copyWith`, `remount`, `extra`, `RouteLink`, deferred routes               |
-| [Layouts](layouts.md)                                              | Tab layouts, menus, adaptive navigation, transitions, state and scroll restoration                    |
-| [Guards](guards.md)                                                | `guard.dart`, `redirect.dart`, feature flags, biometric unlock                                        |
-| [Data](data.md)                                                    | `data.dart`, retries, freshness, caches, a Rust core's changes, section data, typed helpers           |
-| [Actions](actions.md)                                              | `action.dart`, `validate()`, `FieldErrors`, optimistic updates                                        |
-| [Forms](forms.md)                                                  | `form()` and `useForm` with `fespalier_forms`: typed fields, validation, server errors                |
-| [HTTP clients](http.md)                                            | Dio and `package:http`: cancelling, field errors, writes never retried                                |
-| [`main()`, app.dart, startup.dart and splash.dart](app-startup.md) | The generated `main()` and the root files                                                             |
-| [Adapters](adapters.md)                                            | Packages that plug into the generated `main()`                                                        |
-| [Authentication](auth.md)                                          | Signed-in routes with `fespalier_auth`, OpenID Connect, DPoP                                          |
-| [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                          |
-| [Translations](i18n-tolgee.md)                                     | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL                    |
-| [Maps](maps.md)                                                    | A pin picker that returns a place with `fespalier_maps`: MapLibre, geocoder, position                 |
-| [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, status, engine, restarts, background |
-| [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens              |
-| [Analytics](analytics.md)                                          | Screen views by route pattern with consent, `fespalier_analytics`: sink, backends, testing            |
-| [Shortcuts and widgets](launch.md)                                 | Shortcuts and home-screen widgets open typed routes with `fespalier_launch`: cold start, warm taps    |
-| [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                        |
-| [Telemetry conventions](telemetry-conventions.md)                  | Span, event and attribute names: contract version 1                                                   |
-| [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana                                                              |
-| [DevTools extension](devtools.md)                                  | Routes, guards, data and actions in Flutter DevTools                                                  |
-| [CLI reference](cli.md)                                            | Every `fsp` command, the generated file, editor plugins, `fsp dev`, performance                       |
-| [Route tests](route-tests.md)                                      | `fsp test` smoke tests and `fsp maestro` flows                                                        |
-| [Testing](testing.md)                                              | `pumpRouter`, `currentLocation`, the app around the router                                            |
-| [Run the examples](examples.md)                                    | minimal, shop, features, tabs, telemetry and auth                                                     |
-| [Troubleshooting](troubleshooting.md)                              | Symptoms, things to know, known limitations                                                           |
-| [FAQ](faq.md)                                                      | Why the API is shaped this way                                                                        |
-| [Development](development.md)                                      | The repository, `just ci`, what CI runs                                                               |
-| [Releasing](releasing.md)                                          | How a release is cut (maintainers)                                                                    |
+| Page                                                               | What is in it                                                                                                 |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| [Installation and setup](getting-started.md)                       | Install options, companion packages, `fsp create`, `fsp init`, CI, platform notes                             |
+| [Configuration](configuration.md)                                  | Every `fespalier:` key of `pubspec.yaml`, and `route.dart`                                                    |
+| [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, exports and receives                                                      |
+| [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed per release                                           |
+| [Coming from RIBs](coming-from-ribs.md)                            | What a RIB's router, interactor, builder and workflows become, and moving a feature over                      |
+| [Routing](routing.md)                                              | Segments, enums, catch-alls, query parameters, case, localized paths, groups, not-found, the manifest         |
+| [Navigation](navigation.md)                                        | Typed navigation, `of` and `copyWith`, `remount`, `extra`, `RouteLink`, deferred routes                       |
+| [Layouts](layouts.md)                                              | Tab layouts, menus, adaptive navigation, transitions, state and scroll restoration                            |
+| [Guards](guards.md)                                                | `guard.dart`, `redirect.dart`, feature flags, biometric unlock                                                |
+| [Data](data.md)                                                    | `data.dart`, retries, freshness, caches, a Rust core's changes, section data, typed helpers                   |
+| [Actions](actions.md)                                              | `action.dart`, `validate()`, `FieldErrors`, optimistic updates                                                |
+| [Forms](forms.md)                                                  | `form()` and `useForm` with `fespalier_forms`: typed fields, validation, server errors                        |
+| [HTTP transport](transport.md)                                     | `fespalier_transport`: the interface, the two implementations, decorators and their order, the memo, failures |
+| [HTTP clients](http.md)                                            | Dio and `package:http` over the transport: cancelling, field errors, writes never retried                     |
+| [`main()`, app.dart, startup.dart and splash.dart](app-startup.md) | The generated `main()` and the root files                                                                     |
+| [Adapters](adapters.md)                                            | Packages that plug into the generated `main()`                                                                |
+| [Authentication](auth.md)                                          | Signed-in routes with `fespalier_auth`: OpenID Connect, DPoP, device-signed sessions                          |
+| [Images](responsive-images.md)                                     | Responsive CDN images with `fespalier_image`                                                                  |
+| [Translations](i18n-tolgee.md)                                     | Tolgee texts with `fespalier_tolgee`: offline, over the air, language from the URL                            |
+| [Maps](maps.md)                                                    | A pin picker that returns a place with `fespalier_maps`: MapLibre, geocoder, position                         |
+| [Downloads](downloads.md)                                          | Files that outlive a screen with `fespalier_download`: requests, status, engine, restarts, background         |
+| [Push notifications](push.md)                                      | Notification taps open typed routes with `fespalier_push`: cold start, warm taps, tokens                      |
+| [Analytics](analytics.md)                                          | Screen views by route pattern with consent, `fespalier_analytics`: sink, backends, testing                    |
+| [Shortcuts and widgets](launch.md)                                 | Shortcuts and home-screen widgets open typed routes with `fespalier_launch`: cold start, warm taps            |
+| [Observability](observability.md)                                  | Lifecycle hooks, telemetry, OpenTelemetry, Sentry, Crashlytics                                                |
+| [Telemetry conventions](telemetry-conventions.md)                  | Span, event and attribute names: contract version 1                                                           |
+| [Dashboards on your computer](telemetry-dashboards.md)             | `fsp telemetry`: OpenObserve and Grafana                                                                      |
+| [DevTools extension](devtools.md)                                  | Routes, guards, data and actions in Flutter DevTools                                                          |
+| [CLI reference](cli.md)                                            | Every `fsp` command, the generated file, editor plugins, `fsp dev`, performance                               |
+| [Route tests](route-tests.md)                                      | `fsp test` smoke tests and `fsp maestro` flows                                                                |
+| [Testing](testing.md)                                              | `pumpRouter`, `currentLocation`, the app around the router                                                    |
+| [Run the examples](examples.md)                                    | minimal, shop, features, tabs, telemetry and auth                                                             |
+| [Troubleshooting](troubleshooting.md)                              | Symptoms, things to know, known limitations                                                                   |
+| [FAQ](faq.md)                                                      | Why the API is shaped this way                                                                                |
+| [Development](development.md)                                      | The repository, `just ci`, what CI runs                                                                       |
+| [Releasing](releasing.md)                                          | How a release is cut (maintainers)                                                                            |
 
 ## Old README sections
 
@@ -62,7 +63,7 @@ An older link such as `github.com/fespalier/fespalier#telemetry`, or a message t
 - [analytics.md](analytics.md): Analytics: fespalier_analytics · Install · Screen names · Consent · Time on screen · Backends · Testing
 - [launch.md](launch.md): Shortcuts and home-screen widgets: fespalier_launch · Install · Configure · Mapping an action · Cold start and taps · Widgets and platform links · Testing
 - [route-tests.md](route-tests.md): Maestro flows (`fsp maestro`) · Route smoke tests (`fsp test`)
-- [auth.md](auth.md): Authentication · Installing fespalier_auth · The session · Restoring at startup · Guarding signed-in routes · Signing in and out · Calling your API · OpenID Connect and Keycloak · Firebase, Supabase and your own API · Device-bound tokens: DPoP with fespalier_sign_keypair · Testing signed-in routes
+- [auth.md](auth.md): Authentication · How it fits together · Installing fespalier_auth · The session · Restoring at startup · Guarding signed-in routes · Signing in and out · Calling your API · OpenID Connect and Keycloak · Device-bound tokens: DPoP with fespalier_keypair_dpop · Device-signed sessions: fespalier_sign_keypair · Firebase, Supabase and your own API · Writing a backend · Testing signed-in routes
 - [telemetry-conventions.md](telemetry-conventions.md): Telemetry conventions
 - [telemetry-dashboards.md](telemetry-dashboards.md): Dashboards on your computer: `fsp telemetry` · The app side · The dashboards · Reading the colours · The flags · A summary in the terminal: `--report` · The web and `otel_zone` · OpenObserve and Grafana show the same numbers · Your own copy
 - [responsive-images.md](responsive-images.md): Images · Installing `fespalier_image` · The image CDN: `imageCdnProvider` · Buckets: the widths an image is fetched at · `ResponsiveImage` · URL builders · imgproxy and EmgR · Cloudinary · imgix · Thumbor · A URL template · Already sized: a srcset · Signed image URLs · Precaching an image behind a link · Images in heroes · Images on the web · Caching images · Testing images · Image loads in telemetry · What images cost

@@ -53,6 +53,7 @@ GoRoute guarded(
 ) => GoRoute(
   path: path,
   redirect: (context, state) => runRedirect(
+    state,
     () => refGuard(context, site, (ref) {
       runs++;
       opened++;
@@ -755,6 +756,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/orders',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g1@orders', (ref) {
               return ref.watch(session) ? null : '/sign-in?from=${state.uri}';
             }),
@@ -768,6 +770,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/admin',
           redirect: (context, state) => runRedirect(
+            state,
             () => firstRedirect([
               () => refGuard(context, 'g1@admin', (ref) {
                 return ref.watch(session) ? null : '/sign-in?from=${state.uri}';
@@ -785,6 +788,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/staff',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(
               context,
               'g3@staff',

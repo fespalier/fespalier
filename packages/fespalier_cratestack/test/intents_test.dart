@@ -2,8 +2,6 @@
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
-import 'package:dio/dio.dart';
-import 'package:fespalier_cratestack/dio.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_cratestack/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,16 +52,6 @@ final class _AnswerAfterRun implements CrateStackTransport {
     throw error;
   }
 }
-
-DioException dioStatusError(int status, {Object? data}) => DioException(
-  requestOptions: RequestOptions(),
-  type: DioExceptionType.badResponse,
-  response: Response<Object?>(
-    requestOptions: RequestOptions(),
-    statusCode: status,
-    data: data,
-  ),
-);
 
 /// The key of the [n]th call.
 String? keyOf(FakeCrateStackTransport t, int n) => t.calls[n].idempotencyKey;
@@ -264,7 +252,7 @@ void main() {
         store: store,
         extra: [
           crateStackErrors.overrideWithValue(
-            const CrateStackErrors([DioFailures.read]),
+            const CrateStackErrors([TransportFailures.read]),
           ),
         ],
       );
@@ -282,7 +270,7 @@ void main() {
       ('JSON that is no envelope', {'error': 'boom'}),
     ]) {
       test('submit: a bare 500 with $label keeps the key', () async {
-        final r = await committedThenAnswered(dioStatusError(500, data: data));
+        final r = await committedThenAnswered(statusError(500, data: data));
         final out = await submitCancel(r.queue);
         final queued = (out as Queued<Object?>).intent;
         expect(queued.attempt, 0, reason: 'not the next key');
@@ -299,7 +287,7 @@ void main() {
       });
 
       test('drain: a bare 500 with $label keeps the key', () async {
-        final r = await committedThenAnswered(dioStatusError(500, data: data));
+        final r = await committedThenAnswered(statusError(500, data: data));
         r.transport.offline = true;
         await submitCancel(r.queue);
         r.transport.offline = false;
@@ -321,7 +309,7 @@ void main() {
       'an envelope that says the server did not store it moves on',
       () async {
         final r = await committedThenAnswered(
-          dioStatusError(500, data: {'code': 'INTERNAL', 'message': 'oops'}),
+          statusError(500, data: {'code': 'INTERNAL', 'message': 'oops'}),
         );
         final out = await submitCancel(r.queue);
         expect((out as Queued<Object?>).intent.attempt, 1);

@@ -49,9 +49,10 @@ Things to read in it:
   Material delegates (`GlobalMaterialLocalizations.delegates`).
 - `fr.arb` has no `home.footer`: the French page shows the English text, not the key
   (`Translator.originOf` says `fallbackLocale`).
-- No API key anywhere, and no `remote:` in `startup.dart`. To get fresh texts over the air, add
-  `remote: TolgeeCdn(Uri.parse(cdnUrl))` there, with the public Content Delivery URL of your Tolgee
-  project (for example from `String.fromEnvironment('TOLGEE_CDN_URL')`). The CDN takes no key.
+- No API key anywhere. `startup.dart` builds the app's one transport (`HttpClientTransport(http.Client())`,
+  from `fespalier_http`) and gives it to `TolgeeCdn`, the `remote:` of `Translations`, but only when the build
+  has `--dart-define=TOLGEE_CDN_URL=<the public Content Delivery URL of your Tolgee project>`. Without it
+  nothing is fetched. The CDN takes no key.
 
 ## Run it
 

@@ -3,17 +3,20 @@ import 'dart:convert';
 import 'package:fespalier_tolgee/fespalier_tolgee.dart';
 import 'package:fespalier_tolgee/in_context.dart';
 import 'package:fespalier_tolgee/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:fespalier_transport/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 import 'support.dart';
 
 void main() {
   test('kTolgeeInContext is false in a test run, and the editor is null', () {
     expect(kTolgeeInContext, isFalse);
-    expect(TolgeeEditor.fromEnvironment(), isNull);
+    expect(
+      TolgeeEditor.fromEnvironment(transport: FakeTransport.script(const [])),
+      isNull,
+    );
   });
 
   testWidgets('the scope adds no handle and records no keys', (tester) async {
@@ -32,23 +35,21 @@ void main() {
   });
 
   test('TolgeeEditor.withKey: method, path, X-API-Key, body', () async {
-    late http.Request seen;
+    final transport = FakeTransport((_, _) => fakeResponse(200, body: '{}'));
     final editor = TolgeeEditor.withKey(
       Uri.parse('https://tolgee.example/base'),
       'tgpak_test',
-      client: MockClient((request) async {
-        seen = request;
-        return http.Response('{}', 200);
-      }),
+      transport: transport,
     );
     await editor.save('product.title', 'fr', 'Titre');
+    final seen = transport.requests.single;
     expect(seen.method, 'PUT');
     expect(
       seen.url.toString(),
       'https://tolgee.example/base/v2/projects/translations',
     );
     expect(seen.headers['X-API-Key'], 'tgpak_test');
-    expect(jsonDecode(seen.body), {
+    expect(jsonDecode(seen.text), {
       'key': 'product.title',
       'translations': {'fr': 'Titre'},
     });
@@ -58,11 +59,11 @@ void main() {
     final editor = TolgeeEditor.withKey(
       Uri.parse('https://tolgee.example'),
       'k',
-      client: MockClient((_) async => http.Response('no', 403)),
+      transport: FakeTransport((_, _) => fakeResponse(403, body: 'no')),
     );
     await expectLater(
       editor.save('a', 'en', 'x'),
-      throwsA(isA<http.ClientException>()),
+      throwsA(isA<TransportStatusError>()),
     );
   });
 

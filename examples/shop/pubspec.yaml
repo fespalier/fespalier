@@ -14,16 +14,27 @@ dependencies:
   # Product photos at the size their layout needs, from an image CDN (docs/responsive-images.md, "Images").
   fespalier_image:
     path: ../../packages/fespalier_image
+  # The app's one transport, HttpClientTransport over package:http (lib/app/startup.dart); the image CDN
+  # fetches the photos through it.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  # HttpTransport, the type of that transport (lib/images.dart).
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
+  http: ^1.5.0
 
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
 
-# fespalier_image depends on fespalier by git, as an app does; here both are the checkout's.
+# fespalier_image depends on fespalier and fespalier_transport by git, as an app does; here all are the
+# checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
 
 flutter:
   uses-material-design: true

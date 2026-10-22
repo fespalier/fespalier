@@ -9,8 +9,8 @@ It shows, end to end and with tests on both sides:
 - the **seam** of [`fespalier_cratestack`](../../packages/fespalier_cratestack): one `CrateStackTransport`
   ([`CoseTransport`](lib/src/cose_transport.dart)) that signs at send time, so intents, reads and the rest of the package
   work unchanged;
-- a **device key** from [`fespalier_sign_keypair`](../../packages/fespalier_sign_keypair): the Secure Enclave or the
-  AndroidKeyStore on a device, a software key in tests;
+- a **device key** from [`fespalier_keypair`](../../packages/fespalier_keypair) (a `KeypairSigner`): the Secure Enclave or
+  the AndroidKeyStore on a device (`HardwareKeypairSigner`), a software key in tests (`FakeKeypairSigner`);
 - a Dart **COSE sealer and opener** ([`lib/src/cose/`](lib/src/cose)), checked byte for byte against
   `cratestack-cose`'s own test vectors ([`test_vectors/`](test_vectors)). CrateStack shipped no Dart COSE at 0.15.3; its
   0.15.4 Dart COSE has no device-key signer, so this example still writes its own. [`examples/frb-cose`](../frb-cose/README.md)
@@ -101,7 +101,7 @@ sandboxed app whose entitlements allow `network.server` (the Dart VM service) bu
 not answer" copy. `macos/Runner/{DebugProfile,Release}.entitlements` add
 `com.apple.security.network.client`; without it the app talks to nothing.
 
-The device key falls back to `SoftwareDpopSigner`. The Secure Enclave path cannot work here: a
+The device key falls back to `SoftwareKeypairSigner`. The Secure Enclave path cannot work here: a
 sandboxed app cannot write a keychain item without a `keychain-access-groups` entitlement, and that
 entitlement requires a real development certificate — an ad-hoc signed build (`CODE_SIGN_IDENTITY =
 "-"`, what `flutter create` produces) fails the build outright if you add it. Without it the key
@@ -111,7 +111,7 @@ which changes, and a restarted app is a *new device* to the server. `lib/app/sta
 
 ### Where the hardware key is not available
 
-`startup.dart` opens a `SignKeypairSigner` and falls back to a `SoftwareDpopSigner` when the keystore
+`startup.dart` opens a `HardwareKeypairSigner` and falls back to a `SoftwareKeypairSigner` when the keystore
 refuses: the web, Windows and Linux have no keystore, a macOS sandbox without a signing certificate
 cannot write the keychain (above), and an iOS simulator's keychain is not a secure element. A build
 that must *require* hardware passes `requireHardware: true` and takes the failure instead of the
@@ -128,9 +128,9 @@ forgot the device is healed by the next call") checks it in the Dart tests, not 
 | Path                                            | What it is                                                                                                          |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `lib/app/page.dart`, `data.dart`, `action.dart` | The notes page, `ref.serve` for the signed read, an intent for the signed write. Generated: `lib/app.g.dart`.       |
-| `lib/app/startup.dart`                          | Opens the device key and pins the server's (`--dart-define`s); returns the two `fespalier_cratestack` overrides.    |
+| `lib/app/startup.dart`                          | Builds the one `HttpClientTransport`, opens the device key, pins the server's; returns the overrides.               |
 | `lib/src/cose_transport.dart`                   | `CoseTransport`: payload to CBOR, seal, POST, open the sealed answer, classify every other answer.                  |
-| `lib/src/wiring.dart`                           | The providers: signer, identity, HTTP client, `DeviceRegistrar`, and `coseOverrides()`.                             |
+| `lib/src/wiring.dart`                           | The providers: signer, identity, the `HttpTransport`, `DeviceRegistrar`, and `coseOverrides()`.                     |
 | `lib/src/cose/`                                 | `CoseSealer`, `CoseOpener`, `Esp256VerifyKey`, the binding (external AAD) and a minimal CBOR writer and reader.     |
 | `lib/src/payload.dart`                          | The CBOR of the payload (JSON-native values in, JSON-native values out).                                            |
 | `lib/src/contracts.g.dart`                      | Each operation's contract digest and selector. **Generated** by `server/tests/contracts.rs`; never edited by hand.  |
@@ -310,9 +310,9 @@ server does not say which check failed. `Accept: application/json` on a signed c
 
 ## Not built, and what was found
 
-- **Device runs.** `SignKeypairSigner` (the Secure Enclave, StrongBox or the TEE) is **not run by any test or by CI**:
-  the tests use `FakeDpopSigner`, a software key that signs the same way, and the app has not been run on a phone. The
-  [`fespalier_sign_keypair`](../../packages/fespalier_sign_keypair) package tests the signer itself.
+- **Device runs.** `HardwareKeypairSigner` (the Secure Enclave, StrongBox or the TEE) is **not run by any test or by CI**:
+  the tests use `FakeKeypairSigner`, a software key that signs the same way, and the app has not been run on a phone. The
+  [`fespalier_keypair`](../../packages/fespalier_keypair) package tests the signers itself.
 - **The idempotency store is in memory.** The server runs CrateStack's `IdempotencyLayer` over `server/src/idempotency.rs`,
   inside the envelope layer, so it sees the plain CBOR the envelope unwrapped (the same bytes on every attempt) and the
   verified device as the principal: a write whose answer was lost and that is sent again under its key runs once, and the

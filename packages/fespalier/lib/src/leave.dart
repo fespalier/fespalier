@@ -25,7 +25,8 @@ import 'guards.dart'
         guardRerunVerdict,
         guardsContainer,
         guardsIdle,
-        isGuardRerun;
+        isGuardRerun,
+        isHeldPage;
 import 'lifecycle.dart' show RouterWatch;
 import 'route_scope.dart' show pageInstanceId;
 import 'segments.dart' show BadSegment;
@@ -346,6 +347,9 @@ LeaveResult leaveExit(
       // (invariant 8 of the guards, see `guardRerunVerdict`). When one of them redirected or failed
       // it moves the page, so it asks as a base page's redirect does, whatever else is true of the
       // navigation. When the guards passed again the page is replaced by itself, which is no leave.
+      // A held page (its guard never passed in a push, so it was never built) goes without a
+      // question, whoever asks (invariant 3 of the guards).
+      if (isHeldPage(router, state.pageKey)) return true;
       final moves = guardRerunVerdict(router, state.pageKey);
       if (moves == false) {
         // Nothing is asked. But a question about this page that is still open (the person's press
@@ -781,8 +785,9 @@ bool _isQueryOnlyReplace(GoRouter router, GoRouterState state) {
 bool _staysWithin(GoRouter router, GoRouterState state, String within) {
   final value = router.routeInformationProvider.value;
   final info = value.state;
-  // A guard's re-run that is asked about outside its own call (an asynchronous `onEnter`) is not a
-  // navigation the app made: the flow section is no exemption for it (since 0.21.0).
+  // A guard's re-run that is asked about outside its own call (with any `onEnter`, which go_router
+  // waits for) is not a navigation the app made: the flow section is no exemption for it (since
+  // 0.21.0).
   if (isGuardRerun(router, info)) return false;
   final config = router.routerDelegate.currentConfiguration;
   final Uri? target;

@@ -1,6 +1,6 @@
 // The rule, in code: the framework starts no timer, schedules nothing for later and listens to
-// nothing. The clock is read when a token is asked for (`clock.now()`), never `DateTime.now()`, so
-// a test's fake clock ages the tokens. This reads every file under lib/ and fails on the
+// nothing. The clock is read when the credential is asked for (`clock.now()`), never
+// `DateTime.now()`, so a test's fake clock ages the credentials. This reads every file under lib/ and fails on the
 // constructs that would break the rule, naming the file and the line.
 import 'dart:io';
 
@@ -9,8 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// Each construct, and why it is not allowed.
 const forbidden = <String, String>{
   'Timer(': 'a timer keeps the radio busy and makes a test flaky',
-  'Timer.periodic':
-      'a periodic timer is a refresh on a schedule: refresh lazily',
+  'Timer.periodic': 'a periodic timer is a renewal on a schedule: renew lazily',
   'Timer.run': 'scheduled work',
   'Future.delayed': 'a delay is a timer',
   'Stream.periodic': 'a periodic stream is a timer',
@@ -85,10 +84,10 @@ String blanked(String source) {
 
 /// The async providers declared in [source] that do not pass `retry:` as one of their own
 /// arguments (one in a nested call is not theirs), as `path:line`.
-List<String> unretried(String path, String source) {
+List<String> unretried(String path, String source, {RegExp? pattern}) {
   final code = blanked(source);
   final problems = <String>[];
-  for (final m in asyncProvider.allMatches(code)) {
+  for (final m in (pattern ?? asyncProvider).allMatches(code)) {
     var depth = 0;
     final own = StringBuffer();
     for (var i = m.end - 1; i < code.length; i++) {
@@ -112,6 +111,20 @@ List<String> unretried(String path, String source) {
   }
   return problems;
 }
+
+/// Any provider declaration, sync or not: this package builds every provider from state the app
+/// owns, so none of them is tried again (`noRetry`), and the declaration says so.
+final anyProvider = RegExp(
+  r'\b(?:Notifier)?Provider(?:\s*\.\s*(?:autoDispose|family))*\s*(?:<[\w\s,<>?.]*>)?\s*\(',
+);
+
+/// The names the providers of [source] are declared under.
+List<String> providerNames(String source) => [
+  for (final m in RegExp(
+    r'\b(\w+)\s*=\s*(?:Notifier)?Provider\s*(?:<[\w\s,<>?.]*>)?\s*\(',
+  ).allMatches(blanked(source)))
+    m.group(1)!,
+];
 
 void main() {
   test(
@@ -205,4 +218,78 @@ void main() {
       startsWith('f.dart:3:'),
     );
   });
+
+  test('every provider this package declares says `retry:`', () {
+    final files = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.dart'))
+        .toList();
+    final problems = [
+      for (final file in files)
+        ...unretried(file.path, file.readAsStringSync(), pattern: anyProvider),
+    ];
+    expect(problems, isEmpty, reason: problems.join('\n'));
+  });
+
+  test('the providers are the ones the README documents, and no others', () {
+    final names = <String>[
+      for (final file
+          in Directory('lib')
+              .listSync(recursive: true)
+              .whereType<File>()
+              .where((f) => f.path.endsWith('.dart')))
+        ...providerNames(file.readAsStringSync()),
+    ];
+    expect(
+      names,
+      unorderedEquals(<String>[
+        'authSession',
+        'isSignedIn',
+        'authUser',
+        'authUserId',
+        'authConfig',
+        'authInitialState',
+        'authorizer',
+        'authTransport',
+      ]),
+    );
+  });
+
+  test(
+    'the provider check sees a sync provider with no retry, and only that',
+    () {
+      expect(
+        unretried(
+          'f.dart',
+          'final a = Provider<int>((ref) => 1);',
+          pattern: anyProvider,
+        ),
+        hasLength(1),
+      );
+      expect(
+        unretried(
+          'f.dart',
+          'final a = NotifierProvider<N, int>(N.new);',
+          pattern: anyProvider,
+        ),
+        hasLength(1),
+      );
+      expect(
+        unretried(
+          'f.dart',
+          'final a = Provider<int>((ref) => 1, retry: noRetry);\n'
+              'final Provider<int> b = Provider<int>((ref) => 2, retry: noRetry);',
+          pattern: anyProvider,
+        ),
+        isEmpty,
+      );
+      expect(
+        providerNames(
+          'final a = Provider<int>(f);\n// final b = Provider<int>(f);',
+        ),
+        ['a'],
+      );
+    },
+  );
 }

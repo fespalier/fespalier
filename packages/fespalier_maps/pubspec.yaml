@@ -1,6 +1,6 @@
 name: fespalier_maps
 description: "Maps for fespalier: a pin picker that returns a place, over MapLibre, with a geocoder interface and a position source."
-version: 0.20.0 # x-release-please-version
+version: 0.21.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -22,7 +22,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # File packs download through it: the resumable HTTP transfer (Range, If-Range, size and
   # SHA-256 checks, the atomic move) is fespalier_download's, since 0.15.0. The same url and ref as
   # fespalier, so an app writes one tag for both.
@@ -30,7 +30,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_download
-      ref: v0.20.0 # x-release-please-version
+      ref: v0.21.0 # x-release-please-version
   # The MapLibre binding: lib/maplibre.dart is the only file that imports it. 0.27.1 is the
   # first release whose offline-region calls this package relies on (the database path, region
   # metadata that may be null, whole-degree bounds read back on iOS); it asks for Flutter 3.29,
@@ -38,13 +38,25 @@ dependencies:
   maplibre_gl: ">=0.27.1 <0.28.0"
   # The device position: lib/geolocator.dart is the only file that imports it.
   geolocator: ">=14.0.0 <15.0.0"
-  # File packs download with an http.Client the app provides (so its timeouts, proxy and
-  # certificates apply). 1.5.0 is the first http release with abortable requests (Dart 3.4), and
-  # crypto 3.0.6 the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
-  http: ^1.5.0
+  # File packs download through an HttpTransport the app provides (so its timeouts, proxy,
+  # certificates and signing apply); the same url and ref as fespalier.
+  fespalier_transport:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_transport
+      ref: v0.21.0 # x-release-please-version
+  # crypto 3.0.6 is the first whose floor is Dart 3.4 (FakePackFiles hashes with it).
   crypto: ^3.0.6
 
 dev_dependencies:
+  # HttpClientTransport, which the tests put over package:http's MockClient (a test dependency
+  # only: lib/ imports neither package; test/no_http_test.dart checks it).
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.21.0 # x-release-please-version
+  http: ^1.5.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0

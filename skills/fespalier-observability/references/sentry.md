@@ -149,7 +149,7 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   `SentryFlutter.currentDisplay()?.reportFullyDisplayed()` when its data is in. Its guard and data spans are not
   recorded. `enableStandaloneAppStartTracing: true` (9.26.0, experimental) makes the first screen an ordinary
   one: recommended. Web and desktop: ordinary.
-- **An HTTP span made in `data()`** is, with `traceLifecycle: static`, a child of the screen's transaction (Sentry's
+- **An HTTP span made in `data()`** (by `SentryTransport(tracing: true)`, below, or Sentry's own HTTP integrations) is, with `traceLifecycle: static`, a child of the screen's transaction (Sentry's
   integrations parent to the scope's span), beside the data span, not under it (a transaction cannot be made
   current without binding it to the one global scope, which two loads at once share). Under `fespalier_otel` it is
   under the data span, and with `traceLifecycle: stream` it is too (below).
@@ -166,7 +166,7 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
   transactions are; `SentryNavigatorObserver(enableNewTraceOnNavigation: true)` (off by default) renews it on each
   navigation, and the SDK does after a stay in the background when no navigator observer exists (whether Sentry's
   views are right with one trace for many screens is UNCHECKED). **HTTP spans are under the data span** (since 0.19.0): the sink's `within` makes the
-  span of a `data()` or an action with `Hub.startSpan` around the code it runs, so `SentryHttpClient` and `sentry_dio`
+  span of a `data()` or an action with `Hub.startSpan` around the code it runs, so `SentryTransport`, `SentryHttpClient` and `sentry_dio`
   (which parent to the zone's active span) make children of it, after an `await` too, and two loads at once keep
   their own. The span still ends with fespalier's outcome and attributes, when `data()` settles, the load is
   disposed or the next navigation starts first (status `error`); the body's `Future` is never what ends it. An action with no screen open is a segment, and its requests
@@ -176,6 +176,34 @@ refresh make no transaction. A superseded navigation is dropped by `configure`'s
 - `tracing: true` on an SDK that samples nothing prints once (debug) `fespalier_sentry: tracing: true needs
 Sentry to sample transactions, and tracesSampleRate is not set, so no transaction is sent. Pass tracing: true
   to FespalierSentry.configure, or set options.tracesSampleRate.`
+
+## Requests: `SentryTransport` (since 0.21.0)
+
+Everything fespalier sends goes through an `HttpTransport`; `SentryTransport(inner, {hub, tracing, captureFailedRequests,
+tracePropagationTargets})` is the decorator that tells Sentry about it, errors first like the rest of this package:
+
+```dart
+final transport = SentryTransport(
+  WriteGuardTransport(HttpClientTransport(client)),
+  tracing: true,
+  tracePropagationTargets: [Uri.parse('https://api.example.com')],
+);
+```
+
+- **By default, one breadcrumb per request** (category `http`: the method, the URL without its query and fragment, the
+  status, how long it took) and nothing else, so an error reads as a story.
+- **`captureFailedRequests: true`** (default false, as Sentry's own) also reports a request that got no response (an
+  abort excepted) or a `5xx` as an error event.
+- **`tracing: true`** (the same opt-in as `FespalierSentry(tracing: true)`, and it needs the SDK's tracing on) makes each
+  send an `http.client` span: a child of the `data` or `action` span with `traceLifecycle: stream`, of the screen's
+  transaction with `static`. A re-send (an auth replay, a retry) is a span of its own. `sentry-trace` and `baggage` go
+  only to the origins in `tracePropagationTargets` (none by default).
+- **Below the session**, like `OtelTransport`, so a replay after a 401 reaches it; a retrier goes above the session.
+  Both can be in one chain (`OtelTransport(SentryTransport(network, ...))`: telemetry below the session, `OtelTransport` outside `SentryTransport`): the order of the decorators is in
+  [`docs/transport.md`](https://github.com/fespalier/fespalier/blob/main/docs/transport.md#decorators-and-their-order).
+- **Never recorded**: a query value, a header value (an `Authorization` included), a body, an error's text. It starts no
+  timer and listens to nothing; a failing SDK costs the report, never the request.
+- **Do not also put `SentryHttpClient` or `sentry_dio` on the same requests**: each request would be reported twice.
 
 ## Options
 

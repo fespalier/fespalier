@@ -1,5 +1,6 @@
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 
 /// What a call fails with while the switch is off: no answer came, as when a phone has no signal.
 class Unreachable implements Exception {
@@ -28,7 +29,8 @@ class NetworkSwitch extends Notifier<bool> {
   }
 }
 
-/// A transport that fails with [Unreachable] while the switch is off, and sends through otherwise.
+/// A transport that fails the way a real one does while the switch is off (a `TransportUnsent`, with
+/// [Unreachable] as its cause: nothing was sent), and sends through otherwise.
 final class SwitchedTransport implements CrateStackTransport {
   /// Sends through [_inner] while [_online] answers true.
   const SwitchedTransport(this._inner, this._online);
@@ -38,7 +40,7 @@ final class SwitchedTransport implements CrateStackTransport {
 
   @override
   Future<Object?> send(CrateStackCall call, {String? idempotencyKey}) {
-    if (!_online()) throw const Unreachable();
+    if (!_online()) throw const TransportUnsent(Unreachable());
     return _inner.send(call, idempotencyKey: idempotencyKey);
   }
 }

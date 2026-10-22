@@ -429,7 +429,7 @@ package's own `test/idle_test.dart` does.
 
 - **A guard never prompts, and a guard that runs again never re-prompts.** The guard watches only whether the app is
   unlocked: a prompt coming and going (`Unlocking`) and a second `Unlocked` stamp do not run it. A lock (`lock()`, or the
-  policy's relock) does, and the router leaves the page (a pushed page can stay, fespalier/fespalier#258). Ten re-runs
+  policy's relock) does, and the router leaves the page (a pushed page too, since 0.21.0). Ten re-runs
   of the guard are zero prompts (`test/guard_test.dart`).
 - **`unlock()` is single-flight and never throws.** Two buttons, a double tap or a guard that runs again while a sheet is
   up get the same `Future`. A prompt that throws is `BiometricOutcome.failed`. A prompt that does not succeed leaves the
@@ -483,7 +483,7 @@ and `lock()` leaves stored secrets alone (delete them at sign-out with `deleteSe
 - **A secret kept after a lock.** Locking does not clear data providers: a `data.dart` that loaded the vault stays in
   memory, and the app decides whether to invalidate it (`ref.invalidate`) when `biometricUnlock` goes to `Locked`.
 - **A biometric check is not authentication to a server.** It proves a person is at the phone; it signs nothing. Use
-  [`fespalier_sign_keypair`](auth-dpop.md) for a key the server can verify.
+  [device-signed sessions](auth-device-sessions.md) (`fespalier_sign_keypair`, since 0.21.0) for a key the server can verify.
 
 ## Testing
 

@@ -40,7 +40,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'f50c62637633d0a3';
+  static const String _version = '1a02041b1bd2b332';
   static const Map<String, String> _kept = {
     '(router)': '3fddb5dc',
     'ProductRoute.data': 'd1a8b78b',
@@ -159,7 +159,7 @@ abstract final class AppRoutes {
               ),
               GoRoute(
                 path: 'checkout',
-                redirect: (context, state) => runRedirect(() => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false)))),
+                redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g2@2', _i8.guard(ProviderScope.containerOf(context, listen: false)))),
                 pageBuilder: (context, state) => namedPage('/checkout', () => _i3.transition(
                   state.pageKey,
                   refusedView(context, state) ?? DeferredView(

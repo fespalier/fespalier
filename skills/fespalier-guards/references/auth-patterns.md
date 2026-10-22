@@ -1,9 +1,9 @@
-# Auth patterns: sign-in, sign-out and refreshing on auth change
+# Auth patterns: sign-in, sign-out and guards that run again on auth change
 
 As of 0.5.0. fespalier's core has **no auth feature**; it gives you guards that take a
 `Ref` (and run again when what they watch changes), `returnTo`, and typed routes.
 Since 0.9.0, `package:fespalier_auth` packages the pattern below (a session provider, `restoreAuth`, the
-guard helpers, token storage, refresh and an HTTP client): see [`auth-package.md`](auth-package.md).
+guard helpers, session storage, lazy renewal and a transport that carries the session): see [`auth-package.md`](auth-package.md).
 Everything below is the hand-written pattern, for an app that does not use it. Guards took a `ProviderContainer` and
 ran only on navigation before 0.5.0: see "On 0.4.1 and earlier" below.
 
@@ -100,12 +100,12 @@ class LoginPage extends ConsumerWidget {
   a location), the router runs the redirects again. Signing out on `/inbox` ends on
   `/login?from=%2Finbox`, and signing in on the login page lets the same guard through.
   That also covers a session that ends elsewhere (a token expiring, another tab), on any
-  page but a pushed one (see "What to know"). Nothing is wired up by you: it works with
+  page, a pushed one included (since 0.21.0, see "What to know"). Nothing is wired up by you: it works with
   `AppRoutes.router()` and with a router of your own built from `AppRoutes.mount()`, with
   no `refreshListenable`.
 - **What to know.**
   - A guard that `ref.read`s, or takes `ProviderContainer c`, runs only when you navigate.
-  - A guarded **base** page under a pushed page, guarded or not, is not watched while it is covered: it is guarded again by `GoRouter.pop` or `context.pop` of a page with no `leave.dart`, not by the app bar's back button, `Navigator.pop` or the system back. A guarded **pushed** page runs its guard again however it is uncovered. A page on top that has a guard reacts itself: with a base page under a redirect the router is refreshed first, so a sign-out replaces the whole stack, and a change only the top page's guard notices (a role revoked) can ask a dirty page's `leave()` twice, once for the refresh and once for the re-run; with none under it, the page moves alone, asked once.
+  - A guarded **base** page under a pushed page, guarded or not, is not watched while it is covered: it is guarded again by `GoRouter.pop` or `context.pop` of a page with no `leave.dart`, not by the app bar's back button, `Navigator.pop` or the system back. A guarded **pushed** page runs its guard again however it is uncovered. A page on top that has a guard reacts itself: with a base page under a redirect the router is refreshed first, so a sign-out that a guard notices replaces the whole stack, and a change only the top page's guard notices (a role revoked) can ask a dirty page's `leave()` twice, once for the refresh and once for the re-run; with none under it, the page moves alone, asked once.
   - A sign-out runs the guard **twice** (Riverpod recomputes it, then the router asks
     again); the providers it watches are not fetched twice.
   - `ref.keepAlive()` in a guard keeps one provider alive per navigation: don't.

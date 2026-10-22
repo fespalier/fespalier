@@ -2,9 +2,11 @@
 
 Dio for [fespalier](https://github.com/fespalier/fespalier) (since 0.9.0): a load whose page is
 gone stops, a server's validation error lands under its form field, and a write is never sent twice.
-The `package:http` half moved to [`fespalier_http`](../fespalier_http/README.md) in 0.15.0. fespalier
-itself is unchanged: no `fsp` change, no `fespalier:` key, and the same `app.g.dart`. It starts no timer and no
-listener, and it has no retry policy of its own (a backoff needs a timer).
+Since 0.21.0 it is also Dio's side of [`fespalier_transport`](../fespalier_transport/README.md):
+`DioTransport` sends a transport's requests through your Dio, and `TransportAdapter` lets your Dio send
+through a transport chain. It links no `package:http`. fespalier itself is unchanged: no `fsp` change, no
+`fespalier:` key, and the same `app.g.dart`. It starts no timer and no listener, and it has no retry policy of
+its own (a backoff needs a timer).
 
 The docs cover it in context:
 [HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md). This page is the short version.
@@ -22,46 +24,78 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
-  fespalier_http:
+      ref: v0.21.0
+  fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
-      path: packages/fespalier_http
-      ref: v0.20.0
+      path: packages/fespalier_transport
+      ref: v0.21.0
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_http` (the write rule and the problem decoders both clients share), which brings `http` (`^1.5.0`). All of them are pure Dart.
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_transport` (the transport interface and the write rule `WriteGuard` shares with every transport). Both are pure Dart, and neither brings `http`.
 
 ## Libraries
 
-| Library                                    | For            | What is in it                                                                                 |
-| ------------------------------------------ | -------------- | --------------------------------------------------------------------------------------------- |
-| `package:fespalier_dio/fespalier_dio.dart` | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, and `problem.dart` |
-| `package:fespalier_dio/client.dart`        | `package:http` | `DioHttpClient`: your Dio as an `http.Client` (since 0.15.0)                                  |
+| Library                                    | What is in it                                                                                                                   |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_dio/fespalier_dio.dart` | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, `DioTransport` and `TransportAdapter` (since 0.21.0) |
 
-`package:fespalier_dio/http.dart` and `problem.dart` moved to [`fespalier_http`](../fespalier_http/README.md) and were removed in 0.15.0: change the import. An app that uses one client imports one library, and links nothing of the other client.
+The server's validation-error decoders (`fieldErrorsOf`, `FieldErrorsDecoders`, `FieldNames`) are in `package:fespalier/problem.dart`: this library no longer re-exports them. `package:fespalier_dio/client.dart` and `DioHttpClient` (your Dio as an `http.Client`) were removed in 0.21.0: send through `DioTransport` instead, or use `fespalier_http`'s `HttpClientTransport` if you want `package:http`.
 
-`DioHttpClient(dio)` makes the app's Dio an `http.Client`, so anything that takes one (a pack download, a
-translation source, `ref.abortable(...)`) sends through the Dio and its interceptors, `WriteGuard` included.
-The response body is streamed (`ResponseType.stream`), every status is a response (`validateStatus: (_) => true`), an
-`Abortable` request's `abortTrigger` cancels a `CancelToken` (`RequestAbortedException`), any other failure is a
-`ClientException` (its message names Dio's message or, when Dio has none, the cause an interceptor or an adapter threw,
-since 0.16.0), and `close()` does nothing: the Dio belongs to its provider. A request's `Range` header
-passes through. `cupertino_http` is not claimed to honour an abort.
+## Dio as a transport
 
-A request made of bytes (an `http.Request`, which `get`, `post`, `put`, `patch` and `delete` make) sends its body as
-bytes (since 0.16.0), so an interceptor that sends it again, `fespalier_auth`'s `SessionInterceptor` after a 401 and a
-refresh, sends the whole body a second time. A streamed or multipart request streams its body, which can be read once:
-`SessionInterceptor` does not send it again, and the caller gets the 401 as a response, after the refresh. Before
-0.16.0 every body streamed, and a request with a body that got a 401 through a session failed with
-`ClientException: fespalier_dio: unknown`.
+`DioTransport(dio)` is an `HttpTransport`: anything that sends through one (a `SessionTransport`, a download, a client of
+your own) sends through the app's Dio, its interceptors, `WriteGuard` included.
+
+```dart
+final transport = SessionTransport(DioTransport(ref.watch(dio)), ref.watch(authorizer));
+final response = await transport.send(TransportRequest(method: 'GET', uri: Uri.parse('https://api.example.com/me')));
+```
+
+The response body streams (`ResponseType.stream`) and every status is an answer (`validateStatus: (_) => true`), so a 404
+or a 500 comes back as a response. A request made of bytes sends its body as bytes, so an interceptor that sends it again
+sends the whole body a second time; a `bodyStream` streams once (its `contentLength` becomes the `content-length`
+header). `abortTrigger` cancels a `CancelToken` through a side `then`, with no timer. `attributes` are never sent: they
+are copied into `Options.extra`, where a Dio interceptor can read them. A `DioException` becomes a `TransportFailure`
+whose `cause` is Dio's error and whose text never names the server:
+
+| `DioExceptionType`                     | Thrown               |
+| -------------------------------------- | -------------------- |
+| `cancel`                               | `TransportAborted`   |
+| `connectionError`, `connectionTimeout` | `TransportUnsent`    |
+| `badCertificate`                       | `TransportUntrusted` |
+| `sendTimeout`, `receiveTimeout`        | `TransportTimedOut`  |
+| `badResponse`, `unknown`               | `TransportBroken`    |
+
+Two cases pass through unchanged: a `TransportFailure` already in `DioException.error`, and an `Exception` an
+interceptor rejected with (a session's `AuthRejected`), thrown as that object with its stack trace.
+
+## A Dio that sends through a transport
+
+`TransportAdapter(transport)` is a Dio `HttpClientAdapter`: your own `Dio`, with its interceptors, `dio_smart_retry`
+and `WriteGuard`, sends through a transport chain.
+
+```dart
+final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))
+  ..httpClientAdapter = TransportAdapter(
+    SessionTransport(WriteGuardTransport(HttpClientTransport(http.Client())), ref.watch(authorizer)),
+  );
+```
+
+A finalized body (JSON, a form, `FormData`) is collected into bytes, so the transport can sign and replay the exact
+bytes; a `Stream` as `data` stays a `bodyStream` and is not replayable. Dio's cancel future is the `abortTrigger`, and
+`RequestOptions.extra` becomes the request's `attributes`. A `TransportFailure` becomes a `DioException` with the failure
+in `error` (`TransportAborted` a `cancel`, `TransportUnsent` a `connectionError`, `TransportUntrusted` a `badCertificate`, `TransportTimedOut` a
+`receiveTimeout`, `TransportBroken` an `unknown`), and any other error the transport throws is wrapped as an `unknown`
+`DioException` whose `error` is that same object. Every retry that Dio's retry interceptors perform calls the adapter
+again, so a session below it sees every send. `close()` does nothing: the transport belongs to whoever made it.
 
 ## Cancel a load whose page is gone
 
@@ -74,9 +108,7 @@ Future<Product> data(Ref ref, {required int id}) async {
 }
 ```
 
-The token is cancelled in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds. For
-`package:http` (`fespalier_http`), `ref.abortable(client)` wraps a client so that every request through it is aborted the same way
-(`ref.abortTrigger()` is the trigger of one `AbortableRequest`).
+The token is cancelled in `ref.onDispose`, which runs when the provider is disposed **and** before it rebuilds.
 
 ## Server validation errors on a form
 
@@ -116,5 +148,5 @@ final dio = Provider<Dio>((ref) {
 
 `WriteGuard` refuses a second send of a write (any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries
 an `Idempotency-Key` header) and hands the caller the error of the first, except after a 401, which is what an
-authentication refresh sends again. For `package:http` (`fespalier_http`):
-`RetryClient(WriteGuardClient(inner), when: WriteGuardClient.readsOnly(), whenError: WriteGuardClient.readErrorsOnly(...))`.
+authentication refresh sends again. For a transport, `WriteGuardTransport` (in `fespalier_transport`) marks writes by the same rule,
+`HttpWrites`, so the two never disagree.

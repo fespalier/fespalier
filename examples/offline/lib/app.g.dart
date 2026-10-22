@@ -34,7 +34,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '8052dd6c4ecf342a';
+  static const String _version = 'c08c378a50ded370';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
     'NoteEditRoute.data': '3ce6da8f',
@@ -151,7 +151,7 @@ abstract final class AppRoutes {
         routes: [
           GoRoute(
             path: joinLocation(at, '/'),
-            redirect: (context, state) => runRedirect(() => traceGuard(state, 'r0', _i1.redirect())),
+            redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'r0', _i1.redirect())),
           ),
           GoRoute(
             path: joinLocation(at, '/notes'),

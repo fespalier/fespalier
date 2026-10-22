@@ -8,7 +8,7 @@ vocabulary, the telemetry names, the fakes and the engine, `Downloads`, that dri
 cancel, remove, the registry after a restart, sign-out) and the foreground `HttpDownloadBackend`, a durable registry (`FileDownloadStore`) and the Riverpod
 providers `downloads` and `downloadStatus`; a background backend comes in a release after it.
 
-It is pure Dart over `package:http`: no platform plugin, so it resolves on Flutter 3.35, fespalier's floor, and an app that
+It is pure Dart over `fespalier_transport`'s `HttpTransport` (no `package:http`, no Dio): no platform plugin, so it resolves on Flutter 3.35, fespalier's floor, and an app that
 lists it links nothing native.
 
 fespalier itself has no download feature: no file kind, no `fespalier:` key, no `fsp` command, and the generated code is the
@@ -28,18 +28,20 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_download:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_download
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 
 <!-- x-release-please-end -->
 
-It depends on `fespalier_http` (at the same tag, which pub resolves for you) for `HttpCredentials`. List
-`fespalier_http` yourself, with the same `url` and `ref`, only when your code imports it.
+It depends on `fespalier_transport` (at the same tag, which pub resolves for you) for `HttpTransport`, which the
+foreground backend sends through, and for `HttpCredentials`, which was `fespalier_http`'s until 0.20.0. List
+`fespalier_transport` yourself, with the same `url` and `ref`, since you hand the backend a transport (and
+`fespalier_http` or `fespalier_dio` for one that sends: `HttpClientTransport(http.Client())`, `DioTransport(dio)`).
 
 ## Requests and files
 
@@ -66,7 +68,7 @@ assert(request.isValid);
 
 ## The foreground backend
 
-`HttpDownloadBackend(client:, bases:)` downloads over your `http.Client` while the app runs: `Range` and `If-Range` from a
+`HttpDownloadBackend(transport:, bases:)` downloads through your `HttpTransport` while the app runs: `Range` and `If-Range` from a
 `<file>.part` and its `.part.etag` validator, the size and SHA-256 checked before an atomic move, the request aborted on
 pause and cancel. It can pause and nothing else (no background, no notifications, no `unmetered`, which it refuses). `bases`
 names the base folders (`path_provider` is yours); give the engine `TransferDownloadFiles(bases:)` to delete files. On the
@@ -84,7 +86,7 @@ watching opens the engine, and disposing closes it. Act through `ref.read(downlo
 Future<List<Override>> startup() async => [
   downloadsEngine.overrideWithValue(
     Downloads(
-      backend: HttpDownloadBackend(client: http.Client(), bases: bases),
+      backend: HttpDownloadBackend(transport: transport, bases: bases),
       store: FileDownloadStore(bases: bases),
       files: TransferDownloadFiles(bases: bases),
     ),
@@ -113,11 +115,12 @@ final engine = Downloads(
 It is asked before each start, retry and resume, and **once more after a 401 or 403**: the engine cancels the failed
 attempt (the bytes the backend kept stay) and enqueues again with the new grant. A resume goes to the address its grant
 names, and each start, retry and resume has its own one renewal (since 0.16.0). A second 401 or 403, or a grantor that
-throws, ends `Failed(unauthorized)`, except a grantor (or an `HttpCredentials`) that throws an `http.ClientException`, such
-as `fespalier_auth`'s `AuthUnavailable` when a token cannot refresh offline: nothing was refused, so that ends
+throws, ends `Failed(unauthorized)`, except a grantor that throws a `TransportFailure` or a `CredentialsUnavailable` (or an `HttpCredentials` that
+throws a `CredentialsUnavailable`), such as `fespalier_auth`'s `AuthUnavailable` when a token cannot refresh offline: nothing was refused, so that ends
 `Failed(network)` and `retry` goes on (since 0.16.0). A cancel, remove, restart or sign-out meanwhile wins. `HttpDownloadBackend(credentials:)`
 takes any `HttpCredentials` (`fespalier_auth`'s `Authorizer`): each send of the foreground transfer is authorized, and a
-4xx asks `retry` for one re-send, at most three sends. Plain `headers` are stored in plaintext; never put a refresh
+4xx asks `retry` for one re-send, at most three sends (the body of a 401 or a 403, up to 64 KiB, is read first, so the
+credentials can see why the server refused). Plain `headers` are stored in plaintext; never put a refresh
 token or a long-lived bearer in a request or a grant, and a DPoP proof cannot be signed per send by a background backend.
 The telemetry span's end has `fespalier.download.regranted: true` when a renewal was asked. See
 [the guide](https://github.com/fespalier/fespalier/blob/main/docs/downloads.md#credentials).

@@ -97,6 +97,7 @@ export default defineMd3Config({
         text: "Features",
         items: [
           { text: "Forms", link: "/forms" },
+          { text: "HTTP transport", link: "/transport" },
           { text: "HTTP clients", link: "/http" },
           { text: "Authentication", link: "/auth" },
           { text: "Images", link: "/responsive-images" },

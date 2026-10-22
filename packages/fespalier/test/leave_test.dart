@@ -483,6 +483,7 @@ void pushedPageGroups() {
           '/g',
           'g',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g1@g', (ref) {
               gRuns++;
               return ref.watch(_gOpen) ? null : '/y';
@@ -493,6 +494,7 @@ void pushedPageGroups() {
           '/g2',
           'g2',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g2@g2', (ref) async {
               gRuns++;
               final open = ref.watch(_gOpen);
@@ -505,6 +507,7 @@ void pushedPageGroups() {
           '/q',
           'q',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'q1@q', (ref) {
               qRuns++;
               return ref.watch(_qOpen) ? null : '/y';
@@ -517,6 +520,7 @@ void pushedPageGroups() {
           'g4',
           appBar: true,
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g4@g4', (ref) {
               gRuns++;
               final answer = ref.watch(_gOpen) ? null : '/y';
@@ -533,6 +537,7 @@ void pushedPageGroups() {
           'gw',
           appBar: true,
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'gw@gw', (ref) {
               final answer = ref.watch(_wOpen) ? null : '/y';
               final wait = gGate;
@@ -549,6 +554,7 @@ void pushedPageGroups() {
           'g5',
           appBar: true,
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g5@g5', (ref) {
               final answer = ref.watch(_gOpen) ? null : '/y';
               return ++g5Evals >= 3
@@ -561,6 +567,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/f',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'f1@f', (ref) {
               fRuns++;
               if (fFails) throw StateError('f fails');
@@ -584,6 +591,7 @@ void pushedPageGroups() {
           '/oa',
           'oa',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'ga@oa', (ref) async {
               final open = ref.watch(_gOpen);
               for (var i = 0; i < baseAwaits; i++) {
@@ -606,6 +614,7 @@ void pushedPageGroups() {
                       'g',
                       'tab/g',
                       redirect: (context, state) => runRedirect(
+                        state,
                         () => refGuard(context, 'g3@tab', (ref) {
                           gRuns++;
                           return ref.watch(_gOpen) ? null : '/y';
@@ -885,7 +894,7 @@ void pushedPageGroups() {
         await settle(tester);
         expect(asked, ['g4 dirty', 'g4 dirty']);
         expect(currentLocation(tester), '/g4');
-        // The guard answers: the re-run that yielded to the questions is refused, and replaces nothing.
+        // The guard answers and passes: the carried re-run lands, asks nothing and leaves the page where it is.
         gGate!.complete();
         await settle(tester);
         expect(asked, ['g4 dirty', 'g4 dirty']);
@@ -1585,6 +1594,7 @@ void pushedPageGroups() {
           '/o',
           'o',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(
               context,
               'g1@o',
@@ -1597,6 +1607,7 @@ void pushedPageGroups() {
             isAsync ? '/adm2' : '/adm',
             isAsync ? 'adm2' : 'adm',
             redirect: (context, state) => runRedirect(
+              state,
               () => firstRedirect([
                 () => refGuard(context, 'g2@adm${isAsync ? 2 : ''}', (ref) {
                   final signedIn = ref.watch(session);

@@ -22,31 +22,44 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_http:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 
 <!-- x-release-please-end -->
 
 Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `http` (`^1.5.0`, for `Abortable`), which is pure Dart,
-and on nothing else: an app that uses `package:http` links no Dio.
+and on `fespalier` and `fespalier_transport` (pure Dart): an app that uses `package:http` links no Dio.
 
 ## Libraries
 
-| Library                                      | What is in it                                                                                                           |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `package:fespalier_http/fespalier_http.dart` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `WriteGuardClient`, `HttpWrites`, `HttpCredentials` |
-| `package:fespalier_http/problem.dart`        | no client: `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf` (the library above exports it)                          |
-| `package:fespalier_http/testing.dart`        | `FakeHttpClient` (answers from a handler, honours an abort, records requests), `FakeHttpCredentials`                    |
+| Library                                      | What is in it                                                                                                                    |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_http/fespalier_http.dart` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `HttpClientTransport`, `TransportClient`                     |
+| `package:fespalier_http/testing.dart`        | `FakeHttpClient` (answers from a handler, honours an abort, records requests)                                                    |
 
 The seam is `package:http`'s own `Client`, `BaseRequest` and `StreamedResponse`: whatever is an `http.Client`
-(`IOClient`, `cupertino_http`, `RetryClient`, a `MockClient`) fits. `HttpCredentials` is the session's
-headers and its "send once more?" for a transfer that is not an `http.Client`; `fespalier_auth`'s `Authorizer`
-implements it. For Dio itself, see
+(`IOClient`, `cupertino_http`, `RetryClient`, a `MockClient`) fits. Since 0.21.0 it is also the way into
+[`fespalier_transport`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_transport/README.md),
+the pure-Dart `HttpTransport` interface every fespalier networking package builds on:
+
+- `HttpClientTransport(client)` is an `HttpTransport` over an `http.Client`, so a session
+  (`fespalier_auth`), a `WriteGuardTransport` and any other decorator send through `package:http`. A failure
+  before the headers are in becomes a `TransportFailure`: `TransportAborted`, `TransportTimedOut`,
+  `TransportUnsent` (the connection was refused, the host was not found, the network was unreachable: read from the
+  text of the error, since this package also builds for the web), `TransportUntrusted` (the TLS certificate was refused:
+  a `HandshakeException`, `TlsException` or `CertificateException`, off the web only) or `TransportBroken` (everything
+  else).
+- `TransportClient(transport)` is the other way: an `http.Client` over any transport chain, for code written for
+  `package:http` (`RetryClient`, `ref.abortable(client)`, a `data.dart`).
+
+`HttpCredentials`, `HttpWrites` and `FakeHttpCredentials` are `fespalier_transport`'s now (`WriteGuardClient` is
+its `WriteGuardTransport`), and the validation decoders (`FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`)
+are `package:fespalier/problem.dart`. For Dio itself, see
 [`fespalier_dio`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_dio/README.md).
 
 ## Abort a load whose page is gone
@@ -84,21 +97,26 @@ Anything else is returned as it was.
 
 ```dart
 final client = RetryClient(
-  WriteGuardClient(http.Client()),
-  when: WriteGuardClient.readsOnly(),
-  whenError: WriteGuardClient.readErrorsOnly((error, stackTrace) => error is SocketException),
+  TransportClient(WriteGuardTransport(HttpClientTransport(http.Client()))),
+  when: TransportClient.readsOnly(),
+  whenError: TransportClient.readErrorsOnly((error, stackTrace) => error is http.ClientException),
 );
 ```
 
-`WriteGuardClient` marks what a write's send answered or threw, so `RetryClient` leaves it alone. A write is any
-method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries an `Idempotency-Key` header: that is
-`HttpWrites.isWrite`, the one rule `fespalier_dio`'s `WriteGuard` uses too.
+`WriteGuardTransport` marks what a write's send answered or threw, and `TransportClient` carries the mark to the
+`http.StreamedResponse` and the `http.ClientException` that `RetryClient` sees, so it leaves a write alone. A write
+is any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless it carries an `Idempotency-Key` header: that is
+`HttpWrites.isWrite` (in `fespalier_transport`), the one rule `fespalier_dio`'s `WriteGuard` uses too. Without a
+`WriteGuardTransport` in the chain `readsOnly()` retries nothing: a response that does not say which request it
+answered might be a write's.
 
 ## The wrapping order
 
-`ref.abortable(...)` outermost, in the `data.dart`; under it the session, then `RetryClient`, then
-`WriteGuardClient` next to the network: `SessionClient(authorizer, inner: RetryClient(WriteGuardClient(client), ...))`.
-`RetryClient` sends a streamed copy of every request, which a `SessionClient` cannot replay after a 401, so the
-retrier goes inside the session unless your API needs a DPoP proof on every attempt.
-[HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md#the-wrapping-order) has the reasons
-and the other order; `fespalier_auth`'s `test/wrapping_order_test.dart` proves both.
+`ref.abortable(...)` outermost, in the `data.dart`; under it a `TransportClient` over the session, then the write
+guard next to the network:
+`ref.abortable(TransportClient(SessionTransport(WriteGuardTransport(HttpClientTransport(client)), authorizer)))`.
+`RetryClient` sends a streamed copy of every request, so a `RetryClient` above a `TransportClient` hands the session a
+body stream, which it reads once and cannot replay after a 401: keep the session's own replay (a request with bytes) in
+mind before putting a retrier above it.
+[HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md#the-wrapping-order) has the reasons and
+the other order.

@@ -1,4 +1,6 @@
 import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/http.dart' as http;
 
 /// Where the API is: `--dart-define=API_URL=https://api.myapp.dev`. The default is a placeholder,
@@ -8,16 +10,27 @@ const String apiUrl = String.fromEnvironment(
   defaultValue: 'https://api.example.com',
 );
 
-/// The client every request of the app goes through. A `data.dart` asks for it with
-/// `ref.abortable(ref.watch(httpClient))`, so the request stops when its page is gone
-/// (docs/http.md, "Cancelling a load whose page is gone"). A test replaces it with a
-/// `FakeHttpClient` (fespalier_http/testing.dart).
+/// The app's one transport. `startup()` builds it once (lib/app/startup.dart) and overrides this
+/// provider with it: the client inside a `WriteGuardTransport` (a retrier above it can tell a write
+/// from a read) and, when the app has OpenTelemetry or Sentry, inside their decorators. Every
+/// package that sends is given that same transport. A test replaces it with a `FakeTransport`
+/// (fespalier_transport/testing.dart).
 ///
-/// This is the one place to wrap it: a retrier for reads, `WriteGuardClient` so a write is never
-/// sent twice, and a session once you sign users in (`authHttpClient` of fespalier_auth, or
-/// `SessionClient`). docs/http.md, "The wrapping order", has the order that works.
-final httpClient = Provider<http.Client>((ref) {
-  final client = http.Client();
-  ref.onDispose(client.close);
-  return client;
-});
+/// The wire order, outermost first: a retrier of your own, the session (`authTransport` of
+/// fespalier_auth is a `SessionTransport` over this same transport), `OtelTransport`,
+/// `SentryTransport`, `WriteGuardTransport`, the client. So each wire send, an auth replay
+/// included, is one span, and a retrier never repeats a write.
+final httpTransport = Provider<HttpTransport>(
+  (ref) => throw StateError(
+    'httpTransport has no default: startup() overrides it (lib/app/startup.dart), '
+    'and a test overrides it with a FakeTransport',
+  ),
+);
+
+/// The client every request of the app goes through: a `package:http` view of [httpTransport]. A
+/// `data.dart` asks for it with `ref.abortable(ref.watch(httpClient))`, so the request stops when
+/// its page is gone (docs/http.md, "Cancelling a load whose page is gone"). A retrier for reads
+/// goes around it: `RetryClient(TransportClient(...), when: TransportClient.readsOnly())`.
+final httpClient = Provider<http.Client>(
+  (ref) => TransportClient(ref.watch(httpTransport)),
+);

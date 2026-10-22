@@ -56,12 +56,14 @@ Future<List<Override>> startup() async {
   final store = await HiveLocalStore.open(directory: dir.path);
   final prefs = await PrefsDataStorage.open(); // null when shared preferences could not open
   return [
-    // the generated client, on a Dio you configure (section 3)
+    // the generated client, on a Dio whose adapter is your transport chain (section 3)
     shopAdapterProvider.overrideWith((ref) => CratestackDioAdapter(dio: ref.watch(dio))),
 
     // the two seams
     crateStackTransport.overrideWith((ref) => GeneratedTransport(ref.watch(shopAdapterProvider))),
-    crateStackErrors.overrideWithValue(const CrateStackErrors([readShopError, DioFailures.read])),
+    crateStackErrors.overrideWithValue(
+      CrateStackErrors([readShopError, (e) => TransportFailures.read(DioErrors.toTransport(e))]),
+    ),
 
     // whose data it is, and where queued work lives
     crateStackScope.overrideWith((ref) => ref.watch(authUserId)),
@@ -112,22 +114,22 @@ calls `ref.read(crateStackAccount).clear()` before the session ends.
 ## 3. The Dio the client uses
 
 ```dart
+// startup(): the chain AuthConfig sends through, the portal and the guard next to the network
+final network = PortalTransport(WriteGuardTransport(HttpClientTransport(http.Client())));
+
 final dio = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))
-    ..interceptors.addAll(const [
-      CrateStackCancelInterceptor(),
-      CrateStackPortalInterceptor(),
-    ]);
+    ..httpClientAdapter = TransportAdapter(ref.watch(authTransport)); // SessionTransport over `network`
   WriteGuard.install(dio); // last: it goes first (fespalier_dio)
   ref.onDispose(dio.close);
   return dio;
 });
 ```
 
-`CrateStackCancelInterceptor` is what makes a page that went away stop its requests (section 4).
-`CrateStackPortalInterceptor` rejects a `text/html` response as an error that `DioFailures.read` reads as
-offline: Dio does not throw on a `200`, so without it a captive portal's page reaches the generated client,
-which cannot decode it, and no reader knows what it threw.
+Since 0.21.0 the generated client's Dio sends through a [transport chain](transport.md#the-interface): `TransportAdapter(chain)` (`fespalier_dio`) is its `httpClientAdapter`, so the session, the write guard and the telemetry decorators are the app's own, and one chain serves this client, the downloads and the images. `lib/dio.dart` and its two interceptors are gone from `fespalier_cratestack` (`package:fespalier_cratestack/dio.dart` until 0.20.0), and the package links neither Dio nor `package:http`.
+
+`PortalTransport` (`fespalier_cratestack`) is what `CrateStackPortalInterceptor` was: it reads the `content-type` of every answer and, for `text/html`, throws a `TransportPortal`, which `TransportFailures.read` reads as offline. No transport treats a `200` as a failure, so without it a captive portal's page reaches the generated client, which cannot decode it, and no reader knows what it threw. Put it below the session, next to the network ([the order](transport.md#decorators-and-their-order)), so a portal's `401` page is offline and not a verdict that renews or ends the session; it passes the request and its attributes through unchanged.
+What makes a page that went away stop its requests (`CrateStackCancelInterceptor` until 0.20.0) is `ref.cancellable` (section 4), which `TransportAdapter` honours.
 `WriteGuard` (from `fespalier_dio`, see [HTTP clients](http.md)) keeps a retrier from
 sending a write twice. The generated RPC reads are POSTs, so `WriteGuard` counts them as writes and a Dio retry
 policy never repeats them. That is what you want: see section 6.
@@ -137,7 +139,6 @@ policy never repeats them. That is what you want: see section 6.
 ```dart
 // lib/app/orders/data.dart
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_cratestack/dio.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:shop/api.dart'; // shopClientProvider (the generated client provider), Order, OrderMapper
 
@@ -220,7 +221,9 @@ Things to know:
 - **`freshness` still decides _when_ a read runs again; `serve` decides _where the answer comes from_.** Do not
   combine `serve` with `dataCache`: `serve` keeps its own copy, per account.
 - **`ref.cancellable` stops the request with the provider.** The generated options carry no cancel token, so the
-  token travels in a zone value that `CrateStackCancelInterceptor` picks up. Call it before the first `await`.
+  abort trigger travels in a zone value (`TransportZone`, in `fespalier_transport`) that `TransportAdapter` merges into
+  the request's `abortTrigger` (a `CrateStackCancelInterceptor` picked up a cancel token from it until 0.20.0). The aborted
+  request fails with a `TransportAborted`, which `TransportFailures.read` reads as `CrateStackCancelled`. Call it before the first `await`.
   The body must be only the client call: `ref.watch` and `ref.read` other providers _before_ it, as the example
   does. A provider that is built inside the body runs in the same zone, and its own requests would take this
   provider's token and be cancelled with it.
@@ -301,6 +304,11 @@ recognises, row by row:
 | `422` `idempotency_key_conflict`                                                    | refused                     | `failed`                                |
 | `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)     |
 | any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only            |
+
+**A refused TLS certificate is not offline** (since 0.21.0). A `TransportUntrusted` (Dio's `badCertificate`) is
+unclassified: a certificate that does not verify may be a captive portal or an attack, so a read behind `serve` serves no
+saved copy for it and the error is rethrown, and a write is kept under its key as for any error no reader knows. Before
+0.21.0 `DioFailures.read` read it as being offline. A `TransportBroken` is unclassified the same way.
 
 **Only the server's own envelope moves the key** (since 0.16.0). A `5xx` that has CrateStack's envelope is a failure
 the server said, and it may have stored it under the key, so the intent takes the next key. A `5xx` with no envelope

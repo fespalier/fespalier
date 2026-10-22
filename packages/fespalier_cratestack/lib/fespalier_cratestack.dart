@@ -2,10 +2,12 @@
 /// are, mutations queued with idempotency keys, rows a device owns merged field by field, and the
 /// triggers that sync them.
 ///
-/// Pure Dart on top of fespalier (no Dio, no Hive, no CrateStack package): the generated client
-/// reaches it through a [CrateStackTransport] and a `CrateStackErrorReader` that the app writes in
-/// about ten lines. `package:fespalier_cratestack/dio.dart` adds cancellation and the Dio error
-/// reader, `hive.dart` a durable store, and `testing.dart` the fakes.
+/// Pure Dart on top of fespalier and `fespalier_transport` (no Dio, no `package:http`, no Hive, no
+/// CrateStack package): the generated client reaches it through a [CrateStackTransport] and a
+/// `CrateStackErrorReader` that the app writes in about ten lines. The HTTP side is transport
+/// pieces: `PortalTransport` (a web page where an answer was expected), `ref.cancellable`
+/// (`CrateStackCancelRef`) and `TransportFailures.read`. `hive.dart` is a durable store, and
+/// `testing.dart` the fakes.
 ///
 /// ```dart
 /// // lib/app/orders/data.dart
@@ -30,6 +32,7 @@ export 'src/intent_queue.dart'
 export 'src/local_store.dart' show InMemoryLocalStore, LocalStore, localStore;
 export 'src/lww.dart' show LwwMerge, OwnedRow, tombstoneField;
 export 'src/owned_rows.dart' show OwnedRows, ownedRows;
+export 'src/portal_transport.dart' show PortalTransport;
 export 'src/read_cache.dart' show CachedAnswer, ReadCache, readCache;
 export 'src/revision.dart'
     show
@@ -58,3 +61,5 @@ export 'src/sync_engine.dart'
         syncEngine,
         syncRunner;
 export 'src/transport.dart';
+export 'src/transport_cancel.dart' show CrateStackCancelRef;
+export 'src/transport_failures.dart' show TransportFailures;

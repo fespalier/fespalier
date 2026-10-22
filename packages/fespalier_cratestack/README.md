@@ -12,7 +12,7 @@ is the short one.
 
 ## Install
 
-Add it next to fespalier (and `fespalier_dio` if your client uses Dio), with the same `url` and the same `ref`: pub
+Add it next to fespalier (and `fespalier_dio` if your generated client uses Dio, for `TransportAdapter` and `DioErrors`), with the same `url` and the same `ref`: pub
 resolves them to one package only if they are the same repository dependency.
 
 <!-- x-release-please-start-version -->
@@ -23,32 +23,33 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.20.0
+      ref: v0.21.0
   fespalier_cratestack:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_cratestack
-      ref: v0.20.0
+      ref: v0.21.0
 ```
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `dio` (`^5.7.0`, only `dio.dart` imports it) and
-`hive_ce` (`^2.16.0`, only `hive.dart` imports it), all pure Dart.
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `fespalier_transport` (an interface, no dependencies of its own) and
+`hive_ce` (`^2.16.0`, only `hive.dart` imports it), all pure Dart. It links neither Dio nor `package:http`
+(`test/no_http_test.dart`): the generated client keeps its own Dio, and you point that Dio's `httpClientAdapter` at
+`TransportAdapter(chain)`.
 
-## Four libraries
+## Three libraries
 
-| Library                                                  | For                                | What is in it                                                                                                                                |
-| -------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Dio or Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync` |
-| `package:fespalier_cratestack/dio.dart`                  | Dio                                | `ref.cancellable`, `CrateStackCancelInterceptor`, `CrateStackPortalInterceptor`, `DioFailures`                                               |
-| `package:fespalier_cratestack/hive.dart`                 | a durable store                    | `HiveLocalStore`, a hive_ce box that never evicts                                                                                            |
-| `package:fespalier_cratestack/testing.dart`              | tests                              | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`                                                    |
+| Library                                                  | For                         | What is in it                                                                                                                                                                                                                |
+| -------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync`, and the HTTP pieces: `ref.cancellable`, `PortalTransport`, `TransportFailures` |
+| `package:fespalier_cratestack/hive.dart`                 | a durable store             | `HiveLocalStore`, a hive_ce box that never evicts                                                                                                                                                                            |
+| `package:fespalier_cratestack/testing.dart`              | tests                       | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`                                                                                                                                    |
 
 ## Wire it
 
@@ -75,7 +76,7 @@ CrateStackFailure? readShopError(Object e) => e is CratestackRpcException
 // startup()
 [
   crateStackTransport.overrideWith((ref) => GeneratedTransport(ref.watch(shopAdapterProvider))),
-  crateStackErrors.overrideWithValue(const CrateStackErrors([readShopError, DioFailures.read])),
+  crateStackErrors.overrideWithValue(CrateStackErrors([readShopError, (e) => TransportFailures.read(DioErrors.toTransport(e))])),
   crateStackScope.overrideWith((ref) => ref.watch(authUserId)),      // whose data this is
   localStore.overrideWithValue(store),                               // await HiveLocalStore.open(directory: supportDir)
   readCache.overrideWithValue(ReadCache.storage(dataStorage, index: store)), // optional: reads on your dataCache storage

@@ -229,7 +229,7 @@ final class CrateStackNoLocalData extends CrateStackFailure {
 typedef CrateStackErrorReader = CrateStackFailure? Function(Object error);
 
 /// The readers, in order: the app's reader for its generated `CratestackRpcException` first, then
-/// `DioFailures.read`.
+/// `TransportFailures.read`.
 ///
 /// A [CrateStackFailure] passes through as itself; anything unknown is null and is rethrown
 /// unchanged by whoever asked.
@@ -252,7 +252,7 @@ final class CrateStackErrors {
 }
 
 /// The app's readers:
-/// `crateStackErrors.overrideWithValue(CrateStackErrors([readGenerated, DioFailures.read]))`.
+/// `crateStackErrors.overrideWithValue(CrateStackErrors([readGenerated, TransportFailures.read]))`.
 final crateStackErrors = Provider<CrateStackErrors>(
   (ref) => const CrateStackErrors([]),
 );

@@ -102,15 +102,15 @@ void main() {
     expect(FespalierConventions.authResult, 'fespalier.auth.result');
     expect(FespalierConventions.authBackend, 'fespalier.auth.backend');
     expect(FespalierConventions.authTrigger, 'fespalier.auth.trigger');
-    expect(FespalierConventions.authDpop, 'fespalier.auth.dpop');
+    expect(FespalierConventions.authScheme, 'fespalier.auth.scheme');
     expect(
       [
         FespalierConventions.authOpRestore,
         FespalierConventions.authOpSignIn,
-        FespalierConventions.authOpRefresh,
+        FespalierConventions.authOpRenew,
         FespalierConventions.authOpSignOut,
       ],
-      ['restore', 'sign_in', 'refresh', 'sign_out'],
+      ['restore', 'sign_in', 'renew', 'sign_out'],
     );
     expect(
       [
@@ -137,6 +137,16 @@ void main() {
     expect(FespalierConventions.opCustom, 'custom');
     expect(FespalierConventions.customName, 'fespalier.custom.name');
     expect(FespalierConventions.customResult, 'fespalier.custom.result');
+  });
+
+  test('the http span (since 0.21.0)', () {
+    expect(FespalierConventions.opHttp, 'http');
+    expect(FespalierConventions.httpMethod, 'http.request.method');
+    expect(FespalierConventions.serverAddress, 'server.address');
+    expect(FespalierConventions.serverPort, 'server.port');
+    expect(FespalierConventions.urlScheme, 'url.scheme');
+    expect(FespalierConventions.httpStatusCode, 'http.response.status_code');
+    expect(FespalierConventions.httpResendCount, 'http.request.resend_count');
   });
 
   test('the image attributes (since 0.9.0)', () {

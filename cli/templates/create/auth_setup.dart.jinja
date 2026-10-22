@@ -1,8 +1,12 @@
 import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
 
 /// Where your identity provider plugs in. Every method throws until you write it: the sign-in
-/// form shows the message, and nothing signs in. docs/auth.md has a backend over a JSON API, one
-/// for OpenID Connect and Keycloak (`OidcBackend`), and the recipes for Firebase and Supabase.
+/// form shows the message, and nothing signs in. It keeps what the provider hands out as a
+/// `TokenCredential` that a `BearerAuthenticator` sends; docs/auth.md has a backend over a JSON
+/// API, one for OpenID Connect and Keycloak (`OidcBackend`), and the recipes for Firebase and
+/// Supabase.
 class IdentityBackend extends AuthBackend {
   const IdentityBackend();
 
@@ -15,20 +19,40 @@ class IdentityBackend extends AuthBackend {
   String get name => 'identity';
 
   @override
+  String get scheme => 'bearer';
+
+  /// How long before an access token expires it is renewed (by the next request that needs it).
+  @override
+  Duration get renewAhead => const Duration(seconds: 30);
+
+  @override
+  RequestAuthenticator get authenticator => const BearerAuthenticator();
+
+  /// Reads the credential a stored session holds.
+  @override
+  TokenCredential readCredential(Map<String, Object?> json) =>
+      TokenCredential.fromJson(json);
+
+  @override
   Future<AuthSession> signIn(SignInRequest request) async => throw _todo;
 
   /// Throws `AuthRejected` when the server refused the refresh token (the session is over), and
   /// anything else when it could not ask (the session stays).
   @override
-  Future<AuthSession> refresh(AuthSession session) async => throw _todo;
+  Future<AuthSession> renew(AuthSession session, {Object? hint}) async =>
+      throw _todo;
 
   @override
   Future<void> signOut(AuthSession session) async => throw _todo;
 }
 
-/// The app's [AuthConfig], read by `startup()` (restoreAuth) and by the tests.
+/// The app's [AuthConfig], read by `startup()` (restoreAuth) and by the tests. [transport] is the
+/// app's one: the API calls (`authTransport`) and your backend's own requests go through it.
 ///
 /// `apiOrigins` is where the session is sent, and nowhere else: add your API's origin
-/// (`Uri.parse('https://api.example.com')`) before calling it with `authHttpClient`.
-AuthConfig authSetup() =>
-    const AuthConfig(backend: IdentityBackend(), apiOrigins: <Uri>[]);
+/// (`Uri.parse('https://api.example.com')`) before calling it with `authTransport`.
+AuthConfig authSetup(HttpTransport transport) => AuthConfig(
+  backend: const IdentityBackend(),
+  transport: transport,
+  apiOrigins: const <Uri>[],
+);

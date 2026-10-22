@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/startup.dart' show Override;
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show HttpTransport;
 import 'package:flutter/foundation.dart'
     show ErrorDescription, FlutterError, FlutterErrorDetails;
 
@@ -15,27 +17,30 @@ import 'util.dart';
 
 /// How the app signs in: one per app (since 0.9.0). Give it to [restoreAuth] in `startup()`.
 final class AuthConfig {
-  /// The [backend] sessions come from, and the [store] that keeps them between runs.
+  /// The [backend] sessions come from, the [transport] requests are sent through, and the
+  /// [store] that keeps sessions between runs.
   const AuthConfig({
     required this.backend,
+    required this.transport,
     this.store = const SecureTokenStore(),
     this.apiOrigins = const <Uri>[],
-    this.leeway = const Duration(seconds: 30),
   });
 
   /// Where sessions come from.
   final AuthBackend backend;
+
+  /// What requests are sent through (since 0.21.0): `HttpClientTransport` (`fespalier_http`),
+  /// `DioTransport` (`fespalier_dio`) or your own. `authTransport` wraps it in a
+  /// `SessionTransport`; a backend that calls its provider (`OidcBackend`) takes the same one.
+  final HttpTransport transport;
 
   /// Where the session is kept between runs: `SecureTokenStore` by default, `MemoryTokenStore`
   /// for tests, and for the web when nothing should persist.
   final TokenStore store;
 
   /// The origins (scheme, host and port) whose requests carry the session. Nothing else gets a
-  /// token, so a request to a third-party host never leaks one.
+  /// credential, so a request to a third-party host never leaks one.
   final List<Uri> apiOrigins;
-
-  /// How long before its expiry an access token is refreshed (lazily, at the next request).
-  final Duration leeway;
 }
 
 /// Reads the stored session and returns the overrides for the app's `ProviderScope` (since
@@ -47,8 +52,8 @@ final class AuthConfig {
 /// ```
 ///
 /// It is synchronous when the store (or a backend that keeps its own session) answers
-/// synchronously, and it never touches the network: no access token is refreshed at start-up, so
-/// an offline start works, and an expired one is refreshed by the first request that needs it.
+/// synchronously, and it never touches the network: no credential is renewed at start-up, so
+/// an offline start works, and an expired one is renewed by the first request that needs it.
 /// With `SecureTokenStore` it is one keychain read before the first frame, shown behind
 /// `splash.dart`, and the guards are synchronous from the first navigation. A store that fails
 /// to read makes `startup()` fail, which the generated `main()` shows with a retry.
@@ -148,28 +153,42 @@ FutureOr<(SessionState, String)> _restore(AuthConfig config) {
   );
 }
 
-FutureOr<_Found> _readStored(AuthConfig config) =>
-    then<String?, _Found>(config.store.read(), (raw) {
-      if (raw == null) return (null, TelemetryOutcome.none);
-      try {
-        final json = jsonDecode(raw);
-        if (json is! Map<String, Object?>) {
-          throw const FormatException(
-            'fespalier_auth: the stored session is not a JSON object',
-          );
-        }
-        return (AuthSession.fromJson(json), TelemetryOutcome.ok);
-      } catch (error, stackTrace) {
-        reportRestoreError(error, stackTrace);
-        return then<void, _Found>(
-          _forget(config),
-          (_) => (null, TelemetryOutcome.error),
-        );
-      }
-    });
+FutureOr<_Found> _readStored(
+  AuthConfig config,
+) => then<String?, _Found>(config.store.read(), (raw) {
+  if (raw == null) return (null, TelemetryOutcome.none);
+  try {
+    final json = jsonDecode(raw);
+    if (json is! Map<String, Object?>) {
+      throw const FormatException(
+        'fespalier_auth: the stored session is not a JSON object',
+      );
+    }
+    final backend = config.backend;
+    // Another backend's session is not read with this one's credential reader: it is
+    // dropped, without a report, as it always was.
+    final named = json['backend'];
+    if (json['v'] == 2 && named is String && named != backend.name) {
+      return then<void, _Found>(
+        _forget(config),
+        (_) => (null, TelemetryOutcome.none),
+      );
+    }
+    return (
+      AuthSession.fromJson(json, backend.readCredential),
+      TelemetryOutcome.ok,
+    );
+  } catch (error, stackTrace) {
+    reportRestoreError(error, stackTrace);
+    return then<void, _Found>(
+      _forget(config),
+      (_) => (null, TelemetryOutcome.error),
+    );
+  }
+});
 
-/// The stored session [session] becomes a state, or is dropped: another backend's, one whose
-/// refresh token has expired, or one bound to a device key that is gone.
+/// The stored session [session] becomes a state, or is dropped: one whose credential can no
+/// longer be renewed, or that the backend's `check` refuses (a device key that is gone).
 FutureOr<(SessionState, String)> _check(
   AuthConfig config,
   AuthSession? session,
@@ -190,26 +209,22 @@ FutureOr<(SessionState, String)> _check(
     return dropped(null, TelemetryOutcome.none);
   }
   final now = clock.now();
-  final refreshExpiry = session.tokens.refreshExpiresAt;
+  final credential = session.credential;
+  final renewableUntil = credential.renewableUntil;
+  final expiresAt = credential.expiresAt;
   if (!own &&
-      ((refreshExpiry != null && !refreshExpiry.isAfter(now)) ||
-          (session.tokens.refreshToken == null &&
-              session.tokens.isExpiredAt(now)))) {
+      ((renewableUntil != null && !renewableUntil.isAfter(now)) ||
+          (!credential.renewable &&
+              expiresAt != null &&
+              !expiresAt.isAfter(now)))) {
     return dropped(SignOutReason.expired, TelemetryOutcome.expired);
   }
-  final binding = session.binding;
-  if (binding != null) {
-    final proof = backend.proof;
-    if (proof == null) {
-      return dropped(SignOutReason.keyLost, TelemetryOutcome.expired);
-    }
-    return proof.thumbprint().then<(SessionState, String)>(
-      (current) => current == binding
-          ? (SignedIn(session), TelemetryOutcome.ok)
-          : dropped(SignOutReason.keyLost, TelemetryOutcome.expired),
-    );
-  }
-  return (SignedIn(session), TelemetryOutcome.ok);
+  return then<SignOutReason?, (SessionState, String)>(
+    backend.check(session),
+    (reason) => reason == null
+        ? (SignedIn(session), TelemetryOutcome.ok)
+        : dropped(reason, TelemetryOutcome.expired),
+  );
 }
 
 /// Deletes the stored session; a store that fails to delete is not worth failing a restore.

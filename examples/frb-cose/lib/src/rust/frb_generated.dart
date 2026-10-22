@@ -1286,7 +1286,9 @@ class NotesCoreImpl extends RustOpaque implements NotesCore {
     idempotencyKey: idempotencyKey,
   );
 
-  /// The engine's events: the last few so far, then each new one, until the Dart side cancels.
+  /// The engine's events: the last few so far, then each new one. The stream ends when the core is dropped, or
+  /// when the next event finds that the Dart side has cancelled (flutter_rust_bridge has no signal for a cancel
+  /// before that), so a cancelled listener costs one waiting task until then.
   Stream<CoreEvent> changes() =>
       RustLib.instance.api.crateApiCoreNotesCoreChanges(that: this);
 

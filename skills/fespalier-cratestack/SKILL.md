@@ -1,6 +1,6 @@
 ---
 name: fespalier-cratestack
-description: "Wiring a CrateStack backend into a fespalier app with fespalier_cratestack (since 0.10.0) — the generate-dart client, the two seams the app writes (a CrateStackTransport over the generated RPC adapter, an error reader with CrateStackFailure.fromEnvelope), the startup() overrides, the transport chain under the generated Dio (PortalTransport, WriteGuardTransport and a TransportAdapter on its httpClientAdapter, since 0.21.0), ref.cancellable in data.dart, TransportFailures.read composed with DioErrors.toTransport, actions as intents with withCrateStackFieldErrors, the server's idempotency contract (keys namespaced by a verified principal) and the answer table, one retry layer, where the embedded SQLite mode fits, and the package's debug messages. Load before connecting a CrateStack client to data.dart or action.dart, configuring its Dio or transport, or when a CrateStack call runs twice, is cancelled with another page, or an override error names crateStackTransport."
+description: "Wiring a CrateStack backend into a fespalier app with fespalier_cratestack (since 0.10.0) — the generate-dart client, the two seams the app writes (a CrateStackTransport over the generated RPC adapter, an error reader with CrateStackFailure.fromEnvelope), the startup() overrides, the transport chain under the generated Dio (PortalTransport, WriteGuardTransport and a TransportAdapter on its httpClientAdapter, since 0.21.0), ref.cancellable in data.dart, TransportFailures.read composed with DioErrors.toTransport, actions as intents with withCrateStackFieldErrors, the server's idempotency contract (keys namespaced by a verified principal) and the answer table, one retry layer, where the embedded SQLite mode fits, a Rust core that is CrateStack's client behind flutter_rust_bridge (since 0.21.1), and the package's debug messages. Load before connecting a CrateStack client to data.dart or action.dart, configuring its Dio or transport, or when a CrateStack call runs twice, is cancelled with another page, or an override error names crateStackTransport."
 ---
 
 # fespalier-cratestack
@@ -373,7 +373,8 @@ same payload under the same `Idempotency-Key` (which a signature can bind). `exa
 COSE_Sign1 transport with a device key from `fespalier_keypair` (a signer for a protocol of your own, never DPoP, and not the
 device sessions of `fespalier_sign_keypair`), sending through the app's one `HttpTransport` (`TransportRequest` in,
 `TransportResponse` out, built once in `startup()`), a Rust CrateStack server that checks it, and an end-to-end test that
-starts the server's binary.
+starts the server's binary. `examples/frb-cose` (since 0.21.1) is the same contract with the sealing
+in CrateStack's own Rust, behind a flutter_rust_bridge core: the device key is still in Dart, which the core calls back to sign.
 
 - **An unsigned `401` is `CrateStackUnauthenticated`**: the intent stays pending under the same key. Do not turn it into a
   retry inside the transport.
@@ -423,6 +424,7 @@ isolate.
 | Where CrateStack's embedded SQLite mode fits and where it does not                                    | [`references/embedded-mode.md`](references/embedded-mode.md)     |
 | Reads, intents, owned rows, sync, testing                                                             | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
 | A transport that signs every request and a server that checks it, end to end                          | [`examples/cose`](../../examples/cose/README.md)                 |
+| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                    | [`examples/frb-cose`](../../examples/frb-cose/README.md)         |
 | What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)        | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
 
 ## Where the code is

@@ -30,7 +30,7 @@ web_copy() {
   name="$(basename "$example")"
   mkdir -p "$work/examples" "$work/packages"
   cp -R "$example" "$work/examples/$name"
-  rm -rf "$work/examples/$name/build" "$work/examples/$name/.dart_tool"
+  rm -rf "$work/examples/$name/build" "$work/examples/$name/.dart_tool" "$work/examples/$name/rust/target" "$work/examples/$name/server/target"
   # fespalier, and every other package of this repository that the example's pubspec.yaml names
   # by a path (fespalier_image, since 0.9.0).
   local package

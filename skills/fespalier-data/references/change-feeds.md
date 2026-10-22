@@ -299,6 +299,8 @@ void main() {
 - **A test that feeds the fake after the container is disposed** gets nothing: disposal cancels the subscription
   (`source.hasListener` is false, `cancelCount` is 1).
 
+The worked case is `examples/frb-cose` (since 0.21.1): a Rust core that is CrateStack's own client, whose `/core` page watches `coreChanges.any` (`lib/src/changes.dart`). Its host tests need one thing this page does not show. A host `flutter test` builds the core through FRB's native-assets hook, but `RustLib.init()` does not find it by its bare name, so `test/support/host_core.dart` opens the file the build put in `build/native_assets/<os>/` (`ExternalLibrary.open`). A widget test that feeds a `FakeChangeSource` needs none of it.
+
 ## A core that sends raw messages: `ChangeCodec`
 
 Since 0.18.0. A typed flutter_rust_bridge stream needs none of this: FRB decodes the enum into the Dart classes, and a core

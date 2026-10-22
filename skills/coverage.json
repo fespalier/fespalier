@@ -967,6 +967,8 @@
         "examples/offline",
         "docs/examples.md#cose",
         "examples/cose",
+        "docs/examples.md#cratestack",
+        "examples/cratestack",
         "docs/examples.md#wire-sizes",
         "examples/wire-sizes",
         "packages/fespalier_cratestack/README.md",

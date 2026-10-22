@@ -946,6 +946,52 @@
           "alt": "The enrolment page a device that is not enrolled gets for /account: Enrol to see /account above a Phone number field and a Send code button."
         }
       ]
+    },
+    "cratestack": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Not enrolled"
+        },
+        {
+          "path": "/enrol",
+          "expect": "Phone number"
+        },
+        {
+          "path": "/orders",
+          "expect": "Enrol to see /orders",
+          "at": "/enrol?from=/orders",
+          "note": "requireSignedIn sends a device that is not enrolled to the enrolment page, before the generated client is asked for anything"
+        },
+        {
+          "path": "/orders/1",
+          "expect": "Enrol to see /orders/1",
+          "at": "/enrol?from=/orders/1"
+        }
+      ],
+      "shots": [
+        {
+          "file": "home.png",
+          "path": "/",
+          "expect": "Not enrolled",
+          "title": "`/`",
+          "alt": "The cratestack example's public home page: CrateStack example in the app bar, Not enrolled, and an Enrol this device button."
+        },
+        {
+          "file": "enrol.png",
+          "path": "/enrol",
+          "expect": "Phone number",
+          "title": "`/enrol`",
+          "alt": "The enrolment page: a back arrow and the title Enrol, a Phone number field and a Send code button."
+        },
+        {
+          "file": "guarded.png",
+          "path": "/orders",
+          "expect": "Enrol to see /orders",
+          "title": "`/orders`, not enrolled",
+          "alt": "The enrolment page a device that is not enrolled gets for /orders: Enrol to see /orders above a Phone number field and a Send code button."
+        }
+      ]
     }
   }
 }

@@ -14,7 +14,7 @@ for the version you run.
 - **A replay** of a finished request returns the stored answer with `Idempotency-Replayed: true`.
 - **A key still being answered** gets `409` with `Retry-After: 1`. The package reads that as "same key, try later"
   (`CrateStackInFlight`).
-- **The same key with a different body** is `422` `VALIDATION_ERROR` with a message starting
+- **The same key with a different body** is `422` `VALIDATION_ERROR` (`invalid_argument` over RPC) with a message starting
   `idempotency_key_conflict`. That is a bug in the caller (the stored body changed): the intent is `failed`, and it is
   **never** shown as a form error.
 - **A TTL bounds the reservation.** An intent never expires on the device, so the server's TTL is the only bound on

@@ -2070,6 +2070,80 @@ fn the_wire_sizes_example_server_builds_with_the_generators_rust() {
     }
 }
 
+#[test]
+fn the_cratestack_example_server_builds_with_the_generators_rust() {
+    // Same as the cose server: a crate of its own with its own rust-toolchain.toml, which the
+    // `cratestack` job reads, so it must not drift from cli/rust-toolchain.toml.
+    assert_eq!(
+        toolchain_channel("examples/cratestack/server/rust-toolchain.toml"),
+        toolchain_channel("cli/rust-toolchain.toml"),
+        "examples/cratestack/server/rust-toolchain.toml (left) and cli/rust-toolchain.toml (right) \
+         differ"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("\n  cratestack:\n"),
+        "ci.yml has no `cratestack` job (examples/cratestack)"
+    );
+    for needle in [
+        "examples/cratestack/server/rust-toolchain.toml",
+        "ORDERS_SERVER_BIN",
+        "FSP_REQUIRE_ORDERS_SERVER",
+        // The generated client is compared with a fresh one, made by the CLI at a commit.
+        "scripts/cratestack-client.sh install",
+        "scripts/cratestack-client.sh check",
+    ] {
+        assert!(
+            ci.contains(needle),
+            "the cratestack job must mention `{needle}`: it builds the server with the pinned \
+             toolchain, requires the end-to-end test to run against it and checks the client"
+        );
+    }
+}
+
+#[test]
+fn the_cratestack_example_pins_what_is_not_fespaliers_by_commit() {
+    // The generated client's pubspec depends on fespalier_transport by git. `--fespalier-ref` is a
+    // commit of fespalier/fespalier, never a `v...` tag: fespalier 0.21.0 is not released, and a
+    // `ref: v...` in a pubspec is read as fespalier's own version (release-please does not bump it).
+    // The example replaces that dependency with the checkout (a dependency override), so the pin is
+    // never resolved here; the script that makes the client and the client must agree on it.
+    let script = read("scripts/cratestack-client.sh");
+    let pinned = |name: &str| {
+        script
+            .lines()
+            .find_map(|l| l.strip_prefix(name)?.strip_prefix('='))
+            .unwrap_or_else(|| panic!("scripts/cratestack-client.sh has no `{name}=`"))
+            .to_string()
+    };
+    let is_commit = |s: &str| s.len() == 40 && s.chars().all(|c| c.is_ascii_hexdigit());
+    let (cratestack_rev, fespalier_ref) = (pinned("CRATESTACK_REV"), pinned("FESPALIER_REF"));
+    assert!(
+        is_commit(&cratestack_rev),
+        "CRATESTACK_REV is a commit: {cratestack_rev}"
+    );
+    assert!(
+        is_commit(&fespalier_ref),
+        "FESPALIER_REF is a commit: {fespalier_ref}"
+    );
+    let client = pubspec_of("examples/cratestack/client");
+    let transport = &client["dependencies"]["fespalier_transport"]["git"];
+    assert_eq!(transport["ref"].as_str(), Some(fespalier_ref.as_str()));
+    assert_eq!(
+        transport["path"].as_str(),
+        Some("packages/fespalier_transport")
+    );
+    let app = pubspec_of("examples/cratestack");
+    assert!(
+        app["dependency_overrides"]["fespalier_transport"]["path"].is_string(),
+        "examples/cratestack/pubspec.yaml must override fespalier_transport with the checkout"
+    );
+    assert!(
+        client["dependencies"].get("dio").is_none(),
+        "the fespalier preset's client links no Dio"
+    );
+}
+
 /// `fsp create` writes the version it is, and spells it out nowhere: the pubspec it plans (for
 /// every feature at once) pins fespalier and every companion to `ref: v<this version>` at one
 /// url, and nothing in its sources or templates carries a version for release-please to miss.

@@ -33,6 +33,20 @@
       "png": "b0230f8df722be852b6b67cbd3f8e767f007eddc89e93add7ddb65b49680a7d2"
     }
   },
+  "cratestack": {
+    "enrol.png": {
+      "spec": "929b5de66aab7c55583f6c0018e10febc1f3db4e523e1b58fc43ee4ecaf844f2",
+      "png": "8df72e8fe5cfed0d45c3bc3e7e997a9c955cda8add5b2b19de3c78673f78042d"
+    },
+    "guarded.png": {
+      "spec": "0105222fb2df04026af1d15b35572489f57d3f52caa6eb4cef16653702146ac4",
+      "png": "cc13a9dc0b7a2827e5d65e80f81280927429106f27f997d0d5980f0593c9c02a"
+    },
+    "home.png": {
+      "spec": "a331e84475204457cc51166254ae9663fcd286c99df766fce7030e4e8c7c37e4",
+      "png": "8e24524228c769405a5525f2f52825a3eadf1aec34ce6a3a269ec85251b730a0"
+    }
+  },
   "device": {
     "enrol.png": {
       "spec": "929b5de66aab7c55583f6c0018e10febc1f3db4e523e1b58fc43ee4ecaf844f2",

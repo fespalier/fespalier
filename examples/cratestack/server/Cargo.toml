@@ -1,0 +1,44 @@
+[package]
+name = "orders-demo-server"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.0"
+license = "MIT"
+publish = false
+description = "The server of fespalier's cratestack example: a CrateStack RPC service whose every call is signed by a device (fespalier_sign_keypair)"
+
+[lib]
+name = "orders_demo_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "orders-demo-server"
+path = "src/main.rs"
+
+[dependencies]
+# Schema macros emit `::cratestack::*` paths, hence the rename. The released 0.15.4: the generated
+# Dart client (CrateStack's own commit 642fc9ab, which is not in a release yet) speaks the same
+# `/rpc/{op_id}` wire, and the end-to-end test proves it.
+cratestack = { package = "cratestack-api", version = "=0.15.4", default-features = false }
+cratestack-codec-cbor = { version = "=0.15.4", default-features = false }
+# The generated structs derive through bare `serde::` paths.
+serde = { version = "1", features = ["derive"] }
+async-trait = "0.1"
+base64 = "0.23"
+getrandom = "0.4"
+# ES256 (the attestations' signature and the device's) and the SHA-256 of a thumbprint, a query and
+# a body. RustCrypto, no C code.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

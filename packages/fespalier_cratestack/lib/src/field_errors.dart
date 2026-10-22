@@ -4,17 +4,22 @@ import 'errors.dart';
 
 /// The code and status of CrateStack's validation refusal.
 const _validationStatus = 422;
-const _validationCode = 'VALIDATION_ERROR';
+const _validationCodes = {
+  // REST: CrateStack's `ValidationError` envelope.
+  'VALIDATION_ERROR',
+  // RPC: its gRPC-style code for the same refusal (`crates/cratestack-core/src/rpc/codes.rs`).
+  'invalid_argument',
+};
 
 /// The documented message of a rejected field: `field 'email' is not a valid email address`.
 final _fieldMessage = RegExp(r"^\s*field '([^']+)'");
 
 /// Reading a validation refusal as [FieldErrors].
 extension CrateStackFieldErrorsOf on CrateStackErrors {
-  /// The fields of a `422` `VALIDATION_ERROR` as fespalier's [FieldErrors], or null when [error] is
+  /// The fields of a `422` `VALIDATION_ERROR` (REST) or `invalid_argument` (RPC) as fespalier's [FieldErrors], or null when [error] is
   /// anything else. The rules, in order:
   ///
-  /// 1. The status is `422` and the code is `VALIDATION_ERROR`.
+  /// 1. The status is `422` and the code is `VALIDATION_ERROR` (REST) or `invalid_argument` (RPC; since 0.21.0).
   /// 2. A message starting `idempotency_key_conflict` is never a field error: it is a bug in the
   ///    caller (the stored body changed), so it is null and the failure is rethrown.
   /// 3. `details` that is a map of field to message, or a list of `{field|path, message}`, maps
@@ -31,7 +36,7 @@ extension CrateStackFieldErrorsOf on CrateStackErrors {
     final failure = classify(error);
     if (failure is! CrateStackRefused ||
         failure.status != _validationStatus ||
-        failure.code != _validationCode) {
+        !_validationCodes.contains(failure.code)) {
       return null;
     }
     if (failure.message.startsWith('idempotency_key_conflict')) return null;
@@ -80,7 +85,7 @@ FieldErrors? _fromDetails(Object? details, String Function(String) name) {
 }
 
 /// On an action's own `Future` (like fespalier_dio's `withFieldErrors`): a `422`
-/// `VALIDATION_ERROR` becomes [FieldErrors].
+/// `VALIDATION_ERROR` (REST) or `invalid_argument` (RPC) becomes [FieldErrors].
 extension CrateStackFieldErrors<T> on Future<T> {
   /// Completes like this future, except that a validation refusal (see
   /// `CrateStackErrors.fieldErrorsOf` for the rules) is thrown as [FieldErrors], so the form shows

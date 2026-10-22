@@ -889,8 +889,8 @@ void pushedPageGroups() {
       });
     }
 
-    testWidgets('a go while the guard waits needs no cancelling: the page '
-        'it leads to is guarded once', (tester) async {
+    testWidgets('a go while the guard waits: the page it leads to is guarded '
+        'once and nothing comes back', (tester) async {
       final r = await reRunning(tester, isAsync: true, wait: true);
       r.go('/counted');
       await tester.pumpAndSettle();

@@ -725,22 +725,19 @@ RouteInformationState<Object?>? _pushRequestOf(RouteInformation info) {
   };
 }
 
-/// Whether the landing that `leaveExit` is asked about moves the pushed page [pageKey] (since
-/// 0.21.0): null when this question is no part of a guard's re-run (the person's, the app's, a
-/// refresh's), true when it is a re-run's landing and one of its redirects answered a location or
-/// failed (the page moves, and `leave()` is asked as it is for a base page's redirect), false when
-/// it is a re-run's landing and the guards passed again (the page is replaced by itself, and nothing
-/// is asked).
+/// What the landing `leaveExit` is asked about does to the pushed page [pageKey] (since 0.21.0): null
+/// when the question is no part of a guard's re-run (the person's, the app's, a refresh's), true
+/// when it is a re-run's landing and a redirect of it answered a location or failed (the page moves,
+/// and `leave()` is asked as for a base page's redirect), false when the guards passed again (the
+/// page is replaced by itself, and nothing is asked).
 ///
-/// A re-run is the navigation `replace` of the page with its own location. go_router asks the page
-/// to leave when that navigation lands, after every redirect has answered. A re-run lands in its own
-/// synchronous call (invariant 8: an asynchronous one is carried on by one that replays the answers,
-/// see [_RouterGuards._carry]), so every redirect has answered when this is asked, and the question
-/// is the re-run's when it is asked inside that call (invariant 5), the provider holds the re-run's
-/// own request (invariant 6) and the entry that leaves is the one the re-run replaces. A question
-/// from anywhere else (the person's press, an app's own `pop()`, however soon after the last guard
-/// answered) is not, so it is asked as usual. A redirect that does not run through `runRedirect` is
-/// not seen, so such a re-run is taken for one that passes.
+/// A re-run lands in its own synchronous call (an asynchronous one is carried on by one that replays
+/// the answers, see [_RouterGuards._carry]), so every redirect has answered when go_router asks. The
+/// question is the landing's when it is asked inside that call (invariant 5), the provider holds the
+/// re-run's own request and the leaving entry is the one it replaces (invariant 6). A question from
+/// anywhere else (the person's press, an app's `pop()`, however soon after the last guard answered)
+/// is asked as usual. A redirect that does not run through `runRedirect` is not seen, so such a
+/// re-run is taken for one that passes.
 bool? guardRerunVerdict(GoRouter router, ValueKey<String> pageKey) {
   final guards = _guardsOf[router];
   final rerun = guards?._landing;
@@ -800,21 +797,16 @@ final class _Rerun {
   final RouteMatchList base;
   final Object? before;
 
-  /// The zone the re-run started in, which a carried one starts in too (see
-  /// [_RouterGuards._carry]).
+  /// The zone the re-run started in, which a carried one starts in too (see [_RouterGuards._carry]).
   final Zone zone;
 
-  /// The answers of the redirects of a re-run this one carries on, by position: each answers at
-  /// once. A location (or null), or a [GuardFailure].
+  /// The answers of the dropped re-run this one carries on, by position (a location, null, or a
+  /// [GuardFailure]), and the answers of this one, replayed ones included.
   final List<Object?> replay;
-
-  /// The answers of this re-run's redirects by position, replayed ones included.
   final answers = <Object?>[];
 
-  /// The `RouteInformationState` the `replace` of the re-run put in the router's provider: the
-  /// identity of its navigation, whose completer is the one of the page it puts on the stack. Null
-  /// until the first redirect, a site, a question or the end of the call has asked for it
-  /// ([adopt]).
+  /// The `RouteInformationState` the `replace` of the re-run put in the provider: the identity of
+  /// its navigation. Null until the first redirect, site or question of the call asks for it.
   RouteInformationState<Object?>? request;
 
   /// Whether a redirect of the re-run answered a location or failed: the landing moves the page.

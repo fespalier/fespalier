@@ -885,7 +885,7 @@ void pushedPageGroups() {
         await settle(tester);
         expect(asked, ['g4 dirty', 'g4 dirty']);
         expect(currentLocation(tester), '/g4');
-        // The guard answers: the re-run that yielded to the questions is refused, and replaces nothing.
+        // The guard answers and passes: the carried re-run lands, asks nothing and leaves the page where it is.
         gGate!.complete();
         await settle(tester);
         expect(asked, ['g4 dirty', 'g4 dirty']);

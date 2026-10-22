@@ -209,7 +209,7 @@ question, and the traps (empty dashboards, `otel_zone`'s `runGuarded` blanking a
 
 ## Examples
 
-`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry`, `examples/adopt`, `examples/cose`, `examples/i18n`,
+`examples/minimal`, `examples/shop`, `examples/features`, `examples/auth`, `examples/telemetry`, `examples/adopt`, `examples/cose`, `examples/frb-cose`, `examples/i18n`,
 `examples/maps` and `examples/offline` test their routes with `pumpRouter` from `package:fespalier/testing.dart`; `examples/plugins` pumps
 `AppMain.root()` (and uses `pumpRouter` in its push test), and `examples/tabs` builds its own `MaterialApp.router`. `examples/shop` also carries what `fsp test` and
 `fsp maestro` write (`test/routes/`, `.maestro/routes/`);

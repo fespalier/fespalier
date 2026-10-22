@@ -244,6 +244,25 @@ just wire-sizes                                                                 
 
 The scenario's payloads are tens of bytes, so its totals are mostly headers; the sweeps go to 300 KB, where JSON's overhead over CBOR depends on whether the text needs escaping. The `Bearer` baseline is realistic in _size_ but not verified, which the report says.
 
+## frb-cose
+
+[`examples/frb-cose`](https://github.com/fespalier/fespalier/tree/main/examples/frb-cose) (since 0.22.0) is the notes app of [`examples/cose`](https://github.com/fespalier/fespalier/tree/main/examples/cose) with a different split: the network layer is a **Rust core** behind [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge) 2.13.0, and the core is CrateStack's own generated Rust client. It seals every call as a `COSE_Sign1` message with `cratestack-cose`, and the device key stays in Dart, which the core calls back to sign. Its [README](https://github.com/fespalier/fespalier/blob/main/examples/frb-cose/README.md) has the architecture, a sealed call across the bridge, the answer table and the parts that are not built.
+
+- the core (`rust/`) is `include_client_schema!` over the example's own schema, on `cratestack-client` 0.15.3 with its `cose` feature: the sealed transport, the registration of the device key and the journal of the calls are CrateStack's, or the core's on top of them, never re-implemented in Dart;
+- a `CoreTransport` implements `CrateStackTransport` over the core, so [`fespalier_cratestack`](cratestack.md)'s `ref.serve` (the read) and its intents (the write, under one `Idempotency-Key`) run unchanged;
+- the core's events (`Registered`, `Forgotten`, `Called`) are one subscription in a [`ChangeFeed`](data.md#a-rust-cores-changes-fespalier_frb), and the `/core` page rebuilds on each one;
+- a Rust server (`examples/frb-cose/server`, a copy of the cose server, in memory) and the tests: the core in Rust against the server in process, the Dart tests against the real core built by the build hook, and an end-to-end test that starts the server's binary.
+
+```sh
+cd examples/frb-cose/server && cargo run --locked -- --listen 127.0.0.1:8787 --server-scalar-hex <64 hex digits>   # prints the key to pin
+cd examples/frb-cose && flutter create --empty . --platforms=android,ios,macos,linux,windows   # adds the platform folders
+flutter run --dart-define=FRB_COSE_SERVER_JWK='{…}' --dart-define=FRB_COSE_SERVER_URL=http://127.0.0.1:8787
+cd examples/frb-cose && flutter test   # builds the Rust core first: rustup is needed, and the first run installs the targets rust/rust-toolchain.toml lists (about 2 GB, once)
+just frb-cose                          # the server's and the core's gates, the bindings check, then the app's tests with the server required
+```
+
+The server keeps its notes and registrations in memory, and a restart forgets them. A web build has no core: its pages say so and make no call. The steps a device needs (the native build on each platform, the device key's callback into a hardware keystore, plain `http` from the core's socket on Android and iOS, and backgrounding during a call) are not checked by any test; the README lists them as UNCHECKED, and the device-test issue has the steps to try them.
+
 ## i18n
 
 [`examples/i18n`](https://github.com/fespalier/fespalier/tree/main/examples/i18n) is [`fespalier_tolgee`](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_tolgee) with no network and no key (see [i18n with Tolgee](i18n-tolgee.md)):

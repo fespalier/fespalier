@@ -2168,7 +2168,7 @@ fn the_frb_cose_example_pins_one_flutter_rust_bridge() {
     }
 }
 
-/// The four lockfiles of the CrateStack examples (cose's and wire-sizes' servers, frb-cose's server and its core)
+/// The four lockfiles of the `CrateStack` examples (cose's and wire-sizes' servers, frb-cose's server and its core)
 /// resolve every `cratestack` crate they share to one version: an example on another one would prove a different
 /// protocol from the others.
 #[test]

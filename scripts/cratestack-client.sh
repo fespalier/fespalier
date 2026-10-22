@@ -41,8 +41,8 @@ schema=$example/server/schema.cstack
 # The package's SDK constraint is '>=3.0.0 <4.0.0', so that is the language version dart format uses
 # for it inside the example (its package_config says so): the style of Dart 3.0.
 format() {
-  find "$1" -name '*.dart' ! -name '*.g.dart' -not -path '*/.dart_tool/*' -print0 \
-    | xargs -0 dart format --language-version=3.0 --output=write --summary=none >/dev/null 2>&1
+  find "$1" -name '*.dart' ! -name '*.g.dart' -not -path '*/.dart_tool/*' -print0 |
+    xargs -0 dart format --language-version=3.0 --output=write --summary=none > /dev/null 2>&1
 }
 
 require_cli() {
@@ -71,12 +71,12 @@ case "${1:-}" in
   generate)
     out=$example/client
     # A type that left the schema must leave the client: the generator only writes.
-    rm -rf "$out/lib" "$out/test" "$out/example" "$out/.dart_tool"
+    rm -rf "${out:?}/lib" "${out:?}/test" "${out:?}/example" "${out:?}/.dart_tool"
     generate_into "$out"
     cp "$out/analysis_options.yaml" "$out/analysis_options.yaml.generated"
     # Resolve the client on its own, with fespalier_transport from this checkout (the pubspec pins a
     # commit of github.com/fespalier/fespalier), and run its builders.
-    cat >"$out/pubspec_overrides.yaml" <<'YAML'
+    cat > "$out/pubspec_overrides.yaml" << 'YAML'
 dependency_overrides:
   fespalier_transport:
     path: ../../../packages/fespalier_transport

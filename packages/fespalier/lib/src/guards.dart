@@ -138,9 +138,13 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 ///    commit that shows another entry on top closes it.
 /// 2. A commit is a push only when its top entry's completer belongs to a request whose redirects
 ///    ran: the request the provider holds at the commit, or one stored in [_requests].
-/// 3. A guarded pushed page whose key passed no push commit is never built, never entered, and
-///    never asked `leave()`. A key that passed stays passed (a page in a tab that is not on screen
-///    is not in the configuration, and it is not held when the tab comes back).
+/// 3. A guarded pushed page is never built, never entered and never asked `leave()` unless its guard
+///    passed, for the location it shows, in a push commit of that page. A pass is forgotten when the
+///    page has left the configuration for good (a pop, a `go`, a tab left): the browser's back and
+///    forward bring such a page back with its old key, and it is a page that passed nothing. Only a
+///    page of a tab that is not on screen is kept, because it comes back with its tab. A pass is for
+///    one location: a page that a guard or the app's `replace` moved has the key of the page that
+///    passed, and is not that page.
 /// 4. A guarded pushed page shown by any other commit is re-run once, after the frame, if it is
 ///    still on top.
 /// 5. [_landing] lives exactly as long as [_rerun]'s synchronous `replace` call, so no callback
@@ -194,19 +198,26 @@ final class _RouterGuards {
     return waiter.future;
   }
 
-  /// The pushed pages whose redirects passed in a push commit, by page key (invariant 3): a page
-  /// with a redirect that is not here is held back ([refuses]). Keyed by page key, not by
-  /// completer, because a refresh decodes every pushed entry with a new completer and keeps its
-  /// key, and so keeps the page's state.
+  /// The guarded pushed pages whose redirects passed in a push commit, by page key, each with the
+  /// location that passed and the tabs it lives in (invariant 3): a page with a redirect whose key is
+  /// not here, or is here for another location, is held back ([_held], [refuses]). Keyed by page key,
+  /// not by completer, because a refresh decodes every pushed entry with a new completer and keeps
+  /// its key, and so keeps the page's state.
   ///
-  /// A key leaves the set only when a landing of its page fails ([_judge]). It is not forgotten when
-  /// the page is missing from the configuration: the pushed pages of a tab that is not on screen are
-  /// not in it, and they come back, with their state, when the tab does; forgetting their keys held
-  /// them back and dropped a dirty page's `leave()` question. go_router makes a pushed page's key
-  /// from a random string and never uses it twice, so a key that stays is harmless, and the set
-  /// grows by one short string for each guarded page pushed in the life of the router (a small leak,
-  /// taken on purpose: there is no way to tell from here that an offstage page is gone for good).
-  final _passed = <String>{};
+  /// A page key is not one page's for good. go_router makes it at the push and keeps it when the page
+  /// is replaced (a guard's re-run, the app's `replace`: the page that stands in its place has the key
+  /// of the old one), and it writes it into the history entry, so the browser's back and forward
+  /// restore a page that is gone with the key it had. So a pass is for a location ([_Passed.uri]; the
+  /// landing of a replace gives the key its new one), and a key is forgotten as soon as its page has
+  /// left the configuration for good ([_forgetGone], in [_judge]). The one page that is not in the
+  /// configuration and comes back, with its state, is a pushed page of a tab that is not on screen:
+  /// its key is kept while its tab is parked, and forgetting it held the page back when the tab came
+  /// back and dropped a dirty page's `leave()` question.
+  ///
+  /// So the set holds at most the guarded pages the router can show again: the pushed pages on the
+  /// screen and those of the tabs that are parked. It does not grow with the pages pushed in the life
+  /// of the router (`passedPageCount` is pinned in pushed_guard_history_test.dart).
+  final _passed = <String, _Passed>{};
 
   /// The completer each pushed page's `Future` answers to (invariant 10): the one of the last push
   /// commit of the page key that was not a re-run's. A re-run forwards its own result there, so the
@@ -631,10 +642,12 @@ final class _RouterGuards {
 
     if (request != null && top != null) {
       final key = top.pageKey.value;
-      if (top.matches.isError) {
+      // The pass is for the location the page shows now: a re-run that moved the page, or the app's
+      // `replace`, gives the key a new one, or none when the page is not guarded or failed.
+      if (top.matches.isError || !_guarded(top)) {
         _passed.remove(key);
       } else {
-        _passed.add(key);
+        _passed[key] = _Passed(top.matches.uri, _tabsOf(config.matches, key));
       }
       // A re-run's own commit keeps the completer the caller holds; any other commit is the
       // caller's navigation, and its completer is the one to answer (invariant 10).
@@ -649,13 +662,33 @@ final class _RouterGuards {
       _requests[top.completer] = null;
       rerun?.landed = true;
     }
-    // Not [_passed]: see there.
     final keys = {for (final e in pushed) e.pageKey.value};
+    _forgetGone(config, keys);
     _completers.removeWhere((k, _) => !keys.contains(k));
 
     if (request == null && shown != null && _guarded(shown)) {
       _schedule(shownKey!);
     }
+  }
+
+  /// Forgets the passes of the pages that have left for good: those whose key is not among the
+  /// pushed pages [present] of [config], except the pages of a tab that is parked. A page is parked
+  /// when every tab around it, outermost first, is still on screen up to one that shows another
+  /// branch; one whose tab has gone (its shell is not in [config]), or whose tab shows its branch
+  /// and not the page (it was popped), is gone. The same rule as `RouterWatch` has for a page that
+  /// left, which asks it of the walk it makes, but in order: a page in an inner shell of a parked
+  /// outer tab is parked, though its inner shell is not on screen.
+  void _forgetGone(RouteMatchList config, Set<String> present) {
+    Map<String, GlobalKey<NavigatorState>>? shown;
+    _passed.removeWhere((key, passed) {
+      if (present.contains(key)) return false;
+      if (passed.tabs.isEmpty) return true;
+      if (shown == null) {
+        shown = {};
+        _shownTabs(config.matches, shown!);
+      }
+      return !_parked(passed.tabs, shown!);
+    });
   }
 
   /// The push request whose landing the commit with [top] on top is (invariant 2): the one the
@@ -704,7 +737,7 @@ final class _RouterGuards {
   /// passed (a restored page, or a failed one).
   bool _held(ImperativeRouteMatch entry) =>
       !entry.matches.isError &&
-      !_passed.contains(entry.pageKey.value) &&
+      _passed[entry.pageKey.value]?.uri != entry.matches.uri &&
       _guarded(entry);
 
   /// Judges the configuration the router shows now, if no one did yet: the first reader of what a
@@ -735,6 +768,62 @@ final class _RouterGuards {
     }
     _live.clear();
   }
+}
+
+/// A tab: a branch of the [StatefulShellRoute] whose page key is `shell`, known by its navigator.
+typedef _Tab = ({String shell, GlobalKey<NavigatorState> branch});
+
+/// What a pushed page passed (see [_RouterGuards._passed]): the location, and the tabs the page
+/// lived in at the landing, outermost first.
+final class _Passed {
+  _Passed(this.uri, this.tabs);
+
+  final Uri uri;
+  final List<_Tab> tabs;
+}
+
+/// The tabs around the pushed page [key] in [matches], outermost first; empty when it is in none.
+List<_Tab> _tabsOf(List<RouteMatchBase> matches, String key) {
+  final tabs = <_Tab>[];
+  _tabsAround(matches, key, tabs);
+  return tabs;
+}
+
+bool _tabsAround(List<RouteMatchBase> matches, String key, List<_Tab> out) {
+  for (final m in matches) {
+    if (m is ImperativeRouteMatch) {
+      if (m.pageKey.value == key) return true;
+    } else if (m is ShellRouteMatch) {
+      final tab = m.route is StatefulShellRoute;
+      if (tab) out.add((shell: m.pageKey.value, branch: m.navigatorKey));
+      if (_tabsAround(m.matches, key, out)) return true;
+      if (tab) out.removeLast();
+    }
+  }
+  return false;
+}
+
+/// The branch each tab shell on screen shows, by the shell's page key.
+void _shownTabs(
+  List<RouteMatchBase> matches,
+  Map<String, GlobalKey<NavigatorState>> out,
+) {
+  for (final m in matches) {
+    if (m is! ShellRouteMatch) continue;
+    if (m.route is StatefulShellRoute) out[m.pageKey.value] = m.navigatorKey;
+    _shownTabs(m.matches, out);
+  }
+}
+
+/// Whether a page in [tabs] is parked: waiting offstage in a tab that comes back (see
+/// [_RouterGuards._forgetGone]).
+bool _parked(List<_Tab> tabs, Map<String, GlobalKey<NavigatorState>> shown) {
+  for (final tab in tabs) {
+    final now = shown[tab.shell];
+    if (now == null) return false;
+    if (now != tab.branch) return true;
+  }
+  return false;
 }
 
 /// Whether [entry]'s route chain has a redirect (its own, or a route or shell above it in the pushed
@@ -836,6 +925,11 @@ bool isGuardRerun(GoRouter router, Object? state) {
 bool isHeldPage(GoRouter router, ValueKey<String> pageKey) =>
     !pageKey.value.startsWith('/') &&
     (_guardsOf[router]?.refuses(pageKey.value) ?? false);
+
+/// How many pushed pages [router] remembers a pass for (see `_RouterGuards._passed`): the tests pin
+/// that it is the number of guarded pages that can still come back, not the number ever pushed.
+@visibleForTesting
+int passedPageCount(GoRouter router) => _guardsOf[router]?._passed.length ?? 0;
 
 /// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
 /// page the walk of `RouterWatch` treats as an error view, which covers the page below it.

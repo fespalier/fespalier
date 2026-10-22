@@ -3,7 +3,11 @@
 // the core's side of the wire only; the real server's checks are in the Rust tests and the end-to-end test.
 import 'dart:typed_data';
 
+import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frb_cose_example/src/core_transport.dart';
+import 'package:frb_cose_example/src/frb_core.dart';
+import 'package:frb_cose_example/src/notes.dart';
 import 'package:frb_cose_example/src/rust/api/core.dart';
 
 import 'support/fakes.dart';
@@ -174,6 +178,23 @@ void main() {
       ).then<Object?>((_) => null, onError: (Object e) => e);
 
       expect((error! as CoreError).kind, CoreErrorKind.badInput);
+    },
+  );
+  test(
+    'the transport over the real core: an unsigned 503 is offline, under the same key',
+    () async {
+      final stub = await _stub();
+      addTearDown(stub.close);
+      final core = FrbNotesCore(await _open(stub, CountingSigner()));
+
+      await expectLater(
+        CoreTransport(core).send(
+          const RpcCall(Ops.addNote, {'text': 'hi'}),
+          idempotencyKey: 'k#0',
+        ),
+        throwsA(isA<CrateStackOffline>()),
+      );
+      expect(stub.to('/rpc/procedure.addNote').single.idempotencyKey, 'k#0');
     },
   );
 }

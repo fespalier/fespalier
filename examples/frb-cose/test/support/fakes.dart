@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:fespalier_frb/testing.dart';
+import 'package:frb_cose_example/src/core.dart';
+
 /// What the stub server was sent, for the assertions.
 final class SeenRequest {
   const SeenRequest({
@@ -129,4 +132,75 @@ final class CountingSigner {
     if (!signs) return null;
     return Uint8List.fromList(List<int>.filled(64, 1));
   }
+}
+
+/// The core of a test of the page or of the transport: it answers from a script, records every call, and keeps the
+/// journal and the change stream the core keeps (a call emits `Called`, whatever its answer), so the `/core` page
+/// reads it as it reads the real core.
+final class FakeNotesCore implements NotesCore {
+  /// A fake core. [available] false is a build without one.
+  FakeNotesCore({this.available = true, this.kid = 'fake-kid'});
+
+  @override
+  final bool available;
+
+  /// The key id the core reports.
+  final String kid;
+
+  /// Whether the core reports the key registered. A test sets it, as the real core would after a registration.
+  bool registered = false;
+
+  /// Every call, in order: the op, its arguments as JSON and its idempotency key (empty for a read).
+  final List<({String op, String argsJson, String idempotencyKey})> calls = [];
+
+  /// What the next calls do, in order: a [CoreAnswer] to return or a [CoreError] to throw. Once it is empty, a call
+  /// answers `200` with an empty object.
+  final List<Object> next = [];
+
+  final List<JournalEntry> _journal = [];
+  final FakeChangeSource<CoreEvent> _events = FakeChangeSource<CoreEvent>();
+
+  @override
+  Future<CoreAnswer> call({
+    required String op,
+    required String argsJson,
+    required String idempotencyKey,
+  }) async {
+    calls.add((op: op, argsJson: argsJson, idempotencyKey: idempotencyKey));
+    final scripted = next.isEmpty ? null : next.removeAt(0);
+    if (scripted is CoreError) {
+      _record(op, idempotencyKey, JournalOutcome.unreachable, null);
+      throw scripted;
+    }
+    final answer = scripted is CoreAnswer
+        ? scripted
+        : const CoreAnswer(status: 200, bodyJson: '{}');
+    _record(op, idempotencyKey, JournalOutcome.answered, answer.status);
+    return answer;
+  }
+
+  void _record(String op, String key, JournalOutcome outcome, int? status) {
+    _journal.add(
+      JournalEntry(
+        op: op,
+        idempotencyKey: key,
+        outcome: outcome,
+        status: status,
+        sent: true,
+      ),
+    );
+    _events.emit(CoreEvent(kind: CoreEventKind.called, op: op));
+  }
+
+  /// Delivers [event] on the change stream, as the core does for a registration or a forgotten key.
+  void emit(CoreEvent event) => _events.emit(event);
+
+  @override
+  Stream<CoreEvent> changes() => _events.stream;
+
+  @override
+  List<JournalEntry> journal() => List.unmodifiable(_journal);
+
+  @override
+  CoreStatus status() => CoreStatus(registered: registered, kid: kid);
 }

@@ -61,8 +61,8 @@ GuardResult guard(Ref ref, {required Uri uri}) =>
 ```
 
 - **Signing out** needs no routing code. The guard watches the session, so when it changes the router runs the
-  redirects again and moves the user to `/login` from whatever page they were on (a pushed page can stay:
-  [#258](https://github.com/fespalier/fespalier/issues/258)).
+  redirects again and moves the user to `/login` from whatever page they were on, a pushed one too (since 0.21.0,
+  [Guards](guards.md#a-guard-on-a-pushed-page)).
 - **Signing in** is the login page's to finish: `context.go(returnTo(from))` sends the user where they were going
   ([Sending people back](guards.md#sending-people-back)).
 - **Starting a game** is a navigation, `const GameRoute().go(context)`, and the game ending is another one, back to

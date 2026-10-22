@@ -51,9 +51,10 @@ GuardResult _check(
 /// ```
 ///
 /// The guard watches the session, so it runs again on sign-out and the user is moved to the
-/// sign-in page in that frame. A page that was pushed can stay: go_router's `refresh()` does not
-/// run a pushed page's redirects (fespalier/fespalier#258). It does not run again on a token
-/// refresh.
+/// sign-in page in that frame, from a page that was pushed too (since 0.21.0: the guard of a pushed
+/// page watches while the page is on top, and a page go_router shows again without its redirect, after
+/// a refresh or a pop back, runs it again after the frame; docs/guards.md, "A guard on a pushed
+/// page"). It does not run again on a token refresh.
 GuardResult requireSignedIn(
   Ref ref,
   Uri uri, {

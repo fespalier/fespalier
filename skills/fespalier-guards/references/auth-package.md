@@ -546,8 +546,10 @@ session`), deletes and answers `SignedOut()`: the user signs in once more. A wid
   store is cleared, the backend's `signOut` runs (its errors are swallowed) and its `discard` forgets what was
   bound to the session (a DPoP key, a device's keys). `endSession(reason)` (since 0.21.0) is the same without
   the server call, for an app whose own API says the device is revoked (`SignOutReason.revoked`). A button over
-  a page that was **pushed** should navigate too (`const HomeRoute().go(context)`): a guard under a pushed page reacts
-  only once it is uncovered (see `auth-patterns.md`).
+  a page that was **pushed** needs no navigation when that page is behind the guard (the guard of a pushed page
+  watches while the page is on top, since 0.21.0, and a sign-out over a guarded base page replaces the whole stack);
+  over a pushed page with no guard of its own, navigate too (`const HomeRoute().go(context)`): the guards under a
+  pushed page react only once it is uncovered (see `auth-patterns.md`).
 - **`apiOrigins` is an allow-list** (scheme, host and port). `SessionTransport` sends nothing to another host,
   so a credential cannot leak to a third party. An empty list is an error the first time `authorizer` is read:
   `fespalier_auth: AuthConfig.apiOrigins is empty, so no request would carry the session; list your API's origins, e.g. apiOrigins: [Uri.parse('https://api.example.com')]`.

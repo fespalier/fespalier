@@ -135,9 +135,9 @@ StatefulShellRoute.indexedStack(
   parentNavigatorKey: rootNavigatorKey,
 {% endif %}
 {% if r.redirects | length == 1 %}
-  redirect: (context, state) => runRedirect(() => {{ redirect_call(r.redirects[0]) | indent(2) }}),
+  redirect: (context, state) => runRedirect(state, () => {{ redirect_call(r.redirects[0]) | indent(2) }}),
 {% elif r.redirects %}
-  redirect: (context, state) => runRedirect(() => firstRedirect([
+  redirect: (context, state) => runRedirect(state, () => firstRedirect([
 {% for c in r.redirects %}
     () => {{ redirect_call(c) | indent(4) }},
 {% endfor %}
@@ -190,9 +190,9 @@ GoRoute(
   caseSensitive: false,
 {% endif %}
 {% if r.redirects | length == 1 %}
-  redirect: (context, state) => runRedirect(() => {{ redirect_call(r.redirects[0]) | indent(2) }}),
+  redirect: (context, state) => runRedirect(state, () => {{ redirect_call(r.redirects[0]) | indent(2) }}),
 {% elif r.redirects %}
-  redirect: (context, state) => runRedirect(() => firstRedirect([
+  redirect: (context, state) => runRedirect(state, () => firstRedirect([
 {% for c in r.redirects %}
     () => {{ redirect_call(c) | indent(4) }},
 {% endfor %}

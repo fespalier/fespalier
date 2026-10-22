@@ -399,7 +399,7 @@ void main() {
 
     GoRoute guarded() => GoRoute(
       path: '/g',
-      redirect: (context, state) => runRedirect(() {
+      redirect: (context, state) => runRedirect(state, () {
         guardRuns++;
         throw StateError('boom');
       }),
@@ -644,7 +644,8 @@ void main() {
       GoRoute(path: '/', builder: (_, _) => const Text('HOME')),
       GoRoute(
         path: '/boom',
-        redirect: (_, _) => runRedirect(() => throw StateError('boom')),
+        redirect: (_, state) =>
+            runRedirect(state, () => throw StateError('boom')),
         builder: (_, _) => const Text('BOOM'),
       ),
     ]);

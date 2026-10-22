@@ -32,7 +32,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = 'ee5f0b42fd50a275';
+  static const String _version = '95e5fd2a93ca53be';
   static const Map<String, String> _kept = {
     '(router)': '008db6dd',
     'AccountRoute.data': '672145b5',
@@ -132,7 +132,7 @@ abstract final class AppRoutes {
         routes: [
           GoRoute(
             path: 'account',
-            redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@2', refGuard(context, 'g1@2', (ref) => _i3.guard(ref, uri: state.uri)))),
+            redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g1@2', refGuard(context, 'g1@2', (ref) => _i3.guard(ref, uri: state.uri)))),
             pageBuilder: (context, state) => namedPage('/account', () => _i1.transition(
               state.pageKey,
               refusedView(context, state) ?? DataView(
@@ -147,7 +147,7 @@ abstract final class AppRoutes {
           ),
           GoRoute(
             path: 'transfer',
-            redirect: (context, state) => runRedirect(() => traceGuard(state, 'g1@3', refGuard(context, 'g1@3', (ref) => _i3.guard(ref, uri: state.uri)))),
+            redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g1@3', refGuard(context, 'g1@3', (ref) => _i3.guard(ref, uri: state.uri)))),
             pageBuilder: (context, state) => namedPage('/transfer', () => _i1.transition(
               state.pageKey,
               refusedView(context, state) ?? const _i7.TransferPage(),
@@ -155,7 +155,7 @@ abstract final class AppRoutes {
           ),
           GoRoute(
             path: 'enrol',
-            redirect: (context, state) => runRedirect(() => traceGuard(state, 'g4@4', guardWithParams(
+            redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g4@4', guardWithParams(
               () => _params4(state),
               (v) => refGuard(context, 'g4@4', (ref) => _i9.guard(ref, from: v.from)),
             ))),

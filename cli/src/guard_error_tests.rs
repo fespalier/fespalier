@@ -89,9 +89,9 @@ fn every_redirect_runs_through_run_redirect() {
     has(
         &c,
         &[
-            "redirect: (context, state) => runRedirect(() => firstRedirect([",
-            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'g",
-            "redirect: (context, state) => runRedirect(() => traceGuard(state, 'r",
+            "redirect: (context, state) => runRedirect(state, () => firstRedirect([",
+            "redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g",
+            "redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'r",
         ],
     );
     assert_eq!(

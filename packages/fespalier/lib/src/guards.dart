@@ -122,26 +122,25 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// Since 0.21.0 it also holds the pushed pages of the router (fespalier/fespalier#258). go_router
 /// restores a pushed page on a refresh, a restore, a pop back or a hot-reload swap without running
 /// its redirect, and a page whose redirect threw is restored as if it had passed. So this class
-/// runs the guard of the page on top again (`replace`, which runs the redirects of its entry and
-/// keeps its page key), and holds back a page whose guard has not passed in a navigation that
-/// pushed it: the router builds nothing for it (`refusedView`).
+/// runs the guard of the page on top again (a `replace` of the page with its own location, which
+/// runs the redirects of its entry and keeps its page key: a re-run), and holds back a page whose
+/// guard has not passed in a navigation that pushed it (`refusedView`).
 ///
 /// **Identity comes only from go_router's own objects.** An entry is known by its
 /// `ImperativeRouteMatch.completer`, a navigation by the `RouteInformationState` it put in the
-/// route information provider (its completer is the one of the entry the navigation puts on the
-/// stack). There is no listener on that provider, no zone of our own, no count of notifications, no
-/// timer and no new microtask: the only deferred work is post-frame callbacks. What was tried
-/// before (the provider's value, the notifications, a zone, a copy of the last request) failed in
-/// six reviews, each time by leaking one navigation's identity into another.
+/// route information provider (its completer is the one of the entry it puts on the stack). Nothing
+/// else says which navigation is on the way: six reviews found a leak in each of the provider's
+/// value, a count of its notifications, a zone and a table of re-runs. Do not add one.
 ///
-/// The invariants, each pinned by test/pushed_guard_test.dart or test/leave_test.dart:
+/// The invariants (pushed_guard_*_test.dart, leave_test.dart and no_timers_guards_test.dart pin them):
 ///
 /// 1. A site is owned by the entry whose navigation evaluated it (or by the base), and the first
 ///    commit that shows another entry on top closes it.
 /// 2. A commit is a push only when its top entry's completer belongs to a request whose redirects
 ///    ran: the request the provider holds at the commit, or one stored in [_requests].
 /// 3. A guarded pushed page whose key passed no push commit is never built, never entered, and
-///    never asked `leave()`.
+///    never asked `leave()`. A key that passed stays passed (a page in a tab that is not on screen
+///    is not in the configuration, and it is not held when the tab comes back).
 /// 4. A guarded pushed page shown by any other commit is re-run once, after the frame, if it is
 ///    still on top.
 /// 5. [_landing] lives exactly as long as [_rerun]'s synchronous `replace` call, so no callback
@@ -149,7 +148,10 @@ final _guardsOf = Expando<_RouterGuards>('fespalier guards');
 /// 6. A redirect, a site or a `leave()` question belongs to a re-run only if the provider's request
 ///    is the re-run's own and, for `leave()`, the leaving entry is the re-run's entry.
 /// 7. An asynchronous re-run never lands: at its first asynchronous answer it is dropped, and
-///    carried on only while its entry is on top.
+///    carried on only while its entry is on top and it is the newest re-run of that entry. The one
+///    exception is a chain of carried runs whose replay met another redirect than the one that gave
+///    the answer twice (the app's own redirect keeps changing its answer): that run lands as
+///    go_router lands it, and nothing repeats by itself.
 /// 8. A re-run's landing has all its answers when `leave()` is asked: a pass asks nothing, a move
 ///    asks with no exemption.
 /// 9. Every re-run's request is recorded before its landing is judged, so a landing never
@@ -196,6 +198,14 @@ final class _RouterGuards {
   /// with a redirect that is not here is held back ([refuses]). Keyed by page key, not by
   /// completer, because a refresh decodes every pushed entry with a new completer and keeps its
   /// key, and so keeps the page's state.
+  ///
+  /// A key leaves the set only when a landing of its page fails ([_judge]). It is not forgotten when
+  /// the page is missing from the configuration: the pushed pages of a tab that is not on screen are
+  /// not in it, and they come back, with their state, when the tab does; forgetting their keys held
+  /// them back and dropped a dirty page's `leave()` question. go_router makes a pushed page's key
+  /// from a random string and never uses it twice, so a key that stays is harmless, and the set
+  /// grows by one short string for each guarded page pushed in the life of the router (a small leak,
+  /// taken on purpose: there is no way to tell from here that an offstage page is gone for good).
   final _passed = <String>{};
 
   /// The completer each pushed page's `Future` answers to (invariant 10): the one of the last push
@@ -223,6 +233,10 @@ final class _RouterGuards {
   /// landing clears it. A pop back to the entry is then no landing: its completer is not here any
   /// more.
   final _requests = Expando<_Request>('fespalier push requests');
+
+  /// The newest re-run of each pushed page, by the completer of its entry (invariant 7): an older
+  /// one that is carried on after a newer one started would land over it.
+  final _newest = Expando<_Rerun>('fespalier newest re-runs');
 
   FutureOr<String?> run(
     BuildContext context,
@@ -325,29 +339,52 @@ final class _RouterGuards {
 
     // go_router restores the pages under the one on top without their redirects, so a base page that
     // is under a redirect must be asked again too, whichever site pinged: a sign-out that only moved
-    // the top page would leave the base under it, and the system back would land on it signed out.
-    // `refresh()` asks the base. When its redirect moves it, the whole stack is replaced, as it was
-    // before the pushed page's guard watched anything (before 0.21.0). When it keeps its place, the
-    // commit of the refresh shows the pushed page as a restored one, and it runs its guard again after
-    // the frame (invariant 4). A base under no redirect has nothing to ask, so the pushed page alone is
-    // run again, at once.
+    // the top page would leave the base under it. `refresh()` asks the base. When its redirect moves
+    // it, the whole stack is replaced, as before 0.21.0. When it keeps its place, the commit of the
+    // refresh shows the pushed page as a restored one and it runs its guard after the frame
+    // (invariant 4). A base under no redirect has nothing to ask: the pushed page alone is run again.
     //
-    // The price, over a base that is under a redirect: a change that only the pushed page's guard
-    // notices (a role revoked while the session holds) is a refresh, for which go_router restores the
-    // pushed page with a new entry (and asks it to leave), and then the re-run that moves it. A dirty
-    // page's `leave()` can be asked twice, once for each; a guard that passes again asks it once, for
-    // the refresh alone. A base that redirects asks it once, as before 0.21.0. docs/guards.md says
-    // so. Telling the two apart in advance means reading the base's guards where they are, and an
-    // asynchronous guard or a `redirect:` that is no fespalier guard cannot be read: it was tried,
-    // and the bookkeeping it needed was wrong in more places than the question it saved.
+    // The price, over a base under a redirect: a change that only the pushed page's guard notices
+    // is a refresh (go_router restores the pushed page with a new entry and asks it to leave) and then
+    // the re-run that moves it, so a dirty page can be asked twice. docs/guards.md says so. Telling
+    // the two apart in advance means reading the base's guards, and an async guard or a hand-written
+    // `redirect:` cannot be read.
     final VoidCallback run = top == null || _baseGuarded()
-        ? _router.refresh
+        ? _refresh
         : () => _rerun(top);
     if (hook == null) {
       run();
     } else {
       hook(run);
     }
+  }
+
+  /// `GoRouter.refresh()`, which parses again what the route information provider holds. While a
+  /// re-run of a pushed page waits for an asynchronous guard, the provider still holds the re-run's
+  /// `replace` (the Router reports a configuration only when it commits one, and go_router has not
+  /// committed that one), so a plain `refresh()` would run the re-run's redirects alone and the
+  /// stack under the page would never be asked: a sign-out would leave a guarded base under
+  /// `/login`. So the committed configuration is reported first, as the Router does after a commit,
+  /// and the refresh restores the stack and asks the base.
+  ///
+  /// The report is [RouteInformationReportingType.neglect], which go_router's provider turns into
+  /// `SystemNavigator.routeInformationUpdated(replace: true)` (the same code from 17.2.3 to 18.1.1):
+  /// on the web it replaces the current history entry and adds none, so the back button does not
+  /// get a step. `test/pushed_guard_newest_test.dart` counts the reports.
+  void _refresh() {
+    final provider = _router.routeInformationProvider;
+    if (isGuardRerun(_router, provider.value.state)) {
+      final committed = _router.routeInformationParser.restoreRouteInformation(
+        _router.routerDelegate.currentConfiguration,
+      );
+      if (committed != null) {
+        provider.routerReportsNewRouteInformation(
+          committed,
+          type: RouteInformationReportingType.neglect,
+        );
+      }
+    }
+    _router.refresh();
   }
 
   /// Whether the page at the bottom of the stack, which a `refresh()` asks again, is under a
@@ -398,7 +435,9 @@ final class _RouterGuards {
       before: _router.routeInformationProvider.value.state,
       zone: Zone.current,
       replay: dropped?.answers ?? const [],
+      carriedMismatches: dropped?.mismatches ?? 0,
     );
+    _newest[entry.completer] = rerun;
     _landing = rerun;
     final Future<Object?> answer;
     try {
@@ -431,16 +470,33 @@ final class _RouterGuards {
   /// must not land it. The `Future` it gets never completes, so it never lands, and its `replace`
   /// `Future` never completes either.
   ///
-  /// If the entry it was about is still on top (the same completer), the re-run goes on as a new
-  /// one that replays the answers received so far by position, so every redirect answers at once
-  /// and the new `replace` lands in its own call, with all its answers (invariant 8). It starts in
-  /// the zone the first re-run started in, so it does not inherit the error zone go_router
-  /// 17.2.3 to 18.1.0 run a redirect in. If the entry has gone (a pop, a `go`, a refresh that gave
-  /// the page a new completer, another re-run that landed), nothing is carried and nothing comes
-  /// back: the person's pop is not undone by a guard that answers late.
-  Future<String?> _carry(_Rerun dropped) {
+  /// If the entry it was about is still on top (the same completer) and this re-run is the newest of
+  /// that entry ([_newest]), the re-run goes on as a new one that replays the answers received so
+  /// far by position, each to the redirect for the same route and location that gave it
+  /// ([_Rerun.replayAt]), so every redirect answers at once and the new `replace` lands in its own
+  /// call, with all its answers (invariant 8). A redirect that is another one (the app's own redirect
+  /// sent the run elsewhere) runs for real, and that run is carried on in turn if it waits.
+  ///
+  /// The new re-run starts in the zone the first one started in, so it does not inherit the error
+  /// zone go_router 17.2.3 to 18.1.0 run a redirect in. If the entry has gone (a pop, a `go`, a
+  /// refresh that gave the page a new completer, another re-run that landed), nothing is carried and
+  /// nothing comes back: the person's pop is not undone by a guard that answers late. Nor is a newer
+  /// re-run of the entry: a change that started it (a role revoked while this one waited for the
+  /// server) made this one's answer stale, and carrying it would land a page the newer one has
+  /// refused.
+  ///
+  /// A redirect of the app's own that answers differently each time it is asked would make the
+  /// carry repeat by itself, on microtasks and timers, with no user action. So a chain of carried
+  /// runs ends at the second time its replay meets a redirect other than the one that gave the
+  /// answer ([_Rerun.exhausted]): the run is not carried again, this returns null, and the caller
+  /// hands go_router the real answer, which lands the run as it lands any redirect (the same as with
+  /// an `onEnter`, docs/guards.md, limit 3).
+  Future<String?>? _carry(_Rerun dropped) {
     final top = _topEntry();
-    if (top != null && identical(top.completer, dropped.entry.completer)) {
+    if (top != null &&
+        identical(top.completer, dropped.entry.completer) &&
+        identical(_newest[top.completer], dropped)) {
+      if (dropped.exhausted) return null;
       dropped.zone.run(() => _rerun(top, dropped));
     }
     return Completer<String?>().future;
@@ -504,26 +560,22 @@ final class _RouterGuards {
   /// the rest are no longer watched. See [_judge].
   void _committed() => _judgeNow();
 
-  /// Judges the committed [config] once (since 0.21.0). The commit is a push when its top entry
-  /// was put there by a request whose redirects ran ([_requestThatPut]): that page passed or failed
+  /// Judges the committed [config] once (since 0.21.0). The commit is a push when its top entry was
+  /// put there by a request whose redirects ran ([_requestThatPut]): that page passed or failed
   /// them. Any other commit (a refresh, a restore, a pop back, a tab, a swap) shows a page whose
   /// redirects did not run.
   ///
-  /// - A failed commit closes every site: a page that never showed has nothing to keep up to date (a
-  ///   refresh that one of them asked for would show the guarded page, #258).
-  /// - A site evaluated by a navigation (not a re-run) is bound to the top entry when its request is
-  ///   the one that put the entry there, and to the base when the navigation made no request. A site
-  ///   of a request that did not put the top entry there is closed (invariant 1).
-  /// - A site bound to an entry stays while that entry is on top, and is closed as soon as another
-  ///   entry, or none, is. A site bound to the base stays only for the commit of the navigation that
-  ///   evaluated it, as before 0.21.0: a guarded page under a pushed page waits for the pop. A change
-  ///   only the pushed page's guard notices asks the base with a refresh when the base is under a
-  ///   redirect (see [_act]).
+  /// - A failed commit closes every site: a page that never showed has nothing to keep up to date.
+  /// - A site that a navigation (not a re-run) evaluated goes to the top entry when its request put
+  ///   the entry there, to the base when the navigation made no request or left no pushed page, and
+  ///   is closed otherwise (invariant 1).
+  /// - A site bound to an entry stays while that entry is on top. A site bound to the base stays
+  ///   only for the commit of the navigation that evaluated it, as before 0.21.0.
   /// - A re-run's landing moves the sites of the entry it replaced to the entry it put there (the
-  ///   page key is the same). The sites that answered a location are closed when a push or a re-run
-  ///   puts its page on top: a guard that sent the page elsewhere does not belong to it.
-  /// - A pushed page that is on top and was not put there by a push runs its guard again, after the
-  ///   frame (invariant 4).
+  ///   page key is the same). Sites that answered a location are closed when a push or a re-run puts
+  ///   its page on top: a guard that sent the page elsewhere does not belong to it.
+  /// - A guarded pushed page that is on top and no push put there is run again after the frame
+  ///   (invariant 4).
   void _judge(RouteMatchList config) {
     if (identical(config, _judged)) return;
     _judged = config;
@@ -548,7 +600,10 @@ final class _RouterGuards {
         live.fresh = false;
         final from = live.request;
         live.request = null;
-        if (from == null) {
+        if (from == null || top == null) {
+          // The base's: a navigation that made no request, or a `replace` or `pushReplacement` that
+          // left no pushed page (go_router gives a plain list when the page it replaced was the
+          // base's).
           live.owner = null;
         } else if (identical(from, topCompleter)) {
           live.owner = topCompleter;
@@ -594,8 +649,8 @@ final class _RouterGuards {
       _requests[top.completer] = null;
       rerun?.landed = true;
     }
+    // Not [_passed]: see there.
     final keys = {for (final e in pushed) e.pageKey.value};
-    _passed.removeWhere((k) => !keys.contains(k));
     _completers.removeWhere((k, _) => !keys.contains(k));
 
     if (request == null && shown != null && _guarded(shown)) {
@@ -733,22 +788,19 @@ RouteInformationState<Object?>? _pushRequestOf(RouteInformation info) {
   };
 }
 
-/// Whether the landing that `leaveExit` is asked about moves the pushed page [pageKey] (since
-/// 0.21.0): null when this question is no part of a guard's re-run (the person's, the app's, a
-/// refresh's), true when it is a re-run's landing and one of its redirects answered a location or
-/// failed (the page moves, and `leave()` is asked as it is for a base page's redirect), false when
-/// it is a re-run's landing and the guards passed again (the page is replaced by itself, and nothing
-/// is asked).
+/// What the landing `leaveExit` is asked about does to the pushed page [pageKey] (since 0.21.0): null
+/// when the question is no part of a guard's re-run (the person's, the app's, a refresh's), true
+/// when it is a re-run's landing and a redirect of it answered a location or failed (the page moves,
+/// and `leave()` is asked as for a base page's redirect), false when the guards passed again (the
+/// page is replaced by itself, and nothing is asked).
 ///
-/// A re-run is the navigation `replace` of the page with its own location. go_router asks the page
-/// to leave when that navigation lands, after every redirect has answered. A re-run lands in its own
-/// synchronous call (invariant 8: an asynchronous one is carried on by one that replays the answers,
-/// see [_RouterGuards._carry]), so every redirect has answered when this is asked, and the question
-/// is the re-run's when it is asked inside that call (invariant 5), the provider holds the re-run's
-/// own request (invariant 6) and the entry that leaves is the one the re-run replaces. A question
-/// from anywhere else (the person's press, an app's own `pop()`, however soon after the last guard
-/// answered) is not, so it is asked as usual. A redirect that does not run through `runRedirect` is
-/// not seen, so such a re-run is taken for one that passes.
+/// A re-run lands in its own synchronous call (an asynchronous one is carried on by one that replays
+/// the answers, see [_RouterGuards._carry]), so every redirect has answered when go_router asks. The
+/// question is the landing's when it is asked inside that call (invariant 5), the provider holds the
+/// re-run's own request and the leaving entry is the one it replaces (invariant 6). A question from
+/// anywhere else (the person's press, an app's `pop()`, however soon after the last guard answered)
+/// is asked as usual. A redirect that does not run through `runRedirect` is not seen, so such a
+/// re-run is taken for one that passes.
 bool? guardRerunVerdict(GoRouter router, ValueKey<String> pageKey) {
   final guards = _guardsOf[router];
   final rerun = guards?._landing;
@@ -778,6 +830,13 @@ bool isGuardRerun(GoRouter router, Object? state) {
   return guards._rerunOf(state) != null;
 }
 
+/// Whether the pushed page whose page key is [pageKey] is held back (see `_RouterGuards._held`):
+/// its guard has not passed in a navigation that pushed it, so it was never built and `leave()` is
+/// never asked of it (invariant 3). A base page's key starts with `/` and is never held.
+bool isHeldPage(GoRouter router, ValueKey<String> pageKey) =>
+    !pageKey.value.startsWith('/') &&
+    (_guardsOf[router]?.refuses(pageKey.value) ?? false);
+
 /// Whether [entry], a pushed page of [router], is held back (see `_RouterGuards._held`): it is a
 /// page the walk of `RouterWatch` treats as an error view, which covers the page below it.
 bool refusedEntry(GoRouter router, ImperativeRouteMatch entry) =>
@@ -792,6 +851,7 @@ final class _Rerun {
     required this.before,
     required this.zone,
     required this.replay,
+    required this.carriedMismatches,
   }) : uri = entry.matches.uri;
 
   /// The guards of the router the re-run is on.
@@ -808,21 +868,31 @@ final class _Rerun {
   final RouteMatchList base;
   final Object? before;
 
-  /// The zone the re-run started in, which a carried one starts in too (see
-  /// [_RouterGuards._carry]).
+  /// The zone the re-run started in, which a carried one starts in too (see [_RouterGuards._carry]).
   final Zone zone;
 
-  /// The answers of the redirects of a re-run this one carries on, by position: each answers at
-  /// once. A location (or null), or a [GuardFailure].
-  final List<Object?> replay;
+  /// The answers of the dropped re-run this one carries on, by position, and the answers of this
+  /// one, replayed ones included. Each says which location and route it was given for ([_Answer]).
+  final List<_Answer> replay;
+  final answers = <_Answer>[];
 
-  /// The answers of this re-run's redirects by position, replayed ones included.
-  final answers = <Object?>[];
+  /// Whether the replay still holds: it ends at the first redirect that is not the one that gave the
+  /// answer recorded at its position (see [replayAt]), and every redirect after it runs for real.
+  bool replaying = true;
 
-  /// The `RouteInformationState` the `replace` of the re-run put in the router's provider: the
-  /// identity of its navigation, whose completer is the one of the page it puts on the stack. Null
-  /// until the first redirect, a site, a question or the end of the call has asked for it
-  /// ([adopt]).
+  /// How many times the chain of carried runs that leads to this one met a redirect other than the
+  /// one that gave the answer at its position, before this run.
+  final int carriedMismatches;
+
+  /// [carriedMismatches], and this run's own: a run whose replay ended met one.
+  int get mismatches => carriedMismatches + (replaying ? 0 : 1);
+
+  /// Whether the chain has met a redirect other than the one that gave the answer twice: this run
+  /// is not carried on again (see [_RouterGuards._carry]).
+  bool get exhausted => mismatches >= 2;
+
+  /// The `RouteInformationState` the `replace` of the re-run put in the provider: the identity of
+  /// its navigation. Null until the first redirect, site or question of the call asks for it.
   RouteInformationState<Object?>? request;
 
   /// Whether a redirect of the re-run answered a location or failed: the landing moves the page.
@@ -845,12 +915,49 @@ final class _Rerun {
       ? state
       : null;
 
+  /// The answer recorded at [position] by the re-run this one carries on, when the redirect that
+  /// asks now is the one that gave it: the same route, asked about the same location. Null when
+  /// there is none, or when the redirect is another one, and then the replay is over.
+  ///
+  /// The chain of redirects that go_router runs for the re-run can differ from the dropped one's
+  /// while the guard waited, when a redirect of the app's own that fespalier does not see (the
+  /// router's top-level `redirect:`, a hand-written one) sends the location elsewhere. The answer of
+  /// the old position is then another route's, and giving it to this one would let the page in
+  /// without its guard having run or being watched.
+  _Answer? replayAt(int position, GoRouterState state) {
+    if (!replaying || position >= replay.length) return null;
+    final recorded = replay[position];
+    if (recorded.isFor(state)) return recorded;
+    replaying = false;
+    return null;
+  }
+
   /// Records the answer of the redirect at the next position: a location (or null), or a
   /// [GuardFailure].
-  void record(Object? answer) {
+  void record(_Answer answer) {
     answers.add(answer);
-    if (answer != null) moves = true;
+    if (answer.value != null) moves = true;
   }
+}
+
+/// What one redirect of a re-run answered, and for what: the location it was asked about and the
+/// route whose redirect it was (`GoRouterState.uri` and `fullPath`). [value] is a location, null or
+/// a [GuardFailure].
+final class _Answer {
+  const _Answer(this.uri, this.fullPath, this.value);
+
+  /// The answer of the redirect that was given [state].
+  _Answer.of(GoRouterState state, this.value)
+    : uri = state.uri,
+      fullPath = state.fullPath;
+
+  final Uri uri;
+  final String? fullPath;
+  final Object? value;
+
+  /// Whether the redirect that was given [state] is the one that gave this answer.
+  bool isFor(GoRouterState state) =>
+      uri == state.uri && fullPath == state.fullPath;
 }
 
 /// A push-type request whose redirects ran (see [_RouterGuards._requests]).
@@ -873,13 +980,9 @@ final class _Live {
   /// page while the entry is on top (invariant 1).
   ///
   /// A site belongs to one entry, the last that evaluated it. A route nested under a guarded parent
-  /// shares the parent's site: a push of the child evaluates it again, and that evaluation replaces
-  /// the base's, bound to the pushed entry when the push commits. That is harmless. The ping of a
-  /// site bound to a pushed entry refreshes the router when the base is under a redirect, and a base
-  /// that shares the guard is under one, so the base's redirect runs in the refresh whichever entry
-  /// the site is bound to; when the base is under none, the site was never its own. When the pushed
-  /// page goes, the commit closes the site (its entry is gone), and the base's guard is watched again
-  /// when a navigation evaluates it, as for any page that was pushed over the base.
+  /// shares the parent's site, so a push of the child takes it from the base. That is harmless: the
+  /// ping of a site bound to an entry refreshes the router when the base is under a redirect, and a
+  /// base that shares the guard is under one.
   Completer<Object?>? owner;
 
   /// The completer of the push-type request the guard was evaluated under (the entry that request
@@ -1007,7 +1110,9 @@ final class GuardFailure extends GoException {
 const Symbol _goRouterZoneKey = #goRouterRedirectContext;
 
 /// What a generated `redirect:` runs its guards and its `redirect.dart` through (since 0.21.0):
-/// `redirect: (context, state) => runRedirect(() => traceGuard(...))`.
+/// `redirect: (context, state) => runRedirect(state, () => traceGuard(...))`. [state] is the
+/// `GoRouterState` go_router gave the redirect: the re-run of a pushed page tells by its location
+/// and route which redirect it replays an answer to (see [_RouterGuards._carry]).
 ///
 /// A guard or `redirect.dart` that throws, or whose `Future` fails, reaches go_router as a
 /// [GuardFailure] (what it threw and its stack trace, Riverpod's `ProviderException` taken off), so
@@ -1021,7 +1126,10 @@ const Symbol _goRouterZoneKey = #goRouterRedirectContext;
 /// navigation never ended. There, [redirect] runs where go_router 18.1.1 runs it: in a plain fork of
 /// the zone that called go_router, with go_router's router value. Anywhere else (go_router 18.1.1, no
 /// router, a zone of the app's own) it runs in the current zone.
-FutureOr<String?> runRedirect(GuardResult Function() redirect) {
+FutureOr<String?> runRedirect(
+  GoRouterState state,
+  GuardResult Function() redirect,
+) {
   final zone = Zone.current;
   final parent = zone.parent;
   final router = zone[_goRouterZoneKey];
@@ -1048,23 +1156,29 @@ FutureOr<String?> runRedirect(GuardResult Function() redirect) {
       !zone.inSameErrorZone(parent)) {
     return parent
         .fork(zoneValues: {_goRouterZoneKey: router})
-        .run(() => _redirect(redirect, rerun));
+        .run(() => _redirect(state, redirect, rerun));
   }
-  return _redirect(redirect, rerun);
+  return _redirect(state, redirect, rerun);
 }
 
-/// Runs [redirect] for [runRedirect]. When [rerun] is given, the redirect belongs to the re-run of a
-/// pushed page, and runs in its `replace` call: its answer is recorded by position, and an answer
-/// that moves the page (a location, or a failure) is told to the landing ([guardRerunVerdict]). A
-/// redirect whose position the re-run has an answer for (it carries on a dropped one) answers at
-/// once with that. One that answers with a `Future` drops the re-run when the `Future` completes
-/// (invariant 7, see [_RouterGuards._carry]).
-FutureOr<String?> _redirect(GuardResult Function() redirect, _Rerun? rerun) {
+/// Runs [redirect], the redirect of the route [state] is for, for [runRedirect]. When [rerun] is
+/// given, the redirect belongs to the re-run of a pushed page, and runs in its `replace` call: its
+/// answer is recorded by position, with the location and route it is for, and an answer that moves
+/// the page (a location, or a failure) is told to the landing ([guardRerunVerdict]). A redirect
+/// whose position the re-run has an answer for, given for this very location and route (it carries
+/// on a dropped one, see [_Rerun.replayAt]), answers at once with that. One that answers with a
+/// `Future` drops the re-run when the `Future` completes (invariant 7, see [_RouterGuards._carry]).
+FutureOr<String?> _redirect(
+  GoRouterState state,
+  GuardResult Function() redirect,
+  _Rerun? rerun,
+) {
   if (rerun != null) {
     final position = rerun.position++;
-    if (position < rerun.replay.length) {
-      final answer = rerun.replay[position];
-      rerun.record(answer);
+    final recorded = rerun.replayAt(position, state);
+    if (recorded != null) {
+      rerun.record(recorded);
+      final answer = recorded.value;
       if (answer is GuardFailure) {
         Error.throwWithStackTrace(answer, answer.stackTrace);
       }
@@ -1076,30 +1190,26 @@ FutureOr<String?> _redirect(GuardResult Function() redirect, _Rerun? rerun) {
     result = redirect();
   } catch (error, stackTrace) {
     final failure = _failure(error, stackTrace);
-    rerun?.record(failure);
+    rerun?.record(_Answer.of(state, failure));
     Error.throwWithStackTrace(failure, failure.stackTrace);
   }
   if (result is! Future<String?>) {
-    rerun?.record(result);
+    rerun?.record(_Answer.of(state, result));
     return result;
   }
   if (rerun == null) return result.then<String?>(_same, onError: _fail);
   final guards = rerun.guards;
-  // A `Future` that completes inside the call (a `SynchronousFuture`) is a synchronous answer.
   return result.then<String?>(
     (location) {
-      rerun.record(location);
-      return identical(guards._landing, rerun)
-          ? location
-          : guards._carry(rerun);
+      rerun.record(_Answer.of(state, location));
+      return guards._carry(rerun) ?? location;
     },
     onError: (Object error, StackTrace stackTrace) {
       final failure = _failure(error, stackTrace);
-      rerun.record(failure);
-      if (identical(guards._landing, rerun)) {
-        Error.throwWithStackTrace(failure, failure.stackTrace);
-      }
-      return guards._carry(rerun);
+      rerun.record(_Answer.of(state, failure));
+      final carried = guards._carry(rerun);
+      if (carried != null) return carried;
+      Error.throwWithStackTrace(failure, failure.stackTrace);
     },
   );
 }

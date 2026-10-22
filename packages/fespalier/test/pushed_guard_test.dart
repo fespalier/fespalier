@@ -133,6 +133,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/secret',
           redirect: (context, state) => runRedirect(
+            state,
             () =>
                 allowedGuard(ProviderScope.containerOf(context, listen: false)),
           ),
@@ -182,7 +183,7 @@ void pushedPageGroups() {
         GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
         GoRoute(
           path: '/checkout',
-          redirect: (context, state) => runRedirect(() {
+          redirect: (context, state) => runRedirect(state, () {
             runs++;
             // The second run is the push, which fails; every other run passes.
             if (runs == 2) throw StateError('boom');
@@ -241,6 +242,56 @@ void pushedPageGroups() {
     });
   });
 
+  // go_router gives a plain list, with no pushed page in it, when `replace` or `pushReplacement` takes
+  // the base page's place. The guards that navigation evaluated are the base's, and they stay watched
+  // as they are after a `go`: no entry carries the completer of that request.
+  group('a replace over a lone base page keeps its guard watched', () {
+    GoRouter router() => GoRouter(
+      initialLocation: '/home',
+      routes: [
+        GoRoute(path: '/home', builder: (_, _) => const Text('HOME')),
+        GoRoute(path: '/login', builder: (_, _) => const Text('LOGIN')),
+        GoRoute(
+          path: '/admin',
+          redirect: (context, state) => runRedirect(
+            state,
+            () => refGuard(
+              context,
+              'g@admin',
+              (ref) => ref.watch(_signedIn) ? null : '/login',
+            ),
+          ),
+          builder: (context, state) =>
+              refusedView(context, state) ?? const Text('ADMIN'),
+        ),
+      ],
+    );
+
+    for (final how in ['pushReplacement', 'replace']) {
+      testWidgets('$how: a sign-out moves the page', (tester) async {
+        final r = router();
+        final c = await pumpRouter(tester, attached(r));
+        if (how == 'replace') {
+          unawaited(r.replace<void>('/admin'));
+        } else {
+          unawaited(r.pushReplacement<void>('/admin'));
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('ADMIN'), findsOneWidget);
+        expect(
+          r.routerDelegate.currentConfiguration.matches
+              .whereType<ImperativeRouteMatch>(),
+          isEmpty,
+          reason: 'go_router left no pushed page',
+        );
+        c.read(_signedIn.notifier).set(false);
+        await tester.pumpAndSettle();
+        expect(find.text('LOGIN'), findsOneWidget);
+        expect(find.text('ADMIN'), findsNothing);
+      });
+    }
+  });
+
   group('the Future of a push whose page a re-run replaces', () {
     GoRouter picker() => GoRouter(
       initialLocation: '/home',
@@ -249,6 +300,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/pick',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(
               context,
               'g1@pick',
@@ -313,6 +365,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/admin',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g1@admin', (ref) {
               runs++;
               final ok = ref.watch(_signedIn);
@@ -388,6 +441,7 @@ void pushedPageGroups() {
                           path: 'admin',
                           parentNavigatorKey: onRoot ? rootKey : null,
                           redirect: (context, state) => runRedirect(
+                            state,
                             () => refGuard(context, 'g1@tab-admin', (ref) {
                               final answer = ref.watch(_signedIn)
                                   ? null
@@ -574,6 +628,7 @@ void pushedPageGroups() {
                       GoRoute(
                         path: 'admin',
                         redirect: (context, state) => runRedirect(
+                          state,
                           () => refGuard(
                             context,
                             'g1@tab-admin',
@@ -695,6 +750,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/admin',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g1@admin', (ref) {
               runs++;
               ref.watch(_signedIn);
@@ -724,6 +780,7 @@ void pushedPageGroups() {
         GoRoute(
           path: '/counted',
           redirect: (context, state) => runRedirect(
+            state,
             () => refGuard(context, 'g2@counted', (ref) {
               countedRuns++;
               ref.watch(_signedIn);
@@ -840,8 +897,8 @@ void pushedPageGroups() {
       });
     }
 
-    testWidgets('a go while the guard waits needs no cancelling: the page '
-        'it leads to is guarded once', (tester) async {
+    testWidgets('a go while the guard waits: the page it leads to is guarded '
+        'once and nothing comes back', (tester) async {
       final r = await reRunning(tester, isAsync: true, wait: true);
       r.go('/counted');
       await tester.pumpAndSettle();
@@ -929,6 +986,7 @@ void pushedPageGroups() {
           GoRoute(
             path: path,
             redirect: (context, state) => runRedirect(
+              state,
               () => refGuard(context, 'g@$path', (ref) {
                 runs++;
                 if (path == '/fa' && fails) {

@@ -600,7 +600,9 @@
         "packages/fespalier_biometrics/README.md",
         "packages/fespalier_biometrics/lib/fespalier_biometrics.dart",
         "docs/guards.md#When a guard fails",
-        "docs/guards.md#Retrying a pushed navigation"
+        "docs/guards.md#Retrying a pushed navigation",
+        "docs/guards.md#A guard on a pushed page",
+        "docs/guards.md#What go_router still skips, and the limits of a re-run"
       ]
     },
     "fespalier-testing": {

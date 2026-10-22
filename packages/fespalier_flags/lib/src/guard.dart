@@ -10,7 +10,8 @@ import 'providers.dart';
 ///
 /// With [follow] (the default) the guard watches the flag: when it changes, the guard runs again, the router leaves
 /// the route (or lets it in) and a menu entry under it hides or shows in the next frame, with no navigation. A page
-/// that was pushed can stay: go_router's `refresh()` does not run a pushed page's redirects (fespalier/fespalier#258).
+/// that was pushed leaves too (since 0.21.0): the guard of a pushed page watches while the page is on top, and a
+/// page go_router shows again without its redirect runs it after the frame (docs/guards.md, "A guard on a pushed page").
 /// With `follow: false` it reads the flag once per navigation: a page already open stays until the next one, and a
 /// menu does not follow. It returns synchronously, so it composes with `??`:
 /// `flagGuard(ref, labs, orElse: '/') ?? (ref.watch(session) ? null : '/login')`.

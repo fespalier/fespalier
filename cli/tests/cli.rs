@@ -450,12 +450,9 @@ fn watch_follows_an_enum_declared_outside_the_app_folder() {
     assert!(w.lines() > broken, "{}", w.text());
 }
 
-/// A typedef that a segment spells is declared in a path dependency outside `lib/` (since 0.22.0):
-/// `watch` watches the folder of that file, so editing it regenerates.
-#[test]
-fn watch_follows_a_typedef_of_a_path_dependency() {
-    let dir = project();
-    let root = dir.path();
+/// The project of a segment typed `ShopId`, a typedef declared in `packages/shared`, a path dependency
+/// inside the project but outside `lib/`, so only the watches added for it see its files.
+fn shared_typedef_project(root: &Path) {
     fs::write(
         root.join("pubspec.yaml"),
         "name: demo\ndependencies:\n  shared:\n    path: packages/shared\n",
@@ -479,6 +476,15 @@ fn watch_follows_a_typedef_of_a_path_dependency() {
         "import 'package:shared/shared.dart';\nclass ShopPage extends StatelessWidget { const ShopPage({super.key, required this.id}); final ShopId id; }",
     )
     .unwrap();
+}
+
+/// A typedef that a segment spells is declared in a path dependency outside `lib/` (since 0.22.0):
+/// `watch` watches the folder of that file, so editing it regenerates.
+#[test]
+fn watch_follows_a_typedef_of_a_path_dependency() {
+    let dir = project();
+    let root = dir.path();
+    shared_typedef_project(root);
     let w = Watch::start(root);
     w.settle();
     let code = || fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
@@ -505,6 +511,58 @@ fn watch_follows_a_typedef_of_a_path_dependency() {
     )
     .unwrap();
     w.wait_for("✓ 2 routes, lib/app.g.dart unchanged");
+}
+
+/// The folder of a path dependency is deleted and made again (a branch switch, a generator that wipes
+/// `lib/src`): inotify let go of its watch with the folder, so `watch` has to ask for it again, or
+/// editing a file in the new folder regenerates nothing.
+#[test]
+fn watch_follows_a_path_dependency_folder_that_is_deleted_and_made_again() {
+    let dir = project();
+    let root = dir.path();
+    shared_typedef_project(root);
+    let src = root.join("packages/shared/lib/src");
+    let w = Watch::start(root);
+    w.settle();
+    let code = || fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    let typedef =
+        |ty: &str| fs::write(src.join("ids.dart"), format!("typedef ShopId = {ty};\n")).unwrap();
+    let until = |segment: &str| {
+        let end = Instant::now() + Duration::from_secs(10);
+        while !code().contains(segment) {
+            assert!(
+                Instant::now() < end,
+                "timed out waiting for `{segment}` in lib/app.g.dart; the watch said:\n{}",
+                w.text()
+            );
+            sleep(Duration::from_millis(50));
+        }
+    };
+    assert!(code().contains("Segment.asInt"), "{}", w.text());
+
+    // Deleted: the type is not found. Made again later with another type: found.
+    fs::remove_dir_all(&src).unwrap();
+    w.wait_for("error(s)");
+    w.settle();
+    fs::create_dir_all(&src).unwrap();
+    typedef("String");
+    until("Segment.asString");
+    w.settle();
+    // An edit in the folder that was made again.
+    typedef("double");
+    until("Segment.asDouble");
+    w.settle();
+
+    // Replaced within a burst: moved away and made again, so the folder is never missing when a pass
+    // looks, and is another folder.
+    fs::rename(&src, root.join("src.old")).unwrap();
+    fs::create_dir_all(&src).unwrap();
+    typedef("bool");
+    fs::remove_dir_all(root.join("src.old")).unwrap();
+    until("Segment.asBool");
+    w.settle();
+    typedef("int");
+    until("Segment.asInt");
 }
 
 /// `watch` with `format: true` runs `dart format` when the generated code changes, and not

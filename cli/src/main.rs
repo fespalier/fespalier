@@ -626,3 +626,5 @@ mod url_of_tests;
 mod url_state_tests;
 #[cfg(test)]
 mod views_tests;
+#[cfg(test)]
+mod watch_tests;

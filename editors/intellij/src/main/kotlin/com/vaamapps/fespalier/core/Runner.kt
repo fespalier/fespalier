@@ -31,12 +31,16 @@ fun invocation(
     subcommand: Subcommand,
     projectDir: String,
 ): Invocation {
-    val tail = listOf(subcommand.cli, "--json", "--project", projectDir)
+    return fspInvocation(runner, fspPath, fspAvailable, listOf(subcommand.cli, "--json", "--project", projectDir))
+}
+
+/** `fsp <args>`, or `dart run fespalier <args>`; [RunnerSetting.AUTO] prefers fsp when it is on PATH. */
+fun fspInvocation(runner: RunnerSetting, fspPath: String, fspAvailable: Boolean, args: List<String>): Invocation {
     val useFsp = runner == RunnerSetting.FSP || (runner == RunnerSetting.AUTO && fspAvailable)
     return if (useFsp) {
-        Invocation(fspPath.trim().ifEmpty { "fsp" }, tail)
+        Invocation(fspPath.trim().ifEmpty { "fsp" }, args)
     } else {
-        Invocation("dart", listOf("run", "fespalier") + tail)
+        Invocation("dart", listOf("run", "fespalier") + args)
     }
 }
 
@@ -91,3 +95,17 @@ fun startFailureHint(inv: Invocation): String =
     } else {
         "Install fsp, set its path in Settings | Tools | fespalier, or choose the dart runner."
     }
+
+/**
+ * Whether [command] names an executable file, with no process started: as a path when it has a
+ * separator, else in one of the folders of [path]. For where `fsp --version` must not be waited for
+ * (the UI thread); [isFile] says whether a path is a file.
+ */
+fun looksInstalled(command: String, path: String?, windows: Boolean, isFile: (String) -> Boolean): Boolean {
+    val name = command.trim().ifEmpty { "fsp" }
+    val names = if (windows) listOf(name) + listOf(".exe", ".cmd", ".bat").map { name + it } else listOf(name)
+    if (name.contains('/') || name.contains('\\')) return names.any(isFile)
+    val separator = if (windows) ';' else ':'
+    val dirs = path.orEmpty().split(separator).filter { it.isNotBlank() }
+    return dirs.any { dir -> names.any { isFile(dir.replace('\\', '/').trimEnd('/') + "/" + it) } }
+}

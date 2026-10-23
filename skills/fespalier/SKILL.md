@@ -145,7 +145,7 @@ fsp gen                                    # check lib/app/, write lib/app.g.dar
 fsp watch                                  # regenerate on every change
 fsp dev [-- <flutter run args>]            # the app, regenerated and hot reloaded on every save (0.9.0)
 fsp build <target> [-- <args>]             # fsp gen, then flutter build <target>, with the hooks of `tasks: build:` (0.9.0)
-fsp run [task]                             # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0)
+fsp run [task] [--json]                    # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0; --json for editors, 0.22.0)
 fsp check                                  # CI: non-zero on errors, writes nothing
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)

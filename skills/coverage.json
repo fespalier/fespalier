@@ -286,7 +286,8 @@
         "cli/src/otel.rs",
         "packages/fespalier/lib/src/routes_reload.dart",
         "cli/src/reload.rs",
-        "docs/cli.md#A hot reload after a regeneration"
+        "docs/cli.md#A hot reload after a regeneration",
+        "docs/cli.md#Tasks in your editor"
       ]
     },
     "fespalier-routing": {

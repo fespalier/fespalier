@@ -7,8 +7,7 @@ it ships.
 
 ## Next
 
-- **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
-  configurations.
+Nothing is scheduled yet: the items under "Later" are the candidates.
 
 ## Later
 

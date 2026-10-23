@@ -1,7 +1,7 @@
 # fespalier for IntelliJ IDEA and Android Studio
 
 Shows what `fsp check` finds in your route tree (`lib/app/`) as errors and warnings in the
-editor, and runs `fsp gen` from the Tools menu. It is a thin layer over the generator's
+editor, and runs `fsp gen` from the Tools menu and the tasks of `fespalier: tasks:` in `pubspec.yaml` (since fespalier 0.22.0). It is a thin layer over the generator's
 `--json` diagnostics: nothing is re-implemented in the IDE. It is the counterpart of
 `editors/vscode/`.
 
@@ -20,6 +20,16 @@ editor, and runs `fsp gen` from the Tools menu. It is a thin layer over the gene
   problem_), and a _Settings_ link when `fsp` could not be run at all.
 - Problems on a folder rather than a file (a folder named `[id]`, say) have no place in an
   editor; they show in the notification of _fespalier: Check_.
+- **Tasks** (since fespalier 0.22.0). A run icon sits beside each task key in `pubspec.yaml` (a block mapping: a
+  flow mapping, `tasks: {codegen: ...}`, gets none), and runs as a _fespalier task_ run configuration, found by its
+  project folder and task, named `codegen (shop)` or, below the IDE project's folder, `codegen (apps/shop)` (_Run |
+  Edit Configurations | + | fespalier task_ makes one by hand). _Tools | fespalier: Run Task..._ lists every task,
+  `dev` and `build` included. The run console is not a terminal, so `fsp dev` runs in its
+  [plain mode](../../docs/cli.md#plain-output-ci-and-windows): type `r`, `R` or `q` and Enter. Stop sends Ctrl-C
+  first on Linux and macOS; on Windows it ends the process at once unless the IDE's registry key
+  `kill.windows.processes.softly` is on. See [Tasks in your editor](../../docs/cli.md#tasks-in-your-editor).
+  **UNCHECKED on a device:** the run console, Stop and Windows have not run in an IDE; the tests run a headless IDE
+  for the run icons, the run configurations a task finds or makes and the command line only.
 
 ## Requirements
 
@@ -57,18 +67,25 @@ cd editors/intellij
 To install the zip: _Settings | Plugins | gear icon | Install Plugin from Disk..._.
 
 The tests are plain JUnit for the parts that don't need an IDE (`core/`: the JSON to
-highlight mapping, the pubspec reading, the command line), and one test that starts a
-headless IDE and checks that a stand-in `fsp` printing two diagnostics ends up as two
-highlights.
+highlight mapping, the pubspec reading, the command lines, the task lists, the names of run configurations), and
+two classes of tests that start a headless IDE: one checks that a stand-in `fsp` printing two diagnostics ends up
+as two highlights, the other that each task key has a run icon (and a pass over the file reads it once), that the
+run configuration made from `codegen` runs `fsp run codegen` in the project folder, that two projects with one
+folder name each get and find their own configuration, and that a run on the UI thread does not wait for
+`fsp --version`.
 
 ## Code map
 
-|                                                    |                                                                                                      |
-| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `core/Findings.kt`, `core/MiniJson.kt`             | Parses the JSON lines; maps a line and column (code points) to the text range to underline.          |
-| `core/Pubspec.kt`                                  | Whether a pubspec uses fespalier, `app_dir`, whether a path is under it.                             |
-| `core/Runner.kt`                                   | The `fsp` / `dart run fespalier` command line; reading the outcome of a run.                         |
-| `FespalierService.kt`                              | Starts the process, keeps the last check per project, drops it when a file it depends on is written. |
-| `FespalierAnnotator.kt`                            | The external annotator: shows the findings of the shared check on a file.                            |
-| `FespalierActions.kt`, `FespalierNotifier.kt`      | The Tools menu actions and the notifications.                                                        |
-| `FespalierSettings.kt`, `FespalierConfigurable.kt` | The settings and their page.                                                                         |
+|                                                    |                                                                                                                                                       |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core/Findings.kt`, `core/MiniJson.kt`             | Parses the JSON lines; maps a line and column (code points) to the text range to underline.                                                           |
+| `core/Pubspec.kt`                                  | Whether a pubspec uses fespalier, `app_dir`, whether a path is under it, and the task keys of `tasks:`.                                               |
+| `core/Runner.kt`                                   | The `fsp` / `dart run fespalier` command line; reading the outcome of a run; looking for `fsp` on PATH without running it.                            |
+| `core/Tasks.kt`                                    | Reads `fsp run --json`; a task's fsp arguments; the messages a run configuration gives for a missing project, task or target; how a project is named. |
+| `FespalierService.kt`                              | Starts the process, keeps the last check per project, drops it when a file it depends on is written.                                                  |
+| `FespalierAnnotator.kt`                            | The external annotator: shows the findings of the shared check on a file.                                                                             |
+| `FespalierActions.kt`, `FespalierNotifier.kt`      | The Tools menu actions and the notifications.                                                                                                         |
+| `FespalierTaskConfiguration.kt`                    | The _fespalier task_ run configuration: its options and editor, and the command line it runs.                                                         |
+| `FespalierTasks.kt`                                | The task whose key is at a place in pubspec.yaml, the run configuration producer, the gutter icon, running a task.                                    |
+| `FespalierRunTaskAction.kt`                        | _Tools \| fespalier: Run Task..._: lists the tasks and runs the one picked.                                                                           |
+| `FespalierSettings.kt`, `FespalierConfigurable.kt` | The settings and their page.                                                                                                                          |

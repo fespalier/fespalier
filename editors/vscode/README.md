@@ -1,7 +1,7 @@
 # fespalier for VS Code
 
 Shows what `fsp check` finds in your route tree (`lib/app/`) in the Problems panel, and runs
-`fsp gen` from the command palette. It is a thin layer over the generator's `--json`
+`fsp gen` from the command palette, and runs the `tasks:` of your `pubspec.yaml` from Run Task (since fespalier 0.22.0). It is a thin layer over the generator's `--json`
 diagnostics: nothing is re-implemented in the editor.
 
 - **Problems panel.** Saving a file under the app folder, or any Dart file under `lib/` (string
@@ -11,6 +11,15 @@ diagnostics: nothing is re-implemented in the editor.
   checks again. Every project in the workspace is checked once when it opens.
 - **fespalier: generate** runs `fsp gen` (saving open files first) and writes `lib/app.g.dart`.
 - **fespalier: check** runs the check on demand. Clicking the status bar item does the same.
+- **Tasks** (since fespalier 0.22.0). _Terminal | Run Task..._ lists `dev` and each task of `fespalier: tasks:`
+  in `pubspec.yaml`, each in its own terminal: `dev` runs `fsp dev`, the others `fsp run <name>`. The list follows
+  `pubspec.yaml`. `build` needs a target, so it is a `.vscode/tasks.json` entry with `"type": "fespalier"`,
+  `"task": "build"` and a `"target"` such as `"web"`. See [Tasks in your editor](../../docs/cli.md#tasks-in-your-editor).
+  A list that could not be read (no `fsp`, or one older than 0.22.0) is not kept: a warning says why and the next
+  _Run Task_ asks again. A `tasks.json` entry is checked before it runs (`args` a list of strings, `path` and `target`
+  strings, a `pubspec.yaml` in the folder). **UNCHECKED on a device:** the list, the terminals and Terminate Task have
+  not run in VS Code; CI runs the task provider against a stand-in for the `vscode` module (the parsing of
+  `fsp run --json`, the commands, the warnings, the labels, the `tasks.json` checks), not VS Code.
 - **Status bar.** `fespalier` with a check mark, or the number of errors or warnings.
 
 ## Requirements

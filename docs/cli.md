@@ -28,6 +28,7 @@ fsp watch               # same, whenever the routing changes (keep it next to `f
 fsp dev                 # fsp watch and flutter run in one terminal, hot reloading the app as you save (since 0.9.0)
 fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
 fsp run codegen         # a task of your own from `tasks:` in pubspec.yaml; `fsp run` lists them (since 0.9.0)
+fsp run --json          # the same list as JSON lines, for the editor plugins (since 0.22.0)
 fsp check               # CI: non-zero exit on errors, writes nothing
 fsp new 'products/[id]' --name Product --data --action --loading --error --layout --guard --transition
                         # [id] or :id both mean $id, so no shell quoting of $
@@ -245,10 +246,10 @@ error: `$id` is int in products/$id/data.dart:6 but String here
 
 ## Editor plugins
 
-Two editor plugins show the JSON diagnostics. Neither is on a marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run fespalier` when there is none, and check again when you save a file under the app folder (`app_dir`, `lib/app` by default).
+Two editor plugins show the JSON diagnostics. Neither is on a marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run fespalier` when there is none, and check again when you save a file under the app folder (`app_dir`, `lib/app` by default). Since 0.22.0 both also run your tasks: see [Tasks in your editor](#tasks-in-your-editor).
 
 - **VS Code:** `editors/vscode/` puts the diagnostics in the Problems panel, with a `fespalier: generate` command and a status bar item; `fespalier.runner` chooses the runner. Build it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the `.vsix` (see `editors/vscode/README.md`).
-- **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems, with their severity, in the files under the app folder, and adds _Tools | fespalier: Generate_ and _fespalier: Check_; a notification says when `fsp` could not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run fespalier`) and the path to `fsp`. It needs platform 252 (2025.2) or later, and the Dart plugin for highlighting route files (Android Studio includes it). Build it with JDK 21:
+- **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems, with their severity, in the files under the app folder, and adds _Tools | fespalier: Generate_ and _fespalier: Check_, and since 0.22.0 _Tools | fespalier: Run Task..._ for your tasks; a notification says when `fsp` could not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run fespalier`) and the path to `fsp`. It needs platform 252 (2025.2) or later, and the Dart plugin for highlighting route files (Android Studio includes it). Build it with JDK 21:
 
   ```sh
   cd editors/intellij
@@ -359,7 +360,7 @@ fespalier:
 
 ### `fsp build` and `fsp run`
 
-`fsp build <target>` runs `fsp gen`, then the `build` task: `before`, `flutter build <target>` (plus your args after `--`), `after`. `fsp run <task>` runs a task of your own; `fsp run` alone lists them. `--dry-run` prints what would run and runs nothing.
+`fsp build <target>` runs `fsp gen`, then the `build` task: `before`, `flutter build <target>` (plus your args after `--`), `after`. `fsp run <task>` runs a task of your own; `fsp run` alone lists them, and `fsp run --json` lists them for the editor plugins (since 0.22.0, see [Tasks in your editor](#tasks-in-your-editor)). `--dry-run` prints what would run and runs nothing.
 
 ```yaml
 check: # fsp run check
@@ -371,6 +372,58 @@ web: # fsp run web
 ```
 
 `fsp telemetry` starts its stack and returns, so it goes in `before` (`before: fsp telemetry`), not `with`.
+
+### Tasks in your editor
+
+Since 0.22.0 the VS Code and IntelliJ plugins run the `tasks:` of your `pubspec.yaml`, next to the diagnostics. Both read them from `fsp run --json` (see below).
+
+- **VS Code.** _Terminal | Run Task... | fespalier_ lists `dev` and each task of your own, each in a terminal of its own, so `fsp dev` shows its full-screen view. With several projects in one workspace folder a task is named `name - <path>`, where `<path>` is its project's folder, relative to the workspace folder. The list is read again when a `pubspec.yaml` changes. A list that could not be read (no `fsp`, or one older than 0.22.0) is not kept: a warning says why, and the next _Run Task_ asks again, so `fsp upgrade` is enough. `build` needs a target, so it is a `.vscode/tasks.json` entry with `"type": "fespalier"`, `"task": "build"` and a `"target"` (add `"path"` when the project is not the workspace folder itself):
+
+  ```json
+  {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "type": "fespalier",
+        "task": "build",
+        "target": "web",
+        "args": ["--release"],
+        "label": "build web",
+        "problemMatcher": []
+      }
+    ]
+  }
+  ```
+
+  An entry is checked before it runs: `args` must be a list of strings, `path` and `target` strings, and the folder (the workspace folder, or `path` below it) must have a `pubspec.yaml`; otherwise a message says what is wrong and nothing runs.
+
+  **UNCHECKED on a device.** The Run Task list, the terminals and Terminate Task have not run in VS Code. The tests run the task provider against a stand-in for the `vscode` module: they check the parsing of `fsp run --json`, the commands, what is kept and warned about when a listing fails, the labels, and how a `tasks.json` entry is checked and resolved.
+
+- **IntelliJ IDEA and Android Studio.** A run icon sits beside each task key in `pubspec.yaml` where the YAML plugin is installed, as it is in both; the keys must be a block mapping, so `tasks: {codegen: ...}` (a flow mapping) gets no icon, although _Run Task..._ still lists its tasks. _Tools | fespalier: Run Task..._ lists every task, `dev` and `build` included. A task runs through a _fespalier task_ run configuration, found by its project folder and task, or made when there is none: it is named `codegen (shop)`, or `codegen (apps/shop)` when the project is below the IDE project's folder, so two projects that share a folder name keep two. _Run | Edit Configurations... | + | fespalier task_ makes one by hand: the project folder (it must have a `pubspec.yaml`), the task, a target for `build`, and the arguments after `--`. The run console is not a terminal, so `fsp dev` prints [plain lines](#plain-output-ci-and-windows): type `r`, `R` or `q` and Enter, and with several devices put `-d <id>` in the arguments. On Linux and macOS, Stop sends Ctrl-C first, so `fsp dev` stops flutter; on Windows it ends the process at once unless the IDE's registry key `kill.windows.processes.softly` is on, and `fsp dev` then cannot ask flutter to stop the app. **UNCHECKED on a device.** Stop, the run console and Windows have not run in an IDE; the tests run a headless IDE for the run icons, the run configurations a task finds or makes and the run configuration's command line only.
+
+Both read the list from `fsp run --json` (no task name): one JSON object per task on stdout, `dev` and `build` first, then the order of `tasks:`. The `codegen` task of the example above is:
+
+```json
+{
+  "name": "codegen",
+  "args": ["run", "codegen"],
+  "needs_target": false,
+  "run": "dart run build_runner build",
+  "declared": true
+}
+```
+
+| Key            | What it is                                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `name`         | The key in `tasks:`. `dev` and `build` are always listed, even when `tasks:` does not set them.                                     |
+| `args`         | What to give `fsp`: `["dev"]`, `["build"]` or `["run", "<name>"]`, so an editor need not know that `fsp run dev` is refused.        |
+| `needs_target` | `true` for `build`: the target goes right after `args`.                                                                             |
+| `run`          | The task's main command as `fsp run` lists it: its `run`, else `flutter run` for `dev` and `flutter build` for `build`, else empty. |
+| `declared`     | Whether pubspec.yaml has the task.                                                                                                  |
+
+Keys are only added, never renamed.
+
+`fsp run --json` exits 0 when it lists the tasks, also when there is no `tasks:`. A mistake in `tasks:` or in pubspec.yaml exits 1, with the message on stderr and nothing on stdout. `--json` cannot be combined with a task name, with `--dry-run` or with arguments after `--` (exit 2). An `fsp` older than 0.22.0 has no `--json` and exits 2 with `unexpected argument '--json' found`; the plugins then say ``this fsp cannot list tasks: `fsp run --json` needs fespalier 0.22.0 or later``. Both run the `fsp` they find, as [Editor plugins](#editor-plugins) says, so with `dart run fespalier` the app's own fespalier version decides.
 
 ### Plain output, CI and Windows
 

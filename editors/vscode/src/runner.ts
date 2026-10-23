@@ -20,11 +20,18 @@ export function invocation(
   subcommand: 'check' | 'gen',
   projectDir: string,
 ): Invocation {
-  const tail = [subcommand, '--json', '--project', projectDir];
+  return fspCommand(runner, fspPath, fspAvailable, [subcommand, '--json', '--project', projectDir]);
+}
+
+/** `fsp <args>`, or `dart run fespalier <args>`; `auto` prefers fsp when it is on PATH. */
+export function fspCommand(runner: RunnerSetting, fspPath: string, fspAvailable: boolean, args: string[]): Invocation {
   const useFsp = runner === 'fsp' || (runner === 'auto' && fspAvailable);
-  return useFsp
-    ? { command: fspPath || 'fsp', args: tail }
-    : { command: 'dart', args: ['run', 'fespalier', ...tail] };
+  return useFsp ? { command: fspPath || 'fsp', args } : { command: 'dart', args: ['run', 'fespalier', ...args] };
+}
+
+/** On Windows `dart` is `dart.bat`, which only a shell starts; everything else runs with no shell. */
+export function needsShell(inv: Invocation, platform: string): boolean {
+  return platform === 'win32' && inv.command === 'dart';
 }
 
 export interface RunResult {
@@ -42,7 +49,7 @@ export function run(inv: Invocation, cwd: string): Promise<RunResult> {
       inv.command,
       inv.args,
       // On Windows `dart` is `dart.bat`, which execFile only starts through a shell.
-      { cwd, maxBuffer: 32 * 1024 * 1024, shell: process.platform === 'win32' && inv.command === 'dart' },
+      { cwd, maxBuffer: 32 * 1024 * 1024, shell: needsShell(inv, process.platform) },
       (err, stdout, stderr) => {
         if (err && typeof (err as NodeJS.ErrnoException).code === 'string') {
           resolve({ code: null, stdout, stderr, spawnError: err.message });

@@ -34,6 +34,12 @@ class RunnerTest {
         assertEquals("fsp", invocation(RunnerSetting.FSP, "  ", true, Subcommand.CHECK, root).command)
     }
 
+    @Test
+    fun anyArgumentsGoToFspOrDartRunFespalier() {
+        assertEquals(Invocation("fsp", listOf("run", "--json")), fspInvocation(RunnerSetting.AUTO, "fsp", true, listOf("run", "--json")))
+        assertEquals(Invocation("dart", listOf("run", "fespalier", "dev")), fspInvocation(RunnerSetting.DART, "fsp", true, listOf("dev")))
+    }
+
     private val inv = Invocation("fsp", listOf("check", "--json"))
     private val error = """{"file":"lib/app/a/page.dart","line":2,"column":1,"severity":"error","message":"bad"}"""
     private val warning = """{"file":"lib/app/a/page.dart","line":null,"column":null,"severity":"warning","message":"careful"}"""
@@ -90,5 +96,22 @@ class RunnerTest {
     fun hintsNameTheRightFix() {
         assertTrue(startFailureHint(Invocation("dart", emptyList())).contains("Dart SDK"))
         assertTrue(startFailureHint(Invocation("fsp", emptyList())).contains("Settings"))
+    }
+
+    @Test
+    fun looksForTheCommandWithoutRunningIt() {
+        val files = setOf("/usr/bin/fsp", "/home/me/bin/fsp", "/opt/tools/fsp")
+        val path = "/usr/local/bin::/usr/bin"
+        assertTrue(looksInstalled("fsp", path, false) { it in files })
+        assertFalse(looksInstalled("fsp", "/usr/local/bin:/bin", false) { it in files })
+        assertFalse(looksInstalled("fsp", null, false) { it in files })
+        assertTrue(looksInstalled(" ", path, false) { it in files }) // blank: the default, fsp
+        // A path is the file itself, not looked for in PATH.
+        assertTrue(looksInstalled("/opt/tools/fsp", "", false) { it in files })
+        assertFalse(looksInstalled("/opt/other/fsp", path, false) { it in files })
+        // Windows: `;` between folders, and the extensions a shell runs.
+        val win = setOf("C:/tools/fsp.exe")
+        assertTrue(looksInstalled("fsp", "C:\\Windows;C:\\tools\\", true) { it in win })
+        assertFalse(looksInstalled("fsp", "C:\\Windows", true) { it in win })
     }
 }

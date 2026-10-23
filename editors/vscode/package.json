@@ -1,7 +1,7 @@
 {
   "name": "fespalier",
   "displayName": "fespalier",
-  "description": "Shows fespalier route-tree errors and warnings in the Problems panel, and runs fsp gen.",
+  "description": "Shows fespalier route-tree errors and warnings in the Problems panel, runs fsp gen, and runs the tasks of fespalier: tasks: from Run Task.",
   "version": "0.2.0",
   "publisher": "vaam-apps",
   "license": "MIT",
@@ -28,7 +28,8 @@
   },
   "main": "./out/src/extension.js",
   "activationEvents": [
-    "workspaceContains:**/pubspec.yaml"
+    "workspaceContains:**/pubspec.yaml",
+    "onTaskType:fespalier"
   ],
   "contributes": {
     "commands": [
@@ -70,7 +71,36 @@
           "description": "Run fsp check when a file under the app folder (fespalier: app_dir in pubspec.yaml, lib/app by default) or a Dart file under lib/ is saved."
         }
       }
-    }
+    },
+    "taskDefinitions": [
+      {
+        "type": "fespalier",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "A task of `fespalier: tasks:` in pubspec.yaml. `dev` runs `fsp dev`, `build` runs `fsp build <target>`, any other name `fsp run <name>`."
+          },
+          "path": {
+            "type": "string",
+            "description": "The folder with the pubspec.yaml, relative to the workspace folder. Leave it out for the workspace folder itself."
+          },
+          "target": {
+            "type": "string",
+            "description": "For `build` only: what `flutter build` builds (apk, appbundle, ios, ipa, web, macos, linux, windows, ...)."
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Passed on after `--`: to `flutter run` for `dev`, to `flutter build <target>` for `build`, to the task's `run` command otherwise."
+          }
+        }
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p .",

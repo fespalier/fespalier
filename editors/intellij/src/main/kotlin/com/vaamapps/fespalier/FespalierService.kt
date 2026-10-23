@@ -5,6 +5,7 @@ import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.serviceIfCreated
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -16,14 +17,20 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import com.intellij.util.EnvironmentUtil
 import com.vaamapps.fespalier.core.FespalierProject
 import com.vaamapps.fespalier.core.Invocation
 import com.vaamapps.fespalier.core.RawOutput
 import com.vaamapps.fespalier.core.RunResult
 import com.vaamapps.fespalier.core.RunnerSetting
 import com.vaamapps.fespalier.core.Subcommand
+import com.vaamapps.fespalier.core.TaskList
+import com.vaamapps.fespalier.core.fspInvocation
 import com.vaamapps.fespalier.core.interpret
+import com.vaamapps.fespalier.core.interpretTaskList
 import com.vaamapps.fespalier.core.invocation
+import com.vaamapps.fespalier.core.looksInstalled
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -46,6 +53,9 @@ class FespalierService(private val ide: Project) : Disposable {
 
     private val entries = ConcurrentHashMap<String, Entry>()
     private val fspFound = ConcurrentHashMap<String, Boolean>()
+
+    /** The fsp paths being detected in the background (see [taskInvocation]). */
+    private val detecting = ConcurrentHashMap.newKeySet<String>()
 
     init {
         ide.messageBus.connect(this).subscribe(
@@ -129,8 +139,41 @@ class FespalierService(private val ide: Project) : Disposable {
         return interpret(inv, sub, execute(inv, project.root, indicator))
     }
 
-    private fun fspAvailable(fspPath: String, force: Boolean): Boolean {
+    /**
+     * `fsp <args>` or `dart run fespalier <args>`, as the settings say. With the auto runner the first
+     * call may run `fsp --version` (then cached, like the checks), unless it is on the UI thread: a run
+     * starts there, and waiting for a process would freeze the IDE. It then looks for the file on PATH
+     * instead and detects in the background for the next call.
+     */
+    fun taskInvocation(args: List<String>): Invocation {
+        val s = FespalierSettings.getInstance().state
+        val mayWait = !ApplicationManager.getApplication().isDispatchThread
+        val available = s.runner == RunnerSetting.AUTO && fspAvailable(s.fspPath, force = false, mayWait = mayWait)
+        return fspInvocation(s.runner, s.fspPath, available, args)
+    }
+
+    /** `fsp run --json` for [project] (blocking; call it from a background thread). */
+    fun listTasks(project: FespalierProject, indicator: ProgressIndicator?): TaskList {
+        val inv = taskInvocation(listOf("run", "--json"))
+        return interpretTaskList(inv, execute(inv, project.root, indicator))
+    }
+
+    private fun fspAvailable(fspPath: String, force: Boolean, mayWait: Boolean = true): Boolean {
         if (!force) fspFound[fspPath]?.let { return it }
+        if (!mayWait) {
+            if (detecting.add(fspPath)) {
+                ApplicationManager.getApplication().executeOnPooledThread(
+                    Runnable {
+                        try {
+                            fspAvailable(fspPath, force = true)
+                        } finally {
+                            detecting.remove(fspPath)
+                        }
+                    },
+                )
+            }
+            return looksInstalled(fspPath, EnvironmentUtil.getValue("PATH"), SystemInfo.isWindows) { File(it).isFile }
+        }
         val found = try {
             val cmd = commandLine(Invocation(fspPath.trim().ifEmpty { "fsp" }, listOf("--version")), null)
             val out = CapturingProcessHandler(cmd).runProcess(10_000, true)
@@ -154,7 +197,7 @@ class FespalierService(private val ide: Project) : Disposable {
             for (p in ProjectManager.getInstance().openProjects) p.serviceIfCreated<FespalierService>()?.invalidateAll()
         }
 
-        private fun commandLine(inv: Invocation, cwd: String?): GeneralCommandLine {
+        internal fun commandLine(inv: Invocation, cwd: String?): GeneralCommandLine {
             // On Windows `dart` is often dart.bat (Flutter's copy), which only a shell can start.
             val cmd = if (SystemInfo.isWindows && inv.command == "dart") {
                 GeneralCommandLine(listOf("cmd", "/c", inv.command) + inv.args)

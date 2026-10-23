@@ -258,8 +258,9 @@ pub struct Reads {
 }
 
 impl Reads {
-    /// The folders that hold the files read, as paths under `project` (since 0.22.0): `fsp watch`
-    /// watches those outside `lib/`, a path dependency's.
+    /// The folders that hold the files read (since 0.22.0): those of the app's own files are paths under
+    /// `project`, those of a path dependency's are where its pubspec says, which is often outside it.
+    /// `fsp watch` watches those outside `lib/`, a path dependency's.
     pub fn folders(&self, project: &Path) -> std::collections::BTreeSet<PathBuf> {
         self.files
             .iter()

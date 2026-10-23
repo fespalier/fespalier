@@ -47,14 +47,18 @@ spelling, and a `typedef` counted as a different type. Since 0.22.0 it reads the
 app's `path:` dependencies the same way, so a `typedef` or an enum declared in one is followed too: the
 packages `pubspec.yaml` lists with a `path:` under `dependencies`, `dev_dependencies` or
 `dependency_overrides` (those of `pubspec_overrides.yaml` when it has that key, as pub reads it), and their
-own `path:` dependencies, found from the pubspecs alone. The Dart compiler still catches real mismatches in
-the generated code.
+own `path:` dependencies, found from the pubspecs alone. In a pub workspace (an app that says
+`resolution: workspace`) it applies the `dependency_overrides` of the workspace root too, as pub does for
+every member: those of the root's `pubspec.yaml`, or of its `pubspec_overrides.yaml` when that has the key.
+The Dart compiler still catches real mismatches in the generated code.
 
 Not followed, so still compared as spelled: a `typedef` of a hosted, `git:` or SDK package (one of a
 `path:` dependency too, before 0.22.0), a package of a pub workspace that the pubspec names without a
 `path:` (`shared: ^1.0.0` with `resolution: workspace`: write `shared: {path: ../shared}` to have it
-followed, which pub accepts in a workspace), a generic `typedef` (`typedef Json<T> = Map<String, T>;`), a
-`typedef` in a `part` file, and a name that does not start with a capital letter. A hosted package's files
+followed, which pub accepts in a workspace), a package that only another member of the workspace overrides
+(pub applies a member's `dependency_overrides` to the whole workspace, and `fsp` reads those of the app and
+of the root, not of a sibling member: write them in the root's `pubspec.yaml`), a generic `typedef`
+(`typedef Json<T> = Map<String, T>;`), a `typedef` in a `part` file, and a name that does not start with a capital letter. A hosted package's files
 are in the pub cache, which only `pub get` fills, so following them would make the answer depend on it
 ([why](faq.md#why-fsp-follows-typedefs-itself-not-through-the-analyzer)). When two types differ and one of
 their names could not be followed, the four messages that compare types (a parameter against `data.dart`,

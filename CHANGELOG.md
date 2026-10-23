@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.1](https://github.com/fespalier/fespalier/compare/v0.22.0...v0.22.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **vscode:** quote the arguments when the dart runner goes through cmd.exe on Windows ([#286](https://github.com/fespalier/fespalier/issues/286)) ([68daa44](https://github.com/fespalier/fespalier/commit/68daa44c7434dbf39a66d12c6811ed95dbd7aeb2))
+
 ## [0.22.0](https://github.com/fespalier/fespalier/compare/v0.21.1...v0.22.0) (2026-10-23)
 
 

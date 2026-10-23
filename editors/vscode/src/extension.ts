@@ -270,6 +270,8 @@ export function activate(context: vscode.ExtensionContext) {
 
   const tasks = new FespalierTaskProvider({
     findProjects,
+    run,
+    hasPubspec: (root) => fs.existsSync(path.join(root, 'pubspec.yaml')),
     command: async (args, cwd) => {
       const s = settings();
       if (s.runner === 'auto' && fspAvailable === undefined) {

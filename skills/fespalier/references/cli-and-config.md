@@ -17,7 +17,7 @@ above; pass --project`).
 | `fsp watch`                                                  | `gen` once, then again on every relevant change; keep it next to `flutter run`, or use `fsp dev`                                                                                                                                                                                                               |
 | `fsp dev [-- <args>] [--no-tui] [--dry-run]`                 | `fsp watch` and `flutter run --machine` in one terminal, in a full-screen view: hot reload when `lib/app.g.dart` changed and the app can swap its routes, hot restart when it cannot, hot reload on any other save, the `tasks: dev:` hooks (since 0.9.0); see below                                           |
 | `fsp build <target> [-- <args>] [--dry-run]`                 | `fsp gen`, then `flutter build <target>` with the hooks of `tasks: build:` (since 0.9.0)                                                                                                                                                                                                                       |
-| `fsp run [task] [-- <args>] [--dry-run]`                     | Runs a task of `tasks:` in pubspec.yaml; with no name, lists them on stdout (since 0.9.0)                                                                                                                                                                                                                      |
+| `fsp run [task] [-- <args>] [--dry-run] [--json]`            | Runs a task of `tasks:` in pubspec.yaml; with no name, lists them on stdout (since 0.9.0); `--json`: one JSON object per task, for the editor plugins (since 0.22.0)                                                                                                                                           |
 | `fsp routes [--json]`                                        | Prints the route table (errors: `N error(s); no route table`)                                                                                                                                                                                                                                                  |
 | `fsp links [--check]`                                        | Writes App Links, Universal Links and a sitemap files from the route tree and the `links:` config; `--check` writes nothing and fails when they are stale (since 0.5.0)                                                                                                                                        |
 | `fsp maestro [--check]`                                      | Writes one Maestro smoke flow per route (`openLink` to a sample URL, then wait for the page's semantics identifier) from the `maestro:` config; `--check` writes nothing and fails when they are stale (since 0.7.0)                                                                                           |
@@ -555,6 +555,8 @@ a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R
 the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
 
 ```yaml
+
+**`fsp run --json` (since 0.22.0).** With no task name it prints one JSON object per task on stdout, for the editor plugins: `name` (the key in `tasks:`), `args` (what to give `fsp`: `["dev"]`, `["build"]` or `["run", "<name>"]`), `needs_target` (`true` for `build`, whose target goes after `args`), `run` (the main command, as `--dry-run` shows it) and `declared` (whether pubspec.yaml has the task). Every key is always present and keys are only added. The order is `dev`, `build`, then `tasks:`. It exits 0 when it lists them (also with no `tasks:`), 1 on a mistake in `tasks:` or pubspec.yaml (stdout empty, the message on stderr), and 2 when `--json` comes with a task name, `--dry-run` or arguments after `--`. An `fsp` older than 0.22.0 has no `--json` (exit 2, `unexpected argument '--json' found`), and the editor plugins say so. The Run Task list, the run console and Stop are **UNCHECKED on a device** (`docs/cli.md`, "Tasks in your editor").
 # pubspec.yaml
 fespalier:
   tasks: # since 0.9.0; read only by `fsp dev`, `fsp build` and `fsp run`
@@ -764,7 +766,7 @@ file to exist.
   on a marketplace yet; build them from source. Both run `fsp` from
   `PATH`, else `dart run fespalier`. Since 0.7.0 both also check again when any Dart
   file under `lib/` is saved (not `*.g.dart`), and show a string-path warning in that file,
-  because `fsp check` now reports on files outside the app folder.
+  because `fsp check` now reports on files outside the app folder. Since 0.22.0 both run the `tasks:` too: VS Code lists them in Run Task (`build` through a tasks.json entry with a `target`), IntelliJ has `fespalier task` run configurations, a run icon on each task key in pubspec.yaml and _Tools | fespalier: Run Task..._; both read `fsp run --json`.
 - **`flutter create` leftovers.** `flutter create` writes
   `test/widget_test.dart`, which refers to the `MyApp` you replaced, so
   `flutter analyze` fails on it until you delete or rewrite it.

@@ -191,7 +191,7 @@ checks [Flutter's accessibility guidelines](route-tests.md#route-smoke-tests-fsp
 ### tasks
 
 `tasks:` (since 0.9.0) is what [`fsp dev`, `fsp build` and `fsp run`](cli.md#tasks-commands-around-flutter-run) run: commands to run
-before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it.
+before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it. Since 0.22.0 the editor plugins list and run them ([Tasks in your editor](cli.md#tasks-in-your-editor)).
 
 ### main
 

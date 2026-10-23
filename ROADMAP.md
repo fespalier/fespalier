@@ -9,8 +9,6 @@ it ships.
 
 - **Editor support for tasks.** The VS Code and IntelliJ plugins list `fespalier: tasks:` as run
   configurations.
-- **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks
-  of green runs.
 
 ## Later
 

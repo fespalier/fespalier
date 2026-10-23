@@ -7,8 +7,7 @@ it ships.
 
 ## Next
 
-- **Make `Maestro flows open their routes on the web` a required check** once it has a few weeks
-  of green runs.
+Nothing is scheduled yet: the items under "Later" are the candidates.
 
 ## Later
 

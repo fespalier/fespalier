@@ -34,6 +34,12 @@ class RunnerTest {
         assertEquals("fsp", invocation(RunnerSetting.FSP, "  ", true, Subcommand.CHECK, root).command)
     }
 
+    @Test
+    fun anyArgumentsGoToFspOrDartRunFespalier() {
+        assertEquals(Invocation("fsp", listOf("run", "--json")), fspInvocation(RunnerSetting.AUTO, "fsp", true, listOf("run", "--json")))
+        assertEquals(Invocation("dart", listOf("run", "fespalier", "dev")), fspInvocation(RunnerSetting.DART, "fsp", true, listOf("dev")))
+    }
+
     private val inv = Invocation("fsp", listOf("check", "--json"))
     private val error = """{"file":"lib/app/a/page.dart","line":2,"column":1,"severity":"error","message":"bad"}"""
     private val warning = """{"file":"lib/app/a/page.dart","line":null,"column":null,"severity":"warning","message":"careful"}"""

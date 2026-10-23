@@ -22,7 +22,10 @@ import com.vaamapps.fespalier.core.RawOutput
 import com.vaamapps.fespalier.core.RunResult
 import com.vaamapps.fespalier.core.RunnerSetting
 import com.vaamapps.fespalier.core.Subcommand
+import com.vaamapps.fespalier.core.TaskList
+import com.vaamapps.fespalier.core.fspInvocation
 import com.vaamapps.fespalier.core.interpret
+import com.vaamapps.fespalier.core.interpretTaskList
 import com.vaamapps.fespalier.core.invocation
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
@@ -129,6 +132,22 @@ class FespalierService(private val ide: Project) : Disposable {
         return interpret(inv, sub, execute(inv, project.root, indicator))
     }
 
+    /**
+     * `fsp <args>` or `dart run fespalier <args>`, as the settings say. With the auto runner the first
+     * call may run `fsp --version` (then cached, like the checks).
+     */
+    fun taskInvocation(args: List<String>): Invocation {
+        val s = FespalierSettings.getInstance().state
+        val available = s.runner == RunnerSetting.AUTO && fspAvailable(s.fspPath, force = false)
+        return fspInvocation(s.runner, s.fspPath, available, args)
+    }
+
+    /** `fsp run --json` for [project] (blocking; call it from a background thread). */
+    fun listTasks(project: FespalierProject, indicator: ProgressIndicator?): TaskList {
+        val inv = taskInvocation(listOf("run", "--json"))
+        return interpretTaskList(inv, execute(inv, project.root, indicator))
+    }
+
     private fun fspAvailable(fspPath: String, force: Boolean): Boolean {
         if (!force) fspFound[fspPath]?.let { return it }
         val found = try {
@@ -154,7 +173,7 @@ class FespalierService(private val ide: Project) : Disposable {
             for (p in ProjectManager.getInstance().openProjects) p.serviceIfCreated<FespalierService>()?.invalidateAll()
         }
 
-        private fun commandLine(inv: Invocation, cwd: String?): GeneralCommandLine {
+        internal fun commandLine(inv: Invocation, cwd: String?): GeneralCommandLine {
             // On Windows `dart` is often dart.bat (Flutter's copy), which only a shell can start.
             val cmd = if (SystemInfo.isWindows && inv.command == "dart") {
                 GeneralCommandLine(listOf("cmd", "/c", inv.command) + inv.args)

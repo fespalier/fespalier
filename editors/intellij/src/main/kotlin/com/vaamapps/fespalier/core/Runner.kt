@@ -31,12 +31,16 @@ fun invocation(
     subcommand: Subcommand,
     projectDir: String,
 ): Invocation {
-    val tail = listOf(subcommand.cli, "--json", "--project", projectDir)
+    return fspInvocation(runner, fspPath, fspAvailable, listOf(subcommand.cli, "--json", "--project", projectDir))
+}
+
+/** `fsp <args>`, or `dart run fespalier <args>`; [RunnerSetting.AUTO] prefers fsp when it is on PATH. */
+fun fspInvocation(runner: RunnerSetting, fspPath: String, fspAvailable: Boolean, args: List<String>): Invocation {
     val useFsp = runner == RunnerSetting.FSP || (runner == RunnerSetting.AUTO && fspAvailable)
     return if (useFsp) {
-        Invocation(fspPath.trim().ifEmpty { "fsp" }, tail)
+        Invocation(fspPath.trim().ifEmpty { "fsp" }, args)
     } else {
-        Invocation("dart", listOf("run", "fespalier") + tail)
+        Invocation("dart", listOf("run", "fespalier") + args)
     }
 }
 

@@ -14,6 +14,7 @@ import com.vaamapps.fespalier.core.Finding
 import com.vaamapps.fespalier.core.RunResult
 import com.vaamapps.fespalier.core.Severity
 import com.vaamapps.fespalier.core.Subcommand
+import com.vaamapps.fespalier.core.TaskList
 import com.vaamapps.fespalier.core.startFailureHint
 import java.io.File
 
@@ -69,12 +70,29 @@ object FespalierNotifier {
         n.notify(ide)
     }
 
-    fun noProject(ide: Project, sub: Subcommand) {
+    fun noProject(ide: Project, sub: Subcommand) = noProject(ide, "fespalier: ${sub.cli}")
+
+    fun noProject(ide: Project, title: String) {
         notification(
-            "fespalier: ${sub.cli}",
+            title,
             listOf("No project with a `fespalier:` section or a fespalier dependency in its pubspec.yaml was found."),
             NotificationType.INFORMATION,
         ).notify(ide)
+    }
+
+    /** `fsp run --json` gave no list for [project]. */
+    fun taskListFailure(ide: Project, project: FespalierProject, r: TaskList) {
+        notification(
+            "fespalier (${File(project.root).name}): could not list the tasks",
+            listOf(r.failure ?: "", "`${r.invocation.display}`"),
+            NotificationType.ERROR,
+        )
+            .addAction(
+                NotificationAction.createSimple("Settings") {
+                    ShowSettingsUtil.getInstance().showSettingsDialog(ide, FespalierConfigurable::class.java)
+                },
+            )
+            .notify(ide)
     }
 
     private fun plural(n: Int, word: String) = "$n $word${if (n == 1) "" else "s"}"

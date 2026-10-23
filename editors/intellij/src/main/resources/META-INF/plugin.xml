@@ -15,6 +15,10 @@
             with severity. Saving a file checks again.</li>
         <li><b>Tools | fespalier: Generate</b> runs <code>fsp gen</code> and writes <code>lib/app.g.dart</code>.
             <b>Tools | fespalier: Check</b> checks on demand and lists what it found.</li>
+        <li><b>Tasks</b> (since fespalier 0.22.0). Each task of <code>fespalier: tasks:</code> in
+            <code>pubspec.yaml</code> has a run icon in the gutter, and runs as a <i>fespalier task</i> run
+            configuration (<code>fsp dev</code>, <code>fsp build &lt;target&gt;</code> or <code>fsp run &lt;name&gt;</code>).
+            <b>Tools | fespalier: Run Task...</b> lists them all.</li>
         <li><b>Runner.</b> Uses <code>fsp</code> from your PATH, or <code>dart run fespalier</code> when there
             is none. Settings | Tools | fespalier chooses, and sets the path to fsp.</li>
     </ul>
@@ -35,6 +39,11 @@
                                  displayName="fespalier"/>
 
         <notificationGroup id="fespalier" displayType="BALLOON"/>
+
+        <!-- The tasks of `fespalier: tasks:` in pubspec.yaml (since fespalier 0.22.0). -->
+        <configurationType implementation="com.vaamapps.fespalier.FespalierTaskConfigurationType"/>
+        <runConfigurationProducer implementation="com.vaamapps.fespalier.FespalierTaskProducer"/>
+        <runLineMarkerContributor language="yaml" implementationClass="com.vaamapps.fespalier.FespalierTaskLineMarker"/>
     </extensions>
 
     <actions>
@@ -48,6 +57,12 @@
                 class="com.vaamapps.fespalier.FespalierCheckAction"
                 text="fespalier: Check"
                 description="Run fsp check: report route-tree errors and warnings">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="com.vaamapps.fespalier.RunTask"
+                class="com.vaamapps.fespalier.FespalierRunTaskAction"
+                text="fespalier: Run Task..."
+                description="Run a task of fespalier: tasks: in pubspec.yaml">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
         </action>
     </actions>

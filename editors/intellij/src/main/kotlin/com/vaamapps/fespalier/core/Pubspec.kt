@@ -123,3 +123,41 @@ data class FespalierProject(
             }
     }
 }
+
+/** A task key of `fespalier: tasks:`: its name, and where the key starts (0-based line and column). */
+data class PubspecTask(val name: String, val line: Int, val column: Int)
+
+private val TASKS_KEY = Regex("""^(\s+)tasks:\s*(#.*)?$""")
+private val TASK_KEY = Regex("""^(\s+)(["']?)([a-z][a-z0-9_-]*)\2\s*:(\s|$)""")
+
+/**
+ * The keys of the block mapping `fespalier: tasks:` in the text of a pubspec.yaml, in order. A line
+ * reader like [appDirFromPubspec]: `tasks: {codegen: ...}` (a flow mapping) lists nothing.
+ */
+fun pubspecTasks(pubspec: String): List<PubspecTask> {
+    val out = mutableListOf<PubspecTask>()
+    var inSection = false
+    var tasksIndent = -1
+    var taskIndent = -1
+    for ((i, raw) in pubspec.lines().withIndex()) {
+        val line = raw.trimEnd('\r')
+        if (line.isBlank() || line.trimStart().startsWith("#")) continue
+        if (!line[0].isWhitespace()) {
+            if (inSection && tasksIndent >= 0) break
+            inSection = Regex("""^fespalier:\s*(#.*)?$""").matches(line)
+            continue
+        }
+        if (!inSection) continue
+        val indent = line.length - line.trimStart().length
+        if (tasksIndent < 0) {
+            TASKS_KEY.find(line)?.let { tasksIndent = it.groupValues[1].length }
+            continue
+        }
+        if (indent <= tasksIndent) break // the next key of the fespalier: section
+        if (taskIndent < 0) taskIndent = indent
+        if (indent != taskIndent) continue // inside a task
+        val m = TASK_KEY.find(line) ?: continue
+        out += PubspecTask(m.groupValues[3], i, indent)
+    }
+    return out
+}

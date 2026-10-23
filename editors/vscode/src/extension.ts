@@ -4,7 +4,8 @@ import * as vscode from 'vscode';
 
 import { countBySeverity, groupByFile, parseFindings, toRange } from './diagnostics';
 import { affectsCheck, appDirFromPubspec } from './project';
-import { fspOnPath, invocation, run, RunnerSetting } from './runner';
+import { fspCommand, fspOnPath, invocation, run, RunnerSetting } from './runner';
+import { FespalierTaskProvider, TASK_TYPE } from './taskProvider';
 
 interface Project {
   /** Absolute folder with the pubspec.yaml. */
@@ -263,6 +264,32 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('fespalier')) {
         fspAvailable = undefined;
+      }
+    }),
+  );
+
+  const tasks = new FespalierTaskProvider({
+    findProjects,
+    command: async (args, cwd) => {
+      const s = settings();
+      if (s.runner === 'auto' && fspAvailable === undefined) {
+        fspAvailable = await fspOnPath(s.fspPath, cwd);
+      }
+      return fspCommand(s.runner, s.fspPath, fspAvailable ?? false, args);
+    },
+    log: (line) => output.appendLine(line),
+  });
+  const pubspecs = vscode.workspace.createFileSystemWatcher('**/pubspec.yaml');
+  context.subscriptions.push(
+    vscode.tasks.registerTaskProvider(TASK_TYPE, tasks),
+    pubspecs,
+    pubspecs.onDidChange(() => tasks.invalidate()),
+    pubspecs.onDidCreate(() => tasks.invalidate()),
+    pubspecs.onDidDelete(() => tasks.invalidate()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => tasks.invalidate()),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('fespalier')) {
+        tasks.invalidate();
       }
     }),
   );

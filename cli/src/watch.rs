@@ -287,9 +287,9 @@ struct Pass<'a> {
 
 impl Pass<'_> {
     /// Brings the watches outside `watched` in line with the folders the last pass read from, and
-    /// returns what to tell the user. Each pass asks again: the folders that are there are watched
-    /// (one that was deleted and made again too, which the watcher dropped), the others when they
-    /// come (since 0.22.0).
+    /// returns what to tell the user (since 0.22.0). Every folder that is there is watched, one that
+    /// was deleted and made again included, which the watcher dropped (see
+    /// [`asking_again_is_free`]); the others are watched when they come.
     fn watch_beside(
         &self,
         watcher: &mut RecommendedWatcher,

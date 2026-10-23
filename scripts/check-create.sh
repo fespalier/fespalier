@@ -5,7 +5,8 @@
 #
 # The cases are `base` (no features), one per feature that `fsp create --list-features --json`
 # lists (`adaptive` is made with `--template tabs`), `telemetry` (`otel` and `sentry` together, the
-# pair that composes) and `all` (every feature at once, when there are two or more). Name the cases on the command line to run only those; with none, every case
+# pair that composes), `all` (every feature at once, when there are two or more) and `add` (the base
+# app, then `fsp add` with each feature but `adaptive`, one at a time, since 0.23.0). Name the cases on the command line to run only those; with none, every case
 # runs; `--list` prints them. CI's `create` job runs one case per matrix entry, with the same script.
 #
 # The apps depend on this checkout (`--local-packages`), not on a git tag, so what is checked is
@@ -33,7 +34,7 @@ for id in $ids; do all_cases+=("$id"); done
 # `telemetry` is the pair that has to compose (Sentry's zone, its sink added next to the generated
 # OpenTelemetry one): otel and sentry.
 if printf '%s\n' "$ids" | grep -qx otel && printf '%s\n' "$ids" | grep -qx sentry; then all_cases+=(telemetry); fi
-if [ "$(printf '%s\n' "$ids" | grep -c .)" -ge 2 ]; then all_cases+=(all); fi
+if [ "$(printf '%s\n' "$ids" | grep -c .)" -ge 2 ]; then all_cases+=(all add); fi
 
 # `--list` prints the cases, one per line: CI builds its matrix from it.
 if [ "${1:-}" = "--list" ]; then
@@ -52,7 +53,7 @@ check() {
   # What `fsp create` is given besides the folder, the checkout and the platform.
   local -a args=()
   case "$name" in
-    base) features="" ;;
+    base | add) features="" ;;
     all) features=all ;;
     telemetry) features=otel,sentry ;;
     # The tabs are the `adaptive` feature (create_tests.rs pins that the two make the same app), so
@@ -73,6 +74,26 @@ check() {
   local app="app_$name"
   echo "== create $name${args[*]:+ (${args[*]})}"
   "$fsp" create "$work/$app" --local-packages "$root" --platforms web ${args[@]+"${args[@]}"}
+  # `add`: each feature onto the app that exists, as a person adds one (`adaptive` is the tabs
+  # template, which only `fsp create` makes). What `fsp create` composes at once, `fsp add` composes
+  # one feature at a time, so no change may be left to make by hand.
+  if [ "$name" = add ]; then
+    local id out
+    for id in $ids; do
+      [ "$id" = adaptive ] && continue
+      echo "== add $id"
+      out=$("$fsp" add "$id" --project "$work/$app" --no-pub-get 2>&1) || {
+        printf '%s\n' "$out" >&2
+        return 1
+      }
+      printf '%s\n' "$out"
+      if printf '%s\n' "$out" | grep -q '^By hand: '; then
+        echo "::error::fsp add $id left a change to make by hand" >&2
+        return 1
+      fi
+    done
+    (cd "$work/$app" && flutter pub get)
+  fi
   (
     cd "$work/$app"
     # Generated files are left as the generator wrote them (`format:` is off), like the examples.

@@ -4343,3 +4343,141 @@ fn create_dot_fills_the_empty_folder_it_runs_in() {
     );
     assert!(staging_folders(root).is_empty());
 }
+
+// --- `fsp add` (since 0.23.0) --------------------------------------------------------------------
+//
+// Against the stand-in `flutter` of `fsp create`: an app made by `fsp create`, then changed.
+// `scripts/check-create.sh add` adds every feature with the real flutter.
+
+/// An app made by `fsp create` with the stand-in flutter, in `root/app`.
+#[cfg(unix)]
+fn created_app(root: &Path) -> std::path::PathBuf {
+    let (code, _, err) = fsp_task(root, &["create", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    fs::remove_file(root.join("flutter.log")).unwrap();
+    root.join("app")
+}
+
+#[cfg(unix)]
+#[test]
+fn add_writes_the_feature_then_runs_pub_get_gen_and_the_route_tests() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.contains("Resolving dependencies..."), "{out}");
+    assert_eq!(
+        flutter_log(root),
+        [
+            "pub get".to_string(),
+            format!("pub get in {}", app.display())
+        ]
+    );
+    // The pubspec gained lines and lost none.
+    let now = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let mut lines = now.lines();
+    for line in pubspec.lines() {
+        assert!(lines.any(|l| l == line), "`{line}` is gone\n{now}");
+    }
+    assert!(now.contains("  fespalier_http:\n    git:\n"), "{now}");
+    assert!(now.contains("    skip: [/headlines]\n"), "{now}");
+    for file in [
+        "lib/api.dart",
+        "lib/app/headlines/page.dart",
+        "lib/app/startup.dart",
+        "test/http_test.dart",
+    ] {
+        assert!(app.join(file).is_file(), "{file}\n{err}");
+    }
+    // `fsp gen` saw the new route, and `fsp test` wrote its smoke tests again, skipping it.
+    let generated = fs::read_to_string(app.join("lib/app.g.dart")).unwrap();
+    assert!(generated.contains("class HeadlinesRoute"), "{generated}");
+    let smoke = fs::read_to_string(app.join("test/routes/routes_test.dart")).unwrap();
+    assert!(
+        smoke.contains("//   skipped /headlines: listed in `fespalier.test.skip`"),
+        "{smoke}"
+    );
+    assert!(err.contains("  edit   pubspec.yaml\n"), "{err}");
+    assert!(err.contains("  new    lib/app/startup.dart\n"), "{err}");
+    assert!(err.ends_with("\n✓ added http\n"), "{err}");
+
+    // Again: nothing to do, and nothing runs.
+    fs::remove_file(root.join("flutter.log")).unwrap();
+    let (code, _, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(err, "note: `http` is in the app already\nnothing to add\n");
+    assert!(flutter_log(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_dry_run_writes_nothing_and_a_mistake_changes_nothing() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["add", "storage", "--project", "app", "--dry-run"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.starts_with("add storage to app (it has: none of the features)\n"),
+        "{err}"
+    );
+    assert!(
+        err.contains("\nrun    flutter pub get\nrun    fsp gen\nrun    fsp test\n"),
+        "{err}"
+    );
+    assert!(err.contains("\n=== lib/app/startup.dart (new)\n"), "{err}");
+    assert!(!app.join("lib/app/startup.dart").exists());
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+
+    let (code, _, err) = fsp_task(root, &["add", "nope", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.starts_with("unknown feature `nope`; the features are devtools, adaptive,"),
+        "{err}"
+    );
+    fs::write(app.join("lib/app/contact/page.dart"), "// mine\n").unwrap_or_else(|_| {
+        fs::create_dir_all(app.join("lib/app/contact")).unwrap();
+        fs::write(app.join("lib/app/contact/page.dart"), "// mine\n").unwrap();
+    });
+    let (code, _, err) = fsp_task(root, &["add", "forms", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("fsp add never writes over a file"), "{err}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(!app.join("lib/app/contact/action.dart").exists());
+    assert!(flutter_log(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_that_fails_at_pub_get_keeps_the_files_and_says_what_is_left() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "connectivity", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1));
+    assert!(err.contains("flutter pub get failed:"), "{err}");
+    assert!(
+        err.contains("The files are written; fix that and finish with:\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    assert!(app.join("test/connectivity_test.dart").is_file());
+}

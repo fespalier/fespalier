@@ -1,4 +1,5 @@
 mod adapters;
+mod add;
 mod build_runner;
 mod config;
 mod create;
@@ -27,8 +28,10 @@ mod osc8;
 mod otel;
 mod packages;
 mod parse_cache;
+mod pins;
 mod platform_files;
 mod procs;
+mod pubspec_edit;
 mod reload;
 mod resolve;
 mod routes;
@@ -132,6 +135,8 @@ enum Cmd {
     Run(tasks::RunCmd),
     /// Make a new Flutter app with fespalier in it: `fsp create my_app` (optional features with --features)
     Create(create::CreateCmd),
+    /// Add an optional feature of `fsp create` to this app: `fsp add storage` (the dependency, its files, its wiring)
+    Add(add::AddCmd),
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
@@ -192,6 +197,7 @@ fn main() {
             Cmd::Build(cmd) => tasks::build(&project, &cmd),
             Cmd::Run(cmd) => tasks::run_task(&project, &cmd),
             Cmd::Init => init::run(&project),
+            Cmd::Add(cmd) => add::run(&project, &cmd),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
                 match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
@@ -515,6 +521,8 @@ fn watch(project: &Path) -> Result<()> {
 #[cfg(test)]
 mod action_tests;
 #[cfg(test)]
+mod add_tests;
+#[cfg(test)]
 mod bench;
 #[cfg(test)]
 mod build_runner_tests;
@@ -583,9 +591,13 @@ mod page_name_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
+mod pins_tests;
+#[cfg(test)]
 mod platform_files_tests;
 #[cfg(test)]
 mod procs_tests;
+#[cfg(test)]
+mod pubspec_edit_tests;
 #[cfg(test)]
 mod refresh_tests;
 #[cfg(test)]

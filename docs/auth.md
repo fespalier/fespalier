@@ -72,22 +72,22 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.22.0
+      ref: v0.22.1
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.22.0
+      ref: v0.22.1
   fespalier_oidc: # the backend: OpenID Connect and Keycloak
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_oidc
-      ref: v0.22.0
+      ref: v0.22.1
   fespalier_http: # a transport implementation: package:http (or fespalier_dio for Dio)
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.22.0
+      ref: v0.22.1
 ```
 
 <!-- x-release-please-end -->

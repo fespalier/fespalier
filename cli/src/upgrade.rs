@@ -36,9 +36,15 @@ pub struct UpgradeCmd {
     /// Print one JSON object (current, latest, target, method, command, upToDate) with --check or --dry-run
     #[arg(long)]
     pub json: bool,
-    /// Install this release instead of the latest (vX.Y.Z or X.Y.Z); script installs only
+    /// Install this release instead of the latest (vX.Y.Z or X.Y.Z); script installs only. With --app, the release to pin
     #[arg(long, value_name = "TAG")]
     pub version: Option<String>,
+    /// Upgrade the app instead of fsp: move the ref: of fespalier and every companion in pubspec.yaml to this fsp's version (or --version), then flutter pub get and fsp gen, and print the migration notes
+    #[arg(long)]
+    pub app: bool,
+    /// With --app: write pubspec.yaml, but leave `flutter pub get` to you
+    #[arg(long, requires = "app")]
+    pub no_pub_get: bool,
 }
 
 // --- Versions ----------------------------------------------------------------------------------
@@ -251,8 +257,8 @@ pub fn script_command(target: Version, dir: &str, windows: bool) -> String {
 fn dart_run_refusal(cached: &str) -> String {
     format!(
         "this fsp is the one `dart run fespalier` keeps for fespalier {cached}; it follows the \
-         ref: in pubspec.yaml. Change the ref of fespalier and every companion to the release \
-         you want, then flutter pub get."
+         ref: in pubspec.yaml. To move the ref of fespalier and every companion to another \
+         release, run `dart run fespalier upgrade --app --version vX.Y.Z`."
     )
 }
 
@@ -416,9 +422,9 @@ pub fn ref_note(pinned: Option<&str>, installed: Version) -> Option<String> {
     let version = Version::parse(pinned)?;
     (version != installed).then(|| {
         format!(
-            "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Update the refs \
-             (fespalier and every companion, the same url and ref), or run `dart run fespalier` \
-             to use the fsp that matches the pin.",
+            "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Move the refs \
+             of fespalier and every companion to {tag} with `fsp upgrade --app`, or run \
+             `dart run fespalier` to use the fsp that matches the pin.",
             pin = version.tag(),
             tag = installed.tag(),
         )

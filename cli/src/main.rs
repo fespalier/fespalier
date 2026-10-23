@@ -47,6 +47,7 @@ mod telemetry_stack;
 mod templates;
 mod types;
 mod upgrade;
+mod upgrade_app;
 mod upgrade_replace;
 mod watch;
 
@@ -143,7 +144,7 @@ enum Cmd {
     New(scaffold::NewCmd),
     /// Start a local OpenTelemetry stack with fespalier's dashboards: a collector, OpenObserve, and Grafana with --grafana (needs Docker)
     Telemetry(telemetry_stack::TelemetryCmd),
-    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
+    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3); `--app` moves the app's pins instead
     Upgrade(upgrade::UpgradeCmd),
 }
 
@@ -167,6 +168,10 @@ fn main() {
         }
         // So is the installed `fsp` itself.
         if let Cmd::Upgrade(cmd) = &cli.cmd {
+            // `--app` upgrades the app's pins (since 0.23.0): that needs the project.
+            if cmd.app {
+                return upgrade_app::run(cmd, &find_project(cli.project.clone())?);
+            }
             // Only the closing note reads the project, and it may be none.
             let project = find_project(cli.project.clone()).ok();
             return upgrade::run(cmd, project.as_deref());
@@ -630,6 +635,8 @@ mod telemetry_tests;
 mod tests;
 #[cfg(test)]
 mod types_tests;
+#[cfg(test)]
+mod upgrade_app_tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]

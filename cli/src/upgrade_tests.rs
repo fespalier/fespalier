@@ -615,6 +615,10 @@ fn the_ref_note_names_a_pin_that_differs() {
         "{note}"
     );
     assert!(note.contains("every companion"), "{note}");
+    assert!(
+        note.contains("to v0.15.0 with `fsp upgrade --app`"),
+        "{note}"
+    );
     assert!(note.contains("dart run fespalier"), "{note}");
     // A ref without the `v` is the same release.
     assert!(ref_note(Some("0.15.0"), v(0, 15, 0)).is_none());

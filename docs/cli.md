@@ -7,6 +7,7 @@ Every `fsp` command, the generated file, the editor plugins and `fsp dev`. For `
 ```sh
 fsp create my_app       # a new Flutter app with fespalier in it, ready to run (since 0.15.0)
 fsp init                # first-time setup of an existing app: starter files, then gen
+fsp add storage         # an optional feature of fsp create, added to this app (since 0.23.0)
 fsp gen                 # check lib/app/, write lib/app.g.dart
 fsp gen --format        # ...and run `dart format` on it
 fsp routes              # print the route table (--json: one object per route)
@@ -24,6 +25,7 @@ fsp telemetry           # a local OpenTelemetry stack with fespalier's dashboard
 fsp telemetry --grafana # ...and Grafana, with the same dashboards
 fsp upgrade             # upgrade fsp the way it was installed (since 0.15.0)
 fsp upgrade --check     # exit 0 up to date, 3 an update is available, 1 error
+fsp upgrade --app       # move the ref: of fespalier and every companion to this fsp's release (since 0.23.0)
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp dev                 # fsp watch and flutter run in one terminal, hot reloading the app as you save (since 0.9.0)
 fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
@@ -119,6 +121,44 @@ The pages of `forms`, `flags`, `i18n`, `image`, `auth`, `http` and `download` ha
 `lib/app/startup.dart` is written once for all of them: its imports are sorted, its steps run in a fixed order (telemetry sinks first, then the session, then the rest) and it is `async` only when a step awaits.
 
 The events of `--json` are `run` (`command`, before each command and, with `--dry-run`, for each one planned), `file` (`path` and `action`, which is `new` or `overwrite`, and with `--dry-run` the file's `content`), `done` (`dir`, `name`, `features` and `dry_run`) and, when the command fails, `error` (`message`).
+
+### fsp add
+
+Since 0.23.0. `fsp add <feature>...` puts an optional feature of [`fsp create`](#fsp-create) into the app you have: the same features, from the same table, with the same files.
+
+```sh
+fsp add storage             # one feature
+fsp add http image          # several at once; a feature another one needs comes with it
+fsp add auth --dry-run      # what would change, every file in full; nothing is written or run
+fsp add i18n --no-pub-get   # write the files, and leave `flutter pub get` to you
+```
+
+What it does, in order:
+
+1. Reads `pubspec.yaml` and the files the features write, and works out which features the app has: one whose packages are under `dependencies:`, whose `fespalier:` keys are set and whose files are all there. A feature you ask for that the app has is a `note` and nothing more.
+2. Edits `pubspec.yaml` line by line, and keeps its comments, blank lines, quotes and order. Each companion package is pinned the way `fespalier` is: the same git `url` and `ref`, or, for an app that takes fespalier from a checkout's folder (`path:`), the folder next to it, with the `dependency_overrides:` a checkout needs, as `fsp create --local-packages` writes them. Each other dependency is written as `fsp create` writes it; one the app already lists keeps its version. Then the feature's `fespalier:` keys, its `test: skip:` routes and its `flutter: assets:`. A dependency goes in name order when the section is in name order, and last when it is not. After each change the file is read back as YAML and compared with what the change means: a layout it does not edit (a section on one line, such as `dev_dependencies: {...}`) stops `fsp add` before anything is written, and the message gives the lines to write by hand.
+3. Writes the feature's own files. It never writes over a file: when some of them are there already, it writes nothing and names them.
+4. Updates the files that every feature adds to: `lib/app/startup.dart`, `lib/app/app.dart`, `lib/main.dart`, `test/routes/setup.dart`, and the test of another feature that starts the whole app (once `auth` is in, `test/storage_test.dart` gives the keychain a mock). Each is composed as `fsp create` composes it, for the features the app has plus the new ones. A file that is what `fsp create` writes for the features the app has, byte for byte or but for what `dart format` changes, is replaced. A file you changed, or wrote yourself, is left as it is, and the change to make is printed at the end as `+` and `-` lines, under `By hand: <file> (...). Make this change:`. Until you make it, the feature is not wired in, and its test fails.
+5. Raises the Android `minSdk` as `fsp create` does, for a feature that needs it (`auth`), when `android/app/build.gradle.kts` has Flutter's own line.
+6. Runs `flutter pub get`, `dart format` on the Dart files it wrote (so they follow your language version and page width; without `dart` on `PATH` it says so, and they are as `fsp create` writes them), `fsp gen`, and [`fsp test`](route-tests.md) when the app has `test/routes/routes_test.dart`.
+
+If `flutter pub get` or `fsp gen` fails, the files stay written, and the message lists the commands that finish the job.
+
+It refuses, before it writes anything:
+
+- no feature, `all` (which is `fsp create`'s), or a feature that does not exist; the message lists the features.
+- `adaptive`, which takes the place of the base app's layout and pages: only `fsp create --template tabs` makes it.
+- an app with `main: manual`, or with an `app_dir:` or `output:` of its own: the files are `fsp create`'s, which wire the generated `main()` from `lib/app/` and import `lib/app.g.dart`. [The features](#fsp-create) say what each one adds, for a person to add it by hand.
+- a `pubspec.yaml` without `fespalier` under `dependencies:`, or one whose companions are not pinned as `fespalier` is (another `url` or `ref`). [`fsp upgrade --app`](#moving-the-apps-pins) moves them together.
+- an `environment: sdk:` below `^3.9.0`, the Dart that `fsp create`'s files are written in, or an `environment: flutter:` below a feature's floor.
+
+| Flag           | What it does                                                                                                                                                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--dry-run`    | Prints the plan on stderr and writes and runs nothing: the features the app has, each change to `pubspec.yaml`, each file (`new` or `update`), each change to make by hand and the commands, then the change to `pubspec.yaml` and every file in full. |
+| `--no-pub-get` | Writes the files and generates, but leaves `flutter pub get` to you.                                                                                                                                                                                   |
+| `--offline`    | Passes `--offline` to `flutter pub get`.                                                                                                                                                                                                               |
+
+An app made by `fsp create` that gets every feature with `fsp add`, one at a time and in any order, is the app that `fsp create --features` makes with all of them: a test pins it, and CI's `create` job checks it (its `add` case) with `dart format`, `flutter analyze` and `flutter test`.
 
 ### fsp routes
 
@@ -757,7 +797,7 @@ Every message `fsp size` can print is quoted in the `fespalier-troubleshooting` 
 
 ## fsp upgrade
 
-`fsp upgrade` (since 0.15.0) upgrades the `fsp` binary that runs it, by the installer that put it there. It needs no project, and it is the one command that looks at the network: it follows GitHub's `releases/latest` redirect with the system `curl` (`-fsSL --proto =https`, so `HTTPS_PROXY` and the OS trust store apply; without `curl` it stops and names the install script).
+`fsp upgrade` (since 0.15.0) upgrades the `fsp` binary that runs it, by the installer that put it there. It needs no project, and it is the one command that looks at the network: it follows GitHub's `releases/latest` redirect with the system `curl` (`-fsSL --proto =https`, so `HTTPS_PROXY` and the OS trust store apply; without `curl` it stops and names the install script). With `--app` (since 0.23.0) it upgrades the app instead: see [Moving the app's pins](#moving-the-apps-pins).
 
 | Flag              | What it does                                                                                                                                                                                                                                |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -765,10 +805,32 @@ Every message `fsp size` can print is quoted in the `fespalier-troubleshooting` 
 | `--dry-run`       | Prints what it would run or replace and does nothing.                                                                                                                                                                                       |
 | `--json`          | With `--check` or `--dry-run`, one object on stdout: `current`, `latest`, `target`, `method` (`homebrew`, `scoop`, `cargo`, `script`, `dart-run`, `source`), `command` (null when the install cannot be upgraded from here) and `upToDate`. |
 | `--version <tag>` | Upgrade (or downgrade) to `vX.Y.Z` or `X.Y.Z` instead of the latest, for an install-script install (a downgrade prints a notice); a Homebrew or Scoop install is pointed at the script's `FSP_VERSION` instead.                             |
+| `--app`           | Moves the app's pins instead of upgrading `fsp` (since 0.23.0), to this `fsp`'s release or to `--version`: see [below](#moving-the-apps-pins).                                                                                              |
+| `--no-pub-get`    | With `--app`: writes `pubspec.yaml`, and leaves `flutter pub get` to you.                                                                                                                                                                   |
 
 How the install is told apart, in this order: the `dart run fespalier` cache (`<cache>/fespalier/<version>-<target>/`), a build of the source tree (`target/debug` or `target/release`), Homebrew (`Cellar/fsp/`), Scoop (`scoop/apps/fsp/`, or under `$SCOOP`), cargo (`$CARGO_HOME/bin`, default `~/.cargo/bin`), and otherwise the install script. Homebrew's upgrade runs with your terminal; Scoop's and cargo's commands are printed, not run; an install-script binary is replaced in place once the archive matches both the release's `.sha256` and the checksum pinned at the tag (a mismatch, or a release without pins, is refused and nothing changes; see [Upgrading fsp](getting-started.md#upgrading-fsp)). The cache copy and a source build are refused, with the reason: the first follows the `ref:` in `pubspec.yaml`. `FSP_RELEASES_URL` and `FSP_BASE_URL` redirect the lookup and the downloads (see [Upgrading fsp](getting-started.md#upgrading-fsp)).
 
-After an upgrade that installed a new `fsp` (Homebrew's or an install-script replace; not `--check`, `--dry-run` or the printed Scoop and cargo commands), `fsp upgrade` reads the `pubspec.yaml` it finds above the current folder, if any. When that pins `fespalier` from a repository at a `ref:` that is a release other than the `fsp` now installed, it adds a note: update the refs of fespalier and every companion (the same `url` and `ref`), or run `dart run fespalier` to use the `fsp` that matches the pin. A path or hosted dependency, a branch or commit `ref:`, or no project at all gives no note, and the exit code does not change.
+After an upgrade that installed a new `fsp` (Homebrew's or an install-script replace; not `--check`, `--dry-run` or the printed Scoop and cargo commands), `fsp upgrade` reads the `pubspec.yaml` it finds above the current folder, if any. When that pins `fespalier` from a repository at a `ref:` that is a release other than the `fsp` now installed, it adds a note: move the refs of fespalier and every companion to that release with `fsp upgrade --app`, or run `dart run fespalier` to use the `fsp` that matches the pin. A path or hosted dependency, a branch or commit `ref:`, or no project at all gives no note, and the exit code does not change.
+
+### Moving the app's pins
+
+Since 0.23.0. `fsp upgrade --app` moves fespalier and its companion packages together: every `ref:` of a package of this repository in `pubspec.yaml`, under `dependencies:` and `dev_dependencies:` and as a git override of the same repository under `dependency_overrides:`, goes to one release.
+
+```sh
+fsp upgrade --app                     # every ref to the release of this fsp
+fsp upgrade --app --version vX.Y.Z    # to another release
+fsp upgrade --app --check             # exit 3 when a ref would move (for CI)
+fsp upgrade --app --dry-run           # what would move, and the notes
+```
+
+- **The release** is the one of the `fsp` that runs, unless `--version` names another: `fsp` writes the code of its own release, so the packages move to it. With `dart run fespalier`, whose `fsp` is the one of the release the app pins, give `--version` (`fsp upgrade --check` prints the latest).
+- **Only the `ref:` values change**: the `url`, the comments, the quotes and the rest of the file stay as they are. Refs at different releases are fine, since moving them together is the point.
+- **It refuses**, and writes nothing, when a package of this repository comes from another repository, comes from a folder while `fespalier` comes from git, or is pinned to a `ref:` that is not a release tag (a branch or a commit). The message lists each one.
+- **A checkout has nothing to move.** An app that takes `fespalier` from a folder (`path:`) gets a line that says so, and exit 0. An override to a folder, under `dependency_overrides:` or in `pubspec_overrides.yaml`, is left as it is, with a `note`.
+- **Then** it runs `flutter pub get` (with `--no-pub-get` it leaves it to you and says that `pubspec.lock` still names the old commits) and, when the release is the `fsp`'s own, `fsp gen`; for another release it says to regenerate with that release's `fsp`.
+- **Last, the migration notes.** For each release after the oldest one the app pinned, up to the new one, it prints the first paragraph of its section in [Upgrading](migration.md#upgrading) (what breaks, and which apps regenerate `app.g.dart`), the lead of each bullet, and a link to the section at the new release's tag. The notes are the ones the running `fsp` was built with; for releases after it, it prints a link to the page at the new tag instead. A downgrade prints that link only.
+
+`--check` prints the moves and writes nothing: exit **0** when every ref is at the release, **3** when one would move, **1** on an error. `--dry-run` prints the moves and the notes. `--json` prints one object on stdout, and the lines for people on stderr: `from` (the oldest release pinned), `target`, `upToDate`, `packages` (each with `name`, `section`, `from` and `to`) and `notes` (the releases whose sections apply); for a checkout, `checkout` is the folder and `packages` is empty.
 
 ## fsp telemetry
 

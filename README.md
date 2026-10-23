@@ -135,6 +135,7 @@ Future<void> main() => AppMain.run();
 ```sh
 fsp dev                                   # the app, regenerated and hot reloaded on every save
 fsp new 'orders/[id]' --data --loading    # the folder orders/$id: page, data.dart, loading.dart
+fsp add storage                           # a feature of fsp create in this app: package, wiring, test
 ```
 
 Next: [Installation and setup](docs/getting-started.md) (CI, committing `app.g.dart`, platform notes),

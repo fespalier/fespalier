@@ -25,7 +25,7 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 ## Upgrading
 
-What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
+What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1. Since 0.23.0, [`fsp upgrade --app`](cli.md#moving-the-apps-pins) moves an app's refs and prints, for each release in between, the first paragraph of its section here and the lead of each bullet.
 
 ### 0.22.0
 

@@ -29,6 +29,10 @@ flutter analyze && flutter test
 
 `fsp --version` must print the package's version (`ref: vX.Y.Z` needs `fsp X.Y.Z`); an `fsp` of another
 version on `PATH` is the usual source of an `app.g.dart` that does not compile.
+Since 0.23.0 `fsp upgrade --app` does step 1 for `fespalier` and every companion at once (to the running `fsp`'s
+release, or `--version vX.Y.Z`; `dart run fespalier upgrade --app --version vX.Y.Z` with the launcher), runs
+`flutter pub get` and, at the `fsp`'s own release, step 2, then prints the migration notes of every release in
+between (the `fespalier` skill, `cli-and-config.md`).
 `dart run fespalier` uses an `fsp` on `PATH` only when its version matches.
 
 ## 0.21 to 0.22: what to check

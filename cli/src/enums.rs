@@ -92,6 +92,10 @@ struct Lib {
     src: String,
     imports: OnceCell<Vec<extra::Import>>,
     module: OnceCell<Module>,
+    /// The names the source may declare, made on the first lookup of a name (since 0.22.0).
+    declares: OnceCell<HashSet<String>>,
+    /// Whether the source says `export` anywhere, found once (since 0.22.0).
+    exporting: OnceCell<bool>,
 }
 
 impl Lib {
@@ -100,6 +104,8 @@ impl Lib {
             src: src.to_string(),
             imports: OnceCell::new(),
             module: OnceCell::new(),
+            declares: OnceCell::new(),
+            exporting: OnceCell::new(),
         }
     }
 
@@ -118,7 +124,7 @@ impl Lib {
 
     /// What the library re-exports. A source with no `export` in it has none, and is not parsed.
     fn exports(&self) -> &[dart::Export] {
-        if self.src.contains("export") {
+        if *self.exporting.get_or_init(|| self.src.contains("export")) {
             &self.module().exports
         } else {
             &[]
@@ -128,22 +134,84 @@ impl Lib {
     /// Whether the source may declare a type called `name`: the name follows `class`, `enum`,
     /// `typedef`, `mixin` or `type` somewhere in it (comments and strings included, so a `true` is
     /// not a promise). A `false` is: every declaration of a type is spelled that way, and nothing
-    /// is parsed to find out.
+    /// is parsed to find out. The source is read once for all the names (since 0.22.0): a barrel of a
+    /// path dependency is asked about every name no page file declares, in each of its files.
     fn may_declare(&self, name: &str) -> bool {
         count!(probes);
-        let ident = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
-        self.src.match_indices(name).any(|(at, _)| {
-            let (before, after) = (&self.src[..at], &self.src[at + name.len()..]);
-            if before.ends_with(ident) || after.starts_with(ident) {
-                return false;
-            }
-            let before = before.trim_end();
-            let word = before.rsplit(|c: char| !ident(c)).next().unwrap_or("");
-            // A comment between the keyword and the name is not looked into: it may be one.
-            before.ends_with("*/")
-                || matches!(word, "class" | "enum" | "typedef" | "mixin" | "type")
-        })
+        if name.is_empty() || !name.chars().all(is_ident) {
+            return may_declare_in(&self.src, name);
+        }
+        self.declared().contains(name)
     }
+
+    /// The names the source may declare (see [`Lib::may_declare`]).
+    fn declared(&self) -> &HashSet<String> {
+        self.declares.get_or_init(|| declared_names(&self.src))
+    }
+}
+
+/// Whether `c` can be part of a Dart identifier (for this module's purposes).
+fn is_ident(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '$'
+}
+
+/// Whether `name` follows `class`, `enum`, `typedef`, `mixin` or `type` somewhere in `src`, or a
+/// comment's end, as a whole identifier.
+pub(crate) fn may_declare_in(src: &str, name: &str) -> bool {
+    src.match_indices(name).any(|(at, _)| {
+        let (before, after) = (&src[..at], &src[at + name.len()..]);
+        if before.ends_with(is_ident) || after.starts_with(is_ident) {
+            return false;
+        }
+        let before = before.trim_end();
+        let word = before.rsplit(|c: char| !is_ident(c)).next().unwrap_or("");
+        // A comment between the keyword and the name is not looked into: it may be one.
+        before.ends_with("*/") || is_declaring(word)
+    })
+}
+
+/// The words after which a type's name is declared.
+fn is_declaring(word: &str) -> bool {
+    matches!(word, "class" | "enum" | "typedef" | "mixin" | "type")
+}
+
+/// Every identifier of `src` that [`may_declare_in`] says may be declared: the one name that follows
+/// a declaring word with only whitespace between, and the one that follows a comment's end.
+pub(crate) fn declared_names(src: &str) -> HashSet<String> {
+    let bytes = src.as_bytes();
+    // The bytes of the identifier character at `at` (0: it is another): ASCII is told by its byte.
+    let ident_at = |at: usize| match bytes[at] {
+        b if b.is_ascii() => usize::from(b.is_ascii_alphanumeric() || b == b'_' || b == b'$'),
+        _ => src[at..]
+            .chars()
+            .next()
+            .filter(|&c| is_ident(c))
+            .map_or(0, char::len_utf8),
+    };
+    let mut names = HashSet::new();
+    let (mut previous, mut gap_from, mut at) = ("", 0, 0);
+    while at < bytes.len() {
+        let start = at;
+        while at < bytes.len() && ident_at(at) > 0 {
+            at += ident_at(at);
+        }
+        if at == start {
+            at += src[at..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        let gap = src[gap_from..start].trim_end();
+        let declared = if gap.is_empty() {
+            is_declaring(previous)
+        } else {
+            gap.ends_with("*/")
+        };
+        if declared {
+            names.insert(src[start..at].to_string());
+        }
+        previous = &src[start..at];
+        gap_from = at;
+    }
+    names
 }
 
 /// A library path, an import prefix and a name: what a lookup of a type name is made with.
@@ -173,6 +241,10 @@ pub struct Libs {
     exported: RefCell<HashMap<(String, String), Option<Declared>>>,
     /// The enum a library and the ones it exports declare as a name, by the same key.
     enums: RefCell<HashMap<(String, String), Option<Found>>>,
+    /// The names a library and the ones it exports may declare, by the library's path, once a lookup
+    /// through it found nothing; `None` when some export was not read. A name that is not in it is
+    /// found nowhere through the library, so no other walk of its exports is made for it (since 0.22.0).
+    closures: RefCell<HashMap<String, Option<Rc<HashSet<String>>>>>,
 }
 
 /// The files a [`Libs`] read from disk while resolving, with what was in them, and the path packages
@@ -319,6 +391,9 @@ impl Libs {
     /// walk through the exports of a library is made once per name, not once per file that imports
     /// it (a lookup further down a chain of typedefs is not kept: it depends on how deep it is).
     fn enum_exported(&self, path: &str, name: &str, depth: usize) -> Option<Found> {
+        if self.nothing_called(path, name) {
+            return None;
+        }
         if depth > 0 {
             return self.enum_in(path, name, &mut HashSet::new(), depth);
         }
@@ -327,6 +402,9 @@ impl Libs {
             return hit.clone();
         }
         let found = self.enum_in(path, name, &mut HashSet::new(), depth);
+        if found.is_none() {
+            self.close(path);
+        }
         self.enums.borrow_mut().insert(key, found.clone());
         found
     }
@@ -550,13 +628,60 @@ impl Libs {
     /// The declaration of `name` in the library at `path` or in one of the libraries it exports,
     /// found once per library and name: a barrel that a hundred pages import is walked once.
     fn exported_once(&self, path: &str, name: &str) -> Option<Declared> {
+        if self.nothing_called(path, name) {
+            return None;
+        }
         let key = (path.to_string(), name.to_string());
         if let Some(hit) = self.exported.borrow().get(&key) {
             return hit.clone();
         }
         let found = self.exported(path, name, &mut HashSet::new());
+        if found.is_none() {
+            self.close(path);
+        }
         self.exported.borrow_mut().insert(key, found.clone());
         found
+    }
+
+    /// Whether the library at `path` and the ones it exports are known to declare nothing called
+    /// `name` (see [`Libs::closures`]).
+    fn nothing_called(&self, path: &str, name: &str) -> bool {
+        let closures = self.closures.borrow();
+        let known = closures.get(path).and_then(Option::as_ref);
+        known.is_some_and(|names| !names.contains(name))
+    }
+
+    /// Makes the names the library at `path` and everything it exports may declare, once, after a
+    /// walk of its exports found nothing: `show` and `hide` are not looked at, and a library that
+    /// was not read (no walk went through a filtered export) leaves the set out.
+    fn close(&self, path: &str) {
+        if self.closures.borrow().contains_key(path) {
+            return;
+        }
+        let mut names = HashSet::new();
+        let mut seen = HashSet::new();
+        let mut todo = vec![path.to_string()];
+        let complete = loop {
+            let Some(next) = todo.pop() else {
+                break true;
+            };
+            if !seen.insert(next.clone()) {
+                continue;
+            }
+            let Some(read) = self.files.borrow().get(&next).cloned() else {
+                break false;
+            };
+            let Some(lib) = read else { continue };
+            names.extend(lib.declared().iter().cloned());
+            todo.extend(
+                lib.exports()
+                    .iter()
+                    .filter_map(|e| self.locate(&next, &e.uri)),
+            );
+        };
+        self.closures
+            .borrow_mut()
+            .insert(path.to_string(), complete.then(|| Rc::new(names)));
     }
 
     /// The declaration of `name` in the library at `path` or in one of the libraries it exports.

@@ -9,6 +9,7 @@ mod dev_state;
 mod dev_tui;
 mod devtools;
 mod diag;
+mod doctor;
 mod emit;
 mod entry;
 mod enums;
@@ -143,6 +144,8 @@ enum Cmd {
     Upgrade(upgrade::UpgradeCmd),
     /// Print the JSON Schema of the `fespalier:` section of pubspec.yaml, for editors
     Schema(schema::SchemaCmd),
+    /// Report what the generated `main()` wires and why, and what is out of line: refs, Flutter, `go_router` (exit 1 on an error)
+    Doctor(doctor::DoctorCmd),
 }
 
 fn main() {
@@ -199,6 +202,7 @@ fn main() {
             Cmd::Build(cmd) => tasks::build(&project, &cmd),
             Cmd::Run(cmd) => tasks::run_task(&project, &cmd),
             Cmd::Init => init::run(&project),
+            Cmd::Doctor(cmd) => doctor::run(&project, &cmd),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
                 match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
@@ -541,6 +545,8 @@ mod dev_state_tests;
 mod dev_tui_tests;
 #[cfg(test)]
 mod devtools_tests;
+#[cfg(test)]
+mod doctor_tests;
 #[cfg(test)]
 mod entry_tests;
 #[cfg(test)]

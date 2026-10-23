@@ -1,0 +1,464 @@
+//! `fsp doctor` (since 0.23.0): what the generated `main()` wires and why, and what is out of line
+//! around it. A report, like Spring Boot's conditions report, with a status per row:
+//!
+//! - **wiring** (`doctor/wiring.rs`): whether `lib/app.main.g.dart` is written and why, what the root
+//!   files give it, each adapter (listed, found by `adapters: auto`, or a first-party adapter package
+//!   that is a dependency and is not wired), telemetry, `otel`, forms, deferred pages, tasks;
+//! - **versions** (`doctor/versions.rs`): fespalier's `ref:` against this `fsp`, every companion's
+//!   `url` and `ref` against fespalier's, `pubspec.lock` against both, `go_router` against the range
+//!   fespalier supports, and Flutter and Dart against fespalier's floor and the companions' own;
+//! - **checks** (`doctor/checks.rs`): what `fsp gen` never checks (the `links:`, `maestro:`, `size:`,
+//!   `test:` and `tasks:` sections, which only their commands read), the `build_runner` trap,
+//!   `lib/main.dart` and `AppMain.run()`, and a one-line summary of `fsp check`, whose diagnostics it
+//!   does not repeat.
+//!
+//! It is advisory, so it reads more than `fsp gen` may: `pubspec.lock`, every Dart file under `lib/`
+//! (for `AppMain.run(` and the adapters' `configure(` calls, by their text), and `flutter --version
+//! --machine` when `flutter` is on PATH. It never reads the pub cache or `.dart_tool/`, and never the
+//! network. [`gather`] does all the reading; [`rows`] is a function of what it read, so the tests
+//! give it any [`Facts`].
+//!
+//! A group of rows is a module with a `rows(&Facts) -> Vec<Row>` and one entry in [`GROUPS`]: a later
+//! group (a Rust core's toolchain, say) is a file of its own beside these.
+
+mod checks;
+pub(crate) mod versions;
+mod wiring;
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::Result;
+use clap::Args;
+use serde_yaml_ng::Value;
+
+use crate::Exit;
+use crate::config::{Config, Pubspec};
+use crate::upgrade::Version;
+
+#[derive(Args, Debug)]
+pub struct DoctorCmd {
+    /// Print the report to stdout as JSON lines (section, check, subject, status, message)
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Where a row is printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Section {
+    Wiring,
+    Versions,
+    Checks,
+}
+
+impl Section {
+    /// How `--json` names it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Section::Wiring => "wiring",
+            Section::Versions => "versions",
+            Section::Checks => "checks",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Section::Wiring => "What the generated main() wires, and why",
+            Section::Versions => "Versions",
+            Section::Checks => "Checks",
+        }
+    }
+}
+
+/// How a row reads. Only [`Status::Error`] makes `fsp doctor` exit 1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    /// As it should be.
+    Ok,
+    /// What is, neither right nor wrong (`telemetry: false`).
+    Info,
+    /// Works, and may not be what you meant.
+    Warning,
+    /// Will not work as it is.
+    Error,
+    /// Not checked, and why (no `pubspec.lock`, no `flutter` on PATH).
+    Skipped,
+}
+
+impl Status {
+    /// How `--json` names it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Status::Ok => "ok",
+            Status::Info => "info",
+            Status::Warning => "warning",
+            Status::Error => "error",
+            Status::Skipped => "skipped",
+        }
+    }
+
+    fn mark(self) -> &'static str {
+        match self {
+            Status::Ok => "✓",
+            Status::Info => "·",
+            Status::Warning => "!",
+            Status::Error => "✗",
+            Status::Skipped => "-",
+        }
+    }
+}
+
+/// One line of the report.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    pub section: Section,
+    /// What was looked at, a stable name (`main`, `adapter`, `companion`, `go_router`...).
+    pub check: &'static str,
+    /// The package or file the row is about, when there are several of its `check`.
+    pub subject: Option<String>,
+    pub status: Status,
+    /// A sentence that stands alone.
+    pub message: String,
+}
+
+impl Row {
+    pub(crate) fn new(
+        section: Section,
+        check: &'static str,
+        status: Status,
+        message: impl Into<String>,
+    ) -> Row {
+        Row {
+            section,
+            check,
+            subject: None,
+            status,
+            message: message.into(),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn about(mut self, subject: impl Into<String>) -> Row {
+        self.subject = Some(subject.into());
+        self
+    }
+}
+
+/// What `flutter --version --machine` says.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Toolchain {
+    pub flutter: Version,
+    pub dart: Version,
+}
+
+impl Toolchain {
+    /// From the JSON `flutter --version --machine` prints (`frameworkVersion`, `dartSdkVersion`); a
+    /// pre-release (`3.38.0-0.1.pre`) or a Dart `3.13.5 (build ...)` reads as its `x.y.z`.
+    #[must_use]
+    pub fn parse(stdout: &str) -> Option<Toolchain> {
+        let start = stdout.find('{')?;
+        let end = stdout.rfind('}')?;
+        let v: serde_json::Value = serde_json::from_str(stdout.get(start..=end)?).ok()?;
+        Some(Toolchain {
+            flutter: leading_version(v.get("frameworkVersion")?.as_str()?)?,
+            dart: leading_version(v.get("dartSdkVersion")?.as_str()?)?,
+        })
+    }
+}
+
+/// The `x.y.z` a version string starts with: `3.38.0-0.1.pre` is 3.38.0.
+pub(crate) fn leading_version(text: &str) -> Option<Version> {
+    let end = text
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(text.len());
+    Version::parse(text.get(..end)?.trim_end_matches('.'))
+}
+
+/// What the app is, read once for every group.
+#[derive(Debug)]
+pub struct AppFacts {
+    /// Whether the generated `main()` is written, and why (`entry::main_reasons`).
+    pub main: (bool, Vec<String>),
+    pub root: crate::entry::RootReport,
+    /// A hot reload swaps the route table (`entry::swaps`).
+    pub swaps: bool,
+    /// The `form()` companions of the actions.
+    pub forms: usize,
+    /// The routes whose page loads on demand.
+    pub deferred: usize,
+    /// What `fsp check` said: the routes, the errors and warnings it printed, or why it stopped.
+    pub check: CheckFacts,
+    /// The `build_runner` warnings `fsp check` also prints (`build_runner::check`).
+    pub build_runner: Vec<(String, String)>,
+}
+
+/// The outcome of `fsp check`, counted.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct CheckFacts {
+    pub routes: usize,
+    pub errors: usize,
+    pub warnings: usize,
+    /// Why it stopped before it could check the tree (no app folder).
+    pub failure: Option<String>,
+}
+
+/// Everything the report is about. [`gather`] reads it; the tests make it.
+#[derive(Debug)]
+pub struct Facts {
+    pub project: PathBuf,
+    /// This `fsp`'s version.
+    pub fsp: Version,
+    /// pubspec.yaml as YAML: what the versions are read from, even when `config.rs` refuses it.
+    pub raw: Option<Value>,
+    /// What `config.rs` makes of pubspec.yaml, or why it refuses it.
+    pub pubspec: Result<Pubspec, String>,
+    /// pubspec.lock as YAML, when there is one that reads.
+    pub lock: Option<Value>,
+    /// `flutter --version --machine`, when `flutter` is on PATH and answered; else why not.
+    pub toolchain: Result<Toolchain, String>,
+    /// The app, when the config reads.
+    pub app: Option<AppFacts>,
+    /// The Dart files under `lib/` but generated ones, each relative to the project and with its
+    /// comments taken out: where `AppMain.run(` and the adapters' `configure(` calls are looked for.
+    pub sources: Vec<(String, String)>,
+}
+
+impl Facts {
+    /// The config, when pubspec.yaml reads.
+    pub fn config(&self) -> Option<&Config> {
+        self.pubspec.as_ref().ok().map(|p| &p.config)
+    }
+
+    /// The files of [`Facts::sources`] that hold `needle`, by their path.
+    pub fn files_with(&self, needle: &str) -> Vec<&str> {
+        self.sources
+            .iter()
+            .filter(|(_, code)| code.contains(needle))
+            .map(|(file, _)| file.as_str())
+            .collect()
+    }
+}
+
+/// The groups of rows, in the order they print. A new group is a module and one entry here.
+const GROUPS: [fn(&Facts) -> Vec<Row>; 3] = [wiring::rows, versions::rows, checks::rows];
+
+/// The report: every group's rows, in order.
+#[must_use]
+pub fn rows(facts: &Facts) -> Vec<Row> {
+    GROUPS.iter().flat_map(|group| group(facts)).collect()
+}
+
+/// Reads what the report is about. `toolchain` is what `flutter --version --machine` printed, or
+/// why there is nothing (`flutter` is not on PATH).
+#[must_use]
+pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
+    let text = fs::read_to_string(project.join("pubspec.yaml"));
+    let raw = text
+        .as_ref()
+        .ok()
+        .and_then(|t| serde_yaml_ng::from_str::<Value>(t).ok());
+    let pubspec = match &text {
+        Ok(t) => Pubspec::parse(t).map_err(|e| format!("pubspec.yaml: {e:#}")),
+        Err(e) => Err(format!("pubspec.yaml: {e}")),
+    };
+    let lock = fs::read_to_string(project.join("pubspec.lock"))
+        .ok()
+        .and_then(|t| serde_yaml_ng::from_str::<Value>(&t).ok());
+    let toolchain = toolchain.and_then(|out| {
+        Toolchain::parse(&out)
+            .ok_or_else(|| "`flutter --version --machine` printed no version".to_string())
+    });
+    let app = pubspec.as_ref().ok().map(|p| app_facts(project, &p.config));
+    let mut sources = vec![];
+    dart_sources(project, &project.join("lib"), &mut sources);
+    sources.sort();
+    Facts {
+        project: project.to_path_buf(),
+        fsp: Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or(Version(0, 0, 0)),
+        raw,
+        pubspec,
+        lock,
+        toolchain,
+        app,
+        sources,
+    }
+}
+
+/// The Dart files under `dir` but generated ones (`*.g.dart`), relative to `project`, without
+/// their comments.
+fn dart_sources(project: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            dart_sources(project, &path, out);
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.ends_with(".dart") || name.ends_with(".g.dart") {
+            continue;
+        }
+        if let Ok(src) = fs::read_to_string(&path) {
+            let rel = path
+                .strip_prefix(project)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push((rel, crate::entry::without_comments(&src)));
+        }
+    }
+}
+
+/// The app's facts: the tree read as `fsp check` reads it, and `fsp check` itself, counted.
+fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
+    let app_dir = project.join(&cfg.app_dir);
+    let mut scratch = crate::diag::Diags::default();
+    let tree = crate::scan::scan(&app_dir, &mut scratch).ok();
+    let (main, root, swaps) = match &tree {
+        Some(t) => (
+            crate::entry::main_reasons(t, cfg),
+            crate::entry::root_report(t),
+            crate::entry::swaps(t, cfg),
+        ),
+        None => ((false, vec![]), crate::entry::RootReport::default(), false),
+    };
+    let (forms, deferred) = match crate::analyze(&app_dir, cfg) {
+        Ok((_, _, app)) => (
+            app.routes
+                .iter()
+                .flat_map(|r| &r.actions)
+                .filter(|a| a.form.is_some())
+                .count(),
+            app.routes.iter().filter(|r| r.defers_page()).count(),
+        ),
+        Err(_) => (0, 0),
+    };
+    let mut check = CheckFacts::default();
+    let mut session = crate::session::Session::default();
+    let outcome = crate::gen_core(project, cfg, false, &mut session, |_, diags| {
+        check.errors = diags.error_count();
+        check.warnings = diags.0.len() - check.errors;
+    });
+    match outcome {
+        Ok(o) => check.routes = o.routes,
+        // A tree with errors says how many; anything else stopped before the tree.
+        Err(e) if check.errors == 0 => check.failure = Some(format!("{e:#}")),
+        Err(_) => {}
+    }
+    let outputs = crate::outputs(cfg, main.0);
+    let build_runner = crate::build_runner::check(project, cfg, &outputs)
+        .0
+        .into_iter()
+        .map(|d| (d.file, d.msg))
+        .collect();
+    AppFacts {
+        main,
+        root,
+        swaps,
+        forms,
+        deferred,
+        check,
+        build_runner,
+    }
+}
+
+/// `flutter --version --machine`, run in the project, or why it did not answer.
+fn flutter_version(project: &Path) -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let env = crate::tasks::Env {
+        cwd: project,
+        vars: vec![],
+        fsp: &exe,
+    };
+    let cmd = crate::tasks::Cmd::Argv(vec![
+        "flutter".into(),
+        "--version".into(),
+        "--machine".into(),
+    ]);
+    let mut prepared = crate::tasks::prepare(&cmd, &[], &env)?;
+    let program = prepared.program.clone();
+    let out = prepared
+        .process
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .map_err(|e| crate::tasks::why(&e, &program))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`flutter --version --machine` {}",
+            crate::procs::Status::of(out.status).describe()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// One row as a JSON object: `{"section","check","subject","status","message"}`, every key there
+/// (`subject` is `null` when the row is about no one package or file).
+#[must_use]
+pub fn json_line(row: &Row) -> String {
+    serde_json::json!({
+        "section": row.section.name(),
+        "check": row.check,
+        "subject": row.subject,
+        "status": row.status.name(),
+        "message": row.message,
+    })
+    .to_string()
+}
+
+/// The report as text: a header, the rows under their section's title, and a closing count.
+#[must_use]
+pub fn text(facts: &Facts, rows: &[Row]) -> String {
+    let mut out = format!("fsp doctor {} ({})\n", facts.fsp, facts.project.display());
+    let mut last: Option<Section> = None;
+    for row in rows {
+        if last != Some(row.section) {
+            out.push_str(&format!("\n{}\n", row.section.title()));
+            last = Some(row.section);
+        }
+        out.push_str(&format!(
+            "  {} {:<12} {}\n",
+            row.status.mark(),
+            row.check,
+            row.message
+        ));
+    }
+    out.push('\n');
+    out.push_str(&summary(rows));
+    out.push('\n');
+    out
+}
+
+/// `2 errors, 1 warning.`, or `Nothing out of line.`
+fn summary(rows: &[Row]) -> String {
+    let count = |s: Status| rows.iter().filter(|r| r.status == s).count();
+    let (errors, warnings) = (count(Status::Error), count(Status::Warning));
+    match (errors, warnings) {
+        (0, 0) => "Nothing out of line.".into(),
+        (0, w) => format!("{}.", crate::plural(w, "warning")),
+        (e, 0) => format!("{}.", crate::plural(e, "error")),
+        (e, w) => format!(
+            "{}, {}.",
+            crate::plural(e, "error"),
+            crate::plural(w, "warning")
+        ),
+    }
+}
+
+pub fn run(project: &Path, cmd: &DoctorCmd) -> Result<()> {
+    let facts = gather(project, flutter_version(project));
+    let rows = rows(&facts);
+    if cmd.json {
+        for row in &rows {
+            println!("{}", json_line(row));
+        }
+    } else {
+        print!("{}", text(&facts, &rows));
+    }
+    if rows.iter().any(|r| r.status == Status::Error) {
+        return Err(Exit(1).into());
+    }
+    Ok(())
+}

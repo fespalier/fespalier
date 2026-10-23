@@ -229,8 +229,9 @@ void main() {
 
 - **The input must be a record type with named fields**, spelled inline (`required ({int amount,
 String note}) input`) or as a `typedef` **declared in the same `action.dart`**, or (since 0.21.0) in a
-  file of your package that `action.dart` imports: `fsp` reads the field names and types from those files
-  and no others, so a `typedef` of another package, a class or `(int, String)` is an error (``the form of <name>() needs the fields of its input, and `<input>` is not a record type fsp can read``, in `fespalier-troubleshooting`, `diagnostics-data-and-hooks.md`). A field's kind follows its type as written: a `typedef Email = String;` field is a value field, not a text field, and an imported record's enum field keeps its draft only when `action.dart` sees the same enum.
+  file of your package that `action.dart` imports, or (since 0.22.0) in a file of a `path:` dependency
+  that it imports: `fsp` reads the field names and types from those files and no others, so a `typedef`
+  of a hosted, `git:` or SDK package, a class or `(int, String)` is an error (``the form of <name>() needs the fields of its input, and `<input>` is not a record type fsp can read``, in `fespalier-troubleshooting`, `diagnostics-data-and-hooks.md`). A field's kind follows its type as written: a `typedef Email = String;` field is a value field, not a text field, and an imported record's enum field keeps its draft only when `action.dart` sees the same enum.
 - **`form()` returns the input's type as written** (the same text: `NicknameFields`, not the
   record spelled out when the input is the typedef) and takes **no `Ref`**. It takes nothing, or
   one positional, required, **typed** parameter: the value the form starts from.

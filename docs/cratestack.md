@@ -224,8 +224,8 @@ Things to know:
 
 - **`Served<T>` is the value and how current it is.** `source` is `network` or `local`, `fetchedAt` is when the
   server last answered this read for this account, `stale` follows the `maxAge` you pass. The page parameter must
-  be the type `data()` returns (`Served<List<Order>>`, or a `typedef` of it declared in your package since 0.21.0):
-  `fsp` matches by type, through the typedefs of your own files.
+  be the type `data()` returns (`Served<List<Order>>`, or a `typedef` of it declared in your package since 0.21.0, or in a `path:` dependency since 0.22.0):
+  `fsp` matches by type, through the typedefs of the files it reads.
 - **`freshness` still decides _when_ a read runs again; `serve` decides _where the answer comes from_.** Do not
   combine `serve` with `dataCache`: `serve` keeps its own copy, per account.
 - **`ref.cancellable` stops the request with the provider.** The generated options carry no cancel token, so the

@@ -203,7 +203,7 @@ Profile optimistic(Profile current, NicknameFields input) => Profile(input.nickn
 // page (a HookConsumerWidget): final form = NicknameRoute.useForm(ref, data: profile);
 ```
 
-- **The input is a record with named fields**, inline or a `typedef` in the **same** `action.dart` or, since 0.21.0, in a file of your package that it imports.
+- **The input is a record with named fields**, inline or a `typedef` in the **same** `action.dart` or, since 0.21.0, in a file of your package that it imports (since 0.22.0, of a `path:` dependency too).
   `useForm` gives `form.fields.nickname.controller` / `.value` / `.error`, `onSubmit` (**null while
   the action runs**), `isPending`, `isDirty`, `error`, `reset()`. It is a **real hook**: only in a
   `HookConsumerWidget`. `data:` is the data the page got.
@@ -309,8 +309,8 @@ command. It is two skills of its own: [`fespalier-offline`](../fespalier-offline
   "offline copy, as of 10:42". `serve` keeps its own copy, per account, in a `LocalStore` or a `ReadCache`: do not put
   `dataCache` over it. `freshness` still decides **when** a read runs again; `serve` decides **where** the answer comes
   from.
-- **The page type is `Served<T>`**, the type `data()` returns, or a `typedef` of it in your own files (since 0.21.0) (`FutureOr<Served<List<Order>>>` is matched as
-  `Served<List<Order>>`): `fsp` matches by type, through the typedefs of your files and otherwise syntactically.
+- **The page type is `Served<T>`**, the type `data()` returns, or a `typedef` of it in your own files (since 0.21.0, or in a `path:` dependency's since 0.22.0) (`FutureOr<Served<List<Order>>>` is matched as
+  `Served<List<Order>>`): `fsp` matches by type, through the typedefs of the files it reads and otherwise syntactically.
 - **Only a connection failure falls back to the device**; a refusal goes to `error.dart` like any error. A single row with
   nothing saved is `CrateStackNoLocalData`; a list says `neverFetched`.
 - **A write that is the server's decision is an intent** (`ref.read(intentQueue).submit(...)` in an `action.dart`): it

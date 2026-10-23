@@ -208,12 +208,13 @@ it until you delete or rewrite it. `flutter create` also writes the platform fol
 ## Types that look the same but are not
 
 `fsp` reads a syntax tree, and since 0.21.0 it follows the typedefs and import prefixes of the
-app's own files: `ProductView` and the `Product` it names are one type, and so are `m.Product`
-and `Product`. Still **different** types to it: a `typedef` of another package, a generic
-`typedef`, `List<int>` and `List<num>`, and one enum name declared in two files. They produce the
+app's own files, and since 0.22.0 those of its `path:` dependencies: `ProductView` and the `Product`
+it names are one type, and so are `m.Product` and `Product`. Still **different** types to it: a
+`typedef` of a hosted, `git:` or SDK package, a generic `typedef`, `List<int>` and `List<num>`, and
+one enum name declared in two files. They produce the
 "X in file:line but Y here" error when two files spell a segment or a query parameter differently, and
 "`x` is T but data.dart yields U" for a parameter against its data. Only the messages that compare a
 parameter with a `data.dart` or a section's, a form's return with its input, and an `extra` with the
-routes it covers end by naming a type they found no declaration of (a `typedef` of another package,
-say); the "in file:line" one does not, and a segment typed with a `typedef` of another package is "no
+routes it covers end by naming a type they found no declaration of (a `typedef` of a hosted package,
+say); the "in file:line" one does not, and a segment typed with a `typedef` of a hosted package is "no
 enum called `X`". The Dart compiler still checks the generated code.

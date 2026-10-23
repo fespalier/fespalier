@@ -297,7 +297,7 @@ import 'package:my_app/shop_client.dart';
 class OrdersPage extends StatelessWidget {
   const OrdersPage(this.orders, {super.key});
 
-  final Served<List<Order>> orders; // the type data() returns (or a typedef of it in your package, since 0.21.0)
+  final Served<List<Order>> orders; // the type data() returns (or a typedef of it in your package, since 0.21.0, or in a `path:` dependency, since 0.22.0)
 
   @override
   Widget build(BuildContext context) => Column(

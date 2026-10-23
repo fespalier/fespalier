@@ -1233,9 +1233,13 @@ jobs:
           cache-dependency-path: ci/web-routes/package-lock.json
       # Playwright and the Chromium build it pins: both come from ci/web-routes/package-lock.json
       # (an exact `playwright` version), so the browser only changes when that file does.
+      # `--with-deps` runs `apt-get update`, which fails as a whole when one source does: the
+      # runner image's packages.microsoft.com source answered 403 on 2026-10-22 and 23. Nothing
+      # here installs from it, so it is removed first.
       - name: Install the browser check
         working-directory: ci/web-routes
         run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.*
           npm ci
           npx --no-install playwright install --with-deps chromium
       # A release web build of examples/shop (no CDN) in a throwaway copy, served locally with every
@@ -1285,10 +1289,12 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: ci/web-routes/package-lock.json
-      # Playwright and the Chromium it pins, from ci/web-routes/package-lock.json (as web-routes).
+      # Playwright and the Chromium it pins, from ci/web-routes/package-lock.json (as web-routes,
+      # without the runner's packages.microsoft.com apt source).
       - name: Install the browser check
         working-directory: ci/web-routes
         run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.*
           npm ci
           npx --no-install playwright install --with-deps chromium
       # A release web build of the example (no CDN) in a throwaway copy, served locally with every other

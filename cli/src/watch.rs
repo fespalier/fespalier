@@ -5,6 +5,7 @@
 //! what it always has and `fsp dev` can put the same lines in a pane of its own. The loop runs on
 //! the thread that calls it: the parse cache is thread-local, so every pass must be on one thread.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -83,7 +84,8 @@ pub struct GenReport {
 /// don't, and neither does the generated file when it lives in the app folder.
 /// `watch` also sees `lib/` outside the app folder, because an enum a segment names is
 /// declared there (`lib/models/category.dart`): of those paths only Dart files and folders
-/// (a path with no extension) count, not the `.png` or `.json` beside them.
+/// (a path with no extension) count, not the `.png` or `.json` beside them. The same goes for the
+/// folders of a `path:` dependency that `watch` adds after a pass (since 0.22.0).
 pub fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
@@ -162,6 +164,10 @@ pub fn watch_loop(
         app_dir.clone()
     };
     watcher.watch(&watched, RecursiveMode::Recursive)?;
+    // The folders of a path dependency that hold a file the last pass read (since 0.22.0), each on
+    // its own and not recursively: only those can change what the next pass generates.
+    let mut beside: BTreeSet<PathBuf> = BTreeSet::new();
+    pass.watch_beside(&mut watcher, &watched, &mut beside);
     sink(Watched::Watching(format!("watching {}/ …", cfg.app_dir)));
     loop {
         match rx.recv() {
@@ -184,6 +190,7 @@ pub fn watch_loop(
             }
         }
         pass.run(false, &mut sink);
+        pass.watch_beside(&mut watcher, &watched, &mut beside);
     }
     Ok(())
 }
@@ -196,6 +203,33 @@ struct Pass<'a> {
 }
 
 impl Pass<'_> {
+    /// Brings the watches outside `watched` in line with the folders the last pass read from.
+    fn watch_beside(
+        &self,
+        watcher: &mut RecommendedWatcher,
+        watched: &Path,
+        beside: &mut BTreeSet<PathBuf>,
+    ) {
+        let want: BTreeSet<PathBuf> = self
+            .session
+            .last
+            .reads()
+            .map(|r| r.folders(self.project))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|d| !d.starts_with(watched))
+            .collect();
+        for gone in beside.difference(&want).cloned().collect::<Vec<_>>() {
+            let _ = watcher.unwatch(&gone);
+            beside.remove(&gone);
+        }
+        for dir in want {
+            if !beside.contains(&dir) && watcher.watch(&dir, RecursiveMode::NonRecursive).is_ok() {
+                beside.insert(dir);
+            }
+        }
+    }
+
     fn run(&mut self, first: bool, sink: &mut impl FnMut(Watched<'_>)) {
         let t = Instant::now();
         let mut diags = String::new();

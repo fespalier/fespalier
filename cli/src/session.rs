@@ -7,7 +7,8 @@
 //!    a run that scans a tree equal to the last one's reuses the last run's diagnostics and
 //!    generated code without resolving or rendering again. Equal means equal: the same
 //!    folders, the same file names and byte-identical sources, and the same contents in the
-//!    files outside the app folder that resolving read to find enum declarations
+//!    files outside the app folder that resolving read to find enum declarations (and since
+//!    0.22.0 the `path:` dependencies they were read from, and their files)
 //!    ([`crate::enums::Libs`]), which are compared by content on every run. A file the
 //!    generator doesn't read (a colocated widget in `lib/app/`) or a save that changed
 //!    nothing is that case.
@@ -80,6 +81,11 @@ pub struct Session {
 pub struct LastRun(Option<Last>);
 
 impl LastRun {
+    /// The files the last run read, when there was one (since 0.22.0: `fsp watch` watches their folders).
+    pub fn reads(&self) -> Option<&Reads> {
+        self.0.as_ref().map(|l| &l.reads)
+    }
+
     /// The last run's result, and the files it read, when it was made from this very tree and
     /// those files still read the same.
     pub fn reuse(&mut self, tree: &Node, scan_diags: &str, libs: &Libs) -> Option<(Run, Reads)> {

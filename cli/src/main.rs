@@ -25,6 +25,7 @@ mod manifest;
 mod menu;
 mod osc8;
 mod otel;
+mod packages;
 mod parse_cache;
 mod platform_files;
 mod procs;
@@ -575,6 +576,8 @@ mod navigator_tests;
 mod nest_tests;
 #[cfg(test)]
 mod observe_tests;
+#[cfg(test)]
+mod packages_tests;
 #[cfg(test)]
 mod page_name_tests;
 #[cfg(test)]

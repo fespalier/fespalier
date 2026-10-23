@@ -3,8 +3,10 @@
 //! A syntax tree can't say that `Category` is an enum: it may be a class, or come from a
 //! package. So the type is only taken for one when its declaration is found, in the file that
 //! names it (the view, `data.dart`, ...) or in a file that one imports or re-exports: relative
-//! imports, and `package:` imports of the app's own package, which are read from `lib/`. Other
-//! packages and `dart:` are not read, so an enum from one is an error that suggests a `String`.
+//! imports, and `package:` imports of the app's own package, which are read from `lib/`, or since
+//! 0.22.0 of one of its `path:` dependencies (`packages.rs`), read from that package's `lib/` and
+//! known by its package URI (`package:shared/src/ids.dart`). Other packages (hosted, `git:`, the
+//! SDK's) and `dart:` are not read, so an enum from one is an error that suggests a `String`.
 //!
 //! How the generated file names the type, and imports it, is `extra.rs`'s job, as for an
 //! `extra`: this module only finds the declaration and tells the resolver what it found.
@@ -17,6 +19,7 @@ use std::rc::Rc;
 use crate::config::{Config, Pubspec};
 use crate::dart::{self, Module};
 use crate::extra;
+use crate::packages::Packages;
 use crate::types::{self, Canonical, Declared, Scope};
 
 /// An enum that was found.
@@ -155,6 +158,8 @@ pub struct Libs {
     package: Option<String>,
     /// The app folder relative to the project (`lib/app`): view files are relative to it.
     app_dir: String,
+    /// The path dependencies whose files are read as `package:<name>/...` (since 0.22.0).
+    packages: Packages,
     /// Parsed files by their path relative to the project; `None` for one that can't be read.
     files: RefCell<HashMap<String, Option<Rc<Lib>>>>,
     /// What was read from disk for `files`: the path and the source, `None` when it couldn't be.
@@ -170,15 +175,35 @@ pub struct Libs {
     enums: RefCell<HashMap<(String, String), Option<Found>>>,
 }
 
-/// The files a [`Libs`] read from disk while resolving, with what was in them. `fsp watch` keeps
-/// it beside the result of a run: the result holds while every one of them still reads the same.
+/// The files a [`Libs`] read from disk while resolving, with what was in them, and the path packages
+/// it read them from (since 0.22.0). `fsp watch` keeps it beside the result of a run: the result
+/// holds while the pubspecs give the same packages and every file still reads the same.
 #[derive(Debug, Default, PartialEq)]
 pub struct Reads {
     package: Option<String>,
+    packages: Packages,
     files: Vec<(String, Option<String>)>,
 }
 
 impl Reads {
+    /// The folders that hold the files read, as paths under `project` (since 0.22.0): `fsp watch`
+    /// watches those outside `lib/`, a path dependency's.
+    pub fn folders(&self, project: &Path) -> std::collections::BTreeSet<PathBuf> {
+        self.files
+            .iter()
+            .filter_map(|(path, _)| {
+                let file = match path.strip_prefix("package:") {
+                    Some(rest) => {
+                        let (package, file) = rest.split_once('/')?;
+                        self.packages.root(package)?.join("lib").join(file)
+                    }
+                    None => project.join(path),
+                };
+                file.parent().map(Path::to_path_buf)
+            })
+            .collect()
+    }
+
     /// The project paths read, sorted (a test checks which files a run needed).
     #[cfg(test)]
     pub fn paths(&self) -> Vec<&str> {
@@ -193,9 +218,13 @@ impl Libs {
         let package = project
             .and_then(|p| Pubspec::load(p).ok())
             .and_then(|p| p.name);
+        let packages = project
+            .map(|p| Packages::read(p, package.as_deref()))
+            .unwrap_or_default();
         Libs {
             root: project.map(Path::to_path_buf),
             package,
+            packages,
             app_dir: cfg.app_dir.clone(),
             ..Libs::default()
         }
@@ -207,6 +236,7 @@ impl Libs {
         files.sort();
         Reads {
             package: self.package.clone(),
+            packages: self.packages.clone(),
             files,
         }
     }
@@ -215,11 +245,11 @@ impl Libs {
     /// It compares contents: the files are few and small.
     pub fn unchanged_since(&self, reads: &Reads) -> bool {
         self.package == reads.package
+            && self.packages == reads.packages
             && reads.files.iter().all(|(path, src)| {
                 let now = self
-                    .root
-                    .as_ref()
-                    .and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+                    .disk(path)
+                    .and_then(|p| std::fs::read_to_string(p).ok());
                 now == *src
             })
     }
@@ -354,9 +384,8 @@ impl Libs {
             return lib.clone();
         }
         let src = self
-            .root
-            .as_ref()
-            .and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+            .disk(path)
+            .and_then(|p| std::fs::read_to_string(p).ok());
         let lib = src.as_deref().map(|src| Rc::new(Lib::new(src)));
         if self.root.is_some() {
             self.read.borrow_mut().push((path.to_string(), src));
@@ -372,23 +401,34 @@ impl Libs {
     fn locate(&self, from: &str, uri: &str) -> Option<String> {
         if let Some(rest) = uri.strip_prefix("package:") {
             let (package, path) = rest.split_once('/')?;
-            return (Some(package) == self.package.as_deref()).then(|| format!("lib/{path}"));
+            if Some(package) == self.package.as_deref() {
+                return Some(format!("lib/{path}"));
+            }
+            // A path dependency's file, by its package URI (since 0.22.0).
+            self.packages.root(package)?;
+            return join("_", path).map(|p| format!("package:{package}/{p}"));
         }
         if uri.contains(':') {
             return None;
         }
-        let mut parts: Vec<&str> = from.split('/').collect();
-        parts.pop();
-        for seg in uri.split('/') {
-            match seg {
-                "" | "." => {}
-                ".." => {
-                    parts.pop()?;
-                }
-                s => parts.push(s),
-            }
+        // A relative import in a path dependency's file stays in that package's lib/.
+        if let Some(rest) = from.strip_prefix("package:") {
+            let (package, file) = rest.split_once('/')?;
+            return join(file, uri).map(|p| format!("package:{package}/{p}"));
         }
-        Some(parts.join("/"))
+        join(from, uri)
+    }
+
+    /// Where the file `path` is on disk: under the project, or for `package:<name>/...` under that
+    /// path dependency's `lib/` (since 0.22.0).
+    fn disk(&self, path: &str) -> Option<std::path::PathBuf> {
+        match path.strip_prefix("package:") {
+            Some(rest) => {
+                let (package, file) = rest.split_once('/')?;
+                Some(self.packages.root(package)?.join("lib").join(file))
+            }
+            None => Some(self.root.as_ref()?.join(path)),
+        }
     }
 
     /// The canonical form of `text`, written in the tree file `file` (relative to the app folder,
@@ -445,6 +485,22 @@ impl Libs {
 
 /// How deep typedefs are followed: a typedef of a typedef of ..., and a cycle, stop here.
 const DEPTH: usize = 8;
+
+/// `uri`, relative to the file `from`: `None` when it climbs above the first folder of `from`.
+fn join(from: &str, uri: &str) -> Option<String> {
+    let mut parts: Vec<&str> = from.split('/').collect();
+    parts.pop();
+    for seg in uri.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s => parts.push(s),
+        }
+    }
+    Some(parts.join("/"))
+}
 
 impl types::Scope for Libs {
     /// What `name` names as the file `path` sees it, through `prefix`: a declaration of that file,

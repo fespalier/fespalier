@@ -450,6 +450,63 @@ fn watch_follows_an_enum_declared_outside_the_app_folder() {
     assert!(w.lines() > broken, "{}", w.text());
 }
 
+/// A typedef that a segment spells is declared in a path dependency outside `lib/` (since 0.22.0):
+/// `watch` watches the folder of that file, so editing it regenerates.
+#[test]
+fn watch_follows_a_typedef_of_a_path_dependency() {
+    let dir = project();
+    let root = dir.path();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  shared:\n    path: packages/shared\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("packages/shared/lib/src")).unwrap();
+    fs::write(root.join("packages/shared/pubspec.yaml"), "name: shared\n").unwrap();
+    fs::write(
+        root.join("packages/shared/lib/shared.dart"),
+        "export 'src/ids.dart';\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("packages/shared/lib/src/ids.dart"),
+        "typedef ShopId = int;\n",
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("lib/app/shop/$id")).unwrap();
+    fs::write(
+        root.join("lib/app/shop/$id/page.dart"),
+        "import 'package:shared/shared.dart';\nclass ShopPage extends StatelessWidget { const ShopPage({super.key, required this.id}); final ShopId id; }",
+    )
+    .unwrap();
+    let w = Watch::start(root);
+    w.settle();
+    let code = || fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    assert!(code().contains("Segment.asInt"), "{}", w.text());
+    let lines = w.lines();
+
+    // Not a Dart file: nothing to regenerate.
+    fs::write(root.join("packages/shared/lib/notes.txt"), "hello").unwrap();
+    w.settle();
+    assert_eq!(w.lines(), lines, "{}", w.text());
+
+    // The typedef renamed: the segment's type is no longer found, then found again.
+    fs::write(
+        root.join("packages/shared/lib/src/ids.dart"),
+        "typedef OtherId = int;\n",
+    )
+    .unwrap();
+    w.wait_for("error(s)");
+    w.settle();
+    assert!(w.text().contains("ShopId"), "{}", w.text());
+    fs::write(
+        root.join("packages/shared/lib/src/ids.dart"),
+        "typedef ShopId = int;\n",
+    )
+    .unwrap();
+    w.wait_for("✓ 2 routes, lib/app.g.dart unchanged");
+}
+
 /// `watch` with `format: true` runs `dart format` when the generated code changes, and not
 /// when a save leaves it as it was (a widget's `build`, a file the generator doesn't read).
 #[cfg(unix)]

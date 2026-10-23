@@ -2933,7 +2933,7 @@ impl Resolver<'_> {
                     "`{decl}`: `{base}` is private to its file, so the generated file can't name it; make the enum public"
                 ),
                 _ => format!(
-                    "`{decl}`: no enum called `{base}` in this file or the files it imports or exports under this package's lib/; {what} can only be a String, int, double or bool, or an enum. If `{base}` is declared elsewhere, take a `{fallback}` and parse it in the page"
+                    "`{decl}`: no enum called `{base}` in this file or the files it imports or exports under the lib/ of this package or of its path dependencies; {what} can only be a String, int, double or bool, or an enum. If `{base}` is declared elsewhere, take a `{fallback}` and parse it in the page"
                 ),
             };
             self.diags.error(file, Some(span), msg);

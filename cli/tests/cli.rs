@@ -3117,6 +3117,49 @@ fn run_lists_the_tasks_on_stdout() {
 
 #[cfg(unix)]
 #[test]
+fn run_json_lists_the_tasks_for_editors() {
+    let dir = dev_project("    codegen: dart run build_runner build\n");
+    let (code, out, err) = fsp_task(dir.path(), &["run", "--json"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(err.is_empty(), "{err}");
+    assert_eq!(
+        out,
+        concat!(
+            r#"{"name":"dev","args":["dev"],"needs_target":false,"run":"flutter run","declared":false}"#,
+            "\n",
+            r#"{"name":"build","args":["build"],"needs_target":true,"run":"flutter build","declared":false}"#,
+            "\n",
+            r#"{"name":"codegen","args":["run","codegen"],"needs_target":false,"run":"dart run build_runner build","declared":true}"#,
+            "\n",
+        )
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn run_json_prints_nothing_on_a_mistake_and_takes_no_name() {
+    let dir = dev_project("    codegen: 5\n");
+    let (code, out, err) = fsp_task(dir.path(), &["run", "--json"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.starts_with("`fespalier.tasks.codegen` must be a command"),
+        "{err}"
+    );
+    for args in [
+        &["run", "codegen", "--json"][..],
+        &["run", "--json", "--dry-run"],
+        &["run", "--json", "--", "x"],
+    ] {
+        let (code, out, err) = fsp_task(dir.path(), args, &[]);
+        assert_eq!(code, Some(2), "{args:?}");
+        assert!(out.is_empty(), "{out}");
+        assert!(err.contains("cannot be used with"), "{err}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
 fn run_runs_a_task_with_the_args_and_passes_its_exit_code_on() {
     let dir = dev_project(
         "    codegen: [sh, -c, 'echo \"$@\" > codegen.out; echo \"$GREETING\" >> codegen.out; exit 4', sh]\n    greet:\n      run: echo\n      env:\n        GREETING: hi\n",

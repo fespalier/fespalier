@@ -644,3 +644,24 @@ lint   flutter analyze
 "
     );
 }
+
+#[test]
+fn the_json_listing_has_one_object_per_task() {
+    let t = parse("codegen: dart run build_runner build\nlint: [flutter, analyze, 'a b']\ndev:\n  run: fvm flutter run\n").unwrap();
+    assert_eq!(
+        t.json_lines(),
+        [
+            r#"{"name":"dev","args":["dev"],"needs_target":false,"run":"fvm flutter run","declared":true}"#,
+            r#"{"name":"build","args":["build"],"needs_target":true,"run":"flutter build","declared":false}"#,
+            r#"{"name":"codegen","args":["run","codegen"],"needs_target":false,"run":"dart run build_runner build","declared":true}"#,
+            r#"{"name":"lint","args":["run","lint"],"needs_target":false,"run":"flutter analyze 'a b'","declared":true}"#,
+        ]
+    );
+    assert_eq!(
+        Tasks::default().json_lines(),
+        [
+            r#"{"name":"dev","args":["dev"],"needs_target":false,"run":"flutter run","declared":false}"#,
+            r#"{"name":"build","args":["build"],"needs_target":true,"run":"flutter build","declared":false}"#,
+        ]
+    );
+}

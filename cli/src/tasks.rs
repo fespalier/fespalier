@@ -1,5 +1,6 @@
 //! `tasks:` in the `fespalier:` section of pubspec.yaml, and the commands that run them: `fsp dev`
-//! (see `dev.rs`), `fsp build <target>` and `fsp run <task>` (since 0.9.0).
+//! (see `dev.rs`), `fsp build <target>` and `fsp run <task>` (since 0.9.0). `fsp run --json` lists them
+//! for the editor plugins (since 0.22.0).
 //!
 //! ```yaml
 //! fespalier:
@@ -380,24 +381,56 @@ impl Tasks {
         names
     }
 
+    /// The main command of `name` as `--dry-run` shows it: the pubspec's `run`, else the default
+    /// of `dev` and `build`, else nothing.
+    fn shown_run(&self, name: &str) -> String {
+        let default = match name {
+            "dev" => Some("flutter run"),
+            "build" => Some("flutter build"),
+            _ => None,
+        };
+        self.get(name)
+            .and_then(|t| t.run.as_ref())
+            .map(Cmd::shown)
+            .or_else(|| default.map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    /// `fsp run --json`: one object per task, in the order of [`Tasks::names`].
+    #[must_use]
+    pub fn json_lines(&self) -> Vec<String> {
+        self.names()
+            .iter()
+            .map(|name| {
+                let args: Vec<&str> = match name.as_str() {
+                    "dev" => vec!["dev"],
+                    "build" => vec!["build"],
+                    other => vec!["run", other],
+                };
+                serde_json::json!({
+                    "name": name,
+                    "args": args,
+                    "needs_target": name == "build",
+                    "run": self.shown_run(name),
+                    "declared": self.get(name).is_some(),
+                })
+                .to_string()
+            })
+            .collect()
+    }
+
     /// `fsp run` with no name: one task per line.
     #[must_use]
     pub fn listing(&self) -> String {
         let names = self.names();
         let width = names.iter().map(String::len).max().unwrap_or(0) + 2;
         let row = |name: &str| -> (String, Option<&'static str>) {
-            let (default, note) = match name {
-                "dev" => (Some("flutter run"), Some("(fsp dev)")),
-                "build" => (Some("flutter build"), Some("(fsp build <target>)")),
-                _ => (None, None),
+            let note = match name {
+                "dev" => Some("(fsp dev)"),
+                "build" => Some("(fsp build <target>)"),
+                _ => None,
             };
-            let run = self
-                .get(name)
-                .and_then(|t| t.run.as_ref())
-                .map(Cmd::shown)
-                .or_else(|| default.map(str::to_string))
-                .unwrap_or_default();
-            (run, note)
+            (self.shown_run(name), note)
         };
         let rows: Vec<(String, (String, Option<&str>))> =
             names.iter().map(|n| (n.clone(), row(n))).collect();
@@ -741,6 +774,9 @@ pub struct RunCmd {
     /// Print what would run, and run nothing
     #[arg(long)]
     pub dry_run: bool,
+    /// With no name: print the tasks to stdout as JSON lines, one object per task, for editors
+    #[arg(long, conflicts_with_all = ["task", "dry_run", "args"])]
+    pub json: bool,
     /// Passed on to the task's `run` command, after `--`
     #[arg(last = true, value_name = "ARGS")]
     pub args: Vec<String>,
@@ -776,6 +812,12 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
 pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
     let cfg = Config::load(project)?;
     let tasks = Tasks::from_config(&cfg)?;
+    if cmd.json {
+        for line in tasks.json_lines() {
+            println!("{line}");
+        }
+        return Ok(());
+    }
     let Some(name) = &cmd.task else {
         print!("{}", tasks.listing());
         return Ok(());

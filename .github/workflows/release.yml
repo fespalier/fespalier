@@ -58,7 +58,7 @@ name: Release
 #
 # A package at such a tag carries the previous release's pins, so `dart run fespalier` finds
 # `pinnedVersion` is another version and falls back to the release's `.sha256` file (the comment
-# at the top of release_checksums.dart). Making `Release pins gate` a required check on main
+# at the top of release_checksums.dart). `Release pins gate` is a required check on main, which
 # prevents all of this (docs/releasing.md).
 
 on:

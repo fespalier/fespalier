@@ -9,9 +9,14 @@
 //! `path:` (relative to its folder) are followed too, breadth first, the first one for a name
 //! winning; its `dev_dependencies` and overrides are not, as pub ignores them. A package is followed
 //! only when its folder has a `pubspec.yaml` whose `name:` is the name it is listed under.
+//!
+//! A `path:` is joined to the folder of the pubspec that lists it and its `.` and `..` are resolved
+//! in the text, as pub does (`p.normalize`), never through the file system: `../deep` from a
+//! dependency that is a symlink is next to the link, not next to what it points at. The app's own
+//! folder is the one `fsp` was given.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde_yaml_ng::Value;
 
@@ -35,12 +40,12 @@ impl Packages {
         for section in [pubspec.get("dependencies"), pubspec.get("dev_dependencies")] {
             for (name, spec) in entries(section) {
                 if !decided.iter().any(|(n, _)| *n == name) {
-                    decided.push((name, path_of(spec).map(|p| project.join(p))));
+                    decided.push((name, path_of(spec).map(|p| join(project, p))));
                 }
             }
         }
         for (name, spec) in entries(overrides) {
-            let dir = path_of(spec).map(|p| project.join(p));
+            let dir = path_of(spec).map(|p| join(project, p));
             match decided.iter_mut().find(|(n, _)| *n == name) {
                 Some(entry) => entry.1 = dir,
                 None => decided.push((name, dir)),
@@ -67,7 +72,7 @@ impl Packages {
                     continue;
                 }
                 if let Some(p) = path_of(spec) {
-                    queue.push_back((dep, dir.join(p)));
+                    queue.push_back((dep, join(&dir, p)));
                 }
             }
             out.insert(name, dir);
@@ -85,6 +90,29 @@ impl Packages {
     pub fn root(&self, name: &str) -> Option<&Path> {
         self.0.get(name).map(PathBuf::as_path)
     }
+}
+
+/// `base` joined with the `path:` text `rel`, its `.` and `..` resolved in the text, as pub does. A `..`
+/// that has nothing to remove stays at the front of a relative path, and `/..` is `/`.
+fn join(base: &Path, rel: &str) -> PathBuf {
+    let mut out = PathBuf::new();
+    for part in base.join(rel).components() {
+        match part {
+            Component::CurDir => {}
+            Component::ParentDir => match out.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
+                }
+                Some(Component::RootDir | Component::Prefix(_)) => {}
+                Some(Component::CurDir | Component::ParentDir) | None => out.push(".."),
+            },
+            other => out.push(other),
+        }
+    }
+    if out.as_os_str().is_empty() {
+        out.push(".");
+    }
+    out
 }
 
 /// A YAML file, `None` when it is missing or not YAML.

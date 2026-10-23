@@ -16,16 +16,16 @@ fn tree(files: &[(&str, &str)]) -> tempfile::TempDir {
     dir
 }
 
-/// The names followed from `app/`, with each folder relative to the tree, `/` separated.
+/// The names followed from `app/`, with each folder relative to the tree, `/` separated. A folder is
+/// read as pub reads it, its `..` resolved in the text, so it is under the tree.
 fn followed(dir: &Path) -> Vec<(String, String)> {
-    let app = dir.join("app");
-    let packages = Packages::read(&app, Some("app"));
+    let packages = Packages::read(&dir.join("app"), Some("app"));
     packages
         .names()
         .map(|name| {
             let root = packages.root(name).unwrap();
             let rel = root
-                .strip_prefix(&app)
+                .strip_prefix(dir)
                 .unwrap()
                 .to_string_lossy()
                 .replace('\\', "/");
@@ -55,9 +55,9 @@ fn a_path_under_dependencies_dev_dependencies_or_overrides_is_followed() {
     assert_eq!(
         followed(dir.path()),
         [
-            ("a".into(), "../a".into()),
-            ("d".into(), "../d".into()),
-            ("h".into(), "../h".into())
+            ("a".into(), "a".into()),
+            ("d".into(), "d".into()),
+            ("h".into(), "h".into())
         ]
     );
 }
@@ -91,13 +91,13 @@ fn the_overrides_of_pubspec_overrides_replace_those_of_the_pubspec() {
     };
     // As pub 3.13.5 reads them: the file's `dependency_overrides`, when it has the key, replace the
     // pubspec's whole section; a file without the key leaves the pubspec's.
-    assert_eq!(run(""), pair("../a1", "../b2"));
+    assert_eq!(run(""), pair("a1", "b2"));
     assert_eq!(
         run("dependency_overrides:\n  a:\n    path: ../a2\n"),
-        pair("../a2", "../b1")
+        pair("a2", "b1")
     );
-    assert_eq!(run("dependency_overrides:\n"), pair("../a1", "../b1"));
-    assert_eq!(run("# nothing\n"), pair("../a1", "../b2"));
+    assert_eq!(run("dependency_overrides:\n"), pair("a1", "b1"));
+    assert_eq!(run("# nothing\n"), pair("a1", "b2"));
 }
 
 #[test]
@@ -123,8 +123,8 @@ fn a_path_dependency_of_a_path_dependency_is_followed_from_its_folder() {
     assert_eq!(
         followed(dir.path()),
         [
-            ("deep".into(), "../pk/shared/../deep".into()),
-            ("shared".into(), "../pk/shared".into())
+            ("deep".into(), "pk/deep".into()),
+            ("shared".into(), "pk/shared".into())
         ]
     );
 }
@@ -153,9 +153,9 @@ fn a_name_the_app_lists_is_decided_by_the_app() {
     assert_eq!(
         got,
         [
-            ("more".into(), "../shared/../more".into()),
-            ("shared".into(), "../shared".into()),
-            ("twice".into(), "../shared/../t1".into())
+            ("more".into(), "more".into()),
+            ("shared".into(), "shared".into()),
+            ("twice".into(), "t1".into())
         ]
     );
 }
@@ -185,4 +185,59 @@ fn no_pubspec_or_a_broken_one_has_no_path_package() {
     assert_eq!(followed(dir.path()), Vec::<(String, String)>::new());
     let dir = tree(&[("app/pubspec.yaml", "name: app\ndependencies: [\n")]);
     assert_eq!(followed(dir.path()), Vec::<(String, String)>::new());
+}
+
+#[test]
+fn dot_segments_are_resolved_in_the_text() {
+    let dir = tree(&[
+        (
+            "app/pubspec.yaml",
+            "name: app\ndependencies:\n  a:\n    path: ./x/../../a\n  b:\n    path: ../sub/./b/\n  c:\n    path: sub/../../c\n",
+        ),
+        ("a/pubspec.yaml", &named("a")),
+        ("sub/b/pubspec.yaml", &named("b")),
+        ("c/pubspec.yaml", &named("c")),
+    ]);
+    assert_eq!(
+        followed(dir.path()),
+        [
+            ("a".into(), "a".into()),
+            ("b".into(), "sub/b".into()),
+            ("c".into(), "c".into())
+        ]
+    );
+}
+
+/// Pub joins a `path:` to the folder of the pubspec that lists it and normalizes the text, so
+/// `../deep` from `links/shared`, a symlink to `real/shared`, is `links/deep`. The file system would
+/// say `real/deep` (a `..` follows the link it climbs out of). Fails when the path is not normalized
+/// first: `deep` is then the one in `real/` and `leaf` is not followed.
+#[cfg(unix)]
+#[test]
+fn a_dot_dot_after_a_symlinked_dependency_is_not_resolved_through_the_link() {
+    let dir = tree(&[
+        (
+            "app/pubspec.yaml",
+            "name: app\ndependencies:\n  shared:\n    path: ../links/shared\n",
+        ),
+        (
+            "real/shared/pubspec.yaml",
+            "name: shared\ndependencies:\n  deep:\n    path: ../deep\n",
+        ),
+        (
+            "links/deep/pubspec.yaml",
+            "name: deep\ndependencies:\n  leaf:\n    path: ../leaf\n",
+        ),
+        ("links/leaf/pubspec.yaml", &named("leaf")),
+        ("real/deep/pubspec.yaml", &named("deep")),
+    ]);
+    std::os::unix::fs::symlink("../real/shared", dir.path().join("links/shared")).unwrap();
+    assert_eq!(
+        followed(dir.path()),
+        [
+            ("deep".into(), "links/deep".into()),
+            ("leaf".into(), "links/leaf".into()),
+            ("shared".into(), "links/shared".into())
+        ]
+    );
 }

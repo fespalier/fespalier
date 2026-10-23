@@ -123,6 +123,13 @@ impl Sim {
         fs::write(p, src).unwrap();
     }
 
+    /// A file of a path dependency, under `packages/`: `shared/lib/ids.dart`.
+    fn package_write(&self, rel: &str, src: &str) {
+        let p = self.dir.path().join("packages").join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, src).unwrap();
+    }
+
     fn lib_remove(&self, rel: &str) {
         let _ = fs::remove_file(self.dir.path().join("lib").join(rel));
     }
@@ -167,6 +174,14 @@ impl Sim {
         }
         // All of `lib/`: the enums segments name are declared outside the app folder.
         copy_dir(&self.dir.path().join("lib"), &copy.path().join("lib"));
+        // And the path dependencies under `packages/` (since 0.22.0).
+        if self.dir.path().join("packages").is_dir() {
+            fs::create_dir_all(copy.path().join("packages")).unwrap();
+            copy_dir(
+                &self.dir.path().join("packages"),
+                &copy.path().join("packages"),
+            );
+        }
         let cfg = self.cfg.clone();
         std::thread::spawn(move || report(copy.path(), &cfg, &mut Session::default()))
             .join()
@@ -1198,4 +1213,36 @@ fn a_typedef_outside_the_app_folder_follows() {
     );
     sim.lib_remove("models/ids.dart");
     assert!(!sim.same("the file deleted").ok);
+}
+
+#[test]
+fn a_typedef_of_a_path_dependency_follows() {
+    let pubspec = "name: demo\ndependencies:\n  shared:\n    path: packages/shared\n";
+    let mut sim = Sim::new(&app(60), pubspec, 13);
+    sim.package_write("shared/pubspec.yaml", "name: shared\n");
+    sim.package_write("shared/lib/ids.dart", "typedef ProductId = int;\n");
+    let shop = format!(
+        "import 'package:shared/ids.dart';\n{}",
+        page("ShopId", "required ProductId id")
+    );
+    sim.write("s1/shop/$id/page.dart", &shop);
+    let r = sim.same("the first run");
+    assert!(
+        r.ok && shop_id_type(r.outputs[0].as_ref().unwrap()) == "int",
+        "{r:?}"
+    );
+    sim.regen();
+    assert_eq!(sim.parses, (0, 0));
+    sim.package_write("shared/lib/ids.dart", "typedef ProductId = String;\n");
+    let r = sim.same("the typedef changed to String");
+    assert!(
+        r.ok && shop_id_type(r.outputs[0].as_ref().unwrap()) == "String",
+        "{r:?}"
+    );
+    // The dependency dropped from the pubspec: the typedef is no longer followed.
+    fs::write(sim.dir.path().join("pubspec.yaml"), "name: demo\n").unwrap();
+    assert!(!sim.same("the dependency removed").ok);
+    fs::write(sim.dir.path().join("pubspec.yaml"), pubspec).unwrap();
+    sim.package_write("shared/pubspec.yaml", "name: common\n");
+    assert!(!sim.same("the dependency renamed").ok);
 }

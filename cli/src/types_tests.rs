@@ -196,7 +196,7 @@ fn the_hint_names_only_the_names_one_side_could_not_follow() {
     let b = canon(&f, PAGE, "Map<String, Object?>");
     assert_eq!(
         types::hint(&a, &b),
-        "; fsp follows typedefs in this package's files only, and found no declaration of `JsonMap` there, so it compares it as spelled"
+        "; fsp follows typedefs only in the files of this package and of its path dependencies, and found no declaration of `JsonMap` there, so it compares it as spelled"
     );
     // A name both sides leave unfollowed is not the cause.
     let c = canon(&f, PAGE, "Map<JsonMap, int>");
@@ -671,7 +671,7 @@ fn a_typedef_of_another_package_is_compared_as_spelled_and_says_so() {
     assert_eq!(
         e,
         [
-            "`data` is JsonMap but data.dart yields Map<String, Object?>; fsp follows typedefs in this package's files only, and found no declaration of `JsonMap` there, so it compares it as spelled"
+            "`data` is JsonMap but data.dart yields Map<String, Object?>; fsp follows typedefs only in the files of this package and of its path dependencies, and found no declaration of `JsonMap` there, so it compares it as spelled"
         ]
     );
 }
@@ -878,6 +878,47 @@ const PROBE_FILES: [(&str, &str); 5] = [
     ("lib/other/product.dart", "class Product {}\n"),
 ];
 
+/// The probe's path dependency `shared` (which has its own, `deep`), a package `hosted` that the
+/// pubspec lists by version (pub would fetch it; the package config maps it here), and an app file
+/// with a typedef of a typedef of `shared` (since 0.22.0).
+const PROBE_PACKAGE_FILES: [(&str, &str); 9] = [
+    (
+        "shared/pubspec.yaml",
+        "name: shared\nenvironment:\n  sdk: ^3.9.0\ndependencies:\n  deep:\n    path: ../deep\n",
+    ),
+    (
+        "shared/lib/shared.dart",
+        "export 'src/ids.dart';\nexport 'src/thing.dart' hide Hidden;\n",
+    ),
+    (
+        "shared/lib/src/thing.dart",
+        "class Thing {}\nclass Hidden {}\nclass Product {}\nenum Tone { warm, cold }\n",
+    ),
+    (
+        "shared/lib/src/ids.dart",
+        "import 'thing.dart';\nimport 'package:deep/deep.dart' as d;\n\
+         typedef ThingView = Thing;\ntypedef SharedId = int;\ntypedef DeepView = d.DeepThing;\n\
+         typedef ToneAlias = Tone;\ntypedef SharedGeneric<T> = List<T>;\n",
+    ),
+    (
+        "deep/pubspec.yaml",
+        "name: deep\nenvironment:\n  sdk: ^3.9.0\n",
+    ),
+    ("deep/lib/deep.dart", "class DeepThing {}\n"),
+    (
+        "hosted/pubspec.yaml",
+        "name: hosted\nversion: 1.0.0\nenvironment:\n  sdk: ^3.9.0\n",
+    ),
+    (
+        "hosted/lib/hosted.dart",
+        "typedef HostedJson = Map<String, Object?>;\n",
+    ),
+    (
+        "lib/models/shared_ids.dart",
+        "import 'package:shared/shared.dart';\ntypedef LocalThing = ThingView;\n",
+    ),
+];
+
 /// One case of the table: the imports of `lib/app/c<n>/page.dart`, the two types, the line the
 /// page adds after `f`, what fsp says (`same`) and what the analyzer says (`same`).
 struct Case {
@@ -891,6 +932,7 @@ struct Case {
 }
 
 const PROBE_IDS: &str = "import '../../models/ids.dart';\n";
+const PROBE_SHARED: &str = "import 'package:shared/shared.dart';\n";
 const PROBE_BOTH: &str = "import '../../models/ids.dart';\nimport '../../models/product.dart';\n";
 
 fn probe_cases() -> Vec<Case> {
@@ -1007,6 +1049,71 @@ fn probe_cases() -> Vec<Case> {
             true,
             true,
         ),
+        // A path dependency and its own (since 0.22.0).
+        case(24, PROBE_SHARED, "ThingView", "Thing", true, true),
+        case(25, PROBE_SHARED, "List<SharedId>", "List<int>", true, true),
+        case(
+            26,
+            "import 'package:shared/shared.dart' as s;\nimport 'package:shared/src/thing.dart';\n",
+            "s.ThingView",
+            "Thing",
+            true,
+            true,
+        ),
+        case(
+            27,
+            "import 'package:shared/shared.dart';\nimport 'package:deep/deep.dart';\n",
+            "DeepView",
+            "DeepThing",
+            true,
+            true,
+        ),
+        case(
+            28,
+            "import '../../models/shared_ids.dart';\nimport 'package:shared/shared.dart';\n",
+            "LocalThing",
+            "Thing",
+            true,
+            true,
+        ),
+        case(
+            29,
+            "import 'package:shared/shared.dart' hide ThingView;\nimport 'package:shared/src/thing.dart';\n",
+            "ThingView",
+            "Thing",
+            false,
+            false,
+        ),
+        // Analyzer: the same; fsp follows no generic typedef, and no package listed by version.
+        case(
+            30,
+            PROBE_SHARED,
+            "SharedGeneric<int>",
+            "List<int>",
+            false,
+            true,
+        ),
+        case(
+            31,
+            "import 'package:hosted/hosted.dart';\n",
+            "HostedJson",
+            "Map<String, Object?>",
+            false,
+            true,
+        ),
+        Case {
+            extra: "Object use() => [ToneAlias.values.byName('warm'), ToneAlias.warm, ToneAlias.values];\n",
+            ..case(32, PROBE_SHARED, "ToneAlias", "Tone", true, true)
+        },
+        case(
+            33,
+            "import 'package:shared/src/thing.dart' as s;\nimport '../../models/product.dart' as m;\n",
+            "s.Product",
+            "m.Product",
+            false,
+            false,
+        ),
+        case(34, PROBE_SHARED, "ThingView", "Hidden", false, false),
     ]
 }
 
@@ -1026,16 +1133,27 @@ fn probe_project(cases: &[Case]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     fs::write(
         dir.path().join("pubspec.yaml"),
-        "name: probe\nenvironment:\n  sdk: ^3.9.0\n",
+        "name: probe\nenvironment:\n  sdk: ^3.9.0\ndependencies:\n  shared:\n    path: shared\n  hosted: ^1.0.0\n",
     )
     .unwrap();
     fs::create_dir_all(dir.path().join(".dart_tool")).unwrap();
+    let pkg = |name: &str, root: &str| {
+        format!(
+            r#"{{"name":"{name}","rootUri":"{root}","packageUri":"lib/","languageVersion":"3.9"}}"#
+        )
+    };
     fs::write(
         dir.path().join(".dart_tool/package_config.json"),
-        r#"{"configVersion":2,"packages":[{"name":"probe","rootUri":"../","packageUri":"lib/","languageVersion":"3.9"}]}"#,
+        format!(
+            r#"{{"configVersion":2,"packages":[{},{},{},{}]}}"#,
+            pkg("probe", "../"),
+            pkg("shared", "../shared/"),
+            pkg("deep", "../deep/"),
+            pkg("hosted", "../hosted/")
+        ),
     )
     .unwrap();
-    for (rel, body) in PROBE_FILES {
+    for (rel, body) in PROBE_FILES.iter().chain(&PROBE_PACKAGE_FILES) {
         let p = dir.path().join(rel);
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, body).unwrap();
@@ -1131,4 +1249,191 @@ fn follows_typedefs_as_the_analyzer_does() {
             c.n
         );
     }
+}
+
+// --- path dependencies (since 0.22.0) -----------------------------------------------------------
+
+/// The pubspec of `demo` with the path dependency `shared` under `packages/`, and its files. Paths
+/// are relative to `lib/app/`, as `project` writes them.
+fn shared_files() -> Vec<(&'static str, &'static str)> {
+    vec![
+        (
+            "../../pubspec.yaml",
+            "name: demo\ndependencies:\n  shared:\n    path: packages/shared\n",
+        ),
+        ("../../packages/shared/pubspec.yaml", "name: shared\n"),
+        (
+            "../../packages/shared/lib/shared.dart",
+            "export 'src/thing.dart';\nexport 'src/ids.dart';\n",
+        ),
+        (
+            "../../packages/shared/lib/src/thing.dart",
+            "class Thing {}\nenum Tone { warm, cold }\n",
+        ),
+        (
+            "../../packages/shared/lib/src/ids.dart",
+            "import 'thing.dart';\ntypedef ThingView = Thing;\ntypedef SharedId = int;\ntypedef ToneAlias = Tone;\n",
+        ),
+    ]
+}
+
+fn with_shared<'a>(app: &[(&'a str, &'a str)]) -> Vec<(&'a str, &'a str)> {
+    shared_files()
+        .into_iter()
+        .chain(app.iter().copied())
+        .collect()
+}
+
+const SHARED: &str = "import 'package:shared/shared.dart';";
+
+#[test]
+fn a_page_takes_data_through_a_typedef_of_a_path_dependency() {
+    let page = product_page(
+        SHARED,
+        ", required this.id, required this.thing",
+        "final int id; final ThingView thing;",
+    );
+    let data =
+        format!("{SHARED}\nFuture<Thing> data(Ref ref, {{required int id}}) async => Thing();");
+    let files = with_shared(&[
+        ("products/$id/page.dart", &page),
+        ("products/$id/data.dart", &data),
+    ]);
+    assert_eq!(messages(&files), Vec::<String>::new());
+    has(&code(&files), &["thing: "]);
+}
+
+#[test]
+fn a_segment_typed_with_a_typedef_of_a_path_dependency_is_an_int() {
+    let page = product_page(SHARED, ", required this.id", "final SharedId id;");
+    let files = with_shared(&[("products/$id/page.dart", &page)]);
+    has(&code(&files), &["Segment.asInt(", "final int id;"]);
+}
+
+#[test]
+fn an_enum_of_a_path_dependency_is_an_enum_segment() {
+    let page = format!(
+        "{SHARED}\n{}",
+        widget("ShopPage", "final Tone tone;", ", required this.tone")
+    );
+    let files = with_shared(&[("shop/$tone/page.dart", &page)]);
+    has(
+        &code(&files),
+        &[
+            "import 'package:shared/shared.dart' show Tone;",
+            "Segment.asEnum(s, 'tone', Tone.values)",
+        ],
+    );
+}
+
+#[test]
+fn an_optional_page_parameter_typed_with_an_enum_of_a_path_dependency_is_a_query_parameter() {
+    // The migration item of 0.22.0: on 0.21 it was left to its default.
+    let page = format!(
+        "{SHARED}\n{}",
+        widget("ListPage", "final ToneAlias? tone;", ", this.tone")
+    );
+    let files = with_shared(&[("list/page.dart", &page)]);
+    has(
+        &code(&files),
+        &[
+            "ListRoute({this.tone})",
+            "Query.asEnum(s, 'tone', ToneAlias.values)",
+        ],
+    );
+}
+
+#[test]
+fn a_package_listed_by_version_is_not_followed_whatever_the_package_config_says() {
+    let page = product_page(
+        SHARED,
+        ", required this.id, required this.data",
+        "final int id; final ThingView data;",
+    );
+    let data =
+        format!("{SHARED}\nFuture<Thing> data(Ref ref, {{required int id}}) async => Thing();");
+    let mut files = with_shared(&[
+        ("products/$id/page.dart", &page),
+        ("products/$id/data.dart", &data),
+    ]);
+    files[0] = (
+        "../../pubspec.yaml",
+        "name: demo\ndependencies:\n  shared: ^1.0.0\n",
+    );
+    files.push((
+        "../../.dart_tool/package_config.json",
+        r#"{"configVersion":2,"packages":[{"name":"shared","rootUri":"../packages/shared","packageUri":"lib/","languageVersion":"3.9"}]}"#,
+    ));
+    assert_eq!(
+        messages(&files),
+        [
+            "`data` is ThingView but data.dart yields Thing; fsp follows typedefs only in the files of this package and of its path dependencies, and found no declaration of `ThingView` or `Thing` there, so it compares them as spelled"
+        ]
+    );
+}
+
+#[test]
+fn the_pubspec_not_the_package_config_says_where_a_path_dependency_is() {
+    let page = product_page(SHARED, ", required this.id", "final SharedId id;");
+    let mut files = with_shared(&[("products/$id/page.dart", &page)]);
+    // What `pub get` would write if the pubspec said otherwise: `shared` elsewhere, with a String.
+    files.push((
+        "../../other/lib/shared.dart",
+        "typedef SharedId = String;\n",
+    ));
+    files.push(("../../pubspec.lock", "packages: {}\n"));
+    files.push((
+        "../../.dart_tool/package_config.json",
+        r#"{"configVersion":2,"packages":[{"name":"shared","rootUri":"../other","packageUri":"lib/","languageVersion":"3.9"}]}"#,
+    ));
+    has(&code(&files), &["Segment.asInt("]);
+}
+
+#[test]
+fn spellings_that_agree_read_no_file_of_a_path_dependency() {
+    let page = product_page(
+        "import 'package:shared/src/thing.dart';",
+        ", required this.id, required this.thing",
+        "final int id; final Thing thing;",
+    );
+    let data = "import 'package:shared/src/thing.dart';\nFuture<Thing> data(Ref ref, {required int id}) async => Thing();";
+    let files = with_shared(&[
+        ("products/$id/page.dart", &page),
+        ("products/$id/data.dart", data),
+    ]);
+    let (reads, work) = lookups(&files);
+    assert!(
+        reads.iter().all(|p| !p.starts_with("package:")),
+        "{reads:?}"
+    );
+    assert_eq!(work, (0, 0));
+}
+
+#[test]
+fn a_path_dependency_barrel_is_read_once_however_many_pages_import_it() {
+    let mut app = barrel_app(3, 10);
+    // The models move into the path dependency `shared`, and the pages import its barrel.
+    for (path, src) in &mut app {
+        if let Some(rest) = path.strip_prefix("../models/") {
+            *path = format!("../../packages/shared/lib/{rest}");
+        }
+        *src = src.replace("package:demo/models/all.dart", "package:shared/all.dart");
+    }
+    app.push((
+        "../../pubspec.yaml".into(),
+        "name: demo\ndependencies:\n  shared:\n    path: packages/shared\n".into(),
+    ));
+    app.push((
+        "../../packages/shared/pubspec.yaml".into(),
+        "name: shared\n".into(),
+    ));
+    let app: Vec<(&str, &str)> = app.iter().map(|(p, s)| (p.as_str(), s.as_str())).collect();
+    let (reads, (parses, _)) = lookups(&app);
+    let mut want: Vec<String> = (0..10)
+        .map(|k| format!("package:shared/m{k}.dart"))
+        .collect();
+    want.push("package:shared/all.dart".into());
+    want.sort();
+    assert_eq!(reads, want);
+    assert_eq!(parses, 1, "only the barrel is parsed");
 }

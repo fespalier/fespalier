@@ -5,13 +5,14 @@
 //! what it always has and `fsp dev` can put the same lines in a pane of its own. The loop runs on
 //! the thread that calls it: the parse cache is thread-local, so every pass must be on one thread.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use notify::event::ModifyKind;
-use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Event, EventKind, PathsMut, RecommendedWatcher, RecursiveMode, Watcher};
 
 use crate::config::Config;
 use crate::diag::{self, Diags, Level, Loc};
@@ -83,7 +84,8 @@ pub struct GenReport {
 /// don't, and neither does the generated file when it lives in the app folder.
 /// `watch` also sees `lib/` outside the app folder, because an enum a segment names is
 /// declared there (`lib/models/category.dart`): of those paths only Dart files and folders
-/// (a path with no extension) count, not the `.png` or `.json` beside them.
+/// (a path with no extension) count, not the `.png` or `.json` beside them. The same goes for the
+/// folders of a `path:` dependency that `watch` adds after a pass (since 0.22.0).
 pub fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
@@ -162,6 +164,12 @@ pub fn watch_loop(
         app_dir.clone()
     };
     watcher.watch(&watched, RecursiveMode::Recursive)?;
+    // The folders of a path dependency that hold a file the last pass read (since 0.22.0), each on
+    // its own and not recursively: only those can change what the next pass generates.
+    let mut beside = Beside::default();
+    for warning in pass.watch_beside(&mut watcher, &watched, &mut beside) {
+        sink(Watched::Warning(warning));
+    }
     sink(Watched::Watching(format!("watching {}/ …", cfg.app_dir)));
     loop {
         match rx.recv() {
@@ -184,8 +192,90 @@ pub fn watch_loop(
             }
         }
         pass.run(false, &mut sink);
+        for warning in pass.watch_beside(&mut watcher, &watched, &mut beside) {
+            sink(Watched::Warning(warning));
+        }
     }
     Ok(())
+}
+
+/// The folders outside the recursively watched one that are watched (since 0.22.0): those of a
+/// `path:` dependency that hold a file the last pass read, each on its own.
+#[derive(Debug, Default)]
+pub(crate) struct Beside {
+    /// The folders watched.
+    watched: BTreeSet<PathBuf>,
+    /// The folders the watcher refused, so that each is said once.
+    refused: BTreeSet<PathBuf>,
+}
+
+/// What to change to watch the folders that are there.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Plan {
+    /// Folders to stop watching: no longer wanted, or gone.
+    pub(crate) stop: Vec<PathBuf>,
+    /// Folders to watch.
+    pub(crate) start: Vec<PathBuf>,
+}
+
+/// Whether asking a [`RecommendedWatcher`] to watch a folder it already watches changes nothing.
+/// inotify drops the watch of a folder that is deleted (or moved away) and a folder made again at
+/// its path is not watched, so each pass asks again, which adds to the watch that is there; the
+/// other backends are asked once, as `FSEvents` restarts its stream for every call and keeps the
+/// path twice. UNCHECKED there: a dependency folder deleted and made again within one pass.
+fn asking_again_is_free() -> bool {
+    matches!(RecommendedWatcher::kind(), notify::WatcherKind::Inotify)
+}
+
+impl Beside {
+    /// What to do for the wanted folders `there` (those that exist now). With `again`, a folder that
+    /// is watched is asked for again, in case the watch is of a folder that is gone.
+    pub(crate) fn plan(&self, there: &BTreeSet<PathBuf>, again: bool) -> Plan {
+        Plan {
+            stop: self.watched.difference(there).cloned().collect(),
+            start: there
+                .iter()
+                .filter(|dir| again || !self.watched.contains(*dir))
+                .cloned()
+                .collect(),
+        }
+    }
+
+    /// Carries out `plan` in one batch (`FSEvents` restarts its stream for each call of `watch`), and
+    /// returns what to tell the user: each folder the watcher refuses, once. A refused folder is in the
+    /// next plan, so it is tried again after the next pass. Nothing is told for a folder that is not
+    /// there yet: it is asked for when it is.
+    pub(crate) fn apply(&mut self, plan: &Plan, paths: &mut dyn PathsMut) -> Vec<String> {
+        let mut told = vec![];
+        for dir in &plan.stop {
+            // Its watch may be gone already, which is why it is stopped.
+            let _ = paths.remove(dir);
+            self.watched.remove(dir);
+        }
+        for dir in &plan.start {
+            match paths.add(dir, RecursiveMode::NonRecursive) {
+                Ok(()) => {
+                    self.watched.insert(dir.clone());
+                    self.refused.remove(dir);
+                }
+                Err(e) => {
+                    self.watched.remove(dir);
+                    if self.refused.insert(dir.clone()) {
+                        told.push(format!(
+                            "watch error: cannot watch {}: {e}; changes there are not seen",
+                            dir.display()
+                        ));
+                    }
+                }
+            }
+        }
+        told
+    }
+
+    /// Forgets the refusals of folders that are gone or not wanted, so a later one is told again.
+    pub(crate) fn forget(&mut self, there: &BTreeSet<PathBuf>) {
+        self.refused.retain(|dir| there.contains(dir));
+    }
 }
 
 struct Pass<'a> {
@@ -196,6 +286,38 @@ struct Pass<'a> {
 }
 
 impl Pass<'_> {
+    /// Brings the watches outside `watched` in line with the folders the last pass read from, and
+    /// returns what to tell the user (since 0.22.0). Every folder that is there is watched, one that
+    /// was deleted and made again included, which the watcher dropped (see
+    /// [`asking_again_is_free`]); the others are watched when they come.
+    fn watch_beside(
+        &self,
+        watcher: &mut RecommendedWatcher,
+        watched: &Path,
+        beside: &mut Beside,
+    ) -> Vec<String> {
+        let there: BTreeSet<PathBuf> = self
+            .session
+            .last
+            .reads()
+            .map(|r| r.folders(self.project))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|d| !d.starts_with(watched) && d.is_dir())
+            .collect();
+        beside.forget(&there);
+        let plan = beside.plan(&there, asking_again_is_free());
+        if plan == Plan::default() {
+            return vec![];
+        }
+        let mut paths = watcher.paths_mut();
+        let mut told = beside.apply(&plan, &mut *paths);
+        if let Err(e) = paths.commit() {
+            told.push(format!("watch error: {e}"));
+        }
+        told
+    }
+
     fn run(&mut self, first: bool, sink: &mut impl FnMut(Watched<'_>)) {
         let t = Instant::now();
         let mut diags = String::new();

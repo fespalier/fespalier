@@ -2,9 +2,10 @@
 //!
 //! The generator reads a syntax tree. Two spellings of a type (`ProductView` and the `Product` its
 //! typedef names, `m.Product` and `Product`) are one type when, with every typedef followed and every
-//! import prefix resolved, they come to the same declarations. Only this package's files are read
-//! (through `enums::Libs`): a typedef of another package, a generic typedef, one in a `part` file
-//! are not followed, and their names are compared as spelled. Callers compare spellings first and
+//! import prefix resolved, they come to the same declarations. Only this package's files, and since
+//! 0.22.0 those of its `path:` dependencies, are read (through `enums::Libs`): a typedef of another
+//! package (hosted, `git:`, the SDK's), a generic typedef, one in a `part` file are not followed,
+//! and their names are compared as spelled. Callers compare spellings first and
 //! ask for the canonical form only when they differ, or when no spelling bound a parameter at all,
 //! so what matched before matches the same way.
 
@@ -13,7 +14,8 @@ use crate::extra;
 /// What a type name names, found by a [`Scope`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Declared {
-    /// The file that declares it, relative to the project: `lib/models/ids.dart`.
+    /// The file that declares it, relative to the project: `lib/models/ids.dart`; a path
+    /// dependency's by its package URI, `package:shared/src/ids.dart` (since 0.22.0).
     pub decl: String,
     pub name: String,
     /// For a `typedef X = T;` (not generic): `T` as written in `decl`.
@@ -27,13 +29,13 @@ pub trait Scope {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Canonical {
-    /// Each name replaced by what it names: a typedef by its own canonical `key`, a type this
-    /// package declares by `<decl>#<Name>`, anything else as spelled, its import prefix included
+    /// Each name replaced by what it names: a typedef by its own canonical `key`, a type declared
+    /// in a file fsp reads by `<decl>#<Name>`, anything else as spelled, its import prefix included
     /// (two packages' `User` are two types). Equal keys, one type.
     pub key: String,
     /// The typedefs followed, prefixes dropped, every name bare: `Map<String, Product>`.
     pub expanded: String,
-    /// Names neither `dart:core` nor declared in this package's files, in order, once each.
+    /// Names neither `dart:core` nor declared in the files fsp reads, in order, once each.
     pub unknown: Vec<String>,
     /// A name this package declares (a class, an enum, a mixin) is left in it.
     pub declared: bool,
@@ -127,10 +129,10 @@ pub fn hint_of(names: &[String]) -> String {
     match quoted.as_slice() {
         [] => String::new(),
         [one] => format!(
-            "; fsp follows typedefs in this package's files only, and found no declaration of {one} there, so it compares it as spelled"
+            "; fsp follows typedefs only in the files of this package and of its path dependencies, and found no declaration of {one} there, so it compares it as spelled"
         ),
         [init @ .., last] => format!(
-            "; fsp follows typedefs in this package's files only, and found no declaration of {} or {last} there, so it compares them as spelled",
+            "; fsp follows typedefs only in the files of this package and of its path dependencies, and found no declaration of {} or {last} there, so it compares them as spelled",
             init.join(", ")
         ),
     }

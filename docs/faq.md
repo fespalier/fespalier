@@ -126,7 +126,8 @@ copy of the matcher. The cost of a syntax tree is that `fsp` can't know that `co
 Since 0.21.0 `fsp` treats a `typedef` of a type in your own files as that type, and an import prefix as the
 library it names: `ProductView` and the `Product` it names are one type, and so are `m.Product` and `Product`.
 It reads the files it already reads (the app folder, the relative imports, and the `package:` imports of your
-own package, through `export`s and `show`/`hide`), and it compares spellings first, so an app that spells each
+own package, through `export`s and `show`/`hide`) and, since 0.22.0, those of its `path:` dependencies, and it
+compares spellings first, so an app that spells each
 type the same wherever it is compared gets the same code as before. Where a `typedef` or a prefix changes what is
 generated, the [0.21.0 migration notes](migration.md#0210) list it.
 
@@ -136,9 +137,11 @@ so its answer would depend on the pub cache, and `fsp check` must give the same 
 milliseconds, and `fsp watch` runs it on every save. A separate `analyzer` dependency in every app would pin
 a version next to build_runner's and freezed's.
 
-What it leaves: a `typedef` of another package (a hosted package, or a `path:` dependency), a generic
-`typedef`, and one in a `part` file. Those are compared as written, and the messages say which name could not
-be followed. A test checks what `fsp` says against `dart analyze` on the same types, so a disagreement is a
+What it leaves: a `typedef` of a hosted, `git:` or SDK package, a generic `typedef`, and one in a `part` file.
+A `path:` dependency is read since 0.22.0: its files are where its pubspec says, so the answer stays a function
+of the files and the pubspecs. A hosted package's files are in the pub cache, and an analyzer sidecar that could
+read them took 18 to 20 s per file without its cache when measured, so it could only ever add a hint, never
+change the output. Those are compared as written, and the messages say which name could not be followed. A test checks what `fsp` says against `dart analyze` on the same types, so a disagreement is a
 failing test, not a surprise in an app.
 
 ### Why fsp watch doesn't cache per route

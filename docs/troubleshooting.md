@@ -39,22 +39,34 @@ An error message from `fsp` is explained, with its fix, in the `fespalier-troubl
 
 ## Known limitations
 
-**Types are followed through this package's files, not resolved.** Since 0.21.0 `fsp` follows a `typedef`
+**Types are followed through the files `fsp` reads, not resolved.** Since 0.21.0 `fsp` follows a `typedef`
 and an import prefix declared in the app's own files: the file itself, its relative imports and the
 `package:` imports of its own package, through `export`s and `show`/`hide`. So `ProductView` and the
 `Product` it names, or `m.Product` and `Product`, are one type. Before 0.21.0 they were compared by
-spelling, and a `typedef` counted as a different type. The Dart compiler still catches real mismatches in
-the generated code.
+spelling, and a `typedef` counted as a different type. Since 0.22.0 it reads the `package:` imports of the
+app's `path:` dependencies the same way, so a `typedef` or an enum declared in one is followed too: the
+packages `pubspec.yaml` lists with a `path:` under `dependencies`, `dev_dependencies` or
+`dependency_overrides` (those of `pubspec_overrides.yaml` when it has that key, as pub reads it), and their
+own `path:` dependencies, found from the pubspecs alone. In a pub workspace (an app that says
+`resolution: workspace`) it applies the `dependency_overrides` of the workspace root too, as pub does for
+every member: those of the root's `pubspec.yaml`, or of its `pubspec_overrides.yaml` when that has the key.
+The Dart compiler still catches real mismatches in the generated code.
 
-Not followed, so still compared as spelled: a `typedef` of another package (a `path:` dependency
-included), a generic `typedef` (`typedef Json<T> = Map<String, T>;`), a `typedef` in a `part` file, and
-a name that does not start with a capital letter. When two types differ and one of their names could not
-be followed, the four messages that compare types (a parameter against `data.dart`, against a section's
-`data.dart`, a form's return against its input, and an `extra` that clashes) end by naming those names:
-``found no declaration of `JsonMap` there, so it compares it as spelled``.
+Not followed, so still compared as spelled: a `typedef` of a hosted, `git:` or SDK package (one of a
+`path:` dependency too, before 0.22.0), a package of a pub workspace that the pubspec names without a
+`path:` (`shared: ^1.0.0` with `resolution: workspace`: write `shared: {path: ../shared}` to have it
+followed, which pub accepts in a workspace), a package that only another member of the workspace overrides
+(pub applies a member's `dependency_overrides` to the whole workspace, and `fsp` reads those of the app and
+of the root, not of a sibling member: write them in the root's `pubspec.yaml`), a generic `typedef`
+(`typedef Json<T> = Map<String, T>;`), a `typedef` in a `part` file, and a name that does not start with a capital letter. A hosted package's files
+are in the pub cache, which only `pub get` fills, so following them would make the answer depend on it
+([why](faq.md#why-fsp-follows-typedefs-itself-not-through-the-analyzer)). When two types differ and one of
+their names could not be followed, the four messages that compare types (a parameter against `data.dart`,
+against a section's `data.dart`, a form's return against its input, and an `extra` that clashes) end by
+naming those names: ``found no declaration of `JsonMap` there, so it compares it as spelled``.
 
 Still by spelling: a form field's kind (a `typedef Email = String;` field is a value field, not a text
 field), the framework types (`Ref`, `BuildContext`, `RouteScope`, ...), and an enum alias that two routes'
 query parameters spell differently (`Cat` in one, `Category` in another), which stays a mismatch for an
-action's keys. `fsp` never reads `.dart_tool/` or the pub cache, so `fsp check` gives the same answer
-before and after `pub get`.
+action's keys. `fsp` never reads `.dart_tool/`, `pubspec.lock` or the pub cache, so `fsp check` gives the
+same answer before and after `pub get`.

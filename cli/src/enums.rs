@@ -3,8 +3,10 @@
 //! A syntax tree can't say that `Category` is an enum: it may be a class, or come from a
 //! package. So the type is only taken for one when its declaration is found, in the file that
 //! names it (the view, `data.dart`, ...) or in a file that one imports or re-exports: relative
-//! imports, and `package:` imports of the app's own package, which are read from `lib/`. Other
-//! packages and `dart:` are not read, so an enum from one is an error that suggests a `String`.
+//! imports, and `package:` imports of the app's own package, which are read from `lib/`, or since
+//! 0.22.0 of one of its `path:` dependencies (`packages.rs`), read from that package's `lib/` and
+//! known by its package URI (`package:shared/src/ids.dart`). Other packages (hosted, `git:`, the
+//! SDK's) and `dart:` are not read, so an enum from one is an error that suggests a `String`.
 //!
 //! How the generated file names the type, and imports it, is `extra.rs`'s job, as for an
 //! `extra`: this module only finds the declaration and tells the resolver what it found.
@@ -17,6 +19,7 @@ use std::rc::Rc;
 use crate::config::{Config, Pubspec};
 use crate::dart::{self, Module};
 use crate::extra;
+use crate::packages::Packages;
 use crate::types::{self, Canonical, Declared, Scope};
 
 /// An enum that was found.
@@ -89,6 +92,10 @@ struct Lib {
     src: String,
     imports: OnceCell<Vec<extra::Import>>,
     module: OnceCell<Module>,
+    /// The names the source may declare, made on the first lookup of a name (since 0.22.0).
+    declares: OnceCell<HashSet<String>>,
+    /// Whether the source says `export` anywhere, found once (since 0.22.0).
+    exporting: OnceCell<bool>,
 }
 
 impl Lib {
@@ -97,6 +104,8 @@ impl Lib {
             src: src.to_string(),
             imports: OnceCell::new(),
             module: OnceCell::new(),
+            declares: OnceCell::new(),
+            exporting: OnceCell::new(),
         }
     }
 
@@ -115,7 +124,7 @@ impl Lib {
 
     /// What the library re-exports. A source with no `export` in it has none, and is not parsed.
     fn exports(&self) -> &[dart::Export] {
-        if self.src.contains("export") {
+        if *self.exporting.get_or_init(|| self.src.contains("export")) {
             &self.module().exports
         } else {
             &[]
@@ -125,22 +134,84 @@ impl Lib {
     /// Whether the source may declare a type called `name`: the name follows `class`, `enum`,
     /// `typedef`, `mixin` or `type` somewhere in it (comments and strings included, so a `true` is
     /// not a promise). A `false` is: every declaration of a type is spelled that way, and nothing
-    /// is parsed to find out.
+    /// is parsed to find out. The source is read once for all the names (since 0.22.0): a barrel of a
+    /// path dependency is asked about every name no page file declares, in each of its files.
     fn may_declare(&self, name: &str) -> bool {
         count!(probes);
-        let ident = |c: char| c.is_alphanumeric() || c == '_' || c == '$';
-        self.src.match_indices(name).any(|(at, _)| {
-            let (before, after) = (&self.src[..at], &self.src[at + name.len()..]);
-            if before.ends_with(ident) || after.starts_with(ident) {
-                return false;
-            }
-            let before = before.trim_end();
-            let word = before.rsplit(|c: char| !ident(c)).next().unwrap_or("");
-            // A comment between the keyword and the name is not looked into: it may be one.
-            before.ends_with("*/")
-                || matches!(word, "class" | "enum" | "typedef" | "mixin" | "type")
-        })
+        if name.is_empty() || !name.chars().all(is_ident) {
+            return may_declare_in(&self.src, name);
+        }
+        self.declared().contains(name)
     }
+
+    /// The names the source may declare (see [`Lib::may_declare`]).
+    fn declared(&self) -> &HashSet<String> {
+        self.declares.get_or_init(|| declared_names(&self.src))
+    }
+}
+
+/// Whether `c` can be part of a Dart identifier (for this module's purposes).
+fn is_ident(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '$'
+}
+
+/// Whether `name` follows `class`, `enum`, `typedef`, `mixin` or `type` somewhere in `src`, or a
+/// comment's end, as a whole identifier.
+pub(crate) fn may_declare_in(src: &str, name: &str) -> bool {
+    src.match_indices(name).any(|(at, _)| {
+        let (before, after) = (&src[..at], &src[at + name.len()..]);
+        if before.ends_with(is_ident) || after.starts_with(is_ident) {
+            return false;
+        }
+        let before = before.trim_end();
+        let word = before.rsplit(|c: char| !is_ident(c)).next().unwrap_or("");
+        // A comment between the keyword and the name is not looked into: it may be one.
+        before.ends_with("*/") || is_declaring(word)
+    })
+}
+
+/// The words after which a type's name is declared.
+fn is_declaring(word: &str) -> bool {
+    matches!(word, "class" | "enum" | "typedef" | "mixin" | "type")
+}
+
+/// Every identifier of `src` that [`may_declare_in`] says may be declared: the one name that follows
+/// a declaring word with only whitespace between, and the one that follows a comment's end.
+pub(crate) fn declared_names(src: &str) -> HashSet<String> {
+    let bytes = src.as_bytes();
+    // The bytes of the identifier character at `at` (0: it is another): ASCII is told by its byte.
+    let ident_at = |at: usize| match bytes[at] {
+        b if b.is_ascii() => usize::from(b.is_ascii_alphanumeric() || b == b'_' || b == b'$'),
+        _ => src[at..]
+            .chars()
+            .next()
+            .filter(|&c| is_ident(c))
+            .map_or(0, char::len_utf8),
+    };
+    let mut names = HashSet::new();
+    let (mut previous, mut gap_from, mut at) = ("", 0, 0);
+    while at < bytes.len() {
+        let start = at;
+        while at < bytes.len() && ident_at(at) > 0 {
+            at += ident_at(at);
+        }
+        if at == start {
+            at += src[at..].chars().next().map_or(1, char::len_utf8);
+            continue;
+        }
+        let gap = src[gap_from..start].trim_end();
+        let declared = if gap.is_empty() {
+            is_declaring(previous)
+        } else {
+            gap.ends_with("*/")
+        };
+        if declared {
+            names.insert(src[start..at].to_string());
+        }
+        previous = &src[start..at];
+        gap_from = at;
+    }
+    names
 }
 
 /// A library path, an import prefix and a name: what a lookup of a type name is made with.
@@ -155,6 +226,8 @@ pub struct Libs {
     package: Option<String>,
     /// The app folder relative to the project (`lib/app`): view files are relative to it.
     app_dir: String,
+    /// The path dependencies whose files are read as `package:<name>/...` (since 0.22.0).
+    packages: Packages,
     /// Parsed files by their path relative to the project; `None` for one that can't be read.
     files: RefCell<HashMap<String, Option<Rc<Lib>>>>,
     /// What was read from disk for `files`: the path and the source, `None` when it couldn't be.
@@ -168,17 +241,42 @@ pub struct Libs {
     exported: RefCell<HashMap<(String, String), Option<Declared>>>,
     /// The enum a library and the ones it exports declare as a name, by the same key.
     enums: RefCell<HashMap<(String, String), Option<Found>>>,
+    /// The names a library and the ones it exports may declare, by the library's path, once a lookup
+    /// through it found nothing; `None` when some export was not read. A name that is not in it is
+    /// found nowhere through the library, so no other walk of its exports is made for it (since 0.22.0).
+    closures: RefCell<HashMap<String, Option<Rc<HashSet<String>>>>>,
 }
 
-/// The files a [`Libs`] read from disk while resolving, with what was in them. `fsp watch` keeps
-/// it beside the result of a run: the result holds while every one of them still reads the same.
+/// The files a [`Libs`] read from disk while resolving, with what was in them, and the path packages
+/// it read them from (since 0.22.0). `fsp watch` keeps it beside the result of a run: the result
+/// holds while the pubspecs give the same packages and every file still reads the same.
 #[derive(Debug, Default, PartialEq)]
 pub struct Reads {
     package: Option<String>,
+    packages: Packages,
     files: Vec<(String, Option<String>)>,
 }
 
 impl Reads {
+    /// The folders that hold the files read (since 0.22.0): those of the app's own files are paths under
+    /// `project`, those of a path dependency's are where its pubspec says, which is often outside it.
+    /// `fsp watch` watches those outside `lib/`, a path dependency's.
+    pub fn folders(&self, project: &Path) -> std::collections::BTreeSet<PathBuf> {
+        self.files
+            .iter()
+            .filter_map(|(path, _)| {
+                let file = match path.strip_prefix("package:") {
+                    Some(rest) => {
+                        let (package, file) = rest.split_once('/')?;
+                        self.packages.root(package)?.join("lib").join(file)
+                    }
+                    None => project.join(path),
+                };
+                file.parent().map(Path::to_path_buf)
+            })
+            .collect()
+    }
+
     /// The project paths read, sorted (a test checks which files a run needed).
     #[cfg(test)]
     pub fn paths(&self) -> Vec<&str> {
@@ -193,9 +291,13 @@ impl Libs {
         let package = project
             .and_then(|p| Pubspec::load(p).ok())
             .and_then(|p| p.name);
+        let packages = project
+            .map(|p| Packages::read(p, package.as_deref()))
+            .unwrap_or_default();
         Libs {
             root: project.map(Path::to_path_buf),
             package,
+            packages,
             app_dir: cfg.app_dir.clone(),
             ..Libs::default()
         }
@@ -207,6 +309,7 @@ impl Libs {
         files.sort();
         Reads {
             package: self.package.clone(),
+            packages: self.packages.clone(),
             files,
         }
     }
@@ -215,11 +318,11 @@ impl Libs {
     /// It compares contents: the files are few and small.
     pub fn unchanged_since(&self, reads: &Reads) -> bool {
         self.package == reads.package
+            && self.packages == reads.packages
             && reads.files.iter().all(|(path, src)| {
                 let now = self
-                    .root
-                    .as_ref()
-                    .and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+                    .disk(path)
+                    .and_then(|p| std::fs::read_to_string(p).ok());
                 now == *src
             })
     }
@@ -289,6 +392,9 @@ impl Libs {
     /// walk through the exports of a library is made once per name, not once per file that imports
     /// it (a lookup further down a chain of typedefs is not kept: it depends on how deep it is).
     fn enum_exported(&self, path: &str, name: &str, depth: usize) -> Option<Found> {
+        if self.nothing_called(path, name) {
+            return None;
+        }
         if depth > 0 {
             return self.enum_in(path, name, &mut HashSet::new(), depth);
         }
@@ -297,6 +403,9 @@ impl Libs {
             return hit.clone();
         }
         let found = self.enum_in(path, name, &mut HashSet::new(), depth);
+        if found.is_none() {
+            self.close(path);
+        }
         self.enums.borrow_mut().insert(key, found.clone());
         found
     }
@@ -354,9 +463,8 @@ impl Libs {
             return lib.clone();
         }
         let src = self
-            .root
-            .as_ref()
-            .and_then(|root| std::fs::read_to_string(root.join(path)).ok());
+            .disk(path)
+            .and_then(|p| std::fs::read_to_string(p).ok());
         let lib = src.as_deref().map(|src| Rc::new(Lib::new(src)));
         if self.root.is_some() {
             self.read.borrow_mut().push((path.to_string(), src));
@@ -372,23 +480,34 @@ impl Libs {
     fn locate(&self, from: &str, uri: &str) -> Option<String> {
         if let Some(rest) = uri.strip_prefix("package:") {
             let (package, path) = rest.split_once('/')?;
-            return (Some(package) == self.package.as_deref()).then(|| format!("lib/{path}"));
+            if Some(package) == self.package.as_deref() {
+                return Some(format!("lib/{path}"));
+            }
+            // A path dependency's file, by its package URI (since 0.22.0).
+            self.packages.root(package)?;
+            return join("_", path).map(|p| format!("package:{package}/{p}"));
         }
         if uri.contains(':') {
             return None;
         }
-        let mut parts: Vec<&str> = from.split('/').collect();
-        parts.pop();
-        for seg in uri.split('/') {
-            match seg {
-                "" | "." => {}
-                ".." => {
-                    parts.pop()?;
-                }
-                s => parts.push(s),
-            }
+        // A relative import in a path dependency's file stays in that package's lib/.
+        if let Some(rest) = from.strip_prefix("package:") {
+            let (package, file) = rest.split_once('/')?;
+            return join(file, uri).map(|p| format!("package:{package}/{p}"));
         }
-        Some(parts.join("/"))
+        join(from, uri)
+    }
+
+    /// Where the file `path` is on disk: under the project, or for `package:<name>/...` under that
+    /// path dependency's `lib/` (since 0.22.0).
+    fn disk(&self, path: &str) -> Option<std::path::PathBuf> {
+        match path.strip_prefix("package:") {
+            Some(rest) => {
+                let (package, file) = rest.split_once('/')?;
+                Some(self.packages.root(package)?.join("lib").join(file))
+            }
+            None => Some(self.root.as_ref()?.join(path)),
+        }
     }
 
     /// The canonical form of `text`, written in the tree file `file` (relative to the app folder,
@@ -446,6 +565,22 @@ impl Libs {
 /// How deep typedefs are followed: a typedef of a typedef of ..., and a cycle, stop here.
 const DEPTH: usize = 8;
 
+/// `uri`, relative to the file `from`: `None` when it climbs above the first folder of `from`.
+fn join(from: &str, uri: &str) -> Option<String> {
+    let mut parts: Vec<&str> = from.split('/').collect();
+    parts.pop();
+    for seg in uri.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s => parts.push(s),
+        }
+    }
+    Some(parts.join("/"))
+}
+
 impl types::Scope for Libs {
     /// What `name` names as the file `path` sees it, through `prefix`: a declaration of that file,
     /// else one of the libraries its matching imports bring in (their exports too). A private name
@@ -494,13 +629,60 @@ impl Libs {
     /// The declaration of `name` in the library at `path` or in one of the libraries it exports,
     /// found once per library and name: a barrel that a hundred pages import is walked once.
     fn exported_once(&self, path: &str, name: &str) -> Option<Declared> {
+        if self.nothing_called(path, name) {
+            return None;
+        }
         let key = (path.to_string(), name.to_string());
         if let Some(hit) = self.exported.borrow().get(&key) {
             return hit.clone();
         }
         let found = self.exported(path, name, &mut HashSet::new());
+        if found.is_none() {
+            self.close(path);
+        }
         self.exported.borrow_mut().insert(key, found.clone());
         found
+    }
+
+    /// Whether the library at `path` and the ones it exports are known to declare nothing called
+    /// `name` (see [`Libs::closures`]).
+    fn nothing_called(&self, path: &str, name: &str) -> bool {
+        let closures = self.closures.borrow();
+        let known = closures.get(path).and_then(Option::as_ref);
+        known.is_some_and(|names| !names.contains(name))
+    }
+
+    /// Makes the names the library at `path` and everything it exports may declare, once, after a
+    /// walk of its exports found nothing: `show` and `hide` are not looked at, and a library that
+    /// was not read (no walk went through a filtered export) leaves the set out.
+    fn close(&self, path: &str) {
+        if self.closures.borrow().contains_key(path) {
+            return;
+        }
+        let mut names = HashSet::new();
+        let mut seen = HashSet::new();
+        let mut todo = vec![path.to_string()];
+        let complete = loop {
+            let Some(next) = todo.pop() else {
+                break true;
+            };
+            if !seen.insert(next.clone()) {
+                continue;
+            }
+            let Some(read) = self.files.borrow().get(&next).cloned() else {
+                break false;
+            };
+            let Some(lib) = read else { continue };
+            names.extend(lib.declared().iter().cloned());
+            todo.extend(
+                lib.exports()
+                    .iter()
+                    .filter_map(|e| self.locate(&next, &e.uri)),
+            );
+        };
+        self.closures
+            .borrow_mut()
+            .insert(path.to_string(), complete.then(|| Rc::new(names)));
     }
 
     /// The declaration of `name` in the library at `path` or in one of the libraries it exports.

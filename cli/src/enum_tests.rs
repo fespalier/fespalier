@@ -1065,3 +1065,244 @@ fn the_libs_follow_typedefs_and_combinators() {
     );
     assert!(<Libs as Scope>::declared(&libs, "lib/models/ids.dart", None, "Nope").is_none());
 }
+
+#[test]
+fn the_libs_read_a_path_dependency_as_its_package() {
+    use crate::enums::{Libs, Lookup};
+    use crate::types::Scope;
+    // Files relative to `lib/`: `../` is the project, where the pubspec and `packages/` are.
+    let dir = project(&[
+        ("app/shop/page.dart", ""),
+        (
+            "../pubspec.yaml",
+            "name: demo\ndependencies:\n  shared:\n    path: packages/shared\n",
+        ),
+        ("../packages/shared/pubspec.yaml", "name: shared\n"),
+        (
+            "../packages/shared/lib/shared.dart",
+            "export 'src/thing.dart';\nexport 'src/ids.dart';\n",
+        ),
+        (
+            "../packages/shared/lib/src/thing.dart",
+            "import 'package:demo/models/mine.dart';\nclass Thing {}\nenum Tone { warm, cold }\ntypedef Back = Mine;\n",
+        ),
+        (
+            "../packages/shared/lib/src/ids.dart",
+            "import 'thing.dart';\nimport '../../../outside.dart';\ntypedef ThingView = Thing;\ntypedef ToneAlias = Tone;\n",
+        ),
+        ("../packages/shared/outside.dart", "class Outside {}\n"),
+        ("models/mine.dart", "class Mine {}\n"),
+    ]);
+    let app_dir = dir.path().join("lib/app");
+    let libs = Libs::for_app(&app_dir, &Config::default());
+    let page = "import 'package:shared/shared.dart';";
+    let found = |l: Lookup| match l {
+        Lookup::Found(f) => format!("{}#{}", f.decl, f.name),
+        other => format!("{other:?}"),
+    };
+    // A path dependency's file is known by its package URI, and a relative import in it stays in it.
+    assert_eq!(
+        found(libs.find("shop/page.dart", page, "Tone")),
+        "package:shared/src/thing.dart#Tone"
+    );
+    assert_eq!(
+        found(libs.find("shop/page.dart", page, "ToneAlias")),
+        "package:shared/src/thing.dart#Tone"
+    );
+    assert_eq!(
+        libs.canonical("shop/page.dart", page, "ThingView").key,
+        "package:shared/src/thing.dart#Thing"
+    );
+    // `package:demo/` in the dependency is the app's own lib/ (a cycle pub allows).
+    assert_eq!(
+        libs.canonical("shop/page.dart", page, "Back").key,
+        "lib/models/mine.dart#Mine"
+    );
+    // An import that climbs out of the package's lib/ is not followed.
+    assert_eq!(
+        libs.declared("package:shared/src/ids.dart", None, "Outside"),
+        None
+    );
+    let mut read = libs
+        .reads()
+        .paths()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    read.sort();
+    assert_eq!(
+        read,
+        [
+            "lib/models/mine.dart",
+            "package:shared/shared.dart",
+            "package:shared/src/ids.dart",
+            "package:shared/src/thing.dart"
+        ]
+    );
+    // The folders `fsp watch` watches for them.
+    let folders: Vec<_> = libs
+        .reads()
+        .folders(dir.path())
+        .into_iter()
+        .map(|f| {
+            f.strip_prefix(dir.path())
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    assert_eq!(
+        folders,
+        [
+            "lib/models",
+            "packages/shared/lib",
+            "packages/shared/lib/src"
+        ]
+    );
+}
+
+/// The names a source may declare are indexed once (since 0.22.0) instead of scanning the source for
+/// each name. The index says what the scan did, for every identifier of the sources below: comments and
+/// strings in the way, `$`, non-ASCII names, a keyword at the end of the file or at the start, and
+/// real files of the repository.
+#[test]
+fn the_index_of_declared_names_says_what_scanning_the_source_said() {
+    use crate::enums::{declared_names, may_declare_in};
+
+    let mut sources: Vec<String> = [
+        "class A {}\nenum B { x }\ntypedef C = int;\nmixin D {}\nextension type const E(int i) {}",
+        "abstract class F<T> extends G {}\nsealed class H {}\nmixin class I {}\nfinal class J {}",
+        "/* c */ K\n/** doc */ class /* inside */ L {}\nclass // line\n M {}\n",
+        "class\n\n\tN {}\nenum\u{a0}O { a }\ntypedef P=Q;",
+        "const s = 'class R'; // enum S\nvar t = \"typedef T = U\";",
+        "class $V {} class _W {} class X$ {} class Y_1 {} class Ünï {}\nclassZ\nclass",
+        "Z class\nenum",
+        "enum Aa { enum, class, typedef }\nclass enum {}\nclass class {}",
+        "",
+        "   \n\t",
+        "class A\nB class C\n/* */ D */ E",
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    for dir in ["examples/shop/lib", "packages/fespalier/lib/src"] {
+        let mut files = vec![];
+        let mut todo = vec![repo.join(dir)];
+        while let Some(d) = todo.pop() {
+            for entry in fs::read_dir(&d).into_iter().flatten().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    todo.push(p);
+                } else if p.extension().is_some_and(|e| e == "dart") {
+                    files.push(p);
+                }
+            }
+        }
+        files.sort();
+        sources.extend(
+            files
+                .iter()
+                .take(25)
+                .filter_map(|p| fs::read_to_string(p).ok()),
+        );
+    }
+    let mut checked = 0;
+    for src in &sources {
+        let index = declared_names(src);
+        let mut names: Vec<&str> = src
+            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
+            .filter(|n| !n.is_empty())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        for name in names.into_iter().take(400).chain(["Nothing", "A", "Q"]) {
+            assert_eq!(
+                index.contains(name),
+                may_declare_in(src, name),
+                "`{name}` in:\n{}",
+                src.chars().take(300).collect::<String>()
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 1000, "{checked}");
+}
+
+/// A name that nothing a barrel exports declares is looked for in all its files once, not once per name
+/// (since 0.22.0): after the first walk found nothing, the set of names the barrel's files may declare
+/// answers the others, and a name that is declared is still found. Counted in libraries searched
+/// (`probes`): without it, every one of the twelve names below searches every one of the 31 files.
+#[test]
+fn names_nobody_declares_walk_a_barrel_once() {
+    use crate::enums::{Libs, Lookup, work};
+    let mut files: Vec<(String, String)> = vec![("app/shop/page.dart".into(), String::new())];
+    let mut barrel = String::new();
+    for k in 0..30 {
+        barrel.push_str(&format!("export 'm{k}.dart';\n"));
+        let body = if k == 20 {
+            "enum Tone { warm }\nclass Filler20 {}\n".to_string()
+        } else {
+            format!("class Filler{k} {{}}\ntypedef Alias{k} = Filler{k};\n")
+        };
+        files.push((format!("models/m{k}.dart"), body));
+    }
+    files.push(("models/all.dart".into(), barrel));
+    let files: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(p, s)| (p.as_str(), s.as_str()))
+        .collect();
+    let dir = project(&files);
+    let libs = Libs::for_app(&dir.path().join("lib/app"), &Config::default());
+    let page = "import 'package:demo/models/all.dart';";
+    let before = work().probes;
+    for k in 0..12 {
+        let found = libs.find("shop/page.dart", page, &format!("Missing{k}"));
+        assert_eq!(found, Lookup::Missing, "Missing{k}");
+        assert_eq!(
+            libs.canonical("shop/page.dart", page, &format!("Missing{k}"))
+                .key,
+            format!("Missing{k}")
+        );
+    }
+    let probes = work().probes - before;
+    assert!(probes < 100, "{probes} libraries searched");
+    // A name the files do declare is found all the same, after the misses.
+    assert!(matches!(
+        libs.find("shop/page.dart", page, "Tone"),
+        Lookup::Found(f) if f.decl == "lib/models/m20.dart"
+    ));
+    assert_eq!(
+        libs.canonical("shop/page.dart", page, "Alias7").key,
+        "lib/models/m7.dart#Filler7"
+    );
+}
+
+/// A `show` or `hide` on an export keeps the walk away from files, so what a miss read is not all the
+/// barrel exports: the names it saw do not answer for the others.
+#[test]
+fn a_barrel_with_a_show_still_finds_what_it_lets_through_after_a_miss() {
+    use crate::enums::{Libs, Lookup};
+    let dir = project(&[
+        ("app/shop/page.dart", ""),
+        (
+            "models/all.dart",
+            "export 'a.dart' show A;\nexport 'b.dart';\n",
+        ),
+        ("models/a.dart", "enum A { x }\nenum Hidden { y }\n"),
+        ("models/b.dart", "enum C { z }\n"),
+    ]);
+    let libs = Libs::for_app(&dir.path().join("lib/app"), &Config::default());
+    let page = "import 'package:demo/models/all.dart';";
+    // `Hidden` is not let through by the `show`, and a miss does not close the barrel.
+    assert_eq!(libs.find("shop/page.dart", page, "Hidden"), Lookup::Missing);
+    assert!(matches!(
+        libs.find("shop/page.dart", page, "A"),
+        Lookup::Found(f) if f.decl == "lib/models/a.dart"
+    ));
+    assert!(matches!(
+        libs.find("shop/page.dart", page, "C"),
+        Lookup::Found(f) if f.decl == "lib/models/b.dart"
+    ));
+    assert_eq!(libs.find("shop/page.dart", page, "Nope"), Lookup::Missing);
+}

@@ -70,7 +70,7 @@ const CASES: &[Case] = &[
         page: "diagnostics-binding.md",
         quotes: &[
             "`data` is JsonMap but data.dart yields Map<String, Object?>",
-            "; fsp follows typedefs in this package's files only, and found no declaration of `JsonMap` there, so it compares it as spelled",
+            "; fsp follows typedefs only in the files of this package and of its path dependencies, and found no declaration of `JsonMap` there, so it compares it as spelled",
         ],
     },
     Case {

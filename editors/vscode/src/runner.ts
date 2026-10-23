@@ -34,6 +34,27 @@ export function needsShell(inv: Invocation, platform: string): boolean {
   return platform === 'win32' && inv.command === 'dart';
 }
 
+// What cmd.exe treats specially (http://www.robvanderwoude.com/escapechars.php).
+const cmdMeta = /([()\][%!^"`<>&|;, *?])/g;
+
+/**
+ * The line `cmd.exe /d /s /c` runs for `inv`, where execFile with `shell: true` joins the command
+ * and its arguments with spaces and quotes nothing: a project in `C:\Users\First Last` would be two
+ * arguments, and a `&` in a folder name would start a command. Each argument is quoted as
+ * `CommandLineToArgvW` reads it, then cmd's metacharacters are escaped with `^` twice, because
+ * `dart.bat` hands `%*` to cmd once more (https://qntm.org/cmd, as cross-spawn does it).
+ */
+export function cmdLine(inv: Invocation): string {
+  return [inv.command.replace(cmdMeta, '^$1'), ...inv.args.map(cmdArgument)].join(' ');
+}
+
+function cmdArgument(arg: string): string {
+  // Backslashes before a quote are doubled and the quote escaped; backslashes before the closing
+  // quote are doubled; every other backslash is literal.
+  const quoted = `"${arg.replace(/(?=(\\+?)?)\1"/g, '$1$1\\"').replace(/(?=(\\+?)?)\1$/, '$1$1')}"`;
+  return quoted.replace(cmdMeta, '^$1').replace(cmdMeta, '^$1');
+}
+
 export interface RunResult {
   /** Exit code; null when the process could not start or was killed. */
   code: number | null;
@@ -44,12 +65,14 @@ export interface RunResult {
 }
 
 export function run(inv: Invocation, cwd: string): Promise<RunResult> {
+  // On Windows `dart` is `dart.bat`, which execFile only starts through a shell: the line is
+  // quoted here (cmdLine), since the shell quotes nothing.
+  const shell = needsShell(inv, process.platform);
   return new Promise((resolve) => {
     execFile(
-      inv.command,
-      inv.args,
-      // On Windows `dart` is `dart.bat`, which execFile only starts through a shell.
-      { cwd, maxBuffer: 32 * 1024 * 1024, shell: needsShell(inv, process.platform) },
+      shell ? cmdLine(inv) : inv.command,
+      shell ? [] : inv.args,
+      { cwd, maxBuffer: 32 * 1024 * 1024, shell },
       (err, stdout, stderr) => {
         if (err && typeof (err as NodeJS.ErrnoException).code === 'string') {
           resolve({ code: null, stdout, stderr, spawnError: err.message });

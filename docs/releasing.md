@@ -34,10 +34,11 @@ Nobody bumps a version by hand, edits `.release-please-manifest.json`, or runs a
      workflow then runs again on the new head. It recognises its own commit and does not loop.
    - The `fsp` build reads only `cli/`, never `release_checksums.dart`, so the pin commit does not
      change the binaries.
-   - **Never merge the release PR before the `Release pins gate` check is green on its head**, and make
-     that check required on `main` (see "Repository settings" below). The pin commit lands minutes
-     after the PR opens, and a PR merged before it is tagged without its pins (v0.17.1: see "The
-     release PR was merged before its pins"). Other pull requests pass the check by skipping.
+   - **Never merge the release PR before the `Release pins gate` check is green on its head.** It is a
+     required check on `main` (see "Repository settings" below), so GitHub refuses the merge until
+     then. The pin commit lands minutes after the PR opens, and a PR merged before it is tagged without
+     its pins (v0.17.1, v0.20.0 and v0.21.1, before the check was required: see "The release PR was
+     merged before its pins"). Other pull requests pass the check by skipping.
    - The archives wait in a _staging_ draft release named `fsp-staging` (visible to maintainers,
      replaced by every build, deleted after the release), not in workflow artifacts, which expire.
 4. **Merge the release PR.** release-please (as the org's GitHub App, so that the tag raises a workflow
@@ -72,9 +73,10 @@ version, never a newer one.
 does not move): fix the cause and re-run the failed jobs.
 
 - The usual causes are a `cli/` change that reached `main` after the last build (the release PR was
-  merged before its head was rebuilt: make `Release pins gate` required and the branch up to date before
-  merging), staged binaries that were replaced or deleted, or a release PR merged before its pins
-  (next).
+  merged in the minute after another pull request reached `main`, before release-please rebuilt its
+  head: `Release pins gate` does not catch that, because the old head is pinned and verified, so merge a
+  release PR only when GitHub does not say its branch is out of date), staged binaries that were
+  replaced or deleted, or a release PR merged before its pins (next).
 - If the merged commit cannot be made to match, delete the draft and the tag and fix forward with the
   next release.
 - A manual run of `Release` (_Run workflow_) is the recovery below, not a smoke test: it needs a `tag`
@@ -126,8 +128,9 @@ the release's `.sha256` file with a warning, as for a development build (the com
 file). The release itself is complete and its archives are the pinned ones. The next release's pin commit
 writes the file again; until then `main` carries the older pins, which `cli/tests/versions.rs` accepts.
 
-To prevent it: make `Release pins gate` a required status check on `main` (below), and only merge a
-release PR whose head is the pin commit.
+`Release pins gate` is a required status check on `main` (below), so GitHub now refuses to merge a
+release PR whose head is not the verified pin commit; v0.20.0 and v0.21.1, merged before it was
+required, needed the same recovery.
 
 **The post-publish smoke.** Once the Release is public, the `post-publish-smoke` workflow (its own file,
 started by the `release: published` event that the publish step raises with the App token) installs the
@@ -150,12 +153,23 @@ checkout before.
 
 **Repository settings** (not enforceable from a workflow): squash merging only, with the squash commit
 title set to the pull request title and the message to the commit messages; merge commits and rebase
-merges off. **`Release pins gate` must be a required status check on `main`** (_Settings_, _Rules_,
-the `main` ruleset, _Require status checks to pass_): without it nothing stops a release PR from being
-merged before `Release pins` has pinned its head, which is how v0.17.1 was tagged with 0.17.0's pins and
-needed the manual recovery above. Every other pull request passes that check by skipping its jobs, so
-it costs nothing elsewhere. The release-please GitHub App must be installed on this repository, and on
-the tap and the bucket if you set `HOMEBREW_TAP` or `SCOOP_BUCKET`.
+merges off. **`Release pins gate` and `Maestro flows open their routes on the web` are required status
+checks on `main`** (_Settings_, _Rules_, the `main` ruleset, _Require status checks to pass_, each with
+GitHub Actions as its source, so a status from any other app cannot satisfy it). Without the first,
+nothing stops a release PR from being merged before `Release pins` has pinned its head, which is how
+v0.17.1 was tagged with 0.17.0's pins and needed the manual recovery above (v0.20.0 and v0.21.1 too).
+Every other pull request passes it by skipping its jobs, so it costs nothing elsewhere. The second is
+the `web-routes` job ([Development](development.md)), which replays the shop's Maestro flows in a pinned
+Chromium on every pull request. _Require branches to be up to date before merging_ is off: it would make
+every pull request run CI again whenever `main` moves, and the one case it would catch, a release PR in
+the minute before release-please rebuilds it, is in "If something fails" above. The release-please
+GitHub App must be installed on this repository, and on the tap and the bucket if you set
+`HOMEBREW_TAP` or `SCOOP_BUCKET`. To see which checks `main` requires:
+
+```sh
+gh api repos/fespalier/fespalier/rules/branches/main \
+  --jq '.[] | select(.type=="required_status_checks") | .parameters.required_status_checks[].context'
+```
 
 **The Homebrew tap and the Scoop bucket are optional.** A release publishes without them, with `fsp.rb`
 and `fsp.json` attached as assets. Each is its own job in the `Release` workflow, gated on a repository

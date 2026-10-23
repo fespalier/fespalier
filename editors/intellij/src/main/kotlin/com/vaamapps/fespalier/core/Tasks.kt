@@ -11,7 +11,7 @@ data class TaskEntry(
     val args: List<String>,
     /** `build`: a target (apk, web, ...) goes right after [args]. */
     val needsTarget: Boolean,
-    /** The main command, as `fsp run <name> --dry-run` shows it. */
+    /** The main command, as the listing of `fsp run` shows it (`flutter run` for an undeclared `dev`). */
     val run: String,
     /** Whether pubspec.yaml has the task (false for the default `dev` and `build`). */
     val declared: Boolean,
@@ -40,16 +40,25 @@ fun parseTaskEntry(line: String): TaskEntry? {
 fun interpretTaskList(inv: Invocation, out: RawOutput): TaskList {
     val failure = when {
         out.startError != null -> out.startError
-        out.exitCode != 0 ->
-            if (out.stderr.contains("unexpected argument '--json'")) {
-                OLD_FSP_TASKS
-            } else {
-                out.stderr.lines().lastOrNull { it.isNotBlank() }?.trim() ?: "${inv.command} exited with code ${out.exitCode}"
-            }
+        out.exitCode != 0 -> taskListFailure(inv, out)
         else -> null
     }
     val tasks = if (failure == null) out.stdout.lines().mapNotNull { if (it.isBlank()) null else parseTaskEntry(it) } else emptyList()
     return TaskList(inv, tasks, failure)
+}
+
+// `unexpected argument '--json'`: fsp 0.9 to 0.21; `unrecognized subcommand 'run'`: before 0.9.
+private val OLD_FSP = Regex("""unexpected argument '--json'|unrecognized subcommand 'run'""")
+
+/**
+ * Why a failed `fsp run --json` gave no list, in one line: the old-fsp sentence, the `error:` line of a
+ * clap message (its last line is only `For more information, try '--help'.`), else the last line (fsp's
+ * own errors are one line).
+ */
+internal fun taskListFailure(inv: Invocation, out: RawOutput): String {
+    if (OLD_FSP.containsMatchIn(out.stderr)) return OLD_FSP_TASKS
+    val lines = out.stderr.lines().map { it.trim() }.filter { it.isNotEmpty() }
+    return lines.firstOrNull { it.startsWith("error:") } ?: lines.lastOrNull() ?: "${inv.command} exited with code ${out.exitCode}"
 }
 
 /** The fsp arguments of a task: `dev`, `build <target>`, or `run <task>`; [extra] goes after `--`. */
@@ -62,13 +71,33 @@ fun taskArgs(task: String, target: String, extra: List<String>): List<String> {
     return if (extra.isEmpty()) head else head + "--" + extra
 }
 
-/** What a run configuration lacks before it can run, or null. */
-fun taskProblem(projectDir: String, task: String, target: String): String? = when {
+/** What a run configuration lacks before it can run, or null. [hasPubspec]: the folder has a pubspec.yaml. */
+fun taskProblem(projectDir: String, task: String, target: String, hasPubspec: Boolean = true): String? = when {
     projectDir.isBlank() -> "Set the project folder: the folder with the pubspec.yaml"
+    !hasPubspec -> "There is no pubspec.yaml in $projectDir: set the project folder to the folder with it"
     task.isBlank() -> "Set the task: a name from `fespalier: tasks:` in pubspec.yaml, or dev or build"
     task == "build" && target.isBlank() -> "The build task needs a target: what flutter build builds (apk, web, ios, ...)"
     else -> null
 }
 
-/** `codegen (shop)`: the task and the project's folder name. */
-fun configurationName(task: String, root: String): String = "$task (${root.trimEnd('/').substringAfterLast('/')})"
+/** Whether two folder paths name the same folder: `/` or `\\`, with or without a last separator. */
+fun sameFolder(a: String, b: String): Boolean =
+    a.replace('\\', '/').trimEnd('/') == b.replace('\\', '/').trimEnd('/')
+
+/**
+ * How a run configuration and the pick list name a project: its folder name when it is the IDE project's
+ * own folder, its path below [base] (`apps/shop`) when it is inside it, else the whole path. So two
+ * projects that share a folder name (`apps/shop`, `examples/shop`) get two names.
+ */
+fun projectLabel(root: String, base: String?): String {
+    val r = root.replace('\\', '/').trimEnd('/')
+    val b = base?.replace('\\', '/')?.trimEnd('/').orEmpty()
+    return when {
+        b.isEmpty() || r == b -> r.substringAfterLast('/')
+        r.startsWith("$b/") -> r.substring(b.length + 1)
+        else -> r
+    }
+}
+
+/** `codegen (shop)`: the task and the project's [projectLabel]. */
+fun configurationName(task: String, root: String, base: String? = null): String = "$task (${projectLabel(root, base)})"

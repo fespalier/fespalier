@@ -9,6 +9,9 @@ private val DEPENDENCY_SECTIONS = setOf("dependencies", "dev_dependencies", "dep
 
 private val TOP_LEVEL_KEY = Regex("""^([A-Za-z_][\w-]*)\s*:(.*)$""")
 private val CHILD_KEY = Regex("""^(\s+)([A-Za-z_][\w-]*)\s*:""")
+private val FESPALIER_SECTION = Regex("""^fespalier:\s*(#.*)?$""")
+private val APP_DIR_KEY = Regex("""^\s+app_dir:\s*(.*)$""")
+private val COMMENT_START = Regex("""\s#""")
 
 /** `./lib\app/` -> `lib/app`. */
 fun normalizeDir(dir: String): String {
@@ -23,7 +26,7 @@ private fun stripComment(value: String): String {
         val end = v.indexOf(v[0], 1)
         return if (end == -1) v.substring(1) else v.substring(1, end)
     }
-    val hash = Regex("""\s#""").find(v)?.range?.first
+    val hash = COMMENT_START.find(v)?.range?.first
     return (if (hash == null) v else v.substring(0, hash)).trim()
 }
 
@@ -61,13 +64,13 @@ fun isFespalierPubspec(pubspec: String): Boolean {
 fun appDirFromPubspec(pubspec: String): String {
     var inSection = false
     for (line in pubspec.lineSequence()) {
-        if (Regex("""^fespalier:\s*(#.*)?$""").matches(line)) {
+        if (FESPALIER_SECTION.matches(line)) {
             inSection = true
             continue
         }
         if (!inSection) continue
         if (line.isNotEmpty() && !line[0].isWhitespace() && !line.startsWith("#")) break // next top-level key
-        val m = Regex("""^\s+app_dir:\s*(.*)$""").find(line)
+        val m = APP_DIR_KEY.find(line)
         if (m != null) {
             val dir = normalizeDir(stripComment(m.groupValues[1]))
             return dir.ifEmpty { DEFAULT_APP_DIR }
@@ -144,7 +147,7 @@ fun pubspecTasks(pubspec: String): List<PubspecTask> {
         if (line.isBlank() || line.trimStart().startsWith("#")) continue
         if (!line[0].isWhitespace()) {
             if (inSection && tasksIndent >= 0) break
-            inSection = Regex("""^fespalier:\s*(#.*)?$""").matches(line)
+            inSection = FESPALIER_SECTION.matches(line)
             continue
         }
         if (!inSection) continue

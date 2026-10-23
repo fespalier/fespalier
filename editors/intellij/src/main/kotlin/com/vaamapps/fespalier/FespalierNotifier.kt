@@ -15,6 +15,7 @@ import com.vaamapps.fespalier.core.RunResult
 import com.vaamapps.fespalier.core.Severity
 import com.vaamapps.fespalier.core.Subcommand
 import com.vaamapps.fespalier.core.TaskList
+import com.vaamapps.fespalier.core.projectLabel
 import com.vaamapps.fespalier.core.startFailureHint
 import java.io.File
 
@@ -83,7 +84,7 @@ object FespalierNotifier {
     /** `fsp run --json` gave no list for [project]. */
     fun taskListFailure(ide: Project, project: FespalierProject, r: TaskList) {
         notification(
-            "fespalier (${File(project.root).name}): could not list the tasks",
+            "fespalier (${projectLabel(project.root, ide.basePath)}): could not list the tasks",
             listOf(r.failure ?: "", "`${r.invocation.display}`"),
             NotificationType.ERROR,
         )

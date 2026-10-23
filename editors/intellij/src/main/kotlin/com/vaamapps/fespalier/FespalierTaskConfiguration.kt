@@ -26,6 +26,7 @@ import com.intellij.util.ui.FormBuilder
 import com.vaamapps.fespalier.core.configurationName
 import com.vaamapps.fespalier.core.taskArgs
 import com.vaamapps.fespalier.core.taskProblem
+import java.io.File
 import javax.swing.JComponent
 
 /** Run | Edit Configurations | + | fespalier task: one task of `fespalier: tasks:` in a pubspec.yaml. */
@@ -77,12 +78,13 @@ class FespalierTaskConfiguration(project: Project, factory: ConfigurationFactory
         get() = options.arguments ?: ""
         set(value) { options.arguments = value }
 
-    override fun suggestedName(): String? = if (task.isBlank() || projectDir.isBlank()) null else configurationName(task, projectDir)
+    override fun suggestedName(): String? = if (task.isBlank() || projectDir.isBlank()) null else configurationName(task, projectDir, project.basePath)
 
     override fun getConfigurationEditor(): SettingsEditor<out RunConfiguration> = FespalierTaskEditor()
 
     override fun checkConfiguration() {
-        taskProblem(projectDir, task, target)?.let { throw RuntimeConfigurationError(it) }
+        val hasPubspec = projectDir.isBlank() || File(projectDir, "pubspec.yaml").isFile
+        taskProblem(projectDir, task, target, hasPubspec)?.let { throw RuntimeConfigurationError(it) }
     }
 
     /** The command line the run starts: `fsp ...` or `dart run fespalier ...` in [projectDir]. */

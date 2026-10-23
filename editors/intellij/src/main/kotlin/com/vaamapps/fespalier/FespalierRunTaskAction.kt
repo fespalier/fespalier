@@ -48,7 +48,7 @@ class FespalierRunTaskAction : DumbAwareAction() {
                         continue
                     }
                     for (t in listed.tasks) {
-                        choices += Choice(p, t, if (projects.size > 1) configurationName(t.name, p.root) else t.name)
+                        choices += Choice(p, t, if (projects.size > 1) configurationName(t.name, p.root, ide.basePath) else t.name)
                     }
                 }
                 if (choices.isEmpty()) return

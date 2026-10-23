@@ -30,11 +30,19 @@ editor, and runs `fsp gen` from the Tools menu and the tasks of `fespalier: task
   `kill.windows.processes.softly` is on. See [Tasks in your editor](../../docs/cli.md#tasks-in-your-editor).
   **UNCHECKED on a device:** the run console, Stop and Windows have not run in an IDE; the tests run a headless IDE
   for the run icons, the run configurations a task finds or makes and the command line only.
+- **`pubspec.yaml`** (since fespalier 0.23.0). The keys of the `fespalier:` section complete as you type, show what
+  they do in the quick documentation (F1 or Ctrl-Q), and an unknown key, a value of the wrong type or one off a list
+  is highlighted. The IDE gives a file one JSON schema, so the plugin's is the JSON Schema Store's pubspec schema
+  (downloaded as the catalog's is, under _Settings | Languages & Frameworks | Schemas and DTDs | Remote JSON
+  Schemas_) with the section added: the rest of the file keeps its checks. A schema mapped to `pubspec.yaml` by hand
+  still wins. The schema is the one the plugin ships, of the fespalier it was built with. **UNCHECKED in an IDE:**
+  the tests run a headless IDE without network, so the store's part is not loaded there.
 
 ## Requirements
 
 - IntelliJ IDEA or Android Studio on platform 252 (2025.2) or later. The plugin depends only
-  on the platform. Highlighting Dart files needs the Dart plugin (Android Studio has it;
+  on the platform, and on the bundled JSON plugin for the schema of `pubspec.yaml` (without it,
+  the rest works). Highlighting Dart files needs the Dart plugin (Android Studio has it;
   install it in IDEA). `pubspec.yaml` is highlighted through the bundled YAML support.
 - `fsp` on your `PATH` ([install it](https://github.com/fespalier/fespalier#getting-started)),
   or a project that has the `fespalier` package, in which case the plugin runs

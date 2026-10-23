@@ -8,15 +8,13 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.FilenameIndex
 import com.intellij.psi.search.GlobalSearchScope
 import com.vaamapps.fespalier.core.FespalierProject
+import com.vaamapps.fespalier.core.SKIPPED_FOLDERS
 import java.io.IOException
 import java.util.concurrent.Callable
 
 /** Finds the fespalier projects (a pubspec.yaml that lists fespalier or has a `fespalier:` section). */
 object FespalierProjects {
     private const val PUBSPEC = "pubspec.yaml"
-
-    /** Folders that hold copies or build output of pubspecs, never a project of their own. */
-    private val SKIPPED = listOf("/.dart_tool/", "/build/", "/ephemeral/", "/node_modules/", "/.symlinks/")
 
     /**
      * The fespalier project [file] belongs to: the nearest folder above it (within its content
@@ -40,7 +38,7 @@ object FespalierProjects {
         ReadAction.nonBlocking(
             Callable {
                 FilenameIndex.getVirtualFilesByName(PUBSPEC, GlobalSearchScope.projectScope(ide))
-                    .filter { vf -> SKIPPED.none { vf.path.contains(it) } }
+                    .filter { vf -> SKIPPED_FOLDERS.none { vf.path.contains(it) } }
                     .mapNotNull { vf -> vf.parent?.let { read(it, vf) } }
                     .sortedBy { it.root }
             },

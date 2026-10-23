@@ -35,6 +35,7 @@ mod routes;
 mod samples;
 mod scaffold;
 mod scan;
+mod schema;
 mod segtype;
 mod session;
 mod size;
@@ -140,6 +141,8 @@ enum Cmd {
     Telemetry(telemetry_stack::TelemetryCmd),
     /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
     Upgrade(upgrade::UpgradeCmd),
+    /// Print the JSON Schema of the `fespalier:` section of pubspec.yaml, for editors
+    Schema(schema::SchemaCmd),
 }
 
 fn main() {
@@ -166,9 +169,13 @@ fn main() {
             let project = find_project(cli.project.clone()).ok();
             return upgrade::run(cmd, project.as_deref());
         }
+        // The schema is this fsp's, whatever the project.
+        if let Cmd::Schema(cmd) = &cli.cmd {
+            return schema::run(cmd);
+        }
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) => {
+            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) | Cmd::Schema(_) => {
                 unreachable!("handled before the project is looked up")
             }
             Cmd::Gen { format, json } => {
@@ -596,6 +603,8 @@ mod remount_tests;
 mod rest_types_tests;
 #[cfg(test)]
 mod route_api_tests;
+#[cfg(test)]
+mod schema_tests;
 #[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]

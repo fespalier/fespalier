@@ -4343,3 +4343,39 @@ fn create_dot_fills_the_empty_folder_it_runs_in() {
     );
     assert!(staging_folders(root).is_empty());
 }
+
+/// `fsp schema` (since 0.23.0) needs no project: it prints this fsp's schema of the `fespalier:`
+/// section, and with `--pubspec` the schema of a whole pubspec.yaml that the editors ship.
+#[test]
+fn schema_prints_the_section_and_with_pubspec_the_whole_file() {
+    let empty = tempfile::tempdir().unwrap();
+    for (args, title) in [
+        (&["schema"][..], "fespalier"),
+        (&["schema", "--pubspec"], "pubspec.yaml with fespalier"),
+    ] {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(args)
+                .current_dir(empty.path()),
+        )
+        .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}");
+        let text = String::from_utf8(out.stdout).unwrap();
+        assert!(text.ends_with("}\n"), "{args:?}");
+        let schema: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(schema["$schema"], "http://json-schema.org/draft-07/schema#");
+        assert_eq!(schema["title"], title);
+    }
+    let shipped = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../editors/vscode/schemas/pubspec.schema.json"),
+    )
+    .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["schema", "--pubspec"])
+            .current_dir(empty.path()),
+    )
+    .unwrap();
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), shipped);
+}

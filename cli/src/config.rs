@@ -200,7 +200,7 @@ pub struct Lints {
 /// The `lints:` section as the pubspec has it.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct LintsConfig {
+pub(crate) struct LintsConfig {
     unknown_path: Option<LintLevel>,
 }
 
@@ -354,7 +354,7 @@ struct RawPubspec {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawConfig {
+pub(crate) struct RawConfig {
     app_dir: Option<String>,
     output: Option<String>,
     format: Option<bool>,

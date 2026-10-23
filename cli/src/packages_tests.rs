@@ -241,3 +241,121 @@ fn a_dot_dot_after_a_symlinked_dependency_is_not_resolved_through_the_link() {
         ]
     );
 }
+
+/// The folders of `shared`, `deep` and the like in a workspace: the root is the tree itself.
+fn workspace(root: &str, app: &str, extra: &[(&str, &str)]) -> Vec<(String, String)> {
+    let mut files = vec![
+        ("pubspec.yaml", root),
+        ("app/pubspec.yaml", app),
+        ("s1/pubspec.yaml", "name: shared\n"),
+        ("s2/pubspec.yaml", "name: shared\n"),
+        ("s3/pubspec.yaml", "name: shared\n"),
+    ];
+    files.extend_from_slice(extra);
+    followed(tree(&files).path())
+}
+
+fn shared(rel: &str) -> Vec<(String, String)> {
+    vec![("shared".into(), rel.into())]
+}
+
+const MEMBER: &str =
+    "name: app\nresolution: workspace\ndependencies:\n  shared:\n    path: ../s1\n";
+const ROOT: &str = "name: root\nworkspace:\n  - app\n";
+
+/// Pub applies the `dependency_overrides` of the workspace root to every member, its folder being the
+/// root's (each rule checked with `dart pub get --offline`, Dart 3.13.5).
+#[test]
+fn the_overrides_of_the_workspace_root_apply_to_a_member() {
+    let root = |overrides: &str| format!("{ROOT}dependency_overrides:\n{overrides}");
+    // The root's override replaces the member's source for the name, relative to the root.
+    assert_eq!(
+        workspace(&root("  shared:\n    path: s2\n"), MEMBER, &[]),
+        shared("s2")
+    );
+    // A version replaces it too: then nothing is followed.
+    assert_eq!(
+        workspace(&root("  shared: ^1.0.0\n"), MEMBER, &[]),
+        Vec::<(String, String)>::new()
+    );
+    // A name the member lists with a version becomes a path.
+    let hosted = "name: app\nresolution: workspace\ndependencies:\n  shared: any\n";
+    assert_eq!(
+        workspace(&root("  shared:\n    path: s3\n"), hosted, &[]),
+        shared("s3")
+    );
+    // It reaches a package only a path dependency lists.
+    let deep = "name: app\nresolution: workspace\ndependencies:\n  shared:\n    path: ../s1\n";
+    let files = [
+        (
+            "s1/pubspec.yaml",
+            "name: shared\ndependencies:\n  deep:\n    path: ../d1\n",
+        ),
+        ("d1/pubspec.yaml", "name: deep\n"),
+        ("d2/pubspec.yaml", "name: deep\n"),
+    ];
+    assert_eq!(
+        workspace(&root("  deep:\n    path: d2\n"), deep, &files),
+        [("deep".into(), "d2".into()), ("shared".into(), "s1".into())]
+    );
+}
+
+#[test]
+fn the_workspace_roots_pubspec_overrides_file_replaces_its_section() {
+    let root = format!("{ROOT}dependency_overrides:\n  shared:\n    path: s2\n");
+    let run = |file: &str| workspace(&root, MEMBER, &[("pubspec_overrides.yaml", file)]);
+    // As for the app's own: the key replaces the pubspec's whole section (an empty key: none), a file
+    // without the key leaves it.
+    assert_eq!(
+        run("dependency_overrides:\n  shared:\n    path: s3\n"),
+        shared("s3")
+    );
+    assert_eq!(run("dependency_overrides:\n"), shared("s1"));
+    assert_eq!(run("# nothing\n"), shared("s2"));
+}
+
+#[test]
+fn the_overrides_of_a_workspace_root_need_resolution_workspace_and_a_root() {
+    let root = format!("{ROOT}dependency_overrides:\n  shared:\n    path: s2\n");
+    // Not a member: pub resolves the app on its own, and so does fsp.
+    let alone = "name: app\ndependencies:\n  shared:\n    path: ../s1\n";
+    assert_eq!(workspace(&root, alone, &[]), shared("s1"));
+    // A member with no root above it (pub refuses it): nothing to apply.
+    assert_eq!(workspace("name: root\n", MEMBER, &[]), shared("s1"));
+}
+
+/// The root of a nested workspace is the outermost: the pubspec in between is a member itself.
+#[test]
+fn the_root_of_a_nested_workspace_is_the_outermost() {
+    let dir = tree(&[
+        (
+            "pubspec.yaml",
+            "name: root\nworkspace:\n  - mid\ndependency_overrides:\n  shared:\n    path: s2\n",
+        ),
+        (
+            "mid/pubspec.yaml",
+            "name: mid\nresolution: workspace\nworkspace:\n  - app\n",
+        ),
+        (
+            "mid/app/pubspec.yaml",
+            "name: app\nresolution: workspace\ndependencies:\n  shared:\n    path: ../../s1\n",
+        ),
+        ("s1/pubspec.yaml", "name: shared\n"),
+        ("s2/pubspec.yaml", "name: shared\n"),
+    ]);
+    let packages = Packages::read(&dir.path().join("mid/app"), Some("app"));
+    let at = packages.root("shared").unwrap();
+    assert_eq!(at.strip_prefix(dir.path()).unwrap(), Path::new("s2"));
+}
+
+/// What is not read: the overrides written in another member's pubspec (pub applies them to the
+/// whole workspace, `Known limitations` says to write them in the root).
+#[test]
+fn the_overrides_of_another_member_are_not_read() {
+    let root = "name: root\nworkspace:\n  - app\n  - other\n";
+    let other = (
+        "other/pubspec.yaml",
+        "name: other\nresolution: workspace\ndependency_overrides:\n  shared:\n    path: ../s2\n",
+    );
+    assert_eq!(workspace(root, MEMBER, &[other]), shared("s1"));
+}

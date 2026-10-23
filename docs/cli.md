@@ -377,7 +377,7 @@ web: # fsp run web
 
 Since 0.22.0 the VS Code and IntelliJ plugins run the `tasks:` of your `pubspec.yaml`, next to the diagnostics. Both read them from `fsp run --json` (see below).
 
-- **VS Code.** _Terminal | Run Task... | fespalier_ lists `dev` and each task of your own, each in a terminal of its own, so `fsp dev` shows its full-screen view. With several projects in one workspace folder a task is named `name - <path>`, where `<path>` is its project's folder, relative to the workspace folder. The list is read again when a `pubspec.yaml` changes. `build` needs a target, so it is a `.vscode/tasks.json` entry with `"type": "fespalier"`, `"task": "build"` and a `"target"` (add `"path"` when the project is not the workspace folder itself):
+- **VS Code.** _Terminal | Run Task... | fespalier_ lists `dev` and each task of your own, each in a terminal of its own, so `fsp dev` shows its full-screen view. With several projects in one workspace folder a task is named `name - <path>`, where `<path>` is its project's folder, relative to the workspace folder. The list is read again when a `pubspec.yaml` changes. A list that could not be read (no `fsp`, or one older than 0.22.0) is not kept: a warning says why, and the next _Run Task_ asks again, so `fsp upgrade` is enough. `build` needs a target, so it is a `.vscode/tasks.json` entry with `"type": "fespalier"`, `"task": "build"` and a `"target"` (add `"path"` when the project is not the workspace folder itself):
 
   ```json
   {
@@ -395,9 +395,11 @@ Since 0.22.0 the VS Code and IntelliJ plugins run the `tasks:` of your `pubspec.
   }
   ```
 
-  **UNCHECKED on a device.** The Run Task list, the terminals and Terminate Task have not run in VS Code; the tests check the parsing of `fsp run --json`, the commands and the `tasks.json` resolution only.
+  An entry is checked before it runs: `args` must be a list of strings, `path` and `target` strings, and the folder (the workspace folder, or `path` below it) must have a `pubspec.yaml`; otherwise a message says what is wrong and nothing runs.
 
-- **IntelliJ IDEA and Android Studio.** A run icon sits beside each task in `pubspec.yaml` where the YAML plugin is installed, as it is in both. _Tools | fespalier: Run Task..._ lists every task, `dev` and `build` included. _Run | Edit Configurations... | + | fespalier task_ makes one by hand: the project folder, the task, a target for `build`, and the arguments after `--`. The run console is not a terminal, so `fsp dev` prints [plain lines](#plain-output-ci-and-windows): type `r`, `R` or `q` and Enter, and with several devices put `-d <id>` in the arguments. Stop sends Ctrl-C first, so `fsp dev` stops flutter. **UNCHECKED on a device.** Stop, the run console and Windows have not run in an IDE; the tests run a headless IDE for the run icons and the run configuration's command line only.
+  **UNCHECKED on a device.** The Run Task list, the terminals and Terminate Task have not run in VS Code. The tests run the task provider against a stand-in for the `vscode` module: they check the parsing of `fsp run --json`, the commands, what is kept and warned about when a listing fails, the labels, and how a `tasks.json` entry is checked and resolved.
+
+- **IntelliJ IDEA and Android Studio.** A run icon sits beside each task key in `pubspec.yaml` where the YAML plugin is installed, as it is in both; the keys must be a block mapping, so `tasks: {codegen: ...}` (a flow mapping) gets no icon, although _Run Task..._ still lists its tasks. _Tools | fespalier: Run Task..._ lists every task, `dev` and `build` included. A task runs through a _fespalier task_ run configuration, found by its project folder and task, or made when there is none: it is named `codegen (shop)`, or `codegen (apps/shop)` when the project is below the IDE project's folder, so two projects that share a folder name keep two. _Run | Edit Configurations... | + | fespalier task_ makes one by hand: the project folder (it must have a `pubspec.yaml`), the task, a target for `build`, and the arguments after `--`. The run console is not a terminal, so `fsp dev` prints [plain lines](#plain-output-ci-and-windows): type `r`, `R` or `q` and Enter, and with several devices put `-d <id>` in the arguments. On Linux and macOS, Stop sends Ctrl-C first, so `fsp dev` stops flutter; on Windows it ends the process at once unless the IDE's registry key `kill.windows.processes.softly` is on, and `fsp dev` then cannot ask flutter to stop the app. **UNCHECKED on a device.** Stop, the run console and Windows have not run in an IDE; the tests run a headless IDE for the run icons, the run configurations a task finds or makes and the run configuration's command line only.
 
 Both read the list from `fsp run --json` (no task name): one JSON object per task on stdout, `dev` and `build` first, then the order of `tasks:`. The `codegen` task of the example above is:
 
@@ -411,13 +413,13 @@ Both read the list from `fsp run --json` (no task name): one JSON object per tas
 }
 ```
 
-| Key            | What it is                                                                                                                    |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `name`         | The key in `tasks:`. `dev` and `build` are always listed, even when `tasks:` does not set them.                               |
-| `args`         | What to give `fsp`: `["dev"]`, `["build"]` or `["run", "<name>"]`, so an editor need not know that `fsp run dev` is refused.  |
-| `needs_target` | `true` for `build`: the target goes right after `args`.                                                                       |
-| `run`          | The main command, as `fsp run <name> --dry-run` shows it (`flutter run` or `flutter build` for `dev` and `build` by default). |
-| `declared`     | Whether pubspec.yaml has the task.                                                                                            |
+| Key            | What it is                                                                                                                          |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `name`         | The key in `tasks:`. `dev` and `build` are always listed, even when `tasks:` does not set them.                                     |
+| `args`         | What to give `fsp`: `["dev"]`, `["build"]` or `["run", "<name>"]`, so an editor need not know that `fsp run dev` is refused.        |
+| `needs_target` | `true` for `build`: the target goes right after `args`.                                                                             |
+| `run`          | The task's main command as `fsp run` lists it: its `run`, else `flutter run` for `dev` and `flutter build` for `build`, else empty. |
+| `declared`     | Whether pubspec.yaml has the task.                                                                                                  |
 
 Keys are only added, never renamed.
 

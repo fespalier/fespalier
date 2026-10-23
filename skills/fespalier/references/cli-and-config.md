@@ -555,8 +555,6 @@ a pass with errors sends nothing, and `app.g.dart` is left as it was. `r` and `R
 the automatic ones off. Requests are coalesced: a restart in flight covers a reload.
 
 ```yaml
-
-**`fsp run --json` (since 0.22.0).** With no task name it prints one JSON object per task on stdout, for the editor plugins: `name` (the key in `tasks:`), `args` (what to give `fsp`: `["dev"]`, `["build"]` or `["run", "<name>"]`), `needs_target` (`true` for `build`, whose target goes after `args`), `run` (the main command, as `--dry-run` shows it) and `declared` (whether pubspec.yaml has the task). Every key is always present and keys are only added. The order is `dev`, `build`, then `tasks:`. It exits 0 when it lists them (also with no `tasks:`), 1 on a mistake in `tasks:` or pubspec.yaml (stdout empty, the message on stderr), and 2 when `--json` comes with a task name, `--dry-run` or arguments after `--`. An `fsp` older than 0.22.0 has no `--json` (exit 2, `unexpected argument '--json' found`), and the editor plugins say so. The Run Task list, the run console and Stop are **UNCHECKED on a device** (`docs/cli.md`, "Tasks in your editor").
 # pubspec.yaml
 fespalier:
   tasks: # since 0.9.0; read only by `fsp dev`, `fsp build` and `fsp run`
@@ -621,6 +619,8 @@ fespalier:
 the build exits 0), with fsp's own stdio. `fsp run <task>` does the same for a task of your own; `fsp run dev` and
 `fsp run build` are refused, with a hint. `with` commands of both are started next to `run`, with their output
 prefixed, and stopped when it ends. `fsp telemetry` starts its stack and returns, so it goes in `before`, not `with`.
+
+**`fsp run --json` (since 0.22.0).** With no task name it prints one JSON object per task on stdout, for the editor plugins: `name` (the key in `tasks:`), `args` (what to give `fsp`: `["dev"]`, `["build"]` or `["run", "<name>"]`), `needs_target` (`true` for `build`, whose target goes after `args`), `run` (the task's main command as `fsp run` lists it: its `run`, else `flutter run` for `dev` and `flutter build` for `build`, else empty) and `declared` (whether pubspec.yaml has the task). Every key is always present and keys are only added. The order is `dev`, `build`, then `tasks:`. It exits 0 when it lists them (also with no `tasks:`), 1 on a mistake in `tasks:` or pubspec.yaml (stdout empty, the message on stderr), and 2 when `--json` comes with a task name, `--dry-run` or arguments after `--`. An `fsp` older than 0.22.0 has no `--json` (exit 2, `unexpected argument '--json' found`), and the editor plugins say so. The Run Task list, the run console and Stop are **UNCHECKED on a device** (`docs/cli.md`, "Tasks in your editor").
 
 ## Installing `fsp`
 
@@ -766,7 +766,7 @@ file to exist.
   on a marketplace yet; build them from source. Both run `fsp` from
   `PATH`, else `dart run fespalier`. Since 0.7.0 both also check again when any Dart
   file under `lib/` is saved (not `*.g.dart`), and show a string-path warning in that file,
-  because `fsp check` now reports on files outside the app folder. Since 0.22.0 both run the `tasks:` too: VS Code lists them in Run Task (`build` through a tasks.json entry with a `target`), IntelliJ has `fespalier task` run configurations, a run icon on each task key in pubspec.yaml and _Tools | fespalier: Run Task..._; both read `fsp run --json`.
+  because `fsp check` now reports on files outside the app folder. Since 0.22.0 both run the `tasks:` too: VS Code lists them in Run Task (`build` through a tasks.json entry with a `target`), IntelliJ has `fespalier task` run configurations, a run icon on each task key of a block-mapping `tasks:` in pubspec.yaml and _Tools | fespalier: Run Task..._; both read `fsp run --json`.
 - **`flutter create` leftovers.** `flutter create` writes
   `test/widget_test.dart`, which refers to the `MyApp` you replaced, so
   `flutter analyze` fails on it until you delete or rewrite it.

@@ -96,7 +96,8 @@ class FespalierTaskConfiguration(project: Project, factory: ConfigurationFactory
     override fun getState(executor: Executor, environment: ExecutionEnvironment): RunProfileState =
         object : CommandLineState(environment) {
             override fun startProcess(): ProcessHandler {
-                // SIGINT first on Stop (soft kill), so `fsp dev` stops flutter and its `with` commands.
+                // Stop sends SIGINT first (a soft kill) on Linux and macOS, so `fsp dev` stops flutter and its
+                // `with` commands; Windows kills at once unless the registry key kill.windows.processes.softly is on.
                 val handler = KillableColoredProcessHandler(commandLine())
                 ProcessTerminatedListener.attach(handler)
                 return handler

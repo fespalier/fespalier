@@ -15,8 +15,11 @@ diagnostics: nothing is re-implemented in the editor.
   in `pubspec.yaml`, each in its own terminal: `dev` runs `fsp dev`, the others `fsp run <name>`. The list follows
   `pubspec.yaml`. `build` needs a target, so it is a `.vscode/tasks.json` entry with `"type": "fespalier"`,
   `"task": "build"` and a `"target"` such as `"web"`. See [Tasks in your editor](../../docs/cli.md#tasks-in-your-editor).
-  **UNCHECKED on a device:** the list, the terminals and Terminate Task have not run in VS Code; CI tests the parsing
-  of `fsp run --json` and the commands only.
+  A list that could not be read (no `fsp`, or one older than 0.22.0) is not kept: a warning says why and the next
+  _Run Task_ asks again. A `tasks.json` entry is checked before it runs (`args` a list of strings, `path` and `target`
+  strings, a `pubspec.yaml` in the folder). **UNCHECKED on a device:** the list, the terminals and Terminate Task have
+  not run in VS Code; CI runs the task provider against a stand-in for the `vscode` module (the parsing of
+  `fsp run --json`, the commands, the warnings, the labels, the `tasks.json` checks), not VS Code.
 - **Status bar.** `fespalier` with a check mark, or the number of errors or warnings.
 
 ## Requirements

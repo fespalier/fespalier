@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.22.0](https://github.com/fespalier/fespalier/compare/v0.21.1...v0.22.0) (2026-10-23)
+
+
+### Features
+
+* **editors:** run fespalier tasks from VS Code and IntelliJ, listed by fsp run --json ([#281](https://github.com/fespalier/fespalier/issues/281)) ([0817a7f](https://github.com/fespalier/fespalier/commit/0817a7fcd43b794e3048a3777e36ae18c18ffa92))
+* **fsp:** follow the typedefs and enums of path dependencies ([#283](https://github.com/fespalier/fespalier/issues/283)) ([159470c](https://github.com/fespalier/fespalier/commit/159470ccd1e6d1277de13e4c8c76c368eda1b205))
+
+
+### Documentation
+
+* Release pins gate and the Maestro web check are required on main ([#280](https://github.com/fespalier/fespalier/issues/280)) ([7bcd2a9](https://github.com/fespalier/fespalier/commit/7bcd2a9a245dc0e43149cd058c08b4e559ce7576))
+
+
+### Build System
+
+* **examples:** ctutils 0.4.5 past RUSTSEC-2026-0385, and the browser checks install without the runner's Microsoft apt source ([#282](https://github.com/fespalier/fespalier/issues/282)) ([7edcfaa](https://github.com/fespalier/fespalier/commit/7edcfaa875bd31def0c813d88520a93880e82ad8))
+
 ## [0.21.1](https://github.com/fespalier/fespalier/compare/v0.21.0...v0.21.1) (2026-10-22)
 
 

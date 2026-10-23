@@ -428,7 +428,7 @@ fn forms_need_their_package_and_fsp_check_is_counted() {
     ));
     assert_eq!(
         one(&rows, "forms", None),
-        "error: 1 form(), and fespalier_forms is not under `dependencies:`: the generated file imports it (`fsp check` reports each form())"
+        "error: 1 action with a form(), and fespalier_forms is not under `dependencies:`: the generated file imports it (`fsp check` reports each form())"
     );
     assert!(
         one(&rows, "fsp_check", None)
@@ -442,7 +442,7 @@ fn forms_need_their_package_and_fsp_check_is_counted() {
     ));
     assert_eq!(
         one(&rows, "forms", None),
-        "ok: 1 form(), and fespalier_forms is a dependency"
+        "ok: 1 action with a form(), and fespalier_forms is a dependency"
     );
     // No app folder: `fsp check` stops before the tree, and says why.
     let dir = tempfile::tempdir().unwrap();
@@ -477,7 +477,10 @@ fn a_pubspec_config_rs_refuses_is_one_error_and_the_versions_still_show() {
     let rows = doctor::rows(&facts(&pubspec, &[], Err("no".into())));
     assert!(rows.iter().all(|r| r.section != Section::Wiring));
     let config = one(&rows, "config", None);
-    assert!(config.starts_with("error: pubspec.yaml: "), "{config}");
+    assert!(
+        config.starts_with("error: invalid pubspec.yaml: "),
+        "{config}"
+    );
     assert!(config.contains("unknown variant `sometimes`"), "{config}");
     assert!(one(&rows, "fespalier", None).starts_with("ok: "));
 }

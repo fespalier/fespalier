@@ -258,7 +258,7 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         .ok()
         .and_then(|t| serde_yaml_ng::from_str::<Value>(t).ok());
     let pubspec = match &text {
-        Ok(t) => Pubspec::parse(t).map_err(|e| format!("pubspec.yaml: {e:#}")),
+        Ok(t) => Pubspec::parse(t).map_err(|e| refused(format!("{e:#}"))),
         Err(e) => Err(format!("pubspec.yaml: {e}")),
     };
     let lock = fs::read_to_string(project.join("pubspec.lock"))
@@ -281,6 +281,16 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         toolchain,
         app,
         sources,
+    }
+}
+
+/// What `config.rs` refused, as the report says it: its own message when it already names the file
+/// (`invalid pubspec.yaml: ...`, from serde), else the file's name in front of it.
+fn refused(message: String) -> String {
+    if message.starts_with("invalid pubspec.yaml") {
+        message
+    } else {
+        format!("pubspec.yaml: {message}")
     }
 }
 
@@ -366,6 +376,10 @@ fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
 
 /// `flutter --version --machine`, run in the project, or why it did not answer.
 fn flutter_version(project: &Path) -> Result<String, String> {
+    // A folder that is not there would fail the spawn with the same error as a missing `flutter`.
+    if !project.is_dir() {
+        return Err(format!("{} is not a folder", project.display()));
+    }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let env = crate::tasks::Env {
         cwd: project,

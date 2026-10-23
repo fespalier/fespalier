@@ -91,7 +91,7 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             Status::Ok,
             format!(
                 "{}, and fespalier_forms is a dependency",
-                crate::plural(n, "form()")
+                actions_with_form(n)
             ),
         ),
         (n, false) => row(
@@ -99,7 +99,7 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             Status::Error,
             format!(
                 "{}, and fespalier_forms is not under `dependencies:`: the generated file imports it (`fsp check` reports each form())",
-                crate::plural(n, "form()")
+                actions_with_form(n)
             ),
         ),
     });
@@ -128,6 +128,15 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
         Err(e) => row("tasks", Status::Error, format!("{e:#}")),
     });
     out
+}
+
+/// `1 action with a form()`, `2 actions with a form()` (`plural` would say `form()s`).
+fn actions_with_form(n: usize) -> String {
+    if n == 1 {
+        "1 action with a form()".into()
+    } else {
+        format!("{n} actions with a form()")
+    }
 }
 
 /// One row per root file: what it gives the generated `main()`.

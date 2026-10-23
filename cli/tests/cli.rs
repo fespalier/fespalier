@@ -4452,4 +4452,12 @@ fn doctor_prints_its_rows_and_exits_1_on_an_error() {
     assert_eq!(status("fespalier").as_deref(), Some("error"));
     assert_eq!(status("flutter").as_deref(), Some("ok"));
     assert_eq!(status("lock").as_deref(), Some("skipped"));
+    // A folder that is not there: the flutter row says so, not that flutter is missing.
+    let (code, out, err) = doctor(&["doctor", "--project", "no-such-app"]);
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        out.contains("no-such-app is not a folder: Flutter and Dart are not checked"),
+        "{out}"
+    );
+    assert!(!out.contains("not on PATH"), "{out}");
 }

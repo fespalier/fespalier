@@ -354,7 +354,7 @@ fn dart_sources(
     seen: &mut HashSet<PathBuf>,
     out: &mut Vec<(String, String)>,
 ) {
-    if !fs::canonicalize(dir).is_ok_and(|real| seen.insert(real)) {
+    if !first_visit(seen, dir, fs::canonicalize(dir)) {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
@@ -381,6 +381,17 @@ fn dart_sources(
             out.push((rel, crate::entry::without_comments(&src)));
         }
     }
+}
+
+/// Whether `dir` is read now, and not before: `real` is its real path, which `seen` holds for each
+/// folder read. A real path that cannot be found (some network and virtual drives refuse it for a
+/// folder that lists fine) stands for the path as given, so the folder is read and not skipped.
+pub(crate) fn first_visit(
+    seen: &mut HashSet<PathBuf>,
+    dir: &Path,
+    real: std::io::Result<PathBuf>,
+) -> bool {
+    seen.insert(real.unwrap_or_else(|_| dir.to_path_buf()))
 }
 
 /// The app's facts: the tree read as `fsp check` reads it, and `fsp check` itself, counted.

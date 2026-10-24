@@ -891,6 +891,39 @@ fn a_signal_stops_the_flutter_it_is_waiting_for() {
     assert_sleep_is_gone(&pidfile);
 }
 
+/// A folder is read when its real path is not known: `fs::canonicalize` fails on some network and
+/// virtual drives that list fine, and the doctor must not read no source at all there (since
+/// 0.23.1). Once read, the same folder is not read again, however it is reached.
+#[test]
+fn a_folder_with_no_real_path_is_read_once_as_given() {
+    use std::collections::HashSet;
+    use std::io;
+    use std::path::PathBuf;
+    let mut seen = HashSet::new();
+    let lib = Path::new("lib");
+    let unknown = || Err(io::Error::other("no real path"));
+    assert!(doctor::first_visit(&mut seen, lib, unknown()));
+    assert!(!doctor::first_visit(&mut seen, lib, unknown()));
+    // Another folder whose path is not known is its own.
+    assert!(doctor::first_visit(
+        &mut seen,
+        Path::new("lib/src"),
+        unknown()
+    ));
+    // A known real path is the key, whatever path reached it.
+    let real = || Ok(PathBuf::from("/app/lib/shared"));
+    assert!(doctor::first_visit(
+        &mut seen,
+        Path::new("lib/shared"),
+        real()
+    ));
+    assert!(!doctor::first_visit(
+        &mut seen,
+        Path::new("lib/src/link"),
+        real()
+    ));
+}
+
 /// A symlink back up `lib/` is not followed round and round: each folder is read once, and the
 /// doctor's walk ends (since 0.23.1). A symlink to a folder the walk has not read is followed.
 #[cfg(unix)]

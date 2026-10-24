@@ -59,6 +59,15 @@ pub enum Edit {
     },
 }
 
+/// The mapping at `path`, as a message names it: `` `dependencies:` ``, or the top level.
+fn mapping_name(path: &[String]) -> String {
+    if path.is_empty() {
+        "the top level of the file".to_string()
+    } else {
+        format!("`{}`", shown(path))
+    }
+}
+
 /// The path as a person reads it in the file: `dependencies: fespalier: git: ref:`.
 fn shown(path: &[String]) -> String {
     path.iter()
@@ -223,7 +232,7 @@ fn mapping_at<'v>(value: &'v mut Value, path: &[String]) -> Result<&'v mut Mappi
             *here = Value::Mapping(Mapping::new());
         }
         let Value::Mapping(map) = here else {
-            return Err(format!("`{}` is not a mapping", shown(&path[..i])));
+            return Err(format!("{} is not a mapping", mapping_name(&path[..i])));
         };
         here = map.entry(Value::String(key.clone())).or_insert(Value::Null);
     }
@@ -232,7 +241,7 @@ fn mapping_at<'v>(value: &'v mut Value, path: &[String]) -> Result<&'v mut Mappi
     }
     match here {
         Value::Mapping(map) => Ok(map),
-        _ => Err(format!("`{}` is not a mapping", shown(path))),
+        _ => Err(format!("{} is not a mapping", mapping_name(path))),
     }
 }
 
@@ -307,6 +316,8 @@ struct Node {
 #[derive(Debug, Clone)]
 pub struct Doc {
     lines: Vec<Line>,
+    /// Whether the file starts with a byte order mark, which is kept and not part of any line.
+    bom: bool,
     /// The line ending of the file, for the lines this adds.
     eol: String,
 }
@@ -315,10 +326,27 @@ fn indent_of(text: &str) -> usize {
     text.len() - text.trim_start_matches(' ').len()
 }
 
-/// Whether a line holds YAML: not blank and not only a comment.
+/// Whether a line holds YAML: not blank, not only a comment, and not a document marker.
 fn is_content(text: &str) -> bool {
     let t = text.trim();
-    !t.is_empty() && !t.starts_with('#')
+    !t.is_empty() && !t.starts_with('#') && !is_marker(text)
+}
+
+/// A line that is not part of the mapping: `%YAML 1.2` (a directive), `---` (the start of the
+/// document) or `...` (its end), each alone on its line at column 0 or followed by a comment. A
+/// pubspec can start with them (yamllint asks for `---`), and pub and `serde_yaml_ng` accept it.
+/// Text after `---` on its own line is a value, not a marker, so the line is content and the
+/// editor refuses the file.
+fn is_marker(text: &str) -> bool {
+    if text.starts_with('%') {
+        return true;
+    }
+    ["---", "..."].iter().any(|marker| {
+        text.strip_prefix(marker).is_some_and(|rest| {
+            rest.trim().is_empty()
+                || (rest.starts_with([' ', '\t']) && rest.trim_start().starts_with('#'))
+        })
+    })
 }
 
 fn is_comment(text: &str) -> bool {
@@ -458,7 +486,10 @@ impl Doc {
     pub fn parse(text: &str) -> Doc {
         let eol = if text.contains("\r\n") { "\r\n" } else { "\n" }.to_string();
         let mut lines = vec![];
-        let mut rest = text;
+        let (bom, mut rest) = match text.strip_prefix('\u{feff}') {
+            Some(rest) => (true, rest),
+            None => (false, text),
+        };
         while !rest.is_empty() {
             let (line, end, next) = match rest.find('\n') {
                 Some(i) if rest[..i].ends_with('\r') => (&rest[..i - 1], "\r\n", &rest[i + 1..]),
@@ -471,31 +502,48 @@ impl Doc {
             });
             rest = next;
         }
-        Doc { lines, eol }
+        Doc { lines, bom, eol }
     }
 
     #[must_use]
     pub fn text(&self) -> String {
-        self.lines
-            .iter()
-            .map(|l| format!("{}{}", l.text, l.end))
-            .collect()
+        let mut out = String::new();
+        if self.bom {
+            out.push('\u{feff}');
+        }
+        for line in &self.lines {
+            out.push_str(&line.text);
+            out.push_str(&line.end);
+        }
+        out
     }
 
     fn line(&self, i: usize) -> &str {
         &self.lines[i].text
     }
 
-    /// The indentation the file uses per level: the indent of its first indented line (2 when it
-    /// has none).
+    /// The indentation the file uses per level: the indent of its first indented `key:` line (2
+    /// when it has none). A continuation line of a folded `description: >-` is indented too, and
+    /// is no key.
     fn step(&self) -> usize {
         self.lines
             .iter()
             .map(|l| &l.text)
-            .filter(|t| is_content(t))
+            .filter(|t| is_content(t) && key_of(t).is_some())
             .map(|t| indent_of(t))
             .find(|i| *i > 0)
             .unwrap_or(2)
+    }
+
+    /// Where a key at the top level goes last: the end of the file, or before a closing `...`.
+    fn top_end(&self) -> usize {
+        let last = (0..self.lines.len())
+            .rev()
+            .find(|i| !self.line(*i).trim().is_empty());
+        match last {
+            Some(i) if self.line(i).starts_with("...") && is_marker(self.line(i)) => i,
+            _ => self.lines.len(),
+        }
     }
 
     /// One past the last line of the value of the key at line `k`, indented `indent`.
@@ -702,7 +750,7 @@ impl Doc {
         };
         let children = self
             .children(from, to)
-            .ok_or_else(|| format!("`{}` is not a mapping", shown(parent)))?;
+            .ok_or_else(|| format!("{} is not a block mapping fsp edits", mapping_name(parent)))?;
         if children.iter().any(|c| c.key == key) {
             return Err(format!("`{key}` is already under `{}`", shown(parent)));
         }
@@ -717,7 +765,7 @@ impl Doc {
             _ => step,
         };
         let at = if top {
-            self.lines.len()
+            self.top_end()
         } else {
             match place {
                 Place::End => children.last().map_or(from, |c| c.end),

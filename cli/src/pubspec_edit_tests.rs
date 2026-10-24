@@ -338,6 +338,121 @@ fn append_adds_to_a_flow_list_a_block_list_or_makes_one() {
     assert_eq!(out, "a:\n  b: [c]\n");
 }
 
+// --- Document markers and a byte order mark ----------------------------------------------------
+
+const BODY: &str = "name: app
+dependencies:
+  fespalier:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier
+      ref: v0.22.1
+flutter:
+  uses-material-design: true
+";
+
+/// A pubspec may start with `---` (yamllint asks for it), a `%YAML` directive or a byte order mark
+/// before a comment: every kind of edit works on them, and the head stays. (A byte order mark
+/// right before `---` or a key is not YAML to `serde_yaml_ng`, and `fsp` refuses the file at the
+/// first read.)
+#[test]
+fn a_file_that_starts_with_a_marker_or_a_bom_takes_every_kind_of_edit() {
+    let heads = [
+        "---\n",
+        "--- # the app\n",
+        "%YAML 1.2\n---\n",
+        "---\n# Comment.\n",
+        "\u{feff}# Comment.\n",
+    ];
+    for head in heads {
+        let text = format!("{head}{BODY}");
+        assert_eq!(Doc::parse(&text).text(), text, "{head:?}");
+        assert_eq!(
+            Doc::parse(&text).keys(&[]).unwrap(),
+            ["name", "dependencies", "flutter"],
+            "{head:?}"
+        );
+        let out = apply(
+            &text,
+            &[
+                Edit::set(&["dependencies", "fespalier", "git", "ref"], "v0.23.0"),
+                Edit::insert(
+                    &["dependencies"],
+                    "fespalier_http",
+                    block(&["git:", "  url: u", "  ref: v0.23.0"]),
+                    Place::Sorted,
+                ),
+                Edit::insert(&[], "fespalier", block(&[]), Place::End)
+                    .with_comments(vec!["# Read by fsp.".to_string()]),
+                Edit::insert(&["fespalier"], "telemetry", inline("false"), Place::End),
+                Edit::append(&["flutter", "assets"], "assets/", None),
+            ],
+        )
+        .unwrap_or_else(|e| panic!("{head:?}: {e}"));
+        assert!(out.starts_with(head), "{head:?}: {out}");
+        assert_eq!(
+            out[head.len()..],
+            BODY.replace("v0.22.1", "v0.23.0")
+                .replace(
+                    "flutter:\n",
+                    "  fespalier_http:\n    git:\n      url: u\n      ref: v0.23.0\nflutter:\n"
+                )
+                .replace(
+                    "true\n",
+                    "true\n  assets: [assets/]\n\n# Read by fsp.\nfespalier:\n  telemetry: false\n"
+                ),
+            "{head:?}"
+        );
+    }
+}
+
+/// A closing `...` is not part of the mapping: a section made last goes before it.
+#[test]
+fn a_section_made_last_goes_before_a_document_end_marker() {
+    let text = format!("---\n{BODY}...\n");
+    let out = ok(
+        &text,
+        &[Edit::insert(
+            &[],
+            "fespalier",
+            block(&["telemetry: false"]),
+            Place::End,
+        )],
+    );
+    assert_eq!(
+        out,
+        format!("---\n{BODY}\nfespalier:\n  telemetry: false\n...\n")
+    );
+    // A line that only looks like a marker is a value, and the file is refused.
+    let value = "--- text\nname: app\n";
+    let e = err(value, &[Edit::insert(&[], "a", inline("1"), Place::End)]);
+    assert!(e.contains("not valid YAML") || e.contains("not a"), "{e}");
+}
+
+/// The indent of a new section is the file's, not that of the continuation of a folded scalar, and
+/// a file that is not a mapping is named by what it is.
+#[test]
+fn the_indent_comes_from_a_key_and_a_top_level_that_is_no_mapping_is_named() {
+    let text = "name: app\ndescription: >-\n    A long text\n    folded.\ndependencies:\n  flutter:\n    sdk: flutter\n";
+    let out = ok(
+        text,
+        &[Edit::insert(
+            &[],
+            "fespalier",
+            block(&["telemetry: false"]),
+            Place::End,
+        )],
+    );
+    assert_eq!(out, format!("{text}\nfespalier:\n  telemetry: false\n"));
+    assert_eq!(
+        err(
+            "- a\n- b\n",
+            &[Edit::insert(&[], "k", inline("1"), Place::End)]
+        ),
+        "the top level of the file is not a mapping"
+    );
+}
+
 // --- Every pubspec of the repository -----------------------------------------------------------
 
 fn root() -> PathBuf {

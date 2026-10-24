@@ -260,6 +260,40 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
     );
 }
 
+/// fespalier under `dev_dependencies:` only builds, but the generated files under lib/ import it:
+/// a warning beside the row of its ref (since 0.23.1). Under `dependencies:` it is not.
+#[test]
+fn fespalier_under_dev_dependencies_only_is_a_warning() {
+    let pin = git(&format!("v{}", this_fsp()));
+    let rows = doctor::rows(&facts(
+        &format!("name: shop\ndev_dependencies:\n  fespalier:{pin}\n"),
+        &[],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        of(&rows, "fespalier", None),
+        [
+            format!(
+                "ok: fespalier: git, ref v{}, the version of this fsp",
+                this_fsp()
+            ),
+            "warning: fespalier is under `dev_dependencies:` only: the generated files under lib/ import package:fespalier, so move it to `dependencies:`".to_string(),
+        ]
+    );
+    for pubspec in [
+        format!("name: shop\ndependencies:\n  fespalier:{pin}\n"),
+        format!(
+            "name: shop\ndependencies:\n  fespalier:{pin}\ndev_dependencies:\n  fespalier:{pin}\n"
+        ),
+    ] {
+        let rows = doctor::rows(&facts(&pubspec, &[], Err("no".into())));
+        assert!(
+            one(&rows, "fespalier", None).starts_with("ok: "),
+            "{pubspec}"
+        );
+    }
+}
+
 #[test]
 fn the_lock_go_router_and_the_toolchain() {
     let pubspec = "name: shop\ndependencies:\n  fespalier:\n    path: ../fespalier\n  fespalier_download_background:\n    path: ../bg\n";

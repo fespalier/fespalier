@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "A stand-in for the JSON Schema Store's pubspec schema (https://www.schemastore.org/pubspec.json) in test/yamlServer.test.ts: two of its keys, so a test can see that its checks still apply.",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": { "type": "string" },
+    "environment": {
+      "type": "object",
+      "properties": { "sdk": { "type": "string" } }
+    }
+  }
+}

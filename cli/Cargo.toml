@@ -38,6 +38,8 @@ tree-sitter-dart = "0.2"
 nix = { version = "0.31", default-features = false, features = ["signal"] }
 
 [dev-dependencies]
+# `schema_tests.rs` checks the schema's `pattern`s (already in the lock, through other crates).
+regex = "1"
 tempfile = "3"
 
 [lints.rust]

@@ -4730,3 +4730,121 @@ fn upgrade_app_prints_the_notes_before_a_pub_get_that_fails() {
     assert_eq!(code, Some(0));
     assert!(out.contains("nothing to move."), "{out}");
 }
+
+/// `fsp schema` (since 0.23.0) needs no project: it prints this fsp's schema of the `fespalier:`
+/// section, and with `--pubspec` the schema of a whole pubspec.yaml that the editors ship.
+#[test]
+fn schema_prints_the_section_and_with_pubspec_the_whole_file() {
+    let empty = tempfile::tempdir().unwrap();
+    for (args, title) in [
+        (&["schema"][..], "fespalier"),
+        (&["schema", "--pubspec"], "pubspec.yaml with fespalier"),
+    ] {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(args)
+                .current_dir(empty.path()),
+        )
+        .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}");
+        let text = String::from_utf8(out.stdout).unwrap();
+        assert!(text.ends_with("}\n"), "{args:?}");
+        let schema: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(schema["$schema"], "http://json-schema.org/draft-07/schema#");
+        assert_eq!(schema["title"], title);
+    }
+    let shipped = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../editors/vscode/schemas/pubspec.schema.json"),
+    )
+    .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["schema", "--pubspec"])
+            .current_dir(empty.path()),
+    )
+    .unwrap();
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), shipped);
+}
+
+/// `fsp doctor` (since 0.23.0): JSON lines with every key, a stand-in `flutter --version --machine`,
+/// exit 1 on an error row and 0 without one.
+#[cfg(unix)]
+#[test]
+fn doctor_prints_its_rows_and_exits_1_on_an_error() {
+    let dir = project();
+    let root = dir.path();
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    write_executable(
+        &bin.join("flutter"),
+        "#!/bin/sh\nprintf '{\"frameworkVersion\":\"3.38.4\",\"dartSdkVersion\":\"3.10.4\"}\\n'\n",
+    );
+    let doctor = |args: &[&str]| {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(args)
+                .env("PATH", path_with(&bin))
+                .current_dir(root),
+        )
+        .unwrap();
+        (
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
+    };
+    // A path dependency: nothing out of line.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  fespalier:\n    path: ../fespalier\n",
+    )
+    .unwrap();
+    let (code, out, err) = doctor(&["doctor"]);
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(err.is_empty(), "{err}");
+    assert!(out.starts_with("fsp doctor "), "{out}");
+    assert!(
+        out.contains("  ✓ flutter      Flutter 3.38.4, at or above fespalier's floor, 3.35.0\n"),
+        "{out}"
+    );
+    assert!(out.ends_with("\nNothing out of line.\n"), "{out}");
+    // A ref that is not this fsp's: an error row, and exit 1 with nothing on stderr.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: v0.0.1\n",
+    )
+    .unwrap();
+    let (code, out, err) = doctor(&["doctor", "--json"]);
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(err.is_empty(), "{err}");
+    let rows: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    for row in &rows {
+        let keys: Vec<&str> = row
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, ["section", "check", "subject", "status", "message"]);
+    }
+    let status = |check: &str| {
+        rows.iter()
+            .find(|r| r["check"] == check)
+            .map(|r| r["status"].as_str().unwrap().to_string())
+    };
+    assert_eq!(status("fespalier").as_deref(), Some("error"));
+    assert_eq!(status("flutter").as_deref(), Some("ok"));
+    assert_eq!(status("lock").as_deref(), Some("skipped"));
+    // A folder that is not there: the flutter row says so, not that flutter is missing.
+    let (code, out, err) = doctor(&["doctor", "--project", "no-such-app"]);
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        out.contains("no-such-app is not a folder: Flutter and Dart are not checked"),
+        "{out}"
+    );
+    assert!(!out.contains("not on PATH"), "{out}");
+}

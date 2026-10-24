@@ -1,7 +1,7 @@
 {
   "name": "fespalier",
   "displayName": "fespalier",
-  "description": "Shows fespalier route-tree errors and warnings in the Problems panel, runs fsp gen, and runs the tasks of fespalier: tasks: from Run Task.",
+  "description": "Shows fespalier route-tree errors and warnings in the Problems panel, runs fsp gen, runs the tasks of fespalier: tasks: from Run Task, and completes and checks the fespalier: section of pubspec.yaml (with the YAML extension).",
   "version": "0.2.0",
   "publisher": "vaam-apps",
   "license": "MIT",
@@ -72,6 +72,12 @@
         }
       }
     },
+    "yamlValidation": [
+      {
+        "fileMatch": "pubspec.yaml",
+        "url": "./schemas/pubspec.schema.json"
+      }
+    ],
     "taskDefinitions": [
       {
         "type": "fespalier",
@@ -112,6 +118,8 @@
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.0.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vscode-languageserver-textdocument": "1.0.12",
+    "yaml-language-server": "1.24.0"
   }
 }

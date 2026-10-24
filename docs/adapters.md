@@ -90,6 +90,7 @@ the others'.
   [With `main: manual`](#with-main-manual-appadapters).
 - `adapters:` makes `main: auto` write `lib/app.main.g.dart` even with no `app.dart`, `startup.dart` or
   `splash.dart`.
+- `adapters: auto` (since 0.23.0) takes the first-party adapter packages under `dependencies:` (today `fespalier_analytics`, `fespalier_download`, `fespalier_launch` and `fespalier_push`), in the order `dependencies:` lists them. It is opt-in: each of them needs its `configure` call in `main()` ([Adapters that need your code](#adapters-that-need-your-code)), and an app that depends on one for something else, such as `fespalier_download` behind `fespalier_maps`' file packs, would report an error at start if it were on by default. `fsp doctor` shows each adapter as on or off, and whether a Dart file under `lib/` calls its `configure`.
 - There are no per-adapter options in the pubspec: what an adapter needs at deploy time comes from
   `--dart-define`, and anything custom stays in `startup.dart`, which is yours.
 

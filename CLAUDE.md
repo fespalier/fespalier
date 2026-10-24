@@ -21,3 +21,4 @@ This file gives Claude Code (claude.ai/code) guidance for this repository; the s
   bump in `cli/templates/telemetry/compose.yaml`, run `just telemetry-smoke` (it needs Docker).
 - Regenerate the committed examples with `just gen-examples` after touching the emitter or a
   template; never edit a `*.g.dart` by hand.
+- After touching `cli/schema/fespalier.schema.json`, run `FSP_UPDATE_GOLDEN=1 cargo test schema_tests::` in `cli/` and commit the two editor copies (`editors/vscode/schemas/pubspec.schema.json` and `editors/intellij/src/main/resources/schemas/pubspec.schema.json`).

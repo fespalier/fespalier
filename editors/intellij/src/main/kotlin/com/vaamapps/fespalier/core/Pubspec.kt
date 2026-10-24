@@ -92,6 +92,18 @@ fun isLibDartSource(relPath: String): Boolean {
     return p.startsWith("lib/") && p.endsWith(".dart") && !p.endsWith(".g.dart")
 }
 
+/** Folders that hold copies or build output of pubspecs, never a project of their own. */
+val SKIPPED_FOLDERS = listOf("/.dart_tool/", "/build/", "/ephemeral/", "/node_modules/", "/.symlinks/")
+
+/**
+ * Whether the file at [path] is a project's `pubspec.yaml` (since fespalier 0.23.0, the files the
+ * plugin's schema is for): named so, and not in a folder of [SKIPPED_FOLDERS].
+ */
+fun isPubspecPath(path: String): Boolean {
+    val p = path.replace('\\', '/')
+    return p.substringAfterLast('/') == "pubspec.yaml" && SKIPPED_FOLDERS.none { p.contains(it) }
+}
+
 /** A project that uses fespalier: the folder with its pubspec.yaml, and its app folder. */
 data class FespalierProject(
     /** Absolute path of the folder with the pubspec.yaml, with `/` separators. */

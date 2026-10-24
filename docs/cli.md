@@ -26,6 +26,8 @@ fsp telemetry --grafana # ...and Grafana, with the same dashboards
 fsp upgrade             # upgrade fsp the way it was installed (since 0.15.0)
 fsp upgrade --check     # exit 0 up to date, 3 an update is available, 1 error
 fsp upgrade --app       # move the ref: of fespalier and every companion to this fsp's release (since 0.23.0)
+fsp doctor              # what main() wires and why, and what is out of line: refs, lock, go_router, Flutter (since 0.23.0)
+fsp schema              # the JSON Schema of the fespalier: section, for editors (since 0.23.0; --pubspec: the whole file)
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp dev                 # fsp watch and flutter run in one terminal, hot reloading the app as you save (since 0.9.0)
 fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
@@ -287,7 +289,7 @@ error: `$id` is int in products/$id/data.dart:6 but String here
 
 ## Editor plugins
 
-Two editor plugins show the JSON diagnostics. Neither is on a marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run fespalier` when there is none, and check again when you save a file under the app folder (`app_dir`, `lib/app` by default). Since 0.22.0 both also run your tasks: see [Tasks in your editor](#tasks-in-your-editor).
+Two editor plugins show the JSON diagnostics. Neither is on a marketplace yet, so you build them from source. Both use `fsp` from your `PATH`, or `dart run fespalier` when there is none, and check again when you save a file under the app folder (`app_dir`, `lib/app` by default). Since 0.22.0 both also run your tasks: see [Tasks in your editor](#tasks-in-your-editor). Since 0.23.0 both also complete and check the `fespalier:` section of `pubspec.yaml`: see [Completion and checks in your editor](configuration.md#completion-and-checks-in-your-editor).
 
 - **VS Code:** `editors/vscode/` puts the diagnostics in the Problems panel, with a `fespalier: generate` command and a status bar item; `fespalier.runner` chooses the runner. Build it with `npm install && npm test && npx @vscode/vsce package` in that folder and install the `.vsix` (see `editors/vscode/README.md`).
 - **IntelliJ IDEA and Android Studio:** `editors/intellij/` (Kotlin) underlines the problems, with their severity, in the files under the app folder, and adds _Tools | fespalier: Generate_ and _fespalier: Check_, and since 0.22.0 _Tools | fespalier: Run Task..._ for your tasks; a notification says when `fsp` could not run. Settings | Tools | fespalier chooses the runner (auto, `fsp`, or `dart run fespalier`) and the path to `fsp`. It needs platform 252 (2025.2) or later, and the Dart plugin for highlighting route files (Android Studio includes it). Build it with JDK 21:
@@ -833,6 +835,61 @@ fsp upgrade --app --dry-run           # what would move, and the notes
 - **Then** it runs `flutter pub get` (with `--no-pub-get` it leaves it to you and says that `pubspec.lock` still names the old commits) and, when the release is the `fsp`'s own, `fsp gen`; for another release it says to regenerate with that release's `fsp`. If `pub get` or `gen` fails, the refs stay moved, the notes are above the message, and the message says what to run (`flutter pub get`, then `fsp gen`) or to put the old refs back; a second `fsp upgrade --app` finds every ref at the release and prints no notes. An interrupt (Ctrl-C) keeps the exit code 130.
 
 `--check` prints the moves and writes nothing: exit **0** when every ref is at the release, **3** when one would move, **1** on an error (an `fsp` older than the app's pins is one). `--dry-run` prints the moves and the notes. `--json` prints one object on stdout, and the lines for people on stderr: `from` (the oldest release pinned, or the newest when every ref goes back), `target`, `upToDate`, `packages` (each with `name`, `section`, `from`, `to` and `downgrade`) and `notes` (the releases whose sections apply); for a checkout, `checkout` is the folder and `packages` is empty.
+
+## fsp doctor
+
+`fsp doctor` (since 0.23.0) reports what the generated `main()` wires and why, and what is out of line around it: the fespalier refs of the app against the `fsp` you run, `pubspec.lock`, `go_router` and Flutter. Run it after you move the refs of an upgrade ([what 0.23.0 asks](migration.md#0230)), when an adapter does nothing, or in CI. It writes nothing, and it exits 1 only when a row is an error.
+
+The report has three sections, each a list of rows under its title. Each row is one check, with a status and a message that stands alone. This is a fragment of the text output (the header, the other sections and the other rows are left out):
+
+```text
+Versions
+  ✓ fespalier    fespalier: git, ref v0.23.0, the version of this fsp
+  ! lock         pubspec.lock resolves fespalier 0.22.1, and this fsp writes code for 0.23.0: move the refs to v0.23.0 and run `flutter pub get`, or run `dart run fespalier` to use the fsp of the pin
+  ! lock         pubspec.lock resolves fespalier_push 0.22.0, and fespalier 0.22.1: give every companion fespalier's ref, then run `flutter pub get`
+  ✓ go_router    go_router 18.1.0 (pubspec.lock), in what fespalier supports, >=17.2.3 <19.0.0
+
+2 warnings.
+```
+
+The marks and statuses are these:
+
+| Mark | Status    | Meaning                                                        |
+| ---- | --------- | -------------------------------------------------------------- |
+| ✓    | `ok`      | as it should be                                                |
+| ·    | `info`    | what is, neither right nor wrong (`telemetry: false`)          |
+| !    | `warning` | works, and may not be what you meant                           |
+| ✗    | `error`   | will not work as it is                                         |
+| -    | `skipped` | not checked, and why (no `pubspec.lock`, no `flutter` on PATH) |
+
+The sections and their check ids, one line each. The ids are part of the `--json` output, and new ones are only added.
+
+- **What the generated main() wires, and why** (`wiring`): `main` (whether `lib/app.main.g.dart` is written, and why, or why it is not; skipped when the app folder cannot be read as a tree), `root_file` (per root file, what it gives the generated `main()`), `hot_reload` (whether a hot reload in `fsp dev` swaps the route table), `adapter` (per adapter that is on: whether a Dart file under `lib/` calls its `configure(`; and per first-party adapter package under `dependencies:` that is off: `info` when nothing calls its `configure(`, since a package of the family is often a dependency for something else, and a warning when a Dart file does and `adapters:` leaves the package out, because the adapter then never runs), `telemetry`, `otel`, `forms` (an error when an action has a `form()` and `fespalier_forms` is not a dependency), `deferred` (how many pages load on demand) and `tasks` (whether `tasks:` reads).
+- **Versions** (`versions`): `fespalier` (its `ref:` against this `fsp`; a branch, a commit or a path is `info`; no ref and a hosted constraint are a warning), `companion` (per `fespalier_*` dependency: the same `url` and `ref` as fespalier), `override` (per `fespalier*` entry of `dependency_overrides:`, `info`), `lock` (what `pubspec.lock` resolved: fespalier against this `fsp`, and each companion against the fespalier it locked; skipped without the lock, which for a pub workspace member (`resolution: workspace`) is the one at the workspace root, where pub writes it), `go_router` (the locked version against `>=17.2.3 <19.0.0`), `flutter` and `dart` (against Flutter 3.35.0 and Dart 3.9.0, a pre-release of the floor counting as below it, and a Flutter that reports `0.0.0` because its checkout has no tags is an error that says so; and `flutter` for each dependency that needs a newer Flutter: `fespalier_download_background` 3.47.0, `fespalier_keypair`, `fespalier_keypair_dpop` and `fespalier_sign_keypair` 3.44.0).
+- **Checks** (`checks`): `config` (a `pubspec.yaml` that `fsp` refuses: one error row, and the wiring rows and the other checks are left out, but the versions still show), `section` (per `links:`, `maestro:`, `size:` and `test:`, checked as their own command checks them), `build_runner` (the warning `fsp check` prints for a generated file that `build_runner` would delete, or an ok row), `main_dart` (whether `lib/main.dart`, or another Dart file under `lib/` that it hands over to (a `bootstrap.dart`), calls `AppMain.run()`, and with `main: manual` and adapters, whether a Dart file calls `AppAdapters`), and `fsp_check` (one line: how many routes, and how many errors and warnings `fsp check` finds that no row above is already).
+
+**Exit codes.** `0` when no row is an error (warnings and skipped rows included). `1` when one is, and the report is the whole of the output. `2` for a usage error, from the argument parser.
+
+**`--json`** prints one object per row, one per line, on stdout, with every key always there and in this order: `section` (`wiring`, `versions` or `checks`), `check`, `subject` (the package or file the row is about, or `null`), `status` (`ok`, `info`, `warning`, `error` or `skipped`) and `message`:
+
+```text
+{"section":"wiring","check":"main","subject":null,"status":"ok","message":"lib/app.main.g.dart is written: lib/app/app.dart exists"}
+```
+
+**What it reads.** The project's `pubspec.yaml` and `pubspec.lock` (for a pub workspace member, the root's: a member has none of its own); every Dart file under `lib/` but the ones `fsp` writes (`*.g.dart`, `output:` and `output_manifest:`), by their text, for `AppMain.run(`, `AppAdapters.` and the adapters' `configure(` calls; whatever `fsp check` reads (the files of the `path:` dependencies, with their pubspecs, `pubspec_overrides.yaml` and the workspace root's pubspec); and `flutter --version --machine`, with the `flutter` on PATH. With FVM or puro, run it through the SDK the project uses (for example `fvm exec fsp doctor`), so that the Flutter it checks is the project's. `fsp` itself never reads the pub cache or `.dart_tool/`, never reaches the network and writes nothing. The `flutter` it runs is another program: it may reach the network (its analytics, or the download of its Dart SDK on a fresh clone) and write its own cache. It never fails because `flutter` is missing: that row is skipped.
+
+**What it does not repeat.** `fsp doctor` repeats no `fsp check` diagnostic, but counts them: the `fsp_check` row says how many errors and warnings `fsp check` finds, and `fsp check` says where. Two kinds of diagnostic have a row of their own, and `fsp check` prints them too: the `forms` error (an action with a `form()` and no `fespalier_forms`) and the `build_runner` warning. The `fsp_check` row leaves them out of its count and says "besides what the rows above report", so a problem is one error or one warning in the closing count, not two. `tasks:`, `links:`, `maestro:`, `size:` and `test:` are checked here although `fsp gen` never reads them: a mistake in one is an error row here, while `fsp gen` writes the file anyway. When the app folder cannot be read as a tree, the `forms` and `deferred` rows count nothing, the `main` row is skipped, and `fsp_check` says why.
+
+## fsp schema
+
+`fsp schema` (since 0.23.0) prints the JSON Schema (draft-07) of the `fespalier:` section of `pubspec.yaml`, for an editor: completion of the keys and their values, a description on hover, and an error on a key that `fsp` does not read or a value it refuses. It needs no project.
+
+```sh
+fsp schema                      # the section
+fsp schema --pubspec            # the whole pubspec.yaml: the JSON Schema Store's pubspec schema, with the section added
+```
+
+The schema is the `fsp`'s own: the one of the release you run, so `dart run fespalier schema` gives the one of the version your pubspec pins. The file at a tag is `https://raw.githubusercontent.com/fespalier/fespalier/v0.23.0/cli/schema/fespalier.schema.json`. The editor plugins ship the `--pubspec` form. How to set up each editor is in [Completion and checks in your editor](configuration.md#completion-and-checks-in-your-editor).
 
 ## fsp telemetry
 

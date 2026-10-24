@@ -209,14 +209,91 @@ pub(crate) fn without_comments(src: &str) -> String {
 /// `main: manual`, and with `main: auto` when the app folder's root has one of the three files or
 /// the app lists `adapters:` (since 0.9.0: an adapter with no generated `main()` would do nothing).
 pub fn wanted(root: &Node, cfg: &Config) -> bool {
+    main_reasons(root, cfg).0
+}
+
+/// Whether `lib/app.main.g.dart` is written, as [`wanted`] decides it, and why, in words (since
+/// 0.23.0, for `fsp doctor`): `` `main: generated` ``, `` `main: manual` ``, or with `main: auto` the
+/// root files there are (`lib/app/startup.dart exists`), the adapters and `otel: true`. With `auto`
+/// and no reason, it is not written and the list is empty.
+#[must_use]
+pub fn main_reasons(root: &Node, cfg: &Config) -> (bool, Vec<String>) {
     match cfg.main {
-        MainMode::Generated => true,
-        MainMode::Manual => false,
+        MainMode::Generated => (true, vec!["`main: generated`".into()]),
+        MainMode::Manual => (false, vec!["`main: manual`".into()]),
         MainMode::Auto => {
-            cfg.otel
-                || !cfg.adapters.is_empty()
-                || ROOT_FILES.iter().any(|k| root.files.contains_key(k))
+            let mut why: Vec<String> = ROOT_FILES
+                .iter()
+                .filter(|k| root.files.contains_key(k))
+                .map(|k| format!("{}/{} exists", cfg.app_dir, root.rel(*k)))
+                .collect();
+            if !cfg.adapters.is_empty() {
+                let how = if cfg.adapters_auto {
+                    "`adapters: auto` finds"
+                } else {
+                    "`adapters:` lists"
+                };
+                why.push(format!("{how} {}", cfg.adapters.join(", ")));
+            }
+            if cfg.otel {
+                why.push("`otel: true`".into());
+            }
+            (!why.is_empty(), why)
         }
+    }
+}
+
+/// What the root files give the generated `main()` (since 0.23.0, for `fsp doctor`).
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct RootReport {
+    /// The root files there are, relative to the app folder, as spelled on disk.
+    pub files: Vec<String>,
+    /// What startup.dart exports that the generated `main()` calls, in the order the docs list them.
+    /// An export with a mistake in its shape is left out: `fsp check` reports it.
+    pub startup: Vec<&'static str>,
+    /// `startup()` returns the providers it overrides.
+    pub startup_overrides: bool,
+    /// app.dart has a `router()` that builds the router.
+    pub own_router: bool,
+}
+
+/// [`RootReport`] of the app folder's root, read as [`emit`] reads it; the diagnostics are `fsp
+/// check`'s, and are dropped here.
+#[must_use]
+pub fn root_report(root: &Node) -> RootReport {
+    let mut scratch = Diags::default();
+    let module = |kind: Kind| {
+        root.files
+            .get(&kind)
+            .map(|src| crate::parse_cache::parse(src))
+    };
+    let own_router = module(Kind::App).is_some_and(|m| app_router_fn(root, &m, &mut scratch));
+    let exports = module(Kind::Startup)
+        .map(|m| read_startup(root, &m, own_router, &mut scratch))
+        .unwrap_or_default();
+    let mut startup = vec![];
+    for (on, name) in [
+        (exports.startup.is_some(), "startup()"),
+        (exports.ready, "ready()"),
+        (exports.attach, "attach()"),
+        (exports.zone.is_some(), "zone()"),
+        (exports.provider_observers, "providerObservers"),
+        (exports.router_observers, "routerObservers"),
+        (exports.retry, "retry()"),
+    ] {
+        if on {
+            startup.push(name);
+        }
+    }
+    RootReport {
+        files: ROOT_FILES
+            .iter()
+            .filter(|k| root.files.contains_key(k))
+            .map(|k| root.rel(*k))
+            .collect(),
+        startup,
+        startup_overrides: exports.startup.is_some_and(|s| s.overrides),
+        own_router,
     }
 }
 

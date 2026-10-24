@@ -21,6 +21,17 @@ diagnostics: nothing is re-implemented in the editor.
   not run in VS Code; CI runs the task provider against a stand-in for the `vscode` module (the parsing of
   `fsp run --json`, the commands, the warnings, the labels, the `tasks.json` checks), not VS Code.
 - **Status bar.** `fespalier` with a check mark, or the number of errors or warnings.
+- **`pubspec.yaml`** (since fespalier 0.23.0), with Red Hat's YAML extension (`redhat.vscode-yaml`) installed: the keys
+  of the `fespalier:` section complete as you type, show what they do on hover, and an unknown key, a value of the
+  wrong type or one off a list is underlined. The extension gives the YAML extension one schema for `pubspec.yaml`,
+  the JSON Schema Store's pubspec schema with the `fespalier:` section added, so the checks of the rest of the file
+  stay. Without the YAML extension nothing changes: saving `pubspec.yaml` runs `fsp check`, which stops on an unknown
+  key or a value of the wrong type in the section (the status bar says `fespalier: failed`, and the fespalier output has
+  the message; `tasks:` and the values inside `links:`, `maestro:`, `size:` and `test:` are read only by their own
+  commands and by `fsp doctor`). The schema is the one this extension ships, of the fespalier it was built with: a key
+  that a newer fespalier added is reported as unknown until the extension is updated, and one an older fespalier does
+  not read yet is offered. **UNCHECKED in VS Code:** CI runs the YAML extension's language server on the shipped
+  schema, not VS Code.
 
 ## Requirements
 

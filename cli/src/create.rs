@@ -105,7 +105,7 @@ struct Report {
 impl Report {
     fn event(&self, value: &serde_json::Value) {
         if self.json {
-            println!("{value}");
+            outln!("{value}");
         }
     }
 }
@@ -198,10 +198,10 @@ fn list_features(json: bool) {
     let features = plan::list_features(recipes::RECIPES);
     if json {
         for f in &features {
-            println!("{}", serde_json::to_string(f).unwrap_or_default());
+            outln!("{}", serde_json::to_string(f).unwrap_or_default());
         }
     } else if features.is_empty() {
-        println!("no optional features yet: `fsp create <dir>` makes the base app");
+        outln!("no optional features yet: `fsp create <dir>` makes the base app");
     } else {
         let width = features
             .iter()
@@ -210,9 +210,9 @@ fn list_features(json: bool) {
             .unwrap_or(0)
             .max(plan::ALL.len());
         for f in &features {
-            println!("{:<width$}  {}", f.id, f.description);
+            outln!("{:<width$}  {}", f.id, f.description);
         }
-        println!(
+        outln!(
             "{:<width$}  Every feature above that your Flutter runs, at once (--features {})",
             plan::ALL,
             plan::ALL

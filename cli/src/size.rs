@@ -730,7 +730,7 @@ pub fn run(project: &Path, build: Option<&Path>, json: bool, check: bool) -> Res
         report.text()
     };
     for line in lines {
-        println!("{line}");
+        outln!("{line}");
     }
     let over = report.over_budget();
     if check && !over.is_empty() {

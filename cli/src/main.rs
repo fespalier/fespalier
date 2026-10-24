@@ -1,3 +1,17 @@
+/// `print!` for what a command writes to stdout: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! out {
+    ($($arg:tt)*) => {
+        $crate::out::write(format_args!($($arg)*))
+    };
+}
+
+/// `println!` for what a command writes to stdout: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! outln {
+    ($($arg:tt)*) => {
+        $crate::out::line(format_args!($($arg)*))
+    };
+}
+
 mod adapters;
 mod add;
 mod build_runner;
@@ -27,6 +41,7 @@ mod manifest;
 mod menu;
 mod osc8;
 mod otel;
+mod out;
 mod packages;
 mod parse_cache;
 mod pins;

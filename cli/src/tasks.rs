@@ -816,12 +816,12 @@ pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
     let tasks = Tasks::from_config(&cfg)?;
     if cmd.json {
         for line in tasks.json_lines() {
-            println!("{line}");
+            outln!("{line}");
         }
         return Ok(());
     }
     let Some(name) = &cmd.task else {
-        print!("{}", tasks.listing());
+        out!("{}", tasks.listing());
         return Ok(());
     };
     if name == "dev" {

@@ -417,7 +417,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         if cmd.json {
             eprintln!("{line}");
         } else {
-            println!("{line}");
+            outln!("{line}");
         }
     };
     let (oldest, newest, moves, kept, pubspec) = match plan {
@@ -453,7 +453,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             .into_iter()
             .map(|s| s.heading)
             .collect();
-        println!(
+        outln!(
             "{}",
             json!({
                 "from": from.to_string(),
@@ -572,12 +572,12 @@ fn checkout(cmd: &UpgradeCmd, root: &str, target: Version) {
         "fespalier comes from a checkout ({root}/fespalier): its version is the checkout's, and pubspec.yaml has no ref to move."
     );
     if cmd.json {
-        println!(
+        outln!(
             "{}",
             json!({"checkout": format!("{root}/fespalier"), "target": target.to_string(), "upToDate": true, "packages": [], "notes": []})
         );
         eprintln!("{line}");
     } else {
-        println!("{line}");
+        outln!("{line}");
     }
 }

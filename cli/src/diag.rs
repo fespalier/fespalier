@@ -258,6 +258,6 @@ pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
 /// Prints diagnostics to stdout as JSON lines (see [`json_line`]).
 pub fn render_json(app_dir: &Path, shown: &str, diags: &Diags) {
     for d in &diags.0 {
-        println!("{}", json_line(app_dir, shown, d));
+        outln!("{}", json_line(app_dir, shown, d));
     }
 }

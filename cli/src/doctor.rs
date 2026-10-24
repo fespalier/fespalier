@@ -520,10 +520,10 @@ pub fn run(project: &Path, cmd: &DoctorCmd) -> Result<()> {
     let rows = rows(&facts);
     if cmd.json {
         for row in &rows {
-            println!("{}", json_line(row));
+            outln!("{}", json_line(row));
         }
     } else {
-        print!("{}", text(&facts, &rows));
+        out!("{}", text(&facts, &rows));
     }
     if rows.iter().any(|r| r.status == Status::Error) {
         return Err(Exit(1).into());

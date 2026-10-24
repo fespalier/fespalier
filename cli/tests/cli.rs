@@ -4848,3 +4848,55 @@ fn doctor_prints_its_rows_and_exits_1_on_an_error() {
     );
     assert!(!out.contains("not on PATH"), "{out}");
 }
+
+/// A reader that stops early (`fsp routes --json | head -1`) closes the pipe: `fsp` stops writing
+/// to stdout, with no panic, and exits as it does when its output is read to the end, saying the
+/// same on stderr (since 0.23.1). The pipe is closed before `fsp` starts, so its first write fails.
+#[test]
+fn a_closed_stdout_ends_the_output_and_not_the_command() {
+    let dir = project();
+    let broken = project();
+    fs::create_dir_all(broken.path().join("lib/app/[id")).unwrap();
+    // No `flutter` on PATH: `fsp doctor` skips its row instead of running one.
+    let empty = tempfile::tempdir().unwrap();
+    let run = |cwd: &Path, args: &[&str], closed: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsp"));
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", empty.path())
+            .stdin(Stdio::null())
+            .stderr(Stdio::piped());
+        if closed {
+            let (reader, writer) = io::pipe().unwrap();
+            drop(reader);
+            command.stdout(writer);
+        } else {
+            command.stdout(Stdio::piped());
+        }
+        spawn_locked(&mut command)
+            .unwrap()
+            .wait_with_output()
+            .unwrap()
+    };
+    for (cwd, args, code) in [
+        (dir.path(), &["schema"][..], 0),
+        (dir.path(), &["routes", "--json"], 0),
+        (dir.path(), &["routes", "--graph"], 0),
+        (dir.path(), &["run", "--json"], 0),
+        (dir.path(), &["run"], 0),
+        (dir.path(), &["create", "--list-features"], 0),
+        (dir.path(), &["doctor", "--json"], 1),
+        (broken.path(), &["check", "--json"], 1),
+    ] {
+        let read = run(cwd, args, false);
+        let said = String::from_utf8_lossy(&read.stderr).into_owned();
+        assert_eq!(read.status.code(), Some(code), "{args:?}: {said}");
+        assert!(!read.stdout.is_empty(), "{args:?} writes to stdout");
+        let closed = run(cwd, args, true);
+        let err = String::from_utf8_lossy(&closed.stderr);
+        assert!(!err.contains("panicked"), "{args:?}: {err}");
+        assert_eq!(closed.status.code(), Some(code), "{args:?}: {err}");
+        assert_eq!(err, said, "{args:?}");
+    }
+}

@@ -148,12 +148,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.22.1
+      ref: v0.23.0
   fespalier_connectivity:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_connectivity
-      ref: v0.22.1
+      ref: v0.23.0
 ```
 
 <!-- x-release-please-end -->
@@ -283,12 +283,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.22.1
+      ref: v0.23.0
   fespalier_storage:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_storage
-      ref: v0.22.1
+      ref: v0.23.0
 ```
 
 <!-- x-release-please-end -->
@@ -368,12 +368,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.22.1
+      ref: v0.23.0
   fespalier_frb:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_frb
-      ref: v0.22.1
+      ref: v0.23.0
 ```
 
 <!-- x-release-please-end -->
@@ -585,12 +585,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.22.1
+      ref: v0.23.0
   fespalier_riverpod:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_riverpod
-      ref: v0.22.1
+      ref: v0.23.0
 ```
 
 <!-- x-release-please-end -->

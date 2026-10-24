@@ -119,6 +119,33 @@ fn a_package_newer_than_this_fsp_moves_too() {
     assert!(!pubspec.contains("v0.21.0"), "{pubspec}");
 }
 
+/// A fork, or a monorepo that vendors fespalier, holds packages of its own in `packages/` of the
+/// same url: they are its owner's, at a release-looking tag or not, and neither move nor refuse
+/// the upgrade (since 0.23.1).
+#[test]
+fn another_package_of_the_forks_repository_is_left_alone() {
+    let fork = "name: shop
+dependencies:
+  fespalier:
+    git: {url: https://github.com/acme/flutter, path: packages/fespalier, ref: v0.21.0}
+  fespalier_http:
+    git: {url: https://github.com/acme/flutter, path: packages/fespalier_http, ref: v0.21.0}
+  acme_ui:
+    git: {url: https://github.com/acme/flutter, path: packages/acme_ui, ref: v2.1.0}
+  acme_core:
+    git: {url: https://github.com/acme/flutter, path: packages/acme_core, ref: acme_core-v1.0.0}
+dependency_overrides:
+  acme_ui:
+    git: {url: https://github.com/acme/flutter, path: packages/acme_ui, ref: v2.1.0}
+";
+    let (_, moves, _, pubspec) = refs(fork, v(0, 22, 1));
+    let names: Vec<&str> = moves.iter().map(|m| m.name.as_str()).collect();
+    assert_eq!(names, ["fespalier", "fespalier_http"]);
+    assert!(pubspec.contains("acme_ui, ref: v2.1.0}"), "{pubspec}");
+    assert!(pubspec.contains("acme_core-v1.0.0"), "{pubspec}");
+    assert_eq!(pubspec.matches("v2.1.0").count(), 2, "{pubspec}");
+}
+
 #[test]
 fn nothing_moves_when_every_ref_is_at_the_target() {
     let (oldest, moves, _, pubspec) = refs(APP, v(0, 21, 0));
@@ -325,6 +352,23 @@ fn a_fork_is_said() {
             "fespalier comes from https://git.example.com/mirror/fespalier, not https://github.com/fespalier/fespalier: v0.22.1 and the links of the notes are https://github.com/fespalier/fespalier's, so https://git.example.com/mirror/fespalier needs that tag too"
         ]
     );
+}
+
+/// The official repository spelled over ssh or http, with `www.` or another case, is no fork: the
+/// note says nothing, and the refs move (since 0.23.1).
+#[test]
+fn the_official_repository_over_ssh_is_no_fork() {
+    for spelling in [
+        "git@github.com:fespalier/fespalier.git",
+        "ssh://git@github.com/fespalier/fespalier.git",
+        "http://github.com/fespalier/fespalier",
+        "https://www.github.com/Fespalier/Fespalier/",
+    ] {
+        let app = APP.replace("https://github.com/fespalier/fespalier", spelling);
+        let (_, moves, kept, _) = refs(&app, v(0, 22, 1));
+        assert_eq!(moves.len(), 4, "{spelling}");
+        assert!(kept.is_empty(), "{spelling}: {kept:?}");
+    }
 }
 
 // --- The migration notes -----------------------------------------------------------------------

@@ -614,6 +614,35 @@ fn a_companion_under_dev_dependencies_is_a_note() {
     );
 }
 
+/// A fork, or a monorepo that vendors fespalier, holds packages of its own under `packages/` of the
+/// same url, at refs of their own (a tag per package): they are no companion, and `fsp add` neither
+/// refuses on them nor copies their pin (since 0.23.1).
+#[test]
+fn another_package_of_the_forks_repository_is_not_a_companion() {
+    let mut app = created(&[], None);
+    let fork = "https://github.com/acme/flutter";
+    let pubspec = app["pubspec.yaml"]
+        .replace("https://github.com/fespalier/fespalier", fork)
+        .replace(
+            "dev_dependencies:\n",
+            &format!(
+                "  acme_ui:\n    git:\n      url: {fork}\n      path: packages/acme_ui\n      ref: acme_ui-v2.1.0\ndev_dependencies:\n"
+            ),
+        );
+    assert!(pubspec.contains("acme_ui-v2.1.0"), "{pubspec}");
+    app.insert("pubspec.yaml".to_string(), pubspec);
+    let plan = ok(&app, &["storage"]);
+    let after = yaml(plan.pubspec.as_deref().unwrap());
+    let storage = &after["dependencies"]["fespalier_storage"]["git"];
+    assert_eq!(storage["url"].as_str(), Some(fork));
+    assert_eq!(storage["ref"].as_str(), Some(REF));
+    // The package of the fork is where it was.
+    assert_eq!(
+        after["dependencies"]["acme_ui"]["git"]["ref"].as_str(),
+        Some("acme_ui-v2.1.0")
+    );
+}
+
 /// A checkout that keeps its overrides in `pubspec_overrides.yaml`, whose `dependency_overrides:`
 /// pub reads in place of the pubspec's, gets the new ones there, not a section in `pubspec.yaml`
 /// that pub would not read (since 0.23.1).

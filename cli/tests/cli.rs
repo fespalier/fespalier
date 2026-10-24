@@ -4669,6 +4669,50 @@ fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
     );
 }
 
+/// When only `pubspec_overrides.yaml` has a ref to move, the lines name it, not the pubspec (since
+/// 0.23.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_names_the_overrides_file_when_it_alone_moves() {
+    let dir = create_root();
+    let root = dir.path();
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let app = pinned_app(root, &tag);
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.starts_with(&format!(
+            "pubspec_overrides.yaml: v0.21.0 -> {tag}\n  fespalier_transport v0.21.0 -> {tag} (pubspec_overrides.yaml)\n"
+        )),
+        "{out}"
+    );
+    assert!(
+        out.contains("Would write pubspec_overrides.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains(&format!(
+            "pubspec_overrides.yaml now pins {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn upgrade_app_check_and_dry_run_write_nothing() {

@@ -237,14 +237,21 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
         one(&rows, "companion", Some("fespalier_next")),
         "error: fespalier_next: ref v0.0.9, and fespalier's is v0.1.0: give every companion fespalier's url and ref, or move them together with `fsp upgrade --app`"
     );
-    // Without `path:`, pub reads the root of the repository, which is no package of it.
+    // Without `path:`, pub reads the root of fespalier's repository, which is no package of it;
+    // the ref row stays, and the folder is a warning of its own (since 0.23.1).
     assert_eq!(
-        one(&rows, "companion", Some("fespalier_forms")),
-        "error: fespalier_forms: git, no `path:`; the package is in packages/fespalier_forms of the repository: give it `path: packages/fespalier_forms`"
+        of(&rows, "companion", Some("fespalier_forms")),
+        [
+            "ok: fespalier_forms: git, ref v0.1.0, as fespalier",
+            "warning: fespalier_forms: git https://github.com/fespalier/fespalier with no `path:`, and pub reads the root of that repository, which is no package; in it, fespalier_forms is packages/fespalier_forms"
+        ]
     );
     assert_eq!(
-        one(&rows, "companion", Some("fespalier_auth")),
-        "error: fespalier_auth: git, path packages/fespalier_http; the package is in packages/fespalier_auth of the repository: give it `path: packages/fespalier_auth`"
+        of(&rows, "companion", Some("fespalier_auth")),
+        [
+            "ok: fespalier_auth: git, ref v0.1.0, as fespalier",
+            "warning: fespalier_auth: git https://github.com/fespalier/fespalier, path packages/fespalier_http; in that repository, fespalier_auth is packages/fespalier_auth"
+        ]
     );
     // The overrides are told by the same rule.
     let overridden = format!(
@@ -289,13 +296,126 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
         Err("no".into()),
     ));
     assert_eq!(
-        one(&rows, "fespalier", None),
-        "error: fespalier: git, no `path:`; the package is in packages/fespalier of the repository: give it `path: packages/fespalier`"
+        of(&rows, "fespalier", None),
+        [
+            format!(
+                "warning: fespalier: git with no `ref:`, so the default branch: pin it to the release tag of this fsp, ref: v{}",
+                this_fsp()
+            ),
+            "warning: fespalier: git https://github.com/fespalier/fespalier with no `path:`, and pub reads the root of that repository, which is no package; in it, fespalier is packages/fespalier".to_string()
+        ]
     );
     let rows = doctor::rows(&facts("name: shop\n", &[], Err("no".into())));
     assert_eq!(
         one(&rows, "fespalier", None),
         "error: fespalier is not under `dependencies:`: the generated files import package:fespalier"
+    );
+}
+
+/// The folder of a package is said only of fespalier's own repository, whose layout is known, and
+/// only as a warning, which does not fail `fsp doctor`. A repository split per package, a vendored
+/// copy and a fork lay their packages out as their owners made them, and pub resolves them: the
+/// doctor says nothing of their `path:` (since 0.23.1). `./packages/x` and a trailing `/` are
+/// `packages/x`, as pub reads them.
+#[test]
+fn the_folder_of_a_package_is_said_of_the_official_repository_only_and_as_a_warning() {
+    let v = this_fsp();
+    let tag = format!("v{v}");
+    let paths = |pubspec: &str| {
+        let rows = doctor::rows(&facts(pubspec, &[], Err("no".into())));
+        let said: Vec<String> = of(&rows, "fespalier", None)
+            .into_iter()
+            .chain(of(&rows, "companion", None))
+            .filter(|m| m.contains("path"))
+            .collect();
+        (statuses(&rows, Status::Error), said)
+    };
+    // A mirror whose root is the package: no `path:`, and nothing to give it.
+    let (errors, said) = paths(&format!(
+        "name: shop\ndependencies:\n  fespalier:\n    git:\n      url: https://git.acme.dev/mirrors/fespalier-core.git\n      ref: {tag}\n  fespalier_push:\n    git:\n      url: https://git.acme.dev/mirrors/fespalier-core.git\n      ref: {tag}\n"
+    ));
+    assert!(errors.is_empty(), "{errors:?}");
+    assert!(said.is_empty(), "{said:?}");
+    // A vendored copy in a monorepo and a fork with the packages elsewhere.
+    let vendored = |url: &str, folder: &str| {
+        format!(
+            "name: shop\ndependencies:\n  fespalier:\n    git:\n      url: {url}\n      path: {folder}/fespalier\n      ref: {tag}\n  fespalier_push:\n    git:\n      url: {url}\n      path: {folder}/fespalier_push\n      ref: {tag}\n"
+        )
+    };
+    for pubspec in [
+        vendored(
+            "https://git.acme.dev/mono.git",
+            "third_party/fespalier/packages",
+        ),
+        vendored("https://github.com/someone/fork", "packages"),
+        vendored("https://github.com/someone/fork", "flutter"),
+    ] {
+        let (errors, said) = paths(&pubspec);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(said.is_empty(), "{said:?}");
+    }
+    // The official repository: `./packages/x`, `packages//x/` and `packages/./x` are `packages/x`.
+    for folder in [
+        "./packages/fespalier",
+        "packages//fespalier/",
+        "packages/./fespalier",
+        "packages/fespalier/",
+    ] {
+        let pubspec = format!(
+            "name: shop\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: {folder}\n      ref: {tag}\n  fespalier_push:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: ./{}\n      ref: {tag}\n",
+            folder.replace("fespalier", "fespalier_push")
+        );
+        let (errors, said) = paths(&pubspec);
+        assert!(errors.is_empty(), "{folder}: {errors:?}");
+        assert!(said.is_empty(), "{folder}: {said:?}");
+    }
+    // Another folder of the official repository is wrong, and a warning: the exit code stays 0.
+    let wrong = format!(
+        "name: shop\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier.git/\n      path: examples/shop\n      ref: {tag}\n"
+    );
+    let rows = doctor::rows(&facts(&wrong, &[], Err("no".into())));
+    assert_eq!(
+        of(&rows, "fespalier", None),
+        [
+            format!("ok: fespalier: git, ref {tag}, the version of this fsp"),
+            "warning: fespalier: git https://github.com/fespalier/fespalier.git/, path examples/shop; in that repository, fespalier is packages/fespalier".to_string()
+        ]
+    );
+    assert!(statuses(&rows, Status::Error).is_empty());
+}
+
+/// Another package of a repository that holds fespalier is its owner's, whatever its ref, and is no
+/// companion: a fork with a package of its own, or a monorepo that vendors fespalier (since 0.23.1).
+#[test]
+fn another_package_of_a_repository_that_holds_fespalier_is_no_companion() {
+    let v = this_fsp();
+    let pubspec = format!(
+        "name: shop\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/acme/flutter\n      path: packages/fespalier\n      ref: fespalier-v{v}\n  fespalier_push:\n    git:\n      url: https://github.com/acme/flutter\n      path: packages/fespalier_push\n      ref: fespalier-v{v}\n  acme_ui:\n    git:\n      url: https://github.com/acme/flutter\n      path: packages/acme_ui\n      ref: acme_ui-v2.1.0\ndependency_overrides:\n  acme_ui:\n    path: ../ui\n"
+    );
+    let lock = format!(
+        "packages:\n  fespalier:\n    version: \"{v}\"\n  fespalier_push:\n    version: \"{v}\"\n  acme_ui:\n    version: \"2.1.0\"\n"
+    );
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec.lock", &lock)],
+        Err("no".into()),
+    ));
+    assert!(of(&rows, "companion", Some("acme_ui")).is_empty());
+    assert!(of(&rows, "override", None).is_empty());
+    assert!(of(&rows, "lock", Some("acme_ui")).is_empty());
+    assert_eq!(
+        of(&rows, "companion", None).len(),
+        1,
+        "{:?}",
+        of(&rows, "companion", None)
+    );
+    assert!(statuses(&rows, Status::Error).is_empty());
+    assert!(
+        statuses(&rows, Status::Warning)
+            .iter()
+            .all(|w| !w.contains("acme_ui")),
+        "{:?}",
+        statuses(&rows, Status::Warning)
     );
 }
 

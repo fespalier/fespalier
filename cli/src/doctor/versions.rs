@@ -4,7 +4,8 @@
 use serde_yaml_ng::Value;
 
 use super::{Facts, Row, Section, Status, leading_version};
-use crate::pins::{is_ours, same_url};
+use crate::create::plan::REPO_URL;
+use crate::pins::{in_packages, is_ours, same_url};
 use crate::upgrade::Version;
 
 /// fespalier's own floor, the `environment:` of `packages/fespalier/pubspec.yaml`
@@ -101,17 +102,23 @@ fn section(
         .unwrap_or_default()
 }
 
-/// The message when a git dependency on this repository does not name its folder: pub reads the
-/// repository's root without `path:`, which is the workspace, not the package.
-fn path_message(name: &str, path: Option<&str>) -> Option<String> {
-    let want = format!("packages/{name}");
-    if path.is_some_and(|p| p.trim_end_matches('/') == want) {
+/// A warning when a git dependency on fespalier's own repository ([`REPO_URL`], whose layout is
+/// known: every package is in `packages/<name>`, and the root is the workspace, not a package)
+/// does not name that folder, so pub reads something else (since 0.23.1). Said of nothing else: a
+/// mirror split per package, a fork and a vendored copy are laid out as their owners made them,
+/// and pub resolves them.
+fn path_message(name: &str, url: &str, path: Option<&str>) -> Option<String> {
+    if !same_url(url, REPO_URL) || path.is_some_and(|p| in_packages(p, name)) {
         return None;
     }
-    Some(format!(
-        "{name}: git, {}; the package is in {want} of the repository: give it `path: {want}`",
-        path.map_or_else(|| "no `path:`".to_string(), |p| format!("path {p}"))
-    ))
+    Some(match path {
+        None => format!(
+            "{name}: git {url} with no `path:`, and pub reads the root of that repository, which is no package; in it, {name} is packages/{name}"
+        ),
+        Some(p) => {
+            format!("{name}: git {url}, path {p}; in that repository, {name} is packages/{name}")
+        }
+    })
 }
 
 /// The version `pubspec.lock` resolves `package` to.
@@ -142,7 +149,7 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
         .collect();
     let fsp = facts.fsp;
     let without_folder = match fespalier {
-        Some(Source::Git { path, .. }) => path_message("fespalier", path.as_deref()),
+        Some(Source::Git { url, path, .. }) => path_message("fespalier", url, path.as_deref()),
         _ => None,
     };
     out.push(match fespalier {
@@ -150,11 +157,6 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             "fespalier",
             Status::Error,
             "fespalier is not under `dependencies:`: the generated files import package:fespalier",
-        ),
-        Some(_) if without_folder.is_some() => row(
-            "fespalier",
-            Status::Error,
-            without_folder.unwrap_or_default(),
         ),
         Some(Source::Git {
             git_ref: Some(r), ..
@@ -199,6 +201,9 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             ),
         ),
     });
+    if let Some(message) = without_folder {
+        out.push(row("fespalier", Status::Warning, message));
+    }
     // `dev_dependencies:` alone builds an app, but the generated files under lib/ import fespalier
     // (since 0.23.1).
     if fespalier.is_some()
@@ -240,9 +245,7 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
             (
                 Some(Source::Git { url, git_ref, .. }),
                 Source::Git {
-                    url: u,
-                    git_ref: r,
-                    path,
+                    url: u, git_ref: r, ..
                 },
             ) => {
                 if !same_url(url, u) {
@@ -253,8 +256,6 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
                             "{name}: url {u}, and fespalier's is {url}: give every companion fespalier's url and ref"
                         ),
                     )
-                } else if let Some(message) = path_message(name, path.as_deref()) {
-                    row("companion", Status::Error, message)
                 } else if r != git_ref {
                     row(
                         "companion",
@@ -290,6 +291,11 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
             ),
         };
         out.push(r.about(name.clone()));
+        if let Source::Git { url, path, .. } = source
+            && let Some(message) = path_message(name, url, path.as_deref())
+        {
+            out.push(row("companion", Status::Warning, message).about(name.clone()));
+        }
     }
     out
 }

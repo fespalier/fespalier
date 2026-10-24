@@ -104,8 +104,9 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
     };
     let mut problems = vec![];
     let mut kept = vec![];
-    // A mirror or a fork is moved to the tag names of this repository, which it must have.
-    if !pins::same_url(&url, REPO_URL) {
+    // A mirror or a fork is moved to the tag names of this repository, which it must have. The
+    // official repository over ssh or http is not one (since 0.23.1).
+    if !pins::is_official(&url) {
         kept.push(format!(
             "fespalier comes from {url}, not {REPO_URL}: {} and the links of the notes are {REPO_URL}'s, so {url} needs that tag too",
             target.tag()
@@ -495,6 +496,13 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         bail!(older_than_the_pins(own, newest));
     }
     let up_to_date = moves.is_empty();
+    // The file the refs move in: the pubspec, unless only `pubspec_overrides.yaml` has any (since
+    // 0.23.1).
+    let moved_in = if !up_to_date && moves.iter().all(|m| m.file == OVERRIDES) {
+        OVERRIDES
+    } else {
+        PUBSPEC
+    };
     // Where the move starts: the oldest pin, or, when everything goes down, the newest.
     let from = if target < oldest { newest } else { oldest };
     if cmd.json {
@@ -526,7 +534,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         ));
     } else {
         say(&format!(
-            "pubspec.yaml: {} -> {}{}",
+            "{moved_in}: {} -> {}{}",
             from.tag(),
             target.tag(),
             if target < from { " (a downgrade)" } else { "" }
@@ -598,7 +606,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             .map_err(|e| {
                 Exit::after(&e, |why| {
                     format!(
-                        "pubspec.yaml now pins {}, and `flutter pub get` {why}\n{}Fix that and run `flutter pub get`{} (or put the old refs back).",
+                        "{moved_in} now pins {}, and `flutter pub get` {why}\n{}Fix that and run `flutter pub get`{} (or put the old refs back).",
                         target.tag(),
                         if notes.is_empty() {
                             ""
@@ -619,7 +627,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         };
         regenerate().map_err(|e| {
             anyhow!(
-                "pubspec.yaml now pins {}, and `fsp gen` failed: {e:#}\n{}Fix that and run `fsp gen`.",
+                "{moved_in} now pins {}, and `fsp gen` failed: {e:#}\n{}Fix that and run `fsp gen`.",
                 target.tag(),
                 if notes.is_empty() {
                     ""

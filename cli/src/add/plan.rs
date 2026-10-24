@@ -64,9 +64,7 @@ pub struct Request<'a> {
     pub workspace_overrides: &'a [String],
 }
 
-/// The file whose `dependency_overrides:`, when it has the key, pub reads in place of the
-/// pubspec's.
-pub const OVERRIDES: &str = "pubspec_overrides.yaml";
+pub use crate::upgrade_app::OVERRIDES;
 
 /// `pubspec_overrides.yaml` as it is and as the plan writes it.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -106,6 +106,11 @@ fn a_package_newer_than_this_fsp_is_told_by_where_it_comes_from() {
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_next
       ref: v0.21.0
+  acme_ui:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/acme_ui
+      ref: acme_ui-v2.1.0
 ";
     let value = yaml(text);
     let pins = pins::read(&value).unwrap();
@@ -123,12 +128,109 @@ fn a_package_newer_than_this_fsp_is_told_by_where_it_comes_from() {
         "fespalier_fork",
         "fespalier_root",
         "fespalier_moved",
+        "acme_ui",
     ] {
         assert!(!is_ours(name, entry(name), own), "{name}");
     }
     // Without fespalier's own entry, only the packages fsp knows count.
     assert!(!is_ours("fespalier_next", entry("fespalier_next"), None));
     assert!(is_ours("fespalier_http", &yaml("^1.0.0"), None));
+}
+
+/// A repository that holds fespalier and packages of its own (a fork, a monorepo laid out like
+/// Melos, with a tag per package): the others are not fespalier's, in the same place and at any
+/// ref, so `fsp add` and `fsp upgrade --app` leave them alone (since 0.23.1).
+#[test]
+fn another_package_of_the_repository_that_holds_fespalier_is_not_fespalier_s() {
+    let text = "dependencies:
+  fespalier:
+    git: {url: https://github.com/acme/flutter, path: packages/fespalier, ref: fespalier-v0.22.1}
+  fespalier_push:
+    git: {url: https://github.com/acme/flutter, path: packages/fespalier_push, ref: fespalier-v0.22.1}
+  acme_ui:
+    git: {url: https://github.com/acme/flutter, path: packages/acme_ui, ref: acme_ui-v2.1.0}
+dependency_overrides:
+  acme_ui:
+    git: {url: https://github.com/acme/flutter, path: packages/acme_ui, ref: main}
+";
+    let pins = pins::read(&yaml(text)).unwrap();
+    let names: Vec<(&str, &str)> = pins
+        .all
+        .iter()
+        .map(|p| (p.name.as_str(), p.section))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("fespalier", "dependencies"),
+            ("fespalier_push", "dependencies"),
+        ]
+    );
+    assert!(pins.out_of_line().is_empty());
+}
+
+/// pub reads a git dependency's `path:` normalised: `./packages/x`, `packages//x` and a final `/`
+/// are `packages/x` (since 0.23.1).
+#[test]
+fn a_git_path_is_read_as_pub_reads_it() {
+    for (path, name, ok) in [
+        ("packages/fespalier_push", "fespalier_push", true),
+        ("./packages/fespalier_push", "fespalier_push", true),
+        ("packages//fespalier_push/", "fespalier_push", true),
+        ("packages/./fespalier_push", "fespalier_push", true),
+        (
+            "packages/fespalier_http/../fespalier_push",
+            "fespalier_push",
+            true,
+        ),
+        (" packages/fespalier_push ", "fespalier_push", true),
+        ("packages/fespalier_push", "fespalier_http", false),
+        ("../packages/fespalier_push", "fespalier_push", false),
+        ("/packages/fespalier_push", "fespalier_push", false),
+        (
+            "third_party/packages/fespalier_push",
+            "fespalier_push",
+            false,
+        ),
+        ("fespalier_push", "fespalier_push", false),
+        ("", "fespalier_push", false),
+    ] {
+        assert_eq!(pins::in_packages(path, name), ok, "{path:?} for {name}");
+    }
+    assert_eq!(pins::folder("./a//b/./c/../d/"), "a/b/d");
+    assert_eq!(pins::folder("../a"), "../a");
+    assert_eq!(pins::folder("/a/b/"), "/a/b");
+    // The same spelling reaches the origin and the companion test.
+    let value = yaml(
+        "dependencies:\n  fespalier:\n    git: {url: https://github.com/fespalier/fespalier, path: ./packages/fespalier/, ref: v0.23.0}\n  fespalier_next:\n    git: {url: https://github.com/fespalier/fespalier, path: ./packages/fespalier_next, ref: v0.23.0}\n",
+    );
+    let pins = pins::read(&value).unwrap();
+    assert_eq!(pins.all.len(), 2);
+    assert!(pins.out_of_line().is_empty());
+}
+
+#[test]
+fn the_official_repository_is_told_however_it_is_spelled() {
+    for url in [
+        "https://github.com/fespalier/fespalier",
+        "https://github.com/fespalier/fespalier.git/",
+        "HTTPS://GitHub.com/fespalier/fespalier",
+        "http://github.com/fespalier/fespalier",
+        "https://www.github.com/fespalier/fespalier",
+        "git@github.com:fespalier/fespalier.git",
+        "ssh://git@github.com/fespalier/fespalier.git",
+    ] {
+        assert!(pins::is_official(url), "{url}");
+    }
+    for url in [
+        "https://github.com/someone/fespalier",
+        "https://github.com/fespalier/fespalier-core",
+        "https://git.example.com/fespalier/fespalier",
+        "git@git.example.com:fespalier/fespalier.git",
+        "",
+    ] {
+        assert!(!pins::is_official(url), "{url}");
+    }
 }
 
 #[test]

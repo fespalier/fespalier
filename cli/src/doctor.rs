@@ -30,6 +30,9 @@ mod wiring;
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use anyhow::Result;
 use clap::Args;
@@ -445,21 +448,47 @@ fn flutter_version(project: &Path) -> Result<String, String> {
         "--version".into(),
         "--machine".into(),
     ]);
-    let mut prepared = crate::tasks::prepare(&cmd, &[], &env)?;
-    let program = prepared.program.clone();
-    let out = prepared
-        .process
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| crate::tasks::why(&e, &program))?;
-    if !out.status.success() {
+    let prepared = crate::tasks::prepare(&cmd, &[], &env)?;
+    version_output(prepared.process, &prepared.program, FLUTTER_TIMEOUT)
+}
+
+/// How long `flutter --version --machine` may take (since 0.23.1): flutter waits for as long as
+/// another flutter command holds its startup lock, and `fsp doctor` must not wait with it.
+const FLUTTER_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// What `command` (`flutter --version --machine`) prints on stdout, or why there is nothing. It
+/// runs in a process group of its own, which is stopped when it has not ended after `timeout`.
+pub(crate) fn version_output(
+    command: Command,
+    program: &str,
+    timeout: Duration,
+) -> Result<String, String> {
+    let stdout = Arc::new(Mutex::new(String::new()));
+    let lines = Arc::clone(&stdout);
+    let sink: Arc<dyn Fn(crate::procs::Out) + Send + Sync> = Arc::new(move |out| {
+        if let crate::procs::Out::Line { text, err: false } = out
+            && let Ok(mut lines) = lines.lock()
+        {
+            lines.push_str(&text);
+            lines.push('\n');
+        }
+    });
+    let child =
+        crate::procs::spawn(command, false, sink).map_err(|e| crate::tasks::why(&e, program))?;
+    let Some(status) = child.wait(timeout) else {
+        let _ = child.terminate(Duration::from_secs(2));
+        return Err(format!(
+            "`flutter --version --machine` did not answer in {} s and was stopped (another flutter command may hold its startup lock)",
+            timeout.as_secs()
+        ));
+    };
+    if !status.success() {
         return Err(format!(
             "`flutter --version --machine` {}",
-            crate::procs::Status::of(out.status).describe()
+            status.describe()
         ));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    Ok(stdout.lock().map(|s| s.clone()).unwrap_or_default())
 }
 
 /// One row as a JSON object: `{"section","check","subject","status","message"}`, every key there

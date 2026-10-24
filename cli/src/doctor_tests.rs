@@ -733,3 +733,60 @@ fn json_lines_have_every_key_and_the_text_counts() {
     rows.push(Row::new(Section::Checks, "x", Status::Warning, "w"));
     assert!(doctor::text(&f, &rows).ends_with("\n1 error, 2 warnings.\n"));
 }
+
+/// A `flutter` that does not answer (it waits while another flutter command holds its startup
+/// lock) is stopped after the timeout with everything it started, and the `flutter` row is skipped
+/// and says why (since 0.23.1). The stand-in sleeps under a shell, as `flutter` runs `dart` under
+/// one.
+#[cfg(unix)]
+#[test]
+fn a_flutter_that_does_not_answer_is_stopped_and_its_row_skipped() {
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("dart.pid");
+    let mut stand_in = Command::new("sh");
+    stand_in.arg("-c").arg(format!(
+        "sleep 300 & echo $! > '{}'; wait",
+        pidfile.display()
+    ));
+    let started = Instant::now();
+    let why = doctor::version_output(stand_in, "flutter", Duration::from_secs(1)).unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(30), "{why}");
+    assert_eq!(
+        why,
+        "`flutter --version --machine` did not answer in 1 s and was stopped (another flutter command may hold its startup lock)"
+    );
+    // What it started is stopped too (`kill -0` fails for a process that does not exist). A shell
+    // stopped before it started the sleep left nothing behind.
+    if let Ok(pid) = fs::read_to_string(&pidfile) {
+        let end = Instant::now() + Duration::from_secs(20);
+        while Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+        {
+            assert!(
+                Instant::now() < end,
+                "the stand-in's sleep is still running"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+    let rows = doctor::rows(&facts("name: demo\n", &[], Err(why)));
+    let row = rows.iter().find(|r| r.check == "flutter").unwrap();
+    assert_eq!(row.status, Status::Skipped);
+    assert_eq!(
+        row.message,
+        "`flutter --version --machine` did not answer in 1 s and was stopped (another flutter command may hold its startup lock): Flutter and Dart are not checked"
+    );
+    // One that answers in time is read as before.
+    let mut answers = Command::new("sh");
+    answers.arg("-c").arg(
+        "printf '{\"frameworkVersion\":\"3.38.4\",\"dartSdkVersion\":\"3.10.4\"}\\n'; echo noise >&2",
+    );
+    let out = doctor::version_output(answers, "flutter", Duration::from_secs(30)).unwrap();
+    assert_eq!(Toolchain::parse(&out).unwrap().flutter, Version(3, 38, 4));
+}

@@ -28,6 +28,7 @@ mod checks;
 pub(crate) mod versions;
 mod wiring;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -291,7 +292,12 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     });
     let app = pubspec.as_ref().ok().map(|p| app_facts(project, &p.config));
     let mut sources = vec![];
-    dart_sources(project, &project.join("lib"), &mut sources);
+    dart_sources(
+        project,
+        &project.join("lib"),
+        &mut HashSet::new(),
+        &mut sources,
+    );
     if let Ok(p) = &pubspec {
         // An `output:` that is not a `.g.dart` is still generated code, which says `AppAdapters.`.
         let written = crate::outputs(&p.config, false);
@@ -338,15 +344,26 @@ fn refused(message: String) -> String {
 }
 
 /// The Dart files under `dir` but generated ones (`*.g.dart`), relative to `project`, without
-/// their comments.
-fn dart_sources(project: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
+/// their comments. A folder is read once, by the first path that reaches it in name order: `seen`
+/// holds the real paths of those read, so a symlink back up the tree ends there (since 0.23.1).
+fn dart_sources(
+    project: &Path,
+    dir: &Path,
+    seen: &mut HashSet<PathBuf>,
+    out: &mut Vec<(String, String)>,
+) {
+    if !fs::canonicalize(dir).is_ok_and(|real| seen.insert(real)) {
+        return;
+    }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
-    for entry in entries.flatten() {
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(fs::DirEntry::file_name);
+    for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            dart_sources(project, &path, out);
+            dart_sources(project, &path, seen, out);
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();

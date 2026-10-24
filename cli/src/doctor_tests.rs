@@ -824,3 +824,34 @@ fn a_flutter_that_does_not_answer_is_stopped_and_its_row_skipped() {
     let out = doctor::version_output(answers, "flutter", Duration::from_secs(30)).unwrap();
     assert_eq!(Toolchain::parse(&out).unwrap().flutter, Version(3, 38, 4));
 }
+
+/// A symlink back up `lib/` is not followed round and round: each folder is read once, and the
+/// doctor's walk ends (since 0.23.1). A symlink to a folder the walk has not read is followed.
+#[cfg(unix)]
+#[test]
+fn a_symlink_loop_under_lib_is_read_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    fs::write(shared.path().join("ids.dart"), "typedef Id = String;").unwrap();
+    write(
+        dir.path(),
+        "name: shop\n",
+        &[
+            ("lib/main.dart", "void main() {}"),
+            ("lib/src/setup.dart", "void setup() {}"),
+        ],
+    );
+    std::os::unix::fs::symlink("..", dir.path().join("lib/src/up")).unwrap();
+    std::os::unix::fs::symlink(shared.path(), dir.path().join("lib/shared")).unwrap();
+    let facts = doctor::gather(dir.path(), Err("no".into()));
+    let files: Vec<&str> = facts.sources.iter().map(|(f, _)| f.as_str()).collect();
+    assert_eq!(
+        files,
+        [
+            "lib/app/page.dart",
+            "lib/main.dart",
+            "lib/shared/ids.dart",
+            "lib/src/setup.dart"
+        ]
+    );
+}

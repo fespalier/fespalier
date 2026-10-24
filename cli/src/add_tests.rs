@@ -12,7 +12,7 @@ use serde_yaml_ng::Value;
 
 use crate::add::plan::{self, Request, Write, diff};
 use crate::create::plan::{self as create_plan, DirState, REF};
-use crate::create::recipes::RECIPES;
+use crate::create::recipes::{RECIPES, Recipe};
 
 /// An app on disk, in memory: path to text.
 type Tree = BTreeMap<String, String>;
@@ -52,6 +52,8 @@ fn plan_for(tree: &Tree, features: &[&str]) -> anyhow::Result<plan::Plan> {
             features: &features,
             pubspec: &tree["pubspec.yaml"],
             files: &files,
+            overrides: tree.get(plan::OVERRIDES).map(String::as_str),
+            workspace_overrides: &[],
         },
         RECIPES,
     )
@@ -69,6 +71,9 @@ fn err(tree: &Tree, features: &[&str]) -> String {
 fn write(tree: &mut Tree, plan: &plan::Plan) {
     if let Some(pubspec) = &plan.pubspec {
         tree.insert("pubspec.yaml".to_string(), pubspec.clone());
+    }
+    if let Some(overrides) = &plan.overrides {
+        tree.insert(plan::OVERRIDES.to_string(), overrides.after.clone());
     }
     for file in &plan.files {
         let there = tree.contains_key(&file.path);
@@ -607,6 +612,188 @@ fn a_companion_under_dev_dependencies_is_a_note() {
         "{:?}",
         plan.pubspec
     );
+}
+
+/// A fork, or a monorepo that vendors fespalier, holds packages of its own under `packages/` of the
+/// same url, at refs of their own (a tag per package): they are no companion, and `fsp add` neither
+/// refuses on them nor copies their pin (since 0.23.1).
+#[test]
+fn another_package_of_the_forks_repository_is_not_a_companion() {
+    let mut app = created(&[], None);
+    let fork = "https://github.com/acme/flutter";
+    let pubspec = app["pubspec.yaml"]
+        .replace("https://github.com/fespalier/fespalier", fork)
+        .replace(
+            "dev_dependencies:\n",
+            &format!(
+                "  acme_ui:\n    git:\n      url: {fork}\n      path: packages/acme_ui\n      ref: acme_ui-v2.1.0\ndev_dependencies:\n"
+            ),
+        );
+    assert!(pubspec.contains("acme_ui-v2.1.0"), "{pubspec}");
+    app.insert("pubspec.yaml".to_string(), pubspec);
+    let plan = ok(&app, &["storage"]);
+    let after = yaml(plan.pubspec.as_deref().unwrap());
+    let storage = &after["dependencies"]["fespalier_storage"]["git"];
+    assert_eq!(storage["url"].as_str(), Some(fork));
+    assert_eq!(storage["ref"].as_str(), Some(REF));
+    // The package of the fork is where it was.
+    assert_eq!(
+        after["dependencies"]["acme_ui"]["git"]["ref"].as_str(),
+        Some("acme_ui-v2.1.0")
+    );
+}
+
+/// A checkout that keeps its overrides in `pubspec_overrides.yaml`, whose `dependency_overrides:`
+/// pub reads in place of the pubspec's, gets the new ones there, not a section in `pubspec.yaml`
+/// that pub would not read (since 0.23.1).
+#[test]
+fn a_checkout_gets_its_overrides_where_it_keeps_them() {
+    let mut tree = created(&[], Some("/work/fespalier"));
+    let overrides = "# The checkout.\ndependency_overrides:\n  fespalier:\n    path: /work/fespalier/packages/fespalier\n";
+    tree.insert(plan::OVERRIDES.to_string(), overrides.to_string());
+    let plan = ok(&tree, &["http"]);
+    let pubspec = plan.pubspec.as_deref().unwrap();
+    assert!(!pubspec.contains("dependency_overrides"), "{pubspec}");
+    assert!(
+        pubspec.contains("  fespalier_http:\n    path: /work/fespalier/packages/fespalier_http\n"),
+        "{pubspec}"
+    );
+    let edited = plan.overrides.as_ref().unwrap();
+    assert_eq!(edited.before, overrides);
+    assert_eq!(
+        edited.after,
+        format!(
+            "{overrides}  fespalier_http:\n    path: /work/fespalier/packages/fespalier_http\n  fespalier_transport:\n    path: /work/fespalier/packages/fespalier_transport\n"
+        )
+    );
+    assert_eq!(
+        edited.changes,
+        [
+            "dependency_overrides: fespalier_http (path /work/fespalier/packages/fespalier_http)",
+            "dependency_overrides: fespalier_transport (path /work/fespalier/packages/fespalier_transport)",
+        ]
+    );
+    let shown = plan.describe(&tree["pubspec.yaml"], &commands());
+    assert!(
+        shown.contains(
+            "\nedit   pubspec_overrides.yaml\n         dependency_overrides: fespalier_http"
+        ),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("\n=== pubspec_overrides.yaml (edit)\n"),
+        "{shown}"
+    );
+    // A file without the key leaves the pubspec's section in force, so that is where they go.
+    tree.insert(plan::OVERRIDES.to_string(), "# Nothing yet.\n".to_string());
+    let plan = ok(&tree, &["http"]);
+    assert!(plan.overrides.is_none());
+    assert!(
+        plan.pubspec.unwrap().contains("\ndependency_overrides:\n"),
+        "the pubspec's section"
+    );
+}
+
+/// A member of a pub workspace (`resolution: workspace`) reads the overrides of the workspace's root
+/// with its own, and pub refuses a package overridden in both: those the root has are not written
+/// again (since 0.23.1).
+#[test]
+fn a_workspace_member_counts_the_overrides_of_its_root() {
+    let tree = created(&[], Some("/work/fespalier"));
+    let pubspec =
+        tree["pubspec.yaml"].replacen("\nenvironment:", "\nresolution: workspace\nenvironment:", 1);
+    assert_ne!(pubspec, tree["pubspec.yaml"]);
+    let features = ["http".to_string()];
+    let files = BTreeMap::new();
+    let request = |root: &[String]| {
+        plan::build(
+            &Request {
+                features: &features,
+                pubspec: &pubspec,
+                files: &files,
+                overrides: None,
+                workspace_overrides: root,
+            },
+            RECIPES,
+        )
+        .unwrap_or_else(|e| panic!("{e:#}"))
+    };
+    let all = [
+        "fespalier".to_string(),
+        "fespalier_http".to_string(),
+        "fespalier_transport".to_string(),
+    ];
+    let plan = request(&all);
+    assert!(plan.overrides.is_none());
+    let written = plan.pubspec.unwrap();
+    assert!(!written.contains("dependency_overrides"), "{written}");
+    // The ones the root does not have go where the app keeps its own.
+    let plan = request(&all[..1]);
+    assert_eq!(
+        plan.changes
+            .iter()
+            .filter(|c| c.starts_with("dependency_overrides:"))
+            .collect::<Vec<_>>(),
+        [
+            "dependency_overrides: fespalier_http (path /work/fespalier/packages/fespalier_http)",
+            "dependency_overrides: fespalier_transport (path /work/fespalier/packages/fespalier_transport)",
+        ]
+    );
+}
+
+/// The overrides of a workspace's root are read from its `pubspec_overrides.yaml` when that has the
+/// key, else from its pubspec, and only for a member.
+#[test]
+fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("apps/shop")).unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: root\nworkspace:\n  - apps/shop\ndependency_overrides:\n  fespalier:\n    path: fespalier/packages/fespalier\n",
+    )
+    .unwrap();
+    let member = "name: shop\nresolution: workspace\n";
+    let app = root.join("apps/shop");
+    assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
+    assert!(crate::add::workspace_overrides(&app, "name: shop\n").is_empty());
+    fs::write(
+        root.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_http:\n    path: x\n",
+    )
+    .unwrap();
+    assert_eq!(
+        crate::add::workspace_overrides(&app, member),
+        ["fespalier_http"]
+    );
+}
+
+/// A feature with no file of its own is told by its packages and keys, and one with nothing to
+/// tell it by never is.
+#[test]
+fn a_feature_with_no_file_of_its_own_is_told_by_its_packages() {
+    let http = RECIPES.iter().find(|r| r.id == "http").unwrap();
+    let bare = Recipe {
+        files: &[],
+        ..*http
+    };
+    let empty = Recipe {
+        companions: &[],
+        third_party: &[],
+        config: &[],
+        ..bare
+    };
+    let none = BTreeMap::new();
+    let without = created(&[], None);
+    let with = created(&["http"], None);
+    let ids = |tree: &Tree| -> Vec<&str> {
+        plan::present(&[bare, empty], &yaml(&tree["pubspec.yaml"]), &none)
+            .iter()
+            .map(|r| r.id)
+            .collect()
+    };
+    assert_eq!(ids(&with), ["http"]);
+    assert!(ids(&without).is_empty());
 }
 
 #[test]

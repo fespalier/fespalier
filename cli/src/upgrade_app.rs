@@ -23,11 +23,19 @@ use crate::upgrade::{UpgradeCmd, Version};
 /// `docs/migration.md` as it was when this `fsp` was built: the notes it prints.
 pub const MIGRATION: &str = include_str!("../../docs/migration.md");
 
+/// The file pub reads the dependencies from.
+pub const PUBSPEC: &str = "pubspec.yaml";
+/// The file whose `dependency_overrides:`, when it has the key, pub reads in place of the
+/// pubspec's.
+pub const OVERRIDES: &str = "pubspec_overrides.yaml";
+
 /// One `ref:` that moves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Move {
     pub name: String,
     pub section: &'static str,
+    /// [`PUBSPEC`], or [`OVERRIDES`] for an override written there (since 0.23.1).
+    pub file: &'static str,
     pub from: String,
     pub to: String,
     /// The move goes to an older release than the ref is at now.
@@ -47,10 +55,13 @@ pub enum AppPlan {
         /// The newest release the app pins: what a move to an older `fsp` would leave behind.
         newest: Version,
         moves: Vec<Move>,
-        /// Pins that are left as they are, and why (an override to a folder).
+        /// Notes: the pins left as they are, and why (an override to a folder or to a commit), and,
+        /// for a fespalier that comes from another repository, whose tags and notes these are.
         kept: Vec<String>,
         /// The pubspec with the moves made; the same text when there are none.
         pubspec: String,
+        /// `pubspec_overrides.yaml` with its moves made, when it has some (since 0.23.1).
+        overrides: Option<String>,
     },
 }
 
@@ -62,8 +73,9 @@ fn release(reference: &str) -> Option<Version> {
         .flatten()
 }
 
-/// Decides the moves. `overrides` is `pubspec_overrides.yaml`, when the app has one: pub reads it
-/// after the pubspec, and this reads it only to say what it overrides.
+/// Decides the moves. `overrides` is `pubspec_overrides.yaml`, when the app has one: pub reads its
+/// `dependency_overrides:` in place of the pubspec's, so a git override of this repository there
+/// moves too (since 0.23.1), and any other override is said.
 pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<AppPlan, String> {
     let value: Value =
         serde_yaml_ng::from_str(pubspec).map_err(|e| format!("pubspec.yaml: {e}"))?;
@@ -92,7 +104,15 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
     };
     let mut problems = vec![];
     let mut kept = vec![];
-    let mut pinned: Vec<(&pins::Pin, Version)> = vec![];
+    // A mirror or a fork is moved to the tag names of this repository, which it must have. The
+    // official repository over ssh or http is not one (since 0.23.1).
+    if !pins::is_official(&url) {
+        kept.push(format!(
+            "fespalier comes from {url}, not {REPO_URL}: {} and the links of the notes are {REPO_URL}'s, so {url} needs that tag too",
+            target.tag()
+        ));
+    }
+    let mut pinned: Vec<(pins::Pin, &'static str, Version)> = vec![];
     for pin in &pins.all {
         let overriding = pin.section == "dependency_overrides";
         match &pin.origin {
@@ -100,7 +120,13 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
                 url: other,
                 reference,
             } if pins::same_url(other, &url) => match release(reference) {
-                Some(version) => pinned.push((pin, version)),
+                Some(version) => pinned.push((pin.clone(), PUBSPEC, version)),
+                // An override at a commit is a hotfix the person chose: it wins whatever the refs say.
+                None if overriding => kept.push(format!(
+                    "dependency_overrides: {} is {}; left as it is",
+                    pin.name,
+                    pin.origin.describe(&pin.name)
+                )),
                 None => problems.push(format!(
                     "{} ({}) is at `{reference}`, not a release tag like {}",
                     pin.name,
@@ -128,44 +154,71 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
         ));
     }
     if let Some(text) = overrides {
-        let file: Value =
-            serde_yaml_ng::from_str(text).map_err(|e| format!("pubspec_overrides.yaml: {e}"))?;
+        let file: Value = serde_yaml_ng::from_str(text).map_err(|e| format!("{OVERRIDES}: {e}"))?;
         if let Some(Value::Mapping(map)) = file.get("dependency_overrides") {
-            for name in map.keys().filter_map(Value::as_str) {
-                if pins::is_package(name) {
-                    kept.push(format!(
-                        "pubspec_overrides.yaml overrides {name}; left as it is"
-                    ));
+            let own = value.get("dependencies").and_then(|d| d.get("fespalier"));
+            for (name, spec) in map {
+                let Some(name) = name.as_str() else { continue };
+                if !pins::is_ours(name, spec, own) {
+                    continue;
+                }
+                let origin = pins::origin_of(name, spec);
+                let at = match &origin {
+                    Origin::Git {
+                        url: other,
+                        reference,
+                    } if pins::same_url(other, &url) => release(reference),
+                    _ => None,
+                };
+                match at {
+                    Some(version) => {
+                        let pin = pins::Pin {
+                            name: name.to_string(),
+                            section: "dependency_overrides",
+                            origin,
+                        };
+                        pinned.push((pin, OVERRIDES, version));
+                    }
+                    None => kept.push(format!("{OVERRIDES} overrides {name}; left as it is")),
                 }
             }
         }
     }
-    let oldest = pinned.iter().map(|(_, v)| *v).min().unwrap_or(target);
-    let newest = pinned.iter().map(|(_, v)| *v).max().unwrap_or(target);
+    let oldest = pinned.iter().map(|(_, _, v)| *v).min().unwrap_or(target);
+    let newest = pinned.iter().map(|(_, _, v)| *v).max().unwrap_or(target);
     let moves: Vec<Move> = pinned
         .iter()
-        .filter(|(_, v)| *v != target)
-        .map(|(pin, version)| Move {
+        .filter(|(_, _, v)| *v != target)
+        .map(|&(ref pin, file, version)| Move {
             name: pin.name.clone(),
             section: pin.section,
+            file,
             from: match &pin.origin {
                 Origin::Git { reference, .. } => reference.clone(),
                 _ => String::new(),
             },
             to: target.tag(),
-            down: *version > target,
+            down: version > target,
         })
         .collect();
-    let edits: Vec<Edit> = moves
-        .iter()
-        .map(|m| Edit::set(&[m.section, &m.name, "git", "ref"], &m.to))
-        .collect();
-    let pubspec = pubspec_edit::apply(pubspec, &edits).map_err(|e| {
-        format!(
-            "could not move the refs in pubspec.yaml safely ({e}); nothing was written. By hand: {}",
-            e.edit.by_hand()
-        )
-    })?;
+    let moved = |file: &str, text: &str| -> Result<String, String> {
+        let edits: Vec<Edit> = moves
+            .iter()
+            .filter(|m| m.file == file)
+            .map(|m| Edit::set(&[m.section, &m.name, "git", "ref"], &m.to))
+            .collect();
+        pubspec_edit::apply(text, &edits).map_err(|e| {
+            format!(
+                "could not move the refs in {file} safely ({e}); nothing was written. By hand: {}",
+                e.edit.by_hand()
+            )
+        })
+    };
+    let pubspec = moved(PUBSPEC, pubspec)?;
+    let overrides = match overrides {
+        Some(text) if moves.iter().any(|m| m.file == OVERRIDES) => Some(moved(OVERRIDES, text)?),
+        _ => None,
+    };
     Ok(AppPlan::Refs {
         target,
         oldest,
@@ -173,6 +226,7 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
         moves,
         kept,
         pubspec,
+        overrides,
     })
 }
 
@@ -410,7 +464,8 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     };
     let path = project.join("pubspec.yaml");
     let text = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-    let overrides = fs::read_to_string(project.join("pubspec_overrides.yaml")).ok();
+    let overrides_path = project.join(OVERRIDES);
+    let overrides = fs::read_to_string(&overrides_path).ok();
     let plan = plan(&text, overrides.as_deref(), target).map_err(|e| anyhow!(e))?;
     // With --json, stdout is the one object; what people read goes to stderr.
     let say = |line: &str| {
@@ -420,15 +475,16 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             outln!("{line}");
         }
     };
-    let (oldest, newest, moves, kept, pubspec) = match plan {
+    let (oldest, newest, moves, kept, pubspec, new_overrides) = match plan {
         AppPlan::Refs {
             oldest,
             newest,
             moves,
             kept,
             pubspec,
+            overrides,
             ..
-        } => (oldest, newest, moves, kept, pubspec),
+        } => (oldest, newest, moves, kept, pubspec, overrides),
         AppPlan::Checkout { root } => {
             checkout(cmd, &root, target);
             return Ok(());
@@ -440,13 +496,20 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         bail!(older_than_the_pins(own, newest));
     }
     let up_to_date = moves.is_empty();
+    // The file the refs move in: the pubspec, unless only `pubspec_overrides.yaml` has any (since
+    // 0.23.1).
+    let moved_in = if !up_to_date && moves.iter().all(|m| m.file == OVERRIDES) {
+        OVERRIDES
+    } else {
+        PUBSPEC
+    };
     // Where the move starts: the oldest pin, or, when everything goes down, the newest.
     let from = if target < oldest { newest } else { oldest };
     if cmd.json {
         let packages: Vec<serde_json::Value> = moves
             .iter()
             .map(|m| {
-                json!({"name": m.name, "section": m.section, "from": m.from, "to": m.to, "downgrade": m.down})
+                json!({"name": m.name, "section": m.section, "file": m.file, "from": m.from, "to": m.to, "downgrade": m.down})
             })
             .collect();
         let sections: Vec<String> = notes(MIGRATION, from, target.min(own))
@@ -471,14 +534,16 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         ));
     } else {
         say(&format!(
-            "pubspec.yaml: {} -> {}{}",
+            "{moved_in}: {} -> {}{}",
             from.tag(),
             target.tag(),
             if target < from { " (a downgrade)" } else { "" }
         ));
         let width = moves.iter().map(|m| m.name.len()).max().unwrap_or(0);
         for m in &moves {
-            let section = if m.section == "dependencies" {
+            let section = if m.file != PUBSPEC {
+                format!(" ({})", m.file)
+            } else if m.section == "dependencies" {
                 String::new()
             } else {
                 format!(" ({})", m.section)
@@ -500,17 +565,33 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         return Ok(());
     }
     let notes = notes_text(MIGRATION, from, target, own);
+    let mut files = vec![];
+    if moves.iter().any(|m| m.file == PUBSPEC) {
+        files.push((path.clone(), pubspec));
+    }
+    if let Some(text) = new_overrides {
+        files.push((overrides_path, text));
+    }
+    let names: Vec<String> = files
+        .iter()
+        .filter_map(|(p, _)| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+        .collect();
     if cmd.dry_run || up_to_date {
         if cmd.dry_run && !up_to_date {
-            say("Would write pubspec.yaml, then run flutter pub get and fsp gen.");
+            say(&format!(
+                "Would write {}, then run flutter pub get and fsp gen.",
+                names.join(" and ")
+            ));
         }
         if !notes.is_empty() && !up_to_date {
             say(&format!("\n{}", notes.trim_end()));
         }
         return Ok(());
     }
-    fs::write(&path, &pubspec).with_context(|| format!("writing {}", path.display()))?;
-    say("  edit  pubspec.yaml");
+    for ((file, text), name) in files.iter().zip(&names) {
+        fs::write(file, text).with_context(|| format!("writing {}", file.display()))?;
+        say(&format!("  edit  {name}"));
+    }
     // The notes come before the commands that can fail: the refs are moved by now, so a second
     // run finds nothing to move and prints no notes, and `pub get` failing is the very case the
     // notes of a release (its Flutter floor, say) explain.
@@ -525,7 +606,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             .map_err(|e| {
                 Exit::after(&e, |why| {
                     format!(
-                        "pubspec.yaml now pins {}, and `flutter pub get` {why}\n{}Fix that and run `flutter pub get`{} (or put the old refs back).",
+                        "{moved_in} now pins {}, and `flutter pub get` {why}\n{}Fix that and run `flutter pub get`{} (or put the old refs back).",
                         target.tag(),
                         if notes.is_empty() {
                             ""
@@ -546,7 +627,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         };
         regenerate().map_err(|e| {
             anyhow!(
-                "pubspec.yaml now pins {}, and `fsp gen` failed: {e:#}\n{}Fix that and run `fsp gen`.",
+                "{moved_in} now pins {}, and `fsp gen` failed: {e:#}\n{}Fix that and run `fsp gen`.",
                 target.tag(),
                 if notes.is_empty() {
                     ""

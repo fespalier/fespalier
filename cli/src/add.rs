@@ -19,6 +19,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use clap::Args;
+use serde_yaml_ng::Value;
 
 use crate::Exit;
 use crate::config::Config;
@@ -66,11 +67,23 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
             Err(e) => bail!("reading {rel}: {e}; fsp add reads the files it may write to"),
         }
     }
+    let overrides_path = project.join(plan::OVERRIDES);
+    let overrides = match fs::read_to_string(&overrides_path) {
+        Ok(content) => Some(content),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => bail!(
+            "reading {}: {e}; fsp add reads the files it may write to",
+            plan::OVERRIDES
+        ),
+    };
+    let workspace = workspace_overrides(project, &text);
     let plan = plan::build(
         &Request {
             features: &cmd.features,
             pubspec: &text,
             files: &files,
+            overrides: overrides.as_deref(),
+            workspace_overrides: &workspace,
         },
         recipes::RECIPES,
     )?;
@@ -112,6 +125,14 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         fs::write(&path, new).with_context(|| format!("writing {}", path.display()))?;
         errln!("  edit   pubspec.yaml");
         for change in &plan.changes {
+            errln!("           {change}");
+        }
+    }
+    if let Some(edited) = &plan.overrides {
+        fs::write(&overrides_path, &edited.after)
+            .with_context(|| format!("writing {}", overrides_path.display()))?;
+        errln!("  edit   {}", plan::OVERRIDES);
+        for change in &edited.changes {
             errln!("           {change}");
         }
     }
@@ -200,6 +221,32 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
     }
     errln!("\n✓ added {}", plan.features.join(", "));
     Ok(())
+}
+
+/// The packages the root of the app's pub workspace overrides, when the app says `resolution:
+/// workspace` (pub reads them with the app's own): those of the root's `pubspec_overrides.yaml`
+/// when it has the key, else of its pubspec. Those of the other members are not read, as `fsp check`
+/// does not look for the members.
+pub(crate) fn workspace_overrides(project: &Path, pubspec: &str) -> Vec<String> {
+    let Ok(value) = serde_yaml_ng::from_str::<Value>(pubspec) else {
+        return vec![];
+    };
+    let Some((root, root_pubspec)) = crate::packages::workspace_root(project, &value) else {
+        return vec![];
+    };
+    let file: Option<Value> = fs::read_to_string(root.join(plan::OVERRIDES))
+        .ok()
+        .and_then(|text| serde_yaml_ng::from_str(&text).ok());
+    file.as_ref()
+        .and_then(|f| f.get("dependency_overrides"))
+        .or_else(|| root_pubspec.get("dependency_overrides"))
+        .and_then(Value::as_mapping)
+        .map(|m| {
+            m.keys()
+                .filter_map(|k| k.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// `dart format` on the Dart files `fsp add` wrote, in the app, so they follow the app's own

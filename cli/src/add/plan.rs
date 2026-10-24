@@ -57,6 +57,22 @@ pub struct Request<'a> {
     pub pubspec: &'a str,
     /// The files of [`paths`] that are there, with their text.
     pub files: &'a BTreeMap<String, String>,
+    /// The text of `pubspec_overrides.yaml`, when the app has one.
+    pub overrides: Option<&'a str>,
+    /// The packages the root of the app's pub workspace overrides, when the app says `resolution:
+    /// workspace`: pub reads them with the app's own.
+    pub workspace_overrides: &'a [String],
+}
+
+pub use crate::upgrade_app::OVERRIDES;
+
+/// `pubspec_overrides.yaml` as it is and as the plan writes it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Overrides {
+    pub before: String,
+    pub after: String,
+    /// What changes in it, a line each.
+    pub changes: Vec<String>,
 }
 
 /// How a file is written.
@@ -109,6 +125,9 @@ pub struct Plan {
     pub pubspec: Option<String>,
     /// What changes in it, a line each.
     pub changes: Vec<String>,
+    /// The new overrides of a checkout, when the app keeps its overrides in
+    /// `pubspec_overrides.yaml` (since 0.23.1).
+    pub overrides: Option<Overrides>,
     pub files: Vec<File>,
     pub by_hand: Vec<ByHand>,
     /// The Android `minSdk` the new features' plugins need.
@@ -178,16 +197,21 @@ fn listed(pubspec: &Value, section: &str, name: &str) -> bool {
 }
 
 /// Whether the app has `recipe`: its packages under `dependencies:`, its `fespalier:` keys, and
-/// every file it writes.
+/// every file it writes. A recipe with none of these has nothing to tell it by, so it is never
+/// present.
 fn has(recipe: &Recipe, pubspec: &Value, files: &BTreeMap<String, String>) -> bool {
     let dep = |name: &str| listed(pubspec, "dependencies", name);
-    recipe.companions.iter().all(|c| dep(c))
+    let marks = recipe.companions.len()
+        + recipe.third_party.len()
+        + recipe.config.len()
+        + recipe.files.len();
+    marks > 0
+        && recipe.companions.iter().all(|c| dep(c))
         && recipe.third_party.iter().all(|t| dep(t.name))
         && recipe.config.iter().all(|line| {
             line.split_once(": ")
                 .is_some_and(|(k, v)| config_value(pubspec, k) == Some(&yaml(v)))
         })
-        && !recipe.files.is_empty()
         && recipe
             .files
             .iter()
@@ -243,19 +267,33 @@ enum Setup {
     Made,
 }
 
-/// The pubspec edits for `wanted` on an app that has `all` once they are in: the edits, the lines
-/// that say them, and notes.
+/// What [`pubspec_edits`] decides.
+struct Edits {
+    /// The edits of `pubspec.yaml`.
+    pubspec: Vec<Edit>,
+    /// The lines that say them.
+    changes: Vec<String>,
+    /// The edits of `pubspec_overrides.yaml`, and the lines that say them.
+    overrides: Vec<Edit>,
+    overrides_changes: Vec<String>,
+    notes: Vec<String>,
+}
+
+/// The pubspec edits for `wanted` on an app that has `all` once they are in. A checkout's overrides
+/// go to `pubspec_overrides.yaml` when `in_overrides_file` (the app keeps them there).
 fn pubspec_edits(
     pubspec: &Value,
     origin: &Origin,
     overridden: &dyn Fn(&str) -> bool,
+    in_overrides_file: bool,
     wanted: &[&Recipe],
     all: &[&Recipe],
     setup: Setup,
-) -> (Vec<Edit>, Vec<String>, Vec<String>) {
+) -> Edits {
     let mut edits = vec![];
     let mut changes = vec![];
     let mut notes = vec![];
+    let (mut file_edits, mut file_changes) = (vec![], vec![]);
     let dep = |name: &str| listed(pubspec, "dependencies", name);
     let dev = |name: &str| listed(pubspec, "dev_dependencies", name);
 
@@ -337,20 +375,28 @@ fn pubspec_edits(
         needed.sort();
         needed.dedup();
         let missing: Vec<&String> = needed.iter().filter(|n| !overridden(n)).collect();
-        if !missing.is_empty() && pubspec.get("dependency_overrides").is_none() {
-            edits.push(
+        let (into, said) = if in_overrides_file {
+            (&mut file_edits, &mut file_changes)
+        } else {
+            (&mut edits, &mut changes)
+        };
+        if !missing.is_empty()
+            && !in_overrides_file
+            && pubspec.get("dependency_overrides").is_none()
+        {
+            into.push(
                 Edit::insert(&[], "dependency_overrides", Body::Block(vec![]), Place::End)
                     .with_comments(vec![OVERRIDES_COMMENT.to_string()]),
             );
         }
         for name in missing {
-            edits.push(Edit::insert(
+            into.push(Edit::insert(
                 &["dependency_overrides"],
                 name,
                 Body::Block(vec![format!("path: {root}/{name}")]),
                 Place::Sorted,
             ));
-            changes.push(format!("dependency_overrides: {name} (path {root}/{name})"));
+            said.push(format!("dependency_overrides: {name} (path {root}/{name})"));
         }
     }
 
@@ -448,7 +494,13 @@ fn pubspec_edits(
             changes.push(format!("flutter: assets: {asset}"));
         }
     }
-    (edits, changes, notes)
+    Edits {
+        pubspec: edits,
+        changes,
+        overrides: file_edits,
+        overrides_changes: file_changes,
+        notes,
+    }
 }
 
 /// Whether the quote after `before` opens a raw string: an `r` that is no end of a name.
@@ -723,6 +775,7 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
         notes,
         pubspec: None,
         changes: vec![],
+        overrides: None,
         files: vec![],
         by_hand: vec![],
         android_min_sdk: wanted
@@ -868,21 +921,54 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
     } else {
         Setup::Absent
     };
-    let overridden = |name: &str| pins.has("dependency_overrides", name);
-    let (edits, changes, more) =
-        pubspec_edits(&value, &pins.fespalier, &overridden, &wanted, &all, setup);
-    plan.notes.extend(more);
-    let edited = pubspec_edit::apply(req.pubspec, &edits).map_err(|e| {
-        anyhow!(
-            "could not edit pubspec.yaml safely ({e}), so nothing was written. Make this change by hand, then run fsp add again:\n  {}",
-            e.edit.by_hand().replace('\n', "\n  ")
-        )
-    })?;
+    // pub reads the overrides of `pubspec_overrides.yaml` in place of the pubspec's when that file
+    // has the key, and, in a pub workspace, those of its root with the app's own (since 0.23.1).
+    let file: Option<Value> = match req.overrides {
+        Some(text) if !text.trim().is_empty() => Some(
+            serde_yaml_ng::from_str(text).context("pubspec_overrides.yaml is not valid YAML")?,
+        ),
+        _ => None,
+    };
+    let in_file = file.as_ref().and_then(|f| f.get("dependency_overrides"));
+    let overridden = |name: &str| {
+        req.workspace_overrides.iter().any(|n| n == name)
+            || match in_file {
+                Some(section) => section.get(name).is_some(),
+                None => pins.has("dependency_overrides", name),
+            }
+    };
+    let edits = pubspec_edits(
+        &value,
+        &pins.fespalier,
+        &overridden,
+        in_file.is_some(),
+        &wanted,
+        &all,
+        setup,
+    );
+    plan.notes.extend(edits.notes);
+    let edit = |file: &str, text: &str, list: &[Edit]| {
+        pubspec_edit::apply(text, list).map_err(|e| {
+            anyhow!(
+                "could not edit {file} safely ({e}), so nothing was written. Make this change by hand, then run fsp add again:\n  {}",
+                e.edit.by_hand().replace('\n', "\n  ")
+            )
+        })
+    };
+    let edited = edit("pubspec.yaml", req.pubspec, &edits.pubspec)?;
     if edited != req.pubspec {
         Pubspec::parse(&edited).context("the pubspec.yaml fsp add would write does not check")?;
         plan.pubspec = Some(edited);
     }
-    plan.changes = changes;
+    plan.changes = edits.changes;
+    if !edits.overrides.is_empty() {
+        let before = req.overrides.unwrap_or_default();
+        plan.overrides = Some(Overrides {
+            after: edit(OVERRIDES, before, &edits.overrides)?,
+            before: before.to_string(),
+            changes: edits.overrides_changes,
+        });
+    }
     Ok(plan)
 }
 
@@ -913,6 +999,12 @@ impl Plan {
                 let _ = writeln!(out, "         {change}");
             }
         }
+        if let Some(overrides) = &self.overrides {
+            let _ = writeln!(out, "edit   {OVERRIDES}");
+            for change in &overrides.changes {
+                let _ = writeln!(out, "         {change}");
+            }
+        }
         for file in &self.files {
             let _ = writeln!(out, "{:<6} {}", file.write.word(), file.path);
         }
@@ -931,6 +1023,13 @@ impl Plan {
         }
         if let Some(new) = &self.pubspec {
             let _ = write!(out, "\n=== pubspec.yaml (edit)\n{}", diff(pubspec, new));
+        }
+        if let Some(overrides) = &self.overrides {
+            let _ = write!(
+                out,
+                "\n=== {OVERRIDES} (edit)\n{}",
+                diff(&overrides.before, &overrides.after)
+            );
         }
         for file in &self.files {
             let _ = write!(

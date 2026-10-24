@@ -4516,6 +4516,52 @@ fn add_prints_the_changes_to_make_by_hand_before_a_command_that_fails() {
     );
 }
 
+/// A checkout that keeps its overrides in `pubspec_overrides.yaml` gets the new ones there, where
+/// pub reads them (since 0.23.1).
+#[cfg(unix)]
+#[test]
+fn add_writes_a_checkouts_overrides_into_pubspec_overrides_yaml() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let local = pubspec.replace(
+        &format!(
+            "    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v{}\n",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "    path: ../checkout/packages/fespalier\n",
+    );
+    assert_ne!(local, pubspec);
+    fs::write(app.join("pubspec.yaml"), &local).unwrap();
+    let overrides =
+        "dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    // `pub get` fails, so the run stops once the files are written.
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "http", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("  edit   pubspec_overrides.yaml\n           dependency_overrides: fespalier_http (path ../checkout/packages/fespalier_http)\n"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        format!(
+            "{overrides}  fespalier_http:\n    path: ../checkout/packages/fespalier_http\n  fespalier_transport:\n    path: ../checkout/packages/fespalier_transport\n"
+        )
+    );
+    let now = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    assert!(!now.contains("dependency_overrides"), "{now}");
+    assert!(
+        now.contains("  fespalier_http:\n    path: ../checkout/packages/fespalier_http\n"),
+        "{now}"
+    );
+}
+
 // --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
 
 /// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.
@@ -4577,6 +4623,93 @@ fn upgrade_app_moves_every_ref_runs_pub_get_and_gen_and_prints_the_notes() {
     assert_eq!(
         out,
         format!("fespalier and every companion in pubspec.yaml are at {tag}; nothing to move.\n")
+    );
+}
+
+/// A git override of this repository in `pubspec_overrides.yaml`, which pub reads in place of the
+/// pubspec's overrides, moves with the refs of the pubspec (since 0.23.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.contains(&format!(
+            "  fespalier_transport v0.21.0 -> {tag} (pubspec_overrides.yaml)\n"
+        )),
+        "{out}"
+    );
+    assert!(
+        out.contains("Would write pubspec.yaml and pubspec_overrides.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains("  edit  pubspec.yaml\n  edit  pubspec_overrides.yaml\n"),
+        "{out}"
+    );
+    let overrides = fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap();
+    assert!(
+        overrides.contains(&format!("      ref: {tag}\n")),
+        "{overrides}"
+    );
+}
+
+/// When only `pubspec_overrides.yaml` has a ref to move, the lines name it, not the pubspec (since
+/// 0.23.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_names_the_overrides_file_when_it_alone_moves() {
+    let dir = create_root();
+    let root = dir.path();
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let app = pinned_app(root, &tag);
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.starts_with(&format!(
+            "pubspec_overrides.yaml: v0.21.0 -> {tag}\n  fespalier_transport v0.21.0 -> {tag} (pubspec_overrides.yaml)\n"
+        )),
+        "{out}"
+    );
+    assert!(
+        out.contains("Would write pubspec_overrides.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains(&format!(
+            "pubspec_overrides.yaml now pins {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
     );
 }
 
@@ -4812,7 +4945,7 @@ fn doctor_prints_its_rows_and_exits_1_on_an_error() {
     // A ref that is not this fsp's: an error row, and exit 1 with nothing on stderr.
     fs::write(
         root.join("pubspec.yaml"),
-        "name: demo\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: v0.0.1\n",
+        "name: demo\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v0.0.1\n",
     )
     .unwrap();
     let (code, out, err) = doctor(&["doctor", "--json"]);

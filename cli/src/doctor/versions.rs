@@ -4,7 +4,8 @@
 use serde_yaml_ng::Value;
 
 use super::{Facts, Row, Section, Status, leading_version};
-use crate::pins::same_url;
+use crate::create::plan::REPO_URL;
+use crate::pins::{in_packages, is_ours, same_url};
 use crate::upgrade::Version;
 
 /// fespalier's own floor, the `environment:` of `packages/fespalier/pubspec.yaml`
@@ -33,6 +34,7 @@ enum Source {
     Git {
         url: String,
         git_ref: Option<String>,
+        path: Option<String>,
     },
     Path(String),
     /// Anything else: a version constraint, `hosted:`, `sdk:`.
@@ -46,6 +48,7 @@ impl Source {
                 Value::String(url) => Source::Git {
                     url: url.clone(),
                     git_ref: None,
+                    path: None,
                 },
                 _ => Source::Git {
                     url: git
@@ -54,6 +57,7 @@ impl Source {
                         .unwrap_or_default()
                         .to_string(),
                     git_ref: git.get("ref").map(crate::config::shown_value),
+                    path: git.get("path").map(crate::config::shown_value),
                 },
             };
         }
@@ -68,7 +72,7 @@ impl Source {
 
     fn shown(&self) -> String {
         match self {
-            Source::Git { url, git_ref } => match git_ref {
+            Source::Git { url, git_ref, .. } => match git_ref {
                 Some(r) => format!("git {url}, ref {r}"),
                 None => format!("git {url}, no ref"),
             },
@@ -78,16 +82,43 @@ impl Source {
     }
 }
 
-/// The packages of a section of the pubspec (`dependencies`), with their source, in order.
-fn section(raw: Option<&Value>, name: &str) -> Vec<(String, Source)> {
+/// The packages of a section of the pubspec (`dependencies`) that `keep` accepts, with their
+/// source, in order.
+fn section(
+    raw: Option<&Value>,
+    name: &str,
+    keep: &dyn Fn(&str, &Value) -> bool,
+) -> Vec<(String, Source)> {
     raw.and_then(|r| r.get(name))
         .and_then(Value::as_mapping)
         .map(|m| {
             m.iter()
-                .filter_map(|(k, v)| Some((k.as_str()?.to_string(), Source::of(v))))
+                .filter_map(|(k, v)| {
+                    let k = k.as_str()?;
+                    keep(k, v).then(|| (k.to_string(), Source::of(v)))
+                })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// A warning when a git dependency on fespalier's own repository ([`REPO_URL`], whose layout is
+/// known: every package is in `packages/<name>`, and the root is the workspace, not a package)
+/// does not name that folder, so pub reads something else (since 0.23.1). Said of nothing else: a
+/// mirror split per package, a fork and a vendored copy are laid out as their owners made them,
+/// and pub resolves them.
+fn path_message(name: &str, url: &str, path: Option<&str>) -> Option<String> {
+    if !same_url(url, REPO_URL) || path.is_some_and(|p| in_packages(p, name)) {
+        return None;
+    }
+    Some(match path {
+        None => format!(
+            "{name}: git {url} with no `path:`, and pub reads the root of that repository, which is no package; in it, {name} is packages/{name}"
+        ),
+        Some(p) => {
+            format!("{name}: git {url}, path {p}; in that repository, {name} is packages/{name}")
+        }
+    })
 }
 
 /// The version `pubspec.lock` resolves `package` to.
@@ -101,12 +132,26 @@ fn locked(lock: &Value, package: &str) -> Option<String> {
 pub fn rows(facts: &Facts) -> Vec<Row> {
     let mut out = vec![];
     let raw = facts.raw.as_ref();
-    let deps: Vec<(String, Source)> = section(raw, "dependencies")
+    let all = |_: &str, _: &Value| true;
+    let deps: Vec<(String, Source)> = section(raw, "dependencies", &all)
         .into_iter()
-        .chain(section(raw, "dev_dependencies"))
+        .chain(section(raw, "dev_dependencies", &all))
         .collect();
     let fespalier = deps.iter().find(|(n, _)| n == "fespalier").map(|(_, s)| s);
+    // fespalier's own entry, and its companions as `pins` tells them (never by their name alone).
+    let own = ["dependencies", "dev_dependencies"]
+        .iter()
+        .find_map(|s| raw?.get(s)?.get("fespalier"));
+    let ours = |name: &str, value: &Value| name != "fespalier" && is_ours(name, value, own);
+    let companion_deps: Vec<(String, Source)> = section(raw, "dependencies", &ours)
+        .into_iter()
+        .chain(section(raw, "dev_dependencies", &ours))
+        .collect();
     let fsp = facts.fsp;
+    let without_folder = match fespalier {
+        Some(Source::Git { url, path, .. }) => path_message("fespalier", url, path.as_deref()),
+        _ => None,
+    };
     out.push(match fespalier {
         None => row(
             "fespalier",
@@ -156,10 +201,13 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             ),
         ),
     });
+    if let Some(message) = without_folder {
+        out.push(row("fespalier", Status::Warning, message));
+    }
     // `dev_dependencies:` alone builds an app, but the generated files under lib/ import fespalier
     // (since 0.23.1).
     if fespalier.is_some()
-        && !section(raw, "dependencies")
+        && !section(raw, "dependencies", &all)
             .iter()
             .any(|(n, _)| n == "fespalier")
     {
@@ -169,33 +217,37 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             "fespalier is under `dev_dependencies:` only: the generated files under lib/ import package:fespalier, so move it to `dependencies:`",
         ));
     }
-    out.extend(companions(&deps, fespalier));
-    for (name, source) in section(raw, "dependency_overrides") {
-        if name == "fespalier" || name.starts_with("fespalier_") {
-            out.push(
-                row(
-                    "override",
-                    Status::Info,
-                    format!(
-                        "{name}: `dependency_overrides:` says {}, which wins over `dependencies:`",
-                        source.shown()
-                    ),
-                )
-                .about(name),
-            );
-        }
+    out.extend(companions(&companion_deps, fespalier));
+    let overrides = |name: &str, value: &Value| is_ours(name, value, own);
+    for (name, source) in section(raw, "dependency_overrides", &overrides) {
+        out.push(
+            row(
+                "override",
+                Status::Info,
+                format!(
+                    "{name}: `dependency_overrides:` says {}, which wins over `dependencies:`",
+                    source.shown()
+                ),
+            )
+            .about(name),
+        );
     }
-    out.extend(lock_rows(facts, &deps));
+    out.extend(lock_rows(facts, &companion_deps));
     out.extend(toolchain_rows(facts, &deps));
     out
 }
 
-/// Every `fespalier_*` dependency against fespalier's own source.
+/// Every companion (`pins::is_ours`) against fespalier's own source.
 fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row> {
     let mut out = vec![];
-    for (name, source) in deps.iter().filter(|(n, _)| n.starts_with("fespalier_")) {
+    for (name, source) in deps {
         let r = match (fespalier, source) {
-            (Some(Source::Git { url, git_ref }), Source::Git { url: u, git_ref: r }) => {
+            (
+                Some(Source::Git { url, git_ref, .. }),
+                Source::Git {
+                    url: u, git_ref: r, ..
+                },
+            ) => {
                 if !same_url(url, u) {
                     row(
                         "companion",
@@ -239,12 +291,17 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
             ),
         };
         out.push(r.about(name.clone()));
+        if let Source::Git { url, path, .. } = source
+            && let Some(message) = path_message(name, url, path.as_deref())
+        {
+            out.push(row("companion", Status::Warning, message).about(name.clone()));
+        }
     }
     out
 }
 
 /// What `pubspec.lock` resolved: fespalier and its companions against this fsp, and `go_router`.
-fn lock_rows(facts: &Facts, deps: &[(String, Source)]) -> Vec<Row> {
+fn lock_rows(facts: &Facts, companions: &[(String, Source)]) -> Vec<Row> {
     let Some(lock) = &facts.lock else {
         return vec![if facts.workspace_member {
             row(
@@ -292,7 +349,7 @@ fn lock_rows(facts: &Facts, deps: &[(String, Source)]) -> Vec<Row> {
         )),
     }
     if let Some(fv) = &fespalier {
-        for (name, _) in deps.iter().filter(|(n, _)| n.starts_with("fespalier_")) {
+        for (name, _) in companions {
             if let Some(v) = locked(lock, name)
                 && &v != fv
             {

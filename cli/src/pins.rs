@@ -2,11 +2,14 @@
 //! repository at one `ref:`, or the `packages/` folder of one checkout. `fsp add` pins a new
 //! companion the way `fespalier` is pinned, and `fsp upgrade --app` moves every `ref:` together.
 //!
-//! Only the packages of this repository count ([`is_package`]): a `fespalier_*` package of
-//! someone else's is not read.
+//! Only the packages of this repository count ([`is_ours`]): those this `fsp` knows, and a git
+//! dependency on `packages/<name>` of the repository fespalier comes from, when `<name>` is a
+//! `fespalier_` name. A `fespalier_*` package of someone else's is not read, and neither is another
+//! package of a repository that holds fespalier as well (a fork's own, a monorepo's).
 
 use serde_yaml_ng::Value;
 
+use crate::create::plan::REPO_URL;
 use crate::create::recipes::{NOT_A_CREATE_FEATURE, RECIPES};
 
 /// The sections of a pubspec a package can be listed in, in the order they are read.
@@ -19,6 +22,67 @@ pub fn is_package(name: &str) -> bool {
     name == "fespalier"
         || RECIPES.iter().any(|r| r.companions.contains(&name))
         || NOT_A_CREATE_FEATURE.iter().any(|(n, _)| *n == name)
+}
+
+/// Whether `name`, listed as `value`, is fespalier or one of its companions (since 0.23.1): a
+/// package this `fsp` knows ([`is_package`]), or a `fespalier_` package that is a git dependency on
+/// `packages/<name>` of the repository `fespalier` (fespalier's own entry) comes from, as a package
+/// newer than this `fsp` is. Neither the name alone (`fespalier_extras: ^1.0.0` is someone else's)
+/// nor the place alone (`acme_ui` in `packages/acme_ui` of a fork or a monorepo that holds fespalier
+/// is its owner's). Every package of this repository is `packages/fespalier_*`. `fsp add`,
+/// `fsp upgrade --app` and `fsp doctor` all read the pubspec through this.
+#[must_use]
+pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
+    if is_package(name) {
+        return true;
+    }
+    if !name.starts_with("fespalier_") {
+        return false;
+    }
+    let (Some((url, _)), Some((other, Some(path)))) = (fespalier.and_then(git_of), git_of(value))
+    else {
+        return false;
+    };
+    same_url(url, other) && in_packages(path, name)
+}
+
+/// A folder the way pub's git source reads it: `./packages/x`, `packages//x/` and
+/// `packages/./x` are `packages/x`, and a `..` takes the segment before it away.
+#[must_use]
+pub fn folder(path: &str) -> String {
+    let path = path.trim();
+    let mut parts: Vec<&str> = vec![];
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." if parts.last().is_some_and(|last| *last != "..") => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    let joined = parts.join("/");
+    if path.starts_with('/') {
+        format!("/{joined}")
+    } else {
+        joined
+    }
+}
+
+/// Whether `path` names the folder `packages/<name>` of a repository ([`folder`] first).
+#[must_use]
+pub fn in_packages(path: &str, name: &str) -> bool {
+    folder(path) == format!("packages/{name}")
+}
+
+/// The `url:` and `path:` of a git dependency (`git: <url>` has no path).
+fn git_of(value: &Value) -> Option<(&str, Option<&str>)> {
+    let git = value.get("git")?;
+    let url = git
+        .get("url")
+        .and_then(Value::as_str)
+        .or_else(|| git.as_str())?;
+    Some((url, git.get("path").and_then(Value::as_str)))
 }
 
 /// Where one package comes from.
@@ -87,6 +151,26 @@ pub fn same_url(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
+/// Whether `url` names fespalier's own repository ([`REPO_URL`]), however it is spelled: with or
+/// without `.git` or a final `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with
+/// or without `www.`. Not what pub reads as one source (two spellings are two sources to it, which
+/// [`same_url`] keeps apart): what a note about "a fork" must not say of the official repository
+/// (since 0.23.1).
+#[must_use]
+pub fn is_official(url: &str) -> bool {
+    let key = |u: &str| {
+        let u = u.trim().trim_end_matches('/').trim_end_matches(".git");
+        let u = u.trim_end_matches('/').to_ascii_lowercase();
+        let u = match u.split_once("://") {
+            Some((_, rest)) => rest.to_string(),
+            None => u.replacen(':', "/", 1),
+        };
+        let u = u.strip_prefix("git@").unwrap_or(&u);
+        u.strip_prefix("www.").unwrap_or(u).to_string()
+    };
+    key(url) == key(REPO_URL)
+}
+
 /// One package of this repository listed in a pubspec.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pin {
@@ -106,16 +190,16 @@ pub struct Pins {
     pub all: Vec<Pin>,
 }
 
-fn origin_of(name: &str, value: &Value) -> Origin {
+/// Where `name` comes from, listed as `value`.
+#[must_use]
+pub fn origin_of(name: &str, value: &Value) -> Origin {
     let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::to_string);
     if let Some(git) = value.get("git") {
         let url = text(git.get("url")).or_else(|| text(Some(git)));
         let path = text(git.get("path"));
         let reference = text(git.get("ref"));
         return match (url, path, reference) {
-            (Some(url), Some(path), Some(reference))
-                if path.trim_end_matches('/') == format!("packages/{name}") =>
-            {
+            (Some(url), Some(path), Some(reference)) if in_packages(&path, name) => {
                 Origin::Git { url, reference }
             }
             (Some(url), Some(path), None) => {
@@ -149,6 +233,7 @@ fn origin_of(name: &str, value: &Value) -> Origin {
 
 /// Reads the pins of a parsed pubspec. Refuses one that does not depend on `fespalier`.
 pub fn read(pubspec: &Value) -> Result<Pins, String> {
+    let own = pubspec.get("dependencies").and_then(|d| d.get("fespalier"));
     let mut all = vec![];
     for section in SECTIONS {
         let Some(Value::Mapping(map)) = pubspec.get(section) else {
@@ -156,7 +241,7 @@ pub fn read(pubspec: &Value) -> Result<Pins, String> {
         };
         for (name, value) in map {
             let Some(name) = name.as_str() else { continue };
-            if !is_package(name) {
+            if !is_ours(name, value, own) {
                 continue;
             }
             all.push(Pin {

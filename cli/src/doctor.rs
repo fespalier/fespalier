@@ -12,11 +12,14 @@
 //!   `lib/main.dart` and `AppMain.run()`, and a one-line summary of `fsp check`, whose diagnostics it
 //!   does not repeat.
 //!
-//! It is advisory, so it reads more than `fsp gen` may: `pubspec.lock`, every Dart file under `lib/`
-//! (for `AppMain.run(` and the adapters' `configure(` calls, by their text), and `flutter --version
-//! --machine` when `flutter` is on PATH. It never reads the pub cache or `.dart_tool/`, and never the
-//! network. [`gather`] does all the reading; [`rows`] is a function of what it read, so the tests
-//! give it any [`Facts`].
+//! It is advisory, so it reads more than `fsp gen` may: `pubspec.lock` (a workspace member's is the
+//! workspace root's), every Dart file under `lib/` (for `AppMain.run(` and the adapters' `configure(`
+//! calls, by their text), what `fsp check` reads (the `path:` dependencies' files, through
+//! `enums::Libs`), and `flutter --version --machine` when `flutter` is on PATH. `fsp` itself never
+//! reads the pub cache or `.dart_tool/`, never reaches the network and writes nothing; the `flutter`
+//! it runs is another program and may do any of that (its own cache, its analytics, the download of
+//! its Dart SDK on a fresh clone). [`gather`] does all the reading; [`rows`] is a function of what it
+//! read, so the tests give it any [`Facts`].
 //!
 //! A group of rows is a module with a `rows(&Facts) -> Vec<Row>` and one entry in [`GROUPS`]: a later
 //! group (a Rust core's toolchain, say) is a file of its own beside these.
@@ -149,6 +152,8 @@ impl Row {
 pub struct Toolchain {
     pub flutter: Version,
     pub dart: Version,
+    /// Flutter's version is a pre-release (`3.35.0-0.1.pre`), which pub orders below `3.35.0`.
+    pub flutter_pre: bool,
 }
 
 impl Toolchain {
@@ -159,9 +164,11 @@ impl Toolchain {
         let start = stdout.find('{')?;
         let end = stdout.rfind('}')?;
         let v: serde_json::Value = serde_json::from_str(stdout.get(start..=end)?).ok()?;
+        let flutter = v.get("frameworkVersion")?.as_str()?;
         Some(Toolchain {
-            flutter: leading_version(v.get("frameworkVersion")?.as_str()?)?,
+            flutter: leading_version(flutter)?,
             dart: leading_version(v.get("dartSdkVersion")?.as_str()?)?,
+            flutter_pre: flutter.contains('-'),
         })
     }
 }
@@ -177,6 +184,9 @@ pub(crate) fn leading_version(text: &str) -> Option<Version> {
 /// What the app is, read once for every group.
 #[derive(Debug)]
 pub struct AppFacts {
+    /// Whether the app folder could be read as a tree: when not, `main`, `swaps` and `root` are
+    /// empty, not found to be so.
+    pub readable: bool,
     /// Whether the generated `main()` is written, and why (`entry::main_reasons`).
     pub main: (bool, Vec<String>),
     pub root: crate::entry::RootReport,
@@ -196,8 +206,13 @@ pub struct AppFacts {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct CheckFacts {
     pub routes: usize,
+    /// The errors and warnings `fsp check` prints, but those with a row of their own in the
+    /// report (`listed`): a problem is counted once.
     pub errors: usize,
     pub warnings: usize,
+    /// The diagnostics another row already is: the `form()` without `fespalier_forms` (`forms`) and
+    /// the `build_runner` trap (`build_runner`), which `fsp check` prints too.
+    pub listed: usize,
     /// Why it stopped before it could check the tree (no app folder).
     pub failure: Option<String>,
 }
@@ -212,14 +227,18 @@ pub struct Facts {
     pub raw: Option<Value>,
     /// What `config.rs` makes of pubspec.yaml, or why it refuses it.
     pub pubspec: Result<Pubspec, String>,
-    /// pubspec.lock as YAML, when there is one that reads.
+    /// pubspec.lock as YAML, when there is one that reads: the project's, or, for a pub workspace
+    /// member, the workspace root's (pub writes the one lock there).
     pub lock: Option<Value>,
+    /// The pubspec says `resolution: workspace`: it has no `pubspec.lock` beside it.
+    pub workspace_member: bool,
     /// `flutter --version --machine`, when `flutter` is on PATH and answered; else why not.
     pub toolchain: Result<Toolchain, String>,
     /// The app, when the config reads.
     pub app: Option<AppFacts>,
-    /// The Dart files under `lib/` but generated ones, each relative to the project and with its
-    /// comments taken out: where `AppMain.run(` and the adapters' `configure(` calls are looked for.
+    /// The Dart files under `lib/` but the ones `fsp` writes (`*.g.dart`, `output:` and
+    /// `output_manifest:`), each relative to the project and with its comments taken out: where
+    /// `AppMain.run(` and the adapters' `configure(` calls are looked for.
     pub sources: Vec<(String, String)>,
 }
 
@@ -261,9 +280,8 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         Ok(t) => Pubspec::parse(t).map_err(|e| refused(format!("{e:#}"))),
         Err(e) => Err(format!("pubspec.yaml: {e}")),
     };
-    let lock = fs::read_to_string(project.join("pubspec.lock"))
-        .ok()
-        .and_then(|t| serde_yaml_ng::from_str::<Value>(&t).ok());
+    let lock = read_lock(project, raw.as_ref());
+    let workspace_member = is_workspace_member(raw.as_ref());
     let toolchain = toolchain.and_then(|out| {
         Toolchain::parse(&out)
             .ok_or_else(|| "`flutter --version --machine` printed no version".to_string())
@@ -271,6 +289,11 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     let app = pubspec.as_ref().ok().map(|p| app_facts(project, &p.config));
     let mut sources = vec![];
     dart_sources(project, &project.join("lib"), &mut sources);
+    if let Ok(p) = &pubspec {
+        // An `output:` that is not a `.g.dart` is still generated code, which says `AppAdapters.`.
+        let written = crate::outputs(&p.config, false);
+        sources.retain(|(file, _)| !written.contains(file));
+    }
     sources.sort();
     Facts {
         project: project.to_path_buf(),
@@ -278,10 +301,27 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         raw,
         pubspec,
         lock,
+        workspace_member,
         toolchain,
         app,
         sources,
     }
+}
+
+/// Whether the pubspec says `resolution: workspace`.
+fn is_workspace_member(raw: Option<&Value>) -> bool {
+    raw.and_then(|r| r.get("resolution"))
+        .and_then(Value::as_str)
+        == Some("workspace")
+}
+
+/// `pubspec.lock` as pub wrote it: beside the pubspec, or, for a pub workspace member, beside the
+/// root's (a member has none of its own).
+fn read_lock(project: &Path, raw: Option<&Value>) -> Option<Value> {
+    let root = raw.and_then(|r| crate::packages::workspace_root(project, r));
+    let dir = root.as_ref().map_or(project, |(dir, _)| dir.as_path());
+    let text = fs::read_to_string(dir.join("pubspec.lock")).ok()?;
+    serde_yaml_ng::from_str::<Value>(&text).ok()
 }
 
 /// What `config.rs` refused, as the report says it: its own message when it already names the file
@@ -326,6 +366,7 @@ fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
     let app_dir = project.join(&cfg.app_dir);
     let mut scratch = crate::diag::Diags::default();
     let tree = crate::scan::scan(&app_dir, &mut scratch).ok();
+    let readable = tree.is_some();
     let (main, root, swaps) = match &tree {
         Some(t) => (
             crate::entry::main_reasons(t, cfg),
@@ -334,7 +375,7 @@ fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
         ),
         None => ((false, vec![]), crate::entry::RootReport::default(), false),
     };
-    let (forms, deferred) = match crate::analyze(&app_dir, cfg) {
+    let (forms, deferred, routes) = match crate::analyze(&app_dir, cfg) {
         Ok((_, _, app)) => (
             app.routes
                 .iter()
@@ -342,28 +383,41 @@ fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
                 .filter(|a| a.form.is_some())
                 .count(),
             app.routes.iter().filter(|r| r.defers_page()).count(),
+            app.routes.iter().filter(|r| r.is_route()).count(),
         ),
-        Err(_) => (0, 0),
+        Err(_) => (0, 0, 0),
     };
-    let mut check = CheckFacts::default();
-    let mut session = crate::session::Session::default();
-    let outcome = crate::gen_core(project, cfg, false, &mut session, |_, diags| {
-        check.errors = diags.error_count();
-        check.warnings = diags.0.len() - check.errors;
-    });
-    match outcome {
-        Ok(o) => check.routes = o.routes,
-        // A tree with errors says how many; anything else stopped before the tree.
-        Err(e) if check.errors == 0 => check.failure = Some(format!("{e:#}")),
-        Err(_) => {}
-    }
     let outputs = crate::outputs(cfg, main.0);
-    let build_runner = crate::build_runner::check(project, cfg, &outputs)
+    let build_runner: Vec<(String, String)> = crate::build_runner::check(project, cfg, &outputs)
         .0
         .into_iter()
         .map(|d| (d.file, d.msg))
         .collect();
+    let mut check = CheckFacts::default();
+    let mut session = crate::session::Session::default();
+    // What `fsp check` printed, as (errors, warnings).
+    let mut printed = (0, 0);
+    let outcome = crate::gen_core(project, cfg, false, &mut session, |_, diags| {
+        printed = (diags.error_count(), diags.0.len() - diags.error_count());
+    });
+    // A `form()` without its package is an error for each form, and the `build_runner` trap one
+    // warning per file: each has a row of its own, so `fsp_check` counts the rest.
+    let own = (
+        if cfg.forms_dependency { 0 } else { forms },
+        build_runner.len(),
+    );
+    check.errors = printed.0.saturating_sub(own.0);
+    check.warnings = printed.1.saturating_sub(own.1);
+    check.listed = (printed.0 - check.errors) + (printed.1 - check.warnings);
+    check.routes = routes;
+    match outcome {
+        Ok(o) => check.routes = o.routes,
+        // A tree with errors says how many; anything else stopped before the tree.
+        Err(e) if printed.0 == 0 => check.failure = Some(format!("{e:#}")),
+        Err(_) => {}
+    }
     AppFacts {
+        readable,
         main,
         root,
         swaps,

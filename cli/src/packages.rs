@@ -138,7 +138,7 @@ fn overrides(dir: &Path, pubspec: &Value) -> Vec<(String, Option<PathBuf>)> {
 /// `resolution: workspace`, the nearest ancestor folder whose pubspec has a `workspace:` key and is
 /// not itself a member (a nested workspace has a root above it). The entries of `workspace:` are not
 /// matched, so a root that does not list the app is taken all the same (pub refuses that setup).
-fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf, Value)> {
+pub(crate) fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf, Value)> {
     let member = |p: &Value| p.get("resolution").and_then(Value::as_str) == Some("workspace");
     if !member(pubspec) {
         return None;

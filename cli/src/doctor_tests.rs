@@ -32,6 +32,13 @@ fn facts(pubspec: &str, files: &[(&str, &str)], toolchain: Result<String, String
     doctor::gather(dir.path(), toolchain)
 }
 
+/// A project with this pubspec and no `lib/` at all.
+fn facts_without_app(pubspec: &str) -> Facts {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("pubspec.yaml"), pubspec).unwrap();
+    doctor::gather(dir.path(), Err("no".into()))
+}
+
 fn write(root: &Path, pubspec: &str, files: &[(&str, &str)]) {
     fs::write(root.join("pubspec.yaml"), pubspec).unwrap();
     fs::create_dir_all(root.join("lib/app")).unwrap();
@@ -69,6 +76,7 @@ fn flutter_version_machine_reads_as_flutter_and_dart() {
     let t = Toolchain::parse(&flutter("3.47.7", "3.13.5").unwrap()).unwrap();
     assert_eq!(t.flutter, Version(3, 47, 7));
     assert_eq!(t.dart, Version(3, 13, 5));
+    assert!(!t.flutter_pre);
     // A notice before the JSON, a pre-release and Dart's build suffix.
     let t = Toolchain::parse(
         "Waiting for another flutter command to release the startup lock...\n{\"frameworkVersion\": \"3.38.0-0.1.pre\", \"dartSdkVersion\": \"3.10.0 (build 3.10.0-290.4.beta)\"}",
@@ -76,6 +84,7 @@ fn flutter_version_machine_reads_as_flutter_and_dart() {
     .unwrap();
     assert_eq!(t.flutter, Version(3, 38, 0));
     assert_eq!(t.dart, Version(3, 10, 0));
+    assert!(t.flutter_pre);
     assert_eq!(Toolchain::parse("Flutter 3.35.0"), None);
     assert_eq!(Toolchain::parse("{\"frameworkVersion\": \"x\"}"), None);
 }
@@ -311,6 +320,71 @@ fn the_lock_go_router_and_the_toolchain() {
     );
 }
 
+/// A Flutter that does not know its version, and a pre-release of the floor, which pub orders below it.
+#[test]
+fn a_flutter_without_tags_and_a_pre_release_of_the_floor() {
+    let pubspec = "name: shop\ndependencies:\n  fespalier:\n    path: ../fespalier\n  fespalier_keypair:\n    path: ../kp\n";
+    // A shallow clone with no tags says `0.0.0-unknown`.
+    let rows = doctor::rows(&facts(pubspec, &[], flutter("0.0.0-unknown", "3.11.0")));
+    assert_eq!(
+        of(&rows, "flutter", None),
+        [
+            "error: Flutter does not know its own version (it reports 0.0.0): the checkout has no release tags, so pub cannot compare it with fespalier's floor, 3.35.0; run `git fetch --tags` in the Flutter folder, or install a release"
+        ]
+    );
+    // The floor's own pre-release is below the floor, and says it is one.
+    let rows = doctor::rows(&facts(pubspec, &[], flutter("3.35.0-0.1.pre", "3.9.0")));
+    assert_eq!(
+        of(&rows, "flutter", None),
+        [
+            "error: Flutter 3.35.0 (a pre-release) is below fespalier's floor, 3.35.0: upgrade Flutter",
+            "error: fespalier_keypair needs Flutter 3.44.0, and this is 3.35.0 (a pre-release)",
+        ]
+    );
+    // A pre-release of a later version is above it.
+    let rows = doctor::rows(&facts(pubspec, &[], flutter("3.44.0-0.2.pre", "3.12.0")));
+    assert_eq!(
+        of(&rows, "flutter", None),
+        [
+            "ok: Flutter 3.44.0 (a pre-release), at or above fespalier's floor, 3.35.0",
+            "error: fespalier_keypair needs Flutter 3.44.0, and this is 3.44.0 (a pre-release)",
+        ]
+    );
+}
+
+/// A pub workspace member has no `pubspec.lock`: the root's is the one pub wrote.
+#[test]
+fn a_workspace_member_is_checked_against_the_roots_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    fs::create_dir_all(app.join("lib")).unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: root\nenvironment:\n  sdk: ^3.9.0\nworkspace:\n  - app\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        "name: shop\nresolution: workspace\ndependencies:\n  fespalier:\n    path: ../../f\n",
+    )
+    .unwrap();
+    // The root has no lock yet: the row says where pub writes it.
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert_eq!(
+        one(&rows, "lock", None),
+        "skipped: no pubspec.lock at the root of the pub workspace (`resolution: workspace`: pub keeps the one lock there, none beside this pubspec): run `flutter pub get` in the workspace; the versions it resolves (fespalier's, go_router's) are not checked"
+    );
+    // With the root's lock, its versions are checked.
+    fs::write(
+        dir.path().join("pubspec.lock"),
+        "packages:\n  fespalier:\n    version: \"0.1.0\"\n  go_router:\n    version: \"16.2.0\"\n",
+    )
+    .unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(one(&rows, "lock", None).starts_with("warning: pubspec.lock resolves fespalier 0.1.0"));
+    assert!(one(&rows, "go_router", None).starts_with("error: go_router 16.2.0"));
+}
+
 /// Each adapter that is on, whether its `configure` is called (by text, comments out), and each
 /// first-party adapter package that is a dependency and is off.
 #[test]
@@ -330,7 +404,32 @@ fn adapters_on_off_and_configured() {
             "ok: fespalier_push: on, listed in `adapters:`; lib/main.dart calls `FespalierPush.configure(...)`",
             "warning: fespalier_analytics: on, listed in `adapters:`, and no Dart file under lib/ calls `FespalierAnalytics.configure(...)`: unconfigured, the adapter reports an error once and does nothing; call it in main() before AppMain.run() (docs/adapters.md, \"Adapters that need your code\")",
             "info: my_tools: on, listed in `adapters:`; fsp does not read package:my_tools/fespalier_adapter.dart",
-            "info: fespalier_download: off: a dependency that ships an adapter, and `adapters:` does not list it (list it, or write `adapters: auto`, to wire it)",
+            "info: fespalier_download: off: a dependency, and `adapters:` does not list it; no Dart file under lib/ calls `FespalierDownload.configure(...)`, so nothing asks for its adapter",
+        ]
+    );
+    // The off row never steers towards `adapters: auto`: a package of the family is often a
+    // dependency for something else (the engine through an override, `fespalier_maps`' file packs).
+    assert!(
+        !of(&rows, "adapter", Some("fespalier_download"))[0].contains("auto"),
+        "{rows:?}"
+    );
+    // A `configure(` that `adapters:` leaves out never runs: that one is worth a warning.
+    let forgotten = format!("{deps}fespalier:\n  adapters: [fespalier_push]\n");
+    let rows = doctor::rows(&facts(
+        &forgotten,
+        &[
+            ("lib/main.dart", main),
+            (
+                "lib/setup.dart",
+                "void setup() => FespalierDownload.configure(backend: b);\n",
+            ),
+        ],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        of(&rows, "adapter", Some("fespalier_download")),
+        [
+            "warning: fespalier_download: off: lib/setup.dart calls `FespalierDownload.configure(...)`, and `adapters:` does not list fespalier_download, so the adapter does not run: list it in `adapters:`"
         ]
     );
     let auto = format!("{deps}fespalier:\n  adapters: auto\n");
@@ -369,8 +468,38 @@ fn the_main_and_what_the_root_files_give_it() {
         "info: lib/app/startup.dart gives the generated main() startup() (which returns overrides), zone(), routerObservers"
     );
     assert!(one(&rows, "main_dart", None).starts_with(
-        "warning: lib/main.dart does not call AppMain.run(), so the generated main() (lib/app.main.g.dart) does not run"
+        "warning: no Dart file under lib/ calls AppMain.run(), so the generated main() (lib/app.main.g.dart) does not run"
     ));
+    // `lib/main.dart` may hand over to another file (a `bootstrap()`, a flavour's main): not a warning.
+    let rows = doctor::rows(&facts(
+        pubspec,
+        &[
+            ("lib/app/startup.dart", startup),
+            ("lib/main.dart", "void main() => bootstrap();\n"),
+            (
+                "lib/bootstrap.dart",
+                "Future<void> bootstrap() => AppMain.run();\n",
+            ),
+        ],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        one(&rows, "main_dart", None),
+        "ok: lib/bootstrap.dart calls AppMain.run(); the entry point you run must reach it"
+    );
+    // A comment is no call, and no `lib/main.dart` is a note, not a warning.
+    let rows = doctor::rows(&facts(
+        pubspec,
+        &[
+            ("lib/app/startup.dart", startup),
+            ("lib/other.dart", "// AppMain.run()\n"),
+        ],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        one(&rows, "main_dart", None),
+        "info: no lib/main.dart, and no Dart file under lib/ calls AppMain.run(): the entry point you run must call AppMain.run()"
+    );
     // Nothing to write a main for.
     let rows = doctor::rows(&facts(pubspec, &[], Err("no".into())));
     assert!(
@@ -390,6 +519,22 @@ fn the_main_and_what_the_root_files_give_it() {
     assert_eq!(
         one(&rows, "main_dart", None),
         "warning: `main: manual` with adapters, and no Dart file under lib/ calls AppAdapters: the adapters do not run (docs/adapters.md, \"With main: manual: AppAdapters\")"
+    );
+    // The file `output:` names is fsp's, whatever its name: its `AppAdapters.` is not the app's call.
+    let renamed = format!("{manual}  output: lib/routes.dart\n");
+    let rows = doctor::rows(&facts(
+        &renamed,
+        &[
+            ("lib/main.dart", "void main() {}\n"),
+            (
+                "lib/routes.dart",
+                "class AppRoutes { static void r() => AppAdapters.launch(); }\n",
+            ),
+        ],
+        Err("no".into()),
+    ));
+    assert!(
+        one(&rows, "main_dart", None).starts_with("warning: `main: manual` with adapters, and no")
     );
 }
 
@@ -430,10 +575,18 @@ fn forms_need_their_package_and_fsp_check_is_counted() {
         one(&rows, "forms", None),
         "error: 1 action with a form(), and fespalier_forms is not under `dependencies:`: the generated file imports it (`fsp check` reports each form())"
     );
-    assert!(
-        one(&rows, "fsp_check", None)
-            .starts_with("error: `fsp check` finds 1 error and 0 warnings")
+    // One problem, one error: `fsp check` prints the form() error, and the `forms` row is it.
+    assert_eq!(
+        one(&rows, "fsp_check", None),
+        "info: `fsp check` finds nothing besides what the rows above report: run `fsp check` to see it"
     );
+    assert_eq!(statuses(&rows, Status::Error).len(), 1, "{rows:?}");
+    let f = facts(
+        pubspec,
+        &[("lib/app/action.dart", action)],
+        Err("no".into()),
+    );
+    assert!(doctor::text(&f, &doctor::rows(&f)).ends_with("\n1 error.\n"));
     let with = format!("{pubspec}  fespalier_forms:\n    path: ../forms\n");
     let rows = doctor::rows(&facts(
         &with,
@@ -444,11 +597,19 @@ fn forms_need_their_package_and_fsp_check_is_counted() {
         one(&rows, "forms", None),
         "ok: 1 action with a form(), and fespalier_forms is a dependency"
     );
-    // No app folder: `fsp check` stops before the tree, and says why.
+    // No app folder: `fsp check` stops before the tree, and says why; `main` does not guess.
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("pubspec.yaml"), pubspec).unwrap();
     let rows = doctor::rows(&doctor::gather(dir.path(), Err("no".into())));
     assert!(one(&rows, "fsp_check", None).contains("not found (set `fespalier: app_dir:`"));
+    assert_eq!(
+        one(&rows, "main", None),
+        "skipped: lib/app cannot be read as a tree, so whether lib/app.main.g.dart is written is not known: `fsp_check` says why"
+    );
+    let adapters =
+        format!("{pubspec}  fespalier_push: any\nfespalier:\n  adapters: [fespalier_push]\n");
+    let rows = doctor::rows(&facts_without_app(&adapters));
+    assert!(one(&rows, "main", None).starts_with("skipped: lib/app cannot be read"));
 }
 
 #[test]
@@ -464,6 +625,12 @@ fn the_build_runner_trap_is_fsp_checks_own_warning() {
         row.starts_with("warning: `build_runner` can delete `lib/app.g.dart`"),
         "{row}"
     );
+    // One warning, counted once: `fsp check` prints it too, and `fsp_check` leaves it to its row.
+    assert_eq!(
+        one(&rows, "fsp_check", None),
+        "info: `fsp check` finds nothing besides what the rows above report: run `fsp check` to see it"
+    );
+    assert_eq!(statuses(&rows, Status::Warning).len(), 1, "{rows:?}");
     let rows = doctor::rows(&facts(pubspec, &[], Err("no".into())));
     assert!(one(&rows, "build_runner", None).starts_with("ok: build_runner is a dependency"));
 }

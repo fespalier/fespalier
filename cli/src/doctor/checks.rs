@@ -27,8 +27,19 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
         }
         out.extend(main_dart(facts, cfg, app.main.0));
         let c = &app.check;
+        // What `fsp check` prints that a row above already is (`forms`, `build_runner`).
+        let besides = if c.listed > 0 {
+            " besides what the rows above report"
+        } else {
+            ""
+        };
         out.push(match (&c.failure, c.errors, c.warnings) {
             (Some(why), _, _) => row("fsp_check", Status::Error, why.clone()),
+            (None, 0, 0) if c.listed > 0 => row(
+                "fsp_check",
+                Status::Info,
+                "`fsp check` finds nothing besides what the rows above report: run `fsp check` to see it",
+            ),
             (None, 0, 0) => row(
                 "fsp_check",
                 Status::Ok,
@@ -41,7 +52,7 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
                 "fsp_check",
                 Status::Warning,
                 format!(
-                    "`fsp check`: {}, and {}: run `fsp check` to see them",
+                    "`fsp check`: {}, and {}{besides}: run `fsp check` to see them",
                     crate::plural(c.routes, "route"),
                     crate::plural(w, "warning")
                 ),
@@ -50,7 +61,7 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
                 "fsp_check",
                 Status::Error,
                 format!(
-                    "`fsp check` finds {} and {}: run `fsp check` to see them",
+                    "`fsp check` finds {} and {}{besides}: run `fsp check` to see them",
                     crate::plural(e, "error"),
                     crate::plural(w, "warning")
                 ),
@@ -96,27 +107,39 @@ fn sections(cfg: &Config) -> Vec<Row> {
 }
 
 /// Whether the app's own code runs what fsp generated: `AppMain.run()`, or `AppAdapters` with
-/// `main: manual`. Found by text, in the Dart files under `lib/` without their comments.
+/// `main: manual`. Found by text, in the Dart files under `lib/` without their comments: the
+/// `main()` in `lib/main.dart` may hand over to another file (`bootstrap.dart`, a flavour's
+/// `main_dev.dart`).
 fn main_dart(facts: &Facts, cfg: &Config, written: bool) -> Vec<Row> {
     if written {
-        let main = facts.sources.iter().find(|(f, _)| f == "lib/main.dart");
-        return vec![match main {
-            Some((_, code)) if code.contains("AppMain.run(") => {
-                row("main_dart", Status::Ok, "lib/main.dart calls AppMain.run()")
-            }
-            Some(_) => row(
+        let runs = facts.files_with("AppMain.run(");
+        let has_main = facts.sources.iter().any(|(f, _)| f == "lib/main.dart");
+        return vec![if runs.contains(&"lib/main.dart") {
+            row("main_dart", Status::Ok, "lib/main.dart calls AppMain.run()")
+        } else if !runs.is_empty() {
+            row(
+                "main_dart",
+                Status::Ok,
+                format!(
+                    "{} calls AppMain.run(); the entry point you run must reach it",
+                    runs.join(", ")
+                ),
+            )
+        } else if has_main {
+            row(
                 "main_dart",
                 Status::Warning,
                 format!(
-                    "lib/main.dart does not call AppMain.run(), so the generated main() ({}) does not run, nor the adapters, startup.dart and `otel: true` with it: `Future<void> main() => AppMain.run();`",
+                    "no Dart file under lib/ calls AppMain.run(), so the generated main() ({}) does not run, nor the adapters, startup.dart and `otel: true` with it: in lib/main.dart, `Future<void> main() => AppMain.run();`",
                     cfg.output_main()
                 ),
-            ),
-            None => row(
+            )
+        } else {
+            row(
                 "main_dart",
                 Status::Info,
-                "no lib/main.dart: the entry point you run must call AppMain.run()",
-            ),
+                "no lib/main.dart, and no Dart file under lib/ calls AppMain.run(): the entry point you run must call AppMain.run()",
+            )
         }];
     }
     if cfg.main == MainMode::Manual && !cfg.adapters.is_empty() {

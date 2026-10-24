@@ -32,6 +32,14 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             Status::Ok,
             format!("{main_file} is written: {}", why.join(", ")),
         ),
+        (_, false) if !app.readable => row(
+            "main",
+            Status::Skipped,
+            format!(
+                "{} cannot be read as a tree, so whether {main_file} is written is not known: `fsp_check` says why",
+                cfg.app_dir
+            ),
+        ),
         (_, false) => row(
             "main",
             Status::Info,
@@ -231,18 +239,38 @@ fn adapter_rows(facts: &Facts, cfg: &Config) -> Vec<Row> {
         out.push(r.about(name.clone()));
     }
     for name in dependencies(facts.raw.as_ref()) {
-        if adapters::is_first_party(&name) && !cfg.adapters.contains(&name) {
-            out.push(
+        let Some(a) = adapters::first_party(&name) else {
+            continue;
+        };
+        if cfg.adapters.contains(&name) {
+            continue;
+        }
+        // Not wired. A package of the family is often a dependency for its other parts (the
+        // engine through a provider override, a package that builds on it), so that is no
+        // mistake; one that `main()` configures and `adapters:` leaves out never runs.
+        let call = format!("{}.configure(", a.configure);
+        let files = facts.files_with(&call);
+        out.push(
+            if files.is_empty() {
                 row(
                     "adapter",
                     Status::Info,
                     format!(
-                        "{name}: off: a dependency that ships an adapter, and `adapters:` does not list it (list it, or write `adapters: auto`, to wire it)"
+                        "{name}: off: a dependency, and `adapters:` does not list it; no Dart file under lib/ calls `{call}...)`, so nothing asks for its adapter"
                     ),
                 )
-                .about(name),
-            );
-        }
+            } else {
+                row(
+                    "adapter",
+                    Status::Warning,
+                    format!(
+                        "{name}: off: {} calls `{call}...)`, and `adapters:` does not list {name}, so the adapter does not run: list it in `adapters:`",
+                        files.join(", ")
+                    ),
+                )
+            }
+            .about(name),
+        );
     }
     out
 }

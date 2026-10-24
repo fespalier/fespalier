@@ -190,7 +190,7 @@ Since 0.23.0, `adapters: auto` takes the first-party adapter packages under `dep
 them. It is opt-in, because each of them needs its `configure` call in `main()` (an unconfigured one reports an error once).
 A package of your own is never taken: list it. With none of them, `auto` is no adapters. `auto` written inside a list is
 refused: `` `fespalier.adapters` lists `auto`, which is not a package: write `adapters: auto` on its own (since 0.23.0) for every first-party adapter package under `dependencies:`, or list the packages ``.
-`fsp doctor` prints one row per adapter, on or off, and whether a Dart file under `lib/` calls its `configure`.
+`fsp doctor` prints one row per adapter, on or off, and whether a Dart file under `lib/` calls its `configure`. A first-party package that is a dependency and is off is an `info` row (it may be there for something else); it is a warning only when a file calls its `configure` and `adapters:` leaves it out.
 
 For each name `n`, at index `i`, `lib/app.g.dart` (since 0.11.0; on 0.10.0 and earlier `lib/app.main.g.dart`) imports
 `package:n/fespalier_adapter.dart as _a{i}` and `AppAdapters` calls `_a{i}.adapter`, a **`FespalierAdapter`** (`package:fespalier/startup.dart`) that the package exports as a

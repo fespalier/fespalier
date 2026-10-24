@@ -528,24 +528,30 @@ tag different from the `fsp` now installed it says to update the refs of fespali
 
 ### `fsp doctor` (since 0.23.0)
 
-Reports what the generated `main()` wires and why, in the section "What the generated main() wires, and why": `main`, `root_file`,
-`hot_reload`, `adapter` (per adapter on, whether a Dart file under `lib/` calls its `configure(`; per first-party adapter package
-under `dependencies:` that is off), `telemetry`, `otel`, `forms`, `deferred` and `tasks`. Then "Versions": `fespalier` (its `ref:`
+Reports what the generated `main()` wires and why, in the section "What the generated main() wires, and why": `main` (skipped when the
+app folder cannot be read as a tree), `root_file`, `hot_reload`, `adapter` (per adapter on, whether a Dart file under `lib/` calls its
+`configure(`; per first-party adapter package under `dependencies:` that is off: `info` when no Dart file calls its `configure(`, a
+package of the family is often a dependency for something else, and a warning when one does and `adapters:` leaves the package out),
+`telemetry`, `otel`, `forms`, `deferred` and `tasks`. Then "Versions": `fespalier` (its `ref:`
 against this `fsp`), `companion` (per `fespalier_*` dependency: the same `url` and `ref`), `override`, `lock` (what `pubspec.lock`
-resolved, skipped without it), `go_router` (against `>=17.2.3 <19.0.0`), `flutter` and `dart` (against 3.35.0 and 3.9.0; `flutter`
-per dependency that needs a newer one). Then "Checks": `config` (a `pubspec.yaml` that `config.rs` refuses: one error row, and the
+resolved, skipped without it; a pub workspace member's is the workspace root's), `go_router` (against `>=17.2.3 <19.0.0`), `flutter` and
+`dart` (against 3.35.0 and 3.9.0, a pre-release of the floor counting as below it, a Flutter that reports `0.0.0` being an error of
+its own; `flutter` per dependency that needs a newer one). Then "Checks": `config` (a `pubspec.yaml` that `config.rs` refuses: one error row, and the
 wiring rows and the other checks are left out, the versions still show), `section` (per `links:`, `maestro:`, `size:` and `test:`,
 as their own command checks them), `build_runner` (the warning `fsp check` prints for a generated file `build_runner` would delete),
-`main_dart` (whether `lib/main.dart` calls `AppMain.run()`), and `fsp_check` (one line counting the routes, errors and warnings of
-`fsp check`, which it does not repeat).
+`main_dart` (whether `lib/main.dart`, or a Dart file under `lib/` it hands over to, calls `AppMain.run()`), and `fsp_check` (one line
+counting the routes, errors and warnings of `fsp check`, which it does not repeat; the `forms` error and the `build_runner` warning,
+which have a row of their own, are left out of its count, so a problem is counted once).
 
 Marks: `✓` ok, `·` info, `!` warning, `✗` error, `-` skipped (not checked, and why). Exit **0** when no row is an error (warnings and
 skipped rows included), **1** when one is (the report is the whole output), **2** a usage error. `--json` prints one object per
 row, every key always there and in this order: `{"section":"wiring|versions|checks","check":"...","subject":null|"...","status":"ok|info|warning|error|skipped","message":"..."}`.
-It reads `pubspec.yaml`, `pubspec.lock`, the Dart files under `lib/` but the `*.g.dart` ones (by their text, for `AppMain.run(`,
-`AppAdapters.` and `configure(`), and `flutter --version --machine` from PATH (with FVM or puro, through their `exec`). It never reads
-the pub cache or `.dart_tool/`, never the network, and writes nothing; it never fails because `flutter` is missing (that row is
-skipped). The messages and what to do with each: `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.
+It reads `pubspec.yaml`, `pubspec.lock` (a workspace member's is the root's), the Dart files under `lib/` but the ones `fsp` writes
+(`*.g.dart`, `output:`, `output_manifest:`; by their text, for `AppMain.run(`, `AppAdapters.` and `configure(`), whatever `fsp check`
+reads (the `path:` dependencies' files, `pubspec_overrides.yaml`, the workspace root's pubspec), and `flutter --version --machine` from
+PATH (with FVM or puro, through their `exec`). `fsp` itself never reads the pub cache or `.dart_tool/`, never reaches the network and
+writes nothing; the `flutter` it runs may do either (its analytics, the download of its Dart SDK on a fresh clone, its own cache). It
+never fails because `flutter` is missing (that row is skipped). The messages and what to do with each: `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.
 
 ### `fsp schema` (since 0.23.0)
 
@@ -760,8 +766,9 @@ it is `output` with `.main.g.dart` in place of `.g.dart` (`lib/app.main.g.dart`)
 section of `pubspec.yaml` with one schema of the whole file (`fsp schema --pubspec`), which keeps the JSON Schema Store's checks on the
 rest of the file. VS Code needs the YAML extension (`redhat.vscode-yaml`); IntelliJ uses the JSON support the IDE bundles. Other
 editors: `fsp schema --pubspec > .fespalier-pubspec.schema.json`, mapped to `pubspec.yaml` in the YAML language server's
-`yaml.schemas` setting. Not a modeline: it applies to the whole file. An empty key (`app_dir:` with no value) is refused by the
-schema, although `fsp` reads it as not set.
+`yaml.schemas` setting. A modeline works only when it points at that `--pubspec` file, never at the section-only `fsp schema`, which
+would replace the store's schema for the whole file. Two readings are stricter than `fsp`'s: an empty key (`app_dir:` with no value)
+and a number or boolean where text is expected (`meta_unique: [true]`) are refused by the schema, although `fsp` takes them.
 
 ## In CI
 

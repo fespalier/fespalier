@@ -243,11 +243,19 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
 /// What `pubspec.lock` resolved: fespalier and its companions against this fsp, and `go_router`.
 fn lock_rows(facts: &Facts, deps: &[(String, Source)]) -> Vec<Row> {
     let Some(lock) = &facts.lock else {
-        return vec![row(
-            "lock",
-            Status::Skipped,
-            "no pubspec.lock: run `flutter pub get`; the versions it resolves (fespalier's, go_router's) are not checked",
-        )];
+        return vec![if facts.workspace_member {
+            row(
+                "lock",
+                Status::Skipped,
+                "no pubspec.lock at the root of the pub workspace (`resolution: workspace`: pub keeps the one lock there, none beside this pubspec): run `flutter pub get` in the workspace; the versions it resolves (fespalier's, go_router's) are not checked",
+            )
+        } else {
+            row(
+                "lock",
+                Status::Skipped,
+                "no pubspec.lock: run `flutter pub get`; the versions it resolves (fespalier's, go_router's) are not checked",
+            )
+        }];
     };
     let mut out = vec![];
     let fsp = facts.fsp;
@@ -328,32 +336,44 @@ fn toolchain_rows(facts: &Facts, deps: &[(String, Source)]) -> Vec<Row> {
             )];
         }
     };
-    let mut out = vec![if t.flutter >= FLUTTER_FLOOR {
+    // A clone without tags reports 0.0.0 (`0.0.0-unknown`): every comparison would fail alike.
+    let unknown = t.flutter == Version(0, 0, 0);
+    let shown = if t.flutter_pre {
+        format!("{} (a pre-release)", t.flutter)
+    } else {
+        t.flutter.to_string()
+    };
+    // Pub orders `3.35.0-0.1.pre` below `3.35.0`.
+    let meets = |floor: Version| t.flutter > floor || (t.flutter == floor && !t.flutter_pre);
+    let mut out = vec![if unknown {
+        row(
+            "flutter",
+            Status::Error,
+            format!(
+                "Flutter does not know its own version (it reports {}): the checkout has no release tags, so pub cannot compare it with fespalier's floor, {FLUTTER_FLOOR}; run `git fetch --tags` in the Flutter folder, or install a release",
+                t.flutter
+            ),
+        )
+    } else if meets(FLUTTER_FLOOR) {
         row(
             "flutter",
             Status::Ok,
-            format!(
-                "Flutter {}, at or above fespalier's floor, {FLUTTER_FLOOR}",
-                t.flutter
-            ),
+            format!("Flutter {shown}, at or above fespalier's floor, {FLUTTER_FLOOR}"),
         )
     } else {
         row(
             "flutter",
             Status::Error,
-            format!(
-                "Flutter {} is below fespalier's floor, {FLUTTER_FLOOR}: upgrade Flutter",
-                t.flutter
-            ),
+            format!("Flutter {shown} is below fespalier's floor, {FLUTTER_FLOOR}: upgrade Flutter"),
         )
     }];
     for (name, floor) in NEWER_FLUTTER {
-        if t.flutter < floor && deps.iter().any(|(n, _)| n == name) {
+        if !unknown && !meets(floor) && deps.iter().any(|(n, _)| n == name) {
             out.push(
                 row(
                     "flutter",
                     Status::Error,
-                    format!("{name} needs Flutter {floor}, and this is {}", t.flutter),
+                    format!("{name} needs Flutter {floor}, and this is {shown}"),
                 )
                 .about(name),
             );

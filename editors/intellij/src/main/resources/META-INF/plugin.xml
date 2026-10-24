@@ -19,6 +19,10 @@
             <code>pubspec.yaml</code> has a run icon in the gutter, and runs as a <i>fespalier task</i> run
             configuration (<code>fsp dev</code>, <code>fsp build &lt;target&gt;</code> or <code>fsp run &lt;name&gt;</code>).
             <b>Tools | fespalier: Run Task...</b> lists them all.</li>
+        <li><b>pubspec.yaml</b> (since fespalier 0.23.0). The keys of the <code>fespalier:</code> section
+            complete as you type, show what they do in the quick documentation, and an unknown key, a value of
+            the wrong type or one off a list is highlighted. The rest of the file keeps the checks of the JSON
+            Schema Store's pubspec schema.</li>
         <li><b>Runner.</b> Uses <code>fsp</code> from your PATH, or <code>dart run fespalier</code> when there
             is none. Settings | Tools | fespalier chooses, and sets the path to fsp.</li>
     </ul>
@@ -27,6 +31,8 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- The schema of pubspec.yaml (since fespalier 0.23.0); the rest works without the JSON plugin. -->
+    <depends optional="true" config-file="fespalier-json.xml">com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Route files are Dart; pubspec.yaml is YAML. Ignored where a language plugin is missing. -->

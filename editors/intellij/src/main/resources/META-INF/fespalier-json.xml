@@ -1,0 +1,6 @@
+<!-- Loaded when the JSON plugin is there (plugin.xml): the schema of pubspec.yaml, since fespalier 0.23.0. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="JavaScript">
+        <JsonSchema.ProviderFactory implementation="com.vaamapps.fespalier.FespalierSchemaProviderFactory"/>
+    </extensions>
+</idea-plugin>

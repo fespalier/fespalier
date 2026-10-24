@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.23.0
+
+0.23.0 changes no code you wrote in `lib/app/`, and no app regenerates `app.g.dart` because of `fsp doctor`, `fsp schema` or `adapters: auto`.
+
+- **Check the upgrade with `fsp doctor`** (since 0.23.0). After you move the refs, it says whether fespalier and every companion are at the ref of the `fsp` you run, whether `pubspec.lock` resolved them, and whether go_router and Flutter fit ([fsp doctor](cli.md#fsp-doctor)).
+
 ### 0.22.0
 
 0.22.0 changes no code you wrote in `lib/app/`. `app.g.dart` is unchanged for an app with no `path:` dependency, and for one whose route files spell no type declared in a `path:` dependency where `fsp` compares types; where they do, it can change (the first bullet).

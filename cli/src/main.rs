@@ -9,6 +9,7 @@ mod dev_state;
 mod dev_tui;
 mod devtools;
 mod diag;
+mod doctor;
 mod emit;
 mod entry;
 mod enums;
@@ -35,6 +36,7 @@ mod routes;
 mod samples;
 mod scaffold;
 mod scan;
+mod schema;
 mod segtype;
 mod session;
 mod size;
@@ -140,6 +142,10 @@ enum Cmd {
     Telemetry(telemetry_stack::TelemetryCmd),
     /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
     Upgrade(upgrade::UpgradeCmd),
+    /// Print the JSON Schema of the `fespalier:` section of pubspec.yaml, for editors
+    Schema(schema::SchemaCmd),
+    /// Report what the generated `main()` wires and why, and what is out of line: refs, Flutter, `go_router` (exit 1 on an error)
+    Doctor(doctor::DoctorCmd),
 }
 
 fn main() {
@@ -166,9 +172,13 @@ fn main() {
             let project = find_project(cli.project.clone()).ok();
             return upgrade::run(cmd, project.as_deref());
         }
+        // The schema is this fsp's, whatever the project.
+        if let Cmd::Schema(cmd) = &cli.cmd {
+            return schema::run(cmd);
+        }
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) => {
+            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) | Cmd::Schema(_) => {
                 unreachable!("handled before the project is looked up")
             }
             Cmd::Gen { format, json } => {
@@ -192,6 +202,7 @@ fn main() {
             Cmd::Build(cmd) => tasks::build(&project, &cmd),
             Cmd::Run(cmd) => tasks::run_task(&project, &cmd),
             Cmd::Init => init::run(&project),
+            Cmd::Doctor(cmd) => doctor::run(&project, &cmd),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
                 match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
@@ -535,6 +546,8 @@ mod dev_tui_tests;
 #[cfg(test)]
 mod devtools_tests;
 #[cfg(test)]
+mod doctor_tests;
+#[cfg(test)]
 mod entry_tests;
 #[cfg(test)]
 mod enum_tests;
@@ -596,6 +609,8 @@ mod remount_tests;
 mod rest_types_tests;
 #[cfg(test)]
 mod route_api_tests;
+#[cfg(test)]
+mod schema_tests;
 #[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]

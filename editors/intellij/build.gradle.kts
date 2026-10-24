@@ -10,7 +10,8 @@ version = "0.1.0"
 
 // IntelliJ IDEA 2025.2 is the platform the plugin is compiled against. Android Studio and every
 // other IDE built on platform 252 or later loads it, because it depends only on the platform
-// (no Java or Kotlin plugin), and `until-build` is left open.
+// (no Java or Kotlin plugin; the JSON plugin, bundled in all of them, is optional), and
+// `until-build` is left open.
 val platformVersion = "2025.2.6.2"
 
 repositories {
@@ -26,6 +27,8 @@ dependencies {
 
     intellijPlatform {
         intellijIdea(platformVersion)
+        // The schema of pubspec.yaml (FespalierSchema.kt); an optional dependency in plugin.xml.
+        bundledPlugin("com.intellij.modules.json")
         testFramework(TestFrameworkType.Platform)
     }
 }

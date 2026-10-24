@@ -1088,7 +1088,11 @@ fn a_bad_adapters_list_says_what_it_wants() {
     // A string is not a list, and neither is a map or a list inside one.
     assert_eq!(
         refused("fespalier:\n  adapters: fespalier_sentry\n"),
-        "invalid pubspec.yaml: fespalier.adapters: invalid type: string \"fespalier_sentry\", expected a sequence at line 3 column 13"
+        "invalid pubspec.yaml: fespalier.adapters: invalid value: string \"fespalier_sentry\", expected `auto` or a list of Dart package names, like `[fespalier_push]` at line 3 column 13"
+    );
+    assert_eq!(
+        refused("fespalier:\n  adapters: {a: 1}\n"),
+        "invalid pubspec.yaml: fespalier.adapters: invalid type: map, expected `auto` or a list of Dart package names, like `[fespalier_push]` at line 3 column 13"
     );
     assert_eq!(
         refused("fespalier:\n  adapters:\n    - fespalier_sentry: {x: 1}\n"),
@@ -1134,6 +1138,135 @@ fn a_bad_adapters_list_says_what_it_wants() {
     assert!(cfg(&with_adapters("[fespalier_sentry]", "  main: manual\n")).is_ok());
     assert!(cfg("fespalier:\n  main: manual\n  adapters: []\n").is_ok());
     assert!(cfg(&with_adapters("[fespalier_sentry]", "  main: generated\n")).is_ok());
+}
+
+/// A pubspec with the four first-party adapter packages and one of the app's own, in this order,
+/// and `fespalier_flags` (which ships no adapter) and `fespalier_launch` under `dev_dependencies:`.
+const AUTO_DEPS: &str = "dependencies:\n  fespalier: any\n  fespalier_push: any\n  my_tools: any\n  fespalier_flags: any\n  fespalier_download: any\n  fespalier_analytics: any\ndev_dependencies:\n  fespalier_launch: any\n";
+
+#[test]
+fn adapters_auto_takes_the_first_party_packages_under_dependencies_in_their_order() {
+    let c = cfg(&format!("{AUTO_DEPS}fespalier:\n  adapters: auto\n")).unwrap();
+    assert!(c.adapters_auto);
+    // In the order of `dependencies:`; never a package of the app's own, never a dev dependency.
+    assert_eq!(
+        c.adapters,
+        [
+            "fespalier_push",
+            "fespalier_download",
+            "fespalier_analytics"
+        ]
+    );
+    // None of them under `dependencies:`: no adapters, and nothing to check.
+    let none = cfg("dependencies:\n  fespalier: any\nfespalier:\n  adapters: auto\n").unwrap();
+    assert!(none.adapters.is_empty() && none.adapters_auto);
+    let bare = cfg("fespalier:\n  adapters: auto\n").unwrap();
+    assert!(bare.adapters.is_empty() && bare.adapters_auto);
+    // A list is not `auto`, and no key is neither.
+    let listed = cfg(&format!(
+        "{AUTO_DEPS}fespalier:\n  adapters: [fespalier_push]\n"
+    ))
+    .unwrap();
+    assert!(!listed.adapters_auto);
+    assert!(!cfg(AUTO_DEPS).unwrap().adapters_auto);
+}
+
+#[test]
+fn adapters_auto_in_a_list_is_refused() {
+    assert_eq!(
+        refused(&format!("{AUTO_DEPS}fespalier:\n  adapters: [auto]\n")),
+        "`fespalier.adapters` lists `auto`, which is not a package: write `adapters: auto` on its own (since 0.23.0) for every first-party adapter package under `dependencies:`, or list the packages"
+    );
+    assert_eq!(
+        refused(&format!(
+            "{AUTO_DEPS}fespalier:\n  adapters: [fespalier_push, auto]\n"
+        )),
+        "`fespalier.adapters` lists `auto`, which is not a package: write `adapters: auto` on its own (since 0.23.0) for every first-party adapter package under `dependencies:`, or list the packages"
+    );
+}
+
+#[test]
+fn adapters_auto_generates_what_the_list_it_stands_for_generates() {
+    let files = [("page.dart", HOME)];
+    for extra in ["", "  main: manual\n"] {
+        let auto = run_yaml(
+            &format!("{AUTO_DEPS}fespalier:\n  adapters: auto\n{extra}"),
+            &files,
+        );
+        let list = run_yaml(
+            &format!(
+                "{AUTO_DEPS}fespalier:\n  adapters: [fespalier_push, fespalier_download, fespalier_analytics]\n{extra}"
+            ),
+            &files,
+        );
+        assert!(auto.diags.is_empty(), "{:?}", auto.diags);
+        assert_eq!(auto.app_g, list.app_g);
+        assert_eq!(auto.main, list.main);
+    }
+    // `auto` with none of them is the app with no key: no AppAdapters, and no main for it.
+    let none = run_yaml(
+        "dependencies:\n  fespalier: any\nfespalier:\n  adapters: auto\n",
+        &files,
+    );
+    let plain = run_yaml("dependencies:\n  fespalier: any\n", &files);
+    assert_eq!(none.app_g, plain.app_g);
+    assert!(none.main.is_none() && plain.main.is_none());
+}
+
+/// `adapters: auto` knows the first-party adapters by name (since 0.23.0): the table must be
+/// exactly the packages of this repository that ship `lib/fespalier_adapter.dart`, each with the
+/// `configure` its docs tell the app to call.
+#[test]
+fn first_party_adapters_are_the_packages_that_ship_one() {
+    let packages = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../packages");
+    let mut shipping: Vec<String> = fs::read_dir(&packages)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().join("lib/fespalier_adapter.dart").is_file())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    shipping.sort();
+    let table: Vec<&str> = crate::adapters::FIRST_PARTY
+        .iter()
+        .map(|a| a.name)
+        .collect();
+    assert_eq!(
+        table, shipping,
+        "FIRST_PARTY in adapters.rs, sorted by name"
+    );
+    for a in crate::adapters::FIRST_PARTY {
+        let lib = packages.join(a.name).join("lib");
+        let declares = walk_dart(&lib).iter().any(|src| {
+            src.contains(&format!("abstract final class {} {{", a.configure))
+                && src.contains("static void configure(")
+        });
+        assert!(
+            declares,
+            "{}: no `{}.configure` in lib/",
+            a.name, a.configure
+        );
+        let adapter = fs::read_to_string(lib.join("fespalier_adapter.dart")).unwrap();
+        assert!(
+            adapter.contains(&format!("`{}.configure(", a.configure)),
+            "{}: its fespalier_adapter.dart does not tell the app to call `{}.configure(`",
+            a.name,
+            a.configure
+        );
+    }
+}
+
+/// The text of every `.dart` file under `dir`.
+fn walk_dart(dir: &std::path::Path) -> Vec<String> {
+    let mut out = vec![];
+    for entry in fs::read_dir(dir).unwrap().filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_dir() {
+            out.extend(walk_dart(&path));
+        } else if path.extension().is_some_and(|e| e == "dart") {
+            out.push(fs::read_to_string(&path).unwrap());
+        }
+    }
+    out
 }
 
 #[test]

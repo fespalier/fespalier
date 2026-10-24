@@ -1,0 +1,422 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "fespalier",
+  "description": "The fespalier: section of pubspec.yaml: what fsp reads. Every key is optional. https://github.com/fespalier/fespalier/blob/main/docs/configuration.md",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "app_dir": {
+      "description": "The folder fsp reads, relative to the project root and under lib/.",
+      "type": "string",
+      "default": "lib/app"
+    },
+    "output": {
+      "description": "Where fsp gen writes, a .dart file under lib/. The generated main() goes beside it, with .main.g.dart. build_runner can delete a .g.dart that has an X.dart beside it (since 0.17.0 fsp warns).",
+      "type": "string",
+      "pattern": "\\.dart[/\\\\]*$",
+      "default": "lib/app.g.dart"
+    },
+    "format": {
+      "description": "Run dart format on the generated file (needs dart on PATH).",
+      "type": "boolean",
+      "default": false
+    },
+    "output_manifest": {
+      "description": "Write the route manifest (AppManifest) to a library of its own, a .dart file under lib/. Default: none, the manifest lives in output.",
+      "type": "string",
+      "pattern": "\\.dart[/\\\\]*$"
+    },
+    "meta": {
+      "description": "required: every route needs a meta.dart.",
+      "enum": ["optional", "required"],
+      "default": "optional"
+    },
+    "meta_unique": {
+      "description": "Named arguments of meta's constructor whose literal value no two routes may share, like [code, slug].",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+    },
+    "case_sensitive": {
+      "description": "Whether paths match by case. A route.dart sets it per folder (const caseSensitive).",
+      "type": "boolean",
+      "default": true
+    },
+    "remount": {
+      "description": "When a page gets a fresh state because its URL changed (since 0.6.0). A route.dart sets it per folder (const remount).",
+      "enum": ["never", "on_segments", "on_location"],
+      "default": "never"
+    },
+    "deferred": {
+      "description": "Each page's code loads on demand: a chunk of its own on the web (since 0.7.0). A route.dart sets it per folder (const deferred).",
+      "type": "boolean",
+      "default": false
+    },
+    "data_retry": {
+      "description": "What a failed data() provider does: inherit is the ProviderScope's retry, none gives it retry: null.",
+      "enum": ["inherit", "none"],
+      "default": "inherit"
+    },
+    "keep_previous": {
+      "description": "Keep showing the previous value or error while data.dart reloads; false shows loading.dart instead.",
+      "type": "boolean",
+      "default": true
+    },
+    "push_updates_url": {
+      "description": "A pushed route's URL is in the browser's address bar, as go's is (since 0.6.0).",
+      "type": "boolean",
+      "default": false
+    },
+    "file_style": {
+      "description": "How fsp init and fsp new spell a multi-word file kind: not_found.dart or not-found.dart. Reading takes both.",
+      "enum": ["snake", "kebab"],
+      "default": "snake"
+    },
+    "links": { "$ref": "#/definitions/links" },
+    "lints": {
+      "description": "One level per lint over the app's own code (since 0.7.0).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unknown_path": {
+          "description": "A string path passed to the router that matches no route: warning, error (fails gen and check) or off.",
+          "enum": ["warning", "error", "off"],
+          "default": "warning"
+        }
+      }
+    },
+    "semantics_ids": {
+      "description": "Every page wears Semantics(identifier: 'route:/...'), for Maestro (since 0.7.0).",
+      "type": "boolean",
+      "default": false
+    },
+    "scroll_restoration": {
+      "description": "The browser's back and forward bring a page's scroll offsets back (since 0.8.1).",
+      "type": "boolean",
+      "default": false
+    },
+    "telemetry": {
+      "description": "Report navigations, guards, data, actions and deferred loads to FespalierTelemetry (since 0.8.1).",
+      "type": "boolean",
+      "default": false
+    },
+    "otel": {
+      "description": "The generated main() starts otel_zone and installs FespalierOtel (since 0.19.0). Needs telemetry: true, fespalier_otel and otel_zone under dependencies:, and main other than manual.",
+      "type": "boolean",
+      "default": false
+    },
+    "maestro": { "$ref": "#/definitions/maestro" },
+    "size": { "$ref": "#/definitions/size" },
+    "test": { "$ref": "#/definitions/test" },
+    "main": {
+      "description": "Whether fsp writes the generated main() (AppMain, beside output): auto when the app folder's root has an app.dart, startup.dart or splash.dart (or adapters: or otel: say so), generated always, manual never (since 0.8.1).",
+      "enum": ["auto", "generated", "manual"],
+      "default": "auto"
+    },
+    "tasks": { "$ref": "#/definitions/tasks" },
+    "adapters": {
+      "description": "Packages that plug into the generated main() through package:<name>/fespalier_adapter.dart (since 0.9.0): a list of package names under dependencies:, the first the outermost; or auto (since 0.23.0), every first-party adapter package under dependencies:, in their order there.",
+      "anyOf": [
+        { "enum": ["auto"] },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "not": { "enum": ["fespalier", "auto"] }
+          },
+          "uniqueItems": true
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "links": {
+      "description": "What fsp links writes: App Links, Universal Links and a sitemap (since 0.5.0). Only fsp links checks the values; fsp gen reads the first of domains for AppRoutes.urlOf (since 0.16.0).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "domains": {
+          "description": "The host names the app opens, like shop.example.com; the first is the sitemap's and AppRoutes.urlOf's.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scheme": {
+          "description": "A custom URL scheme in lower case, like myshop.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9+.-]*$"
+        },
+        "scheme_host": {
+          "description": "false: the scheme's links have no host, myshop:///path (since 0.11.0).",
+          "type": "boolean",
+          "default": true
+        },
+        "paths": {
+          "description": "What the platforms open instead of every linkable route: /about, or /orders/* for everything below (since 0.11.0).",
+          "type": "array",
+          "items": { "type": "string", "pattern": "^/" }
+        },
+        "android_package": {
+          "description": "The Android application id, like com.example.shop.",
+          "type": "string"
+        },
+        "android_sha256": {
+          "description": "The SHA-256 fingerprints of the signing certificates, as keytool -list -v prints them.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "ios_app_id": {
+          "description": "The Team ID, a dot and the bundle id, like ABCDE12345.com.example.shop.",
+          "type": "string"
+        },
+        "ios_entitlements": {
+          "description": "A .entitlements file under ios/ that fsp links edits (since 0.11.0).",
+          "type": "string"
+        },
+        "android_manifest": {
+          "description": "The AndroidManifest.xml under android/ that fsp links edits (since 0.11.0).",
+          "type": "string"
+        },
+        "flavors": {
+          "description": "One app per build flavour, instead of the keys for one app (since 0.11.0).",
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][A-Za-z0-9_]*$" },
+          "additionalProperties": { "$ref": "#/definitions/flavor" }
+        },
+        "out": {
+          "description": "The folder fsp links writes the sitemap and .well-known files into, or false for none (since 0.12.0).",
+          "anyOf": [{ "type": "string" }, { "enum": [false] }],
+          "default": "links"
+        }
+      }
+    },
+    "flavor": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "android_package": { "type": "string" },
+        "android_sha256": { "type": "array", "items": { "type": "string" } },
+        "ios_app_id": { "type": "string" },
+        "ios_entitlements": { "type": "string" }
+      }
+    },
+    "maestro": {
+      "description": "What fsp maestro writes: one smoke flow per route (since 0.7.0). Only fsp maestro checks the values.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "description": "Android and iOS: the application or bundle id, or a Maestro variable like ${APP_ID}. Give app_id or url.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The web: an http or https URL, or a Maestro variable like ${URL}. Give app_id or url.",
+          "type": "string"
+        },
+        "link": {
+          "description": "What a route's path goes after, like myshop://shop.example.com or http://localhost:8080/#.",
+          "type": "string"
+        },
+        "out": {
+          "description": "The folder the flows go in, inside the project.",
+          "type": "string",
+          "default": ".maestro/routes"
+        },
+        "guard_flow": {
+          "description": "A .yaml flow that gets past the guards, run before a guarded route's link.",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "How long a flow waits for its page, in milliseconds.",
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 600000,
+          "default": 20000
+        },
+        "samples": { "$ref": "#/definitions/samples" }
+      }
+    },
+    "samples": {
+      "description": "The value of each dynamic folder, by its path below the app folder, like products/$id: 1.",
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "$ref": "#/definitions/sampleText" },
+          { "type": "array", "items": { "$ref": "#/definitions/sampleText" } }
+        ]
+      }
+    },
+    "sampleText": { "type": ["string", "number", "boolean"] },
+    "size": {
+      "description": "What fsp size checks the web build against (since 0.8.1). Only fsp size checks the values.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "build": {
+          "description": "The flutter build web output folder.",
+          "type": "string",
+          "default": "build/web"
+        },
+        "main": {
+          "description": "The budget of main.dart.js.",
+          "allOf": [{ "$ref": "#/definitions/bytes" }]
+        },
+        "route": {
+          "description": "The budget of each deferred route's own and shared chunks together.",
+          "allOf": [{ "$ref": "#/definitions/bytes" }]
+        },
+        "routes": {
+          "description": "Budgets per route pattern, like /checkout: 8 KB; each wins over route.",
+          "type": "object",
+          "additionalProperties": { "$ref": "#/definitions/bytes" }
+        }
+      }
+    },
+    "bytes": {
+      "description": "A size: a number of bytes, or a number and B, KB (1,024 bytes) or MB, like 3 MB or 64KB.",
+      "anyOf": [
+        { "type": "integer", "minimum": 1 },
+        { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)? ?(B|KB|MB)$" }
+      ]
+    },
+    "test": {
+      "description": "What fsp test writes: a widget smoke test per route (since 0.8.1). Only fsp test checks the values.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "out": {
+          "description": "test, integration_test or a folder below one.",
+          "type": "string",
+          "default": "test/routes"
+        },
+        "setup": {
+          "description": "A .dart file the tests call first. Default: <out>/setup.dart, when it exists.",
+          "type": "string"
+        },
+        "timeout": {
+          "description": "How long a test waits for its page, in milliseconds of its fake clock.",
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 600000,
+          "default": 30000
+        },
+        "samples": { "$ref": "#/definitions/samples" },
+        "skip": {
+          "description": "Route patterns, as fsp routes prints them, that get no test.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "a11y": {
+          "description": "Check Flutter's accessibility guidelines once each page is on screen: true for all, or some of them (since 0.16.0).",
+          "anyOf": [
+            { "type": "boolean" },
+            {
+              "type": "array",
+              "items": { "enum": ["tap_targets", "labels", "contrast"] }
+            }
+          ],
+          "default": false
+        }
+      }
+    },
+    "tasks": {
+      "description": "What fsp dev, fsp build and fsp run run (since 0.9.0): a task is a command, or a map with run, before, with, after and env. Only those commands check it.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9_-]*$" },
+      "properties": {
+        "dev": {
+          "description": "fsp dev: flutter run unless run says otherwise.",
+          "anyOf": [
+            { "$ref": "#/definitions/command" },
+            { "$ref": "#/definitions/devTask" }
+          ]
+        },
+        "build": {
+          "description": "fsp build <target>: flutter build unless run says otherwise.",
+          "anyOf": [
+            { "$ref": "#/definitions/command" },
+            { "$ref": "#/definitions/buildTask" }
+          ]
+        }
+      },
+      "additionalProperties": {
+        "description": "fsp run <name>.",
+        "anyOf": [
+          { "$ref": "#/definitions/command" },
+          { "$ref": "#/definitions/namedTask" }
+        ]
+      }
+    },
+    "command": {
+      "description": "A string the shell runs, or a list of words run with no shell. A leading fsp is the fsp that runs the task.",
+      "anyOf": [
+        { "type": "string", "pattern": "\\S" },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        }
+      ]
+    },
+    "steps": {
+      "description": "A command, or a list of commands run in order; the first that fails stops.",
+      "anyOf": [
+        { "type": "string", "pattern": "\\S" },
+        { "type": "array", "items": { "$ref": "#/definitions/command" } }
+      ]
+    },
+    "with": {
+      "description": "Long-running commands next to run, one pane each in fsp dev, by name.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[A-Za-z0-9_-]{1,20}$",
+        "not": { "enum": ["flutter", "fsp"] }
+      },
+      "additionalProperties": { "$ref": "#/definitions/command" }
+    },
+    "env": {
+      "description": "Environment variables for every command of the task.",
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "devTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run": { "$ref": "#/definitions/command" },
+        "before": { "$ref": "#/definitions/steps" },
+        "with": { "$ref": "#/definitions/with" },
+        "after": { "$ref": "#/definitions/steps" },
+        "env": { "$ref": "#/definitions/env" },
+        "hot_reload": {
+          "description": "Hot reload on every save; false restarts instead.",
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "buildTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "run": { "$ref": "#/definitions/command" },
+        "before": { "$ref": "#/definitions/steps" },
+        "with": { "$ref": "#/definitions/with" },
+        "after": { "$ref": "#/definitions/steps" },
+        "env": { "$ref": "#/definitions/env" }
+      }
+    },
+    "namedTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run"],
+      "properties": {
+        "run": { "$ref": "#/definitions/command" },
+        "before": { "$ref": "#/definitions/steps" },
+        "with": { "$ref": "#/definitions/with" },
+        "after": { "$ref": "#/definitions/steps" },
+        "env": { "$ref": "#/definitions/env" }
+      }
+    }
+  }
+}

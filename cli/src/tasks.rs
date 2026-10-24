@@ -94,6 +94,11 @@ pub struct Plan {
     pub hot_reload: bool,
 }
 
+/// The keys a task in map form takes (`fespalier.tasks.<name>.<key>`), in the order the messages
+/// list them; `hot_reload` only under `dev`. `schema_tests.rs` compares them with the schema's
+/// (since 0.23.0).
+pub const TASK_KEYS: [&str; 6] = ["run", "before", "with", "after", "env", "hot_reload"];
+
 /// What a task name may be.
 fn is_task_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -248,10 +253,7 @@ fn parse_task(name: &str, v: &Value) -> Result<Task> {
     };
     for k in map.keys() {
         let key = k.as_str().map_or_else(|| shown_value(k), str::to_string);
-        if !matches!(
-            key.as_str(),
-            "run" | "before" | "with" | "after" | "env" | "hot_reload"
-        ) {
+        if !TASK_KEYS.contains(&key.as_str()) {
             bail!(
                 "`fespalier.tasks.{name}` has an unknown key `{key}`; a task takes `run`, `before`, `with`, `after`, `env` and `hot_reload`"
             );

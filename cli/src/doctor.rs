@@ -28,8 +28,14 @@ mod checks;
 pub(crate) mod versions;
 mod wiring;
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use clap::Args;
@@ -288,7 +294,12 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     });
     let app = pubspec.as_ref().ok().map(|p| app_facts(project, &p.config));
     let mut sources = vec![];
-    dart_sources(project, &project.join("lib"), &mut sources);
+    dart_sources(
+        project,
+        &project.join("lib"),
+        &mut HashSet::new(),
+        &mut sources,
+    );
     if let Ok(p) = &pubspec {
         // An `output:` that is not a `.g.dart` is still generated code, which says `AppAdapters.`.
         let written = crate::outputs(&p.config, false);
@@ -335,15 +346,26 @@ fn refused(message: String) -> String {
 }
 
 /// The Dart files under `dir` but generated ones (`*.g.dart`), relative to `project`, without
-/// their comments.
-fn dart_sources(project: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
+/// their comments. A folder is read once, by the first path that reaches it in name order: `seen`
+/// holds the real paths of those read, so a symlink back up the tree ends there (since 0.23.1).
+fn dart_sources(
+    project: &Path,
+    dir: &Path,
+    seen: &mut HashSet<PathBuf>,
+    out: &mut Vec<(String, String)>,
+) {
+    if !first_visit(seen, dir, fs::canonicalize(dir)) {
+        return;
+    }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
-    for entry in entries.flatten() {
+    let mut entries: Vec<fs::DirEntry> = entries.flatten().collect();
+    entries.sort_by_key(fs::DirEntry::file_name);
+    for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            dart_sources(project, &path, out);
+            dart_sources(project, &path, seen, out);
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -359,6 +381,17 @@ fn dart_sources(project: &Path, dir: &Path, out: &mut Vec<(String, String)>) {
             out.push((rel, crate::entry::without_comments(&src)));
         }
     }
+}
+
+/// Whether `dir` is read now, and not before: `real` is its real path, which `seen` holds for each
+/// folder read. A real path that cannot be found (some network and virtual drives refuse it for a
+/// folder that lists fine) stands for the path as given, so the folder is read and not skipped.
+pub(crate) fn first_visit(
+    seen: &mut HashSet<PathBuf>,
+    dir: &Path,
+    real: std::io::Result<PathBuf>,
+) -> bool {
+    seen.insert(real.unwrap_or_else(|_| dir.to_path_buf()))
 }
 
 /// The app's facts: the tree read as `fsp check` reads it, and `fsp check` itself, counted.
@@ -428,38 +461,139 @@ fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
     }
 }
 
+/// How `flutter --version --machine` ended.
+pub(crate) enum Asked {
+    /// What it printed, or why there is nothing.
+    Answer(Result<String, String>),
+    /// A signal reached fsp (Ctrl-C) while it ran: flutter was stopped with what it started (since
+    /// 0.23.1).
+    Interrupted,
+}
+
 /// `flutter --version --machine`, run in the project, or why it did not answer.
-fn flutter_version(project: &Path) -> Result<String, String> {
+fn flutter_version(project: &Path) -> Asked {
     // A folder that is not there would fail the spawn with the same error as a missing `flutter`.
     if !project.is_dir() {
-        return Err(format!("{} is not a folder", project.display()));
+        return Asked::Answer(Err(format!("{} is not a folder", project.display())));
     }
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let env = crate::tasks::Env {
-        cwd: project,
-        vars: vec![],
-        fsp: &exe,
+    let prepared = std::env::current_exe()
+        .map_err(|e| e.to_string())
+        .and_then(|exe| {
+            let env = crate::tasks::Env {
+                cwd: project,
+                vars: vec![],
+                fsp: &exe,
+            };
+            let cmd = crate::tasks::Cmd::Argv(vec![
+                "flutter".into(),
+                "--version".into(),
+                "--machine".into(),
+            ]);
+            crate::tasks::prepare(&cmd, &[], &env)
+        });
+    let prepared = match prepared {
+        Ok(prepared) => prepared,
+        Err(why) => return Asked::Answer(Err(why)),
     };
-    let cmd = crate::tasks::Cmd::Argv(vec![
-        "flutter".into(),
-        "--version".into(),
-        "--machine".into(),
-    ]);
-    let mut prepared = crate::tasks::prepare(&cmd, &[], &env)?;
-    let program = prepared.program.clone();
-    let out = prepared
-        .process
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .map_err(|e| crate::tasks::why(&e, &program))?;
-    if !out.status.success() {
-        return Err(format!(
-            "`flutter --version --machine` {}",
-            crate::procs::Status::of(out.status).describe()
-        ));
+    let signals = crate::procs::subscribe();
+    if crate::procs::signalled() {
+        return Asked::Interrupted;
     }
-    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    version_output(
+        prepared.process,
+        &prepared.program,
+        FLUTTER_TIMEOUT,
+        &signals,
+    )
+}
+
+/// How long `flutter --version --machine` may take (since 0.23.1): flutter waits for as long as
+/// another flutter command holds its startup lock, and on a first run it downloads its Dart SDK,
+/// and `fsp doctor` must not wait with it.
+const FLUTTER_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// How often the wait looks for a signal (it ends as soon as flutter does).
+const SIGNAL_SLICE: Duration = Duration::from_millis(50);
+
+/// How long a flutter that is asked to stop (SIGTERM) has before it is killed.
+const STOP_GRACE: Duration = Duration::from_secs(2);
+
+/// What `command` (`flutter --version --machine`) prints on stdout, or why there is nothing. It
+/// runs in a process group of its own, which is stopped when it has not ended after `timeout`, or
+/// when a signal comes in on `signals` (Ctrl-C does not reach a group of its own: since 0.23.1).
+pub(crate) fn version_output(
+    command: Command,
+    program: &str,
+    timeout: Duration,
+    signals: &Receiver<()>,
+) -> Asked {
+    let stdout = Arc::new(Mutex::new(String::new()));
+    let locked = Arc::new(AtomicBool::new(false));
+    let (lines, waiting) = (Arc::clone(&stdout), Arc::clone(&locked));
+    let sink: Arc<dyn Fn(crate::procs::Out) + Send + Sync> = Arc::new(move |out| {
+        let crate::procs::Out::Line { text, err } = out else {
+            return;
+        };
+        // What flutter says while it waits for another flutter command (on either stream).
+        if text.to_ascii_lowercase().contains("startup lock") {
+            waiting.store(true, Ordering::SeqCst);
+        }
+        if !err && let Ok(mut lines) = lines.lock() {
+            lines.push_str(&text);
+            lines.push('\n');
+        }
+    });
+    let child = match crate::procs::spawn(command, false, sink) {
+        Ok(child) => child,
+        Err(e) => return Asked::Answer(Err(crate::tasks::why(&e, program))),
+    };
+    let deadline = Instant::now() + timeout;
+    let ended = loop {
+        if signals.try_recv().is_ok() {
+            let _ = child.terminate(STOP_GRACE);
+            return Asked::Interrupted;
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        if let Some(status) = child.wait(left.min(SIGNAL_SLICE)) {
+            break Some(status);
+        }
+        if Instant::now() >= deadline {
+            break None;
+        }
+    };
+    let status = match ended {
+        Some(status) => status,
+        None => match child.terminate(STOP_GRACE) {
+            // It ended by itself in the instant between the last wait and the stop: its answer
+            // stands.
+            Some(status) if status.success() => status,
+            _ => {
+                return Asked::Answer(Err(not_answered(timeout, locked.load(Ordering::SeqCst))));
+            }
+        },
+    };
+    if !status.success() {
+        return Asked::Answer(Err(format!(
+            "`flutter --version --machine` {}",
+            status.describe()
+        )));
+    }
+    Asked::Answer(Ok(stdout.lock().map(|s| s.clone()).unwrap_or_default()))
+}
+
+/// Why a flutter that was stopped after `timeout` has no row (since 0.23.1). Only what it said
+/// itself (`locked`: it mentioned its startup lock) names the lock; a first run that is still
+/// downloading looks the same from outside.
+fn not_answered(timeout: Duration, locked: bool) -> String {
+    let why = if locked {
+        "flutter says it is waiting for another flutter command to release its startup lock: let that one finish, then try again"
+    } else {
+        "flutter may be updating itself on a first run, or waiting for another flutter command's startup lock: run `flutter --version` once, then try again"
+    };
+    format!(
+        "`flutter --version --machine` did not answer in {} s and was stopped ({why})",
+        timeout.as_secs()
+    )
 }
 
 /// One row as a JSON object: `{"section","check","subject","status","message"}`, every key there
@@ -516,14 +650,24 @@ fn summary(rows: &[Row]) -> String {
 }
 
 pub fn run(project: &Path, cmd: &DoctorCmd) -> Result<()> {
-    let facts = gather(project, flutter_version(project));
+    // `flutter` runs in a group of its own, which Ctrl-C does not reach: fsp stops it (since
+    // 0.23.1).
+    crate::procs::install_signals().map_err(anyhow::Error::msg)?;
+    let toolchain = match flutter_version(project) {
+        Asked::Answer(answer) => answer,
+        Asked::Interrupted => return Err(Exit(130).into()),
+    };
+    let facts = gather(project, toolchain);
+    if crate::procs::signalled() {
+        return Err(Exit(130).into());
+    }
     let rows = rows(&facts);
     if cmd.json {
         for row in &rows {
-            println!("{}", json_line(row));
+            outln!("{}", json_line(row));
         }
     } else {
-        print!("{}", text(&facts, &rows));
+        out!("{}", text(&facts, &rows));
     }
     if rows.iter().any(|r| r.status == Status::Error) {
         return Err(Exit(1).into());

@@ -88,10 +88,10 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         recipes::RECIPES,
     )?;
     for note in &plan.notes {
-        eprintln!("note: {note}");
+        errln!("note: {note}");
     }
     if plan.is_empty() {
-        eprintln!("nothing to add");
+        errln!("nothing to add");
         return Ok(());
     }
     let mut commands = vec![];
@@ -108,7 +108,7 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         commands.push("fsp test".to_string());
     }
     if cmd.dry_run {
-        eprint!("{}", plan.describe(&text, &commands));
+        err!("{}", plan.describe(&text, &commands));
         return Ok(());
     }
 
@@ -123,17 +123,17 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
     }
     if let Some(new) = &plan.pubspec {
         fs::write(&path, new).with_context(|| format!("writing {}", path.display()))?;
-        eprintln!("  edit   pubspec.yaml");
+        errln!("  edit   pubspec.yaml");
         for change in &plan.changes {
-            eprintln!("           {change}");
+            errln!("           {change}");
         }
     }
     if let Some(edited) = &plan.overrides {
         fs::write(&overrides_path, &edited.after)
             .with_context(|| format!("writing {}", overrides_path.display()))?;
-        eprintln!("  edit   {}", plan::OVERRIDES);
+        errln!("  edit   {}", plan::OVERRIDES);
         for change in &edited.changes {
-            eprintln!("           {change}");
+            errln!("           {change}");
         }
     }
     for file in &plan.files {
@@ -154,7 +154,7 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
             Write::Update => fs::write(&target, &file.content)
                 .with_context(|| format!("writing {}", target.display()))?,
         }
-        eprintln!("  {:<6} {}", file.write.word(), file.path);
+        errln!("  {:<6} {}", file.write.word(), file.path);
     }
     if let Some(min) = plan.android_min_sdk {
         create::raise_android_min_sdk(project, min)?;
@@ -163,7 +163,7 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
     // What a person has to do is printed before any command runs: one of them can fail, and
     // the feature then reads as present, so a later `fsp add` would say nothing about it.
     for hand in &plan.by_hand {
-        eprintln!(
+        errln!(
             "\nBy hand: {} ({}). Make this change:\n{}",
             hand.path,
             hand.why,
@@ -201,12 +201,12 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         .filter(|p| p.ends_with(".dart"))
         .collect();
     if let Some(why) = dart_format(project, &written) {
-        eprintln!("note: {why}; the files are as `fsp create` writes them");
+        errln!("note: {why}; the files are as `fsp create` writes them");
     }
     let generate = || -> Result<()> {
         let cfg = Config::load(project)?.for_scaffolding();
         let outcome = crate::gen_with(project, &cfg, true)?;
-        eprintln!("{}", outcome.line());
+        errln!("{}", outcome.line());
         Ok(())
     };
     generate().map_err(|e| left("fsp gen", &rest, &e))?;
@@ -215,11 +215,11 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         crate::smoke::run(project, false).map_err(|e| left("fsp test", &rest, &e))?;
     }
     if !plan.by_hand.is_empty() {
-        eprintln!(
+        errln!(
             "\nUntil the changes above are made, the feature is not wired in, and its test fails."
         );
     }
-    eprintln!("\n✓ added {}", plan.features.join(", "));
+    errln!("\n✓ added {}", plan.features.join(", "));
     Ok(())
 }
 

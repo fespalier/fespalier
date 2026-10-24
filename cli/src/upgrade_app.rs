@@ -469,9 +469,9 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     // With --json, stdout is the one object; what people read goes to stderr.
     let say = |line: &str| {
         if cmd.json {
-            eprintln!("{line}");
+            errln!("{line}");
         } else {
-            println!("{line}");
+            outln!("{line}");
         }
     };
     let (oldest, newest, moves, kept, pubspec, new_overrides) = match plan {
@@ -508,7 +508,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             .into_iter()
             .map(|s| s.heading)
             .collect();
-        println!(
+        outln!(
             "{}",
             json!({
                 "from": from.to_string(),
@@ -614,7 +614,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         let regenerate = || -> Result<()> {
             let cfg = crate::config::Config::load(project)?;
             let outcome = crate::gen_with(project, &cfg, true)?;
-            eprintln!("{}", outcome.line());
+            errln!("{}", outcome.line());
             Ok(())
         };
         regenerate().map_err(|e| {
@@ -645,12 +645,12 @@ fn checkout(cmd: &UpgradeCmd, root: &str, target: Version) {
         "fespalier comes from a checkout ({root}/fespalier): its version is the checkout's, and pubspec.yaml has no ref to move."
     );
     if cmd.json {
-        println!(
+        outln!(
             "{}",
             json!({"checkout": format!("{root}/fespalier"), "target": target.to_string(), "upToDate": true, "packages": [], "notes": []})
         );
-        eprintln!("{line}");
+        errln!("{line}");
     } else {
-        println!("{line}");
+        outln!("{line}");
     }
 }

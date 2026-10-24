@@ -1176,6 +1176,74 @@ fn a_symlinked_folder_is_still_a_folder() {
     assert!(code.contains("LinkedRoute"));
 }
 
+/// A symlink to a folder on the way down to it (or to itself) is a loop, left out; it used to nest
+/// the routes as deep as the system follows links, 40 levels of errors, and two of them in one
+/// folder never ended (since 0.23.1). A link to a folder above the app folder is read once: the
+/// loop is the link back to the app folder inside it. The same folder reached through two links
+/// that are not on one path is no loop: both are read, as before (the second is an error of its
+/// own, since a page makes a route name).
+#[cfg(unix)]
+#[test]
+fn a_symlink_back_up_the_tree_is_left_out_and_a_shared_folder_stays() {
+    use crate::diag::Level;
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let mut files = Files::default();
+    files.set("page.dart", page("HomePage", ""));
+    files.set("products/page.dart", page("ProductsPage", ""));
+    files.write_to(dir.path());
+    let app = dir.path().join("lib/app");
+    // `lib/app/up` is `lib/`, `lib/app/products/back` is `lib/app/`, and `lib/app/self` itself.
+    symlink("..", app.join("up")).unwrap();
+    symlink("..", app.join("products/back")).unwrap();
+    symlink(".", app.join("self")).unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    fs::write(shared.path().join("page.dart"), page("SharedPage", "")).unwrap();
+    symlink(shared.path(), app.join("first")).unwrap();
+    let (code, diags, routes) = crate::build(&app, &Config::default()).unwrap();
+    let said: Vec<(&str, &str)> = diags
+        .0
+        .iter()
+        .map(|d| (d.file.as_str(), d.msg.as_str()))
+        .collect();
+    let skipped = "folder has no page.dart and no routes below it; skipped";
+    // `up` is `lib/`: a folder of its own with nothing below it, the way back into `lib/app` left out.
+    assert_eq!(said, [("up", skipped)]);
+    assert!(diags.0.iter().all(|d| d.level == Level::Warning));
+    // `/`, `/products` and `/first`.
+    assert_eq!(routes, 3);
+    assert!(code.contains("SharedRoute"));
+    // A second link to the shared folder is read too, and says what two pages of one name say.
+    symlink(shared.path(), app.join("second")).unwrap();
+    let (_, diags, _) = crate::build(&app, &Config::default()).unwrap();
+    assert!(
+        diags
+            .0
+            .iter()
+            .any(|d| d.level == Level::Error && d.msg.contains("`SharedRoute` is already taken")),
+        "{:?}",
+        diags.0
+    );
+}
+
+/// Two loops in one folder made the walk run as many times as the links nest, twice over at each
+/// level, which is never (since 0.23.1).
+#[cfg(unix)]
+#[test]
+fn two_symlink_loops_in_one_folder_end() {
+    use std::os::unix::fs::symlink;
+    let dir = tempfile::tempdir().unwrap();
+    let mut files = Files::default();
+    files.set("page.dart", page("HomePage", ""));
+    files.write_to(dir.path());
+    let app = dir.path().join("lib/app");
+    symlink("..", app.join("a")).unwrap();
+    symlink("..", app.join("b")).unwrap();
+    let (_, diags, routes) = crate::build(&app, &Config::default()).unwrap();
+    assert_eq!(diags.0.len(), 2, "{:?}", diags.0);
+    assert_eq!(routes, 1);
+}
+
 /// The type the `ShopIdRoute` of a generated file takes its `id` as (`int`, `String`).
 fn shop_id_type(out: &str) -> &str {
     let at = out

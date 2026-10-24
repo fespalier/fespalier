@@ -199,6 +199,19 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             ),
         ),
     });
+    // `dev_dependencies:` alone builds an app, but the generated files under lib/ import fespalier
+    // (since 0.23.1).
+    if fespalier.is_some()
+        && !section(raw, "dependencies", &all)
+            .iter()
+            .any(|(n, _)| n == "fespalier")
+    {
+        out.push(row(
+            "fespalier",
+            Status::Warning,
+            "fespalier is under `dev_dependencies:` only: the generated files under lib/ import package:fespalier, so move it to `dependencies:`",
+        ));
+    }
     out.extend(companions(&companion_deps, fespalier));
     let overrides = |name: &str, value: &Value| is_ours(name, value, own);
     for (name, source) in section(raw, "dependency_overrides", &overrides) {

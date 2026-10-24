@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.1](https://github.com/fespalier/fespalier/compare/v0.23.0...v0.23.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** a closed stdout or stderr no longer panics, and fsp doctor stops a silent flutter, warns on a dev-only fespalier and survives a symlink loop ([#293](https://github.com/fespalier/fespalier/issues/293)) ([cc678b9](https://github.com/fespalier/fespalier/commit/cc678b979a6583ebbf93f38c4d54f686de35c75c))
+* **cli:** tell fespalier's packages by where they come from, and handle overrides in fsp add and fsp upgrade --app ([#294](https://github.com/fespalier/fespalier/issues/294)) ([a738286](https://github.com/fespalier/fespalier/commit/a73828697a9b7dd2073d4a06de1fabc499a45e12))
+
 ## [0.23.0](https://github.com/fespalier/fespalier/compare/v0.22.1...v0.23.0) (2026-10-24)
 
 

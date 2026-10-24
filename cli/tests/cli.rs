@@ -4516,6 +4516,52 @@ fn add_prints_the_changes_to_make_by_hand_before_a_command_that_fails() {
     );
 }
 
+/// A checkout that keeps its overrides in `pubspec_overrides.yaml` gets the new ones there, where
+/// pub reads them (since 0.23.1).
+#[cfg(unix)]
+#[test]
+fn add_writes_a_checkouts_overrides_into_pubspec_overrides_yaml() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let local = pubspec.replace(
+        &format!(
+            "    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v{}\n",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "    path: ../checkout/packages/fespalier\n",
+    );
+    assert_ne!(local, pubspec);
+    fs::write(app.join("pubspec.yaml"), &local).unwrap();
+    let overrides =
+        "dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    // `pub get` fails, so the run stops once the files are written.
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "http", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("  edit   pubspec_overrides.yaml\n           dependency_overrides: fespalier_http (path ../checkout/packages/fespalier_http)\n"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        format!(
+            "{overrides}  fespalier_http:\n    path: ../checkout/packages/fespalier_http\n  fespalier_transport:\n    path: ../checkout/packages/fespalier_transport\n"
+        )
+    );
+    let now = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    assert!(!now.contains("dependency_overrides"), "{now}");
+    assert!(
+        now.contains("  fespalier_http:\n    path: ../checkout/packages/fespalier_http\n"),
+        "{now}"
+    );
+}
+
 // --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
 
 /// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.

@@ -52,6 +52,8 @@ fn plan_for(tree: &Tree, features: &[&str]) -> anyhow::Result<plan::Plan> {
             features: &features,
             pubspec: &tree["pubspec.yaml"],
             files: &files,
+            overrides: tree.get(plan::OVERRIDES).map(String::as_str),
+            workspace_overrides: &[],
         },
         RECIPES,
     )
@@ -69,6 +71,9 @@ fn err(tree: &Tree, features: &[&str]) -> String {
 fn write(tree: &mut Tree, plan: &plan::Plan) {
     if let Some(pubspec) = &plan.pubspec {
         tree.insert("pubspec.yaml".to_string(), pubspec.clone());
+    }
+    if let Some(overrides) = &plan.overrides {
+        tree.insert(plan::OVERRIDES.to_string(), overrides.after.clone());
     }
     for file in &plan.files {
         let there = tree.contains_key(&file.path);
@@ -606,6 +611,131 @@ fn a_companion_under_dev_dependencies_is_a_note() {
             .is_none_or(|p| yaml(p)["dependencies"].get("fespalier_storage").is_none()),
         "{:?}",
         plan.pubspec
+    );
+}
+
+/// A checkout that keeps its overrides in `pubspec_overrides.yaml`, whose `dependency_overrides:`
+/// pub reads in place of the pubspec's, gets the new ones there, not a section in `pubspec.yaml`
+/// that pub would not read (since 0.23.1).
+#[test]
+fn a_checkout_gets_its_overrides_where_it_keeps_them() {
+    let mut tree = created(&[], Some("/work/fespalier"));
+    let overrides = "# The checkout.\ndependency_overrides:\n  fespalier:\n    path: /work/fespalier/packages/fespalier\n";
+    tree.insert(plan::OVERRIDES.to_string(), overrides.to_string());
+    let plan = ok(&tree, &["http"]);
+    let pubspec = plan.pubspec.as_deref().unwrap();
+    assert!(!pubspec.contains("dependency_overrides"), "{pubspec}");
+    assert!(
+        pubspec.contains("  fespalier_http:\n    path: /work/fespalier/packages/fespalier_http\n"),
+        "{pubspec}"
+    );
+    let edited = plan.overrides.as_ref().unwrap();
+    assert_eq!(edited.before, overrides);
+    assert_eq!(
+        edited.after,
+        format!(
+            "{overrides}  fespalier_http:\n    path: /work/fespalier/packages/fespalier_http\n  fespalier_transport:\n    path: /work/fespalier/packages/fespalier_transport\n"
+        )
+    );
+    assert_eq!(
+        edited.changes,
+        [
+            "dependency_overrides: fespalier_http (path /work/fespalier/packages/fespalier_http)",
+            "dependency_overrides: fespalier_transport (path /work/fespalier/packages/fespalier_transport)",
+        ]
+    );
+    let shown = plan.describe(&tree["pubspec.yaml"], &commands());
+    assert!(
+        shown.contains(
+            "\nedit   pubspec_overrides.yaml\n         dependency_overrides: fespalier_http"
+        ),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("\n=== pubspec_overrides.yaml (edit)\n"),
+        "{shown}"
+    );
+    // A file without the key leaves the pubspec's section in force, so that is where they go.
+    tree.insert(plan::OVERRIDES.to_string(), "# Nothing yet.\n".to_string());
+    let plan = ok(&tree, &["http"]);
+    assert!(plan.overrides.is_none());
+    assert!(
+        plan.pubspec.unwrap().contains("\ndependency_overrides:\n"),
+        "the pubspec's section"
+    );
+}
+
+/// A member of a pub workspace (`resolution: workspace`) reads the overrides of the workspace's root
+/// with its own, and pub refuses a package overridden in both: those the root has are not written
+/// again (since 0.23.1).
+#[test]
+fn a_workspace_member_counts_the_overrides_of_its_root() {
+    let tree = created(&[], Some("/work/fespalier"));
+    let pubspec =
+        tree["pubspec.yaml"].replacen("\nenvironment:", "\nresolution: workspace\nenvironment:", 1);
+    assert_ne!(pubspec, tree["pubspec.yaml"]);
+    let features = ["http".to_string()];
+    let files = BTreeMap::new();
+    let request = |root: &[String]| {
+        plan::build(
+            &Request {
+                features: &features,
+                pubspec: &pubspec,
+                files: &files,
+                overrides: None,
+                workspace_overrides: root,
+            },
+            RECIPES,
+        )
+        .unwrap_or_else(|e| panic!("{e:#}"))
+    };
+    let all = [
+        "fespalier".to_string(),
+        "fespalier_http".to_string(),
+        "fespalier_transport".to_string(),
+    ];
+    let plan = request(&all);
+    assert!(plan.overrides.is_none());
+    let written = plan.pubspec.unwrap();
+    assert!(!written.contains("dependency_overrides"), "{written}");
+    // The ones the root does not have go where the app keeps its own.
+    let plan = request(&all[..1]);
+    assert_eq!(
+        plan.changes
+            .iter()
+            .filter(|c| c.starts_with("dependency_overrides:"))
+            .collect::<Vec<_>>(),
+        [
+            "dependency_overrides: fespalier_http (path /work/fespalier/packages/fespalier_http)",
+            "dependency_overrides: fespalier_transport (path /work/fespalier/packages/fespalier_transport)",
+        ]
+    );
+}
+
+/// The overrides of a workspace's root are read from its `pubspec_overrides.yaml` when that has the
+/// key, else from its pubspec, and only for a member.
+#[test]
+fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("apps/shop")).unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: root\nworkspace:\n  - apps/shop\ndependency_overrides:\n  fespalier:\n    path: fespalier/packages/fespalier\n",
+    )
+    .unwrap();
+    let member = "name: shop\nresolution: workspace\n";
+    let app = root.join("apps/shop");
+    assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
+    assert!(crate::add::workspace_overrides(&app, "name: shop\n").is_empty());
+    fs::write(
+        root.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_http:\n    path: x\n",
+    )
+    .unwrap();
+    assert_eq!(
+        crate::add::workspace_overrides(&app, member),
+        ["fespalier_http"]
     );
 }
 

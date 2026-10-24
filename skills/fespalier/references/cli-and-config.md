@@ -522,7 +522,9 @@ its `fespalier:` keys are set and all its files exist (asking for a present one 
   line endings, puts a dependency in name order when its section is (SDK packages aside), and reads the result back
   with `serde_yaml_ng` after each edit: a layout it does not edit stops everything, with the lines to write. Each
   companion is pinned as `fespalier` is (`cli/src/pins.rs`): the same git `url` and `ref`, or a checkout's folder
-  plus the `dependency_overrides:` of the companions it reaches and of `fespalier` (as `--local-packages`). A
+  plus the `dependency_overrides:` of the companions it reaches and of `fespalier` (as `--local-packages`; since
+  0.23.1 in `pubspec_overrides.yaml` when that file has the key, and not one the root of the app's pub workspace
+  has already, since pub refuses a package overridden twice). A
   third-party package the app lists keeps its constraint (a note). Then the `fespalier:` keys (a different value
   is set, saying what it was), `test: skip:` routes (those of the features being added: a route the app took out of
   `skip:` stays out; guarded ones only once there is a `test/routes/setup.dart`, and a setup file made now also lists

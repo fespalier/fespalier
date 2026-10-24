@@ -131,8 +131,10 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
         let file: Value =
             serde_yaml_ng::from_str(text).map_err(|e| format!("pubspec_overrides.yaml: {e}"))?;
         if let Some(Value::Mapping(map)) = file.get("dependency_overrides") {
-            for name in map.keys().filter_map(Value::as_str) {
-                if pins::is_package(name) {
+            let own = value.get("dependencies").and_then(|d| d.get("fespalier"));
+            for (name, spec) in map {
+                let Some(name) = name.as_str() else { continue };
+                if pins::is_ours(name, spec, own) {
                     kept.push(format!(
                         "pubspec_overrides.yaml overrides {name}; left as it is"
                     ));

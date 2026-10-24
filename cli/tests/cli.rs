@@ -4812,7 +4812,7 @@ fn doctor_prints_its_rows_and_exits_1_on_an_error() {
     // A ref that is not this fsp's: an error row, and exit 1 with nothing on stderr.
     fs::write(
         root.join("pubspec.yaml"),
-        "name: demo\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: v0.0.1\n",
+        "name: demo\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v0.0.1\n",
     )
     .unwrap();
     let (code, out, err) = doctor(&["doctor", "--json"]);

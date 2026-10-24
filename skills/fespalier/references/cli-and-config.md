@@ -600,7 +600,8 @@ app folder cannot be read as a tree), `root_file`, `hot_reload`, `adapter` (per 
 `configure(`; per first-party adapter package under `dependencies:` that is off: `info` when no Dart file calls its `configure(`, a
 package of the family is often a dependency for something else, and a warning when one does and `adapters:` leaves the package out),
 `telemetry`, `otel`, `forms`, `deferred` and `tasks`. Then "Versions": `fespalier` (its `ref:`
-against this `fsp`), `companion` (per `fespalier_*` dependency: the same `url` and `ref`), `override`, `lock` (what `pubspec.lock`
+against this `fsp`), `companion` (per package of fespalier's repository: the same `url`, `ref` and `path: packages/<name>`; since 0.23.1
+one `fsp` knows, or a git dependency on `packages/<name>` of fespalier's `url`, never a `fespalier_` name alone), `override`, `lock` (what `pubspec.lock`
 resolved, skipped without it; a pub workspace member's is the workspace root's), `go_router` (against `>=17.2.3 <19.0.0`), `flutter` and
 `dart` (against 3.35.0 and 3.9.0, a pre-release of the floor counting as below it, a Flutter that reports `0.0.0` being an error of
 its own; `flutter` per dependency that needs a newer one). Then "Checks": `config` (a `pubspec.yaml` that `config.rs` refuses: one error row, and the

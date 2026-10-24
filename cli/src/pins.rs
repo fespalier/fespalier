@@ -2,8 +2,9 @@
 //! repository at one `ref:`, or the `packages/` folder of one checkout. `fsp add` pins a new
 //! companion the way `fespalier` is pinned, and `fsp upgrade --app` moves every `ref:` together.
 //!
-//! Only the packages of this repository count ([`is_package`]): a `fespalier_*` package of
-//! someone else's is not read.
+//! Only the packages of this repository count ([`is_ours`]): those this `fsp` knows, and a git
+//! dependency on `packages/<name>` of the repository fespalier comes from. A `fespalier_*` package
+//! of someone else's is not read.
 
 use serde_yaml_ng::Value;
 
@@ -19,6 +20,33 @@ pub fn is_package(name: &str) -> bool {
     name == "fespalier"
         || RECIPES.iter().any(|r| r.companions.contains(&name))
         || NOT_A_CREATE_FEATURE.iter().any(|(n, _)| *n == name)
+}
+
+/// Whether `name`, listed as `value`, is fespalier or one of its companions (since 0.23.1): a
+/// package this `fsp` knows ([`is_package`]), or a git dependency on `packages/<name>` of the
+/// repository `fespalier` (fespalier's own entry) comes from, as a package newer than this `fsp`
+/// is. Never by its name alone: `fespalier_extras: ^1.0.0` is someone else's. `fsp add`,
+/// `fsp upgrade --app` and `fsp doctor` all read the pubspec through this.
+#[must_use]
+pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
+    if is_package(name) {
+        return true;
+    }
+    let (Some((url, _)), Some((other, Some(path)))) = (fespalier.and_then(git_of), git_of(value))
+    else {
+        return false;
+    };
+    same_url(url, other) && path.trim_end_matches('/') == format!("packages/{name}")
+}
+
+/// The `url:` and `path:` of a git dependency (`git: <url>` has no path).
+fn git_of(value: &Value) -> Option<(&str, Option<&str>)> {
+    let git = value.get("git")?;
+    let url = git
+        .get("url")
+        .and_then(Value::as_str)
+        .or_else(|| git.as_str())?;
+    Some((url, git.get("path").and_then(Value::as_str)))
 }
 
 /// Where one package comes from.
@@ -149,6 +177,7 @@ fn origin_of(name: &str, value: &Value) -> Origin {
 
 /// Reads the pins of a parsed pubspec. Refuses one that does not depend on `fespalier`.
 pub fn read(pubspec: &Value) -> Result<Pins, String> {
+    let own = pubspec.get("dependencies").and_then(|d| d.get("fespalier"));
     let mut all = vec![];
     for section in SECTIONS {
         let Some(Value::Mapping(map)) = pubspec.get(section) else {
@@ -156,7 +185,7 @@ pub fn read(pubspec: &Value) -> Result<Pins, String> {
         };
         for (name, value) in map {
             let Some(name) = name.as_str() else { continue };
-            if !is_package(name) {
+            if !is_ours(name, value, own) {
                 continue;
             }
             all.push(Pin {

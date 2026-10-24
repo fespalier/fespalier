@@ -20,9 +20,11 @@ fn this_fsp() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
-/// A git dependency on this repository at `git_ref`.
-fn git(git_ref: &str) -> String {
-    format!("\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: {git_ref}")
+/// A git dependency on the package `name` of this repository at `git_ref`.
+fn git(name: &str, git_ref: &str) -> String {
+    format!(
+        "\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/{name}\n      ref: {git_ref}"
+    )
 }
 
 /// A project with this pubspec and these files (relative to the project), read by the doctor.
@@ -148,8 +150,8 @@ fn an_app_in_line_has_no_error_and_no_warning() {
     let v = this_fsp();
     let pubspec = format!(
         "name: shop\ndependencies:\n  flutter:\n    sdk: flutter\n  fespalier:{}\n  fespalier_push:{}\nfespalier:\n  adapters: [fespalier_push]\n",
-        git(&format!("v{v}")),
-        git(&format!("v{v}"))
+        git("fespalier", &format!("v{v}")),
+        git("fespalier_push", &format!("v{v}"))
     );
     let lock = format!(
         "packages:\n  fespalier:\n    source: git\n    version: \"{v}\"\n  fespalier_push:\n    source: git\n    version: \"{v}\"\n  go_router:\n    source: hosted\n    version: \"17.3.0\"\n"
@@ -198,9 +200,10 @@ fn an_app_in_line_has_no_error_and_no_warning() {
 #[test]
 fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
     let pubspec = format!(
-        "name: shop\ndependencies:\n  fespalier:{}\n  fespalier_push:{}\n  fespalier_http:\n    git:\n      url: https://github.com/someone/fork.git\n      ref: v0.1.0\n  fespalier_flags: ^1.0.0\n  fespalier_mine:\n    path: ../mine\n",
-        git("v0.1.0"),
-        git("v0.0.9")
+        "name: shop\ndependencies:\n  fespalier:{}\n  fespalier_push:{}\n  fespalier_http:\n    git:\n      url: https://github.com/someone/fork.git\n      ref: v0.1.0\n  fespalier_flags: ^1.0.0\n  fespalier_mine:\n    path: ../mine\n  fespalier_extras: ^1.0.0\n  fespalier_next:{}\n  fespalier_forms:\n    git:\n      url: https://github.com/fespalier/fespalier\n      ref: v0.1.0\n  fespalier_auth:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: v0.1.0\n",
+        git("fespalier", "v0.1.0"),
+        git("fespalier_push", "v0.0.9"),
+        git("fespalier_next", "v0.0.9")
     );
     let rows = doctor::rows(&facts(
         &pubspec,
@@ -226,20 +229,47 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
         one(&rows, "companion", Some("fespalier_flags")),
         "warning: fespalier_flags: `^1.0.0`, not a git dependency: the companions are not published; give it fespalier's url and ref"
     );
+    // A package of this repository is one fsp knows, or a git dependency on its folder of the
+    // repository fespalier comes from (a package newer than this fsp); a name is not enough.
+    assert!(of(&rows, "companion", Some("fespalier_mine")).is_empty());
+    assert!(of(&rows, "companion", Some("fespalier_extras")).is_empty());
     assert_eq!(
-        one(&rows, "companion", Some("fespalier_mine")),
-        "info: fespalier_mine: path ../mine, not compared"
+        one(&rows, "companion", Some("fespalier_next")),
+        "error: fespalier_next: ref v0.0.9, and fespalier's is v0.1.0: give every companion fespalier's url and ref, or move them together with `fsp upgrade --app`"
+    );
+    // Without `path:`, pub reads the root of the repository, which is no package of it.
+    assert_eq!(
+        one(&rows, "companion", Some("fespalier_forms")),
+        "error: fespalier_forms: git, no `path:`; the package is in packages/fespalier_forms of the repository: give it `path: packages/fespalier_forms`"
+    );
+    assert_eq!(
+        one(&rows, "companion", Some("fespalier_auth")),
+        "error: fespalier_auth: git, path packages/fespalier_http; the package is in packages/fespalier_auth of the repository: give it `path: packages/fespalier_auth`"
+    );
+    // The overrides are told by the same rule.
+    let overridden = format!(
+        "{pubspec}dependency_overrides:\n  fespalier_http:\n    path: ../http\n  fespalier_extras:\n    path: ../extras\n"
+    );
+    let rows = doctor::rows(&facts(&overridden, &[], Err("no".into())));
+    assert_eq!(
+        of(&rows, "override", None),
+        [
+            "info: fespalier_http: `dependency_overrides:` says path ../http, which wins over `dependencies:`"
+        ]
     );
     // A `.git` and a trailing slash name the same repository.
     let same = format!(
-        "name: shop\ndependencies:\n  fespalier:{}\n  fespalier_push:\n    git:\n      url: https://github.com/fespalier/fespalier.git/\n      ref: v0.1.0\n",
-        git("v0.1.0")
+        "name: shop\ndependencies:\n  fespalier:{}\n  fespalier_push:\n    git:\n      url: https://github.com/fespalier/fespalier.git/\n      path: packages/fespalier_push/\n      ref: v0.1.0\n",
+        git("fespalier", "v0.1.0")
     );
     let rows = doctor::rows(&facts(&same, &[], Err("no".into())));
     assert!(one(&rows, "companion", Some("fespalier_push")).starts_with("ok: "));
     // A branch or a commit is not compared; no ref at all is the default branch.
     let rows = doctor::rows(&facts(
-        &format!("name: shop\ndependencies:\n  fespalier:{}\n", git("main")),
+        &format!(
+            "name: shop\ndependencies:\n  fespalier:{}\n",
+            git("fespalier", "main")
+        ),
         &[],
         Err("no".into()),
     ));
@@ -248,11 +278,20 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
             .starts_with("info: fespalier: git, ref main, which is not a release tag")
     );
     let rows = doctor::rows(&facts(
-        "name: shop\ndependencies:\n  fespalier:\n    git: https://github.com/fespalier/fespalier\n",
+        "name: shop\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n",
         &[],
         Err("no".into()),
     ));
     assert!(one(&rows, "fespalier", None).starts_with("warning: fespalier: git with no `ref:`"));
+    let rows = doctor::rows(&facts(
+        "name: shop\ndependencies:\n  fespalier:\n    git: https://github.com/fespalier/fespalier\n",
+        &[],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        one(&rows, "fespalier", None),
+        "error: fespalier: git, no `path:`; the package is in packages/fespalier of the repository: give it `path: packages/fespalier`"
+    );
     let rows = doctor::rows(&facts("name: shop\n", &[], Err("no".into())));
     assert_eq!(
         one(&rows, "fespalier", None),
@@ -262,7 +301,7 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
 
 #[test]
 fn the_lock_go_router_and_the_toolchain() {
-    let pubspec = "name: shop\ndependencies:\n  fespalier:\n    path: ../fespalier\n  fespalier_download_background:\n    path: ../bg\n";
+    let pubspec = "name: shop\ndependencies:\n  fespalier:\n    path: ../fespalier\n  fespalier_download_background:\n    path: ../bg\n  fespalier_extras: ^1.0.0\n";
     // No lock: skipped. No flutter: one skipped row for both.
     let rows = doctor::rows(&facts(pubspec, &[], Err("`flutter` is not on PATH".into())));
     assert_eq!(
@@ -277,7 +316,8 @@ fn the_lock_go_router_and_the_toolchain() {
     );
     assert!(of(&rows, "dart", None).is_empty());
     // A lock of another fespalier, a companion out of step, `go_router` outside the range.
-    let lock = "packages:\n  fespalier:\n    version: \"0.1.0\"\n  fespalier_download_background:\n    version: \"0.0.9\"\n  go_router:\n    version: \"16.2.0\"\n";
+    // `fespalier_extras` is someone else's: its version is its own.
+    let lock = "packages:\n  fespalier:\n    version: \"0.1.0\"\n  fespalier_download_background:\n    version: \"0.0.9\"\n  fespalier_extras:\n    version: \"1.0.0\"\n  go_router:\n    version: \"16.2.0\"\n";
     let rows = doctor::rows(&facts(
         pubspec,
         &[("pubspec.lock", lock)],
@@ -654,7 +694,7 @@ fn the_build_runner_trap_is_fsp_checks_own_warning() {
 fn a_pubspec_config_rs_refuses_is_one_error_and_the_versions_still_show() {
     let pubspec = format!(
         "name: shop\ndependencies:\n  fespalier:{}\nfespalier:\n  remount: sometimes\n",
-        git(&format!("v{}", this_fsp()))
+        git("fespalier", &format!("v{}", this_fsp()))
     );
     let rows = doctor::rows(&facts(&pubspec, &[], Err("no".into())));
     assert!(rows.iter().all(|r| r.section != Section::Wiring));

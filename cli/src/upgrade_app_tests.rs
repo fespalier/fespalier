@@ -101,6 +101,24 @@ fn it_moves_every_ref_together_and_changes_nothing_else() {
     );
 }
 
+/// A package of this repository newer than this `fsp` moves with the others: it is told by where
+/// it comes from, not by a table of names (since 0.23.1).
+#[test]
+fn a_package_newer_than_this_fsp_moves_too() {
+    let next = APP.replace(
+        "dev_dependencies:\n",
+        "  fespalier_next:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_next\n      ref: v0.21.0\ndev_dependencies:\n",
+    );
+    let (_, moves, _, pubspec) = refs(&next, v(0, 22, 1));
+    assert!(
+        moves
+            .iter()
+            .any(|m| m.name == "fespalier_next" && m.to == "v0.22.1"),
+        "{moves:?}"
+    );
+    assert!(!pubspec.contains("v0.21.0"), "{pubspec}");
+}
+
 #[test]
 fn nothing_moves_when_every_ref_is_at_the_target() {
     let (oldest, moves, _, pubspec) = refs(APP, v(0, 21, 0));

@@ -722,7 +722,7 @@ pub fn run(project: &Path, build: Option<&Path>, json: bool, check: bool) -> Res
     };
     let (report, warning) = report(&app, &cfg, &size, project, &build_dir, &shown_build)?;
     if let Some(w) = warning {
-        eprintln!("{w}");
+        errln!("{w}");
     }
     let lines = if json {
         report.json_lines()
@@ -736,6 +736,6 @@ pub fn run(project: &Path, build: Option<&Path>, json: bool, check: bool) -> Res
     if check && !over.is_empty() {
         bail!("{} over budget: {}", over.len(), over.join(", "));
     }
-    eprintln!("{}", report.summary());
+    errln!("{}", report.summary());
     Ok(())
 }

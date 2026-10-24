@@ -636,7 +636,7 @@ pub fn run_steps(kind: &str, task: &str, steps: &[Cmd], env: &Env<'_>) -> Result
         if procs::signalled() {
             return Err(Exit(130).into());
         }
-        eprintln!("› {}", cmd.shown());
+        errln!("› {}", cmd.shown());
         let place = format!("{kind} step {n} of `{task}`");
         let prepared = prepare(cmd, &[], env).map_err(|w| start_error(cmd, &place, &w))?;
         let program = prepared.program;
@@ -646,7 +646,7 @@ pub fn run_steps(kind: &str, task: &str, steps: &[Cmd], env: &Env<'_>) -> Result
             return Err(Exit(130).into());
         }
         if !status.success() {
-            eprintln!(
+            errln!(
                 "`{kind}` step {n} of `{task}` failed ({}): {}",
                 status.describe(),
                 cmd.shown()
@@ -791,7 +791,7 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
     let mut args = vec![cmd.target.clone()];
     args.extend(cmd.args.iter().cloned());
     if cmd.dry_run {
-        eprint!(
+        err!(
             "{}",
             dry_run(
                 &format!("fsp build {}", cmd.target),
@@ -805,7 +805,7 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
         return Ok(());
     }
     procs::install_signals().map_err(anyhow::Error::msg)?;
-    eprintln!("{}", crate::gen_opts(project, &cfg, true, false)?.line());
+    errln!("{}", crate::gen_opts(project, &cfg, true, false)?.line());
     let vars = [("FSP_BUILD_TARGET".to_string(), cmd.target.clone())];
     execute(project, &plan, &args, &vars)
 }
@@ -848,7 +848,7 @@ pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
         bail!("no task `{name}` in `fespalier: tasks:` of pubspec.yaml; the tasks are: {known}");
     };
     if cmd.dry_run {
-        eprint!(
+        err!(
             "{}",
             dry_run(
                 &format!("fsp run {name}"),

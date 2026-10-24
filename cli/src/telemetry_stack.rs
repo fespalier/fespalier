@@ -154,7 +154,7 @@ pub fn run(cmd: &TelemetryCmd, project: Option<&Path>) -> Result<()> {
         return report(&dir);
     }
     if cmd.no_start {
-        eprintln!("{}", wrote_lines(&dir).join("\n"));
+        errln!("{}", wrote_lines(&dir).join("\n"));
         return Ok(());
     }
     check_compose(&dir)?;
@@ -165,10 +165,10 @@ pub fn run(cmd: &TelemetryCmd, project: Option<&Path>) -> Result<()> {
     }
     start(&dir, cmd.grafana, lan.as_deref())?;
     if app_sends_nothing(project) {
-        eprintln!("{W1}");
+        errln!("{W1}");
     }
     let env = read_env(&dir);
-    eprintln!(
+    errln!(
         "{}",
         summary_lines(&env, &dir, cmd.grafana, lan.as_deref()).join("\n")
     );
@@ -464,7 +464,7 @@ fn stop(dir: &Path, reset: bool) -> Result<()> {
             exit_code(status)
         );
     }
-    eprintln!("{}", stopped_line(reset));
+    errln!("{}", stopped_line(reset));
     Ok(())
 }
 

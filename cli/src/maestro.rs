@@ -254,7 +254,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
     }
     let (flows, skips) = flows(&app, &cfg, &m)?;
     for s in &skips {
-        eprintln!("  skipped {}: {}", s.pattern, s.reason);
+        errln!("  skipped {}: {}", s.pattern, s.reason);
     }
 
     let out = &m.out;
@@ -281,7 +281,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
         fs::write(&path, &f.text).with_context(|| format!("writing {}", path.display()))?;
-        eprintln!("  wrote {}", shown(&f.file));
+        errln!("  wrote {}", shown(&f.file));
         written += 1;
     }
     for name in owned_files(&project.join(out)) {
@@ -292,21 +292,21 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         if !check {
             let path = project.join(shown(&name));
             fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
-            eprintln!("  removed {}", shown(&name));
+            errln!("  removed {}", shown(&name));
         }
     }
 
     let count = flows.len();
     if check {
         if stale.is_empty() {
-            eprintln!(
+            errln!(
                 "✓ maestro: {} in {folder} are up to date",
                 plural(count, "flow")
             );
             return Ok(());
         }
         for s in &stale {
-            eprintln!("{s}");
+            errln!("{s}");
         }
         bail!("{} flow(s) out of date; run `fsp maestro`", stale.len());
     }
@@ -315,7 +315,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
     } else {
         format!("; {} skipped", plural(skips.len(), "route"))
     };
-    eprintln!(
+    errln!(
         "✓ maestro: {} in {folder} ({written} written, {} unchanged){skipped}",
         plural(count, "flow"),
         count - written

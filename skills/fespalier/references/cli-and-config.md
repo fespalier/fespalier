@@ -65,10 +65,11 @@ What they print, to stderr unless noted:
   relative to the project root; `line`/`column` count from 1 and are `null` for a
   diagnostic that is not about a place in a file; `severity` is `error` or
   `warning`). Stdout is empty when there is nothing to report.
-- A reader that stops early (`fsp routes --json | head -1`) ends the output, not the command (since
-  0.23.1): nothing more is written to stdout, and the exit code is the command's own, so
+- A reader that stops early (`fsp routes --json | head -1`, or `fsp check 2>&1 | head -1`, since
+  `gen` and `check` write to stderr) ends the output, not the command (since 0.23.1): nothing more
+  is written to the closed pipe, and the exit code is the command's own, so with `set -o pipefail`
   `fsp check --json | head -1` still fails on an error. An older `fsp` panics there, with exit 101
-  and `failed printing to stdout: Broken pipe`.
+  and `failed printing to stdout: Broken pipe` (or `stderr`).
 - `routes` prints `pattern  RouteClass  file  (tags)` per route. The tags are
   `redirect`, `data`, `action` (since 0.5.0), `guard`, `observe` (an `observe.dart` at or above the page, since 0.8.1),
   `leave` (a `leave.dart` in the page's own folder, since 0.11.0), `flow` (a step of a multi-page form, since 0.11.0),

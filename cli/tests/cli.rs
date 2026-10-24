@@ -4900,3 +4900,52 @@ fn a_closed_stdout_ends_the_output_and_not_the_command() {
         assert_eq!(err, said, "{args:?}");
     }
 }
+
+/// The same for stderr, where `gen` and `check` write their lines and diagnostics, and where the
+/// error that ends a command goes (`fsp check 2>&1 | head`): a reader that stops early ends the
+/// output and not the command (since 0.23.1). With stderr closed the panic message has nowhere to
+/// go, so the exit code says it: 101 where the command's own is 0 or 1.
+#[test]
+fn a_closed_stderr_ends_the_output_and_not_the_command() {
+    let dir = project();
+    let broken = project();
+    fs::create_dir_all(broken.path().join("lib/app/[id")).unwrap();
+    let empty = tempfile::tempdir().unwrap();
+    let run = |cwd: &Path, args: &[&str], closed: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsp"));
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", empty.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped());
+        if closed {
+            let (reader, writer) = io::pipe().unwrap();
+            drop(reader);
+            command.stderr(writer);
+        } else {
+            command.stderr(Stdio::piped());
+        }
+        spawn_locked(&mut command)
+            .unwrap()
+            .wait_with_output()
+            .unwrap()
+    };
+    for (cwd, args, code) in [
+        // The success line, and the diagnostics one by one.
+        (dir.path(), &["check"][..], 0),
+        (dir.path(), &["gen", "--json"], 0),
+        (broken.path(), &["check"], 1),
+        // The error that ends the command, after the JSON lines on stdout.
+        (broken.path(), &["check", "--json"], 1),
+        (broken.path(), &["gen"], 1),
+    ] {
+        let read = run(cwd, args, false);
+        let said = String::from_utf8_lossy(&read.stderr).into_owned();
+        assert_eq!(read.status.code(), Some(code), "{args:?}: {said}");
+        assert!(!said.is_empty(), "{args:?} writes to stderr");
+        let closed = run(cwd, args, true);
+        assert_eq!(closed.status.code(), Some(code), "{args:?}");
+        assert_eq!(closed.stdout, read.stdout, "{args:?}");
+    }
+}

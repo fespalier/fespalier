@@ -132,7 +132,7 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
         ColorChoice::Never
     };
     let out = StandardStream::stderr(color);
-    emit_each(&mut out.lock(), app_dir, shown, diags, |d| eprintln!("{d}"));
+    emit_each(&mut out.lock(), app_dir, shown, diags, |d| errln!("{d}"));
 }
 
 /// The same rendering as [`render`], without colour, as lines: what `fsp dev` shows in its

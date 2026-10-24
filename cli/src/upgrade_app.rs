@@ -415,7 +415,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     // With --json, stdout is the one object; what people read goes to stderr.
     let say = |line: &str| {
         if cmd.json {
-            eprintln!("{line}");
+            errln!("{line}");
         } else {
             outln!("{line}");
         }
@@ -541,7 +541,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         let regenerate = || -> Result<()> {
             let cfg = crate::config::Config::load(project)?;
             let outcome = crate::gen_with(project, &cfg, true)?;
-            eprintln!("{}", outcome.line());
+            errln!("{}", outcome.line());
             Ok(())
         };
         regenerate().map_err(|e| {
@@ -576,7 +576,7 @@ fn checkout(cmd: &UpgradeCmd, root: &str, target: Version) {
             "{}",
             json!({"checkout": format!("{root}/fespalier"), "target": target.to_string(), "upToDate": true, "packages": [], "notes": []})
         );
-        eprintln!("{line}");
+        errln!("{line}");
     } else {
         outln!("{line}");
     }

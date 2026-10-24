@@ -768,36 +768,27 @@ fn json_lines_have_every_key_and_the_text_counts() {
     assert!(doctor::text(&f, &rows).ends_with("\n1 error, 2 warnings.\n"));
 }
 
-/// A `flutter` that does not answer (it waits while another flutter command holds its startup
-/// lock) is stopped after the timeout with everything it started, and the `flutter` row is skipped
-/// and says why (since 0.23.1). The stand-in sleeps under a shell, as `flutter` runs `dart` under
-/// one.
+/// `flutter --version --machine` as `version_output` answers it, or why there is nothing.
 #[cfg(unix)]
-#[test]
-fn a_flutter_that_does_not_answer_is_stopped_and_its_row_skipped() {
-    use std::process::Command;
+fn answered(asked: doctor::Asked) -> Result<String, String> {
+    match asked {
+        doctor::Asked::Answer(answer) => answer,
+        doctor::Asked::Interrupted => panic!("interrupted"),
+    }
+}
+
+/// Waits until the process in `pidfile` (written by a stand-in that started a `sleep`) is gone
+/// (`kill -0` fails for a process that does not exist). A shell stopped before it started the
+/// sleep left nothing behind.
+#[cfg(unix)]
+fn assert_sleep_is_gone(pidfile: &Path) {
+    use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
-    let dir = tempfile::tempdir().unwrap();
-    let pidfile = dir.path().join("dart.pid");
-    let mut stand_in = Command::new("sh");
-    stand_in.arg("-c").arg(format!(
-        "sleep 300 & echo $! > '{}'; wait",
-        pidfile.display()
-    ));
-    let started = Instant::now();
-    let why = doctor::version_output(stand_in, "flutter", Duration::from_secs(1)).unwrap_err();
-    assert!(started.elapsed() < Duration::from_secs(30), "{why}");
-    assert_eq!(
-        why,
-        "`flutter --version --machine` did not answer in 1 s and was stopped (another flutter command may hold its startup lock)"
-    );
-    // What it started is stopped too (`kill -0` fails for a process that does not exist). A shell
-    // stopped before it started the sleep left nothing behind.
-    if let Ok(pid) = fs::read_to_string(&pidfile) {
+    if let Ok(pid) = fs::read_to_string(pidfile) {
         let end = Instant::now() + Duration::from_secs(20);
         while Command::new("kill")
             .args(["-0", pid.trim()])
-            .stderr(std::process::Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .unwrap()
             .success()
@@ -809,20 +800,95 @@ fn a_flutter_that_does_not_answer_is_stopped_and_its_row_skipped() {
             std::thread::sleep(Duration::from_millis(20));
         }
     }
-    let rows = doctor::rows(&facts("name: demo\n", &[], Err(why)));
-    let row = rows.iter().find(|r| r.check == "flutter").unwrap();
-    assert_eq!(row.status, Status::Skipped);
-    assert_eq!(
-        row.message,
-        "`flutter --version --machine` did not answer in 1 s and was stopped (another flutter command may hold its startup lock): Flutter and Dart are not checked"
-    );
+}
+
+/// A `flutter` that does not answer (it waits while another flutter command holds its startup
+/// lock, or downloads its Dart SDK on a first run) is stopped after the timeout with everything it
+/// started, and the `flutter` row is skipped and says why (since 0.23.1): the lock only when
+/// flutter said so. The stand-in sleeps under a shell, as `flutter` runs `dart` under one.
+#[cfg(unix)]
+#[test]
+fn a_flutter_that_does_not_answer_is_stopped_and_its_row_skipped() {
+    use std::process::Command;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    let (_signals, never) = mpsc::channel::<()>();
+    for (says, why) in [
+        (
+            "",
+            "`flutter --version --machine` did not answer in 1 s and was stopped (flutter may be updating itself on a first run, or waiting for another flutter command's startup lock: run `flutter --version` once, then try again)",
+        ),
+        (
+            "echo 'Waiting for another flutter command to release the startup lock...' >&2; ",
+            "`flutter --version --machine` did not answer in 1 s and was stopped (flutter says it is waiting for another flutter command to release its startup lock: let that one finish, then try again)",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("dart.pid");
+        let mut stand_in = Command::new("sh");
+        stand_in.arg("-c").arg(format!(
+            "{says}sleep 300 & echo $! > '{}'; wait",
+            pidfile.display()
+        ));
+        let started = Instant::now();
+        let asked = doctor::version_output(stand_in, "flutter", Duration::from_secs(1), &never);
+        let message = answered(asked).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(30), "{message}");
+        assert_eq!(message, why);
+        assert_sleep_is_gone(&pidfile);
+        let rows = doctor::rows(&facts("name: demo\n", &[], Err(message)));
+        let row = rows.iter().find(|r| r.check == "flutter").unwrap();
+        assert_eq!(row.status, Status::Skipped);
+        assert_eq!(
+            row.message,
+            format!("{why}: Flutter and Dart are not checked")
+        );
+    }
     // One that answers in time is read as before.
     let mut answers = Command::new("sh");
     answers.arg("-c").arg(
         "printf '{\"frameworkVersion\":\"3.38.4\",\"dartSdkVersion\":\"3.10.4\"}\\n'; echo noise >&2",
     );
-    let out = doctor::version_output(answers, "flutter", Duration::from_secs(30)).unwrap();
+    let asked = doctor::version_output(answers, "flutter", Duration::from_secs(30), &never);
+    let out = answered(asked).unwrap();
     assert_eq!(Toolchain::parse(&out).unwrap().flutter, Version(3, 38, 4));
+}
+
+/// `flutter` runs in a process group of its own, which Ctrl-C does not reach: a signal that comes
+/// in while `fsp doctor` waits for it stops it with what it started, and ends the wait at once
+/// (since 0.23.1). The signal is sent once the stand-in has started its sleep.
+#[cfg(unix)]
+#[test]
+fn a_signal_stops_the_flutter_it_is_waiting_for() {
+    use std::process::Command;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("dart.pid");
+    let mut stand_in = Command::new("sh");
+    stand_in.arg("-c").arg(format!(
+        "sleep 300 & echo $! > '{}'; wait",
+        pidfile.display()
+    ));
+    let (tx, signals) = mpsc::channel::<()>();
+    let started = pidfile.clone();
+    let sender = std::thread::spawn(move || {
+        let end = Instant::now() + Duration::from_secs(20);
+        while !fs::read_to_string(&started).is_ok_and(|pid| pid.ends_with('\n')) {
+            assert!(Instant::now() < end, "the stand-in did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        tx.send(()).unwrap();
+    });
+    let began = Instant::now();
+    let asked = doctor::version_output(stand_in, "flutter", Duration::from_secs(120), &signals);
+    sender.join().unwrap();
+    assert!(
+        matches!(asked, doctor::Asked::Interrupted),
+        "a signal is not an answer"
+    );
+    assert!(began.elapsed() < Duration::from_secs(30));
+    assert_sleep_is_gone(&pidfile);
 }
 
 /// A symlink back up `lib/` is not followed round and round: each folder is read once, and the

@@ -4949,3 +4949,65 @@ fn a_closed_stderr_ends_the_output_and_not_the_command() {
         assert_eq!(closed.stdout, read.stdout, "{args:?}");
     }
 }
+
+/// `flutter` runs in a process group of its own, which Ctrl-C does not reach: a signal to `fsp
+/// doctor` while it waits for `flutter` stops flutter with what it started and ends the doctor with
+/// 130, printing no report (since 0.23.1). The stand-in is a `flutter` that waits for a lock.
+#[cfg(unix)]
+#[test]
+fn a_signal_stops_the_flutter_the_doctor_waits_for() {
+    let dir = project();
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    // The pid is written by rename, so a reader never sees half of it.
+    write_executable(
+        &bin.join("flutter"),
+        "#!/bin/sh\nsleep 300 &\necho $! > \"$FAKE_PID.tmp\"\nmv \"$FAKE_PID.tmp\" \"$FAKE_PID\"\nwait\n",
+    );
+    let alive = |pid: &str| {
+        status_locked(Command::new("kill").args(["-0", pid]).stderr(Stdio::null()))
+            .unwrap()
+            .success()
+    };
+    for signal in ["INT", "TERM"] {
+        let pidfile = dir.path().join(format!("flutter-{signal}.pid"));
+        let child = spawn_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .arg("doctor")
+                .env("PATH", path_with(&bin))
+                .env("FAKE_PID", &pidfile)
+                .current_dir(dir.path())
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped()),
+        )
+        .unwrap();
+        let end = Instant::now() + Duration::from_secs(30);
+        let pid = loop {
+            if let Ok(pid) = fs::read_to_string(&pidfile) {
+                break pid.trim().to_string();
+            }
+            assert!(Instant::now() < end, "flutter was not started");
+            sleep(Duration::from_millis(20));
+        };
+        assert!(alive(&pid), "the stand-in's sleep is not running");
+        let sent = status_locked(
+            Command::new("kill")
+                .arg(format!("-{signal}"))
+                .arg(child.id().to_string()),
+        )
+        .unwrap();
+        assert!(sent.success());
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(out.status.code(), Some(130), "{signal}");
+        assert!(out.stdout.is_empty(), "{signal}: no report");
+        let end = Instant::now() + Duration::from_secs(20);
+        while alive(&pid) {
+            assert!(
+                Instant::now() < end,
+                "{signal}: what flutter started is still running"
+            );
+            sleep(Duration::from_millis(20));
+        }
+    }
+}

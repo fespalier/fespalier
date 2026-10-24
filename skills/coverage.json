@@ -294,7 +294,14 @@
         "cli/src/schema.rs",
         "docs/cli.md#fsp doctor",
         "docs/cli.md#fsp schema",
-        "docs/configuration.md#Completion and checks in your editor"
+        "docs/configuration.md#Completion and checks in your editor",
+        "command:add",
+        "docs/cli.md#fsp add",
+        "docs/cli.md#Moving the app's pins",
+        "cli/src/add.rs",
+        "cli/src/pins.rs",
+        "cli/src/pubspec_edit.rs",
+        "cli/src/upgrade_app.rs"
       ]
     },
     "fespalier-routing": {

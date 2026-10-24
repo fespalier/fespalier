@@ -26,6 +26,10 @@ pub const REPO_URL: &str = "https://github.com/fespalier/fespalier";
 /// The lowest Flutter fespalier supports (`major.minor`), and so the lowest a new app declares.
 pub const BASE_FLOOR: &str = "3.35";
 
+/// The Dart of [`BASE_FLOOR`] (`major.minor`): a new app's `sdk: ^3.9.0`, and so the language its
+/// files are written in (wildcard parameters, `(_, _) => ...`, need 3.7).
+pub const BASE_DART: &str = "3.9";
+
 /// The platforms `flutter create --platforms` knows.
 pub const PLATFORMS: [&str; 6] = ["android", "ios", "linux", "macos", "web", "windows"];
 

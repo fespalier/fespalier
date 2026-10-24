@@ -216,7 +216,7 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
     );
     assert_eq!(
         one(&rows, "companion", Some("fespalier_push")),
-        "error: fespalier_push: ref v0.0.9, and fespalier's is v0.1.0: give every companion fespalier's url and ref"
+        "error: fespalier_push: ref v0.0.9, and fespalier's is v0.1.0: give every companion fespalier's url and ref, or move them together with `fsp upgrade --app`"
     );
     assert_eq!(
         one(&rows, "companion", Some("fespalier_http")),
@@ -288,7 +288,7 @@ fn the_lock_go_router_and_the_toolchain() {
         of(&rows, "lock", None),
         [
             format!(
-                "warning: pubspec.lock resolves fespalier 0.1.0, and this fsp writes code for {v}: move the refs to {} and run `flutter pub get`, or run `dart run fespalier` to use the fsp of the pin",
+                "warning: pubspec.lock resolves fespalier 0.1.0, and this fsp writes code for {v}: move the refs to {} with `fsp upgrade --app`, or run `dart run fespalier` to use the fsp of the pin",
                 v.tag()
             ),
             "warning: pubspec.lock resolves fespalier_download_background 0.0.9, and fespalier 0.1.0: give every companion fespalier's ref, then run `flutter pub get`".to_string(),
@@ -317,6 +317,21 @@ fn the_lock_go_router_and_the_toolchain() {
     assert!(
         of(&rows, "flutter", None)[0]
             .starts_with("error: Flutter 3.32.8 is below fespalier's floor, 3.35.0")
+    );
+}
+
+/// A lock that is ahead of this `fsp` is fixed by a newer `fsp`, not by moving the refs back.
+#[test]
+fn a_lock_ahead_of_this_fsp_says_to_upgrade_fsp() {
+    let pubspec = "name: shop\ndependencies:\n  fespalier:\n    path: ../fespalier\n";
+    let lock = "packages:\n  fespalier:\n    version: \"99.0.0\"\n";
+    let rows = doctor::rows(&facts(pubspec, &[("pubspec.lock", lock)], Err("no".into())));
+    let v = Version::parse(&this_fsp()).unwrap();
+    assert_eq!(
+        of(&rows, "lock", None)[0],
+        format!(
+            "warning: pubspec.lock resolves fespalier 99.0.0, and this fsp writes code for {v}: upgrade fsp (`fsp upgrade`), or run `dart run fespalier` to use the fsp of the pin"
+        )
     );
 }
 

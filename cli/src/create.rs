@@ -347,6 +347,25 @@ impl Drop for Staging {
 /// Runs one command in `cwd` with fsp's own stdio (stdout goes to stderr with `--json`).
 fn run_command(cmd: &Cmd, cwd: &Path, report: &Report) -> Result<()> {
     report.event(&json!({ "event": "run", "command": cmd.shown() }));
+    run_in(cmd, cwd, "fsp create", report.json)
+}
+
+/// Runs `flutter <args>` in `cwd` for a command that changes an app (`fsp add`, `fsp upgrade
+/// --app`), with fsp's own stdio; with `stdout_to_stderr`, flutter's stdout goes to stderr (when
+/// stdout is for JSON). `who` names the command in the errors.
+pub(crate) fn run_flutter(
+    args: &[&str],
+    cwd: &Path,
+    who: &str,
+    stdout_to_stderr: bool,
+) -> Result<()> {
+    procs::install_signals().map_err(anyhow::Error::msg)?;
+    let mut words = vec!["flutter".to_string()];
+    words.extend(args.iter().map(|a| (*a).to_string()));
+    run_in(&Cmd::Argv(words), cwd, who, stdout_to_stderr)
+}
+
+fn run_in(cmd: &Cmd, cwd: &Path, who: &str, stdout_to_stderr: bool) -> Result<()> {
     eprintln!("› {}", cmd.shown());
     let fsp = env::current_exe().unwrap_or_else(|_| PathBuf::from("fsp"));
     let env = tasks::Env {
@@ -355,13 +374,13 @@ fn run_command(cmd: &Cmd, cwd: &Path, report: &Report) -> Result<()> {
         fsp: &fsp,
     };
     let mut prepared =
-        tasks::prepare(cmd, &[], &env).map_err(|w| tasks::start_error(cmd, "fsp create", &w))?;
-    if report.json {
+        tasks::prepare(cmd, &[], &env).map_err(|w| tasks::start_error(cmd, who, &w))?;
+    if stdout_to_stderr {
         prepared.process.stdout(Stdio::from(io::stderr()));
     }
     let program = prepared.program;
     let (status, interrupted) = procs::run_foreground(prepared.process)
-        .map_err(|e| tasks::start_error(cmd, "fsp create", &tasks::why(&e, &program)))?;
+        .map_err(|e| tasks::start_error(cmd, who, &tasks::why(&e, &program)))?;
     if interrupted {
         return Err(Exit(130).into());
     }
@@ -400,7 +419,7 @@ fn move_into_place(staging: &Path, dir: &Path) -> io::Result<()> {
 
 /// Raises `minSdk` in the app's Gradle file (`create/android.rs`). A missing file means no Android
 /// folder; a file of a shape it does not know is left as it is, with the line to write by hand.
-fn raise_android_min_sdk(root: &Path, min: u32) -> Result<()> {
+pub(crate) fn raise_android_min_sdk(root: &Path, min: u32) -> Result<()> {
     let path = root.join(plan::ANDROID_GRADLE);
     let Ok(text) = fs::read_to_string(&path) else {
         return Ok(());

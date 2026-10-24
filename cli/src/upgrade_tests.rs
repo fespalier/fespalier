@@ -615,7 +615,19 @@ fn the_ref_note_names_a_pin_that_differs() {
         "{note}"
     );
     assert!(note.contains("every companion"), "{note}");
+    assert!(
+        note.contains("to v0.15.0 with `fsp upgrade --app`"),
+        "{note}"
+    );
     assert!(note.contains("dart run fespalier"), "{note}");
+    // A pin ahead of this fsp is not moved back: the note says to upgrade fsp.
+    let ahead = ref_note(Some("v0.16.0"), v(0, 15, 0)).unwrap();
+    assert!(
+        ahead.contains("pins fespalier v0.16.0, which is newer than this fsp (0.15.0)"),
+        "{ahead}"
+    );
+    assert!(!ahead.contains("`fsp upgrade --app`"), "{ahead}");
+    assert!(ahead.contains("dart run fespalier"), "{ahead}");
     // A ref without the `v` is the same release.
     assert!(ref_note(Some("0.15.0"), v(0, 15, 0)).is_none());
     assert!(ref_note(Some("v0.15.0"), v(0, 15, 0)).is_none());

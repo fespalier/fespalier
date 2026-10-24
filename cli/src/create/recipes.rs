@@ -745,11 +745,8 @@ pub const RECIPES: &[Recipe] = &[
 /// Every `packages/fespalier_*` (the Flutter packages of this repository, except the DevTools
 /// extension's source) that is not a create feature, and why. A package that is neither a
 /// recipe's companion nor here fails `create_tests::every_package_is_a_feature_or_has_a_reason`.
-/// A feature that lands moves its package out of this list.
-#[allow(
-    dead_code,
-    reason = "only the tests read it: it is the record of why a package is not a feature"
-)]
+/// A feature that lands moves its package out of this list. With the companions of the recipes it
+/// is every package of this repository, which is how `pins.rs` tells them from others.
 pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
     (
         "fespalier_analytics",

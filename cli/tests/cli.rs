@@ -4344,6 +4344,393 @@ fn create_dot_fills_the_empty_folder_it_runs_in() {
     assert!(staging_folders(root).is_empty());
 }
 
+// --- `fsp add` (since 0.23.0) --------------------------------------------------------------------
+//
+// Against the stand-in `flutter` of `fsp create`: an app made by `fsp create`, then changed.
+// `scripts/check-create.sh add` adds every feature with the real flutter.
+
+/// An app made by `fsp create` with the stand-in flutter, in `root/app`.
+#[cfg(unix)]
+fn created_app(root: &Path) -> std::path::PathBuf {
+    let (code, _, err) = fsp_task(root, &["create", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    fs::remove_file(root.join("flutter.log")).unwrap();
+    root.join("app")
+}
+
+#[cfg(unix)]
+#[test]
+fn add_writes_the_feature_then_runs_pub_get_gen_and_the_route_tests() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.contains("Resolving dependencies..."), "{out}");
+    assert_eq!(
+        flutter_log(root),
+        [
+            "pub get".to_string(),
+            format!("pub get in {}", app.display())
+        ]
+    );
+    // The pubspec gained lines and lost none.
+    let now = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let mut lines = now.lines();
+    for line in pubspec.lines() {
+        assert!(lines.any(|l| l == line), "`{line}` is gone\n{now}");
+    }
+    assert!(now.contains("  fespalier_http:\n    git:\n"), "{now}");
+    assert!(now.contains("    skip: [/headlines]\n"), "{now}");
+    for file in [
+        "lib/api.dart",
+        "lib/app/headlines/page.dart",
+        "lib/app/startup.dart",
+        "test/http_test.dart",
+    ] {
+        assert!(app.join(file).is_file(), "{file}\n{err}");
+    }
+    // `fsp gen` saw the new route, and `fsp test` wrote its smoke tests again, skipping it.
+    let generated = fs::read_to_string(app.join("lib/app.g.dart")).unwrap();
+    assert!(generated.contains("class HeadlinesRoute"), "{generated}");
+    let smoke = fs::read_to_string(app.join("test/routes/routes_test.dart")).unwrap();
+    assert!(
+        smoke.contains("//   skipped /headlines: listed in `fespalier.test.skip`"),
+        "{smoke}"
+    );
+    assert!(err.contains("  edit   pubspec.yaml\n"), "{err}");
+    assert!(err.contains("  new    lib/app/startup.dart\n"), "{err}");
+    assert!(err.ends_with("\n✓ added http\n"), "{err}");
+
+    // Again: nothing to do, and nothing runs.
+    fs::remove_file(root.join("flutter.log")).unwrap();
+    let (code, _, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(err, "note: `http` is in the app already\nnothing to add\n");
+    assert!(flutter_log(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_dry_run_writes_nothing_and_a_mistake_changes_nothing() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["add", "storage", "--project", "app", "--dry-run"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.starts_with("add storage to app (it has: none of the features)\n"),
+        "{err}"
+    );
+    assert!(
+        err.contains("\nrun    flutter pub get\nrun    fsp gen\nrun    fsp test\n"),
+        "{err}"
+    );
+    assert!(err.contains("\n=== lib/app/startup.dart (new)\n"), "{err}");
+    assert!(!app.join("lib/app/startup.dart").exists());
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+
+    let (code, _, err) = fsp_task(root, &["add", "nope", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.starts_with("unknown feature `nope`; the features are devtools, adaptive,"),
+        "{err}"
+    );
+    fs::write(app.join("lib/app/contact/page.dart"), "// mine\n").unwrap_or_else(|_| {
+        fs::create_dir_all(app.join("lib/app/contact")).unwrap();
+        fs::write(app.join("lib/app/contact/page.dart"), "// mine\n").unwrap();
+    });
+    let (code, _, err) = fsp_task(root, &["add", "forms", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("fsp add never writes over a file"), "{err}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(!app.join("lib/app/contact/action.dart").exists());
+    assert!(flutter_log(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_that_fails_at_pub_get_keeps_the_files_and_says_what_is_left() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "connectivity", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1));
+    assert!(err.contains("flutter pub get failed:"), "{err}");
+    assert!(
+        err.contains("The files are written; fix that and finish with:\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    assert!(app.join("test/connectivity_test.dart").is_file());
+}
+
+/// What a person has to change by hand is printed before any command runs, and a command that
+/// fails says so: the feature then reads as present to a second `fsp add`.
+#[cfg(unix)]
+#[test]
+fn add_prints_the_changes_to_make_by_hand_before_a_command_that_fails() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let app_dart = fs::read_to_string(app.join("lib/app/app.dart")).unwrap();
+    fs::write(
+        app.join("lib/app/app.dart"),
+        format!("{app_dart}// My theme.\n"),
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "i18n", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    let hand = err.find("\nBy hand: lib/app/app.dart (").expect(&err);
+    let failed = err.find("flutter pub get failed:").expect(&err);
+    assert!(hand < failed, "{err}");
+    assert!(
+        err.contains("The files are written; the changes to make by hand are printed above; fix that and finish with:\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    // And the pubspec's changes are listed as they are written.
+    assert!(
+        err.contains("  edit   pubspec.yaml\n           dependencies: fespalier_tolgee "),
+        "{err}"
+    );
+}
+
+// --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
+
+/// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.
+#[cfg(unix)]
+fn pinned_app(root: &Path, reference: &str) -> std::path::PathBuf {
+    let app = root.join("app");
+    fs::create_dir_all(app.join("lib/app")).unwrap();
+    fs::write(app.join("lib/app/page.dart"), page("HomePage")).unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        format!(
+            "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: {reference} # with the companions\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: {reference}\n"
+        ),
+    )
+    .unwrap();
+    app
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_moves_every_ref_runs_pub_get_and_gen_and_prints_the_notes() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.19.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    assert!(
+        pubspec.contains(&format!("      ref: {tag} # with the companions\n")),
+        "{pubspec}"
+    );
+    assert_eq!(
+        pubspec.matches(&format!("ref: {tag}")).count(),
+        2,
+        "{pubspec}"
+    );
+    assert!(out.starts_with(&format!("pubspec.yaml: v0.19.0 -> {tag}\n  fespalier      v0.19.0 -> {tag}\n  fespalier_http v0.19.0 -> {tag}\n  edit  pubspec.yaml\n")), "{out}");
+    assert!(out.contains("What changed from v0.19.0 to "), "{out}");
+    assert!(
+        out.contains("\n0.20.0: https://github.com/fespalier/fespalier/blob/"),
+        "{out}"
+    );
+    assert_eq!(
+        flutter_log(root),
+        [
+            "pub get".to_string(),
+            format!("pub get in {}", app.display())
+        ]
+    );
+    assert!(app.join("lib/app.g.dart").is_file(), "{err}");
+    // Now it is up to date: --check says so, and a second run changes nothing.
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        out,
+        format!("fespalier and every companion in pubspec.yaml are at {tag}; nothing to move.\n")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_check_and_dry_run_write_nothing() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(3), "{out}");
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0));
+    assert!(
+        out.contains("Would write pubspec.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--json", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(3));
+    let object: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(object["from"], "0.21.0");
+    assert_eq!(object["upToDate"], false);
+    assert_eq!(object["packages"][1]["name"], "fespalier_http");
+    assert!(err.contains("fespalier_http v0.21.0 -> "), "{err}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+    // A branch is not a release: refused, with nothing written.
+    fs::write(
+        app.join("pubspec.yaml"),
+        before.replace("ref: v0.21.0\n", "ref: main\n"),
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("fespalier_http (dependencies) is at `main`, not a release tag"),
+        "{err}"
+    );
+    // And the flags of --app need it.
+    let (code, _, err) = fsp_task(root, &["upgrade", "--no-pub-get"], &[]);
+    assert_eq!(code, Some(2));
+    assert!(err.contains("--app"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_does_not_move_the_app_back_unless_asked() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v99.0.0");
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    // This fsp is older than the pin: neither a run nor `--check` treats that as an update.
+    for flags in [&[][..], &["--check"][..], &["--dry-run"][..]] {
+        let mut args = vec!["upgrade", "--app", "--project", "app"];
+        args.extend_from_slice(flags);
+        let (code, out, err) = fsp_task(root, &args, &[]);
+        assert_eq!(code, Some(1), "{flags:?}: {out}{err}");
+        assert!(out.is_empty(), "{out}");
+        assert!(
+            err.starts_with("this app pins fespalier v99.0.0 and fsp "),
+            "{err}"
+        );
+        assert!(
+            err.contains(" is older, so `fsp upgrade --app` would move the refs back to v"),
+            "{err}"
+        );
+        assert!(err.contains("nothing was written. Upgrade fsp (`fsp upgrade`), or use the fsp of the pin with `dart run fespalier`, or go back on purpose with `--version v"), "{err}");
+    }
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+    // On purpose, with `--version`, it goes back, and says so.
+    let (code, out, err) = fsp_task(
+        root,
+        &[
+            "upgrade",
+            "--app",
+            "--version",
+            "v98.0.0",
+            "--project",
+            "app",
+        ],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.starts_with("pubspec.yaml: v99.0.0 -> v98.0.0 (a downgrade)\n  fespalier      v99.0.0 -> v98.0.0 (a downgrade)\n"),
+        "{out}"
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains("ref: v98.0.0 # with the companions\n")
+    );
+    assert!(
+        out.contains("v99.0.0 -> v98.0.0 is a downgrade: https://github.com/fespalier/fespalier/blob/v98.0.0/docs/migration.md#upgrading"),
+        "{out}"
+    );
+}
+
+/// The refs are moved by the time `flutter pub get` fails, and a second run finds nothing to move:
+/// the notes of the release are printed before it, and the failure points at them.
+#[cfg(unix)]
+#[test]
+fn upgrade_app_prints_the_notes_before_a_pub_get_that_fails() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.19.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(out.contains("What changed from v0.19.0 to "), "{out}");
+    assert!(
+        err.contains(&format!(
+            "pubspec.yaml now pins {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
+    );
+    assert!(
+        err.contains("\nThe migration notes are printed above.\nFix that and run `flutter pub get` and `fsp gen` (or put the old refs back)."),
+        "{err}"
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains(&format!("ref: {tag} # with the companions"))
+    );
+    let (code, out, _) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0));
+    assert!(out.contains("nothing to move."), "{out}");
+}
+
 /// `fsp schema` (since 0.23.0) needs no project: it prints this fsp's schema of the `fespalier:`
 /// section, and with `--pubspec` the schema of a whole pubspec.yaml that the editors ship.
 #[test]

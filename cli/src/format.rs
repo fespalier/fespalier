@@ -85,6 +85,6 @@ fn run(code: &str, output: &Path, language_version: Option<&str>) -> Result<Stri
 }
 
 /// `dart`, or `FSP_DART` (tests, unusual installs).
-fn dart_program() -> String {
+pub fn dart_program() -> String {
     std::env::var("FSP_DART").unwrap_or_else(|_| "dart".into())
 }

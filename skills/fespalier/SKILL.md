@@ -141,6 +141,8 @@ cargo install --git https://github.com/fespalier/fespalier --tag v0.22.1 fespali
 ```sh
 fsp create my_app                          # a new app with fespalier in it, gen and a smoke test per route (0.15.0)
 fsp init                                   # starter layout/page/not_found/transition, then gen
+fsp add <feature>... [--dry-run]           # a feature of fsp create into this app: package, files, wiring (0.23.0)
+fsp upgrade --app [--version TAG]          # every companion's ref: to one release, then the migration notes (0.23.0)
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
 fsp dev [-- <flutter run args>]            # the app, regenerated and hot reloaded on every save (0.9.0)
@@ -159,7 +161,8 @@ fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 
 For a **new** app, `fsp create my_app` (since 0.15.0) replaces `flutter create`, the dependency, `fsp init` and the
-`main.dart` below: see `references/cli-and-config.md`. `fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
+`main.dart` below: see `references/cli-and-config.md`. For an app that exists, `fsp add <feature>` (since 0.23.0)
+adds one of its features, and `fsp upgrade --app` moves every companion's `ref:` to one release. `fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
 `Future<void> main() => AppMain.run();`, with the generated `lib/app.main.g.dart` running
 `lib/app/app.dart` (and `startup.dart`, `splash.dart`); see
 [`references/app-main.md`](references/app-main.md). Before 0.8.1, and with `main: manual`, it prints

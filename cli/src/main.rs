@@ -1,4 +1,5 @@
 mod adapters;
+mod add;
 mod build_runner;
 mod config;
 mod create;
@@ -28,8 +29,10 @@ mod osc8;
 mod otel;
 mod packages;
 mod parse_cache;
+mod pins;
 mod platform_files;
 mod procs;
+mod pubspec_edit;
 mod reload;
 mod resolve;
 mod routes;
@@ -46,6 +49,7 @@ mod telemetry_stack;
 mod templates;
 mod types;
 mod upgrade;
+mod upgrade_app;
 mod upgrade_replace;
 mod watch;
 
@@ -134,13 +138,15 @@ enum Cmd {
     Run(tasks::RunCmd),
     /// Make a new Flutter app with fespalier in it: `fsp create my_app` (optional features with --features)
     Create(create::CreateCmd),
+    /// Add an optional feature of `fsp create` to this app: `fsp add storage` (the dependency, its files, its wiring)
+    Add(add::AddCmd),
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
     New(scaffold::NewCmd),
     /// Start a local OpenTelemetry stack with fespalier's dashboards: a collector, OpenObserve, and Grafana with --grafana (needs Docker)
     Telemetry(telemetry_stack::TelemetryCmd),
-    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
+    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3); `--app` moves the app's pins instead
     Upgrade(upgrade::UpgradeCmd),
     /// Print the JSON Schema of the `fespalier:` section of pubspec.yaml, for editors
     Schema(schema::SchemaCmd),
@@ -168,6 +174,10 @@ fn main() {
         }
         // So is the installed `fsp` itself.
         if let Cmd::Upgrade(cmd) = &cli.cmd {
+            // `--app` upgrades the app's pins (since 0.23.0): that needs the project.
+            if cmd.app {
+                return upgrade_app::run(cmd, &find_project(cli.project.clone())?);
+            }
             // Only the closing note reads the project, and it may be none.
             let project = find_project(cli.project.clone()).ok();
             return upgrade::run(cmd, project.as_deref());
@@ -203,6 +213,7 @@ fn main() {
             Cmd::Run(cmd) => tasks::run_task(&project, &cmd),
             Cmd::Init => init::run(&project),
             Cmd::Doctor(cmd) => doctor::run(&project, &cmd),
+            Cmd::Add(cmd) => add::run(&project, &cmd),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
                 match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
@@ -242,6 +253,22 @@ impl std::fmt::Display for Exit {
 }
 
 impl std::error::Error for Exit {}
+
+impl Exit {
+    /// The error of a step that failed after the app was changed (`fsp add`, `fsp upgrade --app`):
+    /// `message` is given what happened to the step, `failed: <why>` or `was interrupted`. When the
+    /// person interrupted it (Ctrl-C, flutter's `Exit(130)`), the message is printed and the exit
+    /// code stays, since an `Exit` prints nothing of its own.
+    pub fn after(cause: &anyhow::Error, message: impl FnOnce(&str) -> String) -> anyhow::Error {
+        match cause.downcast_ref::<Exit>() {
+            Some(Exit(code)) => {
+                eprintln!("{}", message("was interrupted."));
+                Exit(*code).into()
+            }
+            None => anyhow!(message(&format!("failed: {cause:#}"))),
+        }
+    }
+}
 
 fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
@@ -526,6 +553,8 @@ fn watch(project: &Path) -> Result<()> {
 #[cfg(test)]
 mod action_tests;
 #[cfg(test)]
+mod add_tests;
+#[cfg(test)]
 mod bench;
 #[cfg(test)]
 mod build_runner_tests;
@@ -596,9 +625,13 @@ mod page_name_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
+mod pins_tests;
+#[cfg(test)]
 mod platform_files_tests;
 #[cfg(test)]
 mod procs_tests;
+#[cfg(test)]
+mod pubspec_edit_tests;
 #[cfg(test)]
 mod refresh_tests;
 #[cfg(test)]
@@ -633,6 +666,8 @@ mod telemetry_tests;
 mod tests;
 #[cfg(test)]
 mod types_tests;
+#[cfg(test)]
+mod upgrade_app_tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]

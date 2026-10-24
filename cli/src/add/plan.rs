@@ -199,16 +199,21 @@ fn listed(pubspec: &Value, section: &str, name: &str) -> bool {
 }
 
 /// Whether the app has `recipe`: its packages under `dependencies:`, its `fespalier:` keys, and
-/// every file it writes.
+/// every file it writes. A recipe with none of these has nothing to tell it by, so it is never
+/// present.
 fn has(recipe: &Recipe, pubspec: &Value, files: &BTreeMap<String, String>) -> bool {
     let dep = |name: &str| listed(pubspec, "dependencies", name);
-    recipe.companions.iter().all(|c| dep(c))
+    let marks = recipe.companions.len()
+        + recipe.third_party.len()
+        + recipe.config.len()
+        + recipe.files.len();
+    marks > 0
+        && recipe.companions.iter().all(|c| dep(c))
         && recipe.third_party.iter().all(|t| dep(t.name))
         && recipe.config.iter().all(|line| {
             line.split_once(": ")
                 .is_some_and(|(k, v)| config_value(pubspec, k) == Some(&yaml(v)))
         })
-        && !recipe.files.is_empty()
         && recipe
             .files
             .iter()

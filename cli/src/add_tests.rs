@@ -12,7 +12,7 @@ use serde_yaml_ng::Value;
 
 use crate::add::plan::{self, Request, Write, diff};
 use crate::create::plan::{self as create_plan, DirState, REF};
-use crate::create::recipes::RECIPES;
+use crate::create::recipes::{RECIPES, Recipe};
 
 /// An app on disk, in memory: path to text.
 type Tree = BTreeMap<String, String>;
@@ -737,6 +737,34 @@ fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
         crate::add::workspace_overrides(&app, member),
         ["fespalier_http"]
     );
+}
+
+/// A feature with no file of its own is told by its packages and keys, and one with nothing to
+/// tell it by never is.
+#[test]
+fn a_feature_with_no_file_of_its_own_is_told_by_its_packages() {
+    let http = RECIPES.iter().find(|r| r.id == "http").unwrap();
+    let bare = Recipe {
+        files: &[],
+        ..*http
+    };
+    let empty = Recipe {
+        companions: &[],
+        third_party: &[],
+        config: &[],
+        ..bare
+    };
+    let none = BTreeMap::new();
+    let without = created(&[], None);
+    let with = created(&["http"], None);
+    let ids = |tree: &Tree| -> Vec<&str> {
+        plan::present(&[bare, empty], &yaml(&tree["pubspec.yaml"]), &none)
+            .iter()
+            .map(|r| r.id)
+            .collect()
+    };
+    assert_eq!(ids(&with), ["http"]);
+    assert!(ids(&without).is_empty());
 }
 
 #[test]

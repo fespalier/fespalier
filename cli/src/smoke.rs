@@ -447,7 +447,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         routes,
     } = build(project)?;
     for s in &skips {
-        eprintln!("  skipped {}: {}", s.pattern, s.reason);
+        errln!("  skipped {}: {}", s.pattern, s.reason);
     }
 
     let path = project.join(&shown);
@@ -465,7 +465,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             None => bail!("{shown} is missing; run `fsp test`"),
             Some(d) if d != text.as_bytes() => bail!("{shown} is out of date; run `fsp test`"),
             Some(_) => {
-                eprintln!("✓ test: {shown} is up to date ({count})");
+                errln!("✓ test: {shown} is up to date ({count})");
                 return Ok(());
             }
         }
@@ -476,14 +476,14 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         format!("; {} skipped", plural(skips.len(), "route"))
     };
     if disk.as_deref() == Some(text.as_bytes()) {
-        eprintln!("✓ test: {count} in {shown} (unchanged){skipped}");
+        errln!("✓ test: {count} in {shown} (unchanged){skipped}");
         return Ok(());
     }
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
     fs::write(&path, &text).with_context(|| format!("writing {}", path.display()))?;
-    eprintln!("  wrote {shown}");
-    eprintln!("✓ test: {count} in {shown}{skipped}");
+    errln!("  wrote {shown}");
+    errln!("✓ test: {count} in {shown}{skipped}");
     Ok(())
 }

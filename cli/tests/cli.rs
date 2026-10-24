@@ -4848,3 +4848,166 @@ fn doctor_prints_its_rows_and_exits_1_on_an_error() {
     );
     assert!(!out.contains("not on PATH"), "{out}");
 }
+
+/// A reader that stops early (`fsp routes --json | head -1`) closes the pipe: `fsp` stops writing
+/// to stdout, with no panic, and exits as it does when its output is read to the end, saying the
+/// same on stderr (since 0.23.1). The pipe is closed before `fsp` starts, so its first write fails.
+#[test]
+fn a_closed_stdout_ends_the_output_and_not_the_command() {
+    let dir = project();
+    let broken = project();
+    fs::create_dir_all(broken.path().join("lib/app/[id")).unwrap();
+    // No `flutter` on PATH: `fsp doctor` skips its row instead of running one.
+    let empty = tempfile::tempdir().unwrap();
+    let run = |cwd: &Path, args: &[&str], closed: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsp"));
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", empty.path())
+            .stdin(Stdio::null())
+            .stderr(Stdio::piped());
+        if closed {
+            let (reader, writer) = io::pipe().unwrap();
+            drop(reader);
+            command.stdout(writer);
+        } else {
+            command.stdout(Stdio::piped());
+        }
+        spawn_locked(&mut command)
+            .unwrap()
+            .wait_with_output()
+            .unwrap()
+    };
+    for (cwd, args, code) in [
+        (dir.path(), &["schema"][..], 0),
+        (dir.path(), &["routes", "--json"], 0),
+        (dir.path(), &["routes", "--graph"], 0),
+        (dir.path(), &["run", "--json"], 0),
+        (dir.path(), &["run"], 0),
+        (dir.path(), &["create", "--list-features"], 0),
+        (dir.path(), &["doctor", "--json"], 1),
+        (broken.path(), &["check", "--json"], 1),
+    ] {
+        let read = run(cwd, args, false);
+        let said = String::from_utf8_lossy(&read.stderr).into_owned();
+        assert_eq!(read.status.code(), Some(code), "{args:?}: {said}");
+        assert!(!read.stdout.is_empty(), "{args:?} writes to stdout");
+        let closed = run(cwd, args, true);
+        let err = String::from_utf8_lossy(&closed.stderr);
+        assert!(!err.contains("panicked"), "{args:?}: {err}");
+        assert_eq!(closed.status.code(), Some(code), "{args:?}: {err}");
+        assert_eq!(err, said, "{args:?}");
+    }
+}
+
+/// The same for stderr, where `gen` and `check` write their lines and diagnostics, and where the
+/// error that ends a command goes (`fsp check 2>&1 | head`): a reader that stops early ends the
+/// output and not the command (since 0.23.1). With stderr closed the panic message has nowhere to
+/// go, so the exit code says it: 101 where the command's own is 0 or 1.
+#[test]
+fn a_closed_stderr_ends_the_output_and_not_the_command() {
+    let dir = project();
+    let broken = project();
+    fs::create_dir_all(broken.path().join("lib/app/[id")).unwrap();
+    let empty = tempfile::tempdir().unwrap();
+    let run = |cwd: &Path, args: &[&str], closed: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsp"));
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", empty.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped());
+        if closed {
+            let (reader, writer) = io::pipe().unwrap();
+            drop(reader);
+            command.stderr(writer);
+        } else {
+            command.stderr(Stdio::piped());
+        }
+        spawn_locked(&mut command)
+            .unwrap()
+            .wait_with_output()
+            .unwrap()
+    };
+    for (cwd, args, code) in [
+        // The success line, and the diagnostics one by one.
+        (dir.path(), &["check"][..], 0),
+        (dir.path(), &["gen", "--json"], 0),
+        (broken.path(), &["check"], 1),
+        // The error that ends the command, after the JSON lines on stdout.
+        (broken.path(), &["check", "--json"], 1),
+        (broken.path(), &["gen"], 1),
+    ] {
+        let read = run(cwd, args, false);
+        let said = String::from_utf8_lossy(&read.stderr).into_owned();
+        assert_eq!(read.status.code(), Some(code), "{args:?}: {said}");
+        assert!(!said.is_empty(), "{args:?} writes to stderr");
+        let closed = run(cwd, args, true);
+        assert_eq!(closed.status.code(), Some(code), "{args:?}");
+        assert_eq!(closed.stdout, read.stdout, "{args:?}");
+    }
+}
+
+/// `flutter` runs in a process group of its own, which Ctrl-C does not reach: a signal to `fsp
+/// doctor` while it waits for `flutter` stops flutter with what it started and ends the doctor with
+/// 130, printing no report (since 0.23.1). The stand-in is a `flutter` that waits for a lock.
+#[cfg(unix)]
+#[test]
+fn a_signal_stops_the_flutter_the_doctor_waits_for() {
+    let dir = project();
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    // The pid is written by rename, so a reader never sees half of it.
+    write_executable(
+        &bin.join("flutter"),
+        "#!/bin/sh\nsleep 300 &\necho $! > \"$FAKE_PID.tmp\"\nmv \"$FAKE_PID.tmp\" \"$FAKE_PID\"\nwait\n",
+    );
+    let alive = |pid: &str| {
+        status_locked(Command::new("kill").args(["-0", pid]).stderr(Stdio::null()))
+            .unwrap()
+            .success()
+    };
+    for signal in ["INT", "TERM"] {
+        let pidfile = dir.path().join(format!("flutter-{signal}.pid"));
+        let child = spawn_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .arg("doctor")
+                .env("PATH", path_with(&bin))
+                .env("FAKE_PID", &pidfile)
+                .current_dir(dir.path())
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped()),
+        )
+        .unwrap();
+        let end = Instant::now() + Duration::from_secs(30);
+        let pid = loop {
+            if let Ok(pid) = fs::read_to_string(&pidfile) {
+                break pid.trim().to_string();
+            }
+            assert!(Instant::now() < end, "flutter was not started");
+            sleep(Duration::from_millis(20));
+        };
+        assert!(alive(&pid), "the stand-in's sleep is not running");
+        let sent = status_locked(
+            Command::new("kill")
+                .arg(format!("-{signal}"))
+                .arg(child.id().to_string()),
+        )
+        .unwrap();
+        assert!(sent.success());
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(out.status.code(), Some(130), "{signal}");
+        assert!(out.stdout.is_empty(), "{signal}: no report");
+        let end = Instant::now() + Duration::from_secs(20);
+        while alive(&pid) {
+            assert!(
+                Instant::now() < end,
+                "{signal}: what flutter started is still running"
+            );
+            sleep(Duration::from_millis(20));
+        }
+    }
+}

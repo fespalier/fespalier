@@ -57,36 +57,36 @@ pub fn run(project: &Path) -> Result<()> {
         let path = dir.join(&file);
         if let Some(present) = [&snake, &kebab].into_iter().find(|f| dir.join(f).exists()) {
             let shown = format!("{}/{present}", cfg.app_dir);
-            eprintln!("  skip  {shown} (exists)");
+            errln!("  skip  {shown} (exists)");
             continue;
         }
         fs::write(&path, starter(kind, &package))?;
-        eprintln!("  new   {shown}");
+        errln!("  new   {shown}");
     }
 
     let o = crate::gen_with(project, &cfg.for_scaffolding(), true)?;
-    eprintln!("{}", o.line());
+    errln!("{}", o.line());
     tasks_example(project)?;
 
     let mut step = 0;
     let mut next = |title: &str| {
         step += 1;
-        eprintln!("\n{step}. {title}");
+        errln!("\n{step}. {title}");
     };
-    eprintln!("\nNext steps");
+    errln!("\nNext steps");
     if !pubspec.has_dependency {
         next("Add the dependency to pubspec.yaml, then run `flutter pub get`:");
-        eprintln!(
+        errln!(
             "\n   dependencies:\n     fespalier:\n       git:\n         url: https://github.com/fespalier/fespalier\n         path: packages/fespalier\n         ref: v0.23.0" // x-release-please-version
         );
     }
     if cfg.main == MainMode::Manual {
         next("Run the router from lib/main.dart:");
-        eprintln!(
+        errln!(
             "\n   import 'package:fespalier/fespalier.dart';\n   import 'package:flutter/material.dart';\n   import 'package:{package}/{}';\n\n   void main() => runApp(\n         ProviderScope(\n           child: MaterialApp.router(routerConfig: AppRoutes.router()),\n         ),\n       );",
             cfg.output_in_lib()
         );
-        eprintln!(
+        errln!(
             "\n   Already have a GoRouter? Mount the tree inside it instead:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])"
         );
     } else {
@@ -95,10 +95,10 @@ pub fn run(project: &Path) -> Result<()> {
         next(&format!(
             "Make lib/main.dart run the generated main() ({main_file}):"
         ));
-        eprintln!(
+        errln!(
             "\n   import 'package:{package}/{main_in_lib}';\n\n   Future<void> main() => AppMain.run();"
         );
-        eprintln!(
+        errln!(
             "\n   The app around the router (theme, title) is {dir}/app.dart; work to do before it starts goes\n   in {dir}/startup.dart (see docs/app-startup.md).\n   Already have a GoRouter? Mount the tree inside it instead, and set `main: manual`:\n\n   GoRouter(routes: [...yourRoutes, ...AppRoutes.mount(at: '/x')])",
             dir = cfg.app_dir
         );
@@ -121,9 +121,9 @@ fn tasks_example(project: &Path) -> Result<()> {
     let mut text =
         fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
     if text.lines().any(|l| l.starts_with(TASKS_MARKER)) {
-        eprintln!("  skip  pubspec.yaml tasks example (exists)");
+        errln!("  skip  pubspec.yaml tasks example (exists)");
     } else if text.lines().any(|l| l.starts_with("fespalier:")) {
-        eprintln!(
+        errln!(
             "  skip  pubspec.yaml tasks example (fespalier: is already there; docs/cli.md, \"Tasks: commands around `flutter run`\")"
         );
     } else {
@@ -132,7 +132,7 @@ fn tasks_example(project: &Path) -> Result<()> {
         }
         text.push_str(&templates::render("init/pubspec_tasks.yaml", ()));
         fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
-        eprintln!("  edit  pubspec.yaml (a commented tasks: example for fsp dev)");
+        errln!("  edit  pubspec.yaml (a commented tasks: example for fsp dev)");
     }
     Ok(())
 }

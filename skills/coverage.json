@@ -93,6 +93,7 @@
         "packages/fespalier/lib/src/launcher.dart",
         "packages/fespalier/lib/src/release_checksums.dart",
         "cli/src/main.rs",
+        "cli/src/out.rs",
         "cli/src/config.rs",
         "cli/src/init.rs",
         "cli/src/create.rs",

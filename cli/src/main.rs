@@ -1,3 +1,38 @@
+/// `print!` for what a command writes to stdout: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! out {
+    ($($arg:tt)*) => {
+        $crate::out::write(format_args!($($arg)*))
+    };
+}
+
+/// `println!` for what a command writes to stdout: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! outln {
+    () => {
+        $crate::out::line(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::out::line(format_args!($($arg)*))
+    };
+}
+
+/// `err!` for what a command writes to stderr: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! err {
+    ($($arg:tt)*) => {
+        $crate::out::err(format_args!($($arg)*))
+    };
+}
+
+/// `errln!` for what a command writes to stderr: a closed pipe ends the output quietly
+/// (`out.rs`).
+macro_rules! errln {
+    () => {
+        $crate::out::errln(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::out::errln(format_args!($($arg)*))
+    };
+}
+
 mod adapters;
 mod add;
 mod build_runner;
@@ -27,6 +62,7 @@ mod manifest;
 mod menu;
 mod osc8;
 mod otel;
+mod out;
 mod packages;
 mod parse_cache;
 mod pins;
@@ -194,12 +230,12 @@ fn main() {
             Cmd::Gen { format, json } => {
                 let mut cfg = Config::load(&project)?;
                 cfg.format |= format;
-                eprintln!("{}", gen_opts(&project, &cfg, true, json)?.line());
+                errln!("{}", gen_opts(&project, &cfg, true, json)?.line());
                 Ok(())
             }
             Cmd::Check { json } => {
                 let o = gen_opts(&project, &Config::load(&project)?, false, json)?;
-                eprintln!("✓ {}, no errors", plural(o.routes, "route"));
+                errln!("✓ {}, no errors", plural(o.routes, "route"));
                 Ok(())
             }
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
@@ -218,7 +254,7 @@ fn main() {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
                 match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
                     Ok(o) => {
-                        eprintln!("{}", o.line());
+                        errln!("{}", o.line());
                         Ok(())
                     }
                     Err(e) => {
@@ -236,7 +272,7 @@ fn main() {
         if let Some(Exit(code)) = e.downcast_ref::<Exit>() {
             process::exit(*code);
         }
-        eprintln!("{e:#}");
+        errln!("{e:#}");
         process::exit(1);
     }
 }
@@ -262,7 +298,7 @@ impl Exit {
     pub fn after(cause: &anyhow::Error, message: impl FnOnce(&str) -> String) -> anyhow::Error {
         match cause.downcast_ref::<Exit>() {
             Some(Exit(code)) => {
-                eprintln!("{}", message("was interrupted."));
+                errln!("{}", message("was interrupted."));
                 Exit(*code).into()
             }
             None => anyhow!(message(&format!("failed: {cause:#}"))),
@@ -336,7 +372,7 @@ pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result
         }
     });
     for warning in session.formats.take_warnings() {
-        eprintln!("{warning}");
+        errln!("{warning}");
     }
     result
 }
@@ -541,10 +577,10 @@ fn watch(project: &Path) -> Result<()> {
     let (tx, rx) = mpsc::channel();
     watch::watch_loop(project, &cfg, tx, &rx, |msg| match msg {
         watch::Watched::Diags(dir, d) => diag::render(dir, &cfg.app_dir, d),
-        watch::Watched::Warning(text) | watch::Watched::Watching(text) => eprintln!("{text}"),
+        watch::Watched::Warning(text) | watch::Watched::Watching(text) => errln!("{text}"),
         watch::Watched::Pass(report) => {
             if let Some(line) = report.line {
-                eprintln!("{line}");
+                errln!("{line}");
             }
         }
     })

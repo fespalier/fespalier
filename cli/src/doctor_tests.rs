@@ -260,6 +260,40 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
     );
 }
 
+/// fespalier under `dev_dependencies:` only builds, but the generated files under lib/ import it:
+/// a warning beside the row of its ref (since 0.23.1). Under `dependencies:` it is not.
+#[test]
+fn fespalier_under_dev_dependencies_only_is_a_warning() {
+    let pin = git(&format!("v{}", this_fsp()));
+    let rows = doctor::rows(&facts(
+        &format!("name: shop\ndev_dependencies:\n  fespalier:{pin}\n"),
+        &[],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        of(&rows, "fespalier", None),
+        [
+            format!(
+                "ok: fespalier: git, ref v{}, the version of this fsp",
+                this_fsp()
+            ),
+            "warning: fespalier is under `dev_dependencies:` only: the generated files under lib/ import package:fespalier, so move it to `dependencies:`".to_string(),
+        ]
+    );
+    for pubspec in [
+        format!("name: shop\ndependencies:\n  fespalier:{pin}\n"),
+        format!(
+            "name: shop\ndependencies:\n  fespalier:{pin}\ndev_dependencies:\n  fespalier:{pin}\n"
+        ),
+    ] {
+        let rows = doctor::rows(&facts(&pubspec, &[], Err("no".into())));
+        assert!(
+            one(&rows, "fespalier", None).starts_with("ok: "),
+            "{pubspec}"
+        );
+    }
+}
+
 #[test]
 fn the_lock_go_router_and_the_toolchain() {
     let pubspec = "name: shop\ndependencies:\n  fespalier:\n    path: ../fespalier\n  fespalier_download_background:\n    path: ../bg\n";
@@ -732,4 +766,191 @@ fn json_lines_have_every_key_and_the_text_counts() {
     rows.push(Row::new(Section::Checks, "x", Status::Warning, "w"));
     rows.push(Row::new(Section::Checks, "x", Status::Warning, "w"));
     assert!(doctor::text(&f, &rows).ends_with("\n1 error, 2 warnings.\n"));
+}
+
+/// `flutter --version --machine` as `version_output` answers it, or why there is nothing.
+#[cfg(unix)]
+fn answered(asked: doctor::Asked) -> Result<String, String> {
+    match asked {
+        doctor::Asked::Answer(answer) => answer,
+        doctor::Asked::Interrupted => panic!("interrupted"),
+    }
+}
+
+/// Waits until the process in `pidfile` (written by a stand-in that started a `sleep`) is gone
+/// (`kill -0` fails for a process that does not exist). A shell stopped before it started the
+/// sleep left nothing behind.
+#[cfg(unix)]
+fn assert_sleep_is_gone(pidfile: &Path) {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    if let Ok(pid) = fs::read_to_string(pidfile) {
+        let end = Instant::now() + Duration::from_secs(20);
+        while Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+        {
+            assert!(
+                Instant::now() < end,
+                "the stand-in's sleep is still running"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+/// A `flutter` that does not answer (it waits while another flutter command holds its startup
+/// lock, or downloads its Dart SDK on a first run) is stopped after the timeout with everything it
+/// started, and the `flutter` row is skipped and says why (since 0.23.1): the lock only when
+/// flutter said so. The stand-in sleeps under a shell, as `flutter` runs `dart` under one.
+#[cfg(unix)]
+#[test]
+fn a_flutter_that_does_not_answer_is_stopped_and_its_row_skipped() {
+    use std::process::Command;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    let (_signals, never) = mpsc::channel::<()>();
+    for (says, why) in [
+        (
+            "",
+            "`flutter --version --machine` did not answer in 1 s and was stopped (flutter may be updating itself on a first run, or waiting for another flutter command's startup lock: run `flutter --version` once, then try again)",
+        ),
+        (
+            "echo 'Waiting for another flutter command to release the startup lock...' >&2; ",
+            "`flutter --version --machine` did not answer in 1 s and was stopped (flutter says it is waiting for another flutter command to release its startup lock: let that one finish, then try again)",
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("dart.pid");
+        let mut stand_in = Command::new("sh");
+        stand_in.arg("-c").arg(format!(
+            "{says}sleep 300 & echo $! > '{}'; wait",
+            pidfile.display()
+        ));
+        let started = Instant::now();
+        let asked = doctor::version_output(stand_in, "flutter", Duration::from_secs(1), &never);
+        let message = answered(asked).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(30), "{message}");
+        assert_eq!(message, why);
+        assert_sleep_is_gone(&pidfile);
+        let rows = doctor::rows(&facts("name: demo\n", &[], Err(message)));
+        let row = rows.iter().find(|r| r.check == "flutter").unwrap();
+        assert_eq!(row.status, Status::Skipped);
+        assert_eq!(
+            row.message,
+            format!("{why}: Flutter and Dart are not checked")
+        );
+    }
+    // One that answers in time is read as before.
+    let mut answers = Command::new("sh");
+    answers.arg("-c").arg(
+        "printf '{\"frameworkVersion\":\"3.38.4\",\"dartSdkVersion\":\"3.10.4\"}\\n'; echo noise >&2",
+    );
+    let asked = doctor::version_output(answers, "flutter", Duration::from_secs(30), &never);
+    let out = answered(asked).unwrap();
+    assert_eq!(Toolchain::parse(&out).unwrap().flutter, Version(3, 38, 4));
+}
+
+/// `flutter` runs in a process group of its own, which Ctrl-C does not reach: a signal that comes
+/// in while `fsp doctor` waits for it stops it with what it started, and ends the wait at once
+/// (since 0.23.1). The signal is sent once the stand-in has started its sleep.
+#[cfg(unix)]
+#[test]
+fn a_signal_stops_the_flutter_it_is_waiting_for() {
+    use std::process::Command;
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("dart.pid");
+    let mut stand_in = Command::new("sh");
+    stand_in.arg("-c").arg(format!(
+        "sleep 300 & echo $! > '{}'; wait",
+        pidfile.display()
+    ));
+    let (tx, signals) = mpsc::channel::<()>();
+    let started = pidfile.clone();
+    let sender = std::thread::spawn(move || {
+        let end = Instant::now() + Duration::from_secs(20);
+        while !fs::read_to_string(&started).is_ok_and(|pid| pid.ends_with('\n')) {
+            assert!(Instant::now() < end, "the stand-in did not start");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        tx.send(()).unwrap();
+    });
+    let began = Instant::now();
+    let asked = doctor::version_output(stand_in, "flutter", Duration::from_secs(120), &signals);
+    sender.join().unwrap();
+    assert!(
+        matches!(asked, doctor::Asked::Interrupted),
+        "a signal is not an answer"
+    );
+    assert!(began.elapsed() < Duration::from_secs(30));
+    assert_sleep_is_gone(&pidfile);
+}
+
+/// A folder is read when its real path is not known: `fs::canonicalize` fails on some network and
+/// virtual drives that list fine, and the doctor must not read no source at all there (since
+/// 0.23.1). Once read, the same folder is not read again, however it is reached.
+#[test]
+fn a_folder_with_no_real_path_is_read_once_as_given() {
+    use std::collections::HashSet;
+    use std::io;
+    use std::path::PathBuf;
+    let mut seen = HashSet::new();
+    let lib = Path::new("lib");
+    let unknown = || Err(io::Error::other("no real path"));
+    assert!(doctor::first_visit(&mut seen, lib, unknown()));
+    assert!(!doctor::first_visit(&mut seen, lib, unknown()));
+    // Another folder whose path is not known is its own.
+    assert!(doctor::first_visit(
+        &mut seen,
+        Path::new("lib/src"),
+        unknown()
+    ));
+    // A known real path is the key, whatever path reached it.
+    let real = || Ok(PathBuf::from("/app/lib/shared"));
+    assert!(doctor::first_visit(
+        &mut seen,
+        Path::new("lib/shared"),
+        real()
+    ));
+    assert!(!doctor::first_visit(
+        &mut seen,
+        Path::new("lib/src/link"),
+        real()
+    ));
+}
+
+/// A symlink back up `lib/` is not followed round and round: each folder is read once, and the
+/// doctor's walk ends (since 0.23.1). A symlink to a folder the walk has not read is followed.
+#[cfg(unix)]
+#[test]
+fn a_symlink_loop_under_lib_is_read_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = tempfile::tempdir().unwrap();
+    fs::write(shared.path().join("ids.dart"), "typedef Id = String;").unwrap();
+    write(
+        dir.path(),
+        "name: shop\n",
+        &[
+            ("lib/main.dart", "void main() {}"),
+            ("lib/src/setup.dart", "void setup() {}"),
+        ],
+    );
+    std::os::unix::fs::symlink("..", dir.path().join("lib/src/up")).unwrap();
+    std::os::unix::fs::symlink(shared.path(), dir.path().join("lib/shared")).unwrap();
+    let facts = doctor::gather(dir.path(), Err("no".into()));
+    let files: Vec<&str> = facts.sources.iter().map(|(f, _)| f.as_str()).collect();
+    assert_eq!(
+        files,
+        [
+            "lib/app/page.dart",
+            "lib/main.dart",
+            "lib/shared/ids.dart",
+            "lib/src/setup.dart"
+        ]
+    );
 }

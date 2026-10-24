@@ -446,7 +446,7 @@ fn print_ref_note(project: Option<&Path>, installed: Version) {
         .and_then(|p| crate::config::Pubspec::load(p).ok())
         .and_then(|p| p.pinned_ref);
     if let Some(note) = ref_note(pinned.as_deref(), installed) {
-        println!("{note}");
+        outln!("{note}");
     }
 }
 
@@ -489,7 +489,7 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
 
     if cmd.check || cmd.json {
         if cmd.json {
-            println!(
+            outln!(
                 "{}",
                 json!({
                     "current": current.to_string(),
@@ -501,11 +501,11 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
                 })
             );
         } else if up_to_date {
-            println!("fsp {current} is the latest ({}).", method.name());
+            outln!("fsp {current} is the latest ({}).", method.name());
         } else {
-            println!("fsp {current} ({}); {target} is available.", method.name());
+            outln!("fsp {current} ({}); {target} is available.", method.name());
             if let Some(command) = &plan.command {
-                println!("  {command}");
+                outln!("  {command}");
             }
         }
         if cmd.check && !up_to_date {
@@ -517,15 +517,15 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
     match &plan.action {
         Action::UpToDate => {
             if current > target && !explicit {
-                println!("fsp {current} is newer than the latest release ({target}).");
+                outln!("fsp {current} is newer than the latest release ({target}).");
             } else {
-                println!("fsp {current} is the latest.");
+                outln!("fsp {current} is the latest.");
             }
         }
         Action::Refuse(message) => bail!("{message}"),
         Action::Brew => {
-            println!("fsp {current} -> {target}: {BREW}");
-            println!("(if Homebrew finds nothing newer, run `brew update` first)");
+            outln!("fsp {current} -> {target}: {BREW}");
+            outln!("(if Homebrew finds nothing newer, run `brew update` first)");
             if cmd.dry_run {
                 return Ok(());
             }
@@ -539,9 +539,9 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
             print_ref_note(project, target);
         }
         Action::Print(lines) => {
-            println!("fsp {current} -> {target}. Run:");
+            outln!("fsp {current} -> {target}. Run:");
             for line in lines {
-                println!("  {line}");
+                outln!("  {line}");
             }
         }
         Action::Script => {
@@ -552,11 +552,11 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
             };
             let base = env_nonempty("FSP_BASE_URL").unwrap_or_else(|| BASE_URL.to_string());
             if cmd.dry_run {
-                println!("fsp {current} -> {target}{note}, a script install in {dir}.");
+                outln!("fsp {current} -> {target}{note}, a script install in {dir}.");
                 let archive = replace::host_target()
                     .map(replace::archive_name)
                     .unwrap_or_default();
-                println!(
+                outln!(
                     "Would download {base}/{}/{archive} and replace {} after checking the archive \
                      against the release's .sha256 and the checksums pinned at the tag. The \
                      install script does the same:",
@@ -564,16 +564,16 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
                     exe.display()
                 );
                 if let Some(command) = &plan.command {
-                    println!("  {command}");
+                    outln!("  {command}");
                 }
                 return Ok(());
             }
             if current > target {
-                println!("fsp {current} -> {target}: a downgrade, as asked.");
+                outln!("fsp {current} -> {target}: a downgrade, as asked.");
             }
             replace::remove_stale_old(&exe);
             replace::replace(&exe, target, &base)?;
-            println!(
+            outln!(
                 "\u{2713} fsp {current} \u{2192} {target} ({})",
                 exe.display()
             );

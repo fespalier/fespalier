@@ -134,16 +134,16 @@ fn ask_device(project: &Path, devices: &[Device]) -> Result<Device> {
     let default = last
         .as_ref()
         .and_then(|id| devices.iter().position(|d| &d.id == id));
-    eprintln!("more than one device:");
+    errln!("more than one device:");
     for (i, d) in devices.iter().enumerate() {
         let mark = if default == Some(i) {
             " (last used)"
         } else {
             ""
         };
-        eprintln!("  {}) {} ({}){mark}", i + 1, d.name, d.id);
+        errln!("  {}) {} ({}){mark}", i + 1, d.name, d.id);
     }
-    eprint!("pick a device [1-{}]: ", devices.len());
+    err!("pick a device [1-{}]: ", devices.len());
     let _ = std::io::stderr().flush();
     let mut line = String::new();
     std::io::stdin().lock().read_line(&mut line)?;
@@ -287,23 +287,23 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     let cfg = Config::load(project)?;
     let plan = Tasks::from_config(&cfg)?.dev();
     if cmd.dry_run {
-        eprint!("{}", dry_run(project, &cfg, &plan, &cmd.args));
+        err!("{}", dry_run(project, &cfg, &plan, &cmd.args));
         return Ok(());
     }
     procs::install_signals().map_err(anyhow::Error::msg)?;
 
     // 1. The first generation, as `fsp gen` prints it.
     match crate::gen_opts(project, &cfg, true, false) {
-        Ok(o) => eprintln!("{}", o.line()),
+        Ok(o) => errln!("{}", o.line()),
         Err(e) => {
-            eprintln!("{e:#}");
+            errln!("{e:#}");
             if project.join(&cfg.output).is_file() {
-                eprintln!(
+                errln!(
                     "warning: {} is out of date until the errors above are fixed; fsp dev keeps watching",
                     cfg.output
                 );
             } else {
-                eprintln!(
+                errln!(
                     "fsp dev needs {}: fix the errors above, then run `fsp dev` again",
                     cfg.output
                 );
@@ -344,7 +344,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     ) {
         match TerminalGuard::enter() {
             Ok(g) => guard = Some(g),
-            Err(e) => eprintln!("warning: could not take over the terminal ({e}); plain output"),
+            Err(e) => errln!("warning: could not take over the terminal ({e}); plain output"),
         }
     }
     let mut warning_text = None;
@@ -370,7 +370,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     if guard.is_none()
         && let Some(w) = warning_text.take()
     {
-        eprintln!("{w}");
+        errln!("{w}");
     }
     let outcome = run_loop(
         project,

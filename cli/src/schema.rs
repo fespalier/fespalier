@@ -90,6 +90,6 @@ pub fn text(pubspec: bool) -> String {
 }
 
 pub fn run(cmd: &SchemaCmd) -> Result<()> {
-    print!("{}", text(cmd.pubspec));
+    out!("{}", text(cmd.pubspec));
     Ok(())
 }

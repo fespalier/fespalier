@@ -132,7 +132,7 @@ pub fn render(app_dir: &Path, shown: &str, diags: &Diags) {
         ColorChoice::Never
     };
     let out = StandardStream::stderr(color);
-    emit_each(&mut out.lock(), app_dir, shown, diags, |d| eprintln!("{d}"));
+    emit_each(&mut out.lock(), app_dir, shown, diags, |d| errln!("{d}"));
 }
 
 /// The same rendering as [`render`], without colour, as lines: what `fsp dev` shows in its
@@ -258,6 +258,6 @@ pub fn json_line(app_dir: &Path, shown: &str, d: &Diag) -> String {
 /// Prints diagnostics to stdout as JSON lines (see [`json_line`]).
 pub fn render_json(app_dir: &Path, shown: &str, diags: &Diags) {
     for d in &diags.0 {
-        println!("{}", json_line(app_dir, shown, d));
+        outln!("{}", json_line(app_dir, shown, d));
     }
 }

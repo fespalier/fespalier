@@ -319,11 +319,11 @@ pub fn new_route_opts(project: &Path, a: &NewArgs, no_page: bool) -> Result<Vec<
         let path = dir.join(file);
         let shown = at(file);
         if let Some(present) = [&snake, &kebab].into_iter().find(|f| dir.join(f).exists()) {
-            eprintln!("  skip  {} (exists)", at(present));
+            errln!("  skip  {} (exists)", at(present));
             continue;
         }
         fs::write(&path, templates::render(&format!("new/{kind}.dart"), &cx))?;
-        eprintln!("  new   {shown}");
+        errln!("  new   {shown}");
         created.push(shown);
     }
     if created.is_empty() {

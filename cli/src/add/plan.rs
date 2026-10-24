@@ -23,6 +23,7 @@ use crate::create::plan::{ALL, BASE_DART, FlutterVersion, resolve_features};
 use crate::create::recipes::{Recipe, Source, ThirdParty, companion_closure};
 use crate::pins::{self, Origin};
 use crate::pubspec_edit::{self, Body, Edit, Place};
+use crate::upgrade::Version;
 use crate::{init, templates};
 
 /// The files every feature adds to instead of writing: what `fsp create` composes.
@@ -122,6 +123,28 @@ impl Plan {
     }
 }
 
+/// The first release that has `fsp add`: the fsp of an older pin cannot be asked to run it.
+const ADD_SINCE: Version = Version(0, 23, 0);
+
+/// The refusal when the app pins another release of fespalier than the `fsp` that runs.
+pub fn another_release(pin: Version, own: Version, features: &[String]) -> String {
+    let (pin_tag, own_tag) = (pin.tag(), own.tag());
+    let launcher = format!("`dart run fespalier add {}`", features.join(" "));
+    if pin > own {
+        format!(
+            "this app pins fespalier {pin_tag}, and fsp {own} is older and writes the files and pins of {own_tag}; nothing was written. Upgrade fsp (`fsp upgrade`), or use the fsp of the pin: {launcher}"
+        )
+    } else if pin >= ADD_SINCE {
+        format!(
+            "this app pins fespalier {pin_tag}, and fsp {own} writes the files and pins of {own_tag}, which the packages at {pin_tag} may not have (a companion that is newer, an API that changed); nothing was written. Move the refs with `fsp upgrade --app` first, or use the fsp of the pin: {launcher}"
+        )
+    } else {
+        format!(
+            "this app pins fespalier {pin_tag}, and fsp {own} writes the files and pins of {own_tag}, which the packages at {pin_tag} may not have (a companion that is newer, an API that changed); nothing was written. Move the refs with `fsp upgrade --app` first (the fsp of {pin_tag} has no `fsp add`)"
+        )
+    }
+}
+
 /// The features of `table` by id, for messages.
 fn ids(table: &[Recipe]) -> String {
     table.iter().map(|r| r.id).collect::<Vec<_>>().join(", ")
@@ -129,12 +152,15 @@ fn ids(table: &[Recipe]) -> String {
 
 /// The lower bound of `environment: <key>:` (`">=3.35.0"`, `^3.9.0`), when there is one.
 fn floor_of(pubspec: &Value, key: &str) -> Option<FlutterVersion> {
-    let text = pubspec.get("environment")?.get(key)?.as_str()?;
-    let bound = text.split_whitespace().next()?;
-    let bound = bound
+    let text = pubspec.get("environment")?.get(key)?.as_str()?.trim();
+    // `>=3.0.0 <4.0.0`, `>= 3.0.0`, `>3.0.0` and `^3.9.0` all start with their lower bound; a
+    // range that starts with `<` (or `any`) has none.
+    let bound = text
         .strip_prefix(">=")
-        .or_else(|| bound.strip_prefix('^'))
-        .unwrap_or(bound);
+        .or_else(|| text.strip_prefix('>'))
+        .or_else(|| text.strip_prefix('^'))
+        .unwrap_or(text);
+    let bound = bound.split_whitespace().next()?;
     FlutterVersion::parse(bound.trim_matches('"'))
 }
 
@@ -206,6 +232,17 @@ const CONFIG_COMMENT: &str =
 /// The comment above a `dependency_overrides:` that `fsp add` makes for a checkout's packages.
 const OVERRIDES_COMMENT: &str = "# The packages depend on each other by git; here they all come from the checkout fespalier comes from.";
 
+/// Whether the app has `test/routes/setup.dart` once the plan is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Setup {
+    /// It has none, and the plan makes none: `fsp test` skips a guarded route by itself.
+    Absent,
+    /// It was there already (the app's own, or `fsp create`'s for the features it had).
+    Present,
+    /// The plan writes it, for a feature with `smoke_overrides`.
+    Made,
+}
+
 /// The pubspec edits for `wanted` on an app that has `all` once they are in: the edits, the lines
 /// that say them, and notes.
 fn pubspec_edits(
@@ -214,7 +251,7 @@ fn pubspec_edits(
     overridden: &dyn Fn(&str) -> bool,
     wanted: &[&Recipe],
     all: &[&Recipe],
-    setup_after: bool,
+    setup: Setup,
 ) -> (Vec<Edit>, Vec<String>, Vec<String>) {
     let mut edits = vec![];
     let mut changes = vec![];
@@ -229,7 +266,11 @@ fn pubspec_edits(
     companions.sort_unstable();
     companions.dedup();
     for name in &companions {
-        if !dep(name) {
+        if !dep(name) && dev(name) {
+            notes.push(format!(
+                "{name} is under dev_dependencies:, and the feature needs it under dependencies: move it there"
+            ));
+        } else if !dep(name) {
             edits.push(Edit::insert(
                 &["dependencies"],
                 name,
@@ -341,8 +382,11 @@ fn pubspec_edits(
             }
         }
     }
-    // The routes `fsp test` cannot open on its own: a guarded one only when there is a setup file,
-    // whose overrides would get it past nothing but its guard (compose::smoke_skip_lines).
+    // The routes `fsp test` cannot open on its own, for the features this plan adds: what the
+    // app already lists or has taken out of `skip:` is its own business. A guarded route is listed
+    // only when there is a setup file, whose overrides would get it past nothing but its guard
+    // (compose::smoke_skip_lines), so a setup file made now also lists the guarded routes of the
+    // features the app had, which `fsp test` skipped by itself until then.
     let skipped: Vec<String> = config_value(pubspec, "test")
         .and_then(|t| t.get("skip"))
         .and_then(Value::as_sequence)
@@ -353,15 +397,25 @@ fn pubspec_edits(
                 .collect()
         })
         .unwrap_or_default();
-    for (route, why) in all.iter().flat_map(|r| {
-        r.startup
-            .smoke_skip
-            .iter()
-            .chain(r.startup.smoke_guarded.iter().filter(|_| setup_after))
-    }) {
-        if skipped.iter().any(|s| s == route) {
+    let guarded_from = match setup {
+        Setup::Absent => &[][..],
+        Setup::Present => wanted,
+        Setup::Made => all,
+    };
+    let routes = wanted
+        .iter()
+        .flat_map(|r| r.startup.smoke_skip.iter())
+        .chain(
+            guarded_from
+                .iter()
+                .flat_map(|r| r.startup.smoke_guarded.iter()),
+        );
+    let mut listed: Vec<&str> = vec![];
+    for (route, why) in routes {
+        if skipped.iter().any(|s| s == route) || listed.contains(route) {
             continue;
         }
+        listed.push(*route);
         config.push(Edit::append(
             &["fespalier", "test", "skip"],
             route,
@@ -397,23 +451,102 @@ fn pubspec_edits(
     (edits, changes, notes)
 }
 
+/// Whether the quote after `before` opens a raw string: an `r` that is no end of a name.
+fn is_raw(before: &str) -> bool {
+    before
+        .strip_suffix('r')
+        .is_some_and(|name| !name.ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == '$'))
+}
+
+/// The byte length of the Dart string literal that starts `text` (at its quote): a triple-quoted
+/// one, an escape, a raw one (`r'...'`, when `raw`) and a `${...}` that holds quotes of its own
+/// included. An unterminated one runs to the end.
+fn string_len(text: &str, raw: bool) -> usize {
+    let quote = &text[..1];
+    let delimiter = if text.starts_with(&quote.repeat(3)) {
+        quote.repeat(3)
+    } else {
+        quote.to_string()
+    };
+    let mut i = delimiter.len();
+    while i < text.len() {
+        let rest = &text[i..];
+        if rest.starts_with(delimiter.as_str()) {
+            return i + delimiter.len();
+        }
+        let Some(c) = rest.chars().next() else { break };
+        if !raw && c == '\\' {
+            i += 1 + rest[1..].chars().next().map_or(0, char::len_utf8);
+        } else if !raw && rest.starts_with("${") {
+            i += 2;
+            let mut depth = 1;
+            while depth > 0 && i < text.len() {
+                let inner = &text[i..];
+                match inner.chars().next() {
+                    Some('\'' | '"') => i += string_len(inner, is_raw(&text[..i])),
+                    Some('{') => {
+                        depth += 1;
+                        i += 1;
+                    }
+                    Some('}') => {
+                        depth -= 1;
+                        i += 1;
+                    }
+                    Some(other) => i += other.len_utf8(),
+                    None => break,
+                }
+            }
+        } else {
+            i += c.len_utf8();
+        }
+    }
+    text.len()
+}
+
+/// Dart as `dart format` leaves its meaning: no white space outside strings and comments, no comma
+/// before a closing bracket. A string stays as it is, a `//` comment keeps the line break that
+/// ends it (joined onto the next line it would comment that out) and a `/* */` stays as it is.
+fn dart_shape(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        let len = if rest.starts_with("//") {
+            let end = rest.find('\n').unwrap_or(rest.len());
+            out.push_str(rest[..end].trim_end());
+            out.push('\n');
+            end
+        } else if rest.starts_with("/*") {
+            let end = rest.find("*/").map_or(rest.len(), |i| i + 2);
+            out.push_str(&rest[..end]);
+            end
+        } else if matches!(c, '\'' | '"') {
+            let end = string_len(rest, is_raw(&text[..text.len() - rest.len()]));
+            out.push_str(&rest[..end]);
+            end
+        } else {
+            if matches!(c, ')' | ']' | '}') && out.ends_with(',') {
+                out.pop();
+            }
+            if !c.is_whitespace() {
+                out.push(c);
+            }
+            c.len_utf8()
+        };
+        rest = &rest[len..];
+    }
+    out
+}
+
 /// Whether the file at `path` is `fsp create`'s: the same text, or, for Dart, the same but for
-/// what `dart format` changes (white space, and the comma after a last argument or element), since
-/// `fsp add` formats what it writes the way the app formats its own code.
+/// what `dart format` changes (white space outside strings and comments, and the comma after a
+/// last argument or element), since `fsp add` formats what it writes the way the app formats its
+/// own code. The one meaning this equates is a record of one field, `(x,)` and `(x)`.
 #[must_use]
 pub fn same_file(path: &str, now: &str, ours: &str) -> bool {
     if !path.ends_with(".dart") {
         return now == ours;
     }
-    let shape = |text: &str| {
-        text.chars()
-            .filter(|c| !c.is_whitespace())
-            .collect::<String>()
-            .replace(",)", ")")
-            .replace(",]", "]")
-            .replace(",}", "}")
-    };
-    shape(now) == shape(ours)
+    dart_shape(now) == dart_shape(ours)
 }
 
 /// The lines of `old` and `new` that differ, with two lines around each change: `+ ` added,
@@ -476,7 +609,9 @@ pub fn diff(old: &str, new: &str) -> String {
 /// Decides everything. Refuses, in this order: a pubspec it cannot read, an app it does not write
 /// into (`main: manual`, another `app_dir` or `output`), no or an unknown feature, one only
 /// `fsp create` makes, pins out of line, a Dart below `fsp create`'s or a Flutter below a
-/// feature's, a feature some of whose files are there, and a pubspec it cannot edit safely.
+/// feature's, a conflict with a feature the app has, a fespalier at another release than this
+/// `fsp` (only when there is something to add), a feature some of whose files are there, and a
+/// pubspec it cannot edit safely.
 pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
     let value: Value =
         serde_yaml_ng::from_str(req.pubspec).context("pubspec.yaml is not valid YAML")?;
@@ -598,6 +733,15 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
     if wanted.is_empty() {
         return Ok(plan);
     }
+    // The files and the pins are those of this fsp's release: an app that pins another one would
+    // get a package its release does not have, or files that use an API it lacks.
+    if let Origin::Git { reference, .. } = &pins.fespalier
+        && let Some(pin) = Version::parse(reference)
+        && let Some(own) = Version::parse(env!("CARGO_PKG_VERSION"))
+        && pin != own
+    {
+        bail!("{}", another_release(pin, own, req.features));
+    }
 
     // The feature's own files: all of them, or none when all are there; some is refused.
     for recipe in &wanted {
@@ -713,17 +857,20 @@ pub fn build(req: &Request, table: &[Recipe]) -> Result<Plan> {
         }
     }
 
-    let setup_after =
-        files.contains_key(SHARED[3]) || plan.files.iter().any(|f| f.path == SHARED[3]);
+    let setup = if plan
+        .files
+        .iter()
+        .any(|f| f.path == SHARED[3] && f.write == Write::New)
+    {
+        Setup::Made
+    } else if files.contains_key(SHARED[3]) {
+        Setup::Present
+    } else {
+        Setup::Absent
+    };
     let overridden = |name: &str| pins.has("dependency_overrides", name);
-    let (edits, changes, more) = pubspec_edits(
-        &value,
-        &pins.fespalier,
-        &overridden,
-        &wanted,
-        &all,
-        setup_after,
-    );
+    let (edits, changes, more) =
+        pubspec_edits(&value, &pins.fespalier, &overridden, &wanted, &all, setup);
     plan.notes.extend(more);
     let edited = pubspec_edit::apply(req.pubspec, &edits).map_err(|e| {
         anyhow!(

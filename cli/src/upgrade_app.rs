@@ -10,7 +10,7 @@
 use std::path::Path;
 use std::{env, fs};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use serde_json::json;
 use serde_yaml_ng::Value;
 
@@ -30,6 +30,8 @@ pub struct Move {
     pub section: &'static str,
     pub from: String,
     pub to: String,
+    /// The move goes to an older release than the ref is at now.
+    pub down: bool,
 }
 
 /// What `fsp upgrade --app` does to a pubspec.
@@ -42,6 +44,8 @@ pub enum AppPlan {
         target: Version,
         /// The oldest release the app pins: the notes start after it.
         oldest: Version,
+        /// The newest release the app pins: what a move to an older `fsp` would leave behind.
+        newest: Version,
         moves: Vec<Move>,
         /// Pins that are left as they are, and why (an override to a folder).
         kept: Vec<String>,
@@ -137,10 +141,11 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
         }
     }
     let oldest = pinned.iter().map(|(_, v)| *v).min().unwrap_or(target);
+    let newest = pinned.iter().map(|(_, v)| *v).max().unwrap_or(target);
     let moves: Vec<Move> = pinned
         .iter()
         .filter(|(_, v)| *v != target)
-        .map(|(pin, _)| Move {
+        .map(|(pin, version)| Move {
             name: pin.name.clone(),
             section: pin.section,
             from: match &pin.origin {
@@ -148,6 +153,7 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
                 _ => String::new(),
             },
             to: target.tag(),
+            down: *version > target,
         })
         .collect();
     let edits: Vec<Edit> = moves
@@ -163,6 +169,7 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
     Ok(AppPlan::Refs {
         target,
         oldest,
+        newest,
         moves,
         kept,
         pubspec,
@@ -196,6 +203,24 @@ impl Section {
     }
 }
 
+/// `text` without its bold marks (`**`), except inside a code span (`` `build/**` ``).
+fn without_bold(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_code = false;
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        if c == '`' {
+            in_code = !in_code;
+        } else if !in_code && let Some(after) = rest.strip_prefix("**") {
+            rest = after;
+            continue;
+        }
+        out.push(c);
+        rest = &rest[c.len_utf8()..];
+    }
+    out
+}
+
 /// Markdown as plain text: links are their text, and bold marks go.
 fn plain(text: &str) -> String {
     let mut out = String::new();
@@ -212,7 +237,7 @@ fn plain(text: &str) -> String {
         rest = &rest[end + 1..];
     }
     out.push_str(rest);
-    out.replace("**", "")
+    without_bold(&out)
 }
 
 /// The lead of a bullet: its bold first words, else its first sentence.
@@ -246,6 +271,8 @@ pub fn sections(markdown: &str) -> Vec<Section> {
     let mut inside = false;
     let mut paragraph: Vec<String> = vec![];
     let mut first_done = false;
+    // Inside a `###` heading that is no release: its text belongs to nobody.
+    let mut skipping = false;
     // The paragraph or bullet being read, and whether it is a bullet.
     let flush = |out: &mut Vec<Section>, paragraph: &mut Vec<String>, first: &mut bool| {
         if paragraph.is_empty() {
@@ -267,6 +294,7 @@ pub fn sections(markdown: &str) -> Vec<Section> {
         if let Some(title) = line.strip_prefix("## ") {
             flush(&mut out, &mut paragraph, &mut first_done);
             inside = title.trim() == "Upgrading";
+            skipping = false;
             continue;
         }
         if !inside {
@@ -275,6 +303,7 @@ pub fn sections(markdown: &str) -> Vec<Section> {
         if let Some(heading) = line.strip_prefix("### ") {
             flush(&mut out, &mut paragraph, &mut first_done);
             let heading = heading.trim().to_string();
+            skipping = true;
             if let Some(version) = section_version(&heading) {
                 out.push(Section {
                     heading,
@@ -282,7 +311,11 @@ pub fn sections(markdown: &str) -> Vec<Section> {
                     summary: vec![],
                 });
                 first_done = false;
+                skipping = false;
             }
+            continue;
+        }
+        if skipping {
             continue;
         }
         if let Some(sub) = line.strip_prefix("#### ") {
@@ -356,6 +389,16 @@ pub fn notes_text(markdown: &str, from: Version, to: Version, own: Version) -> S
 
 // --- Running -----------------------------------------------------------------------------------
 
+/// The refusal when no `--version` is given and a pin is above this `fsp`: the target would be this
+/// `fsp`'s own release, which moves the app back.
+fn older_than_the_pins(own: Version, newest: Version) -> String {
+    format!(
+        "this app pins fespalier {newest_tag} and fsp {own} is older, so `fsp upgrade --app` would move the refs back to {own_tag}; nothing was written. Upgrade fsp (`fsp upgrade`), or use the fsp of the pin with `dart run fespalier`, or go back on purpose with `--version {own_tag}`",
+        newest_tag = newest.tag(),
+        own_tag = own.tag(),
+    )
+}
+
 /// `fsp upgrade --app` in `project`.
 pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     let own =
@@ -377,33 +420,43 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             println!("{line}");
         }
     };
-    let (oldest, moves, kept, pubspec) = match plan {
+    let (oldest, newest, moves, kept, pubspec) = match plan {
         AppPlan::Refs {
             oldest,
+            newest,
             moves,
             kept,
             pubspec,
             ..
-        } => (oldest, moves, kept, pubspec),
+        } => (oldest, newest, moves, kept, pubspec),
         AppPlan::Checkout { root } => {
             checkout(cmd, &root, target);
             return Ok(());
         }
     };
+    // Going back to an older release is something a person asks for with `--version`; an `fsp`
+    // older than the app is not that, and neither `--check` nor a run may treat it as an update.
+    if cmd.version.is_none() && newest > own {
+        bail!(older_than_the_pins(own, newest));
+    }
     let up_to_date = moves.is_empty();
+    // Where the move starts: the oldest pin, or, when everything goes down, the newest.
+    let from = if target < oldest { newest } else { oldest };
     if cmd.json {
         let packages: Vec<serde_json::Value> = moves
             .iter()
-            .map(|m| json!({"name": m.name, "section": m.section, "from": m.from, "to": m.to}))
+            .map(|m| {
+                json!({"name": m.name, "section": m.section, "from": m.from, "to": m.to, "downgrade": m.down})
+            })
             .collect();
-        let sections: Vec<String> = notes(MIGRATION, oldest, target.min(own))
+        let sections: Vec<String> = notes(MIGRATION, from, target.min(own))
             .into_iter()
             .map(|s| s.heading)
             .collect();
         println!(
             "{}",
             json!({
-                "from": oldest.to_string(),
+                "from": from.to_string(),
                 "target": target.to_string(),
                 "upToDate": up_to_date,
                 "packages": packages,
@@ -418,9 +471,10 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         ));
     } else {
         say(&format!(
-            "pubspec.yaml: {} -> {}",
-            oldest.tag(),
-            target.tag()
+            "pubspec.yaml: {} -> {}{}",
+            from.tag(),
+            target.tag(),
+            if target < from { " (a downgrade)" } else { "" }
         ));
         let width = moves.iter().map(|m| m.name.len()).max().unwrap_or(0);
         for m in &moves {
@@ -429,8 +483,9 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             } else {
                 format!(" ({})", m.section)
             };
+            let down = if m.down { " (a downgrade)" } else { "" };
             say(&format!(
-                "  {:<width$} {} -> {}{section}",
+                "  {:<width$} {} -> {}{section}{down}",
                 m.name, m.from, m.to
             ));
         }
@@ -444,7 +499,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         }
         return Ok(());
     }
-    let notes = notes_text(MIGRATION, oldest, target, own);
+    let notes = notes_text(MIGRATION, from, target, own);
     if cmd.dry_run || up_to_date {
         if cmd.dry_run && !up_to_date {
             say("Would write pubspec.yaml, then run flutter pub get and fsp gen.");
@@ -456,21 +511,50 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     }
     fs::write(&path, &pubspec).with_context(|| format!("writing {}", path.display()))?;
     say("  edit  pubspec.yaml");
+    // The notes come before the commands that can fail: the refs are moved by now, so a second
+    // run finds nothing to move and prints no notes, and `pub get` failing is the very case the
+    // notes of a release (its Flutter floor, say) explain.
+    if !notes.is_empty() {
+        say(&format!("\n{}", notes.trim_end()));
+    }
+    let own_gen = target == own;
     if cmd.no_pub_get {
         say("pubspec.lock still names the commits of the old refs: run `flutter pub get`.");
     } else {
         crate::create::run_flutter(&["pub", "get"], project, "fsp upgrade --app", cmd.json)
             .map_err(|e| {
-                anyhow!(
-                    "pubspec.yaml now pins {}, and `flutter pub get` failed: {e:#}\nFix that and run `flutter pub get` (or put the old refs back).",
-                    target.tag()
-                )
+                Exit::after(&e, |why| {
+                    format!(
+                        "pubspec.yaml now pins {}, and `flutter pub get` {why}\n{}Fix that and run `flutter pub get`{} (or put the old refs back).",
+                        target.tag(),
+                        if notes.is_empty() {
+                            ""
+                        } else {
+                            "The migration notes are printed above.\n"
+                        },
+                        if own_gen { " and `fsp gen`" } else { "" },
+                    )
+                })
             })?;
     }
-    if target == own {
-        let cfg = crate::config::Config::load(project)?;
-        let outcome = crate::gen_with(project, &cfg, true)?;
-        eprintln!("{}", outcome.line());
+    if own_gen {
+        let regenerate = || -> Result<()> {
+            let cfg = crate::config::Config::load(project)?;
+            let outcome = crate::gen_with(project, &cfg, true)?;
+            eprintln!("{}", outcome.line());
+            Ok(())
+        };
+        regenerate().map_err(|e| {
+            anyhow!(
+                "pubspec.yaml now pins {}, and `fsp gen` failed: {e:#}\n{}Fix that and run `fsp gen`.",
+                target.tag(),
+                if notes.is_empty() {
+                    ""
+                } else {
+                    "The migration notes are printed above.\n"
+                },
+            )
+        })?;
     } else {
         say(&format!(
             "fsp {own} writes the code of {}: regenerate with the fsp of {} (`dart run fespalier gen`, or `fsp upgrade --version {}` first).",
@@ -478,9 +562,6 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             target.tag(),
             target.tag()
         ));
-    }
-    if !notes.is_empty() {
-        say(&format!("\n{}", notes.trim_end()));
     }
     Ok(())
 }

@@ -33,7 +33,7 @@ pub struct UpgradeCmd {
     /// Print what would run or be replaced, and do nothing
     #[arg(long, conflicts_with = "check")]
     pub dry_run: bool,
-    /// Print one JSON object (current, latest, target, method, command, upToDate) with --check or --dry-run
+    /// Print one JSON object (current, latest, target, method, command, upToDate) with --check or --dry-run; with --app, one object (from, target, upToDate, packages, notes) in every run
     #[arg(long)]
     pub json: bool,
     /// Install this release instead of the latest (vX.Y.Z or X.Y.Z); script installs only. With --app, the release to pin
@@ -421,6 +421,15 @@ pub fn ref_note(pinned: Option<&str>, installed: Version) -> Option<String> {
     let pinned = pinned?;
     let version = Version::parse(pinned)?;
     (version != installed).then(|| {
+        if version > installed {
+            // The app is ahead of this fsp: `fsp upgrade --app` would only move it back.
+            return format!(
+                "this app pins fespalier {pin}, which is newer than this fsp ({installed}). Upgrade \
+                 fsp again (`fsp upgrade`), or run `dart run fespalier` to use the fsp that matches \
+                 the pin.",
+                pin = version.tag(),
+            );
+        }
         format!(
             "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Move the refs \
              of fespalier and every companion to {tag} with `fsp upgrade --app`, or run \

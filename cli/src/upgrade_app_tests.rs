@@ -104,15 +104,42 @@ fn it_moves_every_ref_together_and_changes_nothing_else() {
 #[test]
 fn nothing_moves_when_every_ref_is_at_the_target() {
     let (oldest, moves, _, pubspec) = refs(APP, v(0, 21, 0));
-    // fespalier_forms is behind, so it moves (a downgrade is the person's call: --version).
+    // fespalier_forms is behind, so it moves up to the target.
     assert_eq!(oldest, v(0, 20, 0));
     assert_eq!(moves.len(), 1);
+    assert!(!moves[0].down);
     let at = APP.replace("v0.20.0", "v0.21.0");
     let (oldest, moves, _, pubspec2) = refs(&at, v(0, 21, 0));
     assert_eq!(oldest, v(0, 21, 0));
     assert!(moves.is_empty());
     assert_eq!(pubspec2, at);
     assert_ne!(pubspec, APP);
+}
+
+/// A move to an older release than a ref is at is marked, and the newest pin is known, so that
+/// `run` can refuse it when no `--version` asked for it.
+#[test]
+fn a_move_to_an_older_release_is_a_downgrade() {
+    let AppPlan::Refs {
+        oldest,
+        newest,
+        moves,
+        ..
+    } = plan(APP, None, v(0, 20, 5)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!((oldest, newest), (v(0, 20, 0), v(0, 21, 0)));
+    let down: Vec<(&str, bool)> = moves.iter().map(|m| (m.name.as_str(), m.down)).collect();
+    assert_eq!(
+        down,
+        [
+            ("fespalier", true),
+            ("fespalier_http", true),
+            ("fespalier_forms", false),
+            ("fespalier_transport", true),
+        ]
+    );
 }
 
 #[test]
@@ -268,6 +295,10 @@ Only a paragraph.
 
 Another one, not printed.
 
+### Something else
+
+- **Not a release.** Belongs to nobody.
+
 ## After
 ";
 
@@ -286,7 +317,15 @@ fn a_section_is_its_first_paragraph_its_groups_and_its_bullet_leads() {
             "- Grouped.",
         ]
     );
+    // A `###` heading that is no release has no section, and does not give its bullets to the one above.
     assert_eq!(all[1].summary, ["Only a paragraph."]);
+}
+
+#[test]
+fn bold_marks_go_but_a_glob_in_a_code_span_stays() {
+    let md = "## Upgrading\n\n### 1.0.0\n\nThe **cache** ignores `build/**` now.\n";
+    let all = sections(md);
+    assert_eq!(all[0].summary, ["The cache ignores `build/**` now."]);
 }
 
 #[test]

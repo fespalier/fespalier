@@ -4482,6 +4482,40 @@ fn add_that_fails_at_pub_get_keeps_the_files_and_says_what_is_left() {
     assert!(app.join("test/connectivity_test.dart").is_file());
 }
 
+/// What a person has to change by hand is printed before any command runs, and a command that
+/// fails says so: the feature then reads as present to a second `fsp add`.
+#[cfg(unix)]
+#[test]
+fn add_prints_the_changes_to_make_by_hand_before_a_command_that_fails() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let app_dart = fs::read_to_string(app.join("lib/app/app.dart")).unwrap();
+    fs::write(
+        app.join("lib/app/app.dart"),
+        format!("{app_dart}// My theme.\n"),
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "i18n", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    let hand = err.find("\nBy hand: lib/app/app.dart (").expect(&err);
+    let failed = err.find("flutter pub get failed:").expect(&err);
+    assert!(hand < failed, "{err}");
+    assert!(
+        err.contains("The files are written; the changes to make by hand are printed above; fix that and finish with:\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    // And the pubspec's changes are listed as they are written.
+    assert!(
+        err.contains("  edit   pubspec.yaml\n           dependencies: fespalier_tolgee "),
+        "{err}"
+    );
+}
+
 // --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
 
 /// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.
@@ -4601,4 +4635,98 @@ fn upgrade_app_check_and_dry_run_write_nothing() {
     let (code, _, err) = fsp_task(root, &["upgrade", "--no-pub-get"], &[]);
     assert_eq!(code, Some(2));
     assert!(err.contains("--app"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_does_not_move_the_app_back_unless_asked() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v99.0.0");
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    // This fsp is older than the pin: neither a run nor `--check` treats that as an update.
+    for flags in [&[][..], &["--check"][..], &["--dry-run"][..]] {
+        let mut args = vec!["upgrade", "--app", "--project", "app"];
+        args.extend_from_slice(flags);
+        let (code, out, err) = fsp_task(root, &args, &[]);
+        assert_eq!(code, Some(1), "{flags:?}: {out}{err}");
+        assert!(out.is_empty(), "{out}");
+        assert!(
+            err.starts_with("this app pins fespalier v99.0.0 and fsp "),
+            "{err}"
+        );
+        assert!(
+            err.contains(" is older, so `fsp upgrade --app` would move the refs back to v"),
+            "{err}"
+        );
+        assert!(err.contains("nothing was written. Upgrade fsp (`fsp upgrade`), or use the fsp of the pin with `dart run fespalier`, or go back on purpose with `--version v"), "{err}");
+    }
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+    // On purpose, with `--version`, it goes back, and says so.
+    let (code, out, err) = fsp_task(
+        root,
+        &[
+            "upgrade",
+            "--app",
+            "--version",
+            "v98.0.0",
+            "--project",
+            "app",
+        ],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.starts_with("pubspec.yaml: v99.0.0 -> v98.0.0 (a downgrade)\n  fespalier      v99.0.0 -> v98.0.0 (a downgrade)\n"),
+        "{out}"
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains("ref: v98.0.0 # with the companions\n")
+    );
+    assert!(
+        out.contains("v99.0.0 -> v98.0.0 is a downgrade: https://github.com/fespalier/fespalier/blob/v98.0.0/docs/migration.md#upgrading"),
+        "{out}"
+    );
+}
+
+/// The refs are moved by the time `flutter pub get` fails, and a second run finds nothing to move:
+/// the notes of the release are printed before it, and the failure points at them.
+#[cfg(unix)]
+#[test]
+fn upgrade_app_prints_the_notes_before_a_pub_get_that_fails() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.19.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(out.contains("What changed from v0.19.0 to "), "{out}");
+    assert!(
+        err.contains(&format!(
+            "pubspec.yaml now pins {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
+    );
+    assert!(
+        err.contains("\nThe migration notes are printed above.\nFix that and run `flutter pub get` and `fsp gen` (or put the old refs back)."),
+        "{err}"
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains(&format!("ref: {tag} # with the companions"))
+    );
+    let (code, out, _) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0));
+    assert!(out.contains("nothing to move."), "{out}");
 }

@@ -17,9 +17,10 @@ use std::fs::{self, OpenOptions};
 use std::io::Write as _;
 use std::path::Path;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use clap::Args;
 
+use crate::Exit;
 use crate::config::Config;
 use crate::create::{self, recipes};
 
@@ -56,8 +57,13 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
     })?;
     let mut files = BTreeMap::new();
     for rel in plan::paths(recipes::RECIPES) {
-        if let Ok(content) = fs::read_to_string(project.join(&rel)) {
-            files.insert(rel, content);
+        match fs::read_to_string(project.join(&rel)) {
+            Ok(content) => {
+                files.insert(rel, content);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            // A file that is there but is not text is not "absent": the plan would write over it.
+            Err(e) => bail!("reading {rel}: {e}; fsp add reads the files it may write to"),
         }
     }
     let plan = plan::build(
@@ -105,6 +111,9 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
     if let Some(new) = &plan.pubspec {
         fs::write(&path, new).with_context(|| format!("writing {}", path.display()))?;
         eprintln!("  edit   pubspec.yaml");
+        for change in &plan.changes {
+            eprintln!("           {change}");
+        }
     }
     for file in &plan.files {
         let target = project.join(&file.path);
@@ -130,11 +139,29 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         create::raise_android_min_sdk(project, min)?;
     }
 
+    // What a person has to do is printed before any command runs: one of them can fail, and
+    // the feature then reads as present, so a later `fsp add` would say nothing about it.
+    for hand in &plan.by_hand {
+        eprintln!(
+            "\nBy hand: {} ({}). Make this change:\n{}",
+            hand.path,
+            hand.why,
+            hand.change.trim_end()
+        );
+    }
+
     let left = |step: &str, rest: &[String], e: &anyhow::Error| {
-        anyhow!(
-            "{step} failed: {e:#}\n\nThe files are written; fix that and finish with:\n  {}",
-            rest.join(" && ")
-        )
+        Exit::after(e, |why| {
+            format!(
+                "{step} {why}\n\nThe files are written; {}fix that and finish with:\n  {}",
+                if plan.by_hand.is_empty() {
+                    ""
+                } else {
+                    "the changes to make by hand are printed above; "
+                },
+                rest.join(" && ")
+            )
+        })
     };
     let mut rest = commands.clone();
     if !cmd.no_pub_get {
@@ -159,19 +186,12 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
         let cfg = Config::load(project)?.for_scaffolding();
         let outcome = crate::gen_with(project, &cfg, true)?;
         eprintln!("{}", outcome.line());
-        if smoke {
-            crate::smoke::run(project, false)?;
-        }
         Ok(())
     };
     generate().map_err(|e| left("fsp gen", &rest, &e))?;
-    for hand in &plan.by_hand {
-        eprintln!(
-            "\nBy hand: {} ({}). Make this change:\n{}",
-            hand.path,
-            hand.why,
-            hand.change.trim_end()
-        );
+    rest.remove(0);
+    if smoke {
+        crate::smoke::run(project, false).map_err(|e| left("fsp test", &rest, &e))?;
     }
     if !plan.by_hand.is_empty() {
         eprintln!(

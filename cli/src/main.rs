@@ -243,6 +243,22 @@ impl std::fmt::Display for Exit {
 
 impl std::error::Error for Exit {}
 
+impl Exit {
+    /// The error of a step that failed after the app was changed (`fsp add`, `fsp upgrade --app`):
+    /// `message` is given what happened to the step, `failed: <why>` or `was interrupted`. When the
+    /// person interrupted it (Ctrl-C, flutter's `Exit(130)`), the message is printed and the exit
+    /// code stays, since an `Exit` prints nothing of its own.
+    pub fn after(cause: &anyhow::Error, message: impl FnOnce(&str) -> String) -> anyhow::Error {
+        match cause.downcast_ref::<Exit>() {
+            Some(Exit(code)) => {
+                eprintln!("{}", message("was interrupted."));
+                Exit(*code).into()
+            }
+            None => anyhow!(message(&format!("failed: {cause:#}"))),
+        }
+    }
+}
+
 fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p);

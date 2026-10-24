@@ -241,7 +241,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 "
-        .to_string(),
+        .replace("v0.21.0", REF),
     );
     tree.insert(
         "lib/main.dart".to_string(),
@@ -268,7 +268,7 @@ fn an_app_of_its_own_gets_the_pins_it_has_and_keeps_its_lines() {
     }
     assert!(
         pubspec.contains(
-            "  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier.git\n      path: packages/fespalier_http\n      ref: v0.21.0\n"
+            &format!("  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier.git\n      path: packages/fespalier_http\n      ref: {REF}\n")
         ),
         "{pubspec}"
     );
@@ -444,6 +444,226 @@ fn it_refuses_companions_pinned_out_of_line() {
     let mut none = tree;
     none.insert("pubspec.yaml".to_string(), "name: x\n".to_string());
     assert!(err(&none, &["storage"]).contains("does not list fespalier"));
+}
+
+/// `tree` with the `ref:` of `fespalier` (and of every companion) set to `reference`.
+fn pinned_at(tree: &Tree, reference: &str) -> Tree {
+    let mut tree = tree.clone();
+    let pubspec =
+        tree["pubspec.yaml"].replace(&format!("ref: {REF}"), &format!("ref: {reference}"));
+    assert_ne!(pubspec, tree["pubspec.yaml"]);
+    tree.insert("pubspec.yaml".to_string(), pubspec);
+    tree
+}
+
+#[test]
+fn it_refuses_an_app_that_pins_another_release_than_this_fsp() {
+    let tree = created(&[], None);
+    // An older pin: the files are this fsp's, and the packages at the pin may lack what they use.
+    let e = err(&pinned_at(&tree, "v0.0.1"), &["storage", "http"]);
+    assert!(
+        e.starts_with("this app pins fespalier v0.0.1, and fsp "),
+        "{e}"
+    );
+    assert!(
+        e.ends_with("nothing was written. Move the refs with `fsp upgrade --app` first (the fsp of v0.0.1 has no `fsp add`)"),
+        "{e}"
+    );
+    // A newer one: this fsp is the old one.
+    let e = err(&pinned_at(&tree, "v999.0.0"), &["storage", "http"]);
+    assert!(
+        e.contains("is older and writes the files and pins of "),
+        "{e}"
+    );
+    assert!(
+        e.ends_with(
+            "Upgrade fsp (`fsp upgrade`), or use the fsp of the pin: `dart run fespalier add storage http`"
+        ),
+        "{e}"
+    );
+    // A branch or a commit cannot be compared, and is let through, as the ref note does.
+    ok(&pinned_at(&tree, "main"), &["storage"]);
+    // Nothing to add is not a refusal, whatever the pin.
+    let has = pinned_at(&created(&["storage"], None), "v0.0.1");
+    assert!(ok(&has, &["storage"]).is_empty());
+}
+
+#[test]
+fn the_refusal_names_the_launcher_only_when_the_pins_fsp_has_add() {
+    let features = ["storage".to_string(), "http".to_string()];
+    let v = crate::upgrade::Version;
+    let old = plan::another_release(v(0, 22, 0), v(0, 25, 0), &features);
+    assert!(
+        old.ends_with("(the fsp of v0.22.0 has no `fsp add`)"),
+        "{old}"
+    );
+    assert!(!old.contains("dart run"), "{old}");
+    let recent = plan::another_release(v(0, 23, 0), v(0, 25, 0), &features);
+    assert!(
+        recent.ends_with("Move the refs with `fsp upgrade --app` first, or use the fsp of the pin: `dart run fespalier add storage http`"),
+        "{recent}"
+    );
+    let newer = plan::another_release(v(0, 26, 0), v(0, 25, 0), &features);
+    assert!(
+        newer.starts_with("this app pins fespalier v0.26.0, and fsp 0.25.0 is older and writes"),
+        "{newer}"
+    );
+}
+
+/// A route the app took out of `skip:` (it gave the page a fake of its own) is not put back by an
+/// `fsp add` of something else, and a feature's own routes are added.
+#[test]
+fn a_route_the_app_took_out_of_skip_is_not_put_back() {
+    let tree = created(&["http"], None);
+    let mut app = tree.clone();
+    let pubspec = app["pubspec.yaml"].replace("skip: [/headlines]", "skip: []");
+    assert_ne!(pubspec, app["pubspec.yaml"]);
+    app.insert("pubspec.yaml".to_string(), pubspec);
+    let plan = ok(&app, &["storage"]);
+    assert!(
+        plan.changes.iter().all(|c| !c.contains("skip")),
+        "{:?}",
+        plan.changes
+    );
+    let skip = yaml(plan.pubspec.as_ref().unwrap())["fespalier"]["test"]["skip"]
+        .as_sequence()
+        .unwrap()
+        .clone();
+    assert!(skip.is_empty(), "{skip:?}");
+    // The feature that is added brings its own: `download` skips its page.
+    let plan = ok(&app, &["download"]);
+    assert!(
+        plan.changes.iter().any(|c| c.contains("skip")),
+        "{:?}",
+        plan.changes
+    );
+    assert!(
+        plan.changes.iter().all(|c| !c.contains("/headlines")),
+        "{:?}",
+        plan.changes
+    );
+}
+
+/// A guarded route is listed when the plan makes the setup file (`fsp test` skipped it by itself
+/// until then), and only for the new features when the file was there.
+#[test]
+fn a_guarded_route_follows_the_setup_file() {
+    let with_flags = created(&["flags"], None);
+    assert!(!with_flags.contains_key("test/routes/setup.dart"));
+    let plan = ok(&with_flags, &["image"]);
+    assert!(
+        plan.files
+            .iter()
+            .any(|f| f.path == "test/routes/setup.dart" && f.write == Write::New)
+    );
+    assert!(
+        plan.changes
+            .iter()
+            .any(|c| c == "fespalier: test: skip: /labs"),
+        "{:?}",
+        plan.changes
+    );
+    // The app has the setup file, and has taken /labs out of skip: it stays out.
+    let mut both = created(&["flags", "image"], None);
+    let pubspec = both["pubspec.yaml"]
+        .replace("/labs, ", "")
+        .replace(", /labs", "")
+        .replace("[/labs]", "[]");
+    assert_ne!(pubspec, both["pubspec.yaml"], "{}", both["pubspec.yaml"]);
+    both.insert("pubspec.yaml".to_string(), pubspec);
+    let plan = ok(&both, &["storage"]);
+    assert!(
+        plan.changes.iter().all(|c| !c.contains("/labs")),
+        "{:?}",
+        plan.changes
+    );
+}
+
+/// A companion that is under `dev_dependencies:` only is a note, as a third-party package is, and
+/// not a second line under `dependencies:`.
+#[test]
+fn a_companion_under_dev_dependencies_is_a_note() {
+    let tree = created(&[], None);
+    let mut app = tree.clone();
+    let pubspec = app["pubspec.yaml"].replace(
+        "dev_dependencies:\n",
+        &format!(
+            "dev_dependencies:\n  fespalier_storage:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_storage\n      ref: {REF}\n"
+        ),
+    );
+    assert_ne!(pubspec, app["pubspec.yaml"]);
+    app.insert("pubspec.yaml".to_string(), pubspec);
+    let plan = ok(&app, &["storage"]);
+    assert!(
+        plan.notes.iter().any(|n| n
+            == "fespalier_storage is under dev_dependencies:, and the feature needs it under dependencies: move it there"),
+        "{:?}",
+        plan.notes
+    );
+    assert!(
+        plan.pubspec
+            .as_ref()
+            .is_none_or(|p| yaml(p)["dependencies"].get("fespalier_storage").is_none()),
+        "{:?}",
+        plan.pubspec
+    );
+}
+
+#[test]
+fn a_dart_range_with_a_space_or_a_bare_bound_still_counts() {
+    let low = |range: &str| {
+        let mut tree = created(&[], None);
+        let pubspec = tree["pubspec.yaml"].replace("sdk: ^3.9.0", &format!("sdk: \"{range}\""));
+        assert_ne!(pubspec, tree["pubspec.yaml"]);
+        tree.insert("pubspec.yaml".to_string(), pubspec);
+        tree
+    };
+    for range in [">= 3.0.0 <4.0.0", ">3.0.0", ">=3.0.0 <4.0.0", "^3.0.0"] {
+        let e = err(&low(range), &["storage"]);
+        assert!(e.contains("pubspec.yaml allows Dart 3.0"), "{range}: {e}");
+    }
+    ok(&low(">= 3.9.0 <4.0.0"), &["storage"]);
+    ok(&low("<4.0.0"), &["storage"]);
+}
+
+/// `dart format` changes white space and the comma after a last element, and nothing else: a
+/// string, or a line commented out by joining it onto the comment above, is not the same file.
+#[test]
+fn same_file_compares_dart_by_its_tokens_strings_and_comments_included() {
+    let same = |a: &str, b: &str| plan::same_file("a.dart", a, b);
+    assert!(same("f(a,\n  b,\n);\n", "f(a, b);\n"));
+    assert!(same("[1,\n 2,\n]\n", "[1, 2]\n"));
+    // A comment keeps the line break that ends it.
+    assert!(same("// Cache.\n  open(),\n", "// Cache.\nopen(),\n"));
+    assert!(!same("// Cache.\n  open(),\n", "// Cache. open(),\n"));
+    assert!(!same("/* a */ x\n", "/* a  */ x\n"));
+    // A string keeps its white space and its commas.
+    assert!(same("var a = 'x';\n", "var   a = 'x';\n"));
+    assert!(!same("var a = 'x  y';\n", "var a = 'x y';\n"));
+    assert!(!same("var a = \"x,)\";\n", "var a = \"x)\";\n"));
+    assert!(!same("var a = '''x\ny''';\n", "var a = '''x y''';\n"));
+    assert!(!same("var a = r'x  \\';\n", "var a = r'x \\';\n"));
+    assert!(same("var a = 'it\\'s  ok';\n", "var   a = 'it\\'s  ok';\n"));
+    assert!(!same("var a = 'it\\'s  ok';\n", "var a = 'it\\'s ok';\n"));
+    assert!(!same(
+        "var a = '${x ? 'a  b' : ''}';\n",
+        "var a = '${x ? 'a b' : ''}';\n"
+    ));
+    // `return 'a'`: the `r` of return does not make the string raw.
+    assert!(!same("return 'a\\'  b';\n", "return 'a\\' b';\n"));
+    // Not Dart: exact.
+    assert!(!plan::same_file("a.yaml", "a:  1\n", "a: 1\n"));
+}
+
+/// A step that the person interrupts keeps its exit code, and says what is left.
+#[test]
+fn an_interrupted_step_keeps_its_exit_code() {
+    let cause: anyhow::Error = crate::Exit(130).into();
+    let e = crate::Exit::after(&cause, |why| format!("flutter pub get {why}"));
+    assert_eq!(e.downcast_ref::<crate::Exit>().map(|x| x.0), Some(130));
+    let cause = anyhow::anyhow!("no network");
+    let e = crate::Exit::after(&cause, |why| format!("flutter pub get {why}"));
+    assert_eq!(e.to_string(), "flutter pub get failed: no network");
 }
 
 #[test]

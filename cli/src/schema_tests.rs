@@ -678,6 +678,32 @@ fn the_schema_refuses_what_fsp_refuses_by_its_shape() {
     }
 }
 
+/// What `fsp` normalizes is taken, and the one stricter reading is pinned: serde reads a number or a
+/// boolean where text is expected as the scalar's text, which the schema calls a type error (an
+/// empty key is the other, `docs/configuration.md`, "Completion and checks in your editor").
+#[test]
+fn the_schema_takes_what_fsp_normalizes_and_its_stricter_readings_are_pinned() {
+    let section = |case: &str| format!("name: demo\nfespalier:\n  {case}\n");
+    for case in [
+        "output: lib/app.g.dart/",
+        "output: ./lib/app.g.dart",
+        "output: lib\\app.g.dart\\",
+        "output_manifest: lib/routes.dart//",
+    ] {
+        let text = section(case);
+        assert!(!refused_by_fsp(&text), "fsp refuses `{case}`");
+        assert_eq!(schema_errors(&text), Vec::<String>::new(), "{case}");
+    }
+    for case in ["meta_unique: [true]", "test: {skip: [404]}", "app_dir:"] {
+        let text = section(case);
+        assert!(!refused_by_fsp(&text), "fsp refuses `{case}`");
+        assert!(
+            !schema_errors(&text).is_empty(),
+            "the schema takes `{case}`"
+        );
+    }
+}
+
 /// Whether `fsp` refuses the pubspec: when it parses, or in the command that checks a section.
 fn refused_by_fsp(text: &str) -> bool {
     let Ok(p) = Pubspec::parse(text) else {

@@ -35,7 +35,7 @@
         "output": {
           "description": "Where fsp gen writes, a .dart file under lib/. The generated main() goes beside it, with .main.g.dart. build_runner can delete a .g.dart that has an X.dart beside it (since 0.17.0 fsp warns).",
           "type": "string",
-          "pattern": "\\.dart$",
+          "pattern": "\\.dart[/\\\\]*$",
           "default": "lib/app.g.dart"
         },
         "format": {
@@ -46,7 +46,7 @@
         "output_manifest": {
           "description": "Write the route manifest (AppManifest) to a library of its own, a .dart file under lib/. Default: none, the manifest lives in output.",
           "type": "string",
-          "pattern": "\\.dart$"
+          "pattern": "\\.dart[/\\\\]*$"
         },
         "meta": {
           "description": "required: every route needs a meta.dart.",

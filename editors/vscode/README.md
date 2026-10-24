@@ -25,11 +25,13 @@ diagnostics: nothing is re-implemented in the editor.
   of the `fespalier:` section complete as you type, show what they do on hover, and an unknown key, a value of the
   wrong type or one off a list is underlined. The extension gives the YAML extension one schema for `pubspec.yaml`,
   the JSON Schema Store's pubspec schema with the `fespalier:` section added, so the checks of the rest of the file
-  stay. Without the YAML extension nothing changes: saving `pubspec.yaml` runs `fsp check`, which stops on a mistake in
-  the section (the status bar says `fespalier: failed`, and the fespalier output has the message). The schema is the
-  one this extension ships, of the fespalier it was built with: a key that a newer fespalier added is reported as
-  unknown until the extension is updated, and one an older fespalier does not read yet is offered. **UNCHECKED in VS
-  Code:** CI runs the YAML extension's language server on the shipped schema, not VS Code.
+  stay. Without the YAML extension nothing changes: saving `pubspec.yaml` runs `fsp check`, which stops on an unknown
+  key or a value of the wrong type in the section (the status bar says `fespalier: failed`, and the fespalier output has
+  the message; `tasks:` and the values inside `links:`, `maestro:`, `size:` and `test:` are read only by their own
+  commands and by `fsp doctor`). The schema is the one this extension ships, of the fespalier it was built with: a key
+  that a newer fespalier added is reported as unknown until the extension is updated, and one an older fespalier does
+  not read yet is offered. **UNCHECKED in VS Code:** CI runs the YAML extension's language server on the shipped
+  schema, not VS Code.
 
 ## Requirements
 

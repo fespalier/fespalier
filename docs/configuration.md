@@ -69,7 +69,7 @@ fespalier:
   #       build_runner: dart run build_runner watch
   #   codegen: dart run build_runner build
   # adapters: [my_tools]         # no default: packages that plug into the generated main() (since 0.9.0)
-  # adapters: auto   # since 0.23.0: every first-party adapter package under dependencies:
+  # adapters: auto               # since 0.23.0: every first-party adapter package under dependencies:
 ```
 
 `output` is a `.g.dart` file by default, which `build_runner` can delete when a `lib/app.dart` is beside it (since 0.17.0: `fsp` warns, and `output: lib/routes.g.dart` is the way out; see [The generator](cli.md#the-generator)).
@@ -243,9 +243,9 @@ An app that does not set it keeps its own wiring, as [OpenTelemetry with otel_zo
 
 Since 0.23.0 the editor plugins complete and check the `fespalier:` section of `pubspec.yaml`: its keys, the values each takes, a description on hover, and a mistake highlighted in the file. Each plugin gives the editor one schema for the whole file, the output of [`fsp schema --pubspec`](cli.md#fsp-schema). An editor applies one schema to a file, so a schema for the section alone would replace the one the JSON Schema Store gives `pubspec.yaml`, and with it the store's checks on the rest of the file (the dependencies, the SDK constraints). The schema is the one of the `fsp` the plugin was built with, so a key that a newer `fsp` added reads as unknown in the editor until the plugin is rebuilt.
 
-- **VS Code** completes and checks the section through the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) (`redhat.vscode-yaml`), which the fespalier extension adds its schema to. The store's checks stay on the rest of the file. Without the YAML extension nothing is completed, and nothing changes: saving `pubspec.yaml` still runs `fsp check`, which stops on a mistake in the section (the status bar shows `fespalier: failed`, and the message is in the fespalier output).
+- **VS Code** completes and checks the section through the [YAML extension](https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml) (`redhat.vscode-yaml`), which the fespalier extension adds its schema to. The store's checks stay on the rest of the file. Without the YAML extension nothing is completed, and nothing changes: saving `pubspec.yaml` still runs `fsp check`, which stops on an unknown key or a value of the wrong type in the section (the status bar shows `fespalier: failed`, and the message is in the fespalier output). It does not read `tasks:`, nor the values inside `links:`, `maestro:`, `size:` and `test:`: only their own commands do, and [`fsp doctor`](cli.md#fsp-doctor) checks them all.
 - **IntelliJ IDEA and Android Studio** complete and check the section through the JSON support the IDE bundles (its JSON plugin), so there is nothing to install. A schema you map by hand for `pubspec.yaml` still wins over the plugin's.
-- **Offline**, the YAML extension cannot load the store's schema: it shows one warning at the top of `pubspec.yaml` (`Problems loading reference 'https://www.schemastore.org/pubspec.json'`), and it validates nothing, as it does without the fespalier extension. In IntelliJ the section should still complete with remote schemas off (UNCHECKED, below).
+- **Offline**, the YAML extension cannot load the store's schema, which the fespalier schema refers to: it shows one warning at the top of `pubspec.yaml` (`Problems loading reference 'https://www.schemastore.org/pubspec.json'`), and it validates nothing in the file. Turning the store off (`yaml.schemaStore.enable: false`) does not avoid it, because the reference is the fespalier schema's own (UNCHECKED, below). In IntelliJ the section should still complete with remote schemas off (UNCHECKED, below).
 - **Other editors** (Neovim, Helix, Zed, or any editor that runs the YAML language server): write the schema beside the project, and map it to `pubspec.yaml` in the server's `yaml.schemas` setting:
 
   ```sh
@@ -256,11 +256,11 @@ Since 0.23.0 the editor plugins complete and check the `fespalier:` section of `
   { "yaml.schemas": { "./.fespalier-pubspec.schema.json": "pubspec.yaml" } }
   ```
 
-  Do not write a `yaml-language-server: $schema=` modeline at the top of the file instead: it applies to the whole file, and a schema for the section alone would replace the store's.
+  A `yaml-language-server: $schema=` modeline at the top of the file works the same way, if it points at the `--pubspec` output (a path or a URL of it). Never point one at the output of `fsp schema` without `--pubspec`: it is a schema for the section alone, and it would replace the store's for the whole file.
 
-- **An empty key** is a type error in the editor: `app_dir:` with no value. `fsp` reads it as not set, but it is almost always unfinished typing, so the schema refuses it. `fespalier:` on its own, with no keys under it, is accepted.
+- **Two readings are stricter than `fsp`'s**, on purpose. An empty key is a type error in the editor: `app_dir:` with no value. `fsp` reads it as not set, but it is almost always unfinished typing, so the schema refuses it (`fespalier:` on its own, with no keys under it, is accepted). And a number or a boolean where text is expected (`meta_unique: [true]`, `skip: [404]`) is a type error: `fsp` reads the scalar's text, which is almost always a mistake. Everything else `fsp` takes, the schema takes.
 
-**UNCHECKED:** the completion, the hover and the squiggles in a real VS Code or IntelliJ window. CI runs the YAML language server that VS Code uses, and a headless IntelliJ; it does not run either editor.
+**UNCHECKED:** the completion, the hover and the squiggles in a real VS Code or IntelliJ window, and the offline warning with the store turned off. CI runs the YAML language server that VS Code uses, and a headless IntelliJ; it does not run either editor.
 
 ## Per-folder settings: route.dart
 

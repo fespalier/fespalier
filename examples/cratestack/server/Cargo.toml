@@ -28,7 +28,7 @@ base64 = "0.23"
 getrandom = "0.4"
 # ES256 (the attestations' signature and the device's) and the SHA-256 of a thumbprint, a query and
 # a body. RustCrypto, no C code.
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 

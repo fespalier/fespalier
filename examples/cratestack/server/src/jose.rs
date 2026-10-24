@@ -50,7 +50,7 @@ impl Jwk {
     /// The key a verifying key is, spelled as a JWK.
     #[must_use]
     pub fn of(key: &VerifyingKey) -> Self {
-        let point = key.to_encoded_point(false);
+        let point = key.to_sec1_point(false);
         Self {
             x: point.x().map(|x| b64(x)).unwrap_or_default(),
             y: point.y().map(|y| b64(y)).unwrap_or_default(),
@@ -146,7 +146,7 @@ pub fn verify_es256(key: &VerifyingKey, message: &[u8], signature: &[u8]) -> boo
     let Ok(signature) = Signature::from_slice(signature) else {
         return false;
     };
-    let signature = signature.normalize_s().unwrap_or(signature);
+    let signature = signature.normalize_s();
     key.verify(message, &signature).is_ok()
 }
 

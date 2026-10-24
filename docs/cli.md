@@ -845,7 +845,7 @@ The report has three sections, each a list of rows under its title. Each row is 
 ```text
 Versions
   ✓ fespalier    fespalier: git, ref v0.23.0, the version of this fsp
-  ! lock         pubspec.lock resolves fespalier 0.22.1, and this fsp writes code for 0.23.0: move the refs to v0.23.0 and run `flutter pub get`, or run `dart run fespalier` to use the fsp of the pin
+  ! lock         pubspec.lock resolves fespalier 0.22.1, and this fsp writes code for 0.23.0: move the refs to v0.23.0 with `fsp upgrade --app`, or run `dart run fespalier` to use the fsp of the pin
   ! lock         pubspec.lock resolves fespalier_push 0.22.0, and fespalier 0.22.1: give every companion fespalier's ref, then run `flutter pub get`
   ✓ go_router    go_router 18.1.0 (pubspec.lock), in what fespalier supports, >=17.2.3 <19.0.0
 

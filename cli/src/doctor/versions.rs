@@ -4,6 +4,7 @@
 use serde_yaml_ng::Value;
 
 use super::{Facts, Row, Section, Status, leading_version};
+use crate::pins::same_url;
 use crate::upgrade::Version;
 
 /// fespalier's own floor, the `environment:` of `packages/fespalier/pubspec.yaml`
@@ -75,17 +76,6 @@ impl Source {
             Source::Other(c) => format!("`{c}`"),
         }
     }
-}
-
-/// `https://github.com/fespalier/fespalier.git/` and `https://github.com/fespalier/fespalier` are one.
-fn same_url(a: &str, b: &str) -> bool {
-    let norm = |u: &str| {
-        u.trim()
-            .trim_end_matches('/')
-            .trim_end_matches(".git")
-            .to_ascii_lowercase()
-    };
-    norm(a) == norm(b)
 }
 
 /// The packages of a section of the pubspec (`dependencies`), with their source, in order.
@@ -206,7 +196,7 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
                         "companion",
                         Status::Error,
                         format!(
-                            "{name}: ref {}, and fespalier's is {}: give every companion fespalier's url and ref",
+                            "{name}: ref {}, and fespalier's is {}: give every companion fespalier's url and ref, or move them together with `fsp upgrade --app`",
                             r.as_deref().unwrap_or("none"),
                             git_ref.as_deref().unwrap_or("none")
                         ),
@@ -266,11 +256,19 @@ fn lock_rows(facts: &Facts, deps: &[(String, Source)]) -> Vec<Row> {
             Status::Ok,
             format!("pubspec.lock resolves fespalier {v}, the version of this fsp"),
         )),
+        // A lock ahead of this fsp is not fixed by moving the refs back.
+        Some((v, Some(parsed))) if parsed > fsp => out.push(row(
+            "lock",
+            Status::Warning,
+            format!(
+                "pubspec.lock resolves fespalier {v}, and this fsp writes code for {fsp}: upgrade fsp (`fsp upgrade`), or run `dart run fespalier` to use the fsp of the pin"
+            ),
+        )),
         Some((v, _)) => out.push(row(
             "lock",
             Status::Warning,
             format!(
-                "pubspec.lock resolves fespalier {v}, and this fsp writes code for {fsp}: move the refs to {} and run `flutter pub get`, or run `dart run fespalier` to use the fsp of the pin",
+                "pubspec.lock resolves fespalier {v}, and this fsp writes code for {fsp}: move the refs to {} with `fsp upgrade --app`, or run `dart run fespalier` to use the fsp of the pin",
                 fsp.tag()
             ),
         )),

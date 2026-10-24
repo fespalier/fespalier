@@ -134,7 +134,9 @@ pub struct Pins {
     pub all: Vec<Pin>,
 }
 
-fn origin_of(name: &str, value: &Value) -> Origin {
+/// Where `name` comes from, listed as `value`.
+#[must_use]
+pub fn origin_of(name: &str, value: &Value) -> Origin {
     let text = |v: Option<&Value>| v.and_then(Value::as_str).map(str::to_string);
     if let Some(git) = value.get("git") {
         let url = text(git.get("url")).or_else(|| text(Some(git)));

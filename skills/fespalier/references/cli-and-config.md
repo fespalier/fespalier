@@ -576,10 +576,13 @@ names `dart run fespalier upgrade --app --version vX.Y.Z`.
 **`--app` (since 0.23.0, `cli/src/upgrade_app.rs`).** Needs the project. Moves every `ref:` of a package of this
 repository (`cli/src/pins.rs`: `fespalier` and the companions `cli/src/create/recipes.rs` knows, a feature's or
 `NOT_A_CREATE_FEATURE`) under `dependencies:`, `dev_dependencies:` and, as a git override of the same repository,
-`dependency_overrides:`, to this `fsp`'s release or `--version`'s; only the ref values change (`pubspec_edit`'s
+`dependency_overrides:` (and, since 0.23.1, in `pubspec_overrides.yaml`, which pub reads in place of it), to this `fsp`'s
+release or `--version`'s; only the ref values change (`pubspec_edit`'s
 `Set`, quotes and comments kept, a flow `git: {..., ref: ...}` too). Refused, nothing written: a companion from
 another repository, a folder while `fespalier` is git, a ref that is not `vX.Y.Z`. A `path:` `fespalier` has
-nothing to move (exit 0); an override to a folder, in the pubspec or `pubspec_overrides.yaml`, is a note. **It never
+nothing to move (exit 0); an override to a folder, in the pubspec or `pubspec_overrides.yaml`, is a note, and so,
+since 0.23.1, is an override at a commit of this repository (a hotfix) and a `fespalier` from a fork or a mirror
+(whose tag names and notes are this repository's). **It never
 moves the app back on its own:** without `--version`, a ref newer than this `fsp` is a refusal (exit 1, also for
 `--check`; upgrade `fsp` or use `dart run fespalier`), and `--version vX.Y.Z` goes back on purpose, marked
 `(a downgrade)`. The migration notes come right after `pubspec.yaml` is written, so a failing `pub get` or `gen`
@@ -588,8 +591,8 @@ the new one, from the copy the binary carries (`include_str!`), each as its firs
 the lead of each bullet (its bold words, else its first sentence), with a link at the new tag; a release after the
 binary's own is a link. Then `flutter pub get` (`--no-pub-get`) and `fsp gen` when the release is this `fsp`'s.
 `--check` exits 3 when a ref would move; `--json` is one object (`from`, the oldest release pinned or, when
-everything goes back, the newest; `target`, `upToDate`, `packages` with `name`, `section`, `from`, `to`,
-`downgrade`, and `notes`; `checkout` for a folder). From a pin before 0.23.0 the first move is a global `fsp` of
+everything goes back, the newest; `target`, `upToDate`, `packages` with `name`, `section`, `file` (since 0.23.1),
+`from`, `to`, `downgrade`, and `notes`; `checkout` for a folder). From a pin before 0.23.0 the first move is a global `fsp` of
 0.23.0 or later (an older `fsp`, `dart run fespalier` included, has no `--app`). Messages:
 `references/diagnostics-add.md` of `fespalier-troubleshooting`.
 

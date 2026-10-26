@@ -592,9 +592,10 @@ another repository, a folder while `fespalier` is git, a ref that is not `vX.Y.Z
 nothing to move (exit 0); an override to a folder, in the pubspec or `pubspec_overrides.yaml`, is a note, and so,
 since 0.23.1, is an override at a commit or a branch of this repository (a hotfix) and a `fespalier` from a fork or a mirror
 (whose tag names and notes are this repository's; the official repository over ssh or `http` is not one). When
-`pubspec_overrides.yaml` alone has a ref to move, the lines and the failure texts name it, not `pubspec.yaml`. **It never
+`pubspec_overrides.yaml` alone has a ref to move, the lines and the failure texts name it, not `pubspec.yaml` (since
+0.24.1, both when both have one, and the up-to-date line both when both hold refs). **It never
 moves the app back on its own:** without `--version`, a ref newer than this `fsp` is a refusal (exit 1, also for
-`--check`; upgrade `fsp` or use `dart run fespalier`), and `--version vX.Y.Z` goes back on purpose, marked
+`--check`; upgrade `fsp` or use `dart run fespalier`; since 0.24.1 it names that pin and its file), and `--version vX.Y.Z` goes back on purpose, marked
 `(a downgrade)`. The migration notes come right after `pubspec.yaml` is written, so a failing `pub get` or `gen`
 leaves them above its message: the sections `### X.Y.Z` of `docs/migration.md` after the oldest release pinned up to
 the new one, from the copy the binary carries (`include_str!`), each as its first paragraph, its `####` headings and

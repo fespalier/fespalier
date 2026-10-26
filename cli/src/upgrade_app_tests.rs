@@ -5,7 +5,10 @@ use std::fs;
 use std::path::Path;
 
 use crate::upgrade::Version;
-use crate::upgrade_app::{AppPlan, MIGRATION, Move, notes, notes_text, plan, sections};
+use crate::upgrade_app::{
+    AppPlan, MIGRATION, Move, files_named, newest_pin, notes, notes_text, older_than_the_pins,
+    plan, sections,
+};
 
 fn v(a: u64, b: u64, c: u64) -> Version {
     Version(a, b, c)
@@ -340,8 +343,59 @@ fn a_git_override_in_pubspec_overrides_yaml_moves_too() {
     assert_eq!(moved, None);
 }
 
-/// An override of this repository at a commit is a hotfix the person chose: it is kept, with a
-/// note, and the rest moves (since 0.23.1). A commit under `dependencies:` is still refused.
+/// The messages name the pin and the file it is in (since 0.24.1): the refusal to move the app back
+/// names a companion in `pubspec_overrides.yaml` as that, and the lines that name the files where
+/// the refs are name both when both hold some.
+#[test]
+fn the_messages_name_the_file_and_the_pin() {
+    let newer = "dependency_overrides:\n  fespalier_auth:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_auth\n      ref: v0.25.0\n";
+    let AppPlan::Refs {
+        newest,
+        files,
+        moves,
+        ..
+    } = plan(APP, Some(newer), v(0, 22, 1)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(newest, v(0, 25, 0));
+    let pin = newest_pin(&moves, newest);
+    assert_eq!(pin, ("fespalier_auth", "pubspec_overrides.yaml"));
+    assert_eq!(files, ["pubspec.yaml", "pubspec_overrides.yaml"]);
+    assert!(
+        older_than_the_pins(v(0, 22, 1), newest, pin)
+            .starts_with(
+                "pubspec_overrides.yaml pins fespalier_auth v0.25.0 and fsp 0.22.1 is older, so `fsp upgrade --app` would move the refs back to v0.22.1; nothing was written."
+            )
+    );
+    assert_eq!(
+        files_named(&files),
+        "pubspec.yaml and pubspec_overrides.yaml"
+    );
+    // The pubspec alone: its own first pin at the newest release.
+    let AppPlan::Refs {
+        newest,
+        files,
+        moves,
+        ..
+    } = plan(APP, None, v(0, 22, 1)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(newest_pin(&moves, newest), ("fespalier", "pubspec.yaml"));
+    assert_eq!(files_named(&files), "pubspec.yaml");
+    assert_eq!(files_named(&[]), "pubspec.yaml");
+    // An override file that holds no ref at a release is not named.
+    let local = "dependency_overrides:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
+    let AppPlan::Refs { files, .. } = plan(APP, Some(local), v(0, 22, 1)).unwrap() else {
+        panic!()
+    };
+    assert_eq!(files, ["pubspec.yaml"]);
+}
+
+/// An override of this repository at a commit or a branch is a hotfix the person chose: it is
+/// kept, with a note, and the rest moves (since 0.23.1). A commit under `dependencies:` is still
+/// refused.
 #[test]
 fn an_override_at_a_commit_is_kept() {
     let hotfix = APP.replace(
@@ -357,6 +411,15 @@ fn an_override_at_a_commit_is_kept() {
         ]
     );
     assert!(pubspec.contains("      ref: 0123abc\n"), "{pubspec}");
+    let branch = hotfix.replace("ref: 0123abc", "ref: fix/123");
+    let (_, moves, kept, _) = refs(&branch, v(0, 22, 1));
+    assert_eq!(moves.len(), 3);
+    assert_eq!(
+        kept,
+        [
+            "dependency_overrides: fespalier_transport is https://github.com/fespalier/fespalier at fix/123; left as it is"
+        ]
+    );
 }
 
 /// A fespalier from another repository (a fork, a mirror) moves to this repository's tag names,

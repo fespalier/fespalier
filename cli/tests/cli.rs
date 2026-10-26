@@ -5004,6 +5004,13 @@ fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
     );
     let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
     assert_eq!(code, Some(0), "{err}");
+    // Both files move, and the header names both (since 0.24.1).
+    assert!(
+        out.starts_with(&format!(
+            "pubspec.yaml and pubspec_overrides.yaml: v0.21.0 -> {tag}\n"
+        )),
+        "{out}"
+    );
     assert!(
         out.contains("  edit  pubspec.yaml\n  edit  pubspec_overrides.yaml\n"),
         "{out}"
@@ -5012,6 +5019,39 @@ fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
     assert!(
         overrides.contains(&format!("      ref: {tag}\n")),
         "{overrides}"
+    );
+    // Up to date, the line names both files that hold the refs.
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert_eq!(
+        out,
+        format!(
+            "fespalier and every companion in pubspec.yaml and pubspec_overrides.yaml are at {tag}; nothing to move.\n"
+        )
+    );
+    // A `pub get` that fails after both moved names both.
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    fs::write(app.join("pubspec.yaml"), pubspec.replace(&tag, "v0.21.0")).unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains(&format!(
+            "pubspec.yaml and pubspec_overrides.yaml now pin {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
     );
 }
 
@@ -5131,7 +5171,7 @@ fn upgrade_app_does_not_move_the_app_back_unless_asked() {
         assert_eq!(code, Some(1), "{flags:?}: {out}{err}");
         assert!(out.is_empty(), "{out}");
         assert!(
-            err.starts_with("this app pins fespalier v99.0.0 and fsp "),
+            err.starts_with("pubspec.yaml pins fespalier v99.0.0 and fsp "),
             "{err}"
         );
         assert!(

@@ -779,6 +779,21 @@ fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
         crate::packages::workspace_overrides_file(&app, &yaml(member)),
         Some((shown("pubspec_overrides.yaml"), overrides.to_string()))
     );
+    // The app's own `pubspec_overrides.yaml` says whether it is a member, in place of its pubspec,
+    // when it has `resolution:` (since 0.24.1).
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "resolution: workspace\n",
+    )
+    .unwrap();
+    assert_eq!(
+        crate::add::workspace_overrides(&app, "name: shop\n"),
+        ["fespalier_http"]
+    );
+    assert_eq!(file("name: shop\n"), Some(shown("pubspec_overrides.yaml")));
+    fs::write(app.join("pubspec_overrides.yaml"), "resolution:\n").unwrap();
+    assert!(crate::add::workspace_overrides(&app, member).is_empty());
+    assert_eq!(file(member), None);
 }
 
 /// A feature with no file of its own is told by its packages and keys, and one with nothing to

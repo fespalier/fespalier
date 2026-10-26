@@ -530,7 +530,8 @@ all its files exist (asking for a present one is a note, `nothing to add`).
   companion is pinned as `fespalier` is (`cli/src/pins.rs`): the same git `url` and `ref`, or a checkout's folder
   plus the `dependency_overrides:` of the companions it reaches and of `fespalier` (as `--local-packages`; since
   0.23.1 in `pubspec_overrides.yaml` when that file has the key, and not one the root of the app's pub workspace
-  has already, since pub refuses a package overridden twice). A
+  has already, since pub refuses a package overridden twice; a member is one by its pubspec's `resolution: workspace`
+  or, since 0.24.1, by its `pubspec_overrides.yaml`'s, which pub reads first). A
   third-party package the app lists keeps its constraint (a note). Then the `fespalier:` keys (a different value
   is set, saying what it was), `test: skip:` routes (those of the features being added: a route the app took out of
   `skip:` stays out; guarded ones only once there is a `test/routes/setup.dart`, and a setup file made now also lists
@@ -599,7 +600,8 @@ since 0.23.1, is an override at a commit or a branch of this repository (a hotfi
 `pubspec_overrides.yaml` alone has a ref to move, the lines and the failure texts name it, not `pubspec.yaml` (since
 0.24.1, both when both have one, and the up-to-date line both when both hold refs). While that file has the key, pub
 reads none of the pubspec's own overrides: they move or are kept all the same (for a checkout without the file), and
-since 0.24.1 a note says pub does not read them there. In a pub workspace member, since 0.24.1, an override of the root's
+since 0.24.1 a note says pub does not read them there. In a pub workspace member (by its pubspec, or, since 0.24.1, by
+its `pubspec_overrides.yaml`, where pub reads `resolution:` and `workspace:` first), since 0.24.1, an override of the root's
 (its `pubspec_overrides.yaml` with the key, else its pubspec) of this repository at another release is a note with the
 root's file (as opened from where `fsp` runs), the line and the change to make by hand, or, when it is newer than this
 `fsp` and there is no `--version`, a note that says so and not to move it back; the root's file, every member's, is never
@@ -646,7 +648,8 @@ skipped rows included), **1** when one is (the report is the whole output), **2*
 row, every key always there and in this order: `{"section":"wiring|versions|checks","check":"...","subject":null|"...","status":"ok|info|warning|error|skipped","message":"..."}`.
 It reads `pubspec.yaml`, `pubspec.lock` (a workspace member's is the root's), the Dart files under `lib/` but the ones `fsp` writes
 (`*.g.dart`, `output:`, `output_manifest:`; by their text, for `AppMain.run(`, `AppAdapters.` and `configure(`), whatever `fsp check`
-reads (the `path:` dependencies' files, `pubspec_overrides.yaml`, the workspace root's pubspec), and `flutter --version --machine` from
+reads (the `path:` dependencies' files, `pubspec_overrides.yaml`, the workspace root's pubspec and, since 0.24.1, the
+`pubspec_overrides.yaml` of each folder up to it, for `resolution:` and `workspace:`), and `flutter --version --machine` from
 PATH (with FVM or puro, through their `exec`). `fsp` itself never reads the pub cache or `.dart_tool/`, never reaches the network and
 writes nothing; the `flutter` it runs may do either (its analytics, the download of its Dart SDK on a fresh clone, its own cache). It
 never fails because `flutter` is missing (that row is skipped). The messages and what to do with each: `fespalier-troubleshooting`, `references/diagnostics-config-and-meta.md`.

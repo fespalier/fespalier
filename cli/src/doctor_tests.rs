@@ -789,6 +789,58 @@ fn a_workspace_member_is_checked_against_the_roots_lock() {
     assert!(one(&rows, "go_router", None).starts_with("error: go_router 16.2.0"));
 }
 
+/// pub reads `resolution:` from `pubspec_overrides.yaml` in place of the pubspec's when the file
+/// has the key (since 0.24.1): a member by that file alone is checked against the root's lock, and
+/// `resolution:` with no value there makes the app resolve on its own, with its own lock.
+#[test]
+fn a_workspace_member_by_its_pubspec_overrides_is_checked_against_the_roots_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    fs::create_dir_all(app.join("lib")).unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: root\nenvironment:\n  sdk: ^3.9.0\nworkspace:\n  - app\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        "name: shop\ndependencies:\n  fespalier:\n    path: ../../f\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "resolution: workspace\n",
+    )
+    .unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(
+        one(&rows, "lock", None)
+            .starts_with("skipped: no pubspec.lock at the root of the pub workspace"),
+        "{rows:?}"
+    );
+    fs::write(
+        dir.path().join("pubspec.lock"),
+        "packages:\n  fespalier:\n    version: \"0.1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec.lock"),
+        "packages:\n  fespalier:\n    version: \"0.2.0\"\n",
+    )
+    .unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(one(&rows, "lock", None).starts_with("warning: pubspec.lock resolves fespalier 0.1.0"));
+    // Not a member any more, though its pubspec says so: the app's own lock is the one.
+    fs::write(
+        app.join("pubspec.yaml"),
+        "name: shop\nresolution: workspace\ndependencies:\n  fespalier:\n    path: ../../f\n",
+    )
+    .unwrap();
+    fs::write(app.join("pubspec_overrides.yaml"), "resolution:\n").unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(one(&rows, "lock", None).starts_with("warning: pubspec.lock resolves fespalier 0.2.0"));
+}
+
 /// Each adapter that is on, whether its `configure` is called (by text, comments out), and each
 /// first-party adapter package that is a dependency and is off.
 #[test]

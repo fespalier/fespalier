@@ -242,7 +242,9 @@ pub struct Facts {
     /// pubspec.lock as YAML, when there is one that reads: the project's, or, for a pub workspace
     /// member, the workspace root's (pub writes the one lock there).
     pub lock: Option<Value>,
-    /// The pubspec says `resolution: workspace`: it has no `pubspec.lock` beside it.
+    /// pub resolves the app in a pub workspace: it says `resolution: workspace`, in its
+    /// `pubspec_overrides.yaml` when that file has the key (since 0.24.1), else in its pubspec. It
+    /// has no `pubspec.lock` beside it.
     pub workspace_member: bool,
     /// `flutter --version --machine`, when `flutter` is on PATH and answered; else why not.
     pub toolchain: Result<Toolchain, String>,
@@ -301,7 +303,9 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
             Err(_) => (None, None),
         };
     let lock = read_lock(project, raw.as_ref());
-    let workspace_member = is_workspace_member(raw.as_ref());
+    let workspace_member = raw
+        .as_ref()
+        .is_some_and(|r| crate::packages::resolves_in_workspace(overrides.as_ref(), r));
     let toolchain = toolchain.and_then(|out| {
         Toolchain::parse(&out)
             .ok_or_else(|| "`flutter --version --machine` printed no version".to_string())
@@ -334,13 +338,6 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         app,
         sources,
     }
-}
-
-/// Whether the pubspec says `resolution: workspace`.
-fn is_workspace_member(raw: Option<&Value>) -> bool {
-    raw.and_then(|r| r.get("resolution"))
-        .and_then(Value::as_str)
-        == Some("workspace")
 }
 
 /// `pubspec.lock` as pub wrote it: beside the pubspec, or, for a pub workspace member, beside the

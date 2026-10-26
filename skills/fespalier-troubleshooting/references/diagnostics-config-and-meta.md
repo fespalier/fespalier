@@ -375,7 +375,8 @@ on PATH``) and the unformatted code is written. The same warning ends in ``could
 `fsp doctor` prints one row per check, with a status. This is every **error** and **warning** row, quoted from `cli/src/doctor/*.rs` and
 `cli/src/doctor.rs` (`<name>` and the other placeholders stand for what the report names). Skipped rows (`-`) are not errors: a skipped
 `lock` or `go_router` means there is no `pubspec.lock` (run `flutter pub get`; a pub workspace member has none of its own, and the
-check reads the one at the workspace root), and a skipped `flutter` means `flutter` is not on PATH, or did not answer. A skipped
+check reads the one at the workspace root; since 0.24.1 an app is a member when its `pubspec_overrides.yaml` says
+`resolution: workspace` too, as pub reads it), and a skipped `flutter` means `flutter` is not on PATH, or did not answer. A skipped
 `main` means the app folder cannot be read (the `fsp_check` row says why). A `✗` makes the exit code 1; a `!` does not. Its section is in `cli.md`, "fsp doctor".
 
 | Row                     | Message                                                                                                                                                                                                                                                                                                                                 | What to do                                                                                                                                                                                                 |

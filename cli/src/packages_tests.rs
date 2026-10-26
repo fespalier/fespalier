@@ -352,6 +352,41 @@ fn resolution_and_workspace_are_read_from_pubspec_overrides_too() {
     assert_eq!(workspace(bare, MEMBER, &listed), shared("s2"));
 }
 
+/// A `workspace:` with no value, or `[]`, lists no member: pub finds no root in that folder, in its
+/// pubspec or in its `pubspec_overrides.yaml` (which takes the place of the pubspec's key even
+/// then), so the app has none and the overrides of that folder are not applied (since 0.24.1; each
+/// case checked with `dart pub get --offline` on Dart 3.13.5 and on the floor's 3.9.2: "found no
+/// workspace root including it").
+#[test]
+fn a_workspace_key_with_no_member_is_no_root() {
+    let root = format!("{ROOT}dependency_overrides:\n  shared:\n    path: s2\n");
+    let bare = "name: root\ndependency_overrides:\n  shared:\n    path: s2\n";
+    let in_file = |body| [("pubspec_overrides.yaml", body)];
+    // The root's file lists nobody, over a pubspec that lists the app or has no `workspace:` at all.
+    for body in ["workspace:\n", "workspace: []\n"] {
+        assert_eq!(
+            workspace(&root, MEMBER, &in_file(body)),
+            shared("s1"),
+            "{body:?}"
+        );
+        assert_eq!(
+            workspace(bare, MEMBER, &in_file(body)),
+            shared("s1"),
+            "{body:?}"
+        );
+    }
+    // As does the pubspec's own key.
+    for key in ["workspace:\n", "workspace: []\n"] {
+        let root = format!("name: root\n{key}dependency_overrides:\n  shared:\n    path: s2\n");
+        assert_eq!(workspace(&root, MEMBER, &[]), shared("s1"), "{key:?}");
+    }
+    // A file that lists the app makes the root again, whatever the pubspec says.
+    let listed = in_file("workspace:\n  - app\n");
+    assert_eq!(workspace(bare, MEMBER, &listed), shared("s2"));
+    let empty = "name: root\nworkspace: []\ndependency_overrides:\n  shared:\n    path: s2\n";
+    assert_eq!(workspace(empty, MEMBER, &listed), shared("s2"));
+}
+
 /// The root of a nested workspace is the outermost: the pubspec in between is a member itself, and
 /// so is one whose `pubspec_overrides.yaml` says `resolution: workspace` (since 0.24.1).
 #[test]

@@ -53,7 +53,8 @@ every member: those of the root's `pubspec.yaml`, or of its `pubspec_overrides.y
 pub reads `resolution:` and `workspace:` from a `pubspec_overrides.yaml` too, in place of the pubspec's when
 the file has the key (even with no value: `resolution:` there makes the app resolve on its own), and
 since 0.24.1 so does `fsp`: an app whose `pubspec_overrides.yaml` alone says `resolution: workspace` is a
-member, and a folder above it whose `pubspec_overrides.yaml` alone has `workspace:` can be its root.
+member, and a folder above it whose `pubspec_overrides.yaml` alone has `workspace:` can be its root. A
+`workspace:` with no value, or `[]`, lists no member: that folder is no root, in its pubspec or in its file.
 The Dart compiler still catches real mismatches in the generated code.
 
 Not followed, so still compared as spelled: a `typedef` of a hosted, `git:` or SDK package (one of a

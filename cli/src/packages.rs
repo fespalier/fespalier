@@ -152,6 +152,17 @@ pub(crate) fn resolves_in_workspace(file: Option<&Value>, pubspec: &Value) -> bo
     field(file, pubspec, "resolution").and_then(Value::as_str) == Some("workspace")
 }
 
+/// Whether a `workspace:` key lists members: with no value, or `[]`, pub finds no workspace in that
+/// folder, in its pubspec or in its `pubspec_overrides.yaml` (checked with `dart pub get --offline`
+/// on Dart 3.13.5 and on the floor's 3.9.2: "found no workspace root including it").
+fn lists_members(workspace: &Value) -> bool {
+    match workspace {
+        Value::Null => false,
+        Value::Sequence(members) => !members.is_empty(),
+        _ => true,
+    }
+}
+
 /// The root of the pub workspace the app belongs to, and its pubspec: for an app pub resolves in a
 /// workspace ([`resolves_in_workspace`], `file` being the app's `pubspec_overrides.yaml`), the
 /// nearest ancestor folder whose pubspec has a `workspace:` key and is not itself a member (a
@@ -175,7 +186,7 @@ pub(crate) fn workspace_root(
             continue;
         };
         let file = yaml(&dir.join(OVERRIDES));
-        if field(file.as_ref(), &up, "workspace").is_some()
+        if field(file.as_ref(), &up, "workspace").is_some_and(lists_members)
             && !resolves_in_workspace(file.as_ref(), &up)
         {
             return Some((dir, up));

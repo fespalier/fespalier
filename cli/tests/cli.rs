@@ -3712,6 +3712,28 @@ fn build_stops_when_the_generation_fails() {
     assert!(!dir.path().join("flutter.log").exists(), "flutter was run");
 }
 
+/// A build with an error in `config/` stops before it runs anything (since 0.24.0): the routes were
+/// written, but a configuration that is out of date would compile the old values.
+#[cfg(unix)]
+#[test]
+fn build_stops_when_the_configuration_has_an_error() {
+    let dir = config_project("");
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_ur: https://staging.example.com\n",
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(dir.path(), &["build", "web"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains(
+            "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date"
+        ),
+        "{err}"
+    );
+    assert!(!dir.path().join("flutter.log").exists(), "flutter was run");
+}
+
 #[cfg(unix)]
 #[test]
 fn fsp_in_a_command_is_this_fsp() {

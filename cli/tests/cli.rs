@@ -5288,10 +5288,37 @@ fn upgrade_app_names_the_line_of_the_workspace_root_to_change() {
     assert_eq!(code, Some(0), "{err}");
     assert!(
         out.contains(&format!(
-            "note: ../pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
+            "note: pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
         )),
         "{out}"
     );
+    // The file is named as it is opened from where fsp runs (since 0.24.1): from the app itself it
+    // is `../pubspec.yaml`, and with a full project path it is a full path.
+    for (cwd, project, file) in [
+        (
+            app.as_path(),
+            ".".to_string(),
+            "../pubspec.yaml".to_string(),
+        ),
+        (
+            root,
+            app.display().to_string(),
+            root.join("pubspec.yaml").display().to_string(),
+        ),
+    ] {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(["upgrade", "--app", "--dry-run", "--project", &project])
+                .env("PATH", path_with(&root.join("bin")))
+                .current_dir(cwd),
+        )
+        .unwrap();
+        let out = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.contains(&format!("note: {file}, line 9: the root")),
+            "{out}"
+        );
+    }
     let (code, _, err) = fsp_task(
         root,
         &["upgrade", "--app", "--no-pub-get", "--project", "app"],

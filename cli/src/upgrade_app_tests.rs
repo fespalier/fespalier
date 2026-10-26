@@ -426,7 +426,7 @@ dependency_overrides:
   http: ^1.5.0
 ";
     assert_eq!(
-        workspace_notes(APP, "../../pubspec.yaml", root, v(0, 22, 1)),
+        workspace_notes(APP, "../../pubspec.yaml", root, v(0, 22, 1), false),
         [
             "../../pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: v0.22.1 # with the app` by hand",
             "../../pubspec.yaml, the root of the pub workspace, overrides fespalier_auth (path ../fespalier/packages/fespalier_auth); left as it is",
@@ -436,14 +436,29 @@ dependency_overrides:
     // A ref the editor cannot reach is said without its line.
     let multi = "dependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: >-\n        v0.21.0\n";
     assert_eq!(
-        workspace_notes(APP, "../pubspec_overrides.yaml", multi, v(0, 22, 1)),
+        workspace_notes(APP, "../pubspec_overrides.yaml", multi, v(0, 22, 1), false),
         [
             "../pubspec_overrides.yaml: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: move its ref: to v0.22.1 by hand"
         ]
     );
+    // A root override newer than the target is not told to move back, but to upgrade fsp, unless
+    // the release was asked for (since 0.24.1).
+    let newer = "dependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: v0.99.0\n";
+    assert_eq!(
+        workspace_notes(APP, "../pubspec_overrides.yaml", newer, v(0, 22, 1), false),
+        [
+            "../pubspec_overrides.yaml, line 6: the root of the pub workspace overrides fespalier_http at v0.99.0, which is newer than v0.22.1; left as it is. Upgrade fsp (`fsp upgrade`), or use the fsp of that release with `dart run fespalier`, or go back on purpose with `--version v0.22.1`"
+        ]
+    );
+    assert_eq!(
+        workspace_notes(APP, "../pubspec_overrides.yaml", newer, v(0, 22, 1), true),
+        [
+            "../pubspec_overrides.yaml, line 6: the root of the pub workspace overrides fespalier_http at v0.99.0, and pub reads that for this app too: make it `ref: v0.22.1` by hand"
+        ]
+    );
     // An app whose fespalier is a checkout's has no ref to say it of.
     let checkout = "dependencies:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
-    assert!(workspace_notes(checkout, "../pubspec.yaml", root, v(0, 22, 1)).is_empty());
+    assert!(workspace_notes(checkout, "../pubspec.yaml", root, v(0, 22, 1), false).is_empty());
 }
 
 /// The messages name the pin and the file it is in (since 0.24.1): the refusal to move the app back

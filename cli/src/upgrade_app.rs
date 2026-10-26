@@ -260,9 +260,17 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
 /// and `text` its text. An override of fespalier's repository at another release than `target`
 /// is said with the line to change, by hand: the file is shared by every member, and pub resolves
 /// the workspace once, so one member does not move it; any other override of a package of
-/// fespalier's there is left as it is, and said.
+/// fespalier's there is left as it is, and said. One at a release newer than `target` is not told to
+/// move back unless `back` (`--version` was given), as the app's own pins are not: it is said to be
+/// newer, with the way out (since 0.24.1).
 #[must_use]
-pub fn workspace_notes(pubspec: &str, file: &str, text: &str, target: Version) -> Vec<String> {
+pub fn workspace_notes(
+    pubspec: &str,
+    file: &str,
+    text: &str,
+    target: Version,
+    back: bool,
+) -> Vec<String> {
     let Ok(value) = serde_yaml_ng::from_str::<Value>(pubspec) else {
         return vec![];
     };
@@ -292,7 +300,7 @@ pub fn workspace_notes(pubspec: &str, file: &str, text: &str, target: Version) -
         };
         match at {
             Some((version, _)) if version == target => {}
-            Some((_, reference)) => {
+            Some((version, reference)) => {
                 let edit = Edit::set(&["dependency_overrides", name, "git", "ref"], &target.tag());
                 let changed = pubspec_edit::apply(text, &[edit]).ok().and_then(|new| {
                     text.lines()
@@ -301,6 +309,18 @@ pub fn workspace_notes(pubspec: &str, file: &str, text: &str, target: Version) -
                         .find(|(_, (a, b))| a != b)
                         .map(|(i, (_, b))| (i + 1, b.trim().to_string()))
                 });
+                if version > target && !back {
+                    let place = changed.map_or_else(
+                        || file.to_string(),
+                        |(line, _)| format!("{file}, line {line}"),
+                    );
+                    out.push(format!(
+                        "{place}: the root of the pub workspace overrides {name} at {reference}, which is newer than {}; left as it is. Upgrade fsp (`fsp upgrade`), or use the fsp of that release with `dart run fespalier`, or go back on purpose with `--version {}`",
+                        target.tag(),
+                        target.tag()
+                    ));
+                    continue;
+                }
                 out.push(match changed {
                     Some((line, to)) => format!(
                         "{file}, line {line}: the root of the pub workspace overrides {name} at {reference}, and pub reads that for this app too: make it `{to}` by hand"
@@ -615,7 +635,13 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     if let Ok(value) = serde_yaml_ng::from_str::<Value>(&text)
         && let Some((file, root)) = crate::packages::workspace_overrides_file(project, &value)
     {
-        kept.extend(workspace_notes(&text, &file, &root, target));
+        kept.extend(workspace_notes(
+            &text,
+            &file,
+            &root,
+            target,
+            cmd.version.is_some(),
+        ));
     }
     let up_to_date = moves.is_empty();
     // The files the refs move in: the pubspec, `pubspec_overrides.yaml` (since 0.23.1), or both

@@ -601,7 +601,9 @@ since 0.23.1, is an override at a commit or a branch of this repository (a hotfi
 reads none of the pubspec's own overrides: they move or are kept all the same (for a checkout without the file), and
 since 0.24.1 a note says pub does not read them there. In a pub workspace member, since 0.24.1, an override of the root's
 (its `pubspec_overrides.yaml` with the key, else its pubspec) of this repository at another release is a note with the
-root's file, the line and the change to make by hand; the root's file, every member's, is never written. **It never
+root's file (as opened from where `fsp` runs), the line and the change to make by hand, or, when it is newer than this
+`fsp` and there is no `--version`, a note that says so and not to move it back; the root's file, every member's, is never
+written, and pub also applies the overrides of the other members, which `fsp` does not read. **It never
 moves the app back on its own:** without `--version`, a ref newer than this `fsp` is a refusal (exit 1, also for
 `--check`; upgrade `fsp` or use `dart run fespalier`; since 0.24.1 it names that pin and its file), and `--version vX.Y.Z` goes back on purpose, marked
 `(a downgrade)`. The migration notes come right after `pubspec.yaml` is written, so a failing `pub get` or `gen`

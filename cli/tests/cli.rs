@@ -2571,7 +2571,8 @@ fn telemetry_stop_and_reset_run_down_with_the_grafana_profile() {
 /// A hot reload (not a restart) first makes the app log `$FAKE_REFUSE` when that is set, as an app
 /// that kept its routes does, and fails with `$FAKE_RELOAD_FAIL` as its message when that is set.
 /// `$FAKE_REFUSE_PLAIN` is `$FAKE_REFUSE` as a plain line on stdout, which is how flutter on the web
-/// sends the app's prints.
+/// sends the app's prints. A hot restart fails with `Compilation failed` while the file that
+/// `$FAKE_RESTART_FAIL` names is there.
 #[cfg(unix)]
 fn fake_flutter(root: &Path) -> std::path::PathBuf {
     let bin = root.join("bin");
@@ -2608,7 +2609,9 @@ while IFS= read -r line; do
       if [ "$full" = false ] && [ -n "$FAKE_REFUSE_PLAIN" ]; then
         printf '%s\n' "$FAKE_REFUSE_PLAIN"
       fi
-      if [ "$full" = false ] && [ -n "$FAKE_RELOAD_FAIL" ]; then
+      if [ "$full" = true ] && [ -n "$FAKE_RESTART_FAIL" ] && [ -e "$FAKE_RESTART_FAIL" ]; then
+        echo "[{\"id\":$id,\"result\":{\"code\":1,\"message\":\"Compilation failed\"}}]"
+      elif [ "$full" = false ] && [ -n "$FAKE_RELOAD_FAIL" ]; then
         echo "[{\"id\":$id,\"result\":{\"code\":1,\"message\":\"$FAKE_RELOAD_FAIL\"}}]"
       else
         echo "[{\"id\":$id,\"result\":{\"code\":0,\"message\":\"Reloaded 1 of 9 libraries\"}}]"
@@ -3703,6 +3706,102 @@ fn dev_restarts_the_app_when_the_configuration_changes() {
     assert_eq!(
         d.flog().matches("app.restart fullRestart=false").count(),
         2,
+        "{}",
+        d.flog()
+    );
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+/// A `git checkout` that changes `config/app.staging.yaml` and the committed `lib/app.config.g.dart`
+/// together (since 0.24.1): the pass finds the file current and writes nothing, but the app did not
+/// start with those values, so it restarts.
+#[cfg(unix)]
+#[test]
+fn dev_restarts_the_app_for_a_configuration_it_did_not_write() {
+    let staging = "api_url: https://staging2.example.com\n";
+    // What `fsp gen` writes for it: the file the commit checked out holds.
+    let committed = config_project("");
+    fs::write(committed.path().join("config/app.staging.yaml"), staging).unwrap();
+    let (ok, err) = fsp(committed.path(), &["gen"]);
+    assert!(ok, "{err}");
+    let generated = fs::read_to_string(committed.path().join("lib/app.config.g.dart")).unwrap();
+    assert!(
+        generated.contains("https://staging2.example.com"),
+        "{generated}"
+    );
+    let dir = config_project("");
+    let mut d = Dev::start(dir.path(), &["--profile", "staging"]);
+    d.wait_ready();
+    // The generated file first (a file `fsp` writes does not wake it), then `config/`.
+    fs::write(dir.path().join("lib/app.config.g.dart"), &generated).unwrap();
+    fs::write(dir.path().join("config/app.staging.yaml"), staging).unwrap();
+    d.wait_err("[fsp] hot restart: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=true");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("lib/app.config.g.dart")).unwrap(),
+        generated
+    );
+    d.send("q");
+    d.wait_log("app.stop");
+    assert!(
+        !d.flog().contains("app.restart fullRestart=false"),
+        "{}",
+        d.flog()
+    );
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+/// A restart that failed (a compile error elsewhere; since 0.24.1) leaves the app with the values it
+/// had, so the next write of the configuration restarts it again, even one that changes only a
+/// profile it does not run; once a restart has brought them in, such a write reloads it.
+#[cfg(unix)]
+#[test]
+fn dev_restarts_the_app_again_after_a_restart_that_failed() {
+    let dir = config_project("");
+    let fails = dir.path().join("restart.fails");
+    let fails_env = fails.to_string_lossy().into_owned();
+    let mut d = Dev::start_with(
+        dir.path(),
+        &["--profile", "staging"],
+        &[("FAKE_RESTART_FAIL", fails_env.as_str())],
+        true,
+    );
+    d.wait_ready();
+    fs::write(&fails, "").unwrap();
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_url: https://staging2.example.com\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] ✗ hot restart failed: Compilation failed");
+    // The error is fixed, and `dev` is edited: the app still has the old `staging` values.
+    fs::remove_file(&fails).unwrap();
+    fs::write(
+        dir.path().join("config/app.dev.yaml"),
+        "api_url: http://localhost:9090\n",
+    )
+    .unwrap();
+    d.wait_log_count("app.restart fullRestart=true", 2);
+    d.wait_err("[fsp] ✓ hot restart in");
+    // It has them now: another edit of `dev` reloads.
+    fs::write(
+        dir.path().join("config/app.dev.yaml"),
+        "api_url: http://localhost:9191\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot reload: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=false");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(
+        d.flog().matches("app.restart fullRestart=true").count(),
+        2,
+        "{}",
+        d.flog()
+    );
+    assert_eq!(
+        d.flog().matches("app.restart fullRestart=false").count(),
+        1,
         "{}",
         d.flog()
     );

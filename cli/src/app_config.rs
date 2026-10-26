@@ -1540,29 +1540,32 @@ impl Leaf {
     }
 }
 
-// --- what a write changes for a running app -------------------------------------------------------
+// --- what a configuration changes for a running app ----------------------------------------------
 
-/// What writing the configuration changed for an app that runs (since 0.24.1). A build reads the
+/// What a configuration changes for an app built from another (since 0.24.1). A build reads the
 /// constants of one profile, which `_profile`, a constant of the build's defines and flavour,
 /// picks: a change to another profile's values changes none of them, and `fsp dev` hot reloads the
 /// app for it. It restarts for a change to the constants of the profile it runs, or to the
 /// profiles, which can change the profile it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
-    /// The profiles of the configuration written, sorted, as [`AppConfig::profiles`].
+    /// The profiles of the new configuration, sorted, as [`AppConfig::profiles`].
     pub profiles: Vec<String>,
-    /// Whether they are not those of the file it replaced, or that file is not known.
+    /// Whether they are not those of the configuration the app was built from, or that one is not
+    /// known.
     pub profiles_changed: bool,
-    /// The profiles of the configuration written, `default` among them, whose constants are not
-    /// those of the file it replaced: a name added or removed, or one with another type or value.
-    /// All of them when that file is not known. A profile that was removed is not listed, and
-    /// neither is one added that changes nothing: `profiles_changed` says both.
+    /// The profiles of the new configuration, `default` among them, whose constants are not those
+    /// the app was built with: a name added or removed, or one with another type or value. All of
+    /// them when that is not known. A profile that was removed is not listed, and neither is one
+    /// added that changes nothing: `profiles_changed` says both.
     pub changed: BTreeSet<String>,
 }
 
-/// The constants of the profile `name` as its build has them: each name, with its Dart type and
-/// value.
-fn constants(config: &AppConfig, name: &str) -> BTreeMap<String, (String, String)> {
+/// The constants of one profile as its build has them: each name, with its Dart type and value.
+pub type Constants = BTreeMap<String, (String, String)>;
+
+/// The constants of the profile `name` as its build has them.
+fn constants(config: &AppConfig, name: &str) -> Constants {
     config
         .leaves
         .iter()
@@ -1574,13 +1577,46 @@ fn constants(config: &AppConfig, name: &str) -> BTreeMap<String, (String, String
         .collect()
 }
 
-/// What writing `after` over the file that holds `before` changes for an app that runs: `before`
-/// is `None` when what the file holds is not known.
+/// What a generated configuration gives a build of each profile (since 0.24.1): the profiles, and
+/// the constants of `default` and of each of them. `fsp dev` keeps the one the app last started or
+/// restarted with, and compares what each pass leaves on disk with it ([`change`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Snapshot {
+    /// The profiles, sorted, as [`AppConfig::profiles`].
+    pub profiles: Vec<String>,
+    /// The constants of `default` and of each profile, by profile.
+    pub constants: BTreeMap<String, Constants>,
+}
+
+impl Snapshot {
+    /// What `config` gives each profile.
+    #[must_use]
+    pub fn of(config: &AppConfig) -> Snapshot {
+        Snapshot {
+            profiles: config.profiles.clone(),
+            constants: std::iter::once(DEFAULT_PROFILE)
+                .chain(config.profiles.iter().map(String::as_str))
+                .map(|name| (name.to_string(), constants(config, name)))
+                .collect(),
+        }
+    }
+
+    /// The constants of the profile `name`: `default`'s for a profile it does not have, as a build
+    /// that names one reads its values.
+    fn of_profile(&self, name: &str) -> Option<&Constants> {
+        self.constants
+            .get(name)
+            .or_else(|| self.constants.get(DEFAULT_PROFILE))
+    }
+}
+
+/// What `after` changes for an app built from `before`: `before` is `None` when what the app was
+/// built from is not known.
 #[must_use]
-pub fn change(before: Option<&AppConfig>, after: &AppConfig) -> Change {
+pub fn change(before: Option<&Snapshot>, after: &Snapshot) -> Change {
     let changed = std::iter::once(DEFAULT_PROFILE.to_string())
         .chain(after.profiles.iter().cloned())
-        .filter(|name| before.is_none_or(|b| constants(b, name) != constants(after, name)))
+        .filter(|name| before.is_none_or(|b| b.of_profile(name) != after.of_profile(name)))
         .collect();
     Change {
         profiles: after.profiles.clone(),

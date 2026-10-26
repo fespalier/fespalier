@@ -31,7 +31,7 @@
 
 use std::collections::HashMap;
 
-use crate::app_config::{AppConfig, Change};
+use crate::app_config::Snapshot;
 use crate::diag::Diags;
 use crate::enums::{Libs, Reads};
 use crate::lint::{Sites, Table};
@@ -70,19 +70,19 @@ pub struct Session {
     /// The output's stamp as the last run left it, when the run got to writing (since 0.19.0): its
     /// `_version` and `_kept`, read back from the text that was written. `None` otherwise.
     pub stamp: Option<Stamp>,
-    /// What writing the app's configuration (`lib/app.config.g.dart`) changed, when the last run
-    /// wrote it (since 0.24.0; what it changed since 0.24.1): `fsp dev` restarts for a change to
-    /// the values of the profile the app runs, since a value read once keeps its old value through
-    /// a hot reload.
-    pub config_written: Option<Change>,
+    /// Whether the last run wrote the app's configuration (`lib/app.config.g.dart`, since 0.24.0).
+    pub config_written: bool,
     /// Whether the last run wrote a file other than the configuration: the output, the manifest
     /// or the generated `main()` (since 0.24.1). `fsp dev` hot reloads a pass that wrote the
     /// configuration alone, unless the configuration asks for a restart.
     pub routes_wrote: bool,
-    /// The configuration the file on disk holds, as a run of this session wrote it or found it
-    /// current (since 0.24.1): what the next write is compared with ([`crate::app_config::change`]).
-    /// A run that stops on errors leaves it, and one with no `config/app.yaml` forgets it.
-    pub config_disk: Option<AppConfig>,
+    /// What the file of the configuration holds after the last run, when the run read the
+    /// configuration with no error and got to writing it: as it wrote it or found it current (since
+    /// 0.24.1). `None` otherwise: an error in the routes or in `config/` leaves the file as it was,
+    /// and without a `config/app.yaml` there is none to read. `fsp dev` compares it with what the
+    /// app last started or restarted with, written or not, since a `git checkout` can change
+    /// `config/` and the file together.
+    pub config: Option<Snapshot>,
     /// Whether a hot reload can swap the routes the last run generated (since 0.19.0; see
     /// `entry::swaps`).
     pub swaps: bool,

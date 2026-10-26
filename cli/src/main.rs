@@ -380,8 +380,19 @@ pub fn gen_with(project: &Path, cfg: &Config, write: bool) -> Result<Outcome> {
 
 /// `json`: diagnostics go to stdout as JSON lines instead of the codespan rendering.
 pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result<Outcome> {
-    let mut session = Session::default();
-    let result = gen_core(project, cfg, write, &mut session, |app_dir, diags| {
+    gen_in(project, cfg, write, json, &mut Session::default())
+}
+
+/// [`gen_opts`] in `session`, which says what the pass did once it returns: `fsp dev` reads from
+/// it what the file of the app's configuration holds when flutter starts (since 0.24.1).
+pub fn gen_in(
+    project: &Path,
+    cfg: &Config,
+    write: bool,
+    json: bool,
+    session: &mut Session,
+) -> Result<Outcome> {
+    let result = gen_core(project, cfg, write, session, |app_dir, diags| {
         if json {
             diag::render_json(app_dir, &cfg.app_dir, diags);
         } else {
@@ -409,8 +420,9 @@ fn gen_core(
     session.main_changed = false;
     session.stamp = None;
     session.swaps = false;
-    session.config_written = None;
+    session.config_written = false;
     session.routes_wrote = false;
+    session.config = None;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
         bail!(
@@ -518,23 +530,16 @@ fn gen_core(
                 session.main_changed = true;
             }
             if *path == config_path {
-                session.config_written = app_config
-                    .config
-                    .as_ref()
-                    .map(|c| app_config::change(session.config_disk.as_ref(), c));
+                session.config_written = true;
             } else {
                 session.routes_wrote = true;
             }
         }
     }
-    // What the file of the configuration holds now, for the next write (since 0.24.1): what was
-    // written or found current, unchanged when an error in config/ left the file as it was.
+    // What the file of the configuration holds now (since 0.24.1): what was written or found
+    // current. Not known when an error in config/ left the file as it was.
     if write {
-        if let Some(config) = app_config.config {
-            session.config_disk = Some(config);
-        } else if !with_config {
-            session.config_disk = None;
-        }
+        session.config = app_config.config.as_ref().map(app_config::Snapshot::of);
     }
     let output = outputs(cfg, writes_main, with_config).join(", ");
     // A lint error or an error in `config/` fails the command but not the route outputs: the

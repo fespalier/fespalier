@@ -67,6 +67,7 @@ fn fresh(device: Device, width: u16, height: u16) -> DevState {
         build: Build::seen(Choice::default(), None),
         device: Some(device),
         stamp: None,
+        config: None,
     });
     s.started(FLUTTER);
     s.started(2);
@@ -107,8 +108,9 @@ fn report(wrote: bool, errors: usize, first_error: Option<FirstError>) -> GenRep
         main_changed: false,
         stamp: None,
         swaps: false,
-        config_written: None,
+        config_written: false,
         routes_wrote: wrote,
+        config: None,
         routes: (errors == 0).then_some(14),
         errors,
         first_error,

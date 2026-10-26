@@ -14,7 +14,7 @@ use anyhow::Result;
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, PathsMut, RecommendedWatcher, RecursiveMode, Watcher};
 
-use crate::app_config::Change;
+use crate::app_config::Snapshot;
 use crate::config::Config;
 use crate::diag::{self, Diags, Level, Loc};
 use crate::parse_cache;
@@ -68,14 +68,17 @@ pub struct GenReport {
     pub stamp: Option<Stamp>,
     /// Whether a hot reload can swap the routes the pass generated (since 0.19.0; `entry::swaps`).
     pub swaps: bool,
-    /// What the pass changed in the app's configuration (`lib/app.config.g.dart`), when it wrote it
-    /// (since 0.24.0; what it changed since 0.24.1): `fsp dev` restarts the app for a change to
-    /// the values of the profile it runs, or to the profiles, since a value read once (into a
-    /// provider, a `static final`) keeps its old value through a hot reload.
-    pub config_written: Option<Change>,
+    /// Whether the pass wrote the app's configuration (`lib/app.config.g.dart`, since 0.24.0).
+    pub config_written: bool,
     /// Whether the pass wrote a file other than the configuration (since 0.24.1): the output, the
     /// manifest or the generated `main()`.
     pub routes_wrote: bool,
+    /// What the file of the configuration holds after the pass, when the pass read the
+    /// configuration with no error (since 0.24.1; see `Session::config`): `fsp dev` restarts the
+    /// app when the values of the profile it runs are not those it last started or restarted with,
+    /// or the profiles are not, since a value read once (into a provider, a `static final`) keeps
+    /// its old value through a hot reload.
+    pub config: Option<Snapshot>,
     /// The route count of a pass that succeeded.
     pub routes: Option<usize>,
     /// How many errors the pass reported (0 when `ok`).
@@ -422,8 +425,9 @@ impl Pass<'_> {
                 main_changed: self.session.main_changed,
                 stamp: self.session.stamp.clone(),
                 swaps: self.session.swaps,
-                config_written: self.session.config_written.clone(),
+                config_written: self.session.config_written,
                 routes_wrote: self.session.routes_wrote,
+                config: self.session.config.clone(),
                 routes: Some(o.routes),
                 errors: 0,
                 first_error: None,
@@ -442,8 +446,9 @@ impl Pass<'_> {
                     main_changed: self.session.main_changed,
                     stamp: self.session.stamp.clone(),
                     swaps: self.session.swaps,
-                    config_written: self.session.config_written.clone(),
+                    config_written: self.session.config_written,
                     routes_wrote: self.session.routes_wrote,
+                    config: self.session.config.clone(),
                     routes: None,
                     errors: errors.max(1),
                     first_error: first_error.or_else(|| {

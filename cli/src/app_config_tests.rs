@@ -7,7 +7,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::app_config::{
-    self, Active, Change, Choice, check_profile, defined_in, emit, load, task_vars, with_define,
+    self, Active, Change, Choice, Snapshot, check_profile, defined_in, emit, load, task_vars,
+    with_define,
 };
 use crate::config::Config;
 use crate::session::Session;
@@ -738,21 +739,17 @@ fn gen_writes_the_configuration_beside_the_output_and_fails_on_its_errors() {
     let mut session = Session::default();
     let out = crate::gen_core(dir.path(), &cfg, true, &mut session, |_, _| {}).unwrap();
     assert_eq!(out.output, "lib/app.g.dart, lib/app.config.g.dart");
-    // A file that was not there: what it held is not known (since 0.24.1).
-    assert_eq!(
-        session.config_written,
-        Some(Change {
-            profiles: vec![],
-            profiles_changed: true,
-            changed: ["default".to_string()].into(),
-        })
-    );
+    // Written, and what the file holds now (since 0.24.1).
+    let shop = Snapshot::of(&load(dir.path(), "lib/app.config.g.dart").config.unwrap());
+    assert!(session.config_written);
+    assert_eq!(session.config.as_ref(), Some(&shop));
     let written = fs::read_to_string(dir.path().join("lib/app.config.g.dart")).unwrap();
     assert!(written.contains("static const String title = 'Shop';"));
-    // Unchanged: nothing written, and the pass says so.
+    // Unchanged: nothing written, and the pass says so, and what the file holds.
     let out = crate::gen_core(dir.path(), &cfg, true, &mut session, |_, _| {}).unwrap();
     assert!(!out.wrote);
-    assert_eq!(session.config_written, None);
+    assert!(!session.config_written);
+    assert_eq!(session.config.as_ref(), Some(&shop));
     // An error in config/ fails the pass but not the routes (since 0.24.0): `app.g.dart` does not
     // depend on config/, so a new page is written and the configuration alone stays as it was.
     write(
@@ -780,9 +777,10 @@ fn gen_writes_the_configuration_beside_the_output_and_fails_on_its_errors() {
     );
     assert!(err.is::<crate::FailedAfterWriting>());
     // What `fsp watch` and `fsp dev` read: the routes were written (so the app reloads), and the
-    // configuration was not (so it does not restart for it).
+    // configuration was not, nor read (so it does not restart for it).
     assert!(failed.wrote);
-    assert_eq!(failed.config_written, None);
+    assert!(!failed.config_written);
+    assert_eq!(failed.config, None);
     let routes_after = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
     assert!(routes_after.contains("AboutRoute"), "{routes_after}");
     assert_eq!(
@@ -820,13 +818,24 @@ fn gen_writes_the_configuration_beside_the_output_and_fails_on_its_errors() {
     assert!(dir.path().join("lib/router/routes.config.g.dart").is_file());
 }
 
-/// What each pass wrote of the configuration changed (since 0.24.1), as `fsp dev` reads it: the
-/// profiles and whether they changed, the profiles whose constants changed, and whether the routes
-/// were written too.
-fn written(dir: &Path, session: &mut Session) -> (Option<Change>, bool) {
+/// What each pass leaves in the file of the configuration (since 0.24.1), as `fsp dev` reads it:
+/// what changed from the configuration the last pass that read it left (`last`, which becomes this
+/// pass's), whether the pass wrote the configuration, and whether it wrote the routes too.
+fn written(
+    dir: &Path,
+    session: &mut Session,
+    last: &mut Option<Snapshot>,
+) -> (Option<Change>, bool, bool) {
     let cfg = Config::load(dir).unwrap();
     crate::gen_core(dir, &cfg, true, session, |_, _| {}).unwrap();
-    (session.config_written.clone(), session.routes_wrote)
+    let change = session
+        .config
+        .as_ref()
+        .map(|now| app_config::change(last.as_ref(), now));
+    if session.config.is_some() {
+        last.clone_from(&session.config);
+    }
+    (change, session.config_written, session.routes_wrote)
 }
 
 fn changed(profiles: &[&str], profiles_changed: bool, changed: &[&str]) -> Option<Change> {
@@ -838,7 +847,7 @@ fn changed(profiles: &[&str], profiles_changed: bool, changed: &[&str]) -> Optio
 }
 
 #[test]
-fn a_write_of_the_configuration_says_which_profiles_it_changed() {
+fn a_configuration_says_which_profiles_it_changed() {
     let dir = project(&[
         (
             "config/app.yaml",
@@ -852,12 +861,13 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
     ]);
     let root = dir.path();
     let mut session = Session::default();
-    // The first pass writes the routes too, over a file that was not there.
+    let mut last = None;
+    // The first pass writes the routes too, and there is nothing to compare with.
     let all = ["default", "dev", "staging"];
     let profiles = ["dev", "staging"];
     assert_eq!(
-        written(root, &mut session),
-        (changed(&profiles, true, &all), true)
+        written(root, &mut session, &mut last),
+        (changed(&profiles, true, &all), true, true)
     );
     // A value only `dev` has: the configuration alone, and `dev` alone.
     write(
@@ -866,8 +876,8 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
         "api_url: http://localhost:9090\n",
     );
     assert_eq!(
-        written(root, &mut session),
-        (changed(&profiles, false, &["dev"]), false)
+        written(root, &mut session, &mut last),
+        (changed(&profiles, false, &["dev"]), true, false)
     );
     // A value of config/app.yaml that both profiles override: `default` alone.
     write(
@@ -876,7 +886,7 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
         "api_url: https://api2.example.com\ntimeout: 5\n",
     );
     assert_eq!(
-        written(root, &mut session).0,
+        written(root, &mut session, &mut last).0,
         changed(&profiles, false, &["default"])
     );
     // One that none overrides, a type, a key: every profile.
@@ -887,7 +897,7 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
     ] {
         write(root, "config/app.yaml", base);
         assert_eq!(
-            written(root, &mut session).0,
+            written(root, &mut session, &mut last).0,
             changed(&profiles, false, &all),
             "{base}"
         );
@@ -899,7 +909,7 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
         "api_url: https://staging.example.com\nretries: null\n",
     );
     assert_eq!(
-        written(root, &mut session).0,
+        written(root, &mut session, &mut last).0,
         changed(&profiles, false, &all)
     );
     // A comment changes the file and no constant.
@@ -909,17 +919,17 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
         "# The API.\napi_url: https://api2.example.com\ntimeout: 6.5\nretries: 2\n",
     );
     assert_eq!(
-        written(root, &mut session).0,
-        changed(&profiles, false, &[])
+        written(root, &mut session, &mut last),
+        (changed(&profiles, false, &[]), true, false)
     );
     // A profile added: the profiles changed, and the new one's constants.
     write(root, "config/app.prod.yaml", "timeout: 9.5\n");
     let three = ["dev", "prod", "staging"];
     assert_eq!(
-        written(root, &mut session).0,
+        written(root, &mut session, &mut last).0,
         changed(&three, true, &["prod"])
     );
-    // An error in config/ leaves the file, so the next write is compared with what it holds.
+    // An error in config/ leaves the file, and the pass does not say what it holds.
     write(
         root,
         "config/app.dev.yaml",
@@ -927,37 +937,72 @@ fn a_write_of_the_configuration_says_which_profiles_it_changed() {
     );
     let cfg = Config::load(root).unwrap();
     assert!(crate::gen_core(root, &cfg, true, &mut session, |_, _| {}).is_err());
-    assert_eq!(session.config_written, None);
+    assert!(!session.config_written);
+    assert_eq!(session.config, None);
     write(
         root,
         "config/app.dev.yaml",
         "api_url: http://localhost:9191\n",
     );
     assert_eq!(
-        written(root, &mut session).0,
+        written(root, &mut session, &mut last).0,
         changed(&three, false, &["dev"])
     );
-    // A new session (`fsp dev` starts one) that finds the file current compares with it.
+    // A new session (`fsp dev` starts one) that finds the file current writes nothing, and says
+    // what it holds: what `fsp dev` compares with when flutter starts.
     let mut fresh = Session::default();
-    assert_eq!(written(root, &mut fresh), (None, false));
+    assert_eq!(
+        written(root, &mut fresh, &mut last),
+        (changed(&three, false, &[]), false, false)
+    );
     write(root, "config/app.prod.yaml", "timeout: 10.5\n");
     assert_eq!(
-        written(root, &mut fresh).0,
+        written(root, &mut fresh, &mut last).0,
         changed(&three, false, &["prod"])
     );
-    // Without config/app.yaml it is forgotten: the file it then writes again is not known.
+    // Without config/app.yaml there is nothing to read, and the file is left as it is: the next
+    // configuration is compared with what it holds.
     fs::remove_file(root.join("config/app.yaml")).unwrap();
     let cfg = Config::load(root).unwrap();
     let _ = crate::gen_core(root, &cfg, true, &mut fresh, |_, _| {});
-    assert_eq!(fresh.config_written, None);
+    assert!(!fresh.config_written);
+    assert_eq!(fresh.config, None);
+    assert!(root.join("lib/app.config.g.dart").is_file());
     write(
         root,
         "config/app.yaml",
         "api_url: https://api2.example.com\ntimeout: 7.5\nretries: 2\n",
     );
     assert_eq!(
-        written(root, &mut fresh).0,
-        changed(&three, true, &["default", "dev", "prod", "staging"])
+        written(root, &mut fresh, &mut last),
+        (
+            changed(&three, false, &["default", "dev", "staging"]),
+            true,
+            false
+        )
+    );
+}
+
+#[test]
+fn a_profile_a_configuration_does_not_have_reads_the_values_of_default() {
+    // A build reads `config/app.yaml`'s value for a key its profile does not set: a profile added
+    // whose values are those changes no constant, and `profiles_changed` says it.
+    let before = project(&[("config/app.yaml", "timeout: 5\n")]);
+    let before = Snapshot::of(&load(before.path(), "lib/app.config.g.dart").config.unwrap());
+    let after = project(&[
+        ("config/app.yaml", "timeout: 5\n"),
+        ("config/app.prod.yaml", "timeout: 5\n"),
+    ]);
+    let after = Snapshot::of(&load(after.path(), "lib/app.config.g.dart").config.unwrap());
+    assert_eq!(after.profiles, ["prod"]);
+    assert_eq!(
+        Some(app_config::change(Some(&before), &after)),
+        changed(&["prod"], true, &[])
+    );
+    // And one removed is not listed either.
+    assert_eq!(
+        Some(app_config::change(Some(&after), &before)),
+        changed(&[], true, &[])
     );
 }
 

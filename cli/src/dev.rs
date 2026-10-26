@@ -24,7 +24,7 @@ use anyhow::{Result, bail};
 use clap::Args;
 
 use crate::Exit;
-use crate::app_config;
+use crate::app_config::{self, Snapshot};
 use crate::config::Config;
 use crate::daemon::{self, Line};
 use crate::dev_state::{
@@ -34,6 +34,7 @@ use crate::dev_tui::{self, TerminalGuard};
 use crate::diag;
 use crate::osc8;
 use crate::procs::{self, Out, Supervised};
+use crate::session::Session;
 use crate::tasks::{self, Cmd, Env, Plan, Tasks};
 use crate::watch::{self, Wake, Watched};
 
@@ -329,8 +330,10 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     }
     procs::install_signals().map_err(anyhow::Error::msg)?;
 
-    // 1. The first generation, as `fsp gen` prints it.
-    match crate::gen_opts(project, &cfg, true, false) {
+    // 1. The first generation, as `fsp gen` prints it. Its session says what the file of the app's
+    // configuration holds when flutter starts (since 0.24.1).
+    let mut first = Session::default();
+    match crate::gen_in(project, &cfg, true, false, &mut first) {
         Ok(o) => errln!("{}", o.line()),
         Err(e) => {
             errln!("{e:#}");
@@ -423,7 +426,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         &args,
         device,
         warning_text,
-        (build, profile_line.as_deref()),
+        (build, profile_line.as_deref(), first.config.take()),
         guard,
     )?;
     // The terminal is back; what flutter said last stays on screen.
@@ -488,7 +491,7 @@ fn run_loop(
     args: &[String],
     device: Option<Device>,
     warning: Option<String>,
-    (build, profile_line): (Build, Option<&str>),
+    (build, profile_line, config): (Build, Option<&str>, Option<Snapshot>),
     mut guard: Option<TerminalGuard>,
 ) -> Result<Outcome> {
     let (tx, rx) = mpsc::channel::<Input>();
@@ -514,6 +517,7 @@ fn run_loop(
             .ok()
             .as_deref()
             .and_then(crate::reload::read_stamp),
+        config,
     });
     if let Some(w) = warning {
         state.say(&w, Kind::Warn);

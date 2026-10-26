@@ -56,7 +56,7 @@ The file goes beside `output`, as the generated `main()` does: `lib/app.g.dart` 
 1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date
 ```
 
-In `fsp dev` a new route reloads while the error stays on screen, and fixing the file restarts the app for the new values. `fsp check` writes nothing and ends with `1 error(s) in config/`. An error in the routes themselves still stops every output, the configuration included: `N error(s); lib/app.g.dart and lib/app.config.g.dart left unchanged`.
+In `fsp dev` a new route reloads while the error stays on screen, and fixing the file restarts the app for the new values. `fsp check` writes nothing and ends with `1 error(s) in config/`. `fsp build` generates first and stops on it (exit 1) before it runs anything, since a build with a configuration that is out of date would compile the old values. An error in the routes themselves still stops every output, the configuration included: `N error(s); lib/app.g.dart and lib/app.config.g.dart left unchanged`.
 
 **Names.** Each value is a `static const` of `AppConfig` in lowerCamelCase. `fsp` reads each key in words, as it does for the [variables of the task's commands](#tasks-and-the-configuration) (since 0.24.0), so the spelling of the key does not matter: `redirect-uri`, `redirect_uri`, `redirectUri` and `REDIRECT_URI` are all `redirectUri`, and `API_URL` is `apiUrl`, so a key written like a `--dart-define` name is fine. A map is a group, and its keys add to the name, so `api.base_url` is `apiBaseUrl`. A key is letters, digits, `_` and `-`, starting with a letter. These are errors:
 

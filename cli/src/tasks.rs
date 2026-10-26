@@ -793,7 +793,7 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
     let cfg = Config::load(project)?;
     let plan = Tasks::from_config(&cfg)?.build();
     let profile = cmd.profile.as_deref();
-    let active = app_config::for_run(
+    let (_, active) = app_config::for_run(
         project,
         profile,
         &cmd.args,

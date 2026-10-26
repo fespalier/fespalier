@@ -16,6 +16,7 @@ use ratatui::buffer::{Buffer, CellDiffOption};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use ratatui::style::{Color, Modifier};
 
+use crate::app_config::Choice;
 use crate::daemon::{self, Line};
 use crate::dev_state::{
     DevState, Device, Effect, FLUTTER, FSP, Input, Key, Kind, Opts, Pick, pick_device,
@@ -63,6 +64,8 @@ fn fresh(device: Device, width: u16, height: u16) -> DevState {
         plain: false,
         output: "lib/app.g.dart".into(),
         config_output: "lib/app.config.g.dart".into(),
+        choice: Choice::default(),
+        profile: None,
         device: Some(device),
         stamp: None,
     });
@@ -105,7 +108,8 @@ fn report(wrote: bool, errors: usize, first_error: Option<FirstError>) -> GenRep
         main_changed: false,
         stamp: None,
         swaps: false,
-        config_written: false,
+        config_written: None,
+        routes_wrote: wrote,
         routes: (errors == 0).then_some(14),
         errors,
         first_error,

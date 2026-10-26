@@ -3650,7 +3650,33 @@ fn dev_restarts_the_app_when_the_configuration_changes() {
     )
     .unwrap();
     d.wait_log("app.restart fullRestart=false");
+    // A profile the app does not run (since 0.24.1): the file is written, and a hot reload brings
+    // it in, since the app reads none of its values.
+    fs::write(
+        dir.path().join("config/app.dev.yaml"),
+        "api_url: http://localhost:9090\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot reload: lib/app.config.g.dart changed");
+    assert!(
+        fs::read_to_string(dir.path().join("lib/app.config.g.dart"))
+            .unwrap()
+            .contains("http://localhost:9090")
+    );
     d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(
+        d.flog().matches("app.restart fullRestart=true").count(),
+        1,
+        "{}",
+        d.flog()
+    );
+    assert_eq!(
+        d.flog().matches("app.restart fullRestart=false").count(),
+        2,
+        "{}",
+        d.flog()
+    );
     assert_eq!(d.wait_exit(), Some(0));
 }
 

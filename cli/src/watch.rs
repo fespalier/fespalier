@@ -14,6 +14,7 @@ use anyhow::Result;
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, PathsMut, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::app_config::Change;
 use crate::config::Config;
 use crate::diag::{self, Diags, Level, Loc};
 use crate::parse_cache;
@@ -35,8 +36,8 @@ pub enum Watched<'a> {
     Diags(&'a Path, &'a Diags),
     /// A warning from `dart format`.
     Warning(String),
-    /// A pass is done.
-    Pass(GenReport),
+    /// A pass is done (boxed: it is far larger than the others).
+    Pass(Box<GenReport>),
     /// `watching lib/app/ …`, once the watcher is up.
     Watching(String),
 }
@@ -67,10 +68,14 @@ pub struct GenReport {
     pub stamp: Option<Stamp>,
     /// Whether a hot reload can swap the routes the pass generated (since 0.19.0; `entry::swaps`).
     pub swaps: bool,
-    /// Whether the pass wrote the app's configuration (`lib/app.config.g.dart`, since 0.24.0):
-    /// `fsp dev` restarts the app for it, since a value read once (into a provider, a
-    /// `static final`) keeps its old value through a hot reload.
-    pub config_written: bool,
+    /// What the pass changed in the app's configuration (`lib/app.config.g.dart`), when it wrote it
+    /// (since 0.24.0; what it changed since 0.24.1): `fsp dev` restarts the app for a change to
+    /// the values of the profile it runs, or to the profiles, since a value read once (into a
+    /// provider, a `static final`) keeps its old value through a hot reload.
+    pub config_written: Option<Change>,
+    /// Whether the pass wrote a file other than the configuration (since 0.24.1): the output, the
+    /// manifest or the generated `main()`.
+    pub routes_wrote: bool,
     /// The route count of a pass that succeeded.
     pub routes: Option<usize>,
     /// How many errors the pass reported (0 when `ok`).
@@ -376,7 +381,8 @@ impl Pass<'_> {
                 main_changed: self.session.main_changed,
                 stamp: self.session.stamp.clone(),
                 swaps: self.session.swaps,
-                config_written: self.session.config_written.is_some(),
+                config_written: self.session.config_written.clone(),
+                routes_wrote: self.session.routes_wrote,
                 routes: Some(o.routes),
                 errors: 0,
                 first_error: None,
@@ -395,7 +401,8 @@ impl Pass<'_> {
                     main_changed: self.session.main_changed,
                     stamp: self.session.stamp.clone(),
                     swaps: self.session.swaps,
-                    config_written: self.session.config_written.is_some(),
+                    config_written: self.session.config_written.clone(),
+                    routes_wrote: self.session.routes_wrote,
                     routes: None,
                     errors: errors.max(1),
                     first_error: first_error.or_else(|| {
@@ -412,6 +419,6 @@ impl Pass<'_> {
         };
         self.shown = Shown { diags, outcome };
         parse_cache::finish_run();
-        sink(Watched::Pass(report));
+        sink(Watched::Pass(Box::new(report)));
     }
 }

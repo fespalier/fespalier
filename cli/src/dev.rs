@@ -301,7 +301,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     // The profile of the app's configuration (since 0.24.0): `--profile` goes to flutter as a
     // define, in front of the arguments after `--`.
     let profile = cmd.profile.as_deref();
-    let active = app_config::for_run(
+    let (choice, active) = app_config::for_run(
         project,
         profile,
         &cmd.args,
@@ -412,7 +412,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         &args,
         device,
         warning_text,
-        profile_line,
+        (choice, active),
         guard,
     )?;
     // The terminal is back; what flutter said last stays on screen.
@@ -477,7 +477,7 @@ fn run_loop(
     args: &[String],
     device: Option<Device>,
     warning: Option<String>,
-    profile: Option<String>,
+    (choice, active): (app_config::Choice, Option<app_config::Active>),
     mut guard: Option<TerminalGuard>,
 ) -> Result<Outcome> {
     let (tx, rx) = mpsc::channel::<Input>();
@@ -496,6 +496,8 @@ fn run_loop(
         plain: !tui,
         output: cfg.output.clone(),
         config_output: cfg.output_config(),
+        choice,
+        profile: active.as_ref().map(|a| a.name.clone()),
         device: device.clone(),
         // The file as the first pass left it: flutter compiles what is on disk when it starts.
         stamp: std::fs::read_to_string(project.join(&cfg.output))
@@ -506,8 +508,8 @@ fn run_loop(
     if let Some(w) = warning {
         state.say(&w, Kind::Warn);
     }
-    if let Some(p) = profile {
-        state.say(&p, Kind::Normal);
+    if let Some(a) = &active {
+        state.say(&a.line(), Kind::Normal);
     }
     let mut running = Procs {
         flutter: None,
@@ -576,7 +578,7 @@ fn run_loop(
                     }
                     Watched::Warning(w) => say(w),
                     Watched::Pass(report) => {
-                        let _ = sent.send(Input::Gen(report));
+                        let _ = sent.send(Input::Gen(*report));
                     }
                     Watched::Watching(text) => say(text),
                 }

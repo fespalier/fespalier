@@ -410,6 +410,7 @@ fn gen_core(
     session.stamp = None;
     session.swaps = false;
     session.config_written = None;
+    session.routes_wrote = false;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
         bail!(
@@ -517,8 +518,22 @@ fn gen_core(
                 session.main_changed = true;
             }
             if *path == config_path {
-                session.config_written = Some(config_path.clone());
+                session.config_written = app_config
+                    .config
+                    .as_ref()
+                    .map(|c| app_config::change(session.config_disk.as_ref(), c));
+            } else {
+                session.routes_wrote = true;
             }
+        }
+    }
+    // What the file of the configuration holds now, for the next write (since 0.24.1): what was
+    // written or found current, unchanged when an error in config/ left the file as it was.
+    if write {
+        if let Some(config) = app_config.config {
+            session.config_disk = Some(config);
+        } else if !with_config {
+            session.config_disk = None;
         }
     }
     let output = outputs(cfg, writes_main, with_config).join(", ");

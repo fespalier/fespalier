@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.24.0](https://github.com/fespalier/fespalier/compare/v0.23.1...v0.24.0) (2026-10-26)
+
+
+### Features
+
+* **fsp:** typed app configuration with profiles from config/app.yaml ([#299](https://github.com/fespalier/fespalier/issues/299)) ([218f839](https://github.com/fespalier/fespalier/commit/218f8394f8f86f1fe48175c062b94c4657b84cbe))
+
+
+### Build System
+
+* **examples:** move crypto-bigint to 0.7.10, off the yanked 0.7.6 ([#300](https://github.com/fespalier/fespalier/issues/300)) ([fd46cf9](https://github.com/fespalier/fespalier/commit/fd46cf910b52fae262f8eda4f315978bde6f69ae))
+
 ## [0.23.1](https://github.com/fespalier/fespalier/compare/v0.23.0...v0.23.1) (2026-10-24)
 
 

@@ -153,7 +153,25 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
         Some(Source::Git { url, path, .. }) => path_message("fespalier", url, path.as_deref()),
         _ => None,
     };
-    out.push(match fespalier {
+    // The overrides pub reads: those of `pubspec_overrides.yaml` when it has the key (even with no
+    // value), in place of every one of the pubspec's, else the pubspec's (since 0.24.1). A path to a
+    // checkout's `packages/<name>` is fespalier's too.
+    let in_file = facts
+        .overrides
+        .as_ref()
+        .is_some_and(|o| o.get("dependency_overrides").is_some());
+    let (file, read) = if in_file {
+        (OVERRIDES, facts.overrides.as_ref())
+    } else {
+        (PUBSPEC, raw)
+    };
+    let overriding =
+        |name: &str, value: &Value| is_ours(name, value, own) || in_checkout(name, value);
+    let overrides = Overrides {
+        file,
+        entries: section(read, "dependency_overrides", &overriding),
+    };
+    let mut head = match fespalier {
         None => row(
             "fespalier",
             Status::Error,
@@ -201,7 +219,17 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
                 fsp.tag()
             ),
         ),
-    });
+    };
+    // A `dependency_overrides:` entry of fespalier's own wins over the entry above, as for a
+    // companion (since 0.24.1).
+    if overrides.has("fespalier") {
+        head.message = format!(
+            "{}; `dependency_overrides:` in {} wins over it",
+            head.message.trim_end_matches('.'),
+            overrides.file
+        );
+    }
+    out.push(head);
     if let Some(message) = without_folder {
         out.push(row("fespalier", Status::Warning, message));
     }
@@ -218,25 +246,20 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             "fespalier is under `dev_dependencies:` only: the generated files under lib/ import package:fespalier, so move it to `dependencies:`",
         ));
     }
-    // The overrides pub reads: those of `pubspec_overrides.yaml` when it has the key (even with no
-    // value), in place of every one of the pubspec's, else the pubspec's (since 0.24.1). A path to a
-    // checkout's `packages/<name>` is fespalier's too.
-    let in_file = facts
-        .overrides
-        .as_ref()
-        .is_some_and(|o| o.get("dependency_overrides").is_some());
-    let (file, read) = if in_file {
-        (OVERRIDES, facts.overrides.as_ref())
-    } else {
-        (PUBSPEC, raw)
-    };
-    let overriding =
-        |name: &str, value: &Value| is_ours(name, value, own) || in_checkout(name, value);
-    let overrides = Overrides {
-        file,
-        entries: section(read, "dependency_overrides", &overriding),
-    };
     out.extend(companions(&companion_deps, fespalier, &overrides));
+    // pub stops on a `pubspec_overrides.yaml` that is not YAML (since 0.24.1).
+    if let Some(why) = &facts.overrides_error {
+        out.push(
+            row(
+                "override",
+                Status::Error,
+                format!(
+                    "{OVERRIDES} is not valid YAML ({why}): pub stops on it, so nothing resolves until it is fixed or removed"
+                ),
+            )
+            .about(OVERRIDES),
+        );
+    }
     for (name, source) in &overrides.entries {
         out.push(
             row(
@@ -392,6 +415,17 @@ fn lock_rows(facts: &Facts, companions: &[(String, Source)], overrides: &Overrid
             Status::Warning,
             format!(
                 "pubspec.lock resolves fespalier {v}, and this fsp writes code for {fsp}: upgrade fsp (`fsp upgrade`), or run `dart run fespalier` to use the fsp of the pin"
+            ),
+        )),
+        // An override of fespalier's own is what pub resolves: moving the refs changes nothing
+        // (since 0.24.1).
+        Some((v, _)) if overrides.has("fespalier") => out.push(row(
+            "lock",
+            Status::Warning,
+            format!(
+                "pubspec.lock resolves fespalier {v}, and this fsp writes code for {fsp}: fespalier comes from `dependency_overrides:` in {}, so move that override to {} (or update the checkout it names), then run `flutter pub get`, or run `dart run fespalier` to use the fsp of the pin",
+                overrides.file,
+                fsp.tag()
             ),
         )),
         Some((v, _)) => out.push(row(

@@ -451,6 +451,101 @@ fn the_overrides_are_read_from_the_file_pub_reads_them_from() {
     );
 }
 
+/// pub stops on a `pubspec_overrides.yaml` that is not YAML, so the doctor says so with an error
+/// row, where it used to read the pubspec's overrides as if the file were not there (since 0.24.1).
+#[test]
+fn a_pubspec_overrides_file_that_is_not_yaml_is_an_error() {
+    let v = this_fsp();
+    let tag = format!("v{v}");
+    let pubspec = format!(
+        "name: shop\ndependencies:\n  fespalier:{}\ndependency_overrides:\n  fespalier_http:{}\n",
+        git("fespalier", &tag),
+        git("fespalier_http", "v0.1.0")
+    );
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[(
+            "pubspec_overrides.yaml",
+            "dependency_overrides: [oops\n  x: y\n",
+        )],
+        Err("no".into()),
+    ));
+    let said = of(&rows, "override", Some("pubspec_overrides.yaml"));
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(
+        said[0].starts_with("error: pubspec_overrides.yaml is not valid YAML ("),
+        "{said:?}"
+    );
+    assert!(
+        said[0].ends_with("): pub stops on it, so nothing resolves until it is fixed or removed"),
+        "{said:?}"
+    );
+    assert_eq!(statuses(&rows, Status::Error).len(), 1);
+    // A file that reads raises nothing, and neither does a missing one.
+    for files in [
+        vec![("pubspec_overrides.yaml", "# Nothing here.\n")],
+        vec![],
+    ] {
+        let rows = doctor::rows(&facts(&pubspec, &files, Err("no".into())));
+        assert!(of(&rows, "override", Some("pubspec_overrides.yaml")).is_empty());
+    }
+}
+
+/// An override of fespalier's own wins over its `dependencies:` entry, and the `fespalier` and
+/// `lock` rows say so as the companion rows do, instead of telling the app to move refs that pub
+/// does not read (since 0.24.1).
+#[test]
+fn the_fespalier_rows_name_an_override_of_fespalier() {
+    let v = this_fsp();
+    let pubspec = format!(
+        "name: shop\ndependencies:\n  fespalier:{}\n",
+        git("fespalier", "v0.1.0")
+    );
+    let lock =
+        "packages:\n  fespalier:\n    version: \"0.1.0\"\n  go_router:\n    version: \"17.2.3\"\n";
+    let file = "dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n";
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec_overrides.yaml", file), ("pubspec.lock", lock)],
+        Err("no".into()),
+    ));
+    let head = one(&rows, "fespalier", None);
+    assert!(
+        head.starts_with("error: this app pins fespalier v0.1.0;"),
+        "{head}"
+    );
+    assert!(
+        head.ends_with("; `dependency_overrides:` in pubspec_overrides.yaml wins over it"),
+        "{head}"
+    );
+    assert_eq!(
+        of(&rows, "lock", None)[0],
+        format!(
+            "warning: pubspec.lock resolves fespalier 0.1.0, and this fsp writes code for {v}: fespalier comes from `dependency_overrides:` in pubspec_overrides.yaml, so move that override to v{v} (or update the checkout it names), then run `flutter pub get`, or run `dart run fespalier` to use the fsp of the pin"
+        )
+    );
+    // The pubspec's own override is named by its file, and no override leaves the rows as they were.
+    let in_pubspec = format!(
+        "{pubspec}dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n"
+    );
+    let rows = doctor::rows(&facts(
+        &in_pubspec,
+        &[("pubspec.lock", lock)],
+        Err("no".into()),
+    ));
+    assert!(
+        one(&rows, "fespalier", None)
+            .ends_with("; `dependency_overrides:` in pubspec.yaml wins over it")
+    );
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec.lock", lock)],
+        Err("no".into()),
+    ));
+    assert!(!one(&rows, "fespalier", None).contains("wins over it"));
+    assert!(of(&rows, "lock", None)[0].contains("move the refs to"));
+}
+
 /// A path override of a package newer than this `fsp` keeps its row when its folder is a
 /// checkout's `packages/<name>`, as a git dependency is told by its place and its name; a
 /// `fespalier_` name elsewhere is someone else's (since 0.24.1).

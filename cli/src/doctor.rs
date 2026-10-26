@@ -232,17 +232,21 @@ pub struct Facts {
     /// pubspec.yaml as YAML: what the versions are read from, even when `config.rs` refuses it.
     pub raw: Option<Value>,
     /// `pubspec_overrides.yaml` as YAML, when there is one that reads: pub reads its
-    /// `dependency_overrides:` in place of the pubspec's when it has the key (since 0.24.1).
+    /// `dependency_overrides:`, `resolution:` and `workspace:` in place of the pubspec's, each when
+    /// it has the key (since 0.24.1).
     pub overrides: Option<Value>,
-    /// Why `pubspec_overrides.yaml` is there and does not read as YAML: pub stops on it (since
-    /// 0.24.1).
+    /// Why pub stops on `pubspec_overrides.yaml`, as what follows its name in the row: it does not
+    /// read as YAML, or it does and pub refuses it all the same (a list, a key pub does not
+    /// support, a `resolution:` that is not one of its three values, since 0.24.1).
     pub overrides_error: Option<String>,
     /// What `config.rs` makes of pubspec.yaml, or why it refuses it.
     pub pubspec: Result<Pubspec, String>,
     /// pubspec.lock as YAML, when there is one that reads: the project's, or, for a pub workspace
     /// member, the workspace root's (pub writes the one lock there).
     pub lock: Option<Value>,
-    /// The pubspec says `resolution: workspace`: it has no `pubspec.lock` beside it.
+    /// pub resolves the app in a pub workspace: it says `resolution: workspace`, in its
+    /// `pubspec_overrides.yaml` when that file has the key (since 0.24.1), else in its pubspec. It
+    /// has no `pubspec.lock` beside it.
     pub workspace_member: bool,
     /// `flutter --version --machine`, when `flutter` is on PATH and answered; else why not.
     pub toolchain: Result<Toolchain, String>,
@@ -295,13 +299,18 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     let (overrides, overrides_error) =
         match fs::read_to_string(project.join(crate::upgrade_app::OVERRIDES)) {
             Ok(text) => match serde_yaml_ng::from_str::<Value>(&text) {
-                Ok(value) => (Some(value), None),
-                Err(e) => (None, Some(e.to_string())),
+                Ok(value) => {
+                    let refusal = crate::packages::overrides_refusal(&value);
+                    (Some(value), refusal)
+                }
+                Err(e) => (None, Some(format!("is not valid YAML ({e})"))),
             },
             Err(_) => (None, None),
         };
-    let lock = read_lock(project, raw.as_ref());
-    let workspace_member = is_workspace_member(raw.as_ref());
+    let lock = read_lock(project, raw.as_ref(), overrides.as_ref());
+    let workspace_member = raw
+        .as_ref()
+        .is_some_and(|r| crate::packages::resolves_in_workspace(overrides.as_ref(), r));
     let toolchain = toolchain.and_then(|out| {
         Toolchain::parse(&out)
             .ok_or_else(|| "`flutter --version --machine` printed no version".to_string())
@@ -336,17 +345,10 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     }
 }
 
-/// Whether the pubspec says `resolution: workspace`.
-fn is_workspace_member(raw: Option<&Value>) -> bool {
-    raw.and_then(|r| r.get("resolution"))
-        .and_then(Value::as_str)
-        == Some("workspace")
-}
-
 /// `pubspec.lock` as pub wrote it: beside the pubspec, or, for a pub workspace member, beside the
 /// root's (a member has none of its own).
-fn read_lock(project: &Path, raw: Option<&Value>) -> Option<Value> {
-    let root = raw.and_then(|r| crate::packages::workspace_root(project, r));
+fn read_lock(project: &Path, raw: Option<&Value>, overrides: Option<&Value>) -> Option<Value> {
+    let root = raw.and_then(|r| crate::packages::workspace_root(project, r, overrides));
     let dir = root.as_ref().map_or(project, |(dir, _)| dir.as_path());
     let text = fs::read_to_string(dir.join("pubspec.lock")).ok()?;
     serde_yaml_ng::from_str::<Value>(&text).ok()

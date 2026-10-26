@@ -491,6 +491,123 @@ fn a_pubspec_overrides_file_that_is_not_yaml_is_an_error() {
     }
 }
 
+/// pub stops on a `pubspec_overrides.yaml` that reads as YAML too when it is not a mapping, has a key
+/// other than `dependency_overrides`, `resolution` and `workspace`, or a value of the wrong kind for
+/// one of those (each checked with `dart pub get --offline` on Dart 3.13.5 and on the floor's
+/// 3.9.2, which both exit 65): the `override` error row says so in a few words, and a file pub reads
+/// raises nothing (since 0.24.1).
+#[test]
+fn a_pubspec_overrides_file_that_pub_refuses_is_an_error() {
+    let v = this_fsp();
+    let tag = format!("v{v}");
+    let pubspec = format!(
+        "name: shop\ndependencies:\n  fespalier:{}\ndependency_overrides:\n  fespalier_http:{}\n",
+        git("fespalier", &tag),
+        git("fespalier_http", "v0.1.0")
+    );
+    let supported = "(only `dependency_overrides`, `resolution` and `workspace`)";
+    let resolution = "has a `resolution:` that is not `workspace`, `local` or `external`";
+    let workspace = "has a `workspace:` that is not a list of strings";
+    let key =
+        |name: &str| format!("has the key `{name}`, which pub does not support there {supported}");
+    for (file, why) in [
+        ("- resolution\n", "is not a YAML mapping".to_string()),
+        ("hello\n", "is not a YAML mapping".to_string()),
+        ("version: 1.0.0\n", key("version")),
+        ("name: shop\nresolution: workspace\n", key("name")),
+        ("1: a\n", key("1")),
+        ("resolution: Workspace\n", resolution.to_string()),
+        ("resolution: \"\"\n", resolution.to_string()),
+        ("resolution: 5\n", resolution.to_string()),
+        ("resolution: [workspace]\n", resolution.to_string()),
+        (
+            "dependency_overrides: [a]\n",
+            "has a `dependency_overrides:` that is not a map".to_string(),
+        ),
+        (
+            "dependency_overrides: 5\n",
+            "has a `dependency_overrides:` that is not a map".to_string(),
+        ),
+        ("workspace: foo\n", workspace.to_string()),
+        ("workspace:\n  - 5\n", workspace.to_string()),
+        ("workspace:\n  - a: b\n", workspace.to_string()),
+        ("workspace: [app, ~]\n", workspace.to_string()),
+        // The first fault, in the file's order.
+        (
+            "resolution: local\nversion: 1.0.0\nworkspace: foo\n",
+            key("version"),
+        ),
+    ] {
+        let rows = doctor::rows(&facts(
+            &pubspec,
+            &[("pubspec_overrides.yaml", file)],
+            Err("no".into()),
+        ));
+        let said = of(&rows, "override", Some("pubspec_overrides.yaml"));
+        assert_eq!(
+            said,
+            [format!(
+                "error: pubspec_overrides.yaml {why}: pub stops on it, so nothing resolves until it is fixed or removed"
+            )],
+            "{file:?}"
+        );
+        assert_eq!(statuses(&rows, Status::Error).len(), 1, "{file:?}");
+    }
+    // What pub reads raises nothing: no value for any key, the three values of `resolution:`, a
+    // list of folders, a map of overrides, a comment, an empty file and a bare `null`.
+    for file in [
+        "",
+        "# Nothing here.\n",
+        "null\n",
+        "~\n",
+        "resolution:\nworkspace:\ndependency_overrides:\n",
+        "workspace: []\n",
+        "workspace:\n  - app\n  - packages/ui\n",
+        "resolution: workspace\n",
+        "resolution: local\n",
+        "resolution: external\n",
+        "dependency_overrides:\n  fespalier_http:\n    path: ../http\n",
+    ] {
+        let rows = doctor::rows(&facts(
+            &pubspec,
+            &[("pubspec_overrides.yaml", file)],
+            Err("no".into()),
+        ));
+        assert!(
+            of(&rows, "override", Some("pubspec_overrides.yaml")).is_empty(),
+            "{file:?}"
+        );
+        assert!(statuses(&rows, Status::Error).is_empty(), "{file:?}");
+    }
+    // A duplicate key is not YAML for the parser the doctor reads with, which pub refuses too
+    // ("Duplicate mapping key"): the first row, the one for invalid YAML.
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[(
+            "pubspec_overrides.yaml",
+            "resolution: workspace\nresolution: local\n",
+        )],
+        Err("no".into()),
+    ));
+    let said = one(&rows, "override", Some("pubspec_overrides.yaml"));
+    assert!(
+        said.starts_with("error: pubspec_overrides.yaml is not valid YAML ("),
+        "{said}"
+    );
+    // A file pub refuses leaves the pubspec's overrides read, as one that is not YAML does.
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec_overrides.yaml", "- resolution\n")],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        of(&rows, "override", Some("fespalier_http")),
+        [
+            "info: fespalier_http: `dependency_overrides:` in pubspec.yaml says git https://github.com/fespalier/fespalier, ref v0.1.0, which wins over `dependencies:`"
+        ]
+    );
+}
+
 /// An override of fespalier's own wins over its `dependencies:` entry, and the `fespalier` and
 /// `lock` rows say so as the companion rows do, instead of telling the app to move refs that pub
 /// does not read (since 0.24.1).
@@ -787,6 +904,58 @@ fn a_workspace_member_is_checked_against_the_roots_lock() {
     let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
     assert!(one(&rows, "lock", None).starts_with("warning: pubspec.lock resolves fespalier 0.1.0"));
     assert!(one(&rows, "go_router", None).starts_with("error: go_router 16.2.0"));
+}
+
+/// pub reads `resolution:` from `pubspec_overrides.yaml` in place of the pubspec's when the file
+/// has the key (since 0.24.1): a member by that file alone is checked against the root's lock, and
+/// `resolution:` with no value there makes the app resolve on its own, with its own lock.
+#[test]
+fn a_workspace_member_by_its_pubspec_overrides_is_checked_against_the_roots_lock() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("app");
+    fs::create_dir_all(app.join("lib")).unwrap();
+    fs::write(
+        dir.path().join("pubspec.yaml"),
+        "name: root\nenvironment:\n  sdk: ^3.9.0\nworkspace:\n  - app\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        "name: shop\ndependencies:\n  fespalier:\n    path: ../../f\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "resolution: workspace\n",
+    )
+    .unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(
+        one(&rows, "lock", None)
+            .starts_with("skipped: no pubspec.lock at the root of the pub workspace"),
+        "{rows:?}"
+    );
+    fs::write(
+        dir.path().join("pubspec.lock"),
+        "packages:\n  fespalier:\n    version: \"0.1.0\"\n",
+    )
+    .unwrap();
+    fs::write(
+        app.join("pubspec.lock"),
+        "packages:\n  fespalier:\n    version: \"0.2.0\"\n",
+    )
+    .unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(one(&rows, "lock", None).starts_with("warning: pubspec.lock resolves fespalier 0.1.0"));
+    // Not a member any more, though its pubspec says so: the app's own lock is the one.
+    fs::write(
+        app.join("pubspec.yaml"),
+        "name: shop\nresolution: workspace\ndependencies:\n  fespalier:\n    path: ../../f\n",
+    )
+    .unwrap();
+    fs::write(app.join("pubspec_overrides.yaml"), "resolution:\n").unwrap();
+    let rows = doctor::rows(&doctor::gather(&app, Err("no".into())));
+    assert!(one(&rows, "lock", None).starts_with("warning: pubspec.lock resolves fespalier 0.2.0"));
 }
 
 /// Each adapter that is on, whether its `configure` is called (by text, comments out), and each

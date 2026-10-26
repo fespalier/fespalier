@@ -5505,6 +5505,56 @@ fn upgrade_app_names_the_line_of_the_workspace_root_to_change() {
     );
 }
 
+/// pub reads `resolution: workspace` from `pubspec_overrides.yaml` too: an app that is a member by
+/// that file alone gets the note on the root's override as well (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_reads_the_workspace_root_of_a_member_by_its_pubspec_overrides() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "resolution: workspace\n",
+    )
+    .unwrap();
+    let workspace = "name: workspace\nworkspace:\n  - app\ndependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: v0.21.0\n";
+    fs::write(root.join("pubspec.yaml"), workspace).unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains(&format!(
+            "note: pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
+        )),
+        "{out}"
+    );
+    // A root listed by its `pubspec_overrides.yaml` alone, which has no `dependency_overrides:`
+    // there, keeps the overrides of its pubspec.
+    fs::write(
+        root.join("pubspec.yaml"),
+        workspace.replace("workspace:\n  - app\n", ""),
+    )
+    .unwrap();
+    fs::write(root.join("pubspec_overrides.yaml"), "workspace:\n  - app\n").unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains(&format!(
+            "note: pubspec.yaml, line 7: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
+        )),
+        "{out}"
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn upgrade_app_check_and_dry_run_write_nothing() {

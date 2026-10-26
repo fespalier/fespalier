@@ -239,10 +239,11 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
     Ok(())
 }
 
-/// The packages the root of the app's pub workspace overrides, when the app says `resolution:
-/// workspace` (pub reads them with the app's own): those of the root's `pubspec_overrides.yaml`
-/// when it has the key, else of its pubspec. Those of the other members are not read, as `fsp check`
-/// does not look for the members.
+/// The packages the root of the app's pub workspace overrides, when pub resolves the app in a
+/// workspace (`resolution: workspace`, in its `pubspec_overrides.yaml` when that has the key, else
+/// in its pubspec, since 0.24.1; pub reads them with the app's own): those of the root's
+/// `pubspec_overrides.yaml` when it has the key, else of its pubspec. Those of the other members
+/// are not read, as `fsp check` does not look for the members.
 pub(crate) fn workspace_overrides(project: &Path, pubspec: &str) -> Vec<String> {
     let Ok(value) = serde_yaml_ng::from_str::<Value>(pubspec) else {
         return vec![];

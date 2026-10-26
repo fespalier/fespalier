@@ -247,14 +247,15 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
         ));
     }
     out.extend(companions(&companion_deps, fespalier, &overrides));
-    // pub stops on a `pubspec_overrides.yaml` that is not YAML (since 0.24.1).
+    // pub stops on a `pubspec_overrides.yaml` that is not YAML, a list, or has a key or a value it
+    // does not support (since 0.24.1).
     if let Some(why) = &facts.overrides_error {
         out.push(
             row(
                 "override",
                 Status::Error,
                 format!(
-                    "{OVERRIDES} is not valid YAML ({why}): pub stops on it, so nothing resolves until it is fixed or removed"
+                    "{OVERRIDES} {why}: pub stops on it, so nothing resolves until it is fixed or removed"
                 ),
             )
             .about(OVERRIDES),

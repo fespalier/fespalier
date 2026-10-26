@@ -50,6 +50,11 @@ packages `pubspec.yaml` lists with a `path:` under `dependencies`, `dev_dependen
 own `path:` dependencies, found from the pubspecs alone. In a pub workspace (an app that says
 `resolution: workspace`) it applies the `dependency_overrides` of the workspace root too, as pub does for
 every member: those of the root's `pubspec.yaml`, or of its `pubspec_overrides.yaml` when that has the key.
+pub reads `resolution:` and `workspace:` from a `pubspec_overrides.yaml` too, in place of the pubspec's when
+the file has the key (even with no value: `resolution:` there makes the app resolve on its own), and
+since 0.24.1 so does `fsp`: an app whose `pubspec_overrides.yaml` alone says `resolution: workspace` is a
+member, and a folder above it whose `pubspec_overrides.yaml` alone has `workspace:` can be its root. A
+`workspace:` with no value, or `[]`, lists no member: that folder is no root, in its pubspec or in its file.
 The Dart compiler still catches real mismatches in the generated code.
 
 Not followed, so still compared as spelled: a `typedef` of a hosted, `git:` or SDK package (one of a

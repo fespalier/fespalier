@@ -324,6 +324,133 @@ fn the_overrides_of_a_workspace_root_need_resolution_workspace_and_a_root() {
     assert_eq!(workspace("name: root\n", MEMBER, &[]), shared("s1"));
 }
 
+/// pub reads `resolution` and `workspace` from `pubspec_overrides.yaml` too, in place of the
+/// pubspec's when the file has the key, even with no value (since 0.24.1; each rule checked with
+/// `dart pub get --offline` on Dart 3.13.5 and on the floor's 3.9.2).
+#[test]
+fn resolution_and_workspace_are_read_from_pubspec_overrides_too() {
+    let root = format!("{ROOT}dependency_overrides:\n  shared:\n    path: s2\n");
+    let alone = "name: app\ndependencies:\n  shared:\n    path: ../s1\n";
+    let file = |body| [("app/pubspec_overrides.yaml", body)];
+    // A member by its file alone: pub resolves it at the root, with the root's overrides.
+    assert_eq!(
+        workspace(&root, alone, &file("resolution: workspace\n")),
+        shared("s2")
+    );
+    // `resolution:` with no value there makes a member by its pubspec resolve on its own.
+    assert_eq!(
+        workspace(&root, MEMBER, &file("resolution:\n")),
+        shared("s1")
+    );
+    // A file without the key leaves the pubspec's in force, either way.
+    let other = "dependency_overrides:\n  other:\n    path: ../o\n";
+    assert_eq!(workspace(&root, MEMBER, &file(other)), shared("s2"));
+    assert_eq!(workspace(&root, alone, &file(other)), shared("s1"));
+    // A root whose `workspace:` is in its file alone is the root.
+    let bare = "name: root\ndependency_overrides:\n  shared:\n    path: s2\n";
+    let listed = [("pubspec_overrides.yaml", "workspace:\n  - app\n")];
+    assert_eq!(workspace(bare, MEMBER, &listed), shared("s2"));
+}
+
+/// A `workspace:` with no value, or `[]`, lists no member: pub finds no root in that folder, in its
+/// pubspec or in its `pubspec_overrides.yaml` (which takes the place of the pubspec's key even
+/// then), so the app has none and the overrides of that folder are not applied (since 0.24.1; each
+/// case checked with `dart pub get --offline` on Dart 3.13.5 and on the floor's 3.9.2: "found no
+/// workspace root including it").
+#[test]
+fn a_workspace_key_with_no_member_is_no_root() {
+    let root = format!("{ROOT}dependency_overrides:\n  shared:\n    path: s2\n");
+    let bare = "name: root\ndependency_overrides:\n  shared:\n    path: s2\n";
+    let in_file = |body| [("pubspec_overrides.yaml", body)];
+    // The root's file lists nobody, over a pubspec that lists the app or has no `workspace:` at all.
+    for body in ["workspace:\n", "workspace: []\n"] {
+        assert_eq!(
+            workspace(&root, MEMBER, &in_file(body)),
+            shared("s1"),
+            "{body:?}"
+        );
+        assert_eq!(
+            workspace(bare, MEMBER, &in_file(body)),
+            shared("s1"),
+            "{body:?}"
+        );
+    }
+    // As does the pubspec's own key.
+    for key in ["workspace:\n", "workspace: []\n"] {
+        let root = format!("name: root\n{key}dependency_overrides:\n  shared:\n    path: s2\n");
+        assert_eq!(workspace(&root, MEMBER, &[]), shared("s1"), "{key:?}");
+    }
+    // A file that lists the app makes the root again, whatever the pubspec says.
+    let listed = in_file("workspace:\n  - app\n");
+    assert_eq!(workspace(bare, MEMBER, &listed), shared("s2"));
+    let empty = "name: root\nworkspace: []\ndependency_overrides:\n  shared:\n    path: s2\n";
+    assert_eq!(workspace(empty, MEMBER, &listed), shared("s2"));
+}
+
+/// The root of a nested workspace is the outermost: the pubspec in between is a member itself, and
+/// so is one whose `pubspec_overrides.yaml` says `resolution: workspace` (since 0.24.1).
+#[test]
+fn a_member_by_its_pubspec_overrides_is_not_the_root_of_a_nested_workspace() {
+    let dir = tree(&[
+        (
+            "pubspec.yaml",
+            "name: root\nworkspace:\n  - mid\ndependency_overrides:\n  shared:\n    path: s2\n",
+        ),
+        ("mid/pubspec.yaml", "name: mid\nworkspace:\n  - app\n"),
+        ("mid/pubspec_overrides.yaml", "resolution: workspace\n"),
+        (
+            "mid/app/pubspec.yaml",
+            "name: app\nresolution: workspace\ndependencies:\n  shared:\n    path: ../../s1\n",
+        ),
+        ("s1/pubspec.yaml", "name: shared\n"),
+        ("s2/pubspec.yaml", "name: shared\n"),
+    ]);
+    let packages = Packages::read(&dir.path().join("mid/app"), Some("app"));
+    let at = packages.root("shared").unwrap();
+    assert_eq!(at.strip_prefix(dir.path()).unwrap(), Path::new("s2"));
+}
+
+/// A key with no value in an ancestor's `pubspec_overrides.yaml` takes the place of the pubspec's: a
+/// folder whose pubspec says both `resolution: workspace` and `workspace:` is the root of a nested
+/// workspace when its file says `resolution:` with no value, so its own overrides apply and the
+/// outer folder's do not (since 0.24.1; `dart pub get --offline` resolves at that folder on Dart
+/// 3.13.5 and on the floor's 3.9.2, with its override).
+#[test]
+fn a_folder_that_leaves_the_workspace_by_its_pubspec_overrides_is_the_root() {
+    let dir = tree(&[
+        (
+            "pubspec.yaml",
+            "name: root\nworkspace:\n  - mid\ndependency_overrides:\n  shared:\n    path: s2\n",
+        ),
+        (
+            "mid/pubspec.yaml",
+            "name: mid\nresolution: workspace\nworkspace:\n  - app\ndependency_overrides:\n  shared:\n    path: ../s3\n",
+        ),
+        ("mid/pubspec_overrides.yaml", "resolution:\n"),
+        (
+            "mid/app/pubspec.yaml",
+            "name: app\nresolution: workspace\ndependencies:\n  shared:\n    path: ../../s1\n",
+        ),
+        ("s1/pubspec.yaml", "name: shared\n"),
+        ("s2/pubspec.yaml", "name: shared\n"),
+        ("s3/pubspec.yaml", "name: shared\n"),
+    ]);
+    let at = |packages: Packages| {
+        packages
+            .root("shared")
+            .unwrap()
+            .strip_prefix(dir.path())
+            .unwrap()
+            .to_path_buf()
+    };
+    let app = dir.path().join("mid/app");
+    assert_eq!(at(Packages::read(&app, Some("app"))), Path::new("s3"));
+    // Without the file the pubspec's keys are in force: `mid` is a member, and the outer folder is
+    // the root.
+    fs::remove_file(dir.path().join("mid/pubspec_overrides.yaml")).unwrap();
+    assert_eq!(at(Packages::read(&app, Some("app"))), Path::new("s2"));
+}
+
 /// The root of a nested workspace is the outermost: the pubspec in between is a member itself.
 #[test]
 fn the_root_of_a_nested_workspace_is_the_outermost() {

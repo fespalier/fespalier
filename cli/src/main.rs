@@ -308,6 +308,21 @@ impl Exit {
     }
 }
 
+/// The error of a pass that wrote the route outputs and then failed, for a mistake in something
+/// they do not depend on (a string-path lint, a file of `config/`, since 0.24.0). The message says
+/// what is up to date; `fsp dev` reads the type, so its first pass does not warn that the output
+/// is out of date.
+#[derive(Debug)]
+pub struct FailedAfterWriting(String);
+
+impl std::fmt::Display for FailedAfterWriting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for FailedAfterWriting {}
+
 fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p);
@@ -459,8 +474,12 @@ fn gen_core(
         .0
         .extend(build_runner::check(project, cfg, &outputs(cfg, writes_main, with_config)).0);
     show(&app_dir, &everything);
-    let errors = run.diags.error_count() + app_config.diags.error_count();
-    if errors > 0 {
+    // An error in the routes stops the pass and leaves every output as it was. An error in
+    // `config/` does not stop the routes: `app.g.dart` does not depend on it, so it is written
+    // and the configuration alone is left as it was (below), as a string-path lint is.
+    let config_errors = app_config.diags.error_count();
+    if run.diags.has_errors() {
+        let errors = run.diags.error_count() + config_errors;
         let mut outputs = outputs(cfg, writes_main, with_config);
         let last = outputs.pop().unwrap_or_default();
         let left = if outputs.is_empty() {
@@ -503,16 +522,31 @@ fn gen_core(
         }
     }
     let output = outputs(cfg, writes_main, with_config).join(", ");
-    // A lint error fails the command but not the output: the generated file does not depend on
-    // it, and `watch` must not stop regenerating for a typo in some other file.
-    if lints.has_errors() {
-        let n = lints.error_count();
-        if write {
-            bail!(
-                "{n} error(s) in string paths (`lints: unknown_path: error`); {output} is up to date"
-            );
+    // A lint error or an error in `config/` fails the command but not the route outputs: the
+    // generated file does not depend on them, and `watch` must not stop regenerating for a typo in
+    // some other file (the configuration, since 0.24.0, is left as it was).
+    if config_errors > 0 || lints.has_errors() {
+        let mut said = vec![];
+        if config_errors > 0 {
+            said.push(if write {
+                format!("{config_errors} error(s) in config/; {config_path} left unchanged")
+            } else {
+                format!("{config_errors} error(s) in config/")
+            });
         }
-        bail!("{n} error(s) in string paths (`lints: unknown_path: error`)");
+        if lints.has_errors() {
+            said.push(format!(
+                "{} error(s) in string paths (`lints: unknown_path: error`)",
+                lints.error_count()
+            ));
+        }
+        let mut said = said.join("; ");
+        if write {
+            let up_to_date = outputs(cfg, writes_main, with_config && config_errors == 0);
+            said.push_str(&format!("; {} is up to date", up_to_date.join(", ")));
+            return Err(FailedAfterWriting(said).into());
+        }
+        bail!("{said}");
     }
     Ok(Outcome {
         wrote,

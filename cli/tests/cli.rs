@@ -1078,6 +1078,65 @@ fn check_warns_about_a_string_path_that_matches_no_route() {
     assert!(ok && !err.contains("warning"), "{err}");
 }
 
+/// A mistake in `config/` fails the command (since 0.24.0) but not the routes: `lib/app.g.dart` does
+/// not depend on it, so `gen` writes it and leaves only `lib/app.config.g.dart` as it was.
+#[test]
+fn a_mistake_in_config_fails_gen_after_the_routes_are_written() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(root.join("config/app.yaml"), "api_url: https://a.example\n").unwrap();
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(ok, "{err}");
+    let config = fs::read_to_string(root.join("lib/app.config.g.dart")).unwrap();
+    assert!(config.contains("'https://a.example'"), "{config}");
+
+    // A new page, and a typo in a profile.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    fs::write(
+        root.join("config/app.dev.yaml"),
+        "api_ur: http://b.example\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(!ok, "{err}");
+    assert!(err.contains("`api_ur` is not in config/app.yaml"), "{err}");
+    assert!(
+        err.ends_with("1 error(s) in config/\n"),
+        "check writes nothing and says so: {err}"
+    );
+    let routes = fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    assert!(!routes.contains("AboutRoute"), "check wrote");
+
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.ends_with(
+            "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date\n"
+        ),
+        "{err}"
+    );
+    let routes = fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    assert!(routes.contains("AboutRoute"), "the routes were written");
+    assert_eq!(
+        fs::read_to_string(root.join("lib/app.config.g.dart")).unwrap(),
+        config,
+        "the configuration was left as it was"
+    );
+
+    // Fixed: the next run writes the configuration and succeeds.
+    fs::write(
+        root.join("config/app.dev.yaml"),
+        "api_url: http://b.example\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(ok, "{err}");
+    let config = fs::read_to_string(root.join("lib/app.config.g.dart")).unwrap();
+    assert!(config.contains("'http://b.example'"), "{config}");
+}
+
 /// `watch` runs again when a Dart file under `lib/` but outside the app folder changes.
 #[test]
 fn watch_rechecks_string_paths_outside_the_app_folder() {
@@ -3593,6 +3652,50 @@ fn dev_restarts_the_app_when_the_configuration_changes() {
     d.wait_log("app.restart fullRestart=false");
     d.send("q");
     assert_eq!(d.wait_exit(), Some(0));
+}
+
+/// An error in a file of `config/` does not stop the routes (since 0.24.0): the app reloads a new
+/// route while the error is said, and a fix of the file restarts it.
+#[cfg(unix)]
+#[test]
+fn dev_reloads_the_routes_while_a_file_of_config_has_an_error() {
+    let dir = swap_project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(root.join("config/app.yaml"), "api_url: https://a.example\n").unwrap();
+    let mut d = Dev::start(root, &[]);
+    d.wait_ready();
+    // A typo in a profile: said, and nothing restarts.
+    fs::write(
+        root.join("config/app.staging.yaml"),
+        "api_ur: https://b.example\n",
+    )
+    .unwrap();
+    // The project has an `app.dart`, so the generated `main()` is written too.
+    d.wait_err(
+        "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart, lib/app.main.g.dart is up to date",
+    );
+    // A route put while it is there: the routes are written and the app reloads them.
+    fs::create_dir_all(root.join("lib/app/zz")).unwrap();
+    fs::write(root.join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    d.wait_err("[fsp] hot reload: lib/app.g.dart changed");
+    d.wait_log("app.restart fullRestart=false");
+    assert!(
+        !d.flog().contains("app.restart fullRestart=true"),
+        "{}",
+        d.flog()
+    );
+    // The fix writes the configuration: a restart.
+    fs::write(
+        root.join("config/app.staging.yaml"),
+        "api_url: https://b.example\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot restart: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=true");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
 }
 
 #[cfg(unix)]

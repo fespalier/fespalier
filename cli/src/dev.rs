@@ -323,7 +323,10 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         Ok(o) => errln!("{}", o.line()),
         Err(e) => {
             errln!("{e:#}");
-            if project.join(&cfg.output).is_file() {
+            if e.is::<crate::FailedAfterWriting>() {
+                // The routes were written; only something they do not depend on failed (a lint,
+                // a file of config/, since 0.24.0), and the message says what is up to date.
+            } else if project.join(&cfg.output).is_file() {
                 errln!(
                     "warning: {} is out of date until the errors above are fixed; fsp dev keeps watching",
                     cfg.output

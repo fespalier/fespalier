@@ -452,17 +452,58 @@ fn gen_writes_the_configuration_beside_the_output_and_fails_on_its_errors() {
     let out = crate::gen_core(dir.path(), &cfg, true, &mut session, |_, _| {}).unwrap();
     assert!(!out.wrote);
     assert_eq!(session.config_written, None);
-    // An error in config/ fails gen and leaves every file as it was.
+    // An error in config/ fails the pass but not the routes (since 0.24.0): `app.g.dart` does not
+    // depend on config/, so a new page is written and the configuration alone stays as it was.
+    write(
+        dir.path(),
+        "lib/app/about/page.dart",
+        "class AboutPage extends StatelessWidget { const AboutPage({super.key}); }",
+    );
     write(dir.path(), "config/app.dev.yaml", "titel: x\n");
+    let routes_before = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(!routes_before.contains("AboutRoute"));
+    // `check` writes nothing, and says only what is wrong.
+    let err =
+        crate::gen_core(dir.path(), &cfg, false, &mut Session::default(), |_, _| {}).unwrap_err();
+    assert_eq!(format!("{err:#}"), "1 error(s) in config/");
+    assert!(!err.is::<crate::FailedAfterWriting>());
+    assert_eq!(
+        fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap(),
+        routes_before
+    );
+    let mut failed = Session::default();
+    let err = crate::gen_core(dir.path(), &cfg, true, &mut failed, |_, _| {}).unwrap_err();
+    assert_eq!(
+        format!("{err:#}"),
+        "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date"
+    );
+    assert!(err.is::<crate::FailedAfterWriting>());
+    // What `fsp watch` and `fsp dev` read: the routes were written (so the app reloads), and the
+    // configuration was not (so it does not restart for it).
+    assert!(failed.wrote);
+    assert_eq!(failed.config_written, None);
+    let routes_after = fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap();
+    assert!(routes_after.contains("AboutRoute"), "{routes_after}");
+    assert_eq!(
+        fs::read_to_string(dir.path().join("lib/app.config.g.dart")).unwrap(),
+        written
+    );
+    // An error in the routes still stops everything, the configuration's included.
+    write(
+        dir.path(),
+        "lib/app/page.dart",
+        "class HomePage extends StatelessWidget { const HomePage({super.key}); }\nclass OtherPage extends StatelessWidget { const OtherPage({super.key}); }",
+    );
     let err =
         crate::gen_core(dir.path(), &cfg, true, &mut Session::default(), |_, _| {}).unwrap_err();
     assert_eq!(
         format!("{err:#}"),
-        "1 error(s); lib/app.g.dart and lib/app.config.g.dart left unchanged"
+        "2 error(s); lib/app.g.dart and lib/app.config.g.dart left unchanged"
     );
+    assert!(!err.is::<crate::FailedAfterWriting>());
     assert_eq!(
-        fs::read_to_string(dir.path().join("lib/app.config.g.dart")).unwrap(),
-        written
+        fs::read_to_string(dir.path().join("lib/app.g.dart")).unwrap(),
+        routes_after
     );
     // `output:` elsewhere moves it too.
     let dir = project(&[

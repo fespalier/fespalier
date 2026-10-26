@@ -5533,6 +5533,26 @@ fn upgrade_app_reads_the_workspace_root_of_a_member_by_its_pubspec_overrides() {
         )),
         "{out}"
     );
+    // A root listed by its `pubspec_overrides.yaml` alone, which has no `dependency_overrides:`
+    // there, keeps the overrides of its pubspec.
+    fs::write(
+        root.join("pubspec.yaml"),
+        workspace.replace("workspace:\n  - app\n", ""),
+    )
+    .unwrap();
+    fs::write(root.join("pubspec_overrides.yaml"), "workspace:\n  - app\n").unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains(&format!(
+            "note: pubspec.yaml, line 7: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
+        )),
+        "{out}"
+    );
 }
 
 #[cfg(unix)]

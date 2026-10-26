@@ -796,6 +796,38 @@ fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
     assert_eq!(file(member), None);
 }
 
+/// A root whose `pubspec_overrides.yaml` has `workspace:` and no `dependency_overrides:` keeps the
+/// overrides of its pubspec, key by key as pub reads them: `fsp add` counts them and names the
+/// pubspec as the file (since 0.24.1).
+#[test]
+fn a_root_listed_by_its_pubspec_overrides_keeps_the_overrides_of_its_pubspec() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let app = root.join("apps/shop");
+    fs::create_dir_all(&app).unwrap();
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: root\ndependency_overrides:\n  fespalier:\n    path: fespalier/packages/fespalier\n",
+    )
+    .unwrap();
+    let member = "name: shop\nresolution: workspace\n";
+    // Nothing lists the app yet: pub finds no root, and neither does `fsp`.
+    assert!(crate::add::workspace_overrides(&app, member).is_empty());
+    fs::write(
+        root.join("pubspec_overrides.yaml"),
+        "workspace:\n  - apps/shop\n",
+    )
+    .unwrap();
+    assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
+    assert_eq!(
+        crate::packages::workspace_overrides_file(&app, &yaml(member)).map(|(file, _)| file),
+        Some(root.join("pubspec.yaml").display().to_string())
+    );
+    // `workspace:` with no value lists nobody, so the root is none again.
+    fs::write(root.join("pubspec_overrides.yaml"), "workspace:\n").unwrap();
+    assert!(crate::add::workspace_overrides(&app, member).is_empty());
+}
+
 /// A feature with no file of its own is told by its packages and keys, and one with nothing to
 /// tell it by never is. A test-only package is one of its marks too (since 0.24.1).
 #[test]

@@ -410,6 +410,47 @@ fn a_member_by_its_pubspec_overrides_is_not_the_root_of_a_nested_workspace() {
     assert_eq!(at.strip_prefix(dir.path()).unwrap(), Path::new("s2"));
 }
 
+/// A key with no value in an ancestor's `pubspec_overrides.yaml` takes the place of the pubspec's: a
+/// folder whose pubspec says both `resolution: workspace` and `workspace:` is the root of a nested
+/// workspace when its file says `resolution:` with no value, so its own overrides apply and the
+/// outer folder's do not (since 0.24.1; `dart pub get --offline` resolves at that folder on Dart
+/// 3.13.5 and on the floor's 3.9.2, with its override).
+#[test]
+fn a_folder_that_leaves_the_workspace_by_its_pubspec_overrides_is_the_root() {
+    let dir = tree(&[
+        (
+            "pubspec.yaml",
+            "name: root\nworkspace:\n  - mid\ndependency_overrides:\n  shared:\n    path: s2\n",
+        ),
+        (
+            "mid/pubspec.yaml",
+            "name: mid\nresolution: workspace\nworkspace:\n  - app\ndependency_overrides:\n  shared:\n    path: ../s3\n",
+        ),
+        ("mid/pubspec_overrides.yaml", "resolution:\n"),
+        (
+            "mid/app/pubspec.yaml",
+            "name: app\nresolution: workspace\ndependencies:\n  shared:\n    path: ../../s1\n",
+        ),
+        ("s1/pubspec.yaml", "name: shared\n"),
+        ("s2/pubspec.yaml", "name: shared\n"),
+        ("s3/pubspec.yaml", "name: shared\n"),
+    ]);
+    let at = |packages: Packages| {
+        packages
+            .root("shared")
+            .unwrap()
+            .strip_prefix(dir.path())
+            .unwrap()
+            .to_path_buf()
+    };
+    let app = dir.path().join("mid/app");
+    assert_eq!(at(Packages::read(&app, Some("app"))), Path::new("s3"));
+    // Without the file the pubspec's keys are in force: `mid` is a member, and the outer folder is
+    // the root.
+    fs::remove_file(dir.path().join("mid/pubspec_overrides.yaml")).unwrap();
+    assert_eq!(at(Packages::read(&app, Some("app"))), Path::new("s2"));
+}
+
 /// The root of a nested workspace is the outermost: the pubspec in between is a member itself.
 #[test]
 fn the_root_of_a_nested_workspace_is_the_outermost() {

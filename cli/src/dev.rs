@@ -28,7 +28,7 @@ use crate::app_config;
 use crate::config::Config;
 use crate::daemon::{self, Line};
 use crate::dev_state::{
-    self, DevState, Device, Effect, FLUTTER, FSP, Input, Kind, Opts, Pick, PlainLine,
+    self, Build, DevState, Device, Effect, FLUTTER, FSP, Input, Kind, Opts, Pick, PlainLine,
 };
 use crate::dev_tui::{self, TerminalGuard};
 use crate::diag;
@@ -308,7 +308,18 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         app_config::run_is_debug(&cmd.args),
     )?;
     let args = app_config::with_define(profile, &cmd.args)?;
-    let profile_line = active.as_ref().map(app_config::Active::line);
+    // `fsp` reads the profile of the build from the arguments after `--` of its own `flutter run`:
+    // a `run:` of the pubspec's, or a `--dart-define-from-file`, can set it where `fsp` does not
+    // look, and then every change of `config/` restarts the app (since 0.24.1).
+    let reads = app_config::reads_build(plan.run_is_default, &cmd.args);
+    let profile_line = active
+        .as_ref()
+        .map(|a| if reads { a.line() } else { a.line_unread() });
+    let build = if reads {
+        Build::seen(choice, active.as_ref().map(|a| a.name.as_str()))
+    } else {
+        Build::Unseen
+    };
     if cmd.dry_run {
         err!(
             "{}",
@@ -412,7 +423,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         &args,
         device,
         warning_text,
-        (choice, active),
+        (build, profile_line.as_deref()),
         guard,
     )?;
     // The terminal is back; what flutter said last stays on screen.
@@ -477,7 +488,7 @@ fn run_loop(
     args: &[String],
     device: Option<Device>,
     warning: Option<String>,
-    (choice, active): (app_config::Choice, Option<app_config::Active>),
+    (build, profile_line): (Build, Option<&str>),
     mut guard: Option<TerminalGuard>,
 ) -> Result<Outcome> {
     let (tx, rx) = mpsc::channel::<Input>();
@@ -496,8 +507,7 @@ fn run_loop(
         plain: !tui,
         output: cfg.output.clone(),
         config_output: cfg.output_config(),
-        choice,
-        profile: active.as_ref().map(|a| a.name.clone()),
+        build,
         device: device.clone(),
         // The file as the first pass left it: flutter compiles what is on disk when it starts.
         stamp: std::fs::read_to_string(project.join(&cfg.output))
@@ -508,8 +518,8 @@ fn run_loop(
     if let Some(w) = warning {
         state.say(&w, Kind::Warn);
     }
-    if let Some(a) = &active {
-        state.say(&a.line(), Kind::Normal);
+    if let Some(line) = profile_line {
+        state.say(line, Kind::Normal);
     }
     let mut running = Procs {
         flutter: None,

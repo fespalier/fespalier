@@ -19,7 +19,7 @@ use ratatui::style::{Color, Modifier};
 use crate::app_config::Choice;
 use crate::daemon::{self, Line};
 use crate::dev_state::{
-    DevState, Device, Effect, FLUTTER, FSP, Input, Key, Kind, Opts, Pick, pick_device,
+    Build, DevState, Device, Effect, FLUTTER, FSP, Input, Key, Kind, Opts, Pick, pick_device,
 };
 use crate::dev_tui::{Picker, PickerAction, draw, draw_picker, key_of, link_cells, tail, want_tui};
 use crate::diag::Loc;
@@ -64,8 +64,7 @@ fn fresh(device: Device, width: u16, height: u16) -> DevState {
         plain: false,
         output: "lib/app.g.dart".into(),
         config_output: "lib/app.config.g.dart".into(),
-        choice: Choice::default(),
-        profile: None,
+        build: Build::seen(Choice::default(), None),
         device: Some(device),
         stamp: None,
     });

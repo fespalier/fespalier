@@ -1114,6 +1114,54 @@ fn the_active_profile_is_the_define_then_the_flavour_then_the_build_mode() {
 }
 
 #[test]
+fn fsp_reads_the_profile_of_its_own_flutter_run_and_not_of_a_file_or_a_command_of_the_pubspec() {
+    // Its own `flutter run` with the arguments it reads (since 0.24.1).
+    assert!(app_config::reads_build(true, &[]));
+    assert!(app_config::reads_build(true, &args(&["-d", "chrome"])));
+    assert!(app_config::reads_build(
+        true,
+        &args(&[
+            "--flavor",
+            "staging",
+            "--dart-define=FSP_PROFILE=staging",
+            "--release"
+        ])
+    ));
+    // A `run:` of the pubspec's can say `--flavor` or a define where `fsp` does not look.
+    assert!(!app_config::reads_build(false, &[]));
+    assert!(!app_config::reads_build(
+        false,
+        &args(&["--flavor", "staging"])
+    ));
+    // A file of defines can set `FSP_PROFILE`, spelled either way.
+    assert!(!app_config::reads_build(
+        true,
+        &args(&["--dart-define-from-file=env.json"])
+    ));
+    assert!(!app_config::reads_build(
+        true,
+        &args(&["--dart-define-from-file", "env.json"])
+    ));
+    // The line says what it assumes, and that the app restarts for every change.
+    let dev = Active {
+        name: "dev".into(),
+        why: "a debug build",
+    };
+    assert_eq!(
+        dev.line_unread(),
+        "profile dev (a debug build): config/app.dev.yaml over config/app.yaml (a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)"
+    );
+    let default = Active {
+        name: "default".into(),
+        why: "",
+    };
+    assert_eq!(
+        default.line_unread(),
+        "profile default: config/app.yaml (a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)"
+    );
+}
+
+#[test]
 fn a_profile_flag_must_name_a_file_of_config() {
     let dir = project(&[
         ("config/app.yaml", "a: 1\n"),

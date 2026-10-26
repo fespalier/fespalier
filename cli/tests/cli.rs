@@ -2726,6 +2726,14 @@ impl Dev {
         });
     }
 
+    /// Waits for `needle` to be in the flutter log `count` times.
+    fn wait_log_count(&self, needle: &str, count: usize) {
+        self.wait_until(
+            &format!("`{needle}` {count} times in the flutter log"),
+            || self.flog().matches(needle).count() >= count,
+        );
+    }
+
     /// Waits for fsp to be running the app and watching: ready for a change on disk.
     fn wait_ready(&self) {
         self.wait_err("[fsp] app running on");
@@ -3615,6 +3623,27 @@ fsp dev in {root}
         err.contains("\n  profile default: config/app.yaml\n"),
         "{err}"
     );
+    // What `fsp dev` cannot read is a guess, and the line says so (since 0.24.1): a file of defines,
+    let (_, _, err) = fsp_task(
+        dir.path(),
+        &["dev", "--dry-run", "--", "--dart-define-from-file=env.json"],
+        &[],
+    );
+    assert!(
+        err.contains(&format!(
+            "\n  profile dev (a debug build): config/app.dev.yaml over config/app.yaml {GUESS}\n"
+        )),
+        "{err}"
+    );
+    // and a `run:` of the pubspec's.
+    let own = config_project("    dev:\n      run: flutter run --flavor staging\n");
+    let (_, _, err) = fsp_task(own.path(), &["dev", "--dry-run"], &[]);
+    assert!(
+        err.contains(&format!(
+            "\n  profile dev (a debug build): config/app.dev.yaml over config/app.yaml {GUESS}\n"
+        )),
+        "{err}"
+    );
 }
 
 #[cfg(unix)]
@@ -3676,6 +3705,120 @@ fn dev_restarts_the_app_when_the_configuration_changes() {
         2,
         "{}",
         d.flog()
+    );
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+/// What the profile line says when `fsp` cannot read the profile of the run (since 0.24.1).
+#[cfg(unix)]
+const GUESS: &str = "(a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)";
+
+/// A `run:` of the pubspec's that sets the flavour itself (since 0.24.1): `fsp dev` cannot tell
+/// the profile, so an edit of the profile the flavour picks restarts the app, as 0.24.0 did, and
+/// so does an edit of any other, since `fsp` cannot tell which is which.
+#[cfg(unix)]
+#[test]
+fn dev_restarts_for_every_configuration_change_when_the_run_is_a_command_of_the_pubspec() {
+    let dir = config_project("    dev:\n      run: flutter run --flavor staging\n");
+    let mut d = Dev::start(dir.path(), &[]);
+    d.wait_ready();
+    // The line `fsp` prints is a guess, and it says so.
+    d.wait_err(&format!(
+        "[fsp] profile dev (a debug build): config/app.dev.yaml over config/app.yaml {GUESS}"
+    ));
+    assert!(
+        d.flog().starts_with("run --flavor staging --machine\n"),
+        "{}",
+        d.flog()
+    );
+    // The flavour picks `staging`, which `fsp` does not know: the edit must restart the app.
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_url: https://staging2.example.com\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot restart: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=true");
+    // And so does an edit of the profile `fsp` guessed: nothing is told apart.
+    fs::write(
+        dir.path().join("config/app.dev.yaml"),
+        "api_url: http://localhost:9090\n",
+    )
+    .unwrap();
+    d.wait_log_count("app.restart fullRestart=true", 2);
+    // A page save is a hot reload, as always.
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        page("HomePage") + "\n",
+    )
+    .unwrap();
+    d.wait_log("app.restart fullRestart=false");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert!(
+        !d.err()
+            .contains("hot reload: lib/app.config.g.dart changed"),
+        "{}",
+        d.err()
+    );
+    assert_eq!(
+        d.flog().matches("app.restart fullRestart=true").count(),
+        2,
+        "{}",
+        d.flog()
+    );
+    assert_eq!(
+        d.flog().matches("app.restart fullRestart=false").count(),
+        1,
+        "{}",
+        d.flog()
+    );
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+/// A define from a file (since 0.24.1): `env.json` can set `FSP_PROFILE`, which `fsp` does not
+/// read, so the profile it prints is a guess and every change of `config/` restarts the app.
+#[cfg(unix)]
+#[test]
+fn dev_restarts_for_every_configuration_change_when_a_file_of_defines_is_passed() {
+    let dir = config_project("");
+    fs::write(
+        dir.path().join("env.json"),
+        "{\"FSP_PROFILE\": \"staging\"}\n",
+    )
+    .unwrap();
+    let mut d = Dev::start(dir.path(), &["--", "--dart-define-from-file=env.json"]);
+    d.wait_ready();
+    d.wait_err(&format!(
+        "[fsp] profile dev (a debug build): config/app.dev.yaml over config/app.yaml {GUESS}"
+    ));
+    assert!(
+        d.flog().starts_with(
+            "devices --machine\nrun --machine -d fake-1 --dart-define-from-file=env.json\n"
+        ),
+        "{}",
+        d.flog()
+    );
+    // The file picks `staging`; the edit of `config/app.staging.yaml` restarts the app.
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_url: https://staging2.example.com\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot restart: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=true");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert!(
+        !d.flog().contains("app.restart fullRestart=false"),
+        "{}",
+        d.flog()
+    );
+    assert!(
+        !d.err()
+            .contains("hot reload: lib/app.config.g.dart changed"),
+        "{}",
+        d.err()
     );
     assert_eq!(d.wait_exit(), Some(0));
 }

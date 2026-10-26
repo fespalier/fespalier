@@ -1467,6 +1467,18 @@ impl Active {
     }
 }
 
+impl Active {
+    /// [`Active::line`] for a run whose profile `fsp` cannot read (since 0.24.1; see
+    /// [`reads_build`]): what it assumes, and that every change of `config/` restarts the app.
+    #[must_use]
+    pub fn line_unread(&self) -> String {
+        format!(
+            "{} (a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)",
+            self.line()
+        )
+    }
+}
+
 /// The arguments for flutter with the profile `--profile` names in front of the user's: what
 /// `fsp dev` and `fsp build` pass. A define of the user's for it too is an error.
 pub fn with_define(profile: Option<&str>, args: &[String]) -> Result<Vec<String>> {
@@ -1541,9 +1553,10 @@ pub struct Change {
     pub profiles: Vec<String>,
     /// Whether they are not those of the file it replaced, or that file is not known.
     pub profiles_changed: bool,
-    /// The profiles, `default` among them, whose constants are not those of the file it replaced:
-    /// one added or removed, or one with another type or value. All of them when that file is not
-    /// known.
+    /// The profiles of the configuration written, `default` among them, whose constants are not
+    /// those of the file it replaced: a name added or removed, or one with another type or value.
+    /// All of them when that file is not known. A profile that was removed is not listed, and
+    /// neither is one added that changes nothing: `profiles_changed` says both.
     pub changed: BTreeSet<String>,
 }
 
@@ -1610,6 +1623,19 @@ pub fn for_run(
     }
     let active = choice.active(&profiles);
     Ok((choice, Some(active)))
+}
+
+/// Whether `fsp dev` can read what chooses the profile of its build (since 0.24.1): the `run:` of
+/// the task is its own `flutter run` (`run_is_default`; a command of the pubspec's can say
+/// `--flavor` or a define itself), and the arguments after `--` have no `--dart-define-from-file`
+/// (a file can set `FSP_PROFILE`). When it cannot, the profile could be any, and `fsp dev`
+/// restarts the app for every change of `config/`, as before 0.24.1.
+#[must_use]
+pub fn reads_build(run_is_default: bool, args: &[String]) -> bool {
+    run_is_default
+        && !args
+            .iter()
+            .any(|a| a == "--dart-define-from-file" || a.starts_with("--dart-define-from-file="))
 }
 
 /// Whether `fsp dev`'s flutter run is a debug build: not with `--release` or `--profile` after `--`.

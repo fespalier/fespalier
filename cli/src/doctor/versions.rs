@@ -5,8 +5,9 @@ use serde_yaml_ng::Value;
 
 use super::{Facts, Row, Section, Status, leading_version};
 use crate::create::plan::REPO_URL;
-use crate::pins::{in_packages, is_ours, same_url};
+use crate::pins::{in_checkout, in_packages, is_ours, same_url};
 use crate::upgrade::Version;
+use crate::upgrade_app::{OVERRIDES, PUBSPEC};
 
 /// fespalier's own floor, the `environment:` of `packages/fespalier/pubspec.yaml`
 /// (`doctor_tests::the_floors_are_the_packages_own` reads it).
@@ -217,28 +218,79 @@ pub fn rows(facts: &Facts) -> Vec<Row> {
             "fespalier is under `dev_dependencies:` only: the generated files under lib/ import package:fespalier, so move it to `dependencies:`",
         ));
     }
-    out.extend(companions(&companion_deps, fespalier));
-    let overrides = |name: &str, value: &Value| is_ours(name, value, own);
-    for (name, source) in section(raw, "dependency_overrides", &overrides) {
+    // The overrides pub reads: those of `pubspec_overrides.yaml` when it has the key (even with no
+    // value), in place of every one of the pubspec's, else the pubspec's (since 0.24.1). A path to a
+    // checkout's `packages/<name>` is fespalier's too.
+    let in_file = facts
+        .overrides
+        .as_ref()
+        .is_some_and(|o| o.get("dependency_overrides").is_some());
+    let (file, read) = if in_file {
+        (OVERRIDES, facts.overrides.as_ref())
+    } else {
+        (PUBSPEC, raw)
+    };
+    let overriding =
+        |name: &str, value: &Value| is_ours(name, value, own) || in_checkout(name, value);
+    let overrides = Overrides {
+        file,
+        entries: section(read, "dependency_overrides", &overriding),
+    };
+    out.extend(companions(&companion_deps, fespalier, &overrides));
+    for (name, source) in &overrides.entries {
         out.push(
             row(
                 "override",
                 Status::Info,
                 format!(
-                    "{name}: `dependency_overrides:` says {}, which wins over `dependencies:`",
+                    "{name}: `dependency_overrides:` in {file} says {}, which wins over `dependencies:`",
                     source.shown()
                 ),
             )
-            .about(name),
+            .about(name.clone()),
         );
     }
-    out.extend(lock_rows(facts, &companion_deps));
+    if in_file {
+        for (name, source) in section(raw, "dependency_overrides", &overriding) {
+            out.push(
+                row(
+                    "override",
+                    Status::Info,
+                    format!(
+                        "{name}: `dependency_overrides:` in {PUBSPEC} says {}, and pub does not read it: {OVERRIDES} has `dependency_overrides:`, which pub reads in its place",
+                        source.shown()
+                    ),
+                )
+                .about(name),
+            );
+        }
+    }
+    out.extend(lock_rows(facts, &companion_deps, &overrides));
     out.extend(toolchain_rows(facts, &deps));
     out
 }
 
-/// Every companion (`pins::is_ours`) against fespalier's own source.
-fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row> {
+/// The overrides pub reads that are fespalier's, and the file they are in.
+struct Overrides {
+    file: &'static str,
+    entries: Vec<(String, Source)>,
+}
+
+impl Overrides {
+    /// Whether pub reads an override of `name`.
+    fn has(&self, name: &str) -> bool {
+        self.entries.iter().any(|(n, _)| n == name)
+    }
+}
+
+/// Every companion (`pins::is_ours`) of `dependencies:` against fespalier's own source. Only
+/// pubspec.yaml has that section; a companion an override takes the place of says so, with the
+/// file of the override (since 0.24.1).
+fn companions(
+    deps: &[(String, Source)],
+    fespalier: Option<&Source>,
+    overrides: &Overrides,
+) -> Vec<Row> {
     let mut out = vec![];
     for (name, source) in deps {
         let r = match (fespalier, source) {
@@ -290,7 +342,14 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
                 format!("{name}: {}, not compared", other.shown()),
             ),
         };
-        out.push(r.about(name.clone()));
+        let mut r = r.about(name.clone());
+        if overrides.has(name) {
+            r.message.push_str(&format!(
+                "; `dependency_overrides:` in {} wins over it",
+                overrides.file
+            ));
+        }
+        out.push(r);
         if let Source::Git { url, path, .. } = source
             && let Some(message) = path_message(name, url, path.as_deref())
         {
@@ -300,8 +359,9 @@ fn companions(deps: &[(String, Source)], fespalier: Option<&Source>) -> Vec<Row>
     out
 }
 
-/// What `pubspec.lock` resolved: fespalier and its companions against this fsp, and `go_router`.
-fn lock_rows(facts: &Facts, companions: &[(String, Source)]) -> Vec<Row> {
+/// What `pubspec.lock` resolved: fespalier and its companions against this fsp, and `go_router`. A
+/// companion an override takes the place of is told by the file of its override (since 0.24.1).
+fn lock_rows(facts: &Facts, companions: &[(String, Source)], overrides: &Overrides) -> Vec<Row> {
     let Some(lock) = &facts.lock else {
         return vec![if facts.workspace_member {
             row(
@@ -353,16 +413,17 @@ fn lock_rows(facts: &Facts, companions: &[(String, Source)]) -> Vec<Row> {
             if let Some(v) = locked(lock, name)
                 && &v != fv
             {
-                out.push(
-                    row(
-                        "lock",
-                        Status::Warning,
-                        format!(
-                            "pubspec.lock resolves {name} {v}, and fespalier {fv}: give every companion fespalier's ref, then run `flutter pub get`"
-                        ),
+                let message = if overrides.has(name) {
+                    format!(
+                        "pubspec.lock resolves {name} {v}, and fespalier {fv}: {name} comes from `dependency_overrides:` in {}, so give that override fespalier's source, then run `flutter pub get`",
+                        overrides.file
                     )
-                    .about(name.clone()),
-                );
+                } else {
+                    format!(
+                        "pubspec.lock resolves {name} {v}, and fespalier {fv}: give every companion fespalier's ref, then run `flutter pub get`"
+                    )
+                };
+                out.push(row("lock", Status::Warning, message).about(name.clone()));
             }
         }
     }

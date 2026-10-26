@@ -593,7 +593,9 @@ nothing to move (exit 0); an override to a folder, in the pubspec or `pubspec_ov
 since 0.23.1, is an override at a commit or a branch of this repository (a hotfix) and a `fespalier` from a fork or a mirror
 (whose tag names and notes are this repository's; the official repository over ssh or `http` is not one). When
 `pubspec_overrides.yaml` alone has a ref to move, the lines and the failure texts name it, not `pubspec.yaml` (since
-0.24.1, both when both have one, and the up-to-date line both when both hold refs). **It never
+0.24.1, both when both have one, and the up-to-date line both when both hold refs). While that file has the key, pub
+reads none of the pubspec's own overrides: they move or are kept all the same (for a checkout without the file), and
+since 0.24.1 a note says pub does not read them there. **It never
 moves the app back on its own:** without `--version`, a ref newer than this `fsp` is a refusal (exit 1, also for
 `--check`; upgrade `fsp` or use `dart run fespalier`; since 0.24.1 it names that pin and its file), and `--version vX.Y.Z` goes back on purpose, marked
 `(a downgrade)`. The migration notes come right after `pubspec.yaml` is written, so a failing `pub get` or `gen`
@@ -618,7 +620,10 @@ against this `fsp`; since 0.23.1 also a warning when a git dependency on `https:
 or another folder: a mirror's, a fork's or a vendored copy's `path:` is not compared, and `./packages/x` or a final `/` is `packages/x`),
 `companion` (per package of fespalier's repository: the same `url` and `ref`, and the same warning for its folder; since 0.23.1 a package is
 one when `fsp` knows it, or when it is a `fespalier_` git dependency on `packages/<name>` of fespalier's `url` (however spelled, since 0.24.1), never a `fespalier_` name alone
-or its place alone, so a fork's own `acme_ui` gets no row), `override`, `lock` (what `pubspec.lock`
+or its place alone, so a fork's own `acme_ui` gets no row), `override` (since 0.24.1 the overrides pub reads, each naming its
+file: `pubspec_overrides.yaml`'s when it has the key, the pubspec's then said to be unread, and a path to a checkout's
+`packages/<name>` of a `fespalier_` package counts; a `companion` or `lock` row an override takes the place of names its
+file too), `lock` (what `pubspec.lock`
 resolved, skipped without it; a pub workspace member's is the workspace root's), `go_router` (against `>=17.2.3 <19.0.0`), `flutter` and
 `dart` (against 3.35.0 and 3.9.0, a pre-release of the floor counting as below it, a Flutter that reports `0.0.0` being an error of
 its own; `flutter` per dependency that needs a newer one). Then "Checks": `config` (a `pubspec.yaml` that `config.rs` refuses: one error row, and the

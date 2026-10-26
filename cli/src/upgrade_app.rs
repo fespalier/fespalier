@@ -159,7 +159,23 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
     }
     if let Some(text) = overrides {
         let file: Value = serde_yaml_ng::from_str(text).map_err(|e| format!("{OVERRIDES}: {e}"))?;
-        if let Some(Value::Mapping(map)) = file.get("dependency_overrides") {
+        let section = file.get("dependency_overrides");
+        // With the key, even with no value, pub reads none of the pubspec's overrides. They still
+        // move, or are kept, as pub reads them where the file is not (one kept out of git), and a
+        // note says so (since 0.24.1).
+        let unread: Vec<&str> = pins
+            .all
+            .iter()
+            .filter(|p| p.section == "dependency_overrides")
+            .map(|p| p.name.as_str())
+            .collect();
+        if section.is_some() && !unread.is_empty() {
+            kept.push(format!(
+                "pub does not read the `dependency_overrides:` of {PUBSPEC} ({}) while {OVERRIDES} has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
+                unread.join(", ")
+            ));
+        }
+        if let Some(Value::Mapping(map)) = section {
             let own = value.get("dependencies").and_then(|d| d.get("fespalier"));
             for (name, spec) in map {
                 let Some(name) = name.as_str() else { continue };

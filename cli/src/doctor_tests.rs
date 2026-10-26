@@ -261,7 +261,7 @@ fn refs_out_of_line_are_errors_and_other_sources_are_warnings() {
     assert_eq!(
         of(&rows, "override", None),
         [
-            "info: fespalier_http: `dependency_overrides:` says path ../http, which wins over `dependencies:`"
+            "info: fespalier_http: `dependency_overrides:` in pubspec.yaml says path ../http, which wins over `dependencies:`"
         ]
     );
     // A `.git` and a trailing slash name the same repository.
@@ -382,6 +382,106 @@ fn the_folder_of_a_package_is_said_of_the_official_repository_only_and_as_a_warn
         ]
     );
     assert!(statuses(&rows, Status::Error).is_empty());
+}
+
+/// pub reads the `dependency_overrides:` of `pubspec_overrides.yaml` in place of every one of the
+/// pubspec's when that file has the key, even with no value: the `override` rows are those, and
+/// name their file, the pubspec's are said to be unread, and the `companion` and `lock` rows of a
+/// companion an override takes the place of name its file (since 0.24.1).
+#[test]
+fn the_overrides_are_read_from_the_file_pub_reads_them_from() {
+    let v = this_fsp();
+    let tag = format!("v{v}");
+    let pubspec = format!(
+        "name: shop\ndependencies:\n  fespalier:{}\n  fespalier_push:{}\ndependency_overrides:\n  fespalier_http:{}\n",
+        git("fespalier", &tag),
+        git("fespalier_push", &tag),
+        git("fespalier_http", "v0.1.0")
+    );
+    let file = "# Local.\ndependency_overrides:\n  fespalier_push:\n    path: ../checkout/packages/fespalier_push\n  fespalier_next:\n    path: ../checkout/packages/fespalier_next\n  fespalier_extras:\n    path: ../extras\n";
+    let lock = format!(
+        "packages:\n  fespalier:\n    version: \"{v}\"\n  fespalier_push:\n    version: \"9.9.9\"\n"
+    );
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec_overrides.yaml", file), ("pubspec.lock", &lock)],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        of(&rows, "override", None),
+        [
+            "info: fespalier_push: `dependency_overrides:` in pubspec_overrides.yaml says path ../checkout/packages/fespalier_push, which wins over `dependencies:`",
+            "info: fespalier_next: `dependency_overrides:` in pubspec_overrides.yaml says path ../checkout/packages/fespalier_next, which wins over `dependencies:`",
+            "info: fespalier_http: `dependency_overrides:` in pubspec.yaml says git https://github.com/fespalier/fespalier, ref v0.1.0, and pub does not read it: pubspec_overrides.yaml has `dependency_overrides:`, which pub reads in its place",
+        ]
+    );
+    assert_eq!(
+        one(&rows, "companion", Some("fespalier_push")),
+        format!(
+            "ok: fespalier_push: git, ref {tag}, as fespalier; `dependency_overrides:` in pubspec_overrides.yaml wins over it"
+        )
+    );
+    assert_eq!(
+        one(&rows, "lock", Some("fespalier_push")),
+        format!(
+            "warning: pubspec.lock resolves fespalier_push 9.9.9, and fespalier {v}: fespalier_push comes from `dependency_overrides:` in pubspec_overrides.yaml, so give that override fespalier's source, then run `flutter pub get`"
+        )
+    );
+    // The key with no value replaces the pubspec's with nothing.
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec_overrides.yaml", "dependency_overrides:\n")],
+        Err("no".into()),
+    ));
+    let said = of(&rows, "override", None);
+    assert_eq!(said.len(), 1, "{said:?}");
+    assert!(said[0].contains("and pub does not read it"), "{said:?}");
+    assert!(one(&rows, "companion", Some("fespalier_push")).ends_with(", as fespalier"));
+    // A file without the key leaves the pubspec's in force.
+    let rows = doctor::rows(&facts(
+        &pubspec,
+        &[("pubspec_overrides.yaml", "# Nothing here.\n")],
+        Err("no".into()),
+    ));
+    assert_eq!(
+        of(&rows, "override", None),
+        [
+            "info: fespalier_http: `dependency_overrides:` in pubspec.yaml says git https://github.com/fespalier/fespalier, ref v0.1.0, which wins over `dependencies:`"
+        ]
+    );
+}
+
+/// A path override of a package newer than this `fsp` keeps its row when its folder is a
+/// checkout's `packages/<name>`, as a git dependency is told by its place and its name; a
+/// `fespalier_` name elsewhere is someone else's (since 0.24.1).
+#[test]
+fn a_path_override_of_a_checkout_s_package_keeps_its_row() {
+    let pubspec = format!(
+        "name: shop\ndependencies:\n  fespalier:{}\ndependency_overrides:\n  fespalier_next:\n    path: ../fespalier/packages/fespalier_next/\n  fespalier_mine:\n    path: ../mine\n  acme_ui:\n    path: ../fespalier/packages/acme_ui\n",
+        git("fespalier", &format!("v{}", this_fsp()))
+    );
+    let rows = doctor::rows(&facts(&pubspec, &[], Err("no".into())));
+    assert_eq!(
+        of(&rows, "override", None),
+        [
+            "info: fespalier_next: `dependency_overrides:` in pubspec.yaml says path ../fespalier/packages/fespalier_next/, which wins over `dependencies:`"
+        ]
+    );
+    for (path, ours) in [
+        ("packages/fespalier_next", true),
+        ("../x/./packages/fespalier_next", true),
+        ("/work/packages//fespalier_next/", true),
+        ("../x/fespalier_next", false),
+        ("../x/packages/fespalier_next/lib", false),
+    ] {
+        let value: serde_yaml_ng::Value =
+            serde_yaml_ng::from_str(&format!("path: {path}")).unwrap();
+        assert_eq!(
+            crate::pins::in_checkout("fespalier_next", &value),
+            ours,
+            "{path}"
+        );
+    }
 }
 
 /// Another package of a repository that holds fespalier is its owner's, whatever its ref, and is no

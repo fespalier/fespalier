@@ -286,6 +286,7 @@ fn overrides_to_a_folder_are_left_and_said() {
         kept,
         [
             "dependency_overrides: fespalier_transport is path ../fespalier/packages/fespalier_transport; left as it is",
+            "pub does not read the `dependency_overrides:` of pubspec.yaml (fespalier_transport) while pubspec_overrides.yaml has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
             "pubspec_overrides.yaml overrides fespalier; left as it is",
         ]
     );
@@ -330,7 +331,10 @@ fn a_git_override_in_pubspec_overrides_yaml_moves_too() {
     );
     assert_eq!(
         kept,
-        ["pubspec_overrides.yaml overrides fespalier; left as it is"]
+        [
+            "pub does not read the `dependency_overrides:` of pubspec.yaml (fespalier_transport) while pubspec_overrides.yaml has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
+            "pubspec_overrides.yaml overrides fespalier; left as it is"
+        ]
     );
     // At the target already: nothing to write there.
     let at = overrides.replace("v0.21.0", "v0.22.1");
@@ -341,6 +345,40 @@ fn a_git_override_in_pubspec_overrides_yaml_moves_too() {
         panic!()
     };
     assert_eq!(moved, None);
+}
+
+/// With a `dependency_overrides:` key in `pubspec_overrides.yaml`, pub reads none of the pubspec's
+/// overrides: they move all the same, for a checkout without that file, and a note says that pub
+/// does not read them here (since 0.24.1). A file without the key says nothing.
+#[test]
+fn the_pubspec_s_overrides_move_and_are_said_to_be_unread() {
+    let file = "dependency_overrides:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
+    let AppPlan::Refs { moves, kept, .. } = plan(APP, Some(file), v(0, 22, 1)).unwrap() else {
+        panic!()
+    };
+    assert!(
+        moves
+            .iter()
+            .any(|m| m.name == "fespalier_transport" && m.file == "pubspec.yaml"),
+        "{moves:?}"
+    );
+    assert_eq!(
+        kept,
+        [
+            "pub does not read the `dependency_overrides:` of pubspec.yaml (fespalier_transport) while pubspec_overrides.yaml has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
+            "pubspec_overrides.yaml overrides fespalier; left as it is",
+        ]
+    );
+    let AppPlan::Refs { kept, .. } =
+        plan(APP, Some("dependency_overrides:\n"), v(0, 22, 1)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    let AppPlan::Refs { kept, .. } = plan(APP, Some("# none\n"), v(0, 22, 1)).unwrap() else {
+        panic!()
+    };
+    assert!(kept.is_empty(), "{kept:?}");
 }
 
 /// The messages name the pin and the file it is in (since 0.24.1): the refusal to move the app back

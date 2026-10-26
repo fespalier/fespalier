@@ -48,6 +48,25 @@ pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
     same_repository(url, other) && in_packages(path, name)
 }
 
+/// Whether `name`, listed as `value`, is a package of a checkout of this repository (since 0.24.1):
+/// a `path:` to a folder `<root>/packages/<name>`, for `fespalier` or a `fespalier_` name. The
+/// place and the name, as [`is_ours`] tells a git dependency: what `fsp doctor` keeps an `override`
+/// row for when the package is newer than this `fsp`, while `fespalier_extras: {path: ../extras}`
+/// gets none.
+#[must_use]
+pub fn in_checkout(name: &str, value: &Value) -> bool {
+    let fespalier_s = name == "fespalier" || name.starts_with("fespalier_");
+    fespalier_s
+        && value
+            .get("path")
+            .and_then(Value::as_str)
+            .is_some_and(|path| {
+                let folder = folder(path);
+                let tail = format!("packages/{name}");
+                folder == tail || folder.ends_with(&format!("/{tail}"))
+            })
+}
+
 /// A folder the way pub's git source reads it: `./packages/x`, `packages//x/` and
 /// `packages/./x` are `packages/x`, and a `..` takes the segment before it away.
 #[must_use]

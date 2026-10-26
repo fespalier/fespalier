@@ -31,7 +31,7 @@ What changed between releases, newest first, each with a link to the reference s
 
 0.24.0 changes no code you wrote and no app regenerates a different `app.g.dart`. An app with a `config/app.yaml` gets a new generated file, `lib/app.config.g.dart`, beside `output`.
 
-- **`fsp` reads `config/app.yaml`** (since 0.24.0). An app that already has a `config/app.yaml` (or a `config/app.<name>.yaml`) for another tool now gets `lib/app.config.g.dart`, and `fsp gen` and `fsp check` fail on what they cannot read in those files: move them elsewhere. Other files in `config/` are ignored. With a `config/app.yaml`, `fsp dev` and `fsp build` set `FSP_PROFILE` and `FSP_CONFIG_*` in their commands' environment, over a variable of the same name of yours. [App configuration](app-config.md).
+- **`fsp` reads `config/app.yaml`** (since 0.24.0). An app that already has a `config/app.yaml` for another tool now gets `lib/app.config.g.dart`, and `fsp gen` and `fsp check` fail on what they cannot read or type in it, or in a `config/app.<name>.yaml` or `config/app.yml` beside it: move the file elsewhere. Without a `config/app.yaml` the feature is off and nothing in `config/` is read: a `config/app.yml` or a `config/app.<name>.yaml` there gets a warning that names it (`is ignored`), never an error, and every other file of `config/` is not mentioned. An error in `config/` fails the command after `lib/app.g.dart` is written, so it never stops the routes: only `lib/app.config.g.dart` is left as it was. With a `config/app.yaml`, `fsp dev` and `fsp build` set `FSP_PROFILE` and `FSP_CONFIG_*` in their commands' environment, over a variable of the same name of yours. [App configuration](app-config.md).
 
 ### 0.23.0
 

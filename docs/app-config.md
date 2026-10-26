@@ -48,9 +48,24 @@ abstract final class AppConfig {
 }
 ```
 
-The file goes beside `output`, as the generated `main()` does: `lib/app.g.dart` gives `lib/app.config.g.dart`, and `output: lib/router/routes.g.dart` gives `lib/router/routes.config.g.dart`. Commit it, as you commit `app.g.dart`. `fsp gen`, `fsp watch` and `fsp dev` write it, and `fsp check` checks the files of `config/` without writing anything. Import it as `package:<your app>/app.config.g.dart`. A `lib/app.config.dart` beside it would be claimed by `build_runner`'s `.g.dart` builders, which would delete the file: `fsp` warns about that case, and moving `output` moves this file too.
+The file goes beside `output`, as the generated `main()` does: `lib/app.g.dart` gives `lib/app.config.g.dart`, and `output: lib/router/routes.g.dart` gives `lib/router/routes.config.g.dart`. Commit it, as you commit `app.g.dart`. `fsp gen`, `fsp watch` and `fsp dev` write it, and `fsp check` checks the files of `config/` without writing anything. Import it as `package:<your app>/app.config.g.dart`. `AppConfig` is a fixed name, so an app that has a class of its own called `AppConfig` imports the generated file with a prefix (`import 'package:demo/app.config.g.dart' as generated;`, then `generated.AppConfig.apiBaseUrl`; since 0.24.0). A `lib/app.config.dart` beside it would be claimed by `build_runner`'s `.g.dart` builders, which would delete the file: `fsp` warns about that case. Moving `output` moves this file too, and the file at the old place stays: an import of it keeps compiling with the values it had, so `fsp` warns about a file that starts with its header at `lib/app.config.g.dart` when `output` puts the configuration elsewhere (since 0.24.0), and you delete it.
 
-**Names.** Each value is a `static const` of `AppConfig` in lowerCamelCase. The spelling of the key does not matter: `redirect-uri`, `redirect_uri` and `redirectUri` are all `redirectUri`. A map is a group, and its keys add to the name, so `api.base_url` is `apiBaseUrl`. A key is letters, digits, `_` and `-`, starting with a letter. A Dart reserved word, the name `profile` (which is `AppConfig.profile`, the active profile), and two keys that make one constant are errors. Flat constants, rather than nested objects, are on purpose: a field of a `const` object is not a constant expression, so `AppConfig.api.timeoutMs` could not be the default of a `const` widget or flag.
+**An error in `config/` does not stop the routes** (since 0.24.0). `lib/app.g.dart` does not depend on `config/`, so `fsp gen`, `fsp watch` and `fsp dev` write the route outputs and leave only `lib/app.config.g.dart` as it was, then fail with a line that says so, and `fsp` exits 1:
+
+```text
+1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date
+```
+
+In `fsp dev` a new route reloads while the error stays on screen, and fixing the file restarts the app for the new values. `fsp check` writes nothing and ends with `1 error(s) in config/`. An error in the routes themselves still stops every output, the configuration included: `N error(s); lib/app.g.dart and lib/app.config.g.dart left unchanged`.
+
+**Names.** Each value is a `static const` of `AppConfig` in lowerCamelCase. `fsp` reads each key in words, as it does for the [variables of the task's commands](#tasks-and-the-configuration) (since 0.24.0), so the spelling of the key does not matter: `redirect-uri`, `redirect_uri`, `redirectUri` and `REDIRECT_URI` are all `redirectUri`, and `API_URL` is `apiUrl`, so a key written like a `--dart-define` name is fine. A map is a group, and its keys add to the name, so `api.base_url` is `apiBaseUrl`. A key is letters, digits, `_` and `-`, starting with a letter. These are errors:
+
+- a Dart reserved word, and the name `profile` (which is `AppConfig.profile`, the active profile);
+- `int`, `double` and `bool`, which the generated class writes as types in its own declarations, so a constant of that name would hide them from every other constant (since 0.24.0);
+- `hashCode`, `runtimeType`, `toString` and `noSuchMethod`, which every Dart object has, so a static member of that name conflicts with them (since 0.24.0);
+- two keys that make one constant. A group's name is only the start of a longer one: `api.int` is `apiInt`.
+
+Flat constants, rather than nested objects, are on purpose: a field of a `const` object is not a constant expression, so `AppConfig.api.timeoutMs` could not be the default of a `const` widget or flag.
 
 **Types.** The type of a key is the same in every file that sets it:
 
@@ -64,7 +79,7 @@ The file goes beside `output`, as the generated `main()` does: `lib/app.g.dart` 
 | `null`           | nullable, such as `String?` | The type comes from another file, and null everywhere is an error.                  |
 | `[]`             | a list                      | It takes its item type from another file, and an empty list everywhere is an error. |
 
-A `NaN` or an infinity is an error, and so is a YAML tag. YAML 1.2 reads `yes`, `no`, `on` and `off` as strings and `1.10` as the number 1.1, so write what you mean as text.
+A `NaN` or an infinity is an error, and so is a string with a NUL character: every value is also a variable of [the task's commands](#tasks-and-the-configuration), and a command's environment cannot hold one (since 0.24.0). A YAML tag of your own (`!env`, `!Ref`) is an error. YAML's own `!!str`, `!!int`, `!!float` and `!!bool` are read as YAML says (`!!str 123` is the string `123`), and any other `!!` tag, `!!binary` for one, is dropped by the parser: the text after it is the value, and is not decoded (since 0.24.0). YAML 1.2 reads `yes`, `no`, `on` and `off` as strings and `1.10` as the number 1.1, so write what you mean as text.
 
 Every value is a constant, so `const` contexts work with it, and so does `if (AppConfig.newCheckout)`: the compiler can leave out the code behind a value that is off in a release build.
 
@@ -97,9 +112,10 @@ The rules:
   ```
 
 - A map is merged key by key. A list is replaced as a whole.
+- **Every profile file is in the committed output** (since 0.24.0): `lib/app.config.g.dart` holds the values of every `config/app.*.yaml`, and you commit it. So never git-ignore a profile: a `config/app.local.yaml` with a LAN address in it would reach git through the generated file, and CI's regeneration would differ from your commit. A value that must stay out of the repository is the app's own `String.fromEnvironment`.
 - An empty profile file is a profile that changes nothing, which is useful for a flavour's name.
-- A profile name is letters, digits, `_` and `-`, starting with a letter, and camelCase is allowed. `default` (the name of `config/app.yaml` alone) and the Flutter build modes `debug`, `profile` and `release` are not profile names, and two names that differ only in case are an error. A file named `app.yml` or `app.<name>.yml` is an error: rename it to `.yaml`.
-- A profile file without `config/app.yaml` is an error.
+- A profile name is letters, digits, `_` and `-`, starting with a letter, and camelCase is allowed. `default` (the name of `config/app.yaml` alone) and the Flutter build modes `debug`, `profile` and `release` are not profile names, and two names that differ only in case are an error. With a `config/app.yaml`, a file named `app.yml` or `app.<name>.yml` is an error: rename it to `.yaml`.
+- Without a `config/app.yaml` the feature is off (since 0.24.0), and `fsp` reads nothing in `config/`. A `config/app.yml`, a `config/app.<name>.yml` or a `config/app.<name>.yaml` there, which may be another tool's, gets one warning line for each file and no more: `config/app.dev.yaml is ignored: fsp reads only config/app.yaml and the config/app.<profile>.yaml beside it, and config/app.yaml is not there`. Every other file of `config/` is not mentioned.
 
 **How a build picks its profile.** The generated file decides in this order:
 
@@ -118,6 +134,7 @@ A `FSP_PROFILE` that names no profile stops the build. The generated file has a 
 - `fsp build apk --profile prod` does the same for a build. The profile line is printed on stderr after the generation line.
 - Both print which profile and why, as one line: `profile staging (FSP_PROFILE): config/app.staging.yaml over config/app.yaml`, with `(the flavour)` or `(a debug build)` in place of `(FSP_PROFILE)` when that is the reason, and `profile default: config/app.yaml` for the default. `--dry-run` prints the same line.
 - A define of your own after `--`, `--dart-define=FSP_PROFILE=<name>`, names the profile too; both at once is an error.
+- `fsp` reads the profile, the flavour (`--flavor`) and the build mode (`--release`, `--profile`, `--debug`) only from the arguments after `--` (since 0.24.0). A `--dart-define-from-file`, or a flutter command of your own in `tasks: dev: run:` that has a `--flavor` or a `--release`, is not read, so the profile line `fsp` prints (and the `FSP_PROFILE` and `FSP_CONFIG_*` variables of the task's commands) can differ from the profile the app compiles. `AppConfig.profile` says which one it is.
 - By hand and in CI: `flutter build web --dart-define=FSP_PROFILE=prod`. In VS Code, a launch configuration in `.vscode/launch.json` can pass the same define with `"toolArgs": ["--dart-define=FSP_PROFILE=staging"]`.
 - `--profile release` is refused, because it names a Flutter build mode and not a profile. The message is:
 
@@ -142,7 +159,7 @@ tasks:
       api: dart run tool/api.dart --port "$FSP_CONFIG_API_PORT" # api.port in config/app.yaml
 ```
 
-`fsp run <task>` has no build and no profile, so it sets neither variable: a task that wants one calls `fsp build --profile x`, or passes the define itself. `tasks: env:` is unchanged: it is the process variables of the commands, and it is not the app's values, which are `config/`. Two keys that would make one variable (`apiURL` and `api_url`) are an error.
+`fsp run <task>` has no build and no profile, so it sets neither variable: a task that wants one calls `fsp build --profile x`, or passes the define itself. `tasks: env:` is unchanged: it is the process variables of the commands, and it is not the app's values, which are `config/`. Every spelling of a key is one variable, as it is one constant (`apiURL`, `api_url` and `API_URL` are `FSP_CONFIG_API_URL`), so two of them are the error about [names](#configappyaml-and-appconfig), not a second one. A string with a NUL character is refused for the same reason (since 0.24.0).
 
 ## Tests
 
@@ -152,7 +169,7 @@ tasks:
 
 Every value of `config/` is compiled into the app, and anyone who has the app (an APK, an IPA, a web page's JavaScript) can read it, however private the repository is. So `fsp` refuses what has the shape of a credential, warns about what has a name like one, and cannot catch everything.
 
-**Refused** (an error, and the file is not written): a PEM private key; a URL with a password in it (`https://user:<password>@host/`); an AWS access key id; a SendGrid API key; a Supabase `service_role` key (a JWT whose payload says so); and the prefixed tokens of GitHub, GitLab, Slack, Stripe (secret and restricted keys), OpenAI, Anthropic, Google OAuth client secrets, Tolgee, Sentry auth tokens, npm, Shopify, Supabase secret keys and Mapbox secret tokens, each with the least number of characters a real token has. The message is the same for each:
+**Refused** (an error, and the file is not written): a PEM private key or a PGP private key block; a URL with a password in it (`https://user:<password>@host/`); a Slack incoming-webhook URL (`hooks.slack.com/services/...`) and a Discord webhook URL (`discord.com/api/webhooks/...`), since the URL is the credential; an AWS access key id; a SendGrid API key; a Supabase `service_role` key (a JWT whose payload says so); and the prefixed tokens of GitHub, GitLab, Slack, Stripe (secret and restricted keys and webhook signing secrets, `whsec_`), OpenAI, Anthropic, Google OAuth client secrets, Tolgee, Sentry auth tokens, npm, Shopify, Supabase secret keys, Mapbox secret tokens, Hugging Face (`hf_`) and DigitalOcean (`dop_v1_`), each with the least number of characters a real token has (the PGP block, the webhook URLs, `whsec_`, `hf_` and `dop_v1_` since 0.24.0). The message is the same for each:
 
 ```text
 `stripe.key` in config/app.yaml looks like a Stripe secret key: every value in config/ is compiled into the app, where anyone who has the app can read it; keep the secret on a server and give the app only what it may show (docs/app-config.md, "Secrets")
@@ -160,7 +177,7 @@ Every value of `config/` is compiled into the app, and anyone who has the app (a
 
 Public keys pass on purpose: a Stripe publishable key, a Mapbox public token, a Google API key, a Supabase publishable key or `anon` JWT, and a Sentry DSN.
 
-**Warned about** (the file is written, and `fsp` prints the warning): a non-empty string under a key named like a secret (`secret`, `password`, `passwd`, `passphrase`, `private key`, `access token`, `refresh token`, `auth token` or `bearer token`, in any spelling of the key), and any other JWT. The warning for a name says that it is a secret or that it is not, and what to do about each:
+**Warned about** (the file is written, and `fsp` prints the warning): a non-empty string under a key named like a secret (`secret`, `password`, `passwd`, `passphrase`, `private key`, `access token`, `refresh token`, `auth token` or `bearer token`, in any spelling of the key), and any other JWT. A key whose last word is `url`, `uri`, `path`, `endpoint` or `link` (`password_reset_url`, `private_key_path`, `token_endpoint`) names where something is and not the secret, so its name gets no warning (since 0.24.0): a value with a credential's shape under such a name is refused all the same, and a JWT still gets its own warning. The warning for a name says that it is a secret or that it is not, and what to do about each:
 
 ```text
 `api.password` in config/app.yaml is named like a secret: every value in config/ is compiled into the app, where anyone who has the app can read it; if it is a secret, keep it on a server (docs/app-config.md, "Secrets"), and if it is not, give it a name that says so

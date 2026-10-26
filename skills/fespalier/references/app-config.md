@@ -7,20 +7,22 @@ The app's own values, such as an API's address or a feature that is on in stagin
 - **Use it** for a value that differs per environment and is **public**: an API's base URL, a timeout, a host list, a feature that a profile switches on, a public key (a Stripe publishable key, a Sentry DSN, a Supabase anon key).
 - **Not for a secret.** Every value is compiled into the app, and anyone who has the app (an APK, an IPA, a web page's JavaScript) can read it. `fsp` refuses what has a credential's shape (an error) and warns about a secret-named key (a warning), but it cannot catch everything. A secret goes on a server, into the device keystore (`fespalier_biometrics` secrets), or into CI's secret store, and never in a `--dart-define` or a file of `config/`.
 - **Not for a value that changes while the app runs.** It is fixed in the build. A flag that a remote service can change is `fespalier_flags`, whose fallback can be the constant: `const BoolFlag('new_checkout', fallback: AppConfig.newCheckout)` (the feature flags of [`fespalier-guards`](../../fespalier-guards/SKILL.md)).
-- A value that must come from outside the repository (a LAN address, a CI build number) stays the app's own `String.fromEnvironment`. `config/` takes no per-value define on purpose.
+- A value that must come from outside the repository (a LAN address, a CI build number) stays the app's own `String.fromEnvironment`. `config/` takes no per-value define on purpose (and a profile file is never git-ignored: see "The files").
 
 ## The files
 
 - `config/app.yaml`: the values of every build. The comment lines right above a key become the doc comment of its constant.
 - `config/app.<profile>.yaml`: changes values that `config/app.yaml` has. It cannot add a key (a typo is an error), a map is merged key by key, a list is replaced, and an empty file changes nothing.
-- A profile name is letters, digits, `_` and `-` (camelCase is fine), starting with a letter. `default`, `debug`, `profile` and `release` are not profile names; a `.yml` file is refused ("rename to .yaml"); two names that differ only in case are refused.
-- Other files in `config/` are ignored, so the folder can be shared with other tools. Since 0.24.0 a `config/app.yaml` of another tool gets a generated file: move it (see the migration skill, `fespalier-migration`).
-- The output is `lib/app.config.g.dart`, beside `output` (`lib/app.g.dart` gives `lib/app.config.g.dart`). Commit it. **Never edit it**: `fsp gen`, `fsp watch` and `fsp dev` write it; `fsp check` checks it without writing.
+- A profile name is letters, digits, `_` and `-` (camelCase is fine), starting with a letter. `default`, `debug`, `profile` and `release` are not profile names; with a `config/app.yaml`, a `.yml` file is refused ("rename to .yaml"); two names that differ only in case are refused.
+- **The feature is on when `config/app.yaml` exists.** Without it, `fsp` reads nothing in `config/`: a `config/app.yml`, a `config/app.<name>.yml` or a `config/app.<name>.yaml` gets one **warning** line for each file (`config/app.dev.yaml is ignored: fsp reads only config/app.yaml and the config/app.<profile>.yaml beside it, and config/app.yaml is not there`), never an error, and every other file of `config/` is not mentioned, so the folder can be shared with other tools. Since 0.24.0 a `config/app.yaml` of another tool does get a generated file: move it (see the migration skill, `fespalier-migration`).
+- **Every profile file is in the committed output**, so never git-ignore a profile: a `config/app.local.yaml` with a LAN address would reach git through `lib/app.config.g.dart`, and CI's regeneration would differ from the commit. A value that must stay out of the repository is the app's own `String.fromEnvironment`.
+- The output is `lib/app.config.g.dart`, beside `output` (`lib/app.g.dart` gives `lib/app.config.g.dart`). Commit it. **Never edit it**: `fsp gen`, `fsp watch` and `fsp dev` write it; `fsp check` checks it without writing. If `output:` moves, the file at the old place stays and an import of it keeps the old values: `fsp` warns about a file with its header at `lib/app.config.g.dart` when the configuration goes elsewhere, and you delete it.
+- `AppConfig` is a fixed name: an app with a class of its own called `AppConfig` imports the generated file with a prefix (`import 'package:x/app.config.g.dart' as generated;`).
 
 ## Names and types
 
-- `api.base_url` is `AppConfig.apiBaseUrl`; every key spelling gives lowerCamelCase (`redirect-uri`, `redirect_uri`, `redirectUri` are one name). A map adds to the name. Two keys that make one constant, a Dart reserved word, and `profile` are errors.
-- A key's type is the same in every file: string, boolean, int, double, or a list of one of those. An int and a double make a double. `null` makes the constant nullable (the type comes from another file); an empty list takes its item type from another file. An int beyond 2^53, `NaN`, an infinity, a YAML tag, a map inside a list, and a list of lists are errors.
+- `api.base_url` is `AppConfig.apiBaseUrl`. Each key is read in words, as the `FSP_CONFIG_*` variable reads it, so every spelling gives the same lowerCamelCase name: `redirect-uri`, `redirect_uri`, `redirectUri` and `REDIRECT_URI` are `redirectUri`, `API_URL` is `apiUrl`. A map adds to the name (`api.int` is `apiInt`). Errors: two keys that make one constant; a Dart reserved word; `profile`; `int`, `double` and `bool` (types the generated class writes, which a constant of that name would hide); `hashCode`, `runtimeType`, `toString` and `noSuchMethod` (members every object has).
+- A key's type is the same in every file: string, boolean, int, double, or a list of one of those. An int and a double make a double. `null` makes the constant nullable (the type comes from another file); an empty list takes its item type from another file. An int beyond 2^53 (the smallest, `-9223372036854775808`, included), `NaN`, an infinity, a string with a NUL character (every value is also an environment variable of the task's commands), a YAML tag of your own (`!env`), a map inside a list, and a list of lists are errors. YAML's own `!!str`, `!!int`, `!!float` and `!!bool` are read as YAML says; any other `!!` tag (`!!binary`) is dropped by the parser, and its text is the value, not decoded.
 - YAML 1.2: `yes`, `no`, `on` and `off` are strings; `1.10` is the number 1.1. Quote text you mean as text.
 - Every value is a `static const`, so it is a constant expression: `const`, `if (AppConfig.flag)` and a `const` default all work, and the code behind a value that is off is left out of a release build.
 
@@ -40,6 +42,7 @@ A `FSP_PROFILE` that names no profile stops the compile (a constant division by 
 - `fsp dev --profile staging`, `fsp build apk --profile prod`: the define goes in front of the arguments after `--`. `--profile release` (or `debug`, `profile`) is refused: pass Flutter's mode after `--` (`-- --release`).
 - `flutter build web --dart-define=FSP_PROFILE=prod` by hand and in CI; a VS Code launch configuration takes `"toolArgs": ["--dart-define=FSP_PROFILE=staging"]`.
 - A define of your own after `--` and `--profile` at once is an error.
+- `fsp` reads the profile, the flavour and the build mode only from the arguments after `--`: not a `--dart-define-from-file`, nor a `--flavor` or `--release` of a flutter command of your own in `tasks: dev: run:`. The profile line and the `FSP_*` variables can then differ from what the app compiles; `AppConfig.profile` says which it is.
 - `fsp dev` **hot restarts** the app when a file of `config/` changes (`[fsp] hot restart: lib/app.config.g.dart changed`), not a hot reload: a value read once (a provider, a `static final`, a closure made before the reload) keeps its old value through a reload. `hot_reload: false` in `tasks: dev:` turns the restart off.
 - `fsp run <task>` sets neither variable; a task that wants a profile calls `fsp build --profile x` or passes the define.
 
@@ -60,7 +63,7 @@ tasks:
 
 ## What to do when it fails
 
-The messages and their fixes are in [`fespalier-troubleshooting`](../../fespalier-troubleshooting/references/diagnostics-app-config.md). Fix the first error first: the pass stops and leaves `lib/app.g.dart` and `lib/app.config.g.dart` as they were.
+The messages and their fixes are in [`fespalier-troubleshooting`](../../fespalier-troubleshooting/references/diagnostics-app-config.md). An error in `config/` does not stop the routes: `fsp gen`, `fsp watch` and `fsp dev` write `lib/app.g.dart` (and the other route outputs), leave only `lib/app.config.g.dart` as it was, and fail with `N error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date` (`fsp dev` still reloads a new route, and keeps the error on screen). `fsp check` writes nothing and says `N error(s) in config/`. An error in the routes still leaves every output as it was. Fix the first error first.
 
 ## Limits
 

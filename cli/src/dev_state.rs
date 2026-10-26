@@ -1047,10 +1047,13 @@ impl DevState {
             // final`) keeps its old value through a hot reload: a restart reads them all again
             // (since 0.24.0). Since 0.24.1 also for a pass that wrote nothing: a `git checkout`
             // changed `config/` and the file together, or the restart that was to bring the values
-            // in failed.
-            let line = format!("hot restart: {} changed", self.config_output);
-            self.say(&line, Kind::Normal);
-            self.request(now, true, Ask::Regen, fx);
+            // in failed. The line goes with the request, as `refused`'s does: a run that cannot
+            // restart (flutter is not running, a quit is under way, or it started with `--profile`,
+            // `--release` or `--no-hot`) drops the request, and every save would say it again.
+            if self.request(now, true, Ask::Regen, fx) {
+                let line = format!("hot restart: {} changed", self.config_output);
+                self.say(&line, Kind::Normal);
+            }
         } else if r.wrote {
             if !r.routes_wrote && r.config_written {
                 // The configuration alone, and no value of the profile the app runs (since

@@ -2070,3 +2070,90 @@ fn a_pass_that_read_no_configuration_over_an_unknown_baseline_restarts_for_a_wri
     };
     assert_eq!(requests(&pass(&mut s, 300, written)), [(2, true)]);
 }
+
+/// A running app, plain, that flutter started without hot restart (`--profile`, `--release` or
+/// `--no-hot`), over a configuration that holds [`three`], run as `staging`.
+fn running_without_restart(stamp: Stamp) -> DevState {
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = started_config(
+        Some(stamp),
+        true,
+        true,
+        Build::seen(staging, Some("staging")),
+        Some(three()),
+    );
+    connect(&mut s);
+    app_start(&mut s, 10, false);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    s
+}
+
+#[test]
+fn a_run_without_restart_does_not_say_hot_restart_for_a_configuration() {
+    // `flutter run --profile` says `supportsRestart: false`: a restart cannot be sent (since
+    // 0.24.1), so no line says one is. Before this, every later save said it again, because the
+    // app never took the values and the file always differed.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_without_restart(v0.clone());
+    let edited = config(&[("default", "1"), ("dev", "2"), ("staging", "4")]);
+    let fx = pass(&mut s, 100, config_alone(v0.clone(), edited.clone()));
+    assert!(requests(&fx).is_empty());
+    assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
+    for at in [200, 300, 400] {
+        let fx = pass(&mut s, at, config_found(v0.clone(), edited.clone()));
+        assert!(requests(&fx).is_empty());
+        assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
+    }
+}
+
+#[test]
+fn a_stopped_flutter_does_not_say_hot_restart_for_a_configuration() {
+    // The full-screen view after flutter exited (before `R`): nothing can be sent (since 0.24.1),
+    // so no save says a restart is on its way.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = started_config(
+        Some(v0.clone()),
+        false,
+        true,
+        Build::seen(staging, Some("staging")),
+        Some(three()),
+    );
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.update(
+        ms(30),
+        Input::Exited {
+            pane: FLUTTER,
+            status: exit(1),
+        },
+    );
+    let edited = config(&[("default", "1"), ("dev", "2"), ("staging", "4")]);
+    for at in [100, 200] {
+        let fx = pass(&mut s, at, config_found(v0.clone(), edited.clone()));
+        assert!(requests(&fx).is_empty());
+    }
+    let said: Vec<String> = s.panes()[FSP]
+        .lines
+        .iter()
+        .map(|l| l.text.clone())
+        .collect();
+    assert!(said.iter().all(|l| !l.contains("hot restart")), "{said:?}");
+}
+
+#[test]
+fn a_restart_that_is_sent_is_still_said() {
+    // The line goes with the request: a run that can restart says it once, and a save the restart
+    // covers does not say it again (since 0.24.1).
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_staging(v0.clone());
+    let edited = config(&[("default", "1"), ("dev", "2"), ("staging", "4")]);
+    let fx = pass(&mut s, 100, config_found(v0.clone(), edited.clone()));
+    assert_eq!(requests(&fx), [(1, true)]);
+    assert_eq!(lines(&mut s), RESTART);
+    let fx = pass(&mut s, 200, config_found(v0, edited));
+    assert!(requests(&fx).is_empty());
+    assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
+}

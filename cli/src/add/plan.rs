@@ -59,8 +59,9 @@ pub struct Request<'a> {
     pub files: &'a BTreeMap<String, String>,
     /// The text of `pubspec_overrides.yaml`, when the app has one.
     pub overrides: Option<&'a str>,
-    /// The packages the root of the app's pub workspace overrides, when the app says `resolution:
-    /// workspace`: pub reads them with the app's own.
+    /// The packages the root of the app's pub workspace overrides, when pub resolves the app in a
+    /// workspace (`resolution: workspace`, in its `pubspec_overrides.yaml` or its pubspec): pub
+    /// reads them with the app's own.
     pub workspace_overrides: &'a [String],
 }
 

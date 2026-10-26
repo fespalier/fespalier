@@ -25,9 +25,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_yaml_ng::Value;
 
-/// The file beside a pubspec whose `dependency_overrides`, `resolution` and `workspace` pub reads
-/// in place of the pubspec's (its error for any other key names those three).
-const OVERRIDES: &str = "pubspec_overrides.yaml";
+use crate::upgrade_app::OVERRIDES;
 
 /// Name → the package's folder: the folder of the pubspec that lists it joined with its `path:`.
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -50,11 +48,12 @@ impl Packages {
         }
         // The overrides replace the source of their name: the workspace root's first, which pub
         // applies to every member, then the app's own (pub refuses a name that both override).
-        let root = workspace_root(project, &pubspec);
+        let file = yaml(&project.join(OVERRIDES));
+        let root = workspace_root(project, &pubspec, file.as_ref());
         let all = root
             .iter()
-            .flat_map(|(dir, pubspec)| overrides(dir, pubspec))
-            .chain(overrides(project, &pubspec));
+            .flat_map(|(dir, pubspec)| overrides(dir, yaml(&dir.join(OVERRIDES)).as_ref(), pubspec))
+            .chain(overrides(project, file.as_ref(), &pubspec));
         for (name, dir) in all {
             match decided.iter_mut().find(|(n, _)| *n == name) {
                 Some(entry) => entry.1 = dir,
@@ -126,11 +125,11 @@ fn join(base: &Path, rel: &str) -> PathBuf {
 }
 
 /// The `dependency_overrides` of the package whose pubspec `pubspec` is in `dir`: those of its
-/// `pubspec_overrides.yaml` when that file has the key (an empty key: none), as pub reads them, else
-/// the pubspec's. Each is a folder (the `path:` joined to `dir`), or `None` for any other source.
-fn overrides(dir: &Path, pubspec: &Value) -> Vec<(String, Option<PathBuf>)> {
-    let file = yaml(&dir.join(OVERRIDES));
-    entries(field(file.as_ref(), pubspec, "dependency_overrides"))
+/// `pubspec_overrides.yaml`, `file`, when that has the key (an empty key: none), as pub reads them,
+/// else the pubspec's. Each is a folder (the `path:` joined to `dir`), or `None` for any other
+/// source.
+fn overrides(dir: &Path, file: Option<&Value>, pubspec: &Value) -> Vec<(String, Option<PathBuf>)> {
+    entries(field(file, pubspec, "dependency_overrides"))
         .into_iter()
         .map(|(name, spec)| (name, path_of(spec).map(|p| join(dir, p))))
         .collect()
@@ -154,13 +153,17 @@ pub(crate) fn resolves_in_workspace(file: Option<&Value>, pubspec: &Value) -> bo
 }
 
 /// The root of the pub workspace the app belongs to, and its pubspec: for an app pub resolves in a
-/// workspace ([`resolves_in_workspace`]), the nearest ancestor folder whose pubspec has a
-/// `workspace:` key and is not itself a member (a nested workspace has a root above it), each
-/// folder's `pubspec_overrides.yaml` read for both keys as pub reads it (since 0.24.1). The entries
-/// of `workspace:` are not matched, so a root that does not list the app is taken all the same (pub
-/// refuses that setup).
-pub(crate) fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf, Value)> {
-    if !resolves_in_workspace(yaml(&project.join(OVERRIDES)).as_ref(), pubspec) {
+/// workspace ([`resolves_in_workspace`], `file` being the app's `pubspec_overrides.yaml`), the
+/// nearest ancestor folder whose pubspec has a `workspace:` key and is not itself a member (a
+/// nested workspace has a root above it), each folder's `pubspec_overrides.yaml` read for both keys
+/// as pub reads it (since 0.24.1). The entries of `workspace:` are not matched, so a root that does
+/// not list the app is taken all the same (pub refuses that setup).
+pub(crate) fn workspace_root(
+    project: &Path,
+    pubspec: &Value,
+    file: Option<&Value>,
+) -> Option<(PathBuf, Value)> {
+    if !resolves_in_workspace(file, pubspec) {
         return None;
     }
     // A relative project has no end to climb to: stop after as many folders as its absolute path has.
@@ -186,13 +189,14 @@ pub(crate) fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf
 /// that has the key, else its `pubspec.yaml`. With its path as a person opens it from where `fsp`
 /// runs, for a message (the root's folder found from the project's path, so for the app in
 /// `apps/shop` it is `pubspec.yaml` from the root of the workspace, `../../pubspec.yaml` from the
-/// app and a full path for a full project path), and its text (since 0.24.1; `fsp add` and `fsp upgrade --app`
-/// read the root's overrides through this).
+/// app and a full path for a full project path), and its text (since 0.24.1; `fsp add` and
+/// `fsp upgrade --app` read the root's overrides through this).
 pub(crate) fn workspace_overrides_file(
     project: &Path,
     pubspec: &Value,
 ) -> Option<(String, String)> {
-    let (root, _) = workspace_root(project, pubspec)?;
+    let file = yaml(&project.join(OVERRIDES));
+    let (root, _) = workspace_root(project, pubspec, file.as_ref())?;
     let shown = |file: &str| join(&root, file).display().to_string();
     let has_key = |text: &str| {
         serde_yaml_ng::from_str::<Value>(text)

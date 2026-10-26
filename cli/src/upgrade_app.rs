@@ -25,8 +25,8 @@ pub const MIGRATION: &str = include_str!("../../docs/migration.md");
 
 /// The file pub reads the dependencies from.
 pub const PUBSPEC: &str = "pubspec.yaml";
-/// The file whose `dependency_overrides:`, when it has the key, pub reads in place of the
-/// pubspec's.
+/// The file whose `dependency_overrides`, `resolution` and `workspace`, each when it has the key,
+/// pub reads in place of the pubspec's (its error for any other key names those three).
 pub const OVERRIDES: &str = "pubspec_overrides.yaml";
 
 /// One `ref:` that moves.

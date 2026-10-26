@@ -232,7 +232,8 @@ pub struct Facts {
     /// pubspec.yaml as YAML: what the versions are read from, even when `config.rs` refuses it.
     pub raw: Option<Value>,
     /// `pubspec_overrides.yaml` as YAML, when there is one that reads: pub reads its
-    /// `dependency_overrides:` in place of the pubspec's when it has the key (since 0.24.1).
+    /// `dependency_overrides:`, `resolution:` and `workspace:` in place of the pubspec's, each when
+    /// it has the key (since 0.24.1).
     pub overrides: Option<Value>,
     /// Why `pubspec_overrides.yaml` is there and does not read as YAML: pub stops on it (since
     /// 0.24.1).
@@ -302,7 +303,7 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
             },
             Err(_) => (None, None),
         };
-    let lock = read_lock(project, raw.as_ref());
+    let lock = read_lock(project, raw.as_ref(), overrides.as_ref());
     let workspace_member = raw
         .as_ref()
         .is_some_and(|r| crate::packages::resolves_in_workspace(overrides.as_ref(), r));
@@ -342,8 +343,8 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
 
 /// `pubspec.lock` as pub wrote it: beside the pubspec, or, for a pub workspace member, beside the
 /// root's (a member has none of its own).
-fn read_lock(project: &Path, raw: Option<&Value>) -> Option<Value> {
-    let root = raw.and_then(|r| crate::packages::workspace_root(project, r));
+fn read_lock(project: &Path, raw: Option<&Value>, overrides: Option<&Value>) -> Option<Value> {
+    let root = raw.and_then(|r| crate::packages::workspace_root(project, r, overrides));
     let dir = root.as_ref().map_or(project, |(dir, _)| dir.as_path());
     let text = fs::read_to_string(dir.join("pubspec.lock")).ok()?;
     serde_yaml_ng::from_str::<Value>(&text).ok()

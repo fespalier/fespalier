@@ -4564,3 +4564,804 @@ fn create_dot_fills_the_empty_folder_it_runs_in() {
     );
     assert!(staging_folders(root).is_empty());
 }
+
+// --- `fsp add` (since 0.23.0) --------------------------------------------------------------------
+//
+// Against the stand-in `flutter` of `fsp create`: an app made by `fsp create`, then changed.
+// `scripts/check-create.sh add` adds every feature with the real flutter.
+
+/// An app made by `fsp create` with the stand-in flutter, in `root/app`.
+#[cfg(unix)]
+fn created_app(root: &Path) -> std::path::PathBuf {
+    let (code, _, err) = fsp_task(root, &["create", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    fs::remove_file(root.join("flutter.log")).unwrap();
+    root.join("app")
+}
+
+#[cfg(unix)]
+#[test]
+fn add_writes_the_feature_then_runs_pub_get_gen_and_the_route_tests() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.contains("Resolving dependencies..."), "{out}");
+    assert_eq!(
+        flutter_log(root),
+        [
+            "pub get".to_string(),
+            format!("pub get in {}", app.display())
+        ]
+    );
+    // The pubspec gained lines and lost none.
+    let now = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let mut lines = now.lines();
+    for line in pubspec.lines() {
+        assert!(lines.any(|l| l == line), "`{line}` is gone\n{now}");
+    }
+    assert!(now.contains("  fespalier_http:\n    git:\n"), "{now}");
+    assert!(now.contains("    skip: [/headlines]\n"), "{now}");
+    for file in [
+        "lib/api.dart",
+        "lib/app/headlines/page.dart",
+        "lib/app/startup.dart",
+        "test/http_test.dart",
+    ] {
+        assert!(app.join(file).is_file(), "{file}\n{err}");
+    }
+    // `fsp gen` saw the new route, and `fsp test` wrote its smoke tests again, skipping it.
+    let generated = fs::read_to_string(app.join("lib/app.g.dart")).unwrap();
+    assert!(generated.contains("class HeadlinesRoute"), "{generated}");
+    let smoke = fs::read_to_string(app.join("test/routes/routes_test.dart")).unwrap();
+    assert!(
+        smoke.contains("//   skipped /headlines: listed in `fespalier.test.skip`"),
+        "{smoke}"
+    );
+    assert!(err.contains("  edit   pubspec.yaml\n"), "{err}");
+    assert!(err.contains("  new    lib/app/startup.dart\n"), "{err}");
+    assert!(err.ends_with("\n✓ added http\n"), "{err}");
+
+    // Again: nothing to do, and nothing runs.
+    fs::remove_file(root.join("flutter.log")).unwrap();
+    let (code, _, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(err, "note: `http` is in the app already\nnothing to add\n");
+    assert!(flutter_log(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_dry_run_writes_nothing_and_a_mistake_changes_nothing() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["add", "storage", "--project", "app", "--dry-run"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(out.is_empty(), "{out}");
+    assert!(
+        err.starts_with("add storage to app (it has: none of the features)\n"),
+        "{err}"
+    );
+    assert!(
+        err.contains("\nrun    flutter pub get\nrun    fsp gen\nrun    fsp test\n"),
+        "{err}"
+    );
+    assert!(err.contains("\n=== lib/app/startup.dart (new)\n"), "{err}");
+    assert!(!app.join("lib/app/startup.dart").exists());
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+
+    let (code, _, err) = fsp_task(root, &["add", "nope", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.starts_with("unknown feature `nope`; the features are devtools, adaptive,"),
+        "{err}"
+    );
+    fs::write(app.join("lib/app/contact/page.dart"), "// mine\n").unwrap_or_else(|_| {
+        fs::create_dir_all(app.join("lib/app/contact")).unwrap();
+        fs::write(app.join("lib/app/contact/page.dart"), "// mine\n").unwrap();
+    });
+    let (code, _, err) = fsp_task(root, &["add", "forms", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(err.contains("fsp add never writes over a file"), "{err}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(!app.join("lib/app/contact/action.dart").exists());
+    assert!(flutter_log(root).is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn add_that_fails_at_pub_get_keeps_the_files_and_says_what_is_left() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "connectivity", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1));
+    assert!(err.contains("flutter pub get failed:"), "{err}");
+    assert!(
+        err.contains("The files are written; fix that and finish with:\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    assert!(app.join("test/connectivity_test.dart").is_file());
+}
+
+/// What a person has to change by hand is printed before any command runs, and a command that
+/// fails says so: the feature then reads as present to a second `fsp add`.
+#[cfg(unix)]
+#[test]
+fn add_prints_the_changes_to_make_by_hand_before_a_command_that_fails() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let app_dart = fs::read_to_string(app.join("lib/app/app.dart")).unwrap();
+    fs::write(
+        app.join("lib/app/app.dart"),
+        format!("{app_dart}// My theme.\n"),
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "i18n", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    let hand = err.find("\nBy hand: lib/app/app.dart (").expect(&err);
+    let failed = err.find("flutter pub get failed:").expect(&err);
+    assert!(hand < failed, "{err}");
+    assert!(
+        err.contains("The files are written; the changes to make by hand are printed above; fix that and finish with:\n  flutter pub get && fsp gen && fsp test"),
+        "{err}"
+    );
+    // And the pubspec's changes are listed as they are written.
+    assert!(
+        err.contains("  edit   pubspec.yaml\n           dependencies: fespalier_tolgee "),
+        "{err}"
+    );
+}
+
+/// A checkout that keeps its overrides in `pubspec_overrides.yaml` gets the new ones there, where
+/// pub reads them (since 0.23.1).
+#[cfg(unix)]
+#[test]
+fn add_writes_a_checkouts_overrides_into_pubspec_overrides_yaml() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let local = pubspec.replace(
+        &format!(
+            "    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v{}\n",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "    path: ../checkout/packages/fespalier\n",
+    );
+    assert_ne!(local, pubspec);
+    fs::write(app.join("pubspec.yaml"), &local).unwrap();
+    let overrides =
+        "dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    // `pub get` fails, so the run stops once the files are written.
+    let (code, _, err) = fsp_task(
+        root,
+        &["add", "http", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("  edit   pubspec_overrides.yaml\n           dependency_overrides: fespalier_http (path ../checkout/packages/fespalier_http)\n"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        format!(
+            "{overrides}  fespalier_http:\n    path: ../checkout/packages/fespalier_http\n  fespalier_transport:\n    path: ../checkout/packages/fespalier_transport\n"
+        )
+    );
+    let now = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    assert!(!now.contains("dependency_overrides"), "{now}");
+    assert!(
+        now.contains("  fespalier_http:\n    path: ../checkout/packages/fespalier_http\n"),
+        "{now}"
+    );
+}
+
+// --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
+
+/// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.
+#[cfg(unix)]
+fn pinned_app(root: &Path, reference: &str) -> std::path::PathBuf {
+    let app = root.join("app");
+    fs::create_dir_all(app.join("lib/app")).unwrap();
+    fs::write(app.join("lib/app/page.dart"), page("HomePage")).unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        format!(
+            "name: app\ndependencies:\n  flutter:\n    sdk: flutter\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: {reference} # with the companions\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: {reference}\n"
+        ),
+    )
+    .unwrap();
+    app
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_moves_every_ref_runs_pub_get_and_gen_and_prints_the_notes() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.19.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    assert!(
+        pubspec.contains(&format!("      ref: {tag} # with the companions\n")),
+        "{pubspec}"
+    );
+    assert_eq!(
+        pubspec.matches(&format!("ref: {tag}")).count(),
+        2,
+        "{pubspec}"
+    );
+    assert!(out.starts_with(&format!("pubspec.yaml: v0.19.0 -> {tag}\n  fespalier      v0.19.0 -> {tag}\n  fespalier_http v0.19.0 -> {tag}\n  edit  pubspec.yaml\n")), "{out}");
+    assert!(out.contains("What changed from v0.19.0 to "), "{out}");
+    assert!(
+        out.contains("\n0.20.0: https://github.com/fespalier/fespalier/blob/"),
+        "{out}"
+    );
+    assert_eq!(
+        flutter_log(root),
+        [
+            "pub get".to_string(),
+            format!("pub get in {}", app.display())
+        ]
+    );
+    assert!(app.join("lib/app.g.dart").is_file(), "{err}");
+    // Now it is up to date: --check says so, and a second run changes nothing.
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0));
+    assert_eq!(
+        out,
+        format!("fespalier and every companion in pubspec.yaml are at {tag}; nothing to move.\n")
+    );
+}
+
+/// A git override of this repository in `pubspec_overrides.yaml`, which pub reads in place of the
+/// pubspec's overrides, moves with the refs of the pubspec (since 0.23.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.contains(&format!(
+            "  fespalier_transport v0.21.0 -> {tag} (pubspec_overrides.yaml)\n"
+        )),
+        "{out}"
+    );
+    assert!(
+        out.contains("Would write pubspec.yaml and pubspec_overrides.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains("  edit  pubspec.yaml\n  edit  pubspec_overrides.yaml\n"),
+        "{out}"
+    );
+    let overrides = fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap();
+    assert!(
+        overrides.contains(&format!("      ref: {tag}\n")),
+        "{overrides}"
+    );
+}
+
+/// When only `pubspec_overrides.yaml` has a ref to move, the lines name it, not the pubspec (since
+/// 0.23.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_names_the_overrides_file_when_it_alone_moves() {
+    let dir = create_root();
+    let root = dir.path();
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let app = pinned_app(root, &tag);
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert!(
+        out.starts_with(&format!(
+            "pubspec_overrides.yaml: v0.21.0 -> {tag}\n  fespalier_transport v0.21.0 -> {tag} (pubspec_overrides.yaml)\n"
+        )),
+        "{out}"
+    );
+    assert!(
+        out.contains("Would write pubspec_overrides.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains(&format!(
+            "pubspec_overrides.yaml now pins {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_check_and_dry_run_write_nothing() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(3), "{out}");
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0));
+    assert!(
+        out.contains("Would write pubspec.yaml, then run flutter pub get and fsp gen.\n"),
+        "{out}"
+    );
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--json", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(3));
+    let object: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(object["from"], "0.21.0");
+    assert_eq!(object["upToDate"], false);
+    assert_eq!(object["packages"][1]["name"], "fespalier_http");
+    assert!(err.contains("fespalier_http v0.21.0 -> "), "{err}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+    // A branch is not a release: refused, with nothing written.
+    fs::write(
+        app.join("pubspec.yaml"),
+        before.replace("ref: v0.21.0\n", "ref: main\n"),
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("fespalier_http (dependencies) is at `main`, not a release tag"),
+        "{err}"
+    );
+    // And the flags of --app need it.
+    let (code, _, err) = fsp_task(root, &["upgrade", "--no-pub-get"], &[]);
+    assert_eq!(code, Some(2));
+    assert!(err.contains("--app"), "{err}");
+}
+
+#[cfg(unix)]
+#[test]
+fn upgrade_app_does_not_move_the_app_back_unless_asked() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v99.0.0");
+    let before = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    // This fsp is older than the pin: neither a run nor `--check` treats that as an update.
+    for flags in [&[][..], &["--check"][..], &["--dry-run"][..]] {
+        let mut args = vec!["upgrade", "--app", "--project", "app"];
+        args.extend_from_slice(flags);
+        let (code, out, err) = fsp_task(root, &args, &[]);
+        assert_eq!(code, Some(1), "{flags:?}: {out}{err}");
+        assert!(out.is_empty(), "{out}");
+        assert!(
+            err.starts_with("this app pins fespalier v99.0.0 and fsp "),
+            "{err}"
+        );
+        assert!(
+            err.contains(" is older, so `fsp upgrade --app` would move the refs back to v"),
+            "{err}"
+        );
+        assert!(err.contains("nothing was written. Upgrade fsp (`fsp upgrade`), or use the fsp of the pin with `dart run fespalier`, or go back on purpose with `--version v"), "{err}");
+    }
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        before
+    );
+    assert!(flutter_log(root).is_empty());
+    // On purpose, with `--version`, it goes back, and says so.
+    let (code, out, err) = fsp_task(
+        root,
+        &[
+            "upgrade",
+            "--app",
+            "--version",
+            "v98.0.0",
+            "--project",
+            "app",
+        ],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.starts_with("pubspec.yaml: v99.0.0 -> v98.0.0 (a downgrade)\n  fespalier      v99.0.0 -> v98.0.0 (a downgrade)\n"),
+        "{out}"
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains("ref: v98.0.0 # with the companions\n")
+    );
+    assert!(
+        out.contains("v99.0.0 -> v98.0.0 is a downgrade: https://github.com/fespalier/fespalier/blob/v98.0.0/docs/migration.md#upgrading"),
+        "{out}"
+    );
+}
+
+/// The refs are moved by the time `flutter pub get` fails, and a second run finds nothing to move:
+/// the notes of the release are printed before it, and the failure points at them.
+#[cfg(unix)]
+#[test]
+fn upgrade_app_prints_the_notes_before_a_pub_get_that_fails() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.19.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(out.contains("What changed from v0.19.0 to "), "{out}");
+    assert!(
+        err.contains(&format!(
+            "pubspec.yaml now pins {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
+    );
+    assert!(
+        err.contains("\nThe migration notes are printed above.\nFix that and run `flutter pub get` and `fsp gen` (or put the old refs back)."),
+        "{err}"
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains(&format!("ref: {tag} # with the companions"))
+    );
+    let (code, out, _) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    assert_eq!(code, Some(0));
+    assert!(out.contains("nothing to move."), "{out}");
+}
+
+/// `fsp schema` (since 0.23.0) needs no project: it prints this fsp's schema of the `fespalier:`
+/// section, and with `--pubspec` the schema of a whole pubspec.yaml that the editors ship.
+#[test]
+fn schema_prints_the_section_and_with_pubspec_the_whole_file() {
+    let empty = tempfile::tempdir().unwrap();
+    for (args, title) in [
+        (&["schema"][..], "fespalier"),
+        (&["schema", "--pubspec"], "pubspec.yaml with fespalier"),
+    ] {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(args)
+                .current_dir(empty.path()),
+        )
+        .unwrap();
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert!(out.stderr.is_empty(), "{args:?}");
+        let text = String::from_utf8(out.stdout).unwrap();
+        assert!(text.ends_with("}\n"), "{args:?}");
+        let schema: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(schema["$schema"], "http://json-schema.org/draft-07/schema#");
+        assert_eq!(schema["title"], title);
+    }
+    let shipped = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../editors/vscode/schemas/pubspec.schema.json"),
+    )
+    .unwrap();
+    let out = output_locked(
+        Command::new(env!("CARGO_BIN_EXE_fsp"))
+            .args(["schema", "--pubspec"])
+            .current_dir(empty.path()),
+    )
+    .unwrap();
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), shipped);
+}
+
+/// `fsp doctor` (since 0.23.0): JSON lines with every key, a stand-in `flutter --version --machine`,
+/// exit 1 on an error row and 0 without one.
+#[cfg(unix)]
+#[test]
+fn doctor_prints_its_rows_and_exits_1_on_an_error() {
+    let dir = project();
+    let root = dir.path();
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    write_executable(
+        &bin.join("flutter"),
+        "#!/bin/sh\nprintf '{\"frameworkVersion\":\"3.38.4\",\"dartSdkVersion\":\"3.10.4\"}\\n'\n",
+    );
+    let doctor = |args: &[&str]| {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(args)
+                .env("PATH", path_with(&bin))
+                .current_dir(root),
+        )
+        .unwrap();
+        (
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+        )
+    };
+    // A path dependency: nothing out of line.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  fespalier:\n    path: ../fespalier\n",
+    )
+    .unwrap();
+    let (code, out, err) = doctor(&["doctor"]);
+    assert_eq!(code, Some(0), "{out}{err}");
+    assert!(err.is_empty(), "{err}");
+    assert!(out.starts_with("fsp doctor "), "{out}");
+    assert!(
+        out.contains("  ✓ flutter      Flutter 3.38.4, at or above fespalier's floor, 3.35.0\n"),
+        "{out}"
+    );
+    assert!(out.ends_with("\nNothing out of line.\n"), "{out}");
+    // A ref that is not this fsp's: an error row, and exit 1 with nothing on stderr.
+    fs::write(
+        root.join("pubspec.yaml"),
+        "name: demo\ndependencies:\n  fespalier:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v0.0.1\n",
+    )
+    .unwrap();
+    let (code, out, err) = doctor(&["doctor", "--json"]);
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(err.is_empty(), "{err}");
+    let rows: Vec<serde_json::Value> = out
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    for row in &rows {
+        let keys: Vec<&str> = row
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(keys, ["section", "check", "subject", "status", "message"]);
+    }
+    let status = |check: &str| {
+        rows.iter()
+            .find(|r| r["check"] == check)
+            .map(|r| r["status"].as_str().unwrap().to_string())
+    };
+    assert_eq!(status("fespalier").as_deref(), Some("error"));
+    assert_eq!(status("flutter").as_deref(), Some("ok"));
+    assert_eq!(status("lock").as_deref(), Some("skipped"));
+    // A folder that is not there: the flutter row says so, not that flutter is missing.
+    let (code, out, err) = doctor(&["doctor", "--project", "no-such-app"]);
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        out.contains("no-such-app is not a folder: Flutter and Dart are not checked"),
+        "{out}"
+    );
+    assert!(!out.contains("not on PATH"), "{out}");
+}
+
+/// A reader that stops early (`fsp routes --json | head -1`) closes the pipe: `fsp` stops writing
+/// to stdout, with no panic, and exits as it does when its output is read to the end, saying the
+/// same on stderr (since 0.23.1). The pipe is closed before `fsp` starts, so its first write fails.
+#[test]
+fn a_closed_stdout_ends_the_output_and_not_the_command() {
+    let dir = project();
+    let broken = project();
+    fs::create_dir_all(broken.path().join("lib/app/[id")).unwrap();
+    // No `flutter` on PATH: `fsp doctor` skips its row instead of running one.
+    let empty = tempfile::tempdir().unwrap();
+    let run = |cwd: &Path, args: &[&str], closed: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsp"));
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", empty.path())
+            .stdin(Stdio::null())
+            .stderr(Stdio::piped());
+        if closed {
+            let (reader, writer) = io::pipe().unwrap();
+            drop(reader);
+            command.stdout(writer);
+        } else {
+            command.stdout(Stdio::piped());
+        }
+        spawn_locked(&mut command)
+            .unwrap()
+            .wait_with_output()
+            .unwrap()
+    };
+    for (cwd, args, code) in [
+        (dir.path(), &["schema"][..], 0),
+        (dir.path(), &["routes", "--json"], 0),
+        (dir.path(), &["routes", "--graph"], 0),
+        (dir.path(), &["run", "--json"], 0),
+        (dir.path(), &["run"], 0),
+        (dir.path(), &["create", "--list-features"], 0),
+        (dir.path(), &["doctor", "--json"], 1),
+        (broken.path(), &["check", "--json"], 1),
+    ] {
+        let read = run(cwd, args, false);
+        let said = String::from_utf8_lossy(&read.stderr).into_owned();
+        assert_eq!(read.status.code(), Some(code), "{args:?}: {said}");
+        assert!(!read.stdout.is_empty(), "{args:?} writes to stdout");
+        let closed = run(cwd, args, true);
+        let err = String::from_utf8_lossy(&closed.stderr);
+        assert!(!err.contains("panicked"), "{args:?}: {err}");
+        assert_eq!(closed.status.code(), Some(code), "{args:?}: {err}");
+        assert_eq!(err, said, "{args:?}");
+    }
+}
+
+/// The same for stderr, where `gen` and `check` write their lines and diagnostics, and where the
+/// error that ends a command goes (`fsp check 2>&1 | head`): a reader that stops early ends the
+/// output and not the command (since 0.23.1). With stderr closed the panic message has nowhere to
+/// go, so the exit code says it: 101 where the command's own is 0 or 1.
+#[test]
+fn a_closed_stderr_ends_the_output_and_not_the_command() {
+    let dir = project();
+    let broken = project();
+    fs::create_dir_all(broken.path().join("lib/app/[id")).unwrap();
+    let empty = tempfile::tempdir().unwrap();
+    let run = |cwd: &Path, args: &[&str], closed: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_fsp"));
+        command
+            .args(args)
+            .current_dir(cwd)
+            .env("PATH", empty.path())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped());
+        if closed {
+            let (reader, writer) = io::pipe().unwrap();
+            drop(reader);
+            command.stderr(writer);
+        } else {
+            command.stderr(Stdio::piped());
+        }
+        spawn_locked(&mut command)
+            .unwrap()
+            .wait_with_output()
+            .unwrap()
+    };
+    for (cwd, args, code) in [
+        // The success line, and the diagnostics one by one.
+        (dir.path(), &["check"][..], 0),
+        (dir.path(), &["gen", "--json"], 0),
+        (broken.path(), &["check"], 1),
+        // The error that ends the command, after the JSON lines on stdout.
+        (broken.path(), &["check", "--json"], 1),
+        (broken.path(), &["gen"], 1),
+    ] {
+        let read = run(cwd, args, false);
+        let said = String::from_utf8_lossy(&read.stderr).into_owned();
+        assert_eq!(read.status.code(), Some(code), "{args:?}: {said}");
+        assert!(!said.is_empty(), "{args:?} writes to stderr");
+        let closed = run(cwd, args, true);
+        assert_eq!(closed.status.code(), Some(code), "{args:?}");
+        assert_eq!(closed.stdout, read.stdout, "{args:?}");
+    }
+}
+
+/// `flutter` runs in a process group of its own, which Ctrl-C does not reach: a signal to `fsp
+/// doctor` while it waits for `flutter` stops flutter with what it started and ends the doctor with
+/// 130, printing no report (since 0.23.1). The stand-in is a `flutter` that waits for a lock.
+#[cfg(unix)]
+#[test]
+fn a_signal_stops_the_flutter_the_doctor_waits_for() {
+    let dir = project();
+    let bin = dir.path().join("bin");
+    fs::create_dir_all(&bin).unwrap();
+    // The pid is written by rename, so a reader never sees half of it.
+    write_executable(
+        &bin.join("flutter"),
+        "#!/bin/sh\nsleep 300 &\necho $! > \"$FAKE_PID.tmp\"\nmv \"$FAKE_PID.tmp\" \"$FAKE_PID\"\nwait\n",
+    );
+    let alive = |pid: &str| {
+        status_locked(Command::new("kill").args(["-0", pid]).stderr(Stdio::null()))
+            .unwrap()
+            .success()
+    };
+    for signal in ["INT", "TERM"] {
+        let pidfile = dir.path().join(format!("flutter-{signal}.pid"));
+        let child = spawn_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .arg("doctor")
+                .env("PATH", path_with(&bin))
+                .env("FAKE_PID", &pidfile)
+                .current_dir(dir.path())
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped()),
+        )
+        .unwrap();
+        let end = Instant::now() + Duration::from_secs(30);
+        let pid = loop {
+            if let Ok(pid) = fs::read_to_string(&pidfile) {
+                break pid.trim().to_string();
+            }
+            assert!(Instant::now() < end, "flutter was not started");
+            sleep(Duration::from_millis(20));
+        };
+        assert!(alive(&pid), "the stand-in's sleep is not running");
+        let sent = status_locked(
+            Command::new("kill")
+                .arg(format!("-{signal}"))
+                .arg(child.id().to_string()),
+        )
+        .unwrap();
+        assert!(sent.success());
+        let out = child.wait_with_output().unwrap();
+        assert_eq!(out.status.code(), Some(130), "{signal}");
+        assert!(out.stdout.is_empty(), "{signal}: no report");
+        let end = Instant::now() + Duration::from_secs(20);
+        while alive(&pid) {
+            assert!(
+                Instant::now() < end,
+                "{signal}: what flutter started is still running"
+            );
+            sleep(Duration::from_millis(20));
+        }
+    }
+}

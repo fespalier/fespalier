@@ -131,4 +131,15 @@ class PubspecTest {
         assertTrue(isConfigFile("./config/app.dev.yaml"))
         assertFalse(isConfigFile("config/application.yaml"))
     }
+
+    @Test
+    fun theSchemaIsForProjectPubspecsOnly() {
+        assertTrue(isPubspecPath("/work/shop/pubspec.yaml"))
+        assertTrue(isPubspecPath("C:\\work\\shop\\pubspec.yaml"))
+        assertFalse(isPubspecPath("/work/shop/pubspec.lock"))
+        assertFalse(isPubspecPath("/work/shop/my_pubspec.yaml"))
+        assertFalse(isPubspecPath("/work/shop/build/web/pubspec.yaml"))
+        assertFalse(isPubspecPath("/work/shop/.dart_tool/x/pubspec.yaml"))
+        assertFalse(isPubspecPath("/work/shop/ios/.symlinks/plugins/a/pubspec.yaml"))
+    }
 }

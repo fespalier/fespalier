@@ -101,6 +101,18 @@ private val CONFIG_FILE = Regex("""^config/app(\.[^/]+)?\.ya?ml$""")
  */
 fun isConfigFile(relPath: String): Boolean = CONFIG_FILE.matches(normalizeDir(relPath))
 
+/** Folders that hold copies or build output of pubspecs, never a project of their own. */
+val SKIPPED_FOLDERS = listOf("/.dart_tool/", "/build/", "/ephemeral/", "/node_modules/", "/.symlinks/")
+
+/**
+ * Whether the file at [path] is a project's `pubspec.yaml` (since fespalier 0.23.0, the files the
+ * plugin's schema is for): named so, and not in a folder of [SKIPPED_FOLDERS].
+ */
+fun isPubspecPath(path: String): Boolean {
+    val p = path.replace('\\', '/')
+    return p.substringAfterLast('/') == "pubspec.yaml" && SKIPPED_FOLDERS.none { p.contains(it) }
+}
+
 /** A project that uses fespalier: the folder with its pubspec.yaml, and its app folder. */
 data class FespalierProject(
     /** Absolute path of the folder with the pubspec.yaml, with `/` separators. */

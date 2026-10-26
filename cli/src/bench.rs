@@ -1,6 +1,10 @@
 //! Where the time goes in `fsp gen` and in a `fsp watch` regeneration, on synthetic apps of
 //! 500, 2,000 and 5,000 routes:
 //! `cargo test --release bench -- --ignored --nocapture --test-threads=1`.
+#![allow(
+    clippy::disallowed_macros,
+    reason = "a benchmark run by hand prints its table, and cargo test captures it"
+)]
 
 use std::fs;
 use std::time::{Duration, Instant};

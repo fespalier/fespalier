@@ -1,0 +1,109 @@
+add sentry to my_app (it has: otel, http)
+edit   pubspec.yaml
+         dependencies: fespalier_sentry (https://github.com/fespalier/fespalier at v<version>)
+         dependencies: sentry_flutter >=9.26.0 <10.0.0
+new    test/sentry_test.dart
+update lib/app/startup.dart
+run    flutter pub get
+run    fsp gen
+
+=== pubspec.yaml (edit)
+        path: packages/fespalier_otel
+        ref: v<version>
++   fespalier_sentry:
++     git:
++       url: https://github.com/fespalier/fespalier
++       path: packages/fespalier_sentry
++       ref: v<version>
+    fespalier_transport:
+      git:
+  ...
+        url: https://github.com/vaam-apps/flutter-otel-zone
+        ref: 64c4661ac6cd09718141864d528892916677cc38
++   sentry_flutter: ">=9.26.0 <10.0.0"
+
+  dev_dependencies:
+
+=== test/sentry_test.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
+import 'package:fespalier_sentry/fespalier_sentry.dart';
+import 'package:fespalier_sentry/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+
+void main() {
+  tearDown(() => FespalierTelemetry.install(null));
+
+  testWidgets('a page change is a breadcrumb, and an error knows its screen', (
+    tester,
+  ) async {
+    // A real Sentry hub whose transport keeps what it would send: no network, no DSN.
+    final sentry = RecordingSentry(
+      configure: (options) => FespalierSentry.configure(
+        options,
+        dsn: 'https://key@sentry.invalid/1',
+      ),
+    );
+    FespalierTelemetry.install(FespalierSentry(hub: sentry.hub));
+    final router = AppRoutes.router();
+    await pumpRouter(tester, router);
+    router.go('/about');
+    await tester.pumpAndSettle();
+    expect(sentry.breadcrumbs, contains('navigation enter /about'));
+
+    // What Sentry's own integrations do with an uncaught error.
+    await sentry.hub.captureException(StateError('crash'));
+    await tester.pump();
+    final event = (await sentry.sent()).single;
+    expect(event['transaction'], '/about');
+    expect(event['tags'], containsPair('fespalier.route', '/about'));
+  });
+}
+
+=== lib/app/startup.dart (update)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_otel/fespalier_otel.dart';
+import 'package:fespalier_sentry/fespalier_sentry.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
+import 'package:my_app/api.dart';
+import 'package:my_app/app.main.g.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+/// Made once: startup() runs again on Retry, and `add` would append a second sink.
+final _sentry = FespalierSentry();
+
+/// Sentry starts first and runs the binding, startup() and runApp in its appRunner, so a
+/// crash in any of them is Sentry's. An empty SENTRY_DSN turns Sentry off:
+/// --dart-define=SENTRY_DSN=https://... sends events to your project.
+Future<void> zone(Future<void> Function() body) => SentryFlutter.init(
+  (options) => FespalierSentry.configure(
+    options,
+    dsn: const String.fromEnvironment('SENTRY_DSN'),
+  ),
+  appRunner: body,
+);
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+List<Override> startup() {
+  // Before the router exists, beside the generated main()'s OpenTelemetry sink; once (Retry runs this again).
+  if (!FespalierTelemetry.contains(_sentry)) FespalierTelemetry.add(_sentry);
+  // The app's one transport, given to every package that sends: the client, a write guard, then telemetry.
+  final transport = OtelTransport(
+    SentryTransport(WriteGuardTransport(HttpClientTransport(http.Client()))),
+    isReady: () => AppMain.observability.isReady,
+  );
+  return [
+    // fespalier_http: the transport lib/api.dart's httpClient sends through (the app's one, whose write guard keeps a retrier from repeating a write).
+    httpTransport.overrideWithValue(transport),
+  ];
+}
+
+List<NavigatorObserver> get routerObservers => [
+  if (kIsWeb) FespalierSentry.navigatorObserver(),
+];

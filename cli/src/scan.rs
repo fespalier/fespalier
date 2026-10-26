@@ -179,27 +179,54 @@ pub fn scan(app_dir: &Path, diags: &mut Diags) -> Result<Node> {
         spelled: BTreeMap::new(),
         children: vec![],
     };
-    fill(app_dir, &mut root, diags)?;
+    let real = fs::canonicalize(app_dir).unwrap_or_else(|_| app_dir.to_path_buf());
+    fill(app_dir, &mut vec![real], &mut root, diags)?;
     Ok(root)
 }
 
-fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
+/// What `fill` knows of an entry of a folder.
+struct Entry {
+    name: OsString,
+    path: PathBuf,
+    is_dir: bool,
+    is_symlink: bool,
+}
+
+/// Reads `dir` into `node`. `above` holds the real path of every folder from the app folder down
+/// to `dir`, `dir` last. A folder that is a symlink to one of them (`lib/app/up -> ..`) is a loop,
+/// which would nest routes as deep as the system follows links, and two such links in a folder as
+/// many times as that over again (since 0.23.1): it is left out. The same folder reached through
+/// two symlinks that are not on one path is no loop and stays.
+fn fill(dir: &Path, above: &mut Vec<PathBuf>, node: &mut Node, diags: &mut Diags) -> Result<()> {
     // The entry's own file type saves a `stat` per entry; only a symlink has to be followed.
-    let mut entries: Vec<(OsString, PathBuf, bool)> = fs::read_dir(dir)
+    let mut entries: Vec<Entry> = fs::read_dir(dir)
         .with_context(|| format!("reading {}", dir.display()))?
         .filter_map(|e| {
             let e = e.ok()?;
             let path = e.path();
-            let is_dir = match e.file_type().ok()? {
-                t if t.is_symlink() => path.is_dir(),
-                t => t.is_dir(),
+            let kind = e.file_type().ok()?;
+            let is_dir = if kind.is_symlink() {
+                path.is_dir()
+            } else {
+                kind.is_dir()
             };
-            Some((e.file_name(), path, is_dir))
+            Some(Entry {
+                name: e.file_name(),
+                path,
+                is_dir,
+                is_symlink: kind.is_symlink(),
+            })
         })
         .collect();
-    entries.sort();
-    for (name, path, is_dir) in entries {
-        let name = name.to_string_lossy().to_string();
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    for Entry {
+        name: file_name,
+        path,
+        is_dir,
+        is_symlink,
+    } in entries
+    {
+        let name = file_name.to_string_lossy().to_string();
         if is_dir {
             // `_components/` etc. are private: colocated, never routes.
             if name.starts_with('_') || name.starts_with('.') {
@@ -217,6 +244,17 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
                     continue;
                 }
             };
+            // A folder that is not a link is under its parent's real path; a link is asked.
+            let real = if is_symlink {
+                fs::canonicalize(&path).unwrap_or_else(|_| path.clone())
+            } else {
+                above
+                    .last()
+                    .map_or_else(|| path.clone(), |p| p.join(&file_name))
+            };
+            if above.contains(&real) {
+                continue;
+            }
             let mut child = Node {
                 dir: rel,
                 seg: Some(seg),
@@ -224,7 +262,10 @@ fn fill(dir: &Path, node: &mut Node, diags: &mut Diags) -> Result<()> {
                 spelled: BTreeMap::new(),
                 children: vec![],
             };
-            fill(&path, &mut child, diags)?;
+            above.push(real);
+            let filled = fill(&path, above, &mut child, diags);
+            above.pop();
+            filled?;
             node.children.push(child);
         } else if let Some(kind) = Kind::from_file(&name) {
             let src = fs::read_to_string(&path)?;

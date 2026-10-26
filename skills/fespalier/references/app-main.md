@@ -19,11 +19,11 @@ the same** whether or not these files exist.
 
 `fespalier: main:` in `pubspec.yaml`:
 
-| Value       | `lib/app.main.g.dart`                                                                                                                                                                                              |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package, or, since 0.19.0, when `otel: true` is set; otherwise nothing is written |
-| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                                                                        |
-| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                                                                      |
+| Value       | `lib/app.main.g.dart`                                                                                                                                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auto`      | the default: written when the root has an `app.dart`, `startup.dart` or `splash.dart`, or, since 0.9.0, when `adapters:` lists a package (since 0.23.0, or `adapters: auto` finds one), or, since 0.19.0, when `otel: true` is set; otherwise nothing is written |
+| `generated` | always written; without an `app.dart` the app is `MaterialApp.router(routerConfig: router)`                                                                                                                                                                      |
+| `manual`    | never written; the three files are **not read**, and each one that exists gets a warning (below). `fsp init` then writes no `app.dart` either                                                                                                                    |
 
 The path is `output` with `.main.g.dart` in place of `.g.dart`, in the same folder
 (`lib/router/routes.g.dart` makes `lib/router/routes.main.g.dart`); there is no key for it.
@@ -184,6 +184,13 @@ dependencies:
 fespalier:
   adapters: [my_tools, my_reporter] # the first is the outermost
 ```
+
+Since 0.23.0, `adapters: auto` takes the first-party adapter packages under `dependencies:` in place of a list you write:
+`fespalier_analytics`, `fespalier_download`, `fespalier_launch` and `fespalier_push`, in the order `dependencies:` lists
+them. It is opt-in, because each of them needs its `configure` call in `main()` (an unconfigured one reports an error once).
+A package of your own is never taken: list it. With none of them, `auto` is no adapters. `auto` written inside a list is
+refused: `` `fespalier.adapters` lists `auto`, which is not a package: write `adapters: auto` on its own (since 0.23.0) for every first-party adapter package under `dependencies:`, or list the packages ``.
+`fsp doctor` prints one row per adapter, on or off, and whether a Dart file under `lib/` calls its `configure`. A first-party package that is a dependency and is off is an `info` row (it may be there for something else); it is a warning only when a file calls its `configure` and `adapters:` leaves it out.
 
 For each name `n`, at index `i`, `lib/app.g.dart` (since 0.11.0; on 0.10.0 and earlier `lib/app.main.g.dart`) imports
 `package:n/fespalier_adapter.dart as _a{i}` and `AppAdapters` calls `_a{i}.adapter`, a **`FespalierAdapter`** (`package:fespalier/startup.dart`) that the package exports as a

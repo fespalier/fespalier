@@ -105,7 +105,7 @@ struct Report {
 impl Report {
     fn event(&self, value: &serde_json::Value) {
         if self.json {
-            println!("{value}");
+            outln!("{value}");
         }
     }
 }
@@ -170,7 +170,7 @@ fn create(cmd: &CreateCmd, report: &Report) -> Result<()> {
     };
     let plan = plan::build(&request, recipes::RECIPES)?;
     for note in &plan.notes {
-        eprintln!("note: {note}");
+        errln!("note: {note}");
     }
     if cmd.dry_run {
         dry_run(&plan, report);
@@ -178,7 +178,7 @@ fn create(cmd: &CreateCmd, report: &Report) -> Result<()> {
     }
     execute(&plan, &abs, report)?;
     report.event(&done_event(&plan, false));
-    eprintln!("\n✓ created {}", plan.dir.display());
+    errln!("\n✓ created {}", plan.dir.display());
     next_steps(&plan);
     Ok(())
 }
@@ -198,10 +198,10 @@ fn list_features(json: bool) {
     let features = plan::list_features(recipes::RECIPES);
     if json {
         for f in &features {
-            println!("{}", serde_json::to_string(f).unwrap_or_default());
+            outln!("{}", serde_json::to_string(f).unwrap_or_default());
         }
     } else if features.is_empty() {
-        println!("no optional features yet: `fsp create <dir>` makes the base app");
+        outln!("no optional features yet: `fsp create <dir>` makes the base app");
     } else {
         let width = features
             .iter()
@@ -210,9 +210,9 @@ fn list_features(json: bool) {
             .unwrap_or(0)
             .max(plan::ALL.len());
         for f in &features {
-            println!("{:<width$}  {}", f.id, f.description);
+            outln!("{:<width$}  {}", f.id, f.description);
         }
-        println!(
+        outln!(
             "{:<width$}  Every feature above that your Flutter runs, at once (--features {})",
             plan::ALL,
             plan::ALL
@@ -222,7 +222,7 @@ fn list_features(json: bool) {
 
 /// `--dry-run`: the plan, and nothing else.
 fn dry_run(plan: &Plan, report: &Report) {
-    eprint!("{}", plan.describe("<staging>"));
+    err!("{}", plan.describe("<staging>"));
     let flutter_create = Cmd::Argv(
         ["flutter".to_string()]
             .into_iter()
@@ -325,7 +325,7 @@ fn flutter_version(cwd: &Path) -> Result<Option<FlutterVersion>> {
                 .and_then(FlutterVersion::parse)
         });
     if version.is_none() {
-        eprintln!("warning: could not read Flutter's version; not checking it");
+        errln!("warning: could not read Flutter's version; not checking it");
     }
     Ok(version)
 }
@@ -347,7 +347,26 @@ impl Drop for Staging {
 /// Runs one command in `cwd` with fsp's own stdio (stdout goes to stderr with `--json`).
 fn run_command(cmd: &Cmd, cwd: &Path, report: &Report) -> Result<()> {
     report.event(&json!({ "event": "run", "command": cmd.shown() }));
-    eprintln!("› {}", cmd.shown());
+    run_in(cmd, cwd, "fsp create", report.json)
+}
+
+/// Runs `flutter <args>` in `cwd` for a command that changes an app (`fsp add`, `fsp upgrade
+/// --app`), with fsp's own stdio; with `stdout_to_stderr`, flutter's stdout goes to stderr (when
+/// stdout is for JSON). `who` names the command in the errors.
+pub(crate) fn run_flutter(
+    args: &[&str],
+    cwd: &Path,
+    who: &str,
+    stdout_to_stderr: bool,
+) -> Result<()> {
+    procs::install_signals().map_err(anyhow::Error::msg)?;
+    let mut words = vec!["flutter".to_string()];
+    words.extend(args.iter().map(|a| (*a).to_string()));
+    run_in(&Cmd::Argv(words), cwd, who, stdout_to_stderr)
+}
+
+fn run_in(cmd: &Cmd, cwd: &Path, who: &str, stdout_to_stderr: bool) -> Result<()> {
+    errln!("› {}", cmd.shown());
     let fsp = env::current_exe().unwrap_or_else(|_| PathBuf::from("fsp"));
     let env = tasks::Env {
         cwd,
@@ -355,13 +374,13 @@ fn run_command(cmd: &Cmd, cwd: &Path, report: &Report) -> Result<()> {
         fsp: &fsp,
     };
     let mut prepared =
-        tasks::prepare(cmd, &[], &env).map_err(|w| tasks::start_error(cmd, "fsp create", &w))?;
-    if report.json {
+        tasks::prepare(cmd, &[], &env).map_err(|w| tasks::start_error(cmd, who, &w))?;
+    if stdout_to_stderr {
         prepared.process.stdout(Stdio::from(io::stderr()));
     }
     let program = prepared.program;
     let (status, interrupted) = procs::run_foreground(prepared.process)
-        .map_err(|e| tasks::start_error(cmd, "fsp create", &tasks::why(&e, &program)))?;
+        .map_err(|e| tasks::start_error(cmd, who, &tasks::why(&e, &program)))?;
     if interrupted {
         return Err(Exit(130).into());
     }
@@ -400,7 +419,7 @@ fn move_into_place(staging: &Path, dir: &Path) -> io::Result<()> {
 
 /// Raises `minSdk` in the app's Gradle file (`create/android.rs`). A missing file means no Android
 /// folder; a file of a shape it does not know is left as it is, with the line to write by hand.
-fn raise_android_min_sdk(root: &Path, min: u32) -> Result<()> {
+pub(crate) fn raise_android_min_sdk(root: &Path, min: u32) -> Result<()> {
     let path = root.join(plan::ANDROID_GRADLE);
     let Ok(text) = fs::read_to_string(&path) else {
         return Ok(());
@@ -408,9 +427,9 @@ fn raise_android_min_sdk(root: &Path, min: u32) -> Result<()> {
     match android::raise_min_sdk(&text, min) {
         Some(edited) => {
             fs::write(&path, edited).with_context(|| format!("writing {}", path.display()))?;
-            eprintln!("  edit  {} (minSdk {min} or more)", plan::ANDROID_GRADLE);
+            errln!("  edit  {} (minSdk {min} or more)", plan::ANDROID_GRADLE);
         }
-        None => eprintln!(
+        None => errln!(
             "note: {} has no `minSdk = flutter.minSdkVersion` line; set minSdk to at least {min} yourself (flutter_secure_storage needs it)",
             plan::ANDROID_GRADLE
         ),
@@ -441,7 +460,7 @@ fn execute(plan: &Plan, abs: &Path, report: &Report) -> Result<()> {
         }
         fs::write(&path, &file.content).with_context(|| format!("writing {}", path.display()))?;
         report.event(&json!({ "event": "file", "path": file.path, "action": file.action.word() }));
-        eprintln!("  {:<5} {}", file.action.word(), file.path);
+        errln!("  {:<5} {}", file.action.word(), file.path);
     }
 
     if let Some(min) = plan.android_min_sdk {
@@ -468,7 +487,7 @@ fn execute(plan: &Plan, abs: &Path, report: &Report) -> Result<()> {
         let cfg = Config::load(abs)?.for_scaffolding();
         report.event(&json!({ "event": "run", "command": "fsp gen" }));
         let o = crate::gen_with(abs, &cfg, true)?;
-        eprintln!("{}", o.line());
+        errln!("{}", o.line());
         report.event(&json!({ "event": "run", "command": "fsp test" }));
         crate::smoke::run(abs, false)
     };
@@ -476,13 +495,13 @@ fn execute(plan: &Plan, abs: &Path, report: &Report) -> Result<()> {
 }
 
 fn next_steps(plan: &Plan) {
-    eprintln!("\nNext steps");
-    eprintln!("  cd {}", plan.dir.display());
+    errln!("\nNext steps");
+    errln!("  cd {}", plan.dir.display());
     if plan.pub_get.is_none() {
-        eprintln!("  flutter pub get");
+        errln!("  flutter pub get");
     }
-    eprintln!("  fsp dev      # runs the app, regenerating on every save");
+    errln!("  fsp dev      # runs the app, regenerating on every save");
     if plan.features.is_empty() && !recipes::RECIPES.is_empty() {
-        eprintln!("\nOptional features: `fsp create --list-features`");
+        errln!("\nOptional features: `fsp create --list-features`");
     }
 }

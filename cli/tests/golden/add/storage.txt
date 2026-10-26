@@ -1,0 +1,53 @@
+add storage to my_app (it has: none of the features)
+edit   pubspec.yaml
+         dependencies: fespalier_storage (https://github.com/fespalier/fespalier at v<version>)
+new    test/storage_test.dart
+new    lib/app/startup.dart
+run    flutter pub get
+run    fsp gen
+
+=== pubspec.yaml (edit)
+        path: packages/fespalier
+        ref: v<version>
++   fespalier_storage:
++     git:
++       url: https://github.com/fespalier/fespalier
++       path: packages/fespalier_storage
++       ref: v<version>
+
+  dev_dependencies:
+
+=== test/storage_test.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_storage/fespalier_storage.dart';
+import 'package:fespalier_storage/testing.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.main.g.dart';
+
+void main() {
+  // shared_preferences in memory. Without it open() finds no platform and returns null, and
+  // nothing is saved (docs/data.md, "A cache on disk: fespalier_storage").
+  setUp(fakePrefsStore);
+
+  testWidgets('startup() gives the data cache a place on disk', (tester) async {
+    await tester.pumpWidget(AppMain.root());
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MaterialApp)),
+    );
+    expect(container.read(dataCacheStorage), isA<PrefsDataStorage>());
+  });
+}
+
+=== lib/app/startup.dart (new)
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/startup.dart';
+import 'package:fespalier_storage/fespalier_storage.dart';
+
+/// Runs once before the app (docs/app-startup.md); the providers it returns are
+/// overridden in the app's ProviderScope, so the first frame already has them.
+Future<List<Override>> startup() async => [
+  // fespalier_storage: a dataCache is saved here (null: nothing is saved).
+  dataCacheStorage.overrideWithValue(await PrefsDataStorage.open()),
+];

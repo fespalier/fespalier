@@ -33,12 +33,18 @@ pub struct UpgradeCmd {
     /// Print what would run or be replaced, and do nothing
     #[arg(long, conflicts_with = "check")]
     pub dry_run: bool,
-    /// Print one JSON object (current, latest, target, method, command, upToDate) with --check or --dry-run
+    /// Print one JSON object (current, latest, target, method, command, upToDate) with --check or --dry-run; with --app, one object (from, target, upToDate, packages, notes) in every run
     #[arg(long)]
     pub json: bool,
-    /// Install this release instead of the latest (vX.Y.Z or X.Y.Z); script installs only
+    /// Install this release instead of the latest (vX.Y.Z or X.Y.Z); script installs only. With --app, the release to pin
     #[arg(long, value_name = "TAG")]
     pub version: Option<String>,
+    /// Upgrade the app instead of fsp: move the ref: of fespalier and every companion in pubspec.yaml to this fsp's version (or --version), then flutter pub get and fsp gen, and print the migration notes
+    #[arg(long)]
+    pub app: bool,
+    /// With --app: write pubspec.yaml, but leave `flutter pub get` to you
+    #[arg(long, requires = "app")]
+    pub no_pub_get: bool,
 }
 
 // --- Versions ----------------------------------------------------------------------------------
@@ -251,8 +257,8 @@ pub fn script_command(target: Version, dir: &str, windows: bool) -> String {
 fn dart_run_refusal(cached: &str) -> String {
     format!(
         "this fsp is the one `dart run fespalier` keeps for fespalier {cached}; it follows the \
-         ref: in pubspec.yaml. Change the ref of fespalier and every companion to the release \
-         you want, then flutter pub get."
+         ref: in pubspec.yaml. To move the ref of fespalier and every companion to another \
+         release, run `dart run fespalier upgrade --app --version vX.Y.Z`."
     )
 }
 
@@ -415,10 +421,19 @@ pub fn ref_note(pinned: Option<&str>, installed: Version) -> Option<String> {
     let pinned = pinned?;
     let version = Version::parse(pinned)?;
     (version != installed).then(|| {
+        if version > installed {
+            // The app is ahead of this fsp: `fsp upgrade --app` would only move it back.
+            return format!(
+                "this app pins fespalier {pin}, which is newer than this fsp ({installed}). Upgrade \
+                 fsp again (`fsp upgrade`), or run `dart run fespalier` to use the fsp that matches \
+                 the pin.",
+                pin = version.tag(),
+            );
+        }
         format!(
-            "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Update the refs \
-             (fespalier and every companion, the same url and ref), or run `dart run fespalier` \
-             to use the fsp that matches the pin.",
+            "this app pins fespalier {pin}; fsp {installed} writes code for {tag}. Move the refs \
+             of fespalier and every companion to {tag} with `fsp upgrade --app`, or run \
+             `dart run fespalier` to use the fsp that matches the pin.",
             pin = version.tag(),
             tag = installed.tag(),
         )
@@ -431,7 +446,7 @@ fn print_ref_note(project: Option<&Path>, installed: Version) {
         .and_then(|p| crate::config::Pubspec::load(p).ok())
         .and_then(|p| p.pinned_ref);
     if let Some(note) = ref_note(pinned.as_deref(), installed) {
-        println!("{note}");
+        outln!("{note}");
     }
 }
 
@@ -474,7 +489,7 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
 
     if cmd.check || cmd.json {
         if cmd.json {
-            println!(
+            outln!(
                 "{}",
                 json!({
                     "current": current.to_string(),
@@ -486,11 +501,11 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
                 })
             );
         } else if up_to_date {
-            println!("fsp {current} is the latest ({}).", method.name());
+            outln!("fsp {current} is the latest ({}).", method.name());
         } else {
-            println!("fsp {current} ({}); {target} is available.", method.name());
+            outln!("fsp {current} ({}); {target} is available.", method.name());
             if let Some(command) = &plan.command {
-                println!("  {command}");
+                outln!("  {command}");
             }
         }
         if cmd.check && !up_to_date {
@@ -502,15 +517,15 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
     match &plan.action {
         Action::UpToDate => {
             if current > target && !explicit {
-                println!("fsp {current} is newer than the latest release ({target}).");
+                outln!("fsp {current} is newer than the latest release ({target}).");
             } else {
-                println!("fsp {current} is the latest.");
+                outln!("fsp {current} is the latest.");
             }
         }
         Action::Refuse(message) => bail!("{message}"),
         Action::Brew => {
-            println!("fsp {current} -> {target}: {BREW}");
-            println!("(if Homebrew finds nothing newer, run `brew update` first)");
+            outln!("fsp {current} -> {target}: {BREW}");
+            outln!("(if Homebrew finds nothing newer, run `brew update` first)");
             if cmd.dry_run {
                 return Ok(());
             }
@@ -524,9 +539,9 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
             print_ref_note(project, target);
         }
         Action::Print(lines) => {
-            println!("fsp {current} -> {target}. Run:");
+            outln!("fsp {current} -> {target}. Run:");
             for line in lines {
-                println!("  {line}");
+                outln!("  {line}");
             }
         }
         Action::Script => {
@@ -537,11 +552,11 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
             };
             let base = env_nonempty("FSP_BASE_URL").unwrap_or_else(|| BASE_URL.to_string());
             if cmd.dry_run {
-                println!("fsp {current} -> {target}{note}, a script install in {dir}.");
+                outln!("fsp {current} -> {target}{note}, a script install in {dir}.");
                 let archive = replace::host_target()
                     .map(replace::archive_name)
                     .unwrap_or_default();
-                println!(
+                outln!(
                     "Would download {base}/{}/{archive} and replace {} after checking the archive \
                      against the release's .sha256 and the checksums pinned at the tag. The \
                      install script does the same:",
@@ -549,16 +564,16 @@ pub fn run(cmd: &UpgradeCmd, project: Option<&Path>) -> Result<()> {
                     exe.display()
                 );
                 if let Some(command) = &plan.command {
-                    println!("  {command}");
+                    outln!("  {command}");
                 }
                 return Ok(());
             }
             if current > target {
-                println!("fsp {current} -> {target}: a downgrade, as asked.");
+                outln!("fsp {current} -> {target}: a downgrade, as asked.");
             }
             replace::remove_stale_old(&exe);
             replace::replace(&exe, target, &base)?;
-            println!(
+            outln!(
                 "\u{2713} fsp {current} \u{2192} {target} ({})",
                 exe.display()
             );

@@ -111,7 +111,7 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.22.1
+      ref: v0.23.1
 ```
 
 <!-- x-release-please-end -->
@@ -133,7 +133,7 @@ Get `fsp` one of these ways (details in
 ```sh
 curl -fsSL https://raw.githubusercontent.com/fespalier/fespalier/main/install.sh | sh
 dart run fespalier <command>      # installs nothing: downloads the matching release, SHA-256 pinned
-cargo install --git https://github.com/fespalier/fespalier --tag v0.22.1 fespalier
+cargo install --git https://github.com/fespalier/fespalier --tag v0.23.1 fespalier
 ```
 
 <!-- x-release-please-end -->
@@ -141,12 +141,16 @@ cargo install --git https://github.com/fespalier/fespalier --tag v0.22.1 fespali
 ```sh
 fsp create my_app                          # a new app with fespalier in it, gen and a smoke test per route (0.15.0)
 fsp init                                   # starter layout/page/not_found/transition, then gen
+fsp add <feature>... [--dry-run]           # a feature of fsp create into this app: package, files, wiring (0.23.0)
+fsp upgrade --app [--version TAG]          # every companion's ref: to one release, then the migration notes (0.23.0)
 fsp gen                                    # check lib/app/, write lib/app.g.dart
 fsp watch                                  # regenerate on every change
 fsp dev [-- <flutter run args>]            # the app, regenerated and hot reloaded on every save (0.9.0)
 fsp build <target> [-- <args>]             # fsp gen, then flutter build <target>, with the hooks of `tasks: build:` (0.9.0)
 fsp run [task] [--json]                    # a task of `tasks:` in pubspec.yaml, or the list of them (0.9.0; --json for editors, 0.22.0)
 fsp check                                  # CI: non-zero on errors, writes nothing
+fsp doctor [--json]                        # what main() wires and why, and what is out of line: refs, lock, go_router, Flutter (0.23.0)
+fsp schema [--pubspec]                     # the JSON Schema of the fespalier: section, for editors; --pubspec: the whole file (0.23.0)
 fsp routes [--json | --graph [dot | json]]  # the route table, or the tree as Mermaid / DOT / JSON
 fsp links [--check]                        # App Links, Universal Links, sitemap from the routes (0.5.0)
 fsp maestro [--check]                      # Maestro smoke flows, one per route (0.7.0)
@@ -157,7 +161,8 @@ fsp new 'orders/[id]' --data --loading     # scaffold a route, then gen
 ```
 
 For a **new** app, `fsp create my_app` (since 0.15.0) replaces `flutter create`, the dependency, `fsp init` and the
-`main.dart` below: see `references/cli-and-config.md`. `fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
+`main.dart` below: see `references/cli-and-config.md`. For an app that exists, `fsp add <feature>` (since 0.23.0)
+adds one of its features, and `fsp upgrade --app` moves every companion's `ref:` to one release. `fsp init` then prints the `main.dart` you need. Since 0.8.1 it is
 `Future<void> main() => AppMain.run();`, with the generated `lib/app.main.g.dart` running
 `lib/app/app.dart` (and `startup.dart`, `splash.dart`); see
 [`references/app-main.md`](references/app-main.md). Before 0.8.1, and with `main: manual`, it prints
@@ -178,36 +183,35 @@ and the reserved names.
 
 ## Which skill to load
 
-| The work                                                                                                                                                                                                                                                                  | Load                |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Folders, segments, catch-alls, enums, typed routes, `RouteLink`, `route.dart`, `extra`, `present.dart`                                                                                                                                                                    | `fespalier-routing` |
-| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`, `fespalier_dio` (since 0.9.0), `fespalier_http` (since 0.15.0), `fespalier_transport` (the `HttpTransport` they share, since 0.21.0), `action.dart`, forms (`fespalier_forms`, since 0.11.0) | `fespalier-data`    |
-| `layout.dart`, tabs, `container`, shell transitions, restoration, `fespalier_adaptive` (since 0.9.0)                                                                                                                                                                      | `fespalier-layouts` |
-| `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows, `fespalier_auth` (since 0.9.0) and its backends (since 0.21.0): `fespalier_oidc`, DPoP with `fespalier_keypair_dpop`, token-free device-signed sessions with `fespalier_sign_keypair`                           | `fespalier-guards`  |
-| An unlock guard on biometrics that never prompts twice (`fespalier_biometrics`, since 0.13.0)                                                                                                                                                                             | `fespalier-guards`  |
-
-| Feature flags, a route behind a flag, a menu entry that follows one (`fespalier_flags`, since 0.9.0)
-| The app's own values per environment: `config/app.yaml`, profiles, `AppConfig`, `--profile`, and why a secret never goes in `config/` (since 0.23.0; [`references/app-config.md`](references/app-config.md)) | `fespalier-guards` |
-| A Rust core's change stream driving providers (`fespalier_frb`), providers per page instance (`fespalier_riverpod`), both since 0.13.0 | `fespalier-data` |
-| A cache on disk, a saved value on the first frame (`fespalier_storage`, since 0.9.0) | `fespalier-data` |
-| Reconnects, `refetchOnReconnect`, offline banners, connectivity versus reachability (`fespalier_connectivity`, since 0.9.0) | `fespalier-data` |
-| Translated texts, the language from the URL, Tolgee, a language menu, right-to-left (`fespalier_tolgee`, since 0.10.0) | `fespalier-i18n` |
-| A screen or a write that works offline, queued writes, sync, offline banners, pending changes (`fespalier_cratestack`, since 0.10.0) | `fespalier-offline` |
-| A CrateStack backend: the generated client, its transport and errors, its Dio, idempotency (`fespalier_cratestack`, since 0.10.0) | `fespalier-cratestack` |
-| A notification tap or a push payload that opens a typed route (`fespalier_push`, since 0.13.0) | `fespalier-routing` |
-| A home-screen shortcut or widget tap that opens a typed route (`fespalier_launch`, since 0.18.0) | `fespalier-routing` |
-| A file download, its status and path, a download notification that opens a route (`fespalier_download`, `fespalier_download_background`, since 0.15.0; engine, backends, uploads, tap adapter) | `fespalier-downloads` |
-| A place picked on a map, a pin picker, a geocoder, the device position, MapLibre (`fespalier_maps`, since 0.13.0) | `fespalier-maps` |
-| `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1), `OtelTransport` and `SentryTransport` for requests (since 0.21.0) | `fespalier-observability` |
-| Sentry, errors first: events tagged with route, file and action, page breadcrumbs, the OpenTelemetry trace id (since 0.9.0) | `fespalier-observability` |
-| Screen views with consent, an analytics backend (`fespalier_analytics`, since 0.13.0) | `fespalier-observability` |
-| Network images, an image CDN, signing image URLs, image heroes (since 0.9.0) | `fespalier-images` |
-| `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`), `adapters:` (since 0.9.0; `fespalier_tolgee` and `fespalier_cratestack` ship no adapter, they go in `startup()`) | this skill: `references/app-main.md` |
-| Widget tests: `pumpRouter`, `currentLocation`, deep links, data states | `fespalier-testing` |
-| An `fsp` error, a stale `app.g.dart`, a route that does not show | `fespalier-troubleshooting` |
-| Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0) | `fespalier-troubleshooting` (its DevTools page) |
-| Upgrading from any release since 0.2 (the notes run 0.2 to 0.3 up to 0.12 to 0.13), or adopting fespalier in a go_router app | `fespalier-migration` |
-| Coming from Uber's RIBs: what a router, an interactor, a builder, a viewless RIB or a workflow becomes | `fespalier-migration` |
+| The work                                                                                                                                                                                                                                                                  | Load                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Folders, segments, catch-alls, enums, typed routes, `RouteLink`, `route.dart`, `extra`, `present.dart`                                                                                                                                                                    | `fespalier-routing`                             |
+| `data.dart`, loading and error views, retries, prefetch, sections, `dataAt`, `fespalier_dio` (since 0.9.0), `fespalier_http` (since 0.15.0), `fespalier_transport` (the `HttpTransport` they share, since 0.21.0), `action.dart`, forms (`fespalier_forms`, since 0.11.0) | `fespalier-data`                                |
+| `layout.dart`, tabs, `container`, shell transitions, restoration, `fespalier_adaptive` (since 0.9.0)                                                                                                                                                                      | `fespalier-layouts`                             |
+| `guard.dart`, `redirect.dart`, `returnTo`, sign-in flows, `fespalier_auth` (since 0.9.0) and its backends (since 0.21.0): `fespalier_oidc`, DPoP with `fespalier_keypair_dpop`, token-free device-signed sessions with `fespalier_sign_keypair`                           | `fespalier-guards`                              |
+| An unlock guard on biometrics that never prompts twice (`fespalier_biometrics`, since 0.13.0)                                                                                                                                                                             | `fespalier-guards`                              |
+| Feature flags, a route behind a flag, a menu entry that follows one (`fespalier_flags`, since 0.9.0)                                                                                                                                                                      | `fespalier-guards`                              |
+| The app's own values per environment: `config/app.yaml`, profiles, `AppConfig`, `--profile`, and why a secret never goes in `config/` (since 0.24.0) | this skill: [`references/app-config.md`](references/app-config.md) |
+| A Rust core's change stream driving providers (`fespalier_frb`), providers per page instance (`fespalier_riverpod`), both since 0.13.0                                                                                                                                    | `fespalier-data`                                |
+| A cache on disk, a saved value on the first frame (`fespalier_storage`, since 0.9.0)                                                                                                                                                                                      | `fespalier-data`                                |
+| Reconnects, `refetchOnReconnect`, offline banners, connectivity versus reachability (`fespalier_connectivity`, since 0.9.0)                                                                                                                                               | `fespalier-data`                                |
+| Translated texts, the language from the URL, Tolgee, a language menu, right-to-left (`fespalier_tolgee`, since 0.10.0)                                                                                                                                                    | `fespalier-i18n`                                |
+| A screen or a write that works offline, queued writes, sync, offline banners, pending changes (`fespalier_cratestack`, since 0.10.0)                                                                                                                                      | `fespalier-offline`                             |
+| A CrateStack backend: the generated client, its transport and errors, its Dio, idempotency (`fespalier_cratestack`, since 0.10.0)                                                                                                                                         | `fespalier-cratestack`                          |
+| A notification tap or a push payload that opens a typed route (`fespalier_push`, since 0.13.0)                                                                                                                                                                            | `fespalier-routing`                             |
+| A home-screen shortcut or widget tap that opens a typed route (`fespalier_launch`, since 0.18.0)                                                                                                                                                                          | `fespalier-routing`                             |
+| A file download, its status and path, a download notification that opens a route (`fespalier_download`, `fespalier_download_background`, since 0.15.0; engine, backends, uploads, tap adapter)                                                                            | `fespalier-downloads`                           |
+| A place picked on a map, a pin picker, a geocoder, the device position, MapLibre (`fespalier_maps`, since 0.13.0)                                                                                                                                                         | `fespalier-maps`                                |
+| `observe.dart` hooks, telemetry, OpenTelemetry with `otel_zone`, the telemetry conventions (since 0.8.1), `OtelTransport` and `SentryTransport` for requests (since 0.21.0)                                                                                               | `fespalier-observability`                       |
+| Sentry, errors first: events tagged with route, file and action, page breadcrumbs, the OpenTelemetry trace id (since 0.9.0)                                                                                                                                               | `fespalier-observability`                       |
+| Screen views with consent, an analytics backend (`fespalier_analytics`, since 0.13.0)                                                                                                                                                                                     | `fespalier-observability`                       |
+| Network images, an image CDN, signing image URLs, image heroes (since 0.9.0)                                                                                                                                                                                              | `fespalier-images`                              |
+| `app.dart`, `startup.dart`, `splash.dart`, `main: manual`, `AppMain` (the generated `main()`), `adapters:` (since 0.9.0; `adapters: auto`, since 0.23.0; `fespalier_tolgee` and `fespalier_cratestack` ship no adapter, they go in `startup()`)                           | this skill: `references/app-main.md`            |
+| Widget tests: `pumpRouter`, `currentLocation`, deep links, data states                                                                                                                                                                                                    | `fespalier-testing`                             |
+| An `fsp` error, a stale `app.g.dart`, a route that does not show                                                                                                                                                                                                          | `fespalier-troubleshooting`                     |
+| Looking at a running app in Flutter DevTools (the `fespalier` tab, since 0.7.0)                                                                                                                                                                                           | `fespalier-troubleshooting` (its DevTools page) |
+| Upgrading from any release since 0.2 (the notes run 0.2 to 0.3 up to 0.12 to 0.13), or adopting fespalier in a go_router app                                                                                                                                              | `fespalier-migration`                           |
+| Coming from Uber's RIBs: what a router, an interactor, a builder, a viewless RIB or a workflow becomes                                                                                                                                                                    | `fespalier-migration`                           |
 
 ## Where the truth is
 

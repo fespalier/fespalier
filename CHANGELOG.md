@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.23.1](https://github.com/fespalier/fespalier/compare/v0.23.0...v0.23.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **cli:** a closed stdout or stderr no longer panics, and fsp doctor stops a silent flutter, warns on a dev-only fespalier and survives a symlink loop ([#293](https://github.com/fespalier/fespalier/issues/293)) ([cc678b9](https://github.com/fespalier/fespalier/commit/cc678b979a6583ebbf93f38c4d54f686de35c75c))
+* **cli:** tell fespalier's packages by where they come from, and handle overrides in fsp add and fsp upgrade --app ([#294](https://github.com/fespalier/fespalier/issues/294)) ([a738286](https://github.com/fespalier/fespalier/commit/a73828697a9b7dd2073d4a06de1fabc499a45e12))
+
+## [0.23.0](https://github.com/fespalier/fespalier/compare/v0.22.1...v0.23.0) (2026-10-24)
+
+
+### Features
+
+* **cli:** fsp add puts an fsp create feature into an app, fsp upgrade --app moves every companion ref together ([#291](https://github.com/fespalier/fespalier/issues/291)) ([cd4470a](https://github.com/fespalier/fespalier/commit/cd4470a88041607ffbed6fbf6e6e2ecaa87a649d))
+* **fsp:** fsp doctor, fsp schema and adapters: auto; the editors complete the fespalier: section ([#290](https://github.com/fespalier/fespalier/issues/290)) ([ce35d87](https://github.com/fespalier/fespalier/commit/ce35d8751771c4dde2b1d5f76acdfd3320e2b11b))
+
+
+### Build System
+
+* **examples:** move crypto-bigint to 0.7.6, and the cratestack server to p256 0.14 ([#292](https://github.com/fespalier/fespalier/issues/292)) ([047137f](https://github.com/fespalier/fespalier/commit/047137facdcfadf70b723baa0c8875826d907394))
+* **examples:** move tokio to 1.53.3 in the cose and frb-cose servers ([#288](https://github.com/fespalier/fespalier/issues/288)) ([e7e9ba6](https://github.com/fespalier/fespalier/commit/e7e9ba69f5af57d9e8800a8ee0b1151e31d0601a))
+
 ## [0.22.1](https://github.com/fespalier/fespalier/compare/v0.22.0...v0.22.1) (2026-10-23)
 
 

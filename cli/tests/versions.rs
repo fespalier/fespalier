@@ -21,6 +21,10 @@
     clippy::unwrap_used,
     reason = "integration-test helpers: a failed unwrap is a failed test"
 )]
+#![allow(
+    clippy::disallowed_macros,
+    reason = "a test says why it skipped with eprintln!, which libtest captures; err! belongs to the binary"
+)]
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;

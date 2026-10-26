@@ -64,7 +64,8 @@
 //!       env: { API_URL: "http://localhost:8080" }
 //!       hot_reload: true                         # default
 //!     codegen: dart run build_runner build      # `fsp run codegen`
-//!   adapters: [fespalier_sentry]   # default: none; packages that plug into the generated main() (see `adapters.rs`)
+//!   adapters: [fespalier_push]     # default: none; packages that plug into the generated main() (see `adapters.rs`)
+//!   # adapters: auto               # since 0.23.0: every first-party adapter package under `dependencies:`
 //! ```
 //!
 //! Both paths are relative to the project root and live under `lib/`, because
@@ -199,7 +200,7 @@ pub struct Lints {
 /// The `lints:` section as the pubspec has it.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct LintsConfig {
+pub(crate) struct LintsConfig {
     unknown_path: Option<LintLevel>,
 }
 
@@ -278,8 +279,13 @@ pub struct Config {
     /// `main:`: whether the generated `main()` is written (see [`MainMode`]).
     pub main: MainMode,
     /// `adapters:`: Dart packages, in order, that plug into the generated `main()` through
-    /// `package:<name>/fespalier_adapter.dart` (see `adapters.rs`, since 0.9.0).
+    /// `package:<name>/fespalier_adapter.dart` (see `adapters.rs`, since 0.9.0). With
+    /// `adapters: auto` (since 0.23.0), the first-party adapter packages under `dependencies:`.
     pub adapters: Vec<String>,
+    /// `adapters: auto` (since 0.23.0): [`Config::adapters`] was worked out from `dependencies:`
+    /// ([`crate::adapters::FIRST_PARTY`]), not listed. Only `fsp doctor` reads it: the output
+    /// depends on the list alone.
+    pub adapters_auto: bool,
     /// `fespalier_forms` is under `dependencies:` (since 0.11.0): `form()` needs it, and the
     /// generated file imports it. `true` without a pubspec, so a test needs none; the output
     /// still depends on the pubspec alone.
@@ -319,6 +325,7 @@ impl Default for Config {
             tasks: None,
             main: MainMode::Auto,
             adapters: vec![],
+            adapters_auto: false,
             forms_dependency: true,
             build_runner: false,
         }
@@ -347,7 +354,7 @@ struct RawPubspec {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct RawConfig {
+pub(crate) struct RawConfig {
     app_dir: Option<String>,
     output: Option<String>,
     format: Option<bool>,
@@ -371,8 +378,47 @@ struct RawConfig {
     test: Option<TestConfig>,
     main: Option<MainMode>,
     tasks: Option<Value>,
-    adapters: Option<Vec<String>>,
+    adapters: Option<RawAdapters>,
     otel: Option<bool>,
+}
+
+/// `adapters:` as the pubspec has it: a list of package names, or (since 0.23.0) `auto`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum RawAdapters {
+    /// `adapters: auto`: the first-party adapter packages under `dependencies:`.
+    Auto,
+    /// `adapters: [a, b]`: these, in this order.
+    List(Vec<String>),
+}
+
+impl<'de> Deserialize<'de> for RawAdapters {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> serde::de::Visitor<'de> for V {
+            type Value = RawAdapters;
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("`auto` or a list of Dart package names, like `[fespalier_push]`")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<RawAdapters, E> {
+                if v == "auto" {
+                    Ok(RawAdapters::Auto)
+                } else {
+                    Err(E::invalid_value(serde::de::Unexpected::Str(v), &self))
+                }
+            }
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<RawAdapters, A::Error> {
+                let mut names = vec![];
+                while let Some(name) = seq.next_element::<String>()? {
+                    names.push(name);
+                }
+                Ok(RawAdapters::List(names))
+            }
+        }
+        d.deserialize_any(V)
+    }
 }
 
 /// The `links:` section of the `fespalier:` config, as the pubspec has it.
@@ -1602,7 +1648,11 @@ impl Pubspec {
             config.test = c.test;
             config.tasks = c.tasks;
             config.main = c.main.unwrap_or_default();
-            config.adapters = adapters(c.adapters.unwrap_or_default(), &raw.dependencies)?;
+            (config.adapters, config.adapters_auto) = match c.adapters {
+                None => (vec![], false),
+                Some(RawAdapters::Auto) => (auto_adapters(&raw.dependencies), true),
+                Some(RawAdapters::List(names)) => (adapters(names, &raw.dependencies)?, false),
+            };
             config.otel = otel(c.otel.unwrap_or(false), &config, &raw.dependencies)?;
             if let Some(d) = c.app_dir {
                 config.app_dir = lib_path("app_dir", &d)?;
@@ -1696,6 +1746,11 @@ fn adapters(names: Vec<String>, dependencies: &Option<Value>) -> Result<Vec<Stri
         if out.contains(&name) {
             bail!("`fespalier.adapters` lists `{name}` twice");
         }
+        if name == "auto" {
+            bail!(
+                "`fespalier.adapters` lists `auto`, which is not a package: write `adapters: auto` on its own (since 0.23.0) for every first-party adapter package under `dependencies:`, or list the packages"
+            );
+        }
         if name == "fespalier" {
             bail!(
                 "`fespalier.adapters` lists packages that plug into fespalier's generated main(); `fespalier` is the framework itself, not an adapter"
@@ -1711,6 +1766,20 @@ fn adapters(names: Vec<String>, dependencies: &Option<Value>) -> Result<Vec<Stri
         out.push(name);
     }
     Ok(out)
+}
+
+/// `adapters: auto` (since 0.23.0): the first-party adapter packages
+/// ([`crate::adapters::FIRST_PARTY`]) under `dependencies:`, in the order `dependencies:` lists them.
+/// A package that is not one of them is never taken: `fsp` reads no package to find out.
+fn auto_adapters(dependencies: &Option<Value>) -> Vec<String> {
+    let Some(Value::Mapping(deps)) = dependencies else {
+        return vec![];
+    };
+    deps.keys()
+        .filter_map(Value::as_str)
+        .filter(|name| crate::adapters::is_first_party(name))
+        .map(str::to_string)
+        .collect()
 }
 
 /// `otel: true` (since 0.19.0), checked: the generated `main()` imports `fespalier_otel` and

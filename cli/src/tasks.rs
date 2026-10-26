@@ -95,6 +95,11 @@ pub struct Plan {
     pub hot_reload: bool,
 }
 
+/// The keys a task in map form takes (`fespalier.tasks.<name>.<key>`), in the order the messages
+/// list them; `hot_reload` only under `dev`. `schema_tests.rs` compares them with the schema's
+/// (since 0.23.0).
+pub const TASK_KEYS: [&str; 6] = ["run", "before", "with", "after", "env", "hot_reload"];
+
 /// What a task name may be.
 fn is_task_name(name: &str) -> bool {
     let mut chars = name.chars();
@@ -249,10 +254,7 @@ fn parse_task(name: &str, v: &Value) -> Result<Task> {
     };
     for k in map.keys() {
         let key = k.as_str().map_or_else(|| shown_value(k), str::to_string);
-        if !matches!(
-            key.as_str(),
-            "run" | "before" | "with" | "after" | "env" | "hot_reload"
-        ) {
+        if !TASK_KEYS.contains(&key.as_str()) {
             bail!(
                 "`fespalier.tasks.{name}` has an unknown key `{key}`; a task takes `run`, `before`, `with`, `after`, `env` and `hot_reload`"
             );
@@ -635,7 +637,7 @@ pub fn run_steps(kind: &str, task: &str, steps: &[Cmd], env: &Env<'_>) -> Result
         if procs::signalled() {
             return Err(Exit(130).into());
         }
-        eprintln!("› {}", cmd.shown());
+        errln!("› {}", cmd.shown());
         let place = format!("{kind} step {n} of `{task}`");
         let prepared = prepare(cmd, &[], env).map_err(|w| start_error(cmd, &place, &w))?;
         let program = prepared.program;
@@ -645,7 +647,7 @@ pub fn run_steps(kind: &str, task: &str, steps: &[Cmd], env: &Env<'_>) -> Result
             return Err(Exit(130).into());
         }
         if !status.success() {
-            eprintln!(
+            errln!(
                 "`{kind}` step {n} of `{task}` failed ({}): {}",
                 status.describe(),
                 cmd.shown()
@@ -800,7 +802,7 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
     let mut args = vec![cmd.target.clone()];
     args.extend(app_config::with_define(profile, &cmd.args)?);
     if cmd.dry_run {
-        eprint!(
+        err!(
             "{}",
             dry_run(
                 &format!("fsp build {}", cmd.target),
@@ -815,10 +817,10 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
         return Ok(());
     }
     procs::install_signals().map_err(anyhow::Error::msg)?;
-    eprintln!("{}", crate::gen_opts(project, &cfg, true, false)?.line());
+    errln!("{}", crate::gen_opts(project, &cfg, true, false)?.line());
     let mut vars = vec![("FSP_BUILD_TARGET".to_string(), cmd.target.clone())];
     if let Some(a) = &active {
-        eprintln!("{}", a.line());
+        errln!("{}", a.line());
         vars.extend(app_config::run_vars(project, &cfg.output_config(), a));
     }
     execute(project, &plan, &args, &vars)
@@ -830,12 +832,12 @@ pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
     let tasks = Tasks::from_config(&cfg)?;
     if cmd.json {
         for line in tasks.json_lines() {
-            println!("{line}");
+            outln!("{line}");
         }
         return Ok(());
     }
     let Some(name) = &cmd.task else {
-        print!("{}", tasks.listing());
+        out!("{}", tasks.listing());
         return Ok(());
     };
     if name == "dev" {
@@ -862,7 +864,7 @@ pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
         bail!("no task `{name}` in `fespalier: tasks:` of pubspec.yaml; the tasks are: {known}");
     };
     if cmd.dry_run {
-        eprint!(
+        err!(
             "{}",
             dry_run(
                 &format!("fsp run {name}"),

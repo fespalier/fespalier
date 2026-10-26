@@ -1,5 +1,6 @@
 **
 !out/src/**
+!schemas/**
 !package.json
 !README.md
 !CHANGELOG.md

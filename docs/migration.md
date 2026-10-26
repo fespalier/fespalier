@@ -25,13 +25,20 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 ## Upgrading
 
-What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
+What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1. Since 0.23.0, [`fsp upgrade --app`](cli.md#moving-the-apps-pins) moves an app's refs and prints, for each release in between, the first paragraph of its section here and the lead of each bullet.
+
+### 0.24.0
+
+0.24.0 changes no code you wrote and no app regenerates a different `app.g.dart`. An app with a `config/app.yaml` gets a new generated file, `lib/app.config.g.dart`, beside `output`.
+
+- **`fsp` reads `config/app.yaml`** (since 0.24.0). An app that already has a `config/app.yaml` (or a `config/app.<name>.yaml`) for another tool now gets `lib/app.config.g.dart`, and `fsp gen` and `fsp check` fail on what they cannot read in those files: move them elsewhere. Other files in `config/` are ignored. With a `config/app.yaml`, `fsp dev` and `fsp build` set `FSP_PROFILE` and `FSP_CONFIG_*` in their commands' environment, over a variable of the same name of yours. [App configuration](app-config.md).
 
 ### 0.23.0
 
-0.23.0 changes no code you wrote and no app regenerates a different `app.g.dart`. An app with a `config/app.yaml` gets a new generated file, `lib/app.config.g.dart`, beside `output`.
+0.23.0 changes no code you wrote in `lib/app/`, and no app regenerates `app.g.dart` because of `fsp doctor`, `fsp schema`, `fsp add`, `fsp upgrade --app` or `adapters: auto`.
 
-- **`fsp` reads `config/app.yaml`** (since 0.23.0). An app that already has a `config/app.yaml` (or a `config/app.<name>.yaml`) for another tool now gets `lib/app.config.g.dart`, and `fsp gen` and `fsp check` fail on what they cannot read in those files: move them elsewhere. Other files in `config/` are ignored. With a `config/app.yaml`, `fsp dev` and `fsp build` set `FSP_PROFILE` and `FSP_CONFIG_*` in their commands' environment, over a variable of the same name of yours. [App configuration](app-config.md).
+- **Check the upgrade with `fsp doctor`** (since 0.23.0). After you move the refs, it says whether fespalier and every companion are at the ref of the `fsp` you run, whether `pubspec.lock` resolved them, and whether go_router and Flutter fit ([fsp doctor](cli.md#fsp-doctor)).
+- **Move the refs with `fsp upgrade --app`** (since 0.23.0). One command moves the `ref:` of fespalier and of every companion to the release of the `fsp` you run (or to `--version vX.Y.Z`), runs `flutter pub get` and `fsp gen`, and prints this page's notes for every release in between ([Moving the app's pins](cli.md#moving-the-apps-pins)). It never moves the app back unless `--version` asks for it, and from a pin before 0.23.0 the first move needs a global `fsp` of 0.23.0 or later.
 
 ### 0.22.0
 

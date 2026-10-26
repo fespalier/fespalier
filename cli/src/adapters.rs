@@ -15,10 +15,61 @@
 //! gives the same bytes before and after `pub get`.
 //!
 //! The first package is the outermost: its zone and its wrapper go around the others'.
+//!
+//! `adapters: auto` (since 0.23.0) takes the first-party adapter packages ([`FIRST_PARTY`]) that are
+//! under `dependencies:`, in that order. It is opt-in: every first-party adapter needs a `configure`
+//! call in `main()`, and one that is unconfigured reports a `FlutterError`, so turning one on for an
+//! app that depends on its package for something else (`fespalier_download` for `fespalier_maps`'
+//! file packs, or for a `startup.dart` override) would add an error to that app. A package of the
+//! app's own is never taken: `fsp` reads no package to find its `fespalier_adapter.dart`.
 
 use serde::Serialize;
 
 use crate::entry::MainHooks;
+
+/// A first-party package that ships `lib/fespalier_adapter.dart` (since 0.23.0).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FirstParty {
+    /// The package: `fespalier_push`.
+    pub name: &'static str,
+    /// The class whose `configure` the app calls in `main()` before `AppMain.run()` (docs/adapters.md,
+    /// "Adapters that need your code"): `FespalierPush`.
+    pub configure: &'static str,
+}
+
+/// Every first-party package that ships `lib/fespalier_adapter.dart`, what `adapters: auto` takes
+/// and what `fsp doctor` looks for. `entry_tests::first_party_adapters_are_the_packages_that_ship_one`
+/// compares it with `packages/*/lib/fespalier_adapter.dart`.
+pub const FIRST_PARTY: [FirstParty; 4] = [
+    FirstParty {
+        name: "fespalier_analytics",
+        configure: "FespalierAnalytics",
+    },
+    FirstParty {
+        name: "fespalier_download",
+        configure: "FespalierDownload",
+    },
+    FirstParty {
+        name: "fespalier_launch",
+        configure: "FespalierLaunch",
+    },
+    FirstParty {
+        name: "fespalier_push",
+        configure: "FespalierPush",
+    },
+];
+
+/// The first-party adapter package called `name`, if it is one.
+#[must_use]
+pub fn first_party(name: &str) -> Option<FirstParty> {
+    FIRST_PARTY.iter().copied().find(|a| a.name == name)
+}
+
+/// Whether `name` is a first-party adapter package.
+#[must_use]
+pub fn is_first_party(name: &str) -> bool {
+    first_party(name).is_some()
+}
 
 /// What `app.g.dart` needs for `AppAdapters` (since 0.11.0): the adapters' libraries, in order.
 #[derive(Debug, Serialize)]

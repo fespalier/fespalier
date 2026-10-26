@@ -1,4 +1,40 @@
+/// `print!` for what a command writes to stdout: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! out {
+    ($($arg:tt)*) => {
+        $crate::out::write(format_args!($($arg)*))
+    };
+}
+
+/// `println!` for what a command writes to stdout: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! outln {
+    () => {
+        $crate::out::line(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::out::line(format_args!($($arg)*))
+    };
+}
+
+/// `err!` for what a command writes to stderr: a closed pipe ends the output quietly (`out.rs`).
+macro_rules! err {
+    ($($arg:tt)*) => {
+        $crate::out::err(format_args!($($arg)*))
+    };
+}
+
+/// `errln!` for what a command writes to stderr: a closed pipe ends the output quietly
+/// (`out.rs`).
+macro_rules! errln {
+    () => {
+        $crate::out::errln(format_args!(""))
+    };
+    ($($arg:tt)*) => {
+        $crate::out::errln(format_args!($($arg)*))
+    };
+}
+
 mod adapters;
+mod add;
 mod app_config;
 mod build_runner;
 mod config;
@@ -10,6 +46,7 @@ mod dev_state;
 mod dev_tui;
 mod devtools;
 mod diag;
+mod doctor;
 mod emit;
 mod entry;
 mod enums;
@@ -26,16 +63,20 @@ mod manifest;
 mod menu;
 mod osc8;
 mod otel;
+mod out;
 mod packages;
 mod parse_cache;
+mod pins;
 mod platform_files;
 mod procs;
+mod pubspec_edit;
 mod reload;
 mod resolve;
 mod routes;
 mod samples;
 mod scaffold;
 mod scan;
+mod schema;
 mod secrets;
 mod segtype;
 mod session;
@@ -46,6 +87,7 @@ mod telemetry_stack;
 mod templates;
 mod types;
 mod upgrade;
+mod upgrade_app;
 mod upgrade_replace;
 mod watch;
 
@@ -134,14 +176,20 @@ enum Cmd {
     Run(tasks::RunCmd),
     /// Make a new Flutter app with fespalier in it: `fsp create my_app` (optional features with --features)
     Create(create::CreateCmd),
+    /// Add an optional feature of `fsp create` to this app: `fsp add storage` (the dependency, its files, its wiring)
+    Add(add::AddCmd),
     /// Set up an existing Flutter project: starter layout, page and not-found, then gen
     Init,
     /// Scaffold a route: `fsp new products/[id] --data --loading --error`
     New(scaffold::NewCmd),
     /// Start a local OpenTelemetry stack with fespalier's dashboards: a collector, OpenObserve, and Grafana with --grafana (needs Docker)
     Telemetry(telemetry_stack::TelemetryCmd),
-    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3)
+    /// Upgrade fsp the way it was installed (Homebrew, Scoop, cargo, install script); `--check` says whether a newer release exists (exit 3); `--app` moves the app's pins instead
     Upgrade(upgrade::UpgradeCmd),
+    /// Print the JSON Schema of the `fespalier:` section of pubspec.yaml, for editors
+    Schema(schema::SchemaCmd),
+    /// Report what the generated `main()` wires and why, and what is out of line: refs, Flutter, `go_router` (exit 1 on an error)
+    Doctor(doctor::DoctorCmd),
 }
 
 fn main() {
@@ -164,24 +212,32 @@ fn main() {
         }
         // So is the installed `fsp` itself.
         if let Cmd::Upgrade(cmd) = &cli.cmd {
+            // `--app` upgrades the app's pins (since 0.23.0): that needs the project.
+            if cmd.app {
+                return upgrade_app::run(cmd, &find_project(cli.project.clone())?);
+            }
             // Only the closing note reads the project, and it may be none.
             let project = find_project(cli.project.clone()).ok();
             return upgrade::run(cmd, project.as_deref());
         }
+        // The schema is this fsp's, whatever the project.
+        if let Cmd::Schema(cmd) = &cli.cmd {
+            return schema::run(cmd);
+        }
         let project = find_project(cli.project)?;
         match cli.cmd {
-            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) => {
+            Cmd::Telemetry(_) | Cmd::Create(_) | Cmd::Upgrade(_) | Cmd::Schema(_) => {
                 unreachable!("handled before the project is looked up")
             }
             Cmd::Gen { format, json } => {
                 let mut cfg = Config::load(&project)?;
                 cfg.format |= format;
-                eprintln!("{}", gen_opts(&project, &cfg, true, json)?.line());
+                errln!("{}", gen_opts(&project, &cfg, true, json)?.line());
                 Ok(())
             }
             Cmd::Check { json } => {
                 let o = gen_opts(&project, &Config::load(&project)?, false, json)?;
-                eprintln!("✓ {}, no errors", plural(o.routes, "route"));
+                errln!("✓ {}, no errors", plural(o.routes, "route"));
                 Ok(())
             }
             Cmd::Routes { json, graph } => routes::run(&project, json, graph),
@@ -194,11 +250,13 @@ fn main() {
             Cmd::Build(cmd) => tasks::build(&project, &cmd),
             Cmd::Run(cmd) => tasks::run_task(&project, &cmd),
             Cmd::Init => init::run(&project),
+            Cmd::Doctor(cmd) => doctor::run(&project, &cmd),
+            Cmd::Add(cmd) => add::run(&project, &cmd),
             Cmd::New(cmd) => {
                 let created = scaffold::new_route_opts(&project, &cmd.args, cmd.no_page)?;
                 match gen_with(&project, &Config::load(&project)?.for_scaffolding(), true) {
                     Ok(o) => {
-                        eprintln!("{}", o.line());
+                        errln!("{}", o.line());
                         Ok(())
                     }
                     Err(e) => {
@@ -216,7 +274,7 @@ fn main() {
         if let Some(Exit(code)) = e.downcast_ref::<Exit>() {
             process::exit(*code);
         }
-        eprintln!("{e:#}");
+        errln!("{e:#}");
         process::exit(1);
     }
 }
@@ -233,6 +291,22 @@ impl std::fmt::Display for Exit {
 }
 
 impl std::error::Error for Exit {}
+
+impl Exit {
+    /// The error of a step that failed after the app was changed (`fsp add`, `fsp upgrade --app`):
+    /// `message` is given what happened to the step, `failed: <why>` or `was interrupted`. When the
+    /// person interrupted it (Ctrl-C, flutter's `Exit(130)`), the message is printed and the exit
+    /// code stays, since an `Exit` prints nothing of its own.
+    pub fn after(cause: &anyhow::Error, message: impl FnOnce(&str) -> String) -> anyhow::Error {
+        match cause.downcast_ref::<Exit>() {
+            Some(Exit(code)) => {
+                errln!("{}", message("was interrupted."));
+                Exit(*code).into()
+            }
+            None => anyhow!(message(&format!("failed: {cause:#}"))),
+        }
+    }
+}
 
 fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
@@ -300,7 +374,7 @@ pub fn gen_opts(project: &Path, cfg: &Config, write: bool, json: bool) -> Result
         }
     });
     for warning in session.formats.take_warnings() {
-        eprintln!("{warning}");
+        errln!("{warning}");
     }
     result
 }
@@ -521,10 +595,10 @@ fn watch(project: &Path) -> Result<()> {
     let (tx, rx) = mpsc::channel();
     watch::watch_loop(project, &cfg, tx, &rx, |msg| match msg {
         watch::Watched::Diags(dir, d) => diag::render(dir, &cfg.app_dir, d),
-        watch::Watched::Warning(text) | watch::Watched::Watching(text) => eprintln!("{text}"),
+        watch::Watched::Warning(text) | watch::Watched::Watching(text) => errln!("{text}"),
         watch::Watched::Pass(report) => {
             if let Some(line) = report.line {
-                eprintln!("{line}");
+                errln!("{line}");
             }
         }
     })
@@ -532,6 +606,8 @@ fn watch(project: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod action_tests;
+#[cfg(test)]
+mod add_tests;
 #[cfg(test)]
 mod app_config_tests;
 #[cfg(test)]
@@ -554,6 +630,8 @@ mod dev_state_tests;
 mod dev_tui_tests;
 #[cfg(test)]
 mod devtools_tests;
+#[cfg(test)]
+mod doctor_tests;
 #[cfg(test)]
 mod entry_tests;
 #[cfg(test)]
@@ -603,9 +681,13 @@ mod page_name_tests;
 #[cfg(test)]
 mod paths_tests;
 #[cfg(test)]
+mod pins_tests;
+#[cfg(test)]
 mod platform_files_tests;
 #[cfg(test)]
 mod procs_tests;
+#[cfg(test)]
+mod pubspec_edit_tests;
 #[cfg(test)]
 mod refresh_tests;
 #[cfg(test)]
@@ -616,6 +698,8 @@ mod remount_tests;
 mod rest_types_tests;
 #[cfg(test)]
 mod route_api_tests;
+#[cfg(test)]
+mod schema_tests;
 #[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]
@@ -640,6 +724,8 @@ mod telemetry_tests;
 mod tests;
 #[cfg(test)]
 mod types_tests;
+#[cfg(test)]
+mod upgrade_app_tests;
 #[cfg(test)]
 mod upgrade_tests;
 #[cfg(test)]

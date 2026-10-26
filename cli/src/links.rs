@@ -791,7 +791,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
         &android_filters_body(&collect(&app), &links),
     )?;
     for w in warnings(&app, &links).into_iter().chain(platform_warnings) {
-        eprintln!("warning: {w}");
+        errln!("warning: {w}");
     }
     let count = outputs.iter().filter(|f| f.text.is_some()).count();
     let folder = if out.is_empty() { "." } else { out.as_str() };
@@ -814,11 +814,11 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
                 fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
             }
             fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
-            eprintln!("  wrote {}", shown(f));
+            errln!("  wrote {}", shown(f));
             written += 1;
         } else {
             fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))?;
-            eprintln!("  removed {}", shown(f));
+            errln!("  removed {}", shown(f));
         }
     }
     let (mut edited, mut created, mut platform_stale) = (0, 0, vec![]);
@@ -828,7 +828,7 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
             continue;
         }
         write_atomic(&project.join(&f.path), &f.text)?;
-        eprintln!(
+        errln!(
             "  {} {}",
             if f.created { "wrote" } else { "edited" },
             f.path
@@ -851,28 +851,28 @@ pub fn run(project: &Path, check: bool) -> Result<()> {
     if check {
         if stale.is_empty() {
             if links.write_out {
-                eprintln!(
+                errln!(
                     "✓ links: {count} files in {folder} are up to date{}",
                     and_platform(String::new())
                 );
             } else {
-                eprintln!("✓ links: {platform_count} platform files are up to date");
+                errln!("✓ links: {platform_count} platform files are up to date");
             }
             return Ok(());
         }
         for s in &stale {
-            eprintln!("{s}");
+            errln!("{s}");
         }
         bail!("{} file(s) out of date; run `fsp links`", stale.len());
     }
     if !links.write_out {
-        eprintln!(
+        errln!(
             "✓ links: {platform_count} platform files ({created} written, {edited} edited, {} unchanged)",
             platform_count - edited - created
         );
         return Ok(());
     }
-    eprintln!(
+    errln!(
         "✓ links: {count} files in {folder} ({written} written, {} unchanged){}",
         count - written,
         and_platform(format!(

@@ -4,3 +4,12 @@ allow-expect-in-tests = true
 allow-panic-in-tests = true
 # Proper nouns that doc_markdown would otherwise want in backticks.
 doc-valid-idents = ["GoRouter", "GitHub", "IntelliJ", "VS", "FlutterFlow", "DevTools", "OpenObserve", "OpenTelemetry", "FSP_TELEMETRY_DIR", ".."]
+# A command writes to stdout through `out!` and `outln!`, and to stderr through `err!` and `errln!`
+# (src/out.rs), which stop quietly at a closed pipe (`fsp routes --json | head -1`, `fsp check 2>&1
+# | head`), where `println!` and `eprintln!` panic.
+disallowed-macros = [
+    { path = "std::print", reason = "use `out!`: it stops quietly at a closed pipe (src/out.rs)" },
+    { path = "std::println", reason = "use `outln!`: it stops quietly at a closed pipe (src/out.rs)" },
+    { path = "std::eprint", reason = "use `err!`: it stops quietly at a closed pipe (src/out.rs)" },
+    { path = "std::eprintln", reason = "use `errln!`: it stops quietly at a closed pipe (src/out.rs)" },
+]

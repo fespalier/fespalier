@@ -471,7 +471,8 @@ pub struct Opts {
     pub stamp: Option<Stamp>,
     /// What the file of the app's configuration holds when flutter starts, as the first generation
     /// left it (since 0.24.1). `None` when that is not known (an error, or no `config/app.yaml`):
-    /// the first write of the configuration then restarts the app.
+    /// the first pass that reads the configuration then restarts the app, and the restart that
+    /// succeeds sets what the app has.
     pub config: Option<Snapshot>,
 }
 
@@ -1093,8 +1094,12 @@ impl DevState {
     /// that succeeded found ([`DevState::config_target`]), so the values a restart that failed
     /// was to bring in still restart it.
     ///
-    /// - When that is not known (flutter started on a configuration with errors, or before there
-    ///   was a `config/app.yaml`), a write restarts, as before 0.24.1.
+    /// - When that is not known (flutter started on a configuration with errors, or on routes
+    ///   with errors, or before there was a `config/app.yaml`), the first pass that reads the
+    ///   configuration restarts the app, as a missing `running` stamp makes the first
+    ///   regeneration restart it once. The restart that succeeds sets what the app has, and one
+    ///   that fails leaves it unknown, so the next pass restarts again. A pass that did not read
+    ///   the configuration restarts for a write, as before 0.24.1.
     /// - [`Build::Seen`]: the profiles changed, which can change the profile the app runs
     ///   ([`DevState::choose_again`]), or the constants of the profile it runs did. A change to
     ///   another profile's values changes no value the app has: `_profile` is a constant of the
@@ -1102,8 +1107,11 @@ impl DevState {
     /// - [`Build::Unseen`]: `fsp` cannot tell which profile the app runs, so every write restarts,
     ///   as before 0.24.1, and so does any other difference.
     fn config_restarts(&self, r: &GenReport) -> bool {
-        let (Some(now), Some(base)) = (&r.config, self.config_target()) else {
+        let Some(now) = &r.config else {
             return r.config_written;
+        };
+        let Some(base) = self.config_target() else {
+            return true;
         };
         match &self.build {
             Build::Unseen => r.config_written || base != now,

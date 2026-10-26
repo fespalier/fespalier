@@ -1957,3 +1957,116 @@ fn a_build_fsp_cannot_read_says_no_profile_with_hot_reload_off() {
     assert!(requests(&fx).is_empty());
     assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
 }
+
+/// A running app, plain, whose routes are `stamp`, that flutter started when `config` was not
+/// known (an error in `config/` or in the routes, or no `config/app.yaml` then), and whose profile
+/// is `profile`, chosen by `choice` (since 0.24.1).
+fn running_unknown(stamp: Stamp, choice: Choice, profile: &str) -> DevState {
+    let mut s = started_config(
+        Some(stamp),
+        true,
+        true,
+        Build::seen(choice, Some(profile)),
+        None,
+    );
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    s
+}
+
+#[test]
+fn a_restart_that_failed_over_an_unknown_baseline_is_asked_again() {
+    // Flutter started while `config/app.staging.yaml` had a YAML error: the file it compiled is
+    // the older one, and what the app was built from is not known (since 0.24.1). The first pass
+    // that reads a clean configuration restarts the app,
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = running_unknown(v0.clone(), staging, "staging");
+    let fx = pass(&mut s, 100, config_alone(v0.clone(), three()));
+    assert_eq!(requests(&fx), [(1, true)]);
+    assert_eq!(lines(&mut s), RESTART);
+    // and when that restart fails (a key was renamed and a reference no longer compiles), the
+    // baseline is still unknown: the save that fixes the Dart writes nothing, and restarts again,
+    refuse(&mut s, 200, 1);
+    s.drain_plain();
+    let fx = pass(&mut s, 300, config_found(v0.clone(), three()));
+    assert_eq!(requests(&fx), [(2, true)]);
+    assert_eq!(lines(&mut s), RESTART);
+    // until a restart succeeds: then the app has the values, and a save reloads.
+    respond(&mut s, 400, 2, "Restarted");
+    s.drain_plain();
+    let fx = pass(&mut s, 500, config_found(v0, three()));
+    assert_eq!(requests(&fx), [(3, false)]);
+    assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
+}
+
+#[test]
+fn another_profile_reloads_once_a_restart_set_an_unknown_baseline() {
+    // Flutter started on routes with an error, so the first generation never read `config/`
+    // (since 0.24.1). The first pass that reads it restarts, though it wrote nothing,
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = running_unknown(v0.clone(), staging, "staging");
+    let fx = pass(&mut s, 100, config_found(v0.clone(), three()));
+    assert_eq!(requests(&fx), [(1, true)]);
+    // and a save in flight with it does not restart it again,
+    assert!(requests(&pass(&mut s, 150, config_found(v0.clone(), three()))).is_empty());
+    respond(&mut s, 200, 1, "Restarted");
+    s.drain_plain();
+    // but once the restart succeeded, the rule of the baseline applies: an edit of another
+    // profile (`dev`, while the app runs `staging`) reloads,
+    let dev = config(&[("default", "1"), ("dev", "5"), ("staging", "3")]);
+    let fx = pass(&mut s, 300, config_alone(v0.clone(), dev));
+    assert_eq!(requests(&fx), [(2, false)]);
+    assert_eq!(lines(&mut s), RELOAD);
+    // and one of the profile it runs restarts.
+    respond(&mut s, 400, 2, "Reloaded 1 of 9 libraries");
+    let edited = config(&[("default", "1"), ("dev", "5"), ("staging", "4")]);
+    let fx = pass(&mut s, 500, config_alone(v0, edited));
+    assert_eq!(requests(&fx), [(3, true)]);
+}
+
+#[test]
+fn an_unknown_baseline_held_for_app_start_restarts_once() {
+    // Before `app.start` the restart is held, and a second pass for the same configuration does
+    // not ask for another (since 0.24.1); a build `fsp` cannot read waits for it the same way.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    for build in [
+        Build::seen(
+            Choice::new(Some("staging"), &[], None, true),
+            Some("staging"),
+        ),
+        Build::Unseen,
+    ] {
+        let mut s = started_config(Some(v0.clone()), true, true, build, None);
+        connect(&mut s);
+        assert!(requests(&pass(&mut s, 10, config_found(v0.clone(), three()))).is_empty());
+        assert_eq!(lines(&mut s), RESTART);
+        assert!(requests(&pass(&mut s, 20, config_found(v0.clone(), three()))).is_empty());
+        assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
+        assert_eq!(requests(&app_start(&mut s, 30, true)), [(1, true)]);
+    }
+}
+
+#[test]
+fn a_pass_that_read_no_configuration_over_an_unknown_baseline_restarts_for_a_write_only() {
+    // No `config/app.yaml`, or an error in `config/`: the pass read nothing (since 0.24.1), so it
+    // has no configuration to compare, and a write of the file restarts as before.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = running_unknown(v0.clone(), staging, "staging");
+    assert_eq!(
+        requests(&pass(&mut s, 100, saved(v0.clone()))),
+        [(1, false)]
+    );
+    respond(&mut s, 200, 1, "Reloaded 1 of 9 libraries");
+    s.drain_plain();
+    let written = GenReport {
+        config_written: true,
+        routes_wrote: false,
+        ..wrote(v0)
+    };
+    assert_eq!(requests(&pass(&mut s, 300, written)), [(2, true)]);
+}

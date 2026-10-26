@@ -14,6 +14,7 @@ use anyhow::Result;
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, PathsMut, RecommendedWatcher, RecursiveMode, Watcher};
 
+use crate::app_config::Change;
 use crate::config::Config;
 use crate::diag::{self, Diags, Level, Loc};
 use crate::parse_cache;
@@ -35,8 +36,8 @@ pub enum Watched<'a> {
     Diags(&'a Path, &'a Diags),
     /// A warning from `dart format`.
     Warning(String),
-    /// A pass is done.
-    Pass(GenReport),
+    /// A pass is done (boxed: it is far larger than the others).
+    Pass(Box<GenReport>),
     /// `watching lib/app/ …`, once the watcher is up.
     Watching(String),
 }
@@ -67,10 +68,14 @@ pub struct GenReport {
     pub stamp: Option<Stamp>,
     /// Whether a hot reload can swap the routes the pass generated (since 0.19.0; `entry::swaps`).
     pub swaps: bool,
-    /// Whether the pass wrote the app's configuration (`lib/app.config.g.dart`, since 0.24.0):
-    /// `fsp dev` restarts the app for it, since a value read once (into a provider, a
-    /// `static final`) keeps its old value through a hot reload.
-    pub config_written: bool,
+    /// What the pass changed in the app's configuration (`lib/app.config.g.dart`), when it wrote it
+    /// (since 0.24.0; what it changed since 0.24.1): `fsp dev` restarts the app for a change to
+    /// the values of the profile it runs, or to the profiles, since a value read once (into a
+    /// provider, a `static final`) keeps its old value through a hot reload.
+    pub config_written: Option<Change>,
+    /// Whether the pass wrote a file other than the configuration (since 0.24.1): the output, the
+    /// manifest or the generated `main()`.
+    pub routes_wrote: bool,
     /// The route count of a pass that succeeded.
     pub routes: Option<usize>,
     /// How many errors the pass reported (0 when `ok`).
@@ -121,6 +126,58 @@ struct Shown {
     outcome: String,
 }
 
+/// The paths `fsp watch` watches, and compares an event with (since 0.24.1), all under the real,
+/// absolute path of the project. A watcher reports a change at the path it was asked to watch on
+/// inotify, and at the real path on `FSEvents`, so a relative `--project`, or one through a symbolic
+/// link, would match on Linux and miss on macOS (UNCHECKED there: only a Mac shows `FSEvents`).
+/// With both sides real, they are the same on every backend.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Roots {
+    /// The app folder: every path under it counts.
+    pub(crate) app_dir: PathBuf,
+    /// The folder of the app's configuration.
+    pub(crate) config_dir: PathBuf,
+    /// The generated files, which a pass writes and which must not wake it again.
+    pub(crate) outputs: Vec<PathBuf>,
+    /// What is watched recursively: `lib/` when the app folder is in it, else the app folder.
+    pub(crate) watched: PathBuf,
+}
+
+impl Roots {
+    /// The roots of `project`, as its real path gives them (the path as it was given if it cannot
+    /// be resolved, which is a project that is gone).
+    pub(crate) fn of(project: &Path, cfg: &Config) -> Roots {
+        let real = project
+            .canonicalize()
+            .unwrap_or_else(|_| project.to_path_buf());
+        let app_dir = real.join(&cfg.app_dir);
+        let main_output = cfg.output_main();
+        let config_output = cfg.output_config();
+        let outputs = [
+            Some(&cfg.output),
+            cfg.output_manifest.as_ref(),
+            Some(&main_output),
+            Some(&config_output),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|o| real.join(o))
+        .collect();
+        let lib = real.join("lib");
+        let watched = if app_dir.starts_with(&lib) && lib.is_dir() {
+            lib
+        } else {
+            app_dir.clone()
+        };
+        Roots {
+            config_dir: real.join(crate::app_config::DIR),
+            app_dir,
+            outputs,
+            watched,
+        }
+    }
+}
+
 /// Runs `gen` once, then again after every burst of changes, until a [`Wake::Stop`] arrives.
 /// `tx` is the sending end of `rx`, which the file watcher's callback clones.
 pub fn watch_loop(
@@ -130,19 +187,7 @@ pub fn watch_loop(
     rx: &Receiver<Wake>,
     mut sink: impl FnMut(Watched<'_>),
 ) -> Result<()> {
-    let app_dir = project.join(&cfg.app_dir);
-    let main_output = cfg.output_main();
-    let config_output = cfg.output_config();
-    let outputs: Vec<PathBuf> = [
-        Some(&cfg.output),
-        cfg.output_manifest.as_ref(),
-        Some(&main_output),
-        Some(&config_output),
-    ]
-    .into_iter()
-    .flatten()
-    .map(|o| project.join(o))
-    .collect();
+    let roots = Roots::of(project, cfg);
     // A save changes one file: keep the parse results of the others between runs, and the
     // last run's result and formatted text (see session.rs).
     parse_cache::enable();
@@ -154,8 +199,11 @@ pub fn watch_loop(
     };
     pass.run(true, &mut sink);
 
-    let changes_under = app_dir.clone();
-    let config_dir = project.join(crate::app_config::DIR);
+    let (outputs, changes_under, config_dir) = (
+        roots.outputs.clone(),
+        roots.app_dir.clone(),
+        roots.config_dir.clone(),
+    );
     let mut watcher = RecommendedWatcher::new(
         move |res: notify::Result<Event>| match res {
             Ok(ev) if relevant(&ev, &outputs, &changes_under, &config_dir) => {
@@ -170,12 +218,7 @@ pub fn watch_loop(
     )?;
     // The app folder, and the rest of `lib/` too when it is there: that is where the enums are
     // that segments and query parameters name, and editing one must regenerate.
-    let lib = project.join("lib");
-    let watched = if app_dir.starts_with(&lib) && lib.is_dir() {
-        lib
-    } else {
-        app_dir.clone()
-    };
+    let watched = roots.watched;
     watcher.watch(&watched, RecursiveMode::Recursive)?;
     // The folders of a path dependency that hold a file the last pass read (since 0.22.0), each on
     // its own and not recursively: only those can change what the next pass generates.
@@ -319,6 +362,9 @@ impl Pass<'_> {
             // The app's configuration (since 0.24.0), whenever the folder is there: one made while
             // `fsp watch` runs is watched from the pass after it appears.
             .chain(std::iter::once(self.project.join(crate::app_config::DIR)))
+            // By their real paths (since 0.24.1), as `watched` is: a folder that is not there has
+            // none.
+            .filter_map(|d| d.canonicalize().ok())
             .filter(|d| !d.starts_with(watched) && d.is_dir())
             .collect();
         beside.forget(&there);
@@ -376,7 +422,8 @@ impl Pass<'_> {
                 main_changed: self.session.main_changed,
                 stamp: self.session.stamp.clone(),
                 swaps: self.session.swaps,
-                config_written: self.session.config_written.is_some(),
+                config_written: self.session.config_written.clone(),
+                routes_wrote: self.session.routes_wrote,
                 routes: Some(o.routes),
                 errors: 0,
                 first_error: None,
@@ -395,7 +442,8 @@ impl Pass<'_> {
                     main_changed: self.session.main_changed,
                     stamp: self.session.stamp.clone(),
                     swaps: self.session.swaps,
-                    config_written: self.session.config_written.is_some(),
+                    config_written: self.session.config_written.clone(),
+                    routes_wrote: self.session.routes_wrote,
                     routes: None,
                     errors: errors.max(1),
                     first_error: first_error.or_else(|| {
@@ -412,6 +460,6 @@ impl Pass<'_> {
         };
         self.shown = Shown { diags, outcome };
         parse_cache::finish_run();
-        sink(Watched::Pass(report));
+        sink(Watched::Pass(Box::new(report)));
     }
 }

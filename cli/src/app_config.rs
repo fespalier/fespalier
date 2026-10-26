@@ -33,7 +33,7 @@
 //! like a credential ([`crate::secrets`]). The commands of `fsp dev` and `fsp build` get the
 //! profile as `FSP_PROFILE` and each value as a `FSP_CONFIG_*` variable ([`task_vars`]).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
@@ -1386,46 +1386,69 @@ pub fn default_flavor(project: &Path) -> Option<String> {
 }
 
 /// The profile a build will have, and why: what the generated `_profile` computes, from what
-/// `fsp` can see of the build (since 0.24.0). `explicit` is `--profile` or a define in the
-/// arguments; `debug` whether the build is a debug build.
+/// `fsp` can see of the build (since 0.24.0), as [`Choice::active`] makes it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Active {
     pub name: String,
     pub why: &'static str,
 }
 
-#[must_use]
-pub fn active(
-    explicit: Option<&str>,
-    flutter_args: &[String],
-    default_flavor: Option<&str>,
-    profiles: &[String],
+/// What chooses the profile of a build, the profiles aside (since 0.24.1): the define, the
+/// flavour, and whether the build is a debug build, all fixed when `flutter` starts. `fsp dev`
+/// keeps it to choose again when a profile is added or removed while the app runs, as the
+/// generated `_profile` does when the app restarts.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Choice {
+    explicit: Option<String>,
+    flavor: Option<String>,
     debug: bool,
-) -> Active {
-    if let Some(p) = explicit {
-        let name = if p.is_empty() { DEFAULT_PROFILE } else { p };
-        return Active {
-            name: name.to_string(),
-            why: "FSP_PROFILE",
-        };
+}
+
+impl Choice {
+    /// `explicit` is `--profile` or a define in the arguments, and the flavour is a `--flavor` in
+    /// `flutter_args`, else the pubspec's `default-flavor`.
+    #[must_use]
+    pub fn new(
+        explicit: Option<&str>,
+        flutter_args: &[String],
+        default_flavor: Option<&str>,
+        debug: bool,
+    ) -> Choice {
+        Choice {
+            explicit: explicit.map(str::to_string),
+            flavor: flavor_in(flutter_args).or_else(|| default_flavor.map(str::to_string)),
+            debug,
+        }
     }
-    if let Some(f) = flavor_in(flutter_args).or_else(|| default_flavor.map(str::to_string))
-        && profiles.contains(&f)
-    {
-        return Active {
-            name: f,
-            why: "the flavour",
-        };
-    }
-    if debug && profiles.iter().any(|p| p == DEBUG_PROFILE) {
-        return Active {
-            name: DEBUG_PROFILE.to_string(),
-            why: "a debug build",
-        };
-    }
-    Active {
-        name: DEFAULT_PROFILE.to_string(),
-        why: "",
+
+    /// The profile of a build whose `config/` has `profiles`, and why.
+    #[must_use]
+    pub fn active(&self, profiles: &[String]) -> Active {
+        if let Some(p) = &self.explicit {
+            let name = if p.is_empty() { DEFAULT_PROFILE } else { p };
+            return Active {
+                name: name.to_string(),
+                why: "FSP_PROFILE",
+            };
+        }
+        if let Some(f) = &self.flavor
+            && profiles.contains(f)
+        {
+            return Active {
+                name: f.clone(),
+                why: "the flavour",
+            };
+        }
+        if self.debug && profiles.iter().any(|p| p == DEBUG_PROFILE) {
+            return Active {
+                name: DEBUG_PROFILE.to_string(),
+                why: "a debug build",
+            };
+        }
+        Active {
+            name: DEFAULT_PROFILE.to_string(),
+            why: "",
+        }
     }
 }
 
@@ -1440,6 +1463,18 @@ impl Active {
         format!(
             "profile {} ({}): {DIR}/app.{}.yaml over {BASE_FILE}",
             self.name, self.why, self.name
+        )
+    }
+}
+
+impl Active {
+    /// [`Active::line`] for a run whose profile `fsp` cannot read (since 0.24.1; see
+    /// [`reads_build`]): what it assumes, and that every change of `config/` restarts the app.
+    #[must_use]
+    pub fn line_unread(&self) -> String {
+        format!(
+            "{} (a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)",
+            self.line()
         )
     }
 }
@@ -1489,19 +1524,71 @@ pub fn task_vars(config: &AppConfig, name: &str) -> Vec<(String, String)> {
         .leaves
         .iter()
         .filter_map(|leaf| {
-            let lit = leaf
-                .overrides
-                .iter()
-                .find(|(p, _)| p == name)
-                .map_or(&leaf.base, |(_, lit)| lit);
             let ty = leaf.ty.unwrap_or(Ty::Scalar(Scalar::Str));
-            var_value(lit, ty).map(|v| (var_name(&leaf.path), v))
+            var_value(leaf.value_for(name), ty).map(|v| (var_name(&leaf.path), v))
         })
         .collect()
 }
 
-/// For `fsp dev` and `fsp build`: the profile line and the `FSP_PROFILE` variable for the task's
-/// commands, when the app has a configuration. `debug` is whether the build is a debug build.
+impl Leaf {
+    /// The value a build of the profile `name` has: its own, else the base's.
+    fn value_for(&self, name: &str) -> &Lit {
+        self.overrides
+            .iter()
+            .find(|(p, _)| p == name)
+            .map_or(&self.base, |(_, lit)| lit)
+    }
+}
+
+// --- what a write changes for a running app -------------------------------------------------------
+
+/// What writing the configuration changed for an app that runs (since 0.24.1). A build reads the
+/// constants of one profile, which `_profile`, a constant of the build's defines and flavour,
+/// picks: a change to another profile's values changes none of them, and `fsp dev` hot reloads the
+/// app for it. It restarts for a change to the constants of the profile it runs, or to the
+/// profiles, which can change the profile it runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Change {
+    /// The profiles of the configuration written, sorted, as [`AppConfig::profiles`].
+    pub profiles: Vec<String>,
+    /// Whether they are not those of the file it replaced, or that file is not known.
+    pub profiles_changed: bool,
+    /// The profiles of the configuration written, `default` among them, whose constants are not
+    /// those of the file it replaced: a name added or removed, or one with another type or value.
+    /// All of them when that file is not known. A profile that was removed is not listed, and
+    /// neither is one added that changes nothing: `profiles_changed` says both.
+    pub changed: BTreeSet<String>,
+}
+
+/// The constants of the profile `name` as its build has them: each name, with its Dart type and
+/// value.
+fn constants(config: &AppConfig, name: &str) -> BTreeMap<String, (String, String)> {
+    config
+        .leaves
+        .iter()
+        .map(|leaf| {
+            let ty = leaf.ty.unwrap_or(Ty::Scalar(Scalar::Str));
+            let value = dart_lit(leaf.value_for(name), ty);
+            (leaf.name.clone(), (dart_type(ty, leaf.nullable), value))
+        })
+        .collect()
+}
+
+/// What writing `after` over the file that holds `before` changes for an app that runs: `before`
+/// is `None` when what the file holds is not known.
+#[must_use]
+pub fn change(before: Option<&AppConfig>, after: &AppConfig) -> Change {
+    let changed = std::iter::once(DEFAULT_PROFILE.to_string())
+        .chain(after.profiles.iter().cloned())
+        .filter(|name| before.is_none_or(|b| constants(b, name) != constants(after, name)))
+        .collect();
+    Change {
+        profiles: after.profiles.clone(),
+        profiles_changed: before.is_none_or(|b| b.profiles != after.profiles),
+        changed,
+    }
+}
+
 /// The variables of the task's commands for the build `active` will be (since 0.24.0):
 /// `FSP_PROFILE` and a `FSP_CONFIG_*` per value. A configuration with errors gives `FSP_PROFILE`
 /// alone (the generation that runs first reports them).
@@ -1514,30 +1601,41 @@ pub fn run_vars(project: &Path, output: &str, active: &Active) -> Vec<(String, S
     vars
 }
 
+/// What chooses the profile of `fsp dev`'s or `fsp build`'s build, and the profile it is when the
+/// app has a `config/app.yaml`, after checking that `--profile` or a define in `args` names one.
 pub fn for_run(
     project: &Path,
     profile: Option<&str>,
     args: &[String],
     debug: bool,
-) -> Result<Option<Active>> {
+) -> Result<(Choice, Option<Active>)> {
     if let Some(p) = profile {
         check_profile(project, p)?;
     }
-    let Some(profiles) = profile_names(project) else {
-        return Ok(None);
-    };
     let explicit = profile.map(str::to_string).or_else(|| defined_in(args));
+    let flavor = default_flavor(project);
+    let choice = Choice::new(explicit.as_deref(), args, flavor.as_deref(), debug);
+    let Some(profiles) = profile_names(project) else {
+        return Ok((choice, None));
+    };
     if let Some(p) = explicit.as_deref().filter(|_| profile.is_none()) {
         check_named(project, p, &format!("--dart-define={DEFINE}={p}"))?;
     }
-    let flavor = default_flavor(project);
-    Ok(Some(active(
-        explicit.as_deref(),
-        args,
-        flavor.as_deref(),
-        &profiles,
-        debug,
-    )))
+    let active = choice.active(&profiles);
+    Ok((choice, Some(active)))
+}
+
+/// Whether `fsp dev` can read what chooses the profile of its build (since 0.24.1): the `run:` of
+/// the task is its own `flutter run` (`run_is_default`; a command of the pubspec's can say
+/// `--flavor` or a define itself), and the arguments after `--` have no `--dart-define-from-file`
+/// (a file can set `FSP_PROFILE`). When it cannot, the profile could be any, and `fsp dev`
+/// restarts the app for every change of `config/`, as before 0.24.1.
+#[must_use]
+pub fn reads_build(run_is_default: bool, args: &[String]) -> bool {
+    run_is_default
+        && !args
+            .iter()
+            .any(|a| a == "--dart-define-from-file" || a.starts_with("--dart-define-from-file="))
 }
 
 /// Whether `fsp dev`'s flutter run is a debug build: not with `--release` or `--profile` after `--`.

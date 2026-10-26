@@ -78,6 +78,58 @@ fn near_misses_are_not_secrets() {
 }
 
 #[test]
+fn a_legacy_openai_key_is_its_credential() {
+    // `sk-` and a token with `T3BlbkFJ` (the base64 of `OpenAI`) in it, since 0.24.1: built at run
+    // time, so no literal has the shape of a key.
+    let mark = ["T3Bl", "bkFJ"].concat();
+    let key = format!("sk-{}{mark}{}", tail(20), tail(20));
+    assert_eq!(looks_like(&key), Some("an OpenAI API key"), "{key}");
+    let in_url = format!("https://api.example.com/v1?key={key}");
+    assert_eq!(looks_like(&in_url), Some("an OpenAI API key"), "{in_url}");
+    for (name, value) in [
+        ("no mark", format!("sk-{}", tail(48))),
+        (
+            "the mark after a space",
+            format!("sk-{} {mark}{}", tail(20), tail(20)),
+        ),
+        (
+            "the mark after a dot",
+            format!("sk-{}.{mark}{}", tail(20), tail(20)),
+        ),
+        (
+            "glued to a word",
+            format!("task-{}{mark}{}", tail(20), tail(20)),
+        ),
+        (
+            "an underscore",
+            format!("sk_{}{mark}{}", tail(20), tail(20)),
+        ),
+        (
+            "the mark in lower case",
+            format!("sk-{}{}{}", tail(20), mark.to_lowercase(), tail(20)),
+        ),
+        ("no prefix", format!("{}{mark}{}", tail(20), tail(20))),
+        ("the prefix alone", "sk-".to_string()),
+        // The least a real key has on each side of the mark is 20 characters (since 0.24.1).
+        ("only the mark", format!("sk-{mark}")),
+        (
+            "19 before the mark",
+            format!("sk-{}{mark}{}", tail(19), tail(20)),
+        ),
+        (
+            "19 after the mark",
+            format!("sk-{}{mark}{}", tail(20), tail(19)),
+        ),
+        ("nothing after the mark", format!("sk-{}{mark}", tail(40))),
+    ] {
+        assert_eq!(looks_like(&value), None, "{name}: {value}");
+    }
+    // Any mark of the token counts, so a short first one does not hide a real second one.
+    let two = format!("sk-{}{mark}{}{mark}{}", tail(3), tail(20), tail(20));
+    assert_eq!(looks_like(&two), Some("an OpenAI API key"), "{two}");
+}
+
+#[test]
 fn a_private_key_a_password_in_a_url_and_cloud_keys_are_secrets() {
     // The key shapes are built at run time, so no literal looks like a credential to a secret scanner.
     let pem = |kind: &str| format!("-----BEGIN {kind} {}-----", "PRIVATE KEY");

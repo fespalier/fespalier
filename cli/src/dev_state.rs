@@ -5,15 +5,18 @@
 //! drives it with whatever `now` it likes (since 0.9.0).
 //!
 //! The rules that matter live here: a save reloads the app; a regeneration that wrote reloads it
-//! when the app can swap its routes, and restarts it otherwise (see [`DevState::reloads`]); requests
-//! are coalesced; flutter is stopped first, then the `with` processes, and a second quit kills
-//! everything.
+//! when the app can swap its routes, and restarts it otherwise (see [`DevState::reloads`]); one
+//! that wrote the app's configuration restarts it only for the profile it runs, and for every
+//! write when it cannot tell which that is (see [`DevState::config_restarts`] and [`Build`]);
+//! requests are coalesced; flutter is stopped first, then the
+//! `with` processes, and a second quit kills everything.
 
 use std::collections::VecDeque;
 use std::time::Duration;
 
 use serde_json::Value;
 
+use crate::app_config::{Change, Choice};
 use crate::daemon::{self, Event, Msg, Response};
 use crate::procs::Status;
 use crate::reload::Stamp;
@@ -404,6 +407,37 @@ enum Ask {
     Regen,
 }
 
+/// What `fsp dev` can tell of the profile of the app's configuration that the app runs (since
+/// 0.24.1). It is a state of its own and not an absent profile: a later change to the set of
+/// profiles chooses a profile again only for a build that `fsp` reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Build {
+    /// `fsp` starts `flutter run` itself and reads what chooses the profile in the arguments after
+    /// `--`: the define, the flavour (or the pubspec's `default-flavor`) and the build mode.
+    Seen {
+        /// What chooses the profile, the profiles aside.
+        choice: Choice,
+        /// The profile the app runs when flutter starts, `None` without a `config/app.yaml`.
+        profile: Option<String>,
+    },
+    /// `fsp` cannot read it: the `run:` of the task is a command of the pubspec's own (it can say
+    /// `--flavor` or a define), or the arguments name a `--dart-define-from-file`. The profile
+    /// could be any, so every write that changes the configuration restarts the app, as before
+    /// 0.24.1, and no profile is said or chosen again.
+    Unseen,
+}
+
+impl Build {
+    /// A build `fsp` reads, whose profile is `profile` when flutter starts.
+    #[must_use]
+    pub fn seen(choice: Choice, profile: Option<&str>) -> Build {
+        Build::Seen {
+            choice,
+            profile: profile.map(str::to_string),
+        }
+    }
+}
+
 /// What the state is made from.
 pub struct Opts {
     /// The app's name, from the pubspec.
@@ -418,8 +452,11 @@ pub struct Opts {
     /// `hot restart: … changed` lines.
     pub output: String,
     /// The app's configuration as the user spells it (`lib/app.config.g.dart`, since 0.24.0), for
-    /// the `hot restart: … changed` line of a pass that wrote it.
+    /// the `hot restart: … changed` and `hot reload: … changed` lines of a pass that wrote it.
     pub config_output: String,
+    /// What `fsp` can tell of the profile of the app's configuration that the app runs (since
+    /// 0.24.1).
+    pub build: Build,
     /// The device fsp chose, when it did.
     pub device: Option<Device>,
     /// The stamp of the generated file when flutter starts (since 0.19.0). `None` (no file, or one
@@ -443,6 +480,11 @@ pub struct DevState {
     hot_reload: bool,
     output: String,
     config_output: String,
+    /// The profile the app runs, as the profiles of the configuration last written choose it (since
+    /// 0.24.1): a write that changes its constants restarts the app, and one that changes only
+    /// another profile's reloads it. [`Build::Unseen`] when `fsp` cannot tell: every write
+    /// restarts.
+    build: Build,
     /// The stamp of the generated file as the last pass left it, or as it was when flutter started
     /// (since 0.19.0): what a request is sent for.
     disk: Option<Stamp>,
@@ -490,6 +532,7 @@ impl DevState {
             hot_reload: opts.hot_reload,
             output: opts.output,
             config_output: opts.config_output,
+            build: opts.build,
             disk: opts.stamp,
             running: None,
             swappable: true,
@@ -966,17 +1009,32 @@ impl DevState {
                 self.running = None;
             }
         }
+        // The profile the next restart runs, said even when nothing restarts by itself: with
+        // `hot_reload: false` the next `R`, or the next start of flutter, is that restart.
+        if let Some(change) = &r.config_written {
+            self.choose_again(change);
+        }
         if !self.hot_reload {
             return;
         }
         if r.wrote {
-            if r.config_written {
+            let config_restarts = r
+                .config_written
+                .as_ref()
+                .is_some_and(|change| self.config_restarts(change));
+            if config_restarts {
                 // A value of config/ is a constant, and one read once (into a provider, a `static
                 // final`) keeps its old value through a hot reload: a restart reads them all again
-                // (since 0.24.0). The profile is a define of the running flutter, and stays.
+                // (since 0.24.0).
                 let line = format!("hot restart: {} changed", self.config_output);
                 self.say(&line, Kind::Normal);
                 self.request(now, true, Ask::Regen, fx);
+            } else if !r.routes_wrote && r.config_written.is_some() {
+                // The configuration alone, and no value of the profile the app runs (since
+                // 0.24.1): the reload brings in the file, as a save of any other file does.
+                let line = format!("hot reload: {} changed", self.config_output);
+                self.say(&line, Kind::Normal);
+                self.request(now, false, Ask::Save, fx);
             } else if self.reloads(r) {
                 let line = format!("hot reload: {} changed", self.output);
                 self.say(&line, Kind::Normal);
@@ -988,6 +1046,43 @@ impl DevState {
             }
         } else if r.ok && !r.first {
             self.request(now, false, Ask::Save, fx);
+        }
+    }
+
+    /// Chooses the profile of the app again when a write changed the profiles (since 0.24.1), and
+    /// says its line when it is another: a debug build without a `dev` profile runs `default`, and
+    /// with one it runs `dev`, so a profile file added or removed can change what the next restart
+    /// runs. A build `fsp` cannot read has no profile to choose.
+    fn choose_again(&mut self, change: &Change) {
+        let Build::Seen { choice, profile } = &mut self.build else {
+            return;
+        };
+        if !change.profiles_changed {
+            return;
+        }
+        let active = choice.active(&change.profiles);
+        if profile.as_deref() != Some(active.name.as_str()) {
+            let line = active.line();
+            *profile = Some(active.name);
+            self.say(&line, Kind::Normal);
+        }
+    }
+
+    /// Whether a regeneration that wrote the app's configuration restarts the app for it (since
+    /// 0.24.1): when the constants of the profile the app runs changed, or the profiles did, which
+    /// can change the profile it runs ([`DevState::choose_again`]). A change to another profile's
+    /// values changes no value the app has: `_profile` is a constant of the running build's
+    /// defines and flavour, so the app reads none of them. When `fsp` cannot tell which profile
+    /// that is ([`Build::Unseen`]), every write restarts, as before 0.24.1.
+    fn config_restarts(&self, change: &Change) -> bool {
+        match &self.build {
+            Build::Unseen => true,
+            Build::Seen { profile, .. } => {
+                change.profiles_changed
+                    || profile
+                        .as_ref()
+                        .is_none_or(|name| change.changed.contains(name))
+            }
         }
     }
 

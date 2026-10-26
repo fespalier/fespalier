@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::app_config::{
-    self, Active, check_profile, defined_in, emit, load, task_vars, with_define,
+    self, Active, Change, Choice, check_profile, defined_in, emit, load, task_vars, with_define,
 };
 use crate::config::Config;
 use crate::session::Session;
@@ -738,9 +738,14 @@ fn gen_writes_the_configuration_beside_the_output_and_fails_on_its_errors() {
     let mut session = Session::default();
     let out = crate::gen_core(dir.path(), &cfg, true, &mut session, |_, _| {}).unwrap();
     assert_eq!(out.output, "lib/app.g.dart, lib/app.config.g.dart");
+    // A file that was not there: what it held is not known (since 0.24.1).
     assert_eq!(
-        session.config_written.as_deref(),
-        Some("lib/app.config.g.dart")
+        session.config_written,
+        Some(Change {
+            profiles: vec![],
+            profiles_changed: true,
+            changed: ["default".to_string()].into(),
+        })
     );
     let written = fs::read_to_string(dir.path().join("lib/app.config.g.dart")).unwrap();
     assert!(written.contains("static const String title = 'Shop';"));
@@ -813,6 +818,167 @@ fn gen_writes_the_configuration_beside_the_output_and_fails_on_its_errors() {
     assert_eq!(cfg.output_config(), "lib/router/routes.config.g.dart");
     crate::gen_core(dir.path(), &cfg, true, &mut Session::default(), |_, _| {}).unwrap();
     assert!(dir.path().join("lib/router/routes.config.g.dart").is_file());
+}
+
+/// What each pass wrote of the configuration changed (since 0.24.1), as `fsp dev` reads it: the
+/// profiles and whether they changed, the profiles whose constants changed, and whether the routes
+/// were written too.
+fn written(dir: &Path, session: &mut Session) -> (Option<Change>, bool) {
+    let cfg = Config::load(dir).unwrap();
+    crate::gen_core(dir, &cfg, true, session, |_, _| {}).unwrap();
+    (session.config_written.clone(), session.routes_wrote)
+}
+
+fn changed(profiles: &[&str], profiles_changed: bool, changed: &[&str]) -> Option<Change> {
+    Some(Change {
+        profiles: profiles.iter().map(|p| (*p).to_string()).collect(),
+        profiles_changed,
+        changed: changed.iter().map(|p| (*p).to_string()).collect(),
+    })
+}
+
+#[test]
+fn a_write_of_the_configuration_says_which_profiles_it_changed() {
+    let dir = project(&[
+        (
+            "config/app.yaml",
+            "api_url: https://api.example.com\ntimeout: 5\n",
+        ),
+        ("config/app.dev.yaml", "api_url: http://localhost:8080\n"),
+        (
+            "config/app.staging.yaml",
+            "api_url: https://staging.example.com\n",
+        ),
+    ]);
+    let root = dir.path();
+    let mut session = Session::default();
+    // The first pass writes the routes too, over a file that was not there.
+    let all = ["default", "dev", "staging"];
+    let profiles = ["dev", "staging"];
+    assert_eq!(
+        written(root, &mut session),
+        (changed(&profiles, true, &all), true)
+    );
+    // A value only `dev` has: the configuration alone, and `dev` alone.
+    write(
+        root,
+        "config/app.dev.yaml",
+        "api_url: http://localhost:9090\n",
+    );
+    assert_eq!(
+        written(root, &mut session),
+        (changed(&profiles, false, &["dev"]), false)
+    );
+    // A value of config/app.yaml that both profiles override: `default` alone.
+    write(
+        root,
+        "config/app.yaml",
+        "api_url: https://api2.example.com\ntimeout: 5\n",
+    );
+    assert_eq!(
+        written(root, &mut session).0,
+        changed(&profiles, false, &["default"])
+    );
+    // One that none overrides, a type, a key: every profile.
+    for base in [
+        "api_url: https://api2.example.com\ntimeout: 6\n",
+        "api_url: https://api2.example.com\ntimeout: 6.5\n",
+        "api_url: https://api2.example.com\ntimeout: 6.5\nretries: 2\n",
+    ] {
+        write(root, "config/app.yaml", base);
+        assert_eq!(
+            written(root, &mut session).0,
+            changed(&profiles, false, &all),
+            "{base}"
+        );
+    }
+    // A null in one profile makes the constant nullable: its type changes for every profile.
+    write(
+        root,
+        "config/app.staging.yaml",
+        "api_url: https://staging.example.com\nretries: null\n",
+    );
+    assert_eq!(
+        written(root, &mut session).0,
+        changed(&profiles, false, &all)
+    );
+    // A comment changes the file and no constant.
+    write(
+        root,
+        "config/app.yaml",
+        "# The API.\napi_url: https://api2.example.com\ntimeout: 6.5\nretries: 2\n",
+    );
+    assert_eq!(
+        written(root, &mut session).0,
+        changed(&profiles, false, &[])
+    );
+    // A profile added: the profiles changed, and the new one's constants.
+    write(root, "config/app.prod.yaml", "timeout: 9.5\n");
+    let three = ["dev", "prod", "staging"];
+    assert_eq!(
+        written(root, &mut session).0,
+        changed(&three, true, &["prod"])
+    );
+    // An error in config/ leaves the file, so the next write is compared with what it holds.
+    write(
+        root,
+        "config/app.dev.yaml",
+        "api_ur: http://localhost:9090\n",
+    );
+    let cfg = Config::load(root).unwrap();
+    assert!(crate::gen_core(root, &cfg, true, &mut session, |_, _| {}).is_err());
+    assert_eq!(session.config_written, None);
+    write(
+        root,
+        "config/app.dev.yaml",
+        "api_url: http://localhost:9191\n",
+    );
+    assert_eq!(
+        written(root, &mut session).0,
+        changed(&three, false, &["dev"])
+    );
+    // A new session (`fsp dev` starts one) that finds the file current compares with it.
+    let mut fresh = Session::default();
+    assert_eq!(written(root, &mut fresh), (None, false));
+    write(root, "config/app.prod.yaml", "timeout: 10.5\n");
+    assert_eq!(
+        written(root, &mut fresh).0,
+        changed(&three, false, &["prod"])
+    );
+    // Without config/app.yaml it is forgotten: the file it then writes again is not known.
+    fs::remove_file(root.join("config/app.yaml")).unwrap();
+    let cfg = Config::load(root).unwrap();
+    let _ = crate::gen_core(root, &cfg, true, &mut fresh, |_, _| {});
+    assert_eq!(fresh.config_written, None);
+    write(
+        root,
+        "config/app.yaml",
+        "api_url: https://api2.example.com\ntimeout: 7.5\nretries: 2\n",
+    );
+    assert_eq!(
+        written(root, &mut fresh).0,
+        changed(&three, true, &["default", "dev", "prod", "staging"])
+    );
+}
+
+#[test]
+fn a_choice_chooses_again_with_other_profiles() {
+    // What `fsp dev` keeps to follow a profile added or removed while the app runs (since 0.24.1).
+    let profiles = |names: &[&str]| args(names);
+    let debug = Choice::new(None, &[], None, true);
+    assert_eq!(debug.active(&profiles(&["staging"])).name, "default");
+    assert_eq!(debug.active(&profiles(&["dev", "staging"])).name, "dev");
+    let flavor = Choice::new(None, &args(&["--flavor", "staging"]), None, true);
+    assert_eq!(flavor.active(&profiles(&["dev"])).name, "dev");
+    assert_eq!(
+        flavor.active(&profiles(&["dev", "staging"])).name,
+        "staging"
+    );
+    let named = Choice::new(Some("staging"), &[], None, true);
+    assert_eq!(named.active(&profiles(&["dev", "staging"])).name, "staging");
+    let release = Choice::new(None, &[], Some("prod"), false);
+    assert_eq!(release.active(&profiles(&["dev"])).name, "default");
+    assert_eq!(release.active(&profiles(&["dev", "prod"])).name, "prod");
 }
 
 #[test]
@@ -901,7 +1067,7 @@ fn args(words: &[&str]) -> Vec<String> {
 fn the_active_profile_is_the_define_then_the_flavour_then_the_build_mode() {
     let profiles = args(&["dev", "prod", "staging"]);
     let active = |explicit: Option<&str>, a: &[&str], default_flavor: Option<&str>, debug: bool| {
-        app_config::active(explicit, &args(a), default_flavor, &profiles, debug)
+        Choice::new(explicit, &args(a), default_flavor, debug).active(&profiles)
     };
     let is = |name: &str, why: &'static str| Active {
         name: name.to_string(),
@@ -933,7 +1099,7 @@ fn the_active_profile_is_the_define_then_the_flavour_then_the_build_mode() {
         is("dev", "a debug build")
     );
     assert_eq!(active(None, &[], None, false), is("default", ""));
-    let no_dev = app_config::active(None, &[], None, &args(&["prod"]), true);
+    let no_dev = Choice::new(None, &[], None, true).active(&args(&["prod"]));
     assert_eq!(no_dev, is("default", ""));
     assert_eq!(
         is("staging", "FSP_PROFILE").line(),
@@ -945,6 +1111,54 @@ fn the_active_profile_is_the_define_then_the_flavour_then_the_build_mode() {
     assert!(!app_config::run_is_debug(&args(&["--profile"])));
     assert!(!app_config::build_is_debug(&args(&["--release"])));
     assert!(app_config::build_is_debug(&args(&["--debug"])));
+}
+
+#[test]
+fn fsp_reads_the_profile_of_its_own_flutter_run_and_not_of_a_file_or_a_command_of_the_pubspec() {
+    // Its own `flutter run` with the arguments it reads (since 0.24.1).
+    assert!(app_config::reads_build(true, &[]));
+    assert!(app_config::reads_build(true, &args(&["-d", "chrome"])));
+    assert!(app_config::reads_build(
+        true,
+        &args(&[
+            "--flavor",
+            "staging",
+            "--dart-define=FSP_PROFILE=staging",
+            "--release"
+        ])
+    ));
+    // A `run:` of the pubspec's can say `--flavor` or a define where `fsp` does not look.
+    assert!(!app_config::reads_build(false, &[]));
+    assert!(!app_config::reads_build(
+        false,
+        &args(&["--flavor", "staging"])
+    ));
+    // A file of defines can set `FSP_PROFILE`, spelled either way.
+    assert!(!app_config::reads_build(
+        true,
+        &args(&["--dart-define-from-file=env.json"])
+    ));
+    assert!(!app_config::reads_build(
+        true,
+        &args(&["--dart-define-from-file", "env.json"])
+    ));
+    // The line says what it assumes, and that the app restarts for every change.
+    let dev = Active {
+        name: "dev".into(),
+        why: "a debug build",
+    };
+    assert_eq!(
+        dev.line_unread(),
+        "profile dev (a debug build): config/app.dev.yaml over config/app.yaml (a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)"
+    );
+    let default = Active {
+        name: "default".into(),
+        why: "",
+    };
+    assert_eq!(
+        default.line_unread(),
+        "profile default: config/app.yaml (a guess: fsp cannot read the profile of this run, so every change of config/ restarts the app)"
+    );
 }
 
 #[test]

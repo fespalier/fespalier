@@ -5,10 +5,11 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
+use crate::app_config::{Change, Choice};
 use crate::daemon::{self, Line};
 use crate::dev_state::{
-    DevState, Device, Effect, FLUTTER, FSP, Input, KEPT_CHANGED, Key, Kind, Opts, Phase, Pick,
-    Proc, RING, names_a_device, pick_device, strip_ansi,
+    Build, DevState, Device, Effect, FLUTTER, FSP, Input, KEPT_CHANGED, Key, Kind, Opts, Phase,
+    Pick, Proc, RING, names_a_device, pick_device, strip_ansi,
 };
 use crate::procs::Status;
 use crate::reload::Stamp;
@@ -26,6 +27,7 @@ fn state_with(plain: bool, hot_reload: bool, with: &[&str]) -> DevState {
         plain,
         output: "lib/app.g.dart".into(),
         config_output: "lib/app.config.g.dart".into(),
+        build: Build::seen(Choice::default(), None),
         device: Some(Device {
             id: "fake-1".into(),
             name: "Fake".into(),
@@ -91,7 +93,8 @@ fn report(wrote: bool, ok: bool, first: bool) -> GenReport {
         main_changed: false,
         stamp: None,
         swaps: false,
-        config_written: false,
+        config_written: None,
+        routes_wrote: wrote,
         routes: ok.then_some(3),
         errors: usize::from(!ok),
         first_error: (!ok).then(|| FirstError {
@@ -914,13 +917,24 @@ fn stamp(version: &str, kept: &[(&str, &str)]) -> Stamp {
 
 /// A state that flutter started on a file holding `stamp`, not yet connected.
 fn started_from(stamp: Option<Stamp>, plain: bool) -> DevState {
+    started_with(stamp, plain, Build::seen(Choice::default(), None))
+}
+
+/// [`started_from`], with what `fsp dev` can tell of the configuration's profile.
+fn started_with(stamp: Option<Stamp>, plain: bool, build: Build) -> DevState {
+    started_hot(stamp, plain, true, build)
+}
+
+/// [`started_with`], with `hot_reload:` of the task as `hot_reload`.
+fn started_hot(stamp: Option<Stamp>, plain: bool, hot_reload: bool, build: Build) -> DevState {
     let mut s = DevState::new(Opts {
         name: "shop".into(),
         with: vec![],
-        hot_reload: true,
+        hot_reload,
         plain,
         output: "lib/app.g.dart".into(),
         config_output: "lib/app.config.g.dart".into(),
+        build,
         device: Some(Device {
             id: "fake-1".into(),
             name: "Fake".into(),
@@ -1473,21 +1487,296 @@ fn a_pass_that_fails_in_the_configuration_still_reloads_the_routes_and_keeps_the
     );
 }
 
+/// What a write of the configuration changed: its profiles, whether they changed, and the profiles
+/// whose constants did.
+fn change(profiles: &[&str], profiles_changed: bool, changed: &[&str]) -> Change {
+    Change {
+        profiles: profiles.iter().map(|p| (*p).to_string()).collect(),
+        profiles_changed,
+        changed: changed.iter().map(|p| (*p).to_string()).collect(),
+    }
+}
+
+/// The report of a pass that wrote the configuration alone, with `change`, over routes that hold
+/// `stamp`.
+fn config_alone(stamp: Stamp, change: Change) -> GenReport {
+    GenReport {
+        config_written: Some(change),
+        routes_wrote: false,
+        ..wrote(stamp)
+    }
+}
+
+/// A running app, plain, whose routes are `stamp` and whose configuration's profile is `profile`,
+/// chosen by `choice`.
+fn running_profile(stamp: Stamp, choice: Choice, profile: &str) -> DevState {
+    let mut s = started_with(Some(stamp), true, Build::seen(choice, Some(profile)));
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    s
+}
+
 #[test]
-fn a_pass_that_writes_the_configuration_restarts_the_app() {
+fn a_pass_that_writes_the_values_of_the_running_profile_restarts_the_app() {
     // Even when the routes would swap: a value of config/ read once (into a provider, a `static
     // final`) keeps its old value through a hot reload (since 0.24.0).
     let v0 = stamp("0000000000000000", &[("a", "11111111")]);
-    let mut s = running_from(Some(v0.clone()));
-    let config = GenReport {
-        config_written: true,
-        ..wrote(v0)
-    };
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = running_profile(v0.clone(), staging, "staging");
+    let config = config_alone(v0, change(&["dev", "staging"], false, &["staging"]));
     let fx = pass(&mut s, 100, config);
     assert_eq!(requests(&fx), [(1, true)]);
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✓ 3 routes → lib/app.g.dart (3.0ms)",
+            "hot restart: lib/app.config.g.dart changed"
+        ]
+    );
+}
+
+#[test]
+fn a_pass_that_writes_only_another_profile_reloads_the_app() {
+    // The app runs `staging`; `dev`'s values changed (since 0.24.1). `_profile` is a constant of
+    // the running build's define, so no value the app has changed: a reload brings in the file.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let staging = Choice::new(Some("staging"), &[], None, true);
+    let mut s = running_profile(v0.clone(), staging, "staging");
+    let fx = pass(
+        &mut s,
+        100,
+        config_alone(v0.clone(), change(&["dev", "staging"], false, &["dev"])),
+    );
+    assert_eq!(requests(&fx), [(1, false)]);
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✓ 3 routes → lib/app.g.dart (3.0ms)",
+            "hot reload: lib/app.config.g.dart changed"
+        ]
+    );
+    respond(&mut s, 220, 1, "Reloaded 1 of 9 libraries");
+    // With routes written too, the routes decide: these swap in, so a reload.
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    let both = GenReport {
+        config_written: Some(change(&["dev", "staging"], false, &["dev"])),
+        ..wrote(v1)
+    };
+    assert_eq!(requests(&pass(&mut s, 300, both)), [(2, false)]);
     assert!(
         s.drain_plain()
             .iter()
-            .any(|l| l.text == "hot restart: lib/app.config.g.dart changed"),
+            .any(|l| l.text == "hot reload: lib/app.g.dart changed")
     );
+    respond(&mut s, 400, 2, "Reloaded 2 of 9 libraries");
+    // And routes that do not swap restart, for the routes.
+    let v2 = stamp("2222222222222222", &[("a", "33333333"), ("b", "22222222")]);
+    let both = GenReport {
+        config_written: Some(change(&["dev", "staging"], false, &["dev"])),
+        ..wrote(v2)
+    };
+    assert_eq!(requests(&pass(&mut s, 500, both)), [(3, true)]);
+    assert!(
+        s.drain_plain()
+            .iter()
+            .any(|l| l.text == "hot restart: lib/app.g.dart changed")
+    );
+}
+
+#[test]
+fn a_profile_added_or_removed_restarts_the_app_and_chooses_its_profile_again() {
+    // A debug build with no `dev` profile runs `default`; a `config/app.dev.yaml` made while it
+    // runs makes it run `dev` after the restart (since 0.24.1), and the line says so.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let debug = Choice::new(None, &[], None, true);
+    let mut s = running_profile(v0.clone(), debug, "default");
+    let fx = pass(
+        &mut s,
+        100,
+        config_alone(v0.clone(), change(&["dev"], true, &["dev"])),
+    );
+    assert_eq!(requests(&fx), [(1, true)]);
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✓ 3 routes → lib/app.g.dart (3.0ms)",
+            "profile dev (a debug build): config/app.dev.yaml over config/app.yaml",
+            "hot restart: lib/app.config.g.dart changed"
+        ]
+    );
+    respond(&mut s, 200, 1, "Restarted");
+    // `dev` is the profile it runs now: an edit of `config/app.yaml` that `dev` overrides reloads,
+    assert_eq!(
+        requests(&pass(
+            &mut s,
+            300,
+            config_alone(v0.clone(), change(&["dev"], false, &["default"]))
+        )),
+        [(2, false)]
+    );
+    respond(&mut s, 400, 2, "Reloaded 1 of 9 libraries");
+    // and an edit of `dev`'s file restarts.
+    assert_eq!(
+        requests(&pass(
+            &mut s,
+            500,
+            config_alone(v0.clone(), change(&["dev"], false, &["dev"]))
+        )),
+        [(3, true)]
+    );
+    respond(&mut s, 600, 3, "Restarted");
+    s.drain_plain();
+    // A profile removed restarts too, and the same profile is not said again.
+    let fx = pass(
+        &mut s,
+        700,
+        config_alone(v0, change(&["dev"], true, &["default", "dev"])),
+    );
+    assert_eq!(requests(&fx), [(4, true)]);
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✓ 3 routes → lib/app.g.dart (3.0ms)",
+            "hot restart: lib/app.config.g.dart changed"
+        ]
+    );
+}
+
+#[test]
+fn a_configuration_that_flutter_did_not_start_with_restarts_the_app() {
+    // No `config/app.yaml` when flutter started: no profile, so every write restarts.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    let fx = pass(
+        &mut s,
+        100,
+        config_alone(v0, change(&["staging"], false, &["staging"])),
+    );
+    assert_eq!(requests(&fx), [(1, true)]);
+}
+
+/// A running app, plain, whose routes are `stamp` and whose profile `fsp` cannot tell.
+fn running_unseen(stamp: Stamp) -> DevState {
+    let mut s = started_with(Some(stamp), true, Build::Unseen);
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    s
+}
+
+#[test]
+fn a_build_fsp_cannot_read_restarts_for_every_write_of_the_configuration() {
+    // A `run:` of the pubspec's (`flutter run --flavor staging`) or a `--dart-define-from-file`
+    // can choose a profile where `fsp` does not look (since 0.24.1): whatever profile `fsp` would
+    // guess, a write restarts the app, as 0.24.0 did.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_unseen(v0.clone());
+    let restart = [
+        "✓ 3 routes → lib/app.g.dart (3.0ms)",
+        "hot restart: lib/app.config.g.dart changed",
+    ];
+    // Another profile's values, as far as `fsp` can tell.
+    let other = change(&["dev", "staging"], false, &["dev"]);
+    assert_eq!(
+        requests(&pass(&mut s, 100, config_alone(v0.clone(), other))),
+        [(1, true)]
+    );
+    assert_eq!(lines(&mut s), restart);
+    respond(&mut s, 200, 1, "Restarted");
+    s.drain_plain();
+    // A comment of config/app.yaml: no constant changed for any profile, and the file is written.
+    let comment = change(&["dev", "staging"], false, &[]);
+    assert_eq!(
+        requests(&pass(&mut s, 300, config_alone(v0.clone(), comment))),
+        [(2, true)]
+    );
+    assert_eq!(lines(&mut s), restart);
+    respond(&mut s, 400, 2, "Restarted");
+    s.drain_plain();
+    // The profiles changed: a restart, and no profile is chosen or said.
+    let added = change(&["dev", "prod", "staging"], true, &["prod"]);
+    assert_eq!(
+        requests(&pass(&mut s, 500, config_alone(v0.clone(), added))),
+        [(3, true)]
+    );
+    assert_eq!(lines(&mut s), restart);
+    respond(&mut s, 600, 3, "Restarted");
+    s.drain_plain();
+    // And the set of profiles does not bring the selective reload back: there is still no profile
+    // to compare with.
+    let later = change(&["dev", "prod", "staging"], false, &["prod"]);
+    assert_eq!(
+        requests(&pass(&mut s, 700, config_alone(v0, later))),
+        [(4, true)]
+    );
+    assert_eq!(lines(&mut s), restart);
+}
+
+#[test]
+fn a_build_fsp_cannot_read_restarts_before_the_routes_decide() {
+    // The configuration and the routes written together: the restart is the configuration's.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_unseen(v0);
+    let v1 = stamp("1111111111111111", &[("a", "11111111"), ("b", "22222222")]);
+    let both = GenReport {
+        config_written: Some(change(&["dev", "staging"], false, &["dev"])),
+        ..wrote(v1)
+    };
+    assert_eq!(requests(&pass(&mut s, 100, both)), [(1, true)]);
+    assert!(
+        s.drain_plain()
+            .iter()
+            .any(|l| l.text == "hot restart: lib/app.config.g.dart changed")
+    );
+}
+
+#[test]
+fn a_new_profile_is_said_with_hot_reload_off_for_a_build_fsp_reads() {
+    // `hot_reload: false` restarts nothing by itself, but the next `R` runs the profile the new
+    // file makes (since 0.24.1), so the line is said and the profile is remembered.
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let debug = Choice::new(None, &[], None, true);
+    let mut s = started_hot(
+        Some(v0.clone()),
+        true,
+        false,
+        Build::seen(debug, Some("default")),
+    );
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    let added = change(&["dev"], true, &["dev"]);
+    let fx = pass(&mut s, 100, config_alone(v0.clone(), added.clone()));
+    assert!(requests(&fx).is_empty());
+    assert_eq!(
+        lines(&mut s),
+        [
+            "✓ 3 routes → lib/app.g.dart (3.0ms)",
+            "profile dev (a debug build): config/app.dev.yaml over config/app.yaml"
+        ]
+    );
+    // The same profile is not said again.
+    pass(&mut s, 200, config_alone(v0, added));
+    assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
+}
+
+#[test]
+fn a_build_fsp_cannot_read_says_no_profile_with_hot_reload_off() {
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = started_hot(Some(v0.clone()), true, false, Build::Unseen);
+    connect(&mut s);
+    app_start(&mut s, 10, true);
+    app_started(&mut s, 20);
+    s.drain_plain();
+    let fx = pass(
+        &mut s,
+        100,
+        config_alone(v0, change(&["dev"], true, &["dev"])),
+    );
+    assert!(requests(&fx).is_empty());
+    assert_eq!(lines(&mut s), ["✓ 3 routes → lib/app.g.dart (3.0ms)"]);
 }

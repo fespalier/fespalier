@@ -46,7 +46,7 @@ test('saved files that can change what fsp check finds', () => {
   assert.equal(affectsCheck('test/app_test.dart', 'lib/app'), false);
   assert.equal(affectsCheck('README.md', 'lib/app'), false);
   assert.equal(affectsCheck('example/lib/main.dart', 'lib/app'), false);
-  // The app's configuration and its profiles (since 0.23.0); not the other files of config/.
+  // The app's configuration and its profiles (since 0.24.0); not the other files of config/.
   assert.equal(affectsCheck('config/app.yaml', 'lib/app'), true);
   assert.equal(affectsCheck('config/app.staging.yaml', 'lib/app'), true);
   assert.equal(affectsCheck('config\\app.dev.yaml', 'lib/app'), true);

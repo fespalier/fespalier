@@ -71,7 +71,7 @@ pub fn run_args(args: &[String], device: Option<&Device>) -> Vec<String> {
 }
 
 /// What `fsp dev --dry-run` prints. `profile` is the line of the app's configuration, when it
-/// has one (since 0.23.0).
+/// has one (since 0.24.0).
 pub fn dry_run(
     project: &Path,
     cfg: &Config,
@@ -298,7 +298,7 @@ fn plain_print(lines: &[PlainLine], names: &[String], color: bool) {
 pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     let cfg = Config::load(project)?;
     let plan = Tasks::from_config(&cfg)?.dev();
-    // The profile of the app's configuration (since 0.23.0): `--profile` goes to flutter as a
+    // The profile of the app's configuration (since 0.24.0): `--profile` goes to flutter as a
     // define, in front of the arguments after `--`.
     let profile = cmd.profile.as_deref();
     let active = app_config::for_run(

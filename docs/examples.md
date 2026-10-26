@@ -175,7 +175,7 @@ route, its file and the OpenTelemetry trace of the same call.
 - a first frame that is the app, not a splash, because `startup()` restores the session with no network.
 
 The API is an in-process server, so it runs and is tested with no network. To run against Keycloak, use the
-`keycloak` profile, `fsp dev --profile keycloak -- -d chrome --web-port 8686` (since 0.23.0, [App configuration](app-config.md)),
+`keycloak` profile, `fsp dev --profile keycloak -- -d chrome --web-port 8686` (since 0.24.0, [App configuration](app-config.md)),
 and the realm in `examples/auth/keycloak/`. With `fsp dev --profile demo-dpop` it signs in against the demo
 server's own provider with device-bound tokens (DPoP), and its tests check every proof the way a server does.
 

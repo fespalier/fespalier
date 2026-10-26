@@ -96,7 +96,7 @@ private val CONFIG_FILE = Regex("""^config/app(\.[^/]+)?\.ya?ml$""")
 
 /**
  * Whether [relPath] (relative to the project root) is a file of the app's configuration:
- * `config/app.yaml` or one of its profiles, `config/app.<profile>.yaml` (since fespalier 0.23.0;
+ * `config/app.yaml` or one of its profiles, `config/app.<profile>.yaml` (since fespalier 0.24.0;
  * a `.yml` one too, which `fsp check` asks to rename).
  */
 fun isConfigFile(relPath: String): Boolean = CONFIG_FILE.matches(normalizeDir(relPath))
@@ -124,7 +124,7 @@ data class FespalierProject(
      * Whether a file at [absolutePath] can change what `fsp check` finds: `pubspec.yaml` (it can
      * move the app folder), a file under the app folder (the route tree), a Dart file anywhere
      * under `lib/` that `fsp` did not generate (the string paths it checks, since fespalier 0.7.0),
-     * or a file of the app's configuration (since fespalier 0.23.0).
+     * or a file of the app's configuration (since fespalier 0.24.0).
      */
     fun affectedBy(absolutePath: String): Boolean {
         val rel = relativePath(absolutePath) ?: return false

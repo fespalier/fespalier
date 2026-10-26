@@ -1,4 +1,4 @@
-//! The app's configuration (`app_config.rs`, since 0.23.0): `config/app.yaml` and its profiles,
+//! The app's configuration (`app_config.rs`, since 0.24.0): `config/app.yaml` and its profiles,
 //! what `fsp gen` writes from them, what it refuses, how a build picks its profile, and (with
 //! `dart` on PATH) that the generated file compiles, picks the profile the define names and stops
 //! a build whose define names none.

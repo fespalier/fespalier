@@ -1591,7 +1591,7 @@ impl Config {
         format!("{stem}.main.g.dart")
     }
 
-    /// Where the app's configuration goes (since 0.23.0, when `config/app.yaml` exists): `output`
+    /// Where the app's configuration goes (since 0.24.0, when `config/app.yaml` exists): `output`
     /// with `.config.g.dart` in place of `.g.dart`, beside it as the generated `main()` is.
     /// `lib/app.g.dart` is `lib/app.config.g.dart`.
     pub fn output_config(&self) -> String {

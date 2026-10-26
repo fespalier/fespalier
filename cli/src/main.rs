@@ -435,7 +435,7 @@ fn gen_core(
         )
     };
     let run = session.last.keep(tree, scan_diags, reads, run);
-    // The app's configuration (since 0.23.0): read on every run, like the lint, since its files
+    // The app's configuration (since 0.24.0): read on every run, like the lint, since its files
     // are not in the tree. A few small YAML files.
     let config_path = cfg.output_config();
     let app_config = app_config::load(project, &config_path);
@@ -523,7 +523,7 @@ fn gen_core(
 
 /// The files `gen` writes, as the user spells them: the output, the manifest library when
 /// `output_manifest:` asks for one, the generated `main()` when `with_main`, and the app's
-/// configuration when `with_config` (since 0.23.0).
+/// configuration when `with_config` (since 0.24.0).
 fn outputs(cfg: &Config, with_main: bool, with_config: bool) -> Vec<String> {
     let mut all = vec![cfg.output.clone()];
     all.extend(cfg.output_manifest.clone());

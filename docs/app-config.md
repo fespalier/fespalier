@@ -1,6 +1,6 @@
 # App configuration and profiles
 
-Your app's own values, such as an API's address or a feature that is on in staging but not in production, are typed constants of one class, `AppConfig`, generated from `config/`: one file of values for every build, and one file per profile that changes some of them. There is no package to add and no `fespalier:` key to write, and the feature is on when `config/app.yaml` exists (since 0.23.0). Every value is compiled into the app, so every value is public: [secrets](#secrets) never go here.
+Your app's own values, such as an API's address or a feature that is on in staging but not in production, are typed constants of one class, `AppConfig`, generated from `config/`: one file of values for every build, and one file per profile that changes some of them. There is no package to add and no `fespalier:` key to write, and the feature is on when `config/app.yaml` exists (since 0.24.0). Every value is compiled into the app, so every value is public: [secrets](#secrets) never go here.
 
 ## config/app.yaml and AppConfig
 
@@ -133,7 +133,7 @@ UNCHECKED on a device: `fsp build apk --profile staging` and `fsp build ipa --pr
 
 ## Tasks and the configuration
 
-`fsp dev` and `fsp build` give the commands of their `before`, `with`, `run` and `after` steps two kinds of variable (since 0.23.0): `FSP_PROFILE`, the active profile, and one `FSP_CONFIG_<PATH>` for each value of that profile. `api.base_url` is `FSP_CONFIG_API_BASE_URL`, and a list is JSON. A null is not set. The values are read when `fsp` starts, so a command that runs on is not told of a change in `config/`; the next start has the new value.
+`fsp dev` and `fsp build` give the commands of their `before`, `with`, `run` and `after` steps two kinds of variable (since 0.24.0): `FSP_PROFILE`, the active profile, and one `FSP_CONFIG_<PATH>` for each value of that profile. `api.base_url` is `FSP_CONFIG_API_BASE_URL`, and a list is JSON. A null is not set. The values are read when `fsp` starts, so a command that runs on is not told of a change in `config/`; the next start has the new value.
 
 ```yaml
 tasks:

@@ -67,7 +67,7 @@ pub struct GenReport {
     pub stamp: Option<Stamp>,
     /// Whether a hot reload can swap the routes the pass generated (since 0.19.0; `entry::swaps`).
     pub swaps: bool,
-    /// Whether the pass wrote the app's configuration (`lib/app.config.g.dart`, since 0.23.0):
+    /// Whether the pass wrote the app's configuration (`lib/app.config.g.dart`, since 0.24.0):
     /// `fsp dev` restarts the app for it, since a value read once (into a provider, a
     /// `static final`) keeps its old value through a hot reload.
     pub config_written: bool,
@@ -90,7 +90,7 @@ pub struct GenReport {
 /// declared there (`lib/models/category.dart`): of those paths only Dart files and folders
 /// (a path with no extension) count, not the `.png` or `.json` beside them. The same goes for the
 /// folders of a `path:` dependency that `watch` adds after a pass (since 0.22.0). In `config_dir`
-/// (since 0.23.0) only its `.yaml` and `.yml` files count, and the folder itself.
+/// (since 0.24.0) only its `.yaml` and `.yml` files count, and the folder itself.
 pub fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path, config_dir: &Path) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
@@ -316,7 +316,7 @@ impl Pass<'_> {
             .map(|r| r.folders(self.project))
             .unwrap_or_default()
             .into_iter()
-            // The app's configuration (since 0.23.0), whenever the folder is there: one made while
+            // The app's configuration (since 0.24.0), whenever the folder is there: one made while
             // `fsp watch` runs is watched from the pass after it appears.
             .chain(std::iter::once(self.project.join(crate::app_config::DIR)))
             .filter(|d| !d.starts_with(watched) && d.is_dir())

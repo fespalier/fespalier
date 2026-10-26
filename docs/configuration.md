@@ -2,7 +2,7 @@
 
 `fsp` needs no configuration. Everything below is optional, and lives in the `fespalier:` section of your
 `pubspec.yaml`. Your app's own values (an API address per environment) are not here: they are `config/app.yaml`
-([App configuration and profiles](app-config.md), since 0.23.0).
+([App configuration and profiles](app-config.md), since 0.24.0).
 
 ## The fespalier: section
 
@@ -193,7 +193,7 @@ checks [Flutter's accessibility guidelines](route-tests.md#route-smoke-tests-fsp
 ### tasks
 
 `tasks:` (since 0.9.0) is what [`fsp dev`, `fsp build` and `fsp run`](cli.md#tasks-commands-around-flutter-run) run: commands to run
-before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it. Since 0.22.0 the editor plugins list and run them ([Tasks in your editor](cli.md#tasks-in-your-editor)). Since 0.23.0 `fsp dev` and `fsp build` also give their commands `FSP_PROFILE` and `FSP_CONFIG_*` ([App configuration: tasks](app-config.md#tasks-and-the-configuration)).
+before, next to and after `flutter run`. Only those commands check it; `fsp gen` never reports a mistake in it. Since 0.22.0 the editor plugins list and run them ([Tasks in your editor](cli.md#tasks-in-your-editor)). Since 0.24.0 `fsp dev` and `fsp build` also give their commands `FSP_PROFILE` and `FSP_CONFIG_*` ([App configuration: tasks](app-config.md#tasks-and-the-configuration)).
 
 ### main
 

@@ -652,7 +652,7 @@ The editor setup is in `docs/configuration.md`, "Completion and checks in your e
 and it works the same on Windows), and keeps `lib/app.g.dart` current while it runs. It needs no
 configuration; everything after `--` goes to `flutter run` (`fsp dev -- -d chrome --flavor dev`).
 
-**`--profile` and the app's configuration (since 0.23.0).** `fsp dev --profile <name>` and `fsp build <target> --profile <name>`
+**`--profile` and the app's configuration (since 0.24.0).** `fsp dev --profile <name>` and `fsp build <target> --profile <name>`
 pass `--dart-define=FSP_PROFILE=<name>` to flutter, in front of the arguments after `--`, and print the line
 `profile <name> (FSP_PROFILE): config/app.<name>.yaml over config/app.yaml` (the reason is `(the flavour)` or `(a debug build)`
 when that picks it). A profile that `config/` does not have, `--profile release`, or a define of your own after `--` as well is

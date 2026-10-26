@@ -1,4 +1,4 @@
-//! What looks like a secret in `config/` (since 0.23.0). Every value of the app's configuration
+//! What looks like a secret in `config/` (since 0.24.0). Every value of the app's configuration
 //! is compiled into the app, where anyone who has the app can read it, so a credential there is a
 //! leak, however private the repository is.
 //!

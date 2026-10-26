@@ -1,4 +1,4 @@
-//! The app's own configuration (since 0.23.0): `config/app.yaml` and its profiles,
+//! The app's own configuration (since 0.24.0): `config/app.yaml` and its profiles,
 //! `config/app.<profile>.yaml`, become `lib/app.config.g.dart` (beside `output`, as the generated
 //! `main()` is), a class of constants:
 //!
@@ -257,7 +257,7 @@ fn dart_name(path: &[String]) -> String {
     out
 }
 
-/// The variable a key is for the commands of `fsp dev` and `fsp build` (since 0.23.0):
+/// The variable a key is for the commands of `fsp dev` and `fsp build` (since 0.24.0):
 /// `["api", "base_url"]` is `FSP_CONFIG_API_BASE_URL`, `["oidc", "clientId"]`
 /// `FSP_CONFIG_OIDC_CLIENT_ID`.
 fn var_name(path: &[String]) -> String {
@@ -508,7 +508,7 @@ fn build(sources: &[Source], profiles: Vec<String>, diags: &mut Diags) -> Option
             names.insert(leaf.name.clone(), key);
         }
     }
-    // The variables the task's commands get (since 0.23.0): `apiURL` and `api_url` are two
+    // The variables the task's commands get (since 0.24.0): `apiURL` and `api_url` are two
     // constants but one variable. Two keys that are one constant are said once, above.
     let mut vars: HashMap<String, String> = HashMap::new();
     let named = !diags.has_errors();
@@ -1327,7 +1327,7 @@ pub fn default_flavor(project: &Path) -> Option<String> {
 }
 
 /// The profile a build will have, and why: what the generated `_profile` computes, from what
-/// `fsp` can see of the build (since 0.23.0). `explicit` is `--profile` or a define in the
+/// `fsp` can see of the build (since 0.24.0). `explicit` is `--profile` or a define in the
 /// arguments; `debug` whether the build is a debug build.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Active {
@@ -1422,7 +1422,7 @@ fn var_value(lit: &Lit, ty: Ty) -> Option<String> {
 }
 
 /// The values of the profile `name` as variables for the commands of `fsp dev` and `fsp build`
-/// (`before`, `with`, `run`, `after`; since 0.23.0): `api.base_url` is `FSP_CONFIG_API_BASE_URL`.
+/// (`before`, `with`, `run`, `after`; since 0.24.0): `api.base_url` is `FSP_CONFIG_API_BASE_URL`.
 /// They are the values when the command starts: a command that runs on is not told of a change.
 #[must_use]
 pub fn task_vars(config: &AppConfig, name: &str) -> Vec<(String, String)> {
@@ -1443,7 +1443,7 @@ pub fn task_vars(config: &AppConfig, name: &str) -> Vec<(String, String)> {
 
 /// For `fsp dev` and `fsp build`: the profile line and the `FSP_PROFILE` variable for the task's
 /// commands, when the app has a configuration. `debug` is whether the build is a debug build.
-/// The variables of the task's commands for the build `active` will be (since 0.23.0):
+/// The variables of the task's commands for the build `active` will be (since 0.24.0):
 /// `FSP_PROFILE` and a `FSP_CONFIG_*` per value. A configuration with errors gives `FSP_PROFILE`
 /// alone (the generation that runs first reports them).
 #[must_use]

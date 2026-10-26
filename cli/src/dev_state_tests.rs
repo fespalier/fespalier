@@ -1441,7 +1441,7 @@ fn a_regeneration_before_app_start_restarts() {
 #[test]
 fn a_pass_that_writes_the_configuration_restarts_the_app() {
     // Even when the routes would swap: a value of config/ read once (into a provider, a `static
-    // final`) keeps its old value through a hot reload (since 0.23.0).
+    // final`) keeps its old value through a hot reload (since 0.24.0).
     let v0 = stamp("0000000000000000", &[("a", "11111111")]);
     let mut s = running_from(Some(v0.clone()));
     let config = GenReport {

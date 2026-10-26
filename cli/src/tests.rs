@@ -184,7 +184,7 @@ fn committed_output_is_up_to_date() {
                 cfg.output_main()
             ),
         }
-        // The app's configuration (`lib/app.config.g.dart`, since 0.23.0) is checked in when the
+        // The app's configuration (`lib/app.config.g.dart`, since 0.24.0) is checked in when the
         // example has a config/app.yaml, and is absent when it has none.
         let config_path = examples(name).join(cfg.output_config());
         let loaded = crate::app_config::load(&examples(name), &cfg.output_config());

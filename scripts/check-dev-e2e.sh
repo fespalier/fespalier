@@ -6,7 +6,7 @@
 # dev sees that a reload would keep a provider it changes: a hot restart, and startup() runs again),
 # then changes it back behind fsp dev's back (the app refuses the swap and prints so, and fsp dev
 # restarts it on that line), changes the app's configuration (config/app.dev.yaml, the profile of a
-# debug build: a hot restart brings the new value, since 0.23.0), and quits with `q` (since 0.19.0).
+# debug build: a hot restart brings the new value, since 0.24.0), and quits with `q` (since 0.19.0).
 # This is the one check of fsp against
 # flutter's real `--machine` protocol; every other test speaks it through a fake.
 #
@@ -49,7 +49,7 @@ import 'package:e2e_app/app.main.g.dart';
 
 Future<void> main() => AppMain.run();
 DART
-# The app's configuration (since 0.23.0): `dev` is the profile of a debug build.
+# The app's configuration (since 0.24.0): `dev` is the profile of a debug build.
 mkdir -p config
 printf 'greeting: e2e greeting one\n' > config/app.yaml
 printf 'greeting: e2e greeting dev one\n' > config/app.dev.yaml
@@ -394,7 +394,7 @@ wait_count '✓ hot restart in' 2 120
 wait_count 'e2e startup' 3 120
 
 # A value of the app's configuration changes: fsp dev writes lib/app.config.g.dart and restarts the
-# app, which reads the new value (since 0.23.0).
+# app, which reads the new value (since 0.24.0).
 printf 'greeting: e2e greeting dev two\n' > config/app.dev.yaml
 wait_for '[fsp] hot restart: lib/app.config.g.dart changed' 120
 wait_count '✓ hot restart in' 3 120

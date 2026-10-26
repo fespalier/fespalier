@@ -417,7 +417,7 @@ pub struct Opts {
     /// The generated file as the user spells it, for the `hot reload: … changed` and
     /// `hot restart: … changed` lines.
     pub output: String,
-    /// The app's configuration as the user spells it (`lib/app.config.g.dart`, since 0.23.0), for
+    /// The app's configuration as the user spells it (`lib/app.config.g.dart`, since 0.24.0), for
     /// the `hot restart: … changed` line of a pass that wrote it.
     pub config_output: String,
     /// The device fsp chose, when it did.
@@ -973,7 +973,7 @@ impl DevState {
             if r.config_written {
                 // A value of config/ is a constant, and one read once (into a provider, a `static
                 // final`) keeps its old value through a hot reload: a restart reads them all again
-                // (since 0.23.0). The profile is a define of the running flutter, and stays.
+                // (since 0.24.0). The profile is a define of the running flutter, and stays.
                 let line = format!("hot restart: {} changed", self.config_output);
                 self.say(&line, Kind::Normal);
                 self.request(now, true, Ask::Regen, fx);

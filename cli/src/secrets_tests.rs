@@ -1,4 +1,4 @@
-//! What looks like a secret in `config/` (`secrets.rs`, since 0.23.0): each shape it knows, the
+//! What looks like a secret in `config/` (`secrets.rs`, since 0.24.0): each shape it knows, the
 //! near misses it must let through, and the names it warns about.
 
 use crate::secrets::{is_jwt, is_public_jwt, looks_like, named_like};

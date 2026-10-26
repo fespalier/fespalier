@@ -1,6 +1,6 @@
-# Diagnostics: the app's configuration (`config/`, since 0.23.0)
+# Diagnostics: the app's configuration (`config/`, since 0.24.0)
 
-As of 0.23.0 (`cli/src/app_config.rs` for `config/app.yaml`, its profiles, `AppConfig`, `--profile` and the variables of the
+As of 0.24.0 (`cli/src/app_config.rs` for `config/app.yaml`, its profiles, `AppConfig`, `--profile` and the variables of the
 tasks; `cli/src/secrets.rs` for what looks like a credential). Messages are quoted as `fsp` prints them, with `{name}` for the
 part that changes: a key in dotted form (`api.base_url`), a file (`config/app.staging.yaml`), a profile name. The user
 documentation is [App configuration and profiles](https://github.com/fespalier/fespalier/blob/main/docs/app-config.md); the

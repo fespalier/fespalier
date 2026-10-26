@@ -57,16 +57,26 @@ export function isUnderAppDir(relPath: string, appDir: string): boolean {
 }
 
 /**
+ * Whether `relPath` (relative to the project root) is a file of the app's configuration:
+ * `config/app.yaml` or one of its profiles, `config/app.<profile>.yaml` (since fespalier 0.23.0;
+ * a `.yml` one too, which `fsp check` asks to rename).
+ */
+export function isConfigFile(relPath: string): boolean {
+  return /^config\/app(\.[^/]+)?\.ya?ml$/.test(normalizeDir(relPath));
+}
+
+/**
  * Whether saving `relPath` (relative to the project root) can change what `fsp check` finds:
  * `pubspec.yaml` (it can move the app folder), anything under the app folder (the route tree),
- * or a Dart file anywhere under `lib/` that `fsp` did not generate (the string paths it checks,
- * since fespalier 0.7.0).
+ * a Dart file anywhere under `lib/` that `fsp` did not generate (the string paths it checks,
+ * since fespalier 0.7.0), or a file of the app's configuration (since fespalier 0.23.0).
  */
 export function affectsCheck(relPath: string, appDir: string): boolean {
   const p = normalizeDir(relPath);
   return (
     p === 'pubspec.yaml' ||
     isUnderAppDir(p, appDir) ||
-    (p.startsWith('lib/') && p.endsWith('.dart') && !p.endsWith('.g.dart'))
+    (p.startsWith('lib/') && p.endsWith('.dart') && !p.endsWith('.g.dart')) ||
+    isConfigFile(p)
   );
 }

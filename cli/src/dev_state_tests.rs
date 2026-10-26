@@ -25,6 +25,7 @@ fn state_with(plain: bool, hot_reload: bool, with: &[&str]) -> DevState {
         hot_reload,
         plain,
         output: "lib/app.g.dart".into(),
+        config_output: "lib/app.config.g.dart".into(),
         device: Some(Device {
             id: "fake-1".into(),
             name: "Fake".into(),
@@ -90,6 +91,7 @@ fn report(wrote: bool, ok: bool, first: bool) -> GenReport {
         main_changed: false,
         stamp: None,
         swaps: false,
+        config_written: false,
         routes: ok.then_some(3),
         errors: usize::from(!ok),
         first_error: (!ok).then(|| FirstError {
@@ -918,6 +920,7 @@ fn started_from(stamp: Option<Stamp>, plain: bool) -> DevState {
         hot_reload: true,
         plain,
         output: "lib/app.g.dart".into(),
+        config_output: "lib/app.config.g.dart".into(),
         device: Some(Device {
             id: "fake-1".into(),
             name: "Fake".into(),
@@ -1433,4 +1436,23 @@ fn a_regeneration_before_app_start_restarts() {
     assert!(requests(&pass(&mut s, 10, wrote(v1))).is_empty());
     // app.start sends it, as the restart it was.
     assert_eq!(requests(&app_start(&mut s, 20, true)), [(1, true)]);
+}
+
+#[test]
+fn a_pass_that_writes_the_configuration_restarts_the_app() {
+    // Even when the routes would swap: a value of config/ read once (into a provider, a `static
+    // final`) keeps its old value through a hot reload (since 0.23.0).
+    let v0 = stamp("0000000000000000", &[("a", "11111111")]);
+    let mut s = running_from(Some(v0.clone()));
+    let config = GenReport {
+        config_written: true,
+        ..wrote(v0)
+    };
+    let fx = pass(&mut s, 100, config);
+    assert_eq!(requests(&fx), [(1, true)]);
+    assert!(
+        s.drain_plain()
+            .iter()
+            .any(|l| l.text == "hot restart: lib/app.config.g.dart changed"),
+    );
 }

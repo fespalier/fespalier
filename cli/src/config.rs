@@ -1545,6 +1545,18 @@ impl Config {
         format!("{stem}.main.g.dart")
     }
 
+    /// Where the app's configuration goes (since 0.23.0, when `config/app.yaml` exists): `output`
+    /// with `.config.g.dart` in place of `.g.dart`, beside it as the generated `main()` is.
+    /// `lib/app.g.dart` is `lib/app.config.g.dart`.
+    pub fn output_config(&self) -> String {
+        let stem = self
+            .output
+            .strip_suffix(".g.dart")
+            .or_else(|| self.output.strip_suffix(".dart"))
+            .unwrap_or(&self.output);
+        format!("{stem}.config.g.dart")
+    }
+
     /// The output path relative to `lib/`, as a `package:` import spells it.
     pub fn output_in_lib(&self) -> &str {
         self.output.strip_prefix("lib/").unwrap_or(&self.output)

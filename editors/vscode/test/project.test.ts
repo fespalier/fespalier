@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { affectsCheck, appDirFromPubspec, isUnderAppDir, normalizeDir } from '../src/project';
+import { affectsCheck, appDirFromPubspec, isConfigFile, isUnderAppDir, normalizeDir } from '../src/project';
 import { invocation } from '../src/runner';
 
 test('app_dir defaults to lib/app', () => {
@@ -46,6 +46,22 @@ test('saved files that can change what fsp check finds', () => {
   assert.equal(affectsCheck('test/app_test.dart', 'lib/app'), false);
   assert.equal(affectsCheck('README.md', 'lib/app'), false);
   assert.equal(affectsCheck('example/lib/main.dart', 'lib/app'), false);
+  // The app's configuration and its profiles (since 0.23.0); not the other files of config/.
+  assert.equal(affectsCheck('config/app.yaml', 'lib/app'), true);
+  assert.equal(affectsCheck('config/app.staging.yaml', 'lib/app'), true);
+  assert.equal(affectsCheck('config\\app.dev.yaml', 'lib/app'), true);
+  assert.equal(affectsCheck('config/app.yml', 'lib/app'), true);
+  assert.equal(affectsCheck('config/ci.yaml', 'lib/app'), false);
+  assert.equal(affectsCheck('config/sub/app.yaml', 'lib/app'), false);
+  assert.equal(affectsCheck('lib/config/app.yaml', 'lib/app'), false);
+});
+
+test('the files of the app configuration', () => {
+  assert.equal(isConfigFile('config/app.yaml'), true);
+  assert.equal(isConfigFile('./config/app.dev.yaml'), true);
+  assert.equal(isConfigFile('config/app.yaml.bak'), false);
+  assert.equal(isConfigFile('config/application.yaml'), false);
+  assert.equal(isConfigFile('app.yaml'), false);
 });
 
 test('normalizeDir', () => {

@@ -672,7 +672,18 @@
         "docs/forms.md#Testing",
         "packages/fespalier_tolgee/lib/testing.dart",
         "packages/fespalier_cratestack/lib/testing.dart",
-        "packages/fespalier_forms/lib/testing.dart"
+        "packages/fespalier_forms/lib/testing.dart",
+        "docs/app-config.md",
+        "docs/app-config.md#config/app.yaml and AppConfig",
+        "docs/app-config.md#Profiles",
+        "docs/app-config.md#Running and building with a profile",
+        "docs/app-config.md#Tasks and the configuration",
+        "docs/app-config.md#Tests",
+        "docs/app-config.md#Secrets",
+        "docs/app-config.md#Values that change at run time",
+        "docs/app-config.md#Flavours and profiles",
+        "cli/src/app_config.rs",
+        "cli/src/secrets.rs"
       ]
     },
     "fespalier-troubleshooting": {
@@ -742,6 +753,7 @@
         "docs/getting-started.md#go_router 18 and Material",
         "docs/migration.md#Adopting fespalier in a go_router app",
         "docs/migration.md#Upgrading",
+        "docs/migration.md#0.23.0",
         "docs/migration.md#0.22.0",
         "docs/migration.md#0.21.0",
         "docs/migration.md#The HTTP transport and the auth rebuild",

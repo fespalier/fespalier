@@ -184,6 +184,28 @@ fn committed_output_is_up_to_date() {
                 cfg.output_main()
             ),
         }
+        // The app's configuration (`lib/app.config.g.dart`, since 0.23.0) is checked in when the
+        // example has a config/app.yaml, and is absent when it has none.
+        let config_path = examples(name).join(cfg.output_config());
+        let loaded = crate::app_config::load(&examples(name), &cfg.output_config());
+        assert!(!loaded.diags.has_errors(), "{name}: {:?}", loaded.diags.0);
+        match loaded.config {
+            Some(config) => {
+                let config =
+                    format(crate::app_config::emit(&config), &cfg.output_config()).unwrap();
+                let committed = fs::read_to_string(&config_path).unwrap_or_default();
+                assert!(
+                    committed == config,
+                    "examples/{name}/{} is stale; run `fsp gen --project examples/{name}`",
+                    cfg.output_config()
+                );
+            }
+            None => assert!(
+                !config_path.exists(),
+                "examples/{name}/{} is there but the app has no config/app.yaml",
+                cfg.output_config()
+            ),
+        }
         // A separate manifest library is checked in too.
         if let Some(path) = &cfg.output_manifest {
             let manifest = crate::manifest::emit(&app, &cfg).unwrap();

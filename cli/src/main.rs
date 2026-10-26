@@ -1,4 +1,5 @@
 mod adapters;
+mod app_config;
 mod build_runner;
 mod config;
 mod create;
@@ -35,6 +36,7 @@ mod routes;
 mod samples;
 mod scaffold;
 mod scan;
+mod secrets;
 mod segtype;
 mod session;
 mod size;
@@ -318,6 +320,7 @@ fn gen_core(
     session.main_changed = false;
     session.stamp = None;
     session.swaps = false;
+    session.config_written = None;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
         bail!(
@@ -358,6 +361,15 @@ fn gen_core(
         )
     };
     let run = session.last.keep(tree, scan_diags, reads, run);
+    // The app's configuration (since 0.23.0): read on every run, like the lint, since its files
+    // are not in the tree. A few small YAML files.
+    let config_path = cfg.output_config();
+    let app_config = app_config::load(project, &config_path);
+    let config_file = app_config
+        .config
+        .as_ref()
+        .map(|c| (config_path.clone(), app_config::emit(c)));
+    let with_config = app_config.on;
     // The lint reads files outside the tree, so it runs on every run, reused or not. A tree
     // with errors is half resolved and would make every path look unknown.
     let lints = if run.diags.has_errors() {
@@ -366,28 +378,27 @@ fn gen_core(
         lint::check(project, cfg, &run.table, &mut session.sites)
     };
     let mut everything = run.diags.clone();
+    everything.0.extend(app_config.diags.0.iter().cloned());
     everything.0.extend(lints.0.iter().cloned());
     // A file on disk beside the output, not something the tree says: shown whatever the tree has.
     everything
         .0
-        .extend(build_runner::check(project, cfg, &outputs(cfg, writes_main)).0);
+        .extend(build_runner::check(project, cfg, &outputs(cfg, writes_main, with_config)).0);
     show(&app_dir, &everything);
-    if run.diags.has_errors() {
-        let mut outputs = outputs(cfg, writes_main);
+    let errors = run.diags.error_count() + app_config.diags.error_count();
+    if errors > 0 {
+        let mut outputs = outputs(cfg, writes_main, with_config);
         let last = outputs.pop().unwrap_or_default();
         let left = if outputs.is_empty() {
             last
         } else {
             format!("{} and {last}", outputs.join(", "))
         };
-        bail!(
-            "{} error(s); {left} left unchanged",
-            run.diags.error_count()
-        );
+        bail!("{errors} error(s); {left} left unchanged");
     }
     let mut wrote = false;
     let main_path = cfg.output_main();
-    for (path, code) in &run.files {
+    for (path, code) in run.files.iter().chain(config_file.iter()) {
         let out = project.join(path);
         // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
         // before comparing, so a formatted file that is up to date reads "unchanged".
@@ -412,9 +423,12 @@ fn gen_core(
             if *path == main_path {
                 session.main_changed = true;
             }
+            if *path == config_path {
+                session.config_written = Some(config_path.clone());
+            }
         }
     }
-    let output = outputs(cfg, writes_main).join(", ");
+    let output = outputs(cfg, writes_main, with_config).join(", ");
     // A lint error fails the command but not the output: the generated file does not depend on
     // it, and `watch` must not stop regenerating for a typo in some other file.
     if lints.has_errors() {
@@ -434,12 +448,16 @@ fn gen_core(
 }
 
 /// The files `gen` writes, as the user spells them: the output, the manifest library when
-/// `output_manifest:` asks for one, and the generated `main()` when `with_main`.
-fn outputs(cfg: &Config, with_main: bool) -> Vec<String> {
+/// `output_manifest:` asks for one, the generated `main()` when `with_main`, and the app's
+/// configuration when `with_config` (since 0.23.0).
+fn outputs(cfg: &Config, with_main: bool, with_config: bool) -> Vec<String> {
     let mut all = vec![cfg.output.clone()];
     all.extend(cfg.output_manifest.clone());
     if with_main {
         all.push(cfg.output_main());
+    }
+    if with_config {
+        all.push(cfg.output_config());
     }
     all
 }
@@ -514,6 +532,8 @@ fn watch(project: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod action_tests;
+#[cfg(test)]
+mod app_config_tests;
 #[cfg(test)]
 mod bench;
 #[cfg(test)]
@@ -598,6 +618,8 @@ mod rest_types_tests;
 mod route_api_tests;
 #[cfg(test)]
 mod scroll_tests;
+#[cfg(test)]
+mod secrets_tests;
 #[cfg(test)]
 mod segtype_tests;
 #[cfg(test)]

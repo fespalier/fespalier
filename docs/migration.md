@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1.
 
+### 0.23.0
+
+0.23.0 changes no code you wrote and no app regenerates a different `app.g.dart`. An app with a `config/app.yaml` gets a new generated file, `lib/app.config.g.dart`, beside `output`.
+
+- **`fsp` reads `config/app.yaml`** (since 0.23.0). An app that already has a `config/app.yaml` (or a `config/app.<name>.yaml`) for another tool now gets `lib/app.config.g.dart`, and `fsp gen` and `fsp check` fail on what they cannot read in those files: move them elsewhere. Other files in `config/` are ignored. With a `config/app.yaml`, `fsp dev` and `fsp build` set `FSP_PROFILE` and `FSP_CONFIG_*` in their commands' environment, over a variable of the same name of yours. [App configuration](app-config.md).
+
 ### 0.22.0
 
 0.22.0 changes no code you wrote in `lib/app/`. `app.g.dart` is unchanged for an app with no `path:` dependency, and for one whose route files spell no type declared in a `path:` dependency where `fsp` compares types; where they do, it can change (the first bullet).

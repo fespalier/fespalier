@@ -32,6 +32,7 @@ use clap::Args;
 use serde_yaml_ng::Value;
 
 use crate::Exit;
+use crate::app_config;
 use crate::config::{Config, shown_value};
 use crate::procs::{self, Out, Status, Supervised};
 
@@ -759,6 +760,9 @@ fn run_main(plan: &Plan, extra_args: &[String], env: &Env<'_>) -> Result<Status>
 pub struct BuildCmd {
     /// What `flutter build` builds: apk, appbundle, ios, ipa, web, macos, linux, windows, ...
     pub target: String,
+    /// The profile of the app's configuration: config/app.<PROFILE>.yaml over config/app.yaml, passed to flutter as --dart-define=FSP_PROFILE=<PROFILE>
+    #[arg(long, value_name = "PROFILE")]
+    pub profile: Option<String>,
     /// Print what would run, and run nothing
     #[arg(long)]
     pub dry_run: bool,
@@ -786,8 +790,15 @@ pub struct RunCmd {
 pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
     let cfg = Config::load(project)?;
     let plan = Tasks::from_config(&cfg)?.build();
+    let profile = cmd.profile.as_deref();
+    let active = app_config::for_run(
+        project,
+        profile,
+        &cmd.args,
+        app_config::build_is_debug(&cmd.args),
+    )?;
     let mut args = vec![cmd.target.clone()];
-    args.extend(cmd.args.iter().cloned());
+    args.extend(app_config::with_define(profile, &cmd.args)?);
     if cmd.dry_run {
         eprint!(
             "{}",
@@ -797,6 +808,7 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
                 &plan,
                 &args,
                 Some(&format!("gen     {}", cfg.output)),
+                active.as_ref().map(app_config::Active::line).as_deref(),
                 None,
             )
         );
@@ -804,7 +816,11 @@ pub fn build(project: &Path, cmd: &BuildCmd) -> Result<()> {
     }
     procs::install_signals().map_err(anyhow::Error::msg)?;
     eprintln!("{}", crate::gen_opts(project, &cfg, true, false)?.line());
-    let vars = [("FSP_BUILD_TARGET".to_string(), cmd.target.clone())];
+    let mut vars = vec![("FSP_BUILD_TARGET".to_string(), cmd.target.clone())];
+    if let Some(a) = &active {
+        eprintln!("{}", a.line());
+        vars.extend(app_config::run_vars(project, &cfg.output_config(), a));
+    }
     execute(project, &plan, &args, &vars)
 }
 
@@ -854,6 +870,7 @@ pub fn run_task(project: &Path, cmd: &RunCmd) -> Result<()> {
                 &plan,
                 &cmd.args,
                 None,
+                None,
                 None
             )
         );
@@ -872,11 +889,15 @@ pub fn dry_run(
     plan: &Plan,
     run_args: &[String],
     gen_line: Option<&str>,
+    profile_line: Option<&str>,
     hot: Option<&str>,
 ) -> String {
     let mut out = format!("{header} in {}\n", project.display());
     if let Some(g) = gen_line {
         let _ = writeln!(out, "  {g}");
+    }
+    if let Some(p) = profile_line {
+        let _ = writeln!(out, "  {p}");
     }
     let lines = |label: &str, items: Vec<String>| -> String {
         if items.is_empty() {

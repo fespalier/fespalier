@@ -558,7 +558,7 @@ dev:
     .unwrap();
     let args = ["-d".to_string(), "chrome".to_string()];
     assert_eq!(
-        dev::dry_run(Path::new("/abs/project"), &cfg(), &t.dev(), &args),
+        dev::dry_run(Path::new("/abs/project"), &cfg(), &t.dev(), &args, None),
         "\
 fsp dev in /abs/project
   gen     lib/app.g.dart, kept current while it runs
@@ -576,7 +576,7 @@ fsp dev in /abs/project
 fn dev_dry_run_with_nothing_set_and_hot_reload_off() {
     let t = parse("dev:\n  hot_reload: false\n").unwrap();
     assert_eq!(
-        dev::dry_run(Path::new("/p"), &cfg(), &t.dev(), &[]),
+        dev::dry_run(Path::new("/p"), &cfg(), &t.dev(), &[], None),
         "\
 fsp dev in /p
   gen     lib/app.g.dart, kept current while it runs

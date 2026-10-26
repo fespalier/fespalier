@@ -6,6 +6,7 @@ The [README](https://github.com/fespalier/fespalier/blob/main/README.md) is the 
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
 | [Installation and setup](getting-started.md)                       | Install options, companion packages, `fsp create`, `fsp init`, CI, platform notes                             |
 | [Configuration](configuration.md)                                  | Every `fespalier:` key of `pubspec.yaml`, and `route.dart`                                                    |
+| [App configuration](app-config.md)                                 | Your app's own values per environment: `config/app.yaml`, profiles, `AppConfig`, secrets (since 0.23.0)       |
 | [File kinds](file-kinds.md)                                        | What each file under `lib/app/` is, exports and receives                                                      |
 | [Migration](migration.md)                                          | Adopting fespalier in a go_router app, and what changed per release                                           |
 | [Coming from RIBs](coming-from-ribs.md)                            | What a RIB's router, interactor, builder and workflows become, and moving a feature over                      |

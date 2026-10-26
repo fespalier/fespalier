@@ -459,6 +459,16 @@ jobs:
           printf '%s\n' "$out"
           # A test that was renamed matches nothing and passes: exactly one must have run.
           grep -q 'test result: ok\. 1 passed;' <<<"$out" || { echo 'the typedef test did not run (renamed?)'; exit 1; }
+      # The generated app configuration compiles, picks the profile a build names, stops a build whose
+      # FSP_PROFILE names none, and a release build to JavaScript holds its own profile's values alone.
+      - name: The app configuration compiles and picks its profile
+        working-directory: cli
+        env:
+          FSP_REQUIRE_DART: "1"
+        run: |
+          out=$(cargo test --quiet app_config_tests::the_generated_file_compiles_and_picks_the_profile_the_build_names 2>&1) || { printf '%s\n' "$out"; exit 1; }
+          printf '%s\n' "$out"
+          grep -q 'test result: ok\. 1 passed;' <<<"$out" || { echo 'the app configuration test did not run (renamed?)'; exit 1; }
       - name: Scaffold every file kind into the features example
         working-directory: examples/features
         run: |

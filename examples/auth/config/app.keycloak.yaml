@@ -1,0 +1,5 @@
+# The Keycloak of the README (`docker run ... start-dev --import-realm`) on this computer:
+# `fsp dev --profile keycloak -- -d chrome --web-port 8686`. An Android emulator reaches it with
+# `adb reverse tcp:8080 tcp:8080`.
+oidc:
+  issuer: http://localhost:8080/realms/fespalier

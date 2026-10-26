@@ -658,7 +658,9 @@ pass `--dart-define=FSP_PROFILE=<name>` to flutter, in front of the arguments af
 when that picks it). A profile that `config/` does not have, `--profile release`, or a define of your own after `--` as well is
 refused before anything runs. The commands of `tasks:` (`before`, `with`, `run`, `after`) get `FSP_PROFILE` and one
 `FSP_CONFIG_<PATH>` per value. A change in `config/` hot restarts the app when it changes a value of the profile the app runs
-or adds or removes a profile, and since 0.24.1 hot reloads it otherwise; `fsp run <task>` sets neither. Details:
+or adds or removes a profile, and since 0.24.1 hot reloads it otherwise; with a `run:` of your own in `tasks: dev:` or a
+`--dart-define-from-file`, whose profile `fsp` cannot read, it restarts for every change (since 0.24.1 the profile line says so).
+`fsp run <task>` sets neither. Details:
 [`app-config.md`](app-config.md).
 
 **A hot reload after a regeneration (since 0.19.0).** In a debug build a hot reload swaps in the regenerated route table when the

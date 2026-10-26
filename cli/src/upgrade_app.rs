@@ -689,16 +689,26 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         return Ok(());
     }
     let notes = notes_text(MIGRATION, from, target, own);
-    let mut files = vec![];
+    // The two files are written together or not at all, `pubspec_overrides.yaml` first (since
+    // 0.24.1); the lines name them in the order people read them.
+    let mut rewrites = vec![];
+    if let (Some(after), Some(before)) = (&new_overrides, &overrides) {
+        rewrites.push(pubspec_edit::Rewrite {
+            path: &overrides_path,
+            before,
+            after,
+        });
+    }
     if moves.iter().any(|m| m.file == PUBSPEC) {
-        files.push((path.clone(), pubspec));
+        rewrites.push(pubspec_edit::Rewrite {
+            path: &path,
+            before: &text,
+            after: &pubspec,
+        });
     }
-    if let Some(text) = new_overrides {
-        files.push((overrides_path, text));
-    }
-    let names: Vec<String> = files
-        .iter()
-        .filter_map(|(p, _)| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+    let names: Vec<&str> = [PUBSPEC, OVERRIDES]
+        .into_iter()
+        .filter(|name| rewrites.iter().any(|r| r.path.ends_with(name)))
         .collect();
     if cmd.dry_run || up_to_date {
         if cmd.dry_run && !up_to_date {
@@ -712,8 +722,8 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         }
         return Ok(());
     }
-    for ((file, text), name) in files.iter().zip(&names) {
-        fs::write(file, text).with_context(|| format!("writing {}", file.display()))?;
+    pubspec_edit::write_files(&rewrites, &mut |p, t| fs::write(p, t)).map_err(|e| anyhow!(e))?;
+    for name in &names {
         say(&format!("  edit  {name}"));
     }
     // The notes come before the commands that can fail: the refs are moved by now, so a second

@@ -24,6 +24,7 @@ use serde_yaml_ng::Value;
 use crate::Exit;
 use crate::config::Config;
 use crate::create::{self, recipes};
+use crate::pubspec_edit::{Rewrite, write_files};
 
 pub mod plan;
 
@@ -121,16 +122,31 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
             );
         }
     }
+    // The two files are written together or not at all, `pubspec_overrides.yaml` first (since
+    // 0.24.1).
+    let mut rewrites = vec![];
+    if let Some(edited) = &plan.overrides {
+        rewrites.push(Rewrite {
+            path: &overrides_path,
+            before: &edited.before,
+            after: &edited.after,
+        });
+    }
     if let Some(new) = &plan.pubspec {
-        fs::write(&path, new).with_context(|| format!("writing {}", path.display()))?;
+        rewrites.push(Rewrite {
+            path: &path,
+            before: &text,
+            after: new,
+        });
+    }
+    write_files(&rewrites, &mut |p, t| fs::write(p, t)).map_err(|e| anyhow::anyhow!(e))?;
+    if plan.pubspec.is_some() {
         errln!("  edit   pubspec.yaml");
         for change in &plan.changes {
             errln!("           {change}");
         }
     }
     if let Some(edited) = &plan.overrides {
-        fs::write(&overrides_path, &edited.after)
-            .with_context(|| format!("writing {}", overrides_path.display()))?;
         errln!("  edit   {}", plan::OVERRIDES);
         for change in &edited.changes {
             errln!("           {change}");

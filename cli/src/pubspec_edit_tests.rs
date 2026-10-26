@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde_yaml_ng::Value;
 
-use crate::pubspec_edit::{Body, Doc, Edit, Place, apply};
+use crate::pubspec_edit::{Body, Doc, Edit, Place, Rewrite, apply, write_files};
 
 fn ok(text: &str, edits: &[Edit]) -> String {
     apply(text, edits).unwrap_or_else(|e| panic!("{e}: {}\n{text}", e.edit.by_hand()))
@@ -563,4 +563,76 @@ fn the_keys_the_editor_finds_are_the_ones_yaml_reads() {
             }
         }
     }
+}
+
+/// `fsp add` and `fsp upgrade --app` write both pubspec files or neither: when the second write
+/// fails, the first file gets its text back (since 0.24.1). The writer here is a map of texts that
+/// refuses the writes it is told to, so it fails whoever runs the test.
+#[test]
+fn a_failed_second_write_puts_the_first_back() {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+    let (first, second) = (
+        Path::new("app/pubspec_overrides.yaml"),
+        Path::new("app/pubspec.yaml"),
+    );
+    let files = [
+        Rewrite {
+            path: first,
+            before: "old overrides",
+            after: "new overrides",
+        },
+        Rewrite {
+            path: second,
+            before: "old pubspec",
+            after: "new pubspec",
+        },
+    ];
+    let run = |refused: &[(&Path, &str)]| {
+        let disk = RefCell::new(BTreeMap::from([
+            (first.to_path_buf(), "old overrides".to_string()),
+            (second.to_path_buf(), "old pubspec".to_string()),
+        ]));
+        let mut write = |path: &Path, text: &str| {
+            if refused.contains(&(path, text)) {
+                return Err(std::io::Error::other("refused"));
+            }
+            disk.borrow_mut()
+                .insert(path.to_path_buf(), text.to_string());
+            Ok(())
+        };
+        let result = write_files(&files, &mut write);
+        let disk = disk.into_inner();
+        (result, disk[first].clone(), disk[second].clone())
+    };
+    assert_eq!(
+        run(&[]),
+        (
+            Ok(()),
+            "new overrides".to_string(),
+            "new pubspec".to_string()
+        )
+    );
+    assert_eq!(
+        run(&[(second, "new pubspec")]),
+        (
+            Err("writing app/pubspec.yaml: refused; app/pubspec_overrides.yaml was put back as it was read, so nothing was written".to_string()),
+            "old overrides".to_string(),
+            "old pubspec".to_string()
+        )
+    );
+    assert_eq!(
+        run(&[(first, "new overrides")]),
+        (
+            Err("writing app/pubspec_overrides.yaml: refused; nothing was written".to_string()),
+            "old overrides".to_string(),
+            "old pubspec".to_string()
+        )
+    );
+    let (result, overrides, _) = run(&[(second, "new pubspec"), (first, "old overrides")]);
+    assert_eq!(overrides, "new overrides");
+    assert!(
+        result.as_ref().unwrap_err().starts_with("writing app/pubspec.yaml: refused; and app/pubspec_overrides.yaml (refused) could not be put back as read, so it has the new text"),
+        "{result:?}"
+    );
 }

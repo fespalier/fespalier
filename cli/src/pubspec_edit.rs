@@ -9,9 +9,69 @@
 //! not edit (a flow mapping where lines would go in, a key on no line of its own), is an
 //! [`EditError`] that names the edit, and the text is left as it was: the caller writes nothing and
 //! prints the change for a person to make ([`Edit::by_hand`]). So an edit never changes more than
-//! it says.
+//! it says. The edited files are written together, or none is ([`write_files`], since 0.24.1).
+
+use std::path::Path;
 
 use serde_yaml_ng::{Mapping, Value};
+
+/// One file [`write_files`] writes: where it is, its text as it was read, and its new text.
+pub struct Rewrite<'a> {
+    pub path: &'a Path,
+    pub before: &'a str,
+    pub after: &'a str,
+}
+
+/// Writes `files` in their order with `write` (`std::fs::write` outside the tests). When one cannot
+/// be written, those written before it are written back as they were read, so a failed write leaves
+/// every file as it was, and the error says which one failed and that nothing was written (since
+/// 0.24.1). `fsp add` and `fsp upgrade --app` give `pubspec_overrides.yaml` first, then
+/// `pubspec.yaml`.
+pub fn write_files(
+    files: &[Rewrite],
+    write: &mut dyn FnMut(&Path, &str) -> std::io::Result<()>,
+) -> Result<(), String> {
+    for (i, file) in files.iter().enumerate() {
+        let Err(e) = write(file.path, file.after) else {
+            continue;
+        };
+        let failed = format!("writing {}: {e}", file.path.display());
+        let written = &files[..i];
+        if written.is_empty() {
+            return Err(format!("{failed}; nothing was written"));
+        }
+        let names: Vec<String> = written
+            .iter()
+            .map(|w| w.path.display().to_string())
+            .collect();
+        let stuck: Vec<String> = written
+            .iter()
+            .filter_map(|w| {
+                write(w.path, w.before)
+                    .err()
+                    .map(|e| format!("{} ({e})", w.path.display()))
+            })
+            .collect();
+        return Err(if stuck.is_empty() {
+            format!(
+                "{failed}; {} {} put back as {} read, so nothing was written",
+                names.join(" and "),
+                if names.len() == 1 { "was" } else { "were" },
+                if names.len() == 1 {
+                    "it was"
+                } else {
+                    "they were"
+                },
+            )
+        } else {
+            format!(
+                "{failed}; and {} could not be put back as read, so it has the new text: put it back by hand (`git checkout` it, or undo the change fsp printed)",
+                stuck.join(" and ")
+            )
+        });
+    }
+    Ok(())
+}
 
 /// Where an inserted key goes among the keys already in its mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

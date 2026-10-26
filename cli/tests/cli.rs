@@ -4908,6 +4908,63 @@ fn add_writes_a_checkouts_overrides_into_pubspec_overrides_yaml() {
     );
 }
 
+/// Makes `path` read-only, and says whether this user can write it all the same (root can).
+#[cfg(unix)]
+fn read_only(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o444)).unwrap();
+    fs::OpenOptions::new().append(true).open(path).is_ok()
+}
+
+#[cfg(unix)]
+fn writable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+}
+
+/// `fsp add` writes `pubspec_overrides.yaml` and `pubspec.yaml` together or not at all: when the
+/// pubspec cannot be written, the overrides file gets its text back (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn add_writes_both_pubspec_files_or_neither() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let local = pubspec.replace(
+        &format!(
+            "    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v{}\n",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "    path: ../checkout/packages/fespalier\n",
+    );
+    fs::write(app.join("pubspec.yaml"), &local).unwrap();
+    let overrides =
+        "dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    let can_write = read_only(&app.join("pubspec.yaml"));
+    let (code, _, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    writable(&app.join("pubspec.yaml"));
+    // Root writes a read-only file: the failure can only be seen by someone who cannot (CI's user).
+    if can_write {
+        return;
+    }
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("writing app/pubspec.yaml: ")
+            && err.contains(
+                "; app/pubspec_overrides.yaml was put back as it was read, so nothing was written"
+            ),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        overrides
+    );
+    assert_eq!(fs::read_to_string(app.join("pubspec.yaml")).unwrap(), local);
+    assert!(!err.contains("  edit   "), "{err}");
+}
+
 // --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
 
 /// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.
@@ -5097,6 +5154,44 @@ fn upgrade_app_names_the_overrides_file_when_it_alone_moves() {
         )),
         "{err}"
     );
+}
+
+/// `fsp upgrade --app` writes `pubspec_overrides.yaml` and `pubspec.yaml` together or not at all:
+/// when the pubspec cannot be written, the overrides file gets its text back (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_writes_both_pubspec_files_or_neither() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let overrides = "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let can_write = read_only(&app.join("pubspec.yaml"));
+    let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    writable(&app.join("pubspec.yaml"));
+    // Root writes a read-only file: the failure can only be seen by someone who cannot (CI's user).
+    if can_write {
+        return;
+    }
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        err.contains("writing app/pubspec.yaml: ")
+            && err.contains(
+                "; app/pubspec_overrides.yaml was put back as it was read, so nothing was written"
+            ),
+        "{err}"
+    );
+    assert!(!out.contains("  edit  "), "{out}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        overrides
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        pubspec
+    );
+    assert!(flutter_log(root).is_empty());
 }
 
 /// In a pub workspace, the root's overrides are read for the app too: one of fespalier's at the old

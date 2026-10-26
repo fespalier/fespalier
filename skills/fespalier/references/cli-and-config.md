@@ -587,7 +587,9 @@ package newer than this `fsp` is; since 0.24.1 that repository however its url i
 `fespalier` is one, and is refused as coming from another url, as pub would) under `dependencies:`, `dev_dependencies:` and, as a git override of the same repository,
 `dependency_overrides:` (and, since 0.23.1, in `pubspec_overrides.yaml`, which pub reads in place of it), to this `fsp`'s
 release or `--version`'s; only the ref values change (`pubspec_edit`'s
-`Set`, quotes and comments kept, a flow `git: {..., ref: ...}` too). Refused, nothing written: a companion from
+`Set`, quotes and comments kept, a flow `git: {..., ref: ...}` too). Since 0.24.1 it and `fsp add` write
+`pubspec_overrides.yaml` and `pubspec.yaml` together (`pubspec_edit::write_files`): the overrides first, put back when the
+pubspec cannot be written, so a failed write changes neither. Refused, nothing written: a companion from
 another repository, a folder while `fespalier` is git, a ref that is not `vX.Y.Z`. A `path:` `fespalier` has
 nothing to move (exit 0); an override to a folder, in the pubspec or `pubspec_overrides.yaml`, is a note, and so,
 since 0.23.1, is an override at a commit or a branch of this repository (a hotfix) and a `fespalier` from a fork or a mirror

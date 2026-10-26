@@ -513,6 +513,84 @@ fn every_spelling_of_a_key_is_one_name_for_the_constant_and_the_variable() {
 }
 
 #[test]
+fn an_int_beyond_what_the_web_holds_is_an_error_the_smallest_included() {
+    for value in [
+        "9007199254740993",
+        "-9007199254740993",
+        "9223372036854775807",
+        // `i64::MIN` has no absolute value in an i64: it panicked `fsp`.
+        "-9223372036854775808",
+        // Beyond an i64.
+        "18446744073709551615",
+    ] {
+        assert_eq!(
+            diags(&[("config/app.yaml", format!("x: {value}\n").as_str())]),
+            [format!(
+                "✗ config/app.yaml:1  `x` is {value}, more than an int holds exactly on the web (2^53): write it as a string"
+            )],
+            "{value}"
+        );
+    }
+    // 2^53 itself is exact, either side of zero.
+    let code = generated(&[(
+        "config/app.yaml",
+        "a: 9007199254740992\nb: -9007199254740992\n",
+    )]);
+    assert!(code.contains("static const int a = 9007199254740992;"));
+    assert!(code.contains("static const int b = -9007199254740992;"));
+}
+
+#[test]
+fn a_value_with_a_nul_character_is_an_error() {
+    // Every value is a variable of the task's commands, and a NUL fails the spawn of each.
+    let said = |yaml: &str| diags(&[("config/app.yaml", yaml)]);
+    let expected = |key: &str, line: usize| {
+        format!(
+            "✗ config/app.yaml:{line}  `{key}` has a NUL character, which the environment of a command cannot hold (every value is a FSP_CONFIG_* variable of the task's commands): remove it"
+        )
+    };
+    assert_eq!(said("a: \"x\\0y\"\n"), [expected("a", 1)]);
+    // In a list, once.
+    assert_eq!(said("a: [fine, \"x\\0y\"]\n"), [expected("a", 1)]);
+    // In a profile.
+    assert_eq!(
+        diags(&[
+            ("config/app.yaml", "a: x\n"),
+            ("config/app.dev.yaml", "a: \"\\0\"\n")
+        ]),
+        [expected("a", 1).replace("config/app.yaml", "config/app.dev.yaml")]
+    );
+    // Other control characters are escaped in the Dart string and in the variable alike.
+    assert!(said("a: \"x\\ty\"\n").is_empty());
+}
+
+#[test]
+fn yaml_core_tags_are_read_as_yaml_says_and_a_tag_of_your_own_is_refused() {
+    let code = generated(&[(
+        "config/app.yaml",
+        "a: !!str 123\nb: !!int \"5\"\nc: !!float 2\nd: !!bool \"true\"\n",
+    )]);
+    assert!(code.contains("static const String a = '123';"), "{code}");
+    assert!(code.contains("static const int b = 5;"), "{code}");
+    assert!(code.contains("static const double c = 2.0;"), "{code}");
+    assert!(code.contains("static const bool d = true;"), "{code}");
+    // Any other `!!` tag (`!!binary`, `!!timestamp`) is dropped by the parser: the text is the
+    // value, not decoded. The docs say so.
+    let code = generated(&[("config/app.yaml", "c: !!binary aGVsbG8=\n")]);
+    assert!(
+        code.contains("static const String c = 'aGVsbG8=';"),
+        "{code}"
+    );
+    // A tag of your own, as in `!env HOME`, is an error.
+    assert_eq!(
+        diags(&[("config/app.yaml", "x: !env HOME\n")]),
+        [
+            "✗ config/app.yaml:1  `x` has the tag `!env`, which fsp does not read: write the value alone"
+        ]
+    );
+}
+
+#[test]
 fn no_two_keys_are_one_variable_without_being_one_constant() {
     // The variable check of the task's commands is a second line behind the constants': both read
     // the words of a key the same way, so every message here is about a constant.

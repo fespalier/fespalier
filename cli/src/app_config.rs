@@ -722,7 +722,7 @@ fn key_of(source: &Source, k: &Value, path: &[String], diags: &mut Diags) -> Opt
 }
 
 /// 2^53: the largest integer a double holds exactly, which is what an `int` is on the web.
-const WEB_INT: i64 = 1 << 53;
+const WEB_INT: u64 = 1 << 53;
 
 /// A value of a file as the generated file will write it, or an error about it.
 fn literal(source: &Source, path: &[String], v: &Value, diags: &mut Diags) -> Option<Lit> {
@@ -739,10 +739,19 @@ fn literal(source: &Source, path: &[String], v: &Value, diags: &mut Diags) -> Op
     let scalar = |v: &Value, diags: &mut Diags| -> Option<Lit> {
         match v {
             Value::Bool(b) => Some(Lit::Bool(*b)),
+            Value::String(s) if s.contains('\0') => {
+                error(
+                    diags,
+                    format!(
+                        "`{key}` has a NUL character, which the environment of a command cannot hold (every value is a FSP_CONFIG_* variable of the task's commands): remove it"
+                    ),
+                );
+                None
+            }
             Value::String(s) => Some(Lit::Str(s.clone())),
             Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
-                    if i.abs() > WEB_INT {
+                    if i.unsigned_abs() > WEB_INT {
                         error(
                             diags,
                             format!(
@@ -783,7 +792,7 @@ fn literal(source: &Source, path: &[String], v: &Value, diags: &mut Diags) -> Op
             for item in items {
                 match scalar(item, diags) {
                     Some(lit) => out.push(lit),
-                    None if matches!(item, Value::Number(_)) => return None,
+                    None if matches!(item, Value::Number(_) | Value::String(_)) => return None,
                     None => {
                         error(
                             diags,

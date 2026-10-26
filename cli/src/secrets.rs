@@ -4,7 +4,7 @@
 //!
 //! [`looks_like`] knows the shape of credentials whose format says what they are (a PEM or PGP
 //! private key, a URL with a password, a Slack or Discord webhook URL, the prefixed tokens of
-//! well-known services): those are errors, and
+//! well-known services, and the older `sk-` keys by the mark in their middle): those are errors, and
 //! the check is meant to be precise rather than complete. [`named_like`] reads a key's name
 //! (`client_secret`, `password`): a warning, since a name can be wrong both ways. Neither can
 //! catch a secret with no telling shape under an innocent name; `docs/app-config.md` says so.
@@ -97,6 +97,9 @@ pub fn looks_like(value: &str) -> Option<&'static str> {
                 return Some(what);
             }
         }
+        if openai_legacy(rest) {
+            return Some("an OpenAI API key");
+        }
         if aws_key(rest) {
             return Some("an AWS access key");
         }
@@ -108,6 +111,15 @@ pub fn looks_like(value: &str) -> Option<&'static str> {
         return Some("a Supabase service_role key");
     }
     None
+}
+
+/// An older `sk-` key (since 0.24.1): `sk-` and a token that has `T3BlbkFJ`, the base64 of
+/// `OpenAI`, in it, as every such key has between its two random halves.
+fn openai_legacy(s: &str) -> bool {
+    s.strip_prefix("sk-").is_some_and(|tail| {
+        let end = tail.find(|c| !token_char(c)).unwrap_or(tail.len());
+        tail[..end].contains("T3BlbkFJ")
+    })
 }
 
 /// `AKIA` or `ASIA` and 16 upper-case letters or digits, and no more.

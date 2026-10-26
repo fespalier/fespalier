@@ -361,6 +361,43 @@ fn keys_make_names_that_must_not_clash() {
             "✗ config/app.yaml:1  `2fa` is not a key fsp can name: a key is letters, digits, `_` and `-`, starting with a letter"
         ]
     );
+    // A constant named like a type the class writes hides it for every other constant, and a name
+    // every object has conflicts with the instance member: the generated file would not compile.
+    for key in ["int", "bool", "double", "Int", "INT"] {
+        let said = diags(&[("config/app.yaml", format!("{key}: 1\n").as_str())]);
+        assert_eq!(said.len(), 1, "{key}: {said:?}");
+        assert!(
+            said[0].contains(
+                "is a type that the class writes in its own declarations: rename the key"
+            ),
+            "{key}: {said:?}"
+        );
+    }
+    assert_eq!(
+        diags(&[("config/app.yaml", "int: 3\n")]),
+        [
+            "✗ config/app.yaml:1  `int` would be the constant AppConfig.int, and `int` is a type that the class writes in its own declarations: rename the key"
+        ]
+    );
+    for (key, name) in [
+        ("hash_code", "hashCode"),
+        ("hashCode", "hashCode"),
+        ("to_string", "toString"),
+        ("runtime-type", "runtimeType"),
+        ("no_such_method", "noSuchMethod"),
+        ("HASH_CODE", "hashCode"),
+    ] {
+        assert_eq!(
+            diags(&[("config/app.yaml", format!("{key}: 4\n").as_str())]),
+            [format!(
+                "✗ config/app.yaml:1  `{key}` would be the constant AppConfig.{name}, and `{name}` is a member that every Dart object has: rename the key"
+            )]
+        );
+    }
+    // Names of a group are only parts of a longer name: `api.int` is `apiInt`.
+    let code = generated(&[("config/app.yaml", "api:\n  int: 1\n  hash_code: 2\n")]);
+    assert!(code.contains("static const int apiInt = 1;"));
+    assert!(code.contains("static const int apiHashCode = 2;"));
     // camelCase, snake_case and kebab-case keys all make a lowerCamelCase constant.
     let code = generated(&[(
         "config/app.yaml",
@@ -369,6 +406,99 @@ fn keys_make_names_that_must_not_clash() {
     assert!(code.contains("static const String oidcClientId = 'a';"));
     assert!(code.contains("static const String oidcRedirectUri = 'b';"));
     assert!(code.contains("static const List<String> oidcScopeList = ['c'];"));
+}
+
+#[test]
+fn every_spelling_of_a_key_is_one_name_for_the_constant_and_the_variable() {
+    // The words of a key are read as the variable reads them (since 0.24.0), so an upper-case
+    // key, as `--dart-define` names are, is not a mangled constant.
+    for key in [
+        "API_URL", "api_url", "apiURL", "api-url", "apiUrl", "Api_Url",
+    ] {
+        let code = generated(&[("config/app.yaml", format!("{key}: https://a\n").as_str())]);
+        assert!(
+            code.contains("static const String apiUrl = 'https://a';"),
+            "{key}: {code}"
+        );
+        let config = load(
+            project(&[("config/app.yaml", format!("{key}: https://a\n").as_str())]).path(),
+            "lib/app.config.g.dart",
+        )
+        .config
+        .unwrap();
+        assert_eq!(
+            task_vars(&config, "default"),
+            [("FSP_CONFIG_API_URL".to_string(), "https://a".to_string())],
+            "{key}"
+        );
+    }
+    let code = generated(&[(
+        "config/app.yaml",
+        "URL: a\nredirectURI: b\noauth2:\n  CLIENT_ID: c\n  scope-list: [d]\nv2: e\n",
+    )]);
+    for expected in [
+        "static const String url = 'a';",
+        "static const String redirectUri = 'b';",
+        "static const String oauth2ClientId = 'c';",
+        "static const List<String> oauth2ScopeList = ['d'];",
+        "static const String v2 = 'e';",
+    ] {
+        assert!(code.contains(expected), "{expected}: {code}");
+    }
+    // Two spellings of one key are one constant, and the constant says so first.
+    assert_eq!(
+        diags(&[("config/app.yaml", "API_URL: a\napiUrl: b\n")]),
+        [
+            "✗ config/app.yaml:2  `apiUrl` and `API_URL` would both be the constant AppConfig.apiUrl: rename one"
+        ]
+    );
+}
+
+#[test]
+fn no_two_keys_are_one_variable_without_being_one_constant() {
+    // The variable check of the task's commands is a second line behind the constants': both read
+    // the words of a key the same way, so every message here is about a constant.
+    let keys = [
+        "api_url",
+        "apiUrl",
+        "API_URL",
+        "api-url",
+        "apiURL",
+        "ApiUrl",
+        "a1b",
+        "a_1b",
+        "a1_b",
+        "A1B",
+        "x2y",
+        "x_2_y",
+        "oauth2_id",
+        "oauth2Id",
+        "OAUTH2_ID",
+        "a",
+        "A",
+        "ab",
+        "aB",
+        "a_b",
+        "a-b",
+    ];
+    for a in keys {
+        for b in keys {
+            if a == b {
+                continue;
+            }
+            for yaml in [
+                format!("{a}: 1\n{b}: 2\n"),
+                format!("{a}:\n  {b}: 1\n{a}_{b}: 2\n"),
+            ] {
+                for said in diags(&[("config/app.yaml", yaml.as_str())]) {
+                    assert!(
+                        !said.contains("would both be the variable"),
+                        "{yaml:?}: {said}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]
@@ -827,11 +957,12 @@ fn the_task_commands_get_the_values_of_their_profile() {
         ]
     );
     assert_eq!(vars("default"), vars("no-such-profile"));
-    // Two constants that are one variable.
+    // Every spelling of a key is one constant and one variable, so two keys that make one
+    // variable make one constant, and the constant is said first (see the test of names).
     assert_eq!(
         diags(&[("config/app.yaml", "apiURL: a\napi_url: b\n")]),
         [
-            "✗ config/app.yaml:2  `api_url` and `apiURL` would both be the variable FSP_CONFIG_API_URL of the task's commands: rename one"
+            "✗ config/app.yaml:2  `api_url` and `apiURL` would both be the constant AppConfig.apiUrl: rename one"
         ]
     );
 }

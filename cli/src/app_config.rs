@@ -70,6 +70,16 @@ const RESERVED: &[&str] = &[
     "with",
 ];
 
+/// The type names the generated class writes in its declarations (`static const int x = 1;`): a
+/// constant of one of these names hides the type inside the class, so its own declaration and every
+/// other one of that type fail with "isn't a type". `String` and `List` need no entry: a constant
+/// starts with a lower-case letter.
+const CLASS_TYPES: &[&str] = &["bool", "double", "int"];
+
+/// The members every Dart object has: a static member of one of these names conflicts with the
+/// instance member (`conflicting_static_and_instance`).
+const OBJECT_MEMBERS: &[&str] = &["hashCode", "noSuchMethod", "runtimeType", "toString"];
+
 /// A value as the generated file writes it.
 #[derive(Debug, Clone, PartialEq)]
 enum Lit {
@@ -240,19 +250,19 @@ fn is_key(name: &str) -> bool {
     is_profile_name(name)
 }
 
-/// The Dart name of a path: `["api", "base_url"]` is `apiBaseUrl`, `["oidc", "clientId"]` is
-/// `oidcClientId`.
+/// The Dart name of a path (since 0.24.0): each key is read in words, as [`var_name`] reads it, and
+/// the words of the keys are joined in lowerCamelCase. `["api", "base_url"]` is `apiBaseUrl`,
+/// `["oidc", "clientId"]` is `oidcClientId`, and `API_URL`, `api_url`, `apiURL` and `api-url` are
+/// all `apiUrl`, so the constant and the variable agree on which keys are one.
 fn dart_name(path: &[String]) -> String {
+    use heck::{ToLowerCamelCase as _, ToUpperCamelCase as _};
     let mut out = String::new();
-    for word in path.iter().flat_map(|k| k.split(['_', '-'])) {
-        let mut chars = word.chars();
-        let Some(first) = chars.next() else { continue };
+    for key in path {
         if out.is_empty() {
-            out.push(first.to_ascii_lowercase());
+            out.push_str(&key.to_lower_camel_case());
         } else {
-            out.push(first.to_ascii_uppercase());
+            out.push_str(&key.to_upper_camel_case());
         }
-        out.extend(chars);
     }
     out
 }
@@ -492,6 +502,22 @@ fn build(sources: &[Source], profiles: Vec<String>, diags: &mut Diags) -> Option
                 span,
                 format!("`{key}` would be the constant AppConfig.{}, and `{}` is a reserved word in Dart: rename the key", leaf.name, leaf.name),
             );
+        } else if CLASS_TYPES.contains(&leaf.name.as_str()) {
+            diags.add(
+                Level::Error,
+                Base::Project,
+                BASE_FILE,
+                span,
+                format!("`{key}` would be the constant AppConfig.{}, and `{}` is a type that the class writes in its own declarations: rename the key", leaf.name, leaf.name),
+            );
+        } else if OBJECT_MEMBERS.contains(&leaf.name.as_str()) {
+            diags.add(
+                Level::Error,
+                Base::Project,
+                BASE_FILE,
+                span,
+                format!("`{key}` would be the constant AppConfig.{}, and `{}` is a member that every Dart object has: rename the key", leaf.name, leaf.name),
+            );
         } else if let Some(other) = names.get(&leaf.name) {
             let msg = if other == "AppConfig.profile" {
                 format!(
@@ -508,8 +534,10 @@ fn build(sources: &[Source], profiles: Vec<String>, diags: &mut Diags) -> Option
             names.insert(leaf.name.clone(), key);
         }
     }
-    // The variables the task's commands get (since 0.24.0): `apiURL` and `api_url` are two
-    // constants but one variable. Two keys that are one constant are said once, above.
+    // The variables the task's commands get (since 0.24.0). The constants' check above is the one
+    // that fires: both read the words of a key the same way, so two keys that make one variable
+    // make one constant, and that is said once, above. This is the second line, so that a change
+    // to either reading cannot let one variable override another without a word.
     let mut vars: HashMap<String, String> = HashMap::new();
     let named = !diags.has_errors();
     for leaf in leaves.iter().filter(|_| named) {

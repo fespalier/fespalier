@@ -583,7 +583,8 @@ names `dart run fespalier upgrade --app --version vX.Y.Z`.
 **`--app` (since 0.23.0, `cli/src/upgrade_app.rs`).** Needs the project. Moves every `ref:` of a package of this
 repository (`cli/src/pins.rs`: `fespalier` and the companions `cli/src/create/recipes.rs` knows, a feature's or
 `NOT_A_CREATE_FEATURE`, and, since 0.23.1, a `fespalier_` git dependency on `packages/<name>` of fespalier's `url`, as a
-package newer than this `fsp` is) under `dependencies:`, `dev_dependencies:` and, as a git override of the same repository,
+package newer than this `fsp` is; since 0.24.1 that repository however its url is spelled, so an https one next to an ssh
+`fespalier` is one, and is refused as coming from another url, as pub would) under `dependencies:`, `dev_dependencies:` and, as a git override of the same repository,
 `dependency_overrides:` (and, since 0.23.1, in `pubspec_overrides.yaml`, which pub reads in place of it), to this `fsp`'s
 release or `--version`'s; only the ref values change (`pubspec_edit`'s
 `Set`, quotes and comments kept, a flow `git: {..., ref: ...}` too). Refused, nothing written: a companion from
@@ -615,7 +616,7 @@ package of the family is often a dependency for something else, and a warning wh
 against this `fsp`; since 0.23.1 also a warning when a git dependency on `https://github.com/fespalier/fespalier` has no `path: packages/fespalier`
 or another folder: a mirror's, a fork's or a vendored copy's `path:` is not compared, and `./packages/x` or a final `/` is `packages/x`),
 `companion` (per package of fespalier's repository: the same `url` and `ref`, and the same warning for its folder; since 0.23.1 a package is
-one when `fsp` knows it, or when it is a `fespalier_` git dependency on `packages/<name>` of fespalier's `url`, never a `fespalier_` name alone
+one when `fsp` knows it, or when it is a `fespalier_` git dependency on `packages/<name>` of fespalier's `url` (however spelled, since 0.24.1), never a `fespalier_` name alone
 or its place alone, so a fork's own `acme_ui` gets no row), `override`, `lock` (what `pubspec.lock`
 resolved, skipped without it; a pub workspace member's is the workspace root's), `go_router` (against `>=17.2.3 <19.0.0`), `flutter` and
 `dart` (against 3.35.0 and 3.9.0, a pre-release of the floor counting as below it, a Flutter that reports `0.0.0` being an error of

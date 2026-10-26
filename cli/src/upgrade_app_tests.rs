@@ -119,6 +119,29 @@ fn a_package_newer_than_this_fsp_moves_too() {
     assert!(!pubspec.contains("v0.21.0"), "{pubspec}");
 }
 
+/// The same package spelled over https next to a fespalier over ssh is still one of fespalier's:
+/// it is not left at its old ref without a word, it is refused as coming from another url, which
+/// pub would refuse too (since 0.24.1).
+#[test]
+fn a_package_newer_than_this_fsp_spelled_otherwise_is_refused() {
+    let ssh = APP
+        .replace(
+            "https://github.com/fespalier/fespalier",
+            "git@github.com:fespalier/fespalier.git",
+        )
+        .replace(
+            "dev_dependencies:\n",
+            "  fespalier_next:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_next\n      ref: v0.21.0\ndev_dependencies:\n",
+        );
+    let e = plan(&ssh, None, v(0, 22, 1)).unwrap_err();
+    assert!(
+        e.contains(
+            "fespalier_next (dependencies) comes from https://github.com/fespalier/fespalier at v0.21.0, not from git@github.com:fespalier/fespalier.git"
+        ),
+        "{e}"
+    );
+}
+
 /// A fork, or a monorepo that vendors fespalier, holds packages of its own in `packages/` of the
 /// same url: they are its owner's, at a release-looking tag or not, and neither move nor refuse
 /// the upgrade (since 0.23.1).

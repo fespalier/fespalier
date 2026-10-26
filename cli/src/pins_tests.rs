@@ -233,6 +233,56 @@ fn the_official_repository_is_told_however_it_is_spelled() {
     }
 }
 
+/// A package newer than this `fsp` is fespalier's when it comes from fespalier's repository,
+/// however either url is spelled: an https `fespalier_next` next to an ssh `fespalier` is read, and
+/// then out of line, since pub takes two spellings for two sources (since 0.24.1). Any other
+/// repository, however spelled, is still not fespalier's.
+#[test]
+fn a_package_of_fespalier_s_repository_is_read_however_its_url_is_spelled() {
+    let app = |fespalier: &str, next: &str| {
+        format!(
+            "dependencies:\n  fespalier:\n    git: {{url: {fespalier}, path: packages/fespalier, ref: v0.21.0}}\n  fespalier_next:\n    git: {{url: {next}, path: packages/fespalier_next, ref: v0.21.0}}\n"
+        )
+    };
+    let value = yaml(&app(
+        "git@github.com:fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier",
+    ));
+    let pins = pins::read(&value).unwrap();
+    let names: Vec<&str> = pins.all.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["fespalier", "fespalier_next"]);
+    assert_eq!(
+        pins.out_of_line(),
+        ["fespalier_next (dependencies): https://github.com/fespalier/fespalier at v0.21.0"]
+    );
+    // A mirror is told the same way, and another repository is not fespalier's.
+    for (next, ours) in [
+        ("https://www.git.acme.dev/Mirrors/Fespalier/", true),
+        ("ssh://git@git.acme.dev/mirrors/fespalier", true),
+        ("https://git.acme.dev/mirrors/other", false),
+    ] {
+        let value = yaml(&app("git@git.acme.dev:mirrors/fespalier.git", next));
+        let own = value["dependencies"].get("fespalier");
+        assert_eq!(
+            is_ours(
+                "fespalier_next",
+                &value["dependencies"]["fespalier_next"],
+                own
+            ),
+            ours,
+            "{next}"
+        );
+    }
+    assert!(pins::same_repository(
+        "git@github.com:fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier"
+    ));
+    assert!(!pins::same_url(
+        "git@github.com:fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier"
+    ));
+}
+
 #[test]
 fn a_checkout_is_a_folder_named_after_each_package() {
     let pins = pins::read(&yaml(

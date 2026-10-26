@@ -29,8 +29,10 @@ pub fn is_package(name: &str) -> bool {
 /// `packages/<name>` of the repository `fespalier` (fespalier's own entry) comes from, as a package
 /// newer than this `fsp` is. Neither the name alone (`fespalier_extras: ^1.0.0` is someone else's)
 /// nor the place alone (`acme_ui` in `packages/acme_ui` of a fork or a monorepo that holds fespalier
-/// is its owner's). Every package of this repository is `packages/fespalier_*`. `fsp add`,
-/// `fsp upgrade --app` and `fsp doctor` all read the pubspec through this.
+/// is its owner's). Every package of this repository is `packages/fespalier_*`. The repository is
+/// told however its url is spelled ([`same_repository`], since 0.24.1), so a package spelled over
+/// https next to a fespalier over ssh is read, and then said to come from another url, which pub
+/// refuses too. `fsp add`, `fsp upgrade --app` and `fsp doctor` all read the pubspec through this.
 #[must_use]
 pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
     if is_package(name) {
@@ -43,7 +45,7 @@ pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
     else {
         return false;
     };
-    same_url(url, other) && in_packages(path, name)
+    same_repository(url, other) && in_packages(path, name)
 }
 
 /// A folder the way pub's git source reads it: `./packages/x`, `packages//x/` and
@@ -151,13 +153,13 @@ pub fn same_url(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
-/// Whether `url` names fespalier's own repository ([`REPO_URL`]), however it is spelled: with or
-/// without `.git` or a final `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with
-/// or without `www.`. Not what pub reads as one source (two spellings are two sources to it, which
-/// [`same_url`] keeps apart): what a note about "a fork" must not say of the official repository
-/// (since 0.23.1).
+/// Whether two urls name one repository, however each is spelled: with or without `.git` or a final
+/// `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with or without `www.`, in
+/// any case. Not what pub reads as one source (two spellings are two sources to it, which
+/// [`same_url`] keeps apart): what tells which packages are fespalier's ([`is_ours`], since 0.24.1)
+/// and whether fespalier comes from its official repository ([`is_official`]).
 #[must_use]
-pub fn is_official(url: &str) -> bool {
+pub fn same_repository(a: &str, b: &str) -> bool {
     let key = |u: &str| {
         let u = u.trim().trim_end_matches('/').trim_end_matches(".git");
         let u = u.trim_end_matches('/').to_ascii_lowercase();
@@ -168,7 +170,15 @@ pub fn is_official(url: &str) -> bool {
         let u = u.strip_prefix("git@").unwrap_or(&u);
         u.strip_prefix("www.").unwrap_or(u).to_string()
     };
-    key(url) == key(REPO_URL)
+    key(a) == key(b)
+}
+
+/// Whether `url` names fespalier's own repository ([`REPO_URL`]), however it is spelled
+/// ([`same_repository`]): what a note about "a fork" must not say of the official repository
+/// (since 0.23.1).
+#[must_use]
+pub fn is_official(url: &str) -> bool {
+    same_repository(url, REPO_URL)
 }
 
 /// One package of this repository listed in a pubspec.

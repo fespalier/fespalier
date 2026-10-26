@@ -139,6 +139,11 @@ fn overrides(dir: &Path, pubspec: &Value) -> Vec<(String, Option<PathBuf>)> {
 /// not itself a member (a nested workspace has a root above it). The entries of `workspace:` are not
 /// matched, so a root that does not list the app is taken all the same (pub refuses that setup).
 pub(crate) fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf, Value)> {
+    climb(project, pubspec).map(|(dir, up, _)| (dir, up))
+}
+
+/// [`workspace_root`], with the number of folders it climbed.
+fn climb(project: &Path, pubspec: &Value) -> Option<(PathBuf, Value, usize)> {
     let member = |p: &Value| p.get("resolution").and_then(Value::as_str) == Some("workspace");
     if !member(pubspec) {
         return None;
@@ -146,16 +151,39 @@ pub(crate) fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf
     // A relative project has no end to climb to: stop after as many folders as its absolute path has.
     let depth = std::path::absolute(project).ok()?.components().count();
     let mut dir = project.to_path_buf();
-    for _ in 0..depth {
+    for up_by in 1..=depth {
         dir = join(&dir, "..");
         if let Some(up) = yaml(&dir.join("pubspec.yaml"))
             && up.get("workspace").is_some()
             && !member(&up)
         {
-            return Some((dir, up));
+            return Some((dir, up, up_by));
         }
     }
     None
+}
+
+/// The file pub reads the overrides of the root of the app's pub workspace from, when the app says
+/// `resolution: workspace`: the root's `pubspec_overrides.yaml` when that has the key, else its
+/// `pubspec.yaml`. With its path from the app, for a message (`../../pubspec.yaml`), and its text
+/// (since 0.24.1; `fsp add` and `fsp upgrade --app` read the root's overrides through this).
+pub(crate) fn workspace_overrides_file(
+    project: &Path,
+    pubspec: &Value,
+) -> Option<(String, String)> {
+    let (root, _, up_by) = climb(project, pubspec)?;
+    let from_app = |file: &str| format!("{}{file}", "../".repeat(up_by));
+    let has_key = |text: &str| {
+        serde_yaml_ng::from_str::<Value>(text)
+            .is_ok_and(|v| v.get("dependency_overrides").is_some())
+    };
+    if let Ok(text) = std::fs::read_to_string(root.join("pubspec_overrides.yaml"))
+        && has_key(&text)
+    {
+        return Some((from_app("pubspec_overrides.yaml"), text));
+    }
+    let text = std::fs::read_to_string(root.join("pubspec.yaml")).ok()?;
+    Some((from_app("pubspec.yaml"), text))
 }
 
 /// A YAML file, `None` when it is missing or not YAML.

@@ -231,15 +231,13 @@ pub(crate) fn workspace_overrides(project: &Path, pubspec: &str) -> Vec<String> 
     let Ok(value) = serde_yaml_ng::from_str::<Value>(pubspec) else {
         return vec![];
     };
-    let Some((root, root_pubspec)) = crate::packages::workspace_root(project, &value) else {
+    let Some((_, text)) = crate::packages::workspace_overrides_file(project, &value) else {
         return vec![];
     };
-    let file: Option<Value> = fs::read_to_string(root.join(plan::OVERRIDES))
+    serde_yaml_ng::from_str::<Value>(&text)
         .ok()
-        .and_then(|text| serde_yaml_ng::from_str(&text).ok());
-    file.as_ref()
+        .as_ref()
         .and_then(|f| f.get("dependency_overrides"))
-        .or_else(|| root_pubspec.get("dependency_overrides"))
         .and_then(Value::as_mapping)
         .map(|m| {
             m.keys()

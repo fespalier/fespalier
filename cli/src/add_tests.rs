@@ -757,14 +757,28 @@ fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
     let app = root.join("apps/shop");
     assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
     assert!(crate::add::workspace_overrides(&app, "name: shop\n").is_empty());
-    fs::write(
-        root.join("pubspec_overrides.yaml"),
-        "dependency_overrides:\n  fespalier_http:\n    path: x\n",
-    )
-    .unwrap();
+    // The file, as the app reaches it, and its text (since 0.24.1).
+    let file = |pubspec: &str| {
+        crate::packages::workspace_overrides_file(&app, &yaml(pubspec)).map(|(file, _)| file)
+    };
+    assert_eq!(file(member).as_deref(), Some("../../pubspec.yaml"));
+    assert_eq!(file("name: shop\n"), None);
+    // A `pubspec_overrides.yaml` without the key leaves the pubspec's in force.
+    fs::write(root.join("pubspec_overrides.yaml"), "# none\n").unwrap();
+    assert_eq!(file(member).as_deref(), Some("../../pubspec.yaml"));
+    assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
+    let overrides = "dependency_overrides:\n  fespalier_http:\n    path: x\n";
+    fs::write(root.join("pubspec_overrides.yaml"), overrides).unwrap();
     assert_eq!(
         crate::add::workspace_overrides(&app, member),
         ["fespalier_http"]
+    );
+    assert_eq!(
+        crate::packages::workspace_overrides_file(&app, &yaml(member)),
+        Some((
+            "../../pubspec_overrides.yaml".to_string(),
+            overrides.to_string()
+        ))
     );
 }
 

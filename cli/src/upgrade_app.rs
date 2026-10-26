@@ -255,6 +255,71 @@ pub fn plan(pubspec: &str, overrides: Option<&str>, target: Version) -> Result<A
     })
 }
 
+/// The notes on the overrides of the root of the app's pub workspace (since 0.24.1), which pub
+/// reads for every member: `file` is where they are, as the app reaches it (`../../pubspec.yaml`),
+/// and `text` its text. An override of fespalier's repository at another release than `target`
+/// is said with the line to change, by hand: the file is shared by every member, and pub resolves
+/// the workspace once, so one member does not move it; any other override of a package of
+/// fespalier's there is left as it is, and said.
+#[must_use]
+pub fn workspace_notes(pubspec: &str, file: &str, text: &str, target: Version) -> Vec<String> {
+    let Ok(value) = serde_yaml_ng::from_str::<Value>(pubspec) else {
+        return vec![];
+    };
+    let own = value.get("dependencies").and_then(|d| d.get("fespalier"));
+    let Some(Origin::Git { url, .. }) = own.map(|o| pins::origin_of("fespalier", o)) else {
+        return vec![];
+    };
+    let Ok(root) = serde_yaml_ng::from_str::<Value>(text) else {
+        return vec![];
+    };
+    let Some(Value::Mapping(map)) = root.get("dependency_overrides") else {
+        return vec![];
+    };
+    let mut out = vec![];
+    for (name, spec) in map {
+        let Some(name) = name.as_str() else { continue };
+        if !pins::is_ours(name, spec, own) && !pins::in_checkout(name, spec) {
+            continue;
+        }
+        let origin = pins::origin_of(name, spec);
+        let at = match &origin {
+            Origin::Git {
+                url: other,
+                reference,
+            } if pins::same_url(other, &url) => release(reference).map(|v| (v, reference)),
+            _ => None,
+        };
+        match at {
+            Some((version, _)) if version == target => {}
+            Some((_, reference)) => {
+                let edit = Edit::set(&["dependency_overrides", name, "git", "ref"], &target.tag());
+                let changed = pubspec_edit::apply(text, &[edit]).ok().and_then(|new| {
+                    text.lines()
+                        .zip(new.lines())
+                        .enumerate()
+                        .find(|(_, (a, b))| a != b)
+                        .map(|(i, (_, b))| (i + 1, b.trim().to_string()))
+                });
+                out.push(match changed {
+                    Some((line, to)) => format!(
+                        "{file}, line {line}: the root of the pub workspace overrides {name} at {reference}, and pub reads that for this app too: make it `{to}` by hand"
+                    ),
+                    None => format!(
+                        "{file}: the root of the pub workspace overrides {name} at {reference}, and pub reads that for this app too: move its ref: to {} by hand",
+                        target.tag()
+                    ),
+                });
+            }
+            None => out.push(format!(
+                "{file}, the root of the pub workspace, overrides {name} ({}); left as it is",
+                origin.describe(name)
+            )),
+        }
+    }
+    out
+}
+
 // --- The migration notes -----------------------------------------------------------------------
 
 /// One release's section of `docs/migration.md`, "Upgrading".
@@ -524,7 +589,7 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
             outln!("{line}");
         }
     };
-    let (oldest, newest, pinned_in, moves, kept, pubspec, new_overrides) = match plan {
+    let (oldest, newest, pinned_in, moves, mut kept, pubspec, new_overrides) = match plan {
         AppPlan::Refs {
             oldest,
             newest,
@@ -544,6 +609,13 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
     // older than the app is not that, and neither `--check` nor a run may treat it as an update.
     if cmd.version.is_none() && newest > own {
         bail!(older_than_the_pins(own, newest, newest_pin(&moves, newest)));
+    }
+    // The overrides of the root of the pub workspace, which pub reads for this app too (since
+    // 0.24.1).
+    if let Ok(value) = serde_yaml_ng::from_str::<Value>(&text)
+        && let Some((file, root)) = crate::packages::workspace_overrides_file(project, &value)
+    {
+        kept.extend(workspace_notes(&text, &file, &root, target));
     }
     let up_to_date = moves.is_empty();
     // The files the refs move in: the pubspec, `pubspec_overrides.yaml` (since 0.23.1), or both

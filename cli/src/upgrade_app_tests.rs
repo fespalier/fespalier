@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::upgrade::Version;
 use crate::upgrade_app::{
     AppPlan, MIGRATION, Move, files_named, newest_pin, notes, notes_text, older_than_the_pins,
-    plan, sections,
+    plan, sections, workspace_notes,
 };
 
 fn v(a: u64, b: u64, c: u64) -> Version {
@@ -379,6 +379,51 @@ fn the_pubspec_s_overrides_move_and_are_said_to_be_unread() {
         panic!()
     };
     assert!(kept.is_empty(), "{kept:?}");
+}
+
+/// The root of a pub workspace overrides for every member: an override there of fespalier's
+/// repository at another release is said with the line to change, and the change, by hand (the
+/// file is the whole workspace's); another of fespalier's packages there is said to be left as it
+/// is; the rest is not said (since 0.24.1).
+#[test]
+fn the_workspace_root_s_overrides_are_said() {
+    let root = "name: workspace
+workspace:
+  - apps/shop
+dependency_overrides:
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.21.0 # with the app
+  fespalier_forms:
+    git: {url: https://github.com/fespalier/fespalier, path: packages/fespalier_forms, ref: v0.22.1}
+  fespalier_auth:
+    path: ../fespalier/packages/fespalier_auth
+  fespalier_next:
+    path: ../fespalier/packages/fespalier_next
+  fespalier_extras: ^1.0.0
+  http: ^1.5.0
+";
+    assert_eq!(
+        workspace_notes(APP, "../../pubspec.yaml", root, v(0, 22, 1)),
+        [
+            "../../pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: v0.22.1 # with the app` by hand",
+            "../../pubspec.yaml, the root of the pub workspace, overrides fespalier_auth (path ../fespalier/packages/fespalier_auth); left as it is",
+            "../../pubspec.yaml, the root of the pub workspace, overrides fespalier_next (path ../fespalier/packages/fespalier_next); left as it is",
+        ]
+    );
+    // A ref the editor cannot reach is said without its line.
+    let multi = "dependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: >-\n        v0.21.0\n";
+    assert_eq!(
+        workspace_notes(APP, "../pubspec_overrides.yaml", multi, v(0, 22, 1)),
+        [
+            "../pubspec_overrides.yaml: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: move its ref: to v0.22.1 by hand"
+        ]
+    );
+    // An app whose fespalier is a checkout's has no ref to say it of.
+    let checkout = "dependencies:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
+    assert!(workspace_notes(checkout, "../pubspec.yaml", root, v(0, 22, 1)).is_empty());
 }
 
 /// The messages name the pin and the file it is in (since 0.24.1): the refusal to move the app back

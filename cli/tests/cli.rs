@@ -5099,6 +5099,52 @@ fn upgrade_app_names_the_overrides_file_when_it_alone_moves() {
     );
 }
 
+/// In a pub workspace, the root's overrides are read for the app too: one of fespalier's at the old
+/// release is a note with the line to change, and the root's file is left alone (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_names_the_line_of_the_workspace_root_to_change() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        pubspec.replacen("name: app\n", "name: app\nresolution: workspace\n", 1),
+    )
+    .unwrap();
+    let workspace = "name: workspace\nworkspace:\n  - app\ndependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: v0.21.0\n";
+    fs::write(root.join("pubspec.yaml"), workspace).unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains(&format!(
+            "note: ../pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
+        )),
+        "{out}"
+    );
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--no-pub-get", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        fs::read_to_string(root.join("pubspec.yaml")).unwrap(),
+        workspace
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains(&format!("ref: {tag} # with the companions"))
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn upgrade_app_check_and_dry_run_write_nothing() {

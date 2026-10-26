@@ -326,7 +326,7 @@ fsp dev -- -d chrome     # anything after -- goes to flutter run
 
 - The header shows the device, the web address or VM service, and the DevTools link. The status line shows the route count, the first routing error (clickable in terminals that support links), and how long the last hot reload took.
 - When flutter stops by itself (a build error, say), the view stays: fix it and press `R`.
-- **`--profile`** (since 0.24.0): `fsp dev --profile staging` runs the app with the values of `config/app.staging.yaml` over `config/app.yaml`, passing `--dart-define=FSP_PROFILE=staging` to flutter, and a save of a file of `config/` hot restarts the app ([App configuration](app-config.md#profiles)).
+- **`--profile`** (since 0.24.0): `fsp dev --profile staging` runs the app with the values of `config/app.staging.yaml` over `config/app.yaml`, passing `--dart-define=FSP_PROFILE=staging` to flutter. A save in `config/` that changes a value of that profile, or adds or removes a profile, hot restarts the app; since 0.24.1 one that changes only another profile's values hot reloads it ([App configuration](app-config.md#profiles)).
 - `fsp dev` runs `flutter run --machine` and talks to it over flutter's own protocol, so it works the same on macOS, Linux and Windows. Flutter's other keys (`p`, `w`, ...) live in DevTools (`d`).
 - You can still run `fsp watch` next to your own `flutter run`, or your editor's.
 - With several devices, `fsp dev` asks which one and remembers the answer in `.dart_tool/fespalier/dev.json`; with one phone or emulator it picks that. To name one yourself: `fsp dev -- -d chrome`.

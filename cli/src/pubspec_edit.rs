@@ -233,6 +233,8 @@ impl std::fmt::Display for EditError {
 impl std::error::Error for EditError {}
 
 /// `text` with `edits` made, in order: each one checked against what it means before the next.
+/// An error names no file: the callers edit `pubspec.yaml` and `pubspec_overrides.yaml`, and say
+/// which (since 0.24.1).
 pub fn apply(text: &str, edits: &[Edit]) -> Result<String, EditError> {
     let Some(first) = edits.first() else {
         return Ok(text.to_string());
@@ -240,7 +242,7 @@ pub fn apply(text: &str, edits: &[Edit]) -> Result<String, EditError> {
     let mut doc = Doc::parse(text);
     let mut expected: Value = serde_yaml_ng::from_str(text).map_err(|e| EditError {
         edit: Box::new(first.clone()),
-        why: format!("pubspec.yaml is not valid YAML: {e}"),
+        why: format!("the text is not valid YAML: {e}"),
     })?;
     for edit in edits {
         let fail = |why: String| EditError {

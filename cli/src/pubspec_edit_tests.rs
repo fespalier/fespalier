@@ -429,6 +429,18 @@ fn a_section_made_last_goes_before_a_document_end_marker() {
     assert!(e.contains("not valid YAML") || e.contains("not a"), "{e}");
 }
 
+/// The editor names no file in its errors: it edits `pubspec_overrides.yaml` too, and its callers
+/// say which file (since 0.24.1).
+#[test]
+fn a_text_that_is_no_yaml_is_refused_without_a_file_name() {
+    let e = err(
+        "dependency_overrides: [\n",
+        &[Edit::set(&["dependency_overrides", "x"], "1")],
+    );
+    assert!(e.starts_with("the text is not valid YAML: "), "{e}");
+    assert!(!e.contains("pubspec.yaml"), "{e}");
+}
+
 /// The indent of a new section is the file's, not that of the continuation of a folded scalar, and
 /// a file that is not a mapping is named by what it is.
 #[test]

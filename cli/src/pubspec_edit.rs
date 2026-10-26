@@ -11,7 +11,11 @@
 //! prints the change for a person to make ([`Edit::by_hand`]). So an edit never changes more than
 //! it says. The edited files are written together, or none is ([`write_files`], since 0.24.1).
 
-use std::path::Path;
+use std::ffi::OsString;
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde_yaml_ng::{Mapping, Value};
 
@@ -22,14 +26,15 @@ pub struct Rewrite<'a> {
     pub after: &'a str,
 }
 
-/// Writes `files` in their order with `write` (`std::fs::write` outside the tests). When one cannot
-/// be written, those written before it are written back as they were read, so a failed write leaves
-/// every file as it was, and the error says which one failed and that nothing was written (since
-/// 0.24.1). `fsp add` and `fsp upgrade --app` give `pubspec_overrides.yaml` first, then
-/// `pubspec.yaml`.
+/// Writes `files` in their order with `write` ([`write_atomic`] outside the tests), which must leave
+/// a file as it was when it fails. When one cannot be written, those written before it are written
+/// back as they were read, so a failed write leaves every file as it was, and the error says which
+/// one failed and that nothing was written (since 0.24.1). When a file cannot be put back, it keeps
+/// the new text, and the error says so and shows the change to undo in it by hand. `fsp add` and
+/// `fsp upgrade --app` give `pubspec_overrides.yaml` first, then `pubspec.yaml`.
 pub fn write_files(
     files: &[Rewrite],
-    write: &mut dyn FnMut(&Path, &str) -> std::io::Result<()>,
+    write: &mut dyn FnMut(&Path, &str) -> io::Result<()>,
 ) -> Result<(), String> {
     for (i, file) in files.iter().enumerate() {
         let Err(e) = write(file.path, file.after) else {
@@ -44,13 +49,9 @@ pub fn write_files(
             .iter()
             .map(|w| w.path.display().to_string())
             .collect();
-        let stuck: Vec<String> = written
+        let stuck: Vec<(&Rewrite, io::Error)> = written
             .iter()
-            .filter_map(|w| {
-                write(w.path, w.before)
-                    .err()
-                    .map(|e| format!("{} ({e})", w.path.display()))
-            })
+            .filter_map(|w| write(w.path, w.before).err().map(|e| (w, e)))
             .collect();
         return Err(if stuck.is_empty() {
             format!(
@@ -64,13 +65,136 @@ pub fn write_files(
                 },
             )
         } else {
-            format!(
-                "{failed}; and {} could not be put back as read, so it has the new text: put it back by hand (`git checkout` it, or undo the change fsp printed)",
-                stuck.join(" and ")
-            )
+            // The file keeps the new text, and `fsp add` has printed no change yet: show it.
+            let mut out = format!(
+                "{failed}; and {} could not be put back as {} read, so {} the new text: undo this change by hand (`-` is a line as it was, `+` as it is now)",
+                stuck
+                    .iter()
+                    .map(|(w, e)| format!("{} ({e})", w.path.display()))
+                    .collect::<Vec<_>>()
+                    .join(" and "),
+                if stuck.len() == 1 {
+                    "it was"
+                } else {
+                    "they were"
+                },
+                if stuck.len() == 1 {
+                    "it keeps"
+                } else {
+                    "they keep"
+                },
+            );
+            for (w, _) in &stuck {
+                out.push_str(&format!("\n  {}", w.path.display()));
+                for line in crate::add::plan::diff(w.before, w.after).lines() {
+                    out.push_str(&format!("\n    {line}"));
+                }
+            }
+            out
         });
     }
     Ok(())
+}
+
+/// What [`write_atomic_with`] hands the text to: the temporary file and the bytes to put in it.
+pub type Fill<'a> = &'a mut dyn FnMut(&mut File, &[u8]) -> io::Result<()>;
+
+/// Writes `text` as the whole of the file at `path` so that a write that fails leaves the file as
+/// it was (since 0.24.1): the text goes to a temporary file in the same folder, which is renamed
+/// over the file once it is written and flushed to disk, and removed when anything fails. A short
+/// write (a full disk, a quota, a size limit) therefore never leaves the file cut. The file keeps
+/// its permissions; a symbolic link is followed, so its target is what changes and the link stays;
+/// a file that is read-only is refused, as a plain write would. A hard link to the file is not kept
+/// (the new file is another one), and neither is a different owner.
+pub fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
+    write_atomic_with(path, text, &mut |file, bytes| file.write_all(bytes))
+}
+
+/// [`write_atomic`] with `fill` writing the temporary file: the tests give it one that writes some
+/// of the bytes and fails.
+pub fn write_atomic_with(path: &Path, text: &str, fill: Fill) -> io::Result<()> {
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let target = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let permissions = match fs::metadata(&target) {
+        Ok(meta) => {
+            // Opening is what refuses a read-only file, an immutable one or a folder, with the
+            // error a plain write gives; the rename below would replace any of them.
+            OpenOptions::new().write(true).open(&target)?;
+            Some(meta.permissions())
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    let name = target
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "it is not a file"))?;
+    let (temp, mut file) = loop {
+        let mut temp_name = OsString::from(".");
+        temp_name.push(name);
+        temp_name.push(format!(
+            ".fsp-{}-{}.tmp",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ));
+        let temp = match target.parent().filter(|d| !d.as_os_str().is_empty()) {
+            Some(dir) => dir.join(temp_name),
+            None => PathBuf::from(temp_name),
+        };
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        match options.open(&temp) {
+            Ok(file) => {
+                break (
+                    Temp {
+                        path: temp,
+                        renamed: false,
+                    },
+                    file,
+                );
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => {
+                return Err(with_context(
+                    e,
+                    "could not create a temporary file in its folder",
+                ));
+            }
+        }
+    };
+    // The temporary file goes with any error below, and is closed before it is renamed.
+    let mut temp = temp;
+    fill(&mut file, text.as_bytes())?;
+    file.flush()?;
+    if let Some(permissions) = permissions {
+        file.set_permissions(permissions)?;
+    }
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&temp.path, &target)
+        .map_err(|e| with_context(e, "could not rename the temporary file over it"))?;
+    temp.renamed = true;
+    Ok(())
+}
+
+/// The temporary file of [`write_atomic_with`], removed unless it was renamed over the file.
+struct Temp {
+    path: PathBuf,
+    renamed: bool,
+}
+
+impl Drop for Temp {
+    fn drop(&mut self) {
+        if !self.renamed {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
+/// `e` with what was being done, keeping its kind.
+fn with_context(e: io::Error, what: &str) -> io::Error {
+    io::Error::new(e.kind(), format!("{what} ({e})"))
 }
 
 /// Where an inserted key goes among the keys already in its mapping.

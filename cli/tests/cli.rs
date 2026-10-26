@@ -5194,6 +5194,75 @@ fn upgrade_app_writes_both_pubspec_files_or_neither() {
     assert!(flutter_log(root).is_empty());
 }
 
+/// A write that runs out of room part-way (here `ulimit -f`, with `SIGXFSZ` ignored so that the
+/// write fails with "File too large") leaves both files as they were, and says so truthfully:
+/// the text goes to a file beside the pubspec, which is renamed over it only when it is whole
+/// (since 0.24.1). It also runs as root, which a read-only file does not.
+#[cfg(unix)]
+#[test]
+fn upgrade_app_leaves_the_pubspecs_whole_when_a_write_runs_out_of_room() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let overrides = "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    // Longer than one block of `ulimit -f` (512 bytes in dash, 1024 in bash).
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap()
+        + &"# padding that makes the pubspec longer\n".repeat(60);
+    fs::write(app.join("pubspec.yaml"), &pubspec).unwrap();
+    assert!(overrides.len() < 512 && pubspec.len() > 2048);
+    let out = output_locked(
+        Command::new("sh")
+            .args([
+                "-c",
+                "trap '' XFSZ; ulimit -f 1 || exit 77; exec \"$@\"",
+                "sh",
+                env!("CARGO_BIN_EXE_fsp"),
+                "upgrade",
+                "--app",
+                "--no-pub-get",
+                "--project",
+                "app",
+            ])
+            .env("PATH", path_with(&root.join("bin")))
+            .env("FAKE_LOG", root.join("flutter.log"))
+            .current_dir(root),
+    )
+    .unwrap();
+    let code = out.status.code();
+    if code == Some(77) {
+        return; // this shell cannot set a size limit
+    }
+    let (out, err) = (
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        err.contains("writing app/pubspec.yaml: File too large")
+            && err.contains(
+                "; app/pubspec_overrides.yaml was put back as it was read, so nothing was written"
+            ),
+        "{err}"
+    );
+    assert!(!out.contains("  edit  "), "{out}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        overrides
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        pubspec
+    );
+    // No temporary file is left beside them.
+    let mut names: Vec<_> = fs::read_dir(&app)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["lib", "pubspec.yaml", "pubspec_overrides.yaml"]);
+}
+
 /// In a pub workspace, the root's overrides are read for the app too: one of fespalier's at the old
 /// release is a note with the line to change, and the root's file is left alone (since 0.24.1).
 #[cfg(unix)]

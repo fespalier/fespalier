@@ -722,7 +722,8 @@ pub fn run(cmd: &UpgradeCmd, project: &Path) -> Result<()> {
         }
         return Ok(());
     }
-    pubspec_edit::write_files(&rewrites, &mut |p, t| fs::write(p, t)).map_err(|e| anyhow!(e))?;
+    pubspec_edit::write_files(&rewrites, &mut pubspec_edit::write_atomic)
+        .map_err(|e| anyhow!(e))?;
     for name in &names {
         say(&format!("  edit  {name}"));
     }

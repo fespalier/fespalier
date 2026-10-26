@@ -590,7 +590,8 @@ package newer than this `fsp` is; since 0.24.1 that repository however its url i
 release or `--version`'s; only the ref values change (`pubspec_edit`'s
 `Set`, quotes and comments kept, a flow `git: {..., ref: ...}` too). Since 0.24.1 it and `fsp add` write
 `pubspec_overrides.yaml` and `pubspec.yaml` together (`pubspec_edit::write_files`): the overrides first, put back when the
-pubspec cannot be written, so a failed write changes neither. Refused, nothing written: a companion from
+pubspec cannot be written, so a failed write changes neither. Each goes through `write_atomic` (a temporary file in the
+folder, renamed over the file: a short write never leaves one cut; permissions kept, a symlink written through). Refused, nothing written: a companion from
 another repository, a folder while `fespalier` is git, a ref that is not `vX.Y.Z`. A `path:` `fespalier` has
 nothing to move (exit 0); an override to a folder, in the pubspec or `pubspec_overrides.yaml`, is a note, and so,
 since 0.23.1, is an override at a commit or a branch of this repository (a hotfix) and a `fespalier` from a fork or a mirror

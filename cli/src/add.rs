@@ -24,7 +24,7 @@ use serde_yaml_ng::Value;
 use crate::Exit;
 use crate::config::Config;
 use crate::create::{self, recipes};
-use crate::pubspec_edit::{Rewrite, write_files};
+use crate::pubspec_edit::{Rewrite, write_atomic, write_files};
 
 pub mod plan;
 
@@ -139,7 +139,7 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
             after: new,
         });
     }
-    write_files(&rewrites, &mut |p, t| fs::write(p, t)).map_err(|e| anyhow::anyhow!(e))?;
+    write_files(&rewrites, &mut write_atomic).map_err(|e| anyhow::anyhow!(e))?;
     if plan.pubspec.is_some() {
         errln!("  edit   pubspec.yaml");
         for change in &plan.changes {

@@ -4,9 +4,11 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use notify::{PathsMut, RecursiveMode};
+use notify::event::{DataChange, ModifyKind};
+use notify::{Event, EventKind, PathsMut, RecursiveMode};
 
-use crate::watch::Beside;
+use crate::config::Config;
+use crate::watch::{Beside, Roots, relevant};
 
 /// A watcher that records what it is asked, and refuses the folders it is told to.
 #[derive(Default)]
@@ -107,4 +109,56 @@ fn a_folder_the_watcher_refuses_is_said_once_and_tried_again() {
     assert!(pass(&mut beside, &mut fake, &["a", "b"], false).is_empty());
     fake.refuse = there(&["a"]);
     assert_eq!(pass(&mut beside, &mut fake, &["a", "b"], true).len(), 1);
+}
+
+/// A project at `real` (a real path: the temporary folder itself can be behind a link) with an app
+/// folder and a `config/`, and a symbolic link to it at `link`.
+#[cfg(unix)]
+fn linked_project(dir: &Path) -> (PathBuf, PathBuf) {
+    std::fs::create_dir_all(dir.join("real/lib/app")).unwrap();
+    let real = dir.join("real").canonicalize().unwrap();
+    std::fs::create_dir_all(real.join("config")).unwrap();
+    std::fs::write(real.join("pubspec.yaml"), "name: demo\n").unwrap();
+    let link = dir.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    (real, link)
+}
+
+#[cfg(unix)]
+#[test]
+fn events_at_the_real_path_match_a_project_given_through_a_link() {
+    // `FSEvents` reports a change at its real, absolute path (since 0.24.1): `--project` as a
+    // link, or a relative path, names the same folder otherwise, so a comparison with the project
+    // as it was given misses the event (UNCHECKED on a Mac: only there does `FSEvents` report).
+    let dir = tempfile::tempdir().unwrap();
+    let (real, link) = linked_project(dir.path());
+    let cfg = Config::load(&link).unwrap();
+    let event = |p: PathBuf| {
+        Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Content))).add_path(p)
+    };
+
+    // Compared with the project as it was given, a change in `config/` is missed, and so is the
+    // generated file's own write, which would wake a pass of its own.
+    let given = (
+        vec![link.join("lib/app.g.dart")],
+        link.join("lib/app"),
+        link.join("config"),
+    );
+    let by_given = |p: PathBuf| relevant(&event(p), &given.0, &given.1, &given.2);
+    assert!(!by_given(real.join("config/app.yaml")));
+    assert!(by_given(real.join("lib/app.g.dart")));
+
+    // Compared with its real path, both are right.
+    let roots = Roots::of(&link, &cfg);
+    let by_real =
+        |p: PathBuf| relevant(&event(p), &roots.outputs, &roots.app_dir, &roots.config_dir);
+    assert!(by_real(real.join("config/app.yaml")));
+    assert!(by_real(real.join("lib/app/page.dart")));
+    assert!(!by_real(real.join("lib/app.g.dart")));
+    assert!(!by_real(real.join("lib/app.config.g.dart")));
+    assert!(!by_real(real.join("config/README.md")));
+    // And it is what is watched: `lib/`, as the app folder is in it.
+    assert_eq!(roots.watched, real.join("lib"));
+    // The same project by its real path gives the same roots.
+    assert_eq!(Roots::of(&real, &cfg), roots);
 }

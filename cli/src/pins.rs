@@ -29,8 +29,10 @@ pub fn is_package(name: &str) -> bool {
 /// `packages/<name>` of the repository `fespalier` (fespalier's own entry) comes from, as a package
 /// newer than this `fsp` is. Neither the name alone (`fespalier_extras: ^1.0.0` is someone else's)
 /// nor the place alone (`acme_ui` in `packages/acme_ui` of a fork or a monorepo that holds fespalier
-/// is its owner's). Every package of this repository is `packages/fespalier_*`. `fsp add`,
-/// `fsp upgrade --app` and `fsp doctor` all read the pubspec through this.
+/// is its owner's). Every package of this repository is `packages/fespalier_*`. The repository is
+/// told however its url is spelled ([`same_repository`], since 0.24.1), so a package spelled over
+/// https next to a fespalier over ssh is read, and then said to come from another url, which pub
+/// refuses too. `fsp add`, `fsp upgrade --app` and `fsp doctor` all read the pubspec through this.
 #[must_use]
 pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
     if is_package(name) {
@@ -43,7 +45,26 @@ pub fn is_ours(name: &str, value: &Value, fespalier: Option<&Value>) -> bool {
     else {
         return false;
     };
-    same_url(url, other) && in_packages(path, name)
+    same_repository(url, other) && in_packages(path, name)
+}
+
+/// Whether `name`, listed as `value`, is a package of a checkout of this repository (since 0.24.1):
+/// a `path:` to a folder `<root>/packages/<name>`, for `fespalier` or a `fespalier_` name. The
+/// place and the name, as [`is_ours`] tells a git dependency: what `fsp doctor` keeps an `override`
+/// row for when the package is newer than this `fsp`, while `fespalier_extras: {path: ../extras}`
+/// gets none.
+#[must_use]
+pub fn in_checkout(name: &str, value: &Value) -> bool {
+    let fespalier_s = name == "fespalier" || name.starts_with("fespalier_");
+    fespalier_s
+        && value
+            .get("path")
+            .and_then(Value::as_str)
+            .is_some_and(|path| {
+                let folder = folder(path);
+                let tail = format!("packages/{name}");
+                folder == tail || folder.ends_with(&format!("/{tail}"))
+            })
 }
 
 /// A folder the way pub's git source reads it: `./packages/x`, `packages//x/` and
@@ -151,24 +172,55 @@ pub fn same_url(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
-/// Whether `url` names fespalier's own repository ([`REPO_URL`]), however it is spelled: with or
-/// without `.git` or a final `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with
-/// or without `www.`. Not what pub reads as one source (two spellings are two sources to it, which
-/// [`same_url`] keeps apart): what a note about "a fork" must not say of the official repository
+/// Whether two urls name one repository, however each is spelled: with or without `.git` (in any
+/// case) or a final `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with or
+/// without `www.`, a port (`ssh://git@github.com:22/...`) or a user name
+/// (`https://user@github.com/...`), in any case. Not what pub reads as one source (two spellings
+/// are two sources to it, which [`same_url`] keeps apart): what tells which packages are
+/// fespalier's ([`is_ours`], since 0.24.1) and whether fespalier comes from its official repository
+/// ([`is_official`]). The host and the path still have to be the same: a fork, another host and a
+/// longer name are other repositories.
+#[must_use]
+pub fn same_repository(a: &str, b: &str) -> bool {
+    repository_key(a) == repository_key(b)
+}
+
+/// `host/path` of a repository url, lower case, with no scheme, user name, port, `www.`, `.git` or
+/// final `/`.
+fn repository_key(url: &str) -> String {
+    let mut url = url.trim().to_ascii_lowercase();
+    // `.git` and `/` in any order and number (`.git/`, `.git.git`).
+    loop {
+        let trimmed = url.trim_end_matches('/');
+        let trimmed = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+        if trimmed.len() == url.len() {
+            break;
+        }
+        url.truncate(trimmed.len());
+    }
+    let rest = match url.split_once("://") {
+        Some((_, rest)) => rest.to_string(),
+        // `git@host:owner/repo` is `git@host/owner/repo`.
+        None => url.replacen(':', "/", 1),
+    };
+    let (authority, path) = rest.split_once('/').unwrap_or((&rest, ""));
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = match host.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
+        _ => host,
+    };
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    format!("{host}/{path}")
+}
+
+/// Whether `url` names fespalier's own repository ([`REPO_URL`]), however it is spelled
+/// ([`same_repository`]): what a note about "a fork" must not say of the official repository
 /// (since 0.23.1).
 #[must_use]
 pub fn is_official(url: &str) -> bool {
-    let key = |u: &str| {
-        let u = u.trim().trim_end_matches('/').trim_end_matches(".git");
-        let u = u.trim_end_matches('/').to_ascii_lowercase();
-        let u = match u.split_once("://") {
-            Some((_, rest)) => rest.to_string(),
-            None => u.replacen(':', "/", 1),
-        };
-        let u = u.strip_prefix("git@").unwrap_or(&u);
-        u.strip_prefix("www.").unwrap_or(u).to_string()
-    };
-    key(url) == key(REPO_URL)
+    same_repository(url, REPO_URL)
 }
 
 /// One package of this repository listed in a pubspec.

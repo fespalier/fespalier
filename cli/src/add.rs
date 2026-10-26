@@ -24,6 +24,7 @@ use serde_yaml_ng::Value;
 use crate::Exit;
 use crate::config::Config;
 use crate::create::{self, recipes};
+use crate::pubspec_edit::{Rewrite, write_atomic, write_files};
 
 pub mod plan;
 
@@ -121,16 +122,31 @@ pub fn run(project: &Path, cmd: &AddCmd) -> Result<()> {
             );
         }
     }
+    // The two files are written together or not at all, `pubspec_overrides.yaml` first (since
+    // 0.24.1).
+    let mut rewrites = vec![];
+    if let Some(edited) = &plan.overrides {
+        rewrites.push(Rewrite {
+            path: &overrides_path,
+            before: &edited.before,
+            after: &edited.after,
+        });
+    }
     if let Some(new) = &plan.pubspec {
-        fs::write(&path, new).with_context(|| format!("writing {}", path.display()))?;
+        rewrites.push(Rewrite {
+            path: &path,
+            before: &text,
+            after: new,
+        });
+    }
+    write_files(&rewrites, &mut write_atomic).map_err(|e| anyhow::anyhow!(e))?;
+    if plan.pubspec.is_some() {
         errln!("  edit   pubspec.yaml");
         for change in &plan.changes {
             errln!("           {change}");
         }
     }
     if let Some(edited) = &plan.overrides {
-        fs::write(&overrides_path, &edited.after)
-            .with_context(|| format!("writing {}", overrides_path.display()))?;
         errln!("  edit   {}", plan::OVERRIDES);
         for change in &edited.changes {
             errln!("           {change}");
@@ -231,15 +247,13 @@ pub(crate) fn workspace_overrides(project: &Path, pubspec: &str) -> Vec<String> 
     let Ok(value) = serde_yaml_ng::from_str::<Value>(pubspec) else {
         return vec![];
     };
-    let Some((root, root_pubspec)) = crate::packages::workspace_root(project, &value) else {
+    let Some((_, text)) = crate::packages::workspace_overrides_file(project, &value) else {
         return vec![];
     };
-    let file: Option<Value> = fs::read_to_string(root.join(plan::OVERRIDES))
+    serde_yaml_ng::from_str::<Value>(&text)
         .ok()
-        .and_then(|text| serde_yaml_ng::from_str(&text).ok());
-    file.as_ref()
+        .as_ref()
         .and_then(|f| f.get("dependency_overrides"))
-        .or_else(|| root_pubspec.get("dependency_overrides"))
         .and_then(Value::as_mapping)
         .map(|m| {
             m.keys()

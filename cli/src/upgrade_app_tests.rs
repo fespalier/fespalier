@@ -5,7 +5,10 @@ use std::fs;
 use std::path::Path;
 
 use crate::upgrade::Version;
-use crate::upgrade_app::{AppPlan, MIGRATION, Move, notes, notes_text, plan, sections};
+use crate::upgrade_app::{
+    AppPlan, MIGRATION, Move, files_named, newest_pin, notes, notes_text, older_than_the_pins,
+    plan, sections, workspace_notes,
+};
 
 fn v(a: u64, b: u64, c: u64) -> Version {
     Version(a, b, c)
@@ -117,6 +120,49 @@ fn a_package_newer_than_this_fsp_moves_too() {
         "{moves:?}"
     );
     assert!(!pubspec.contains("v0.21.0"), "{pubspec}");
+}
+
+/// The same package spelled over https next to a fespalier over ssh is still one of fespalier's:
+/// it is not left at its old ref without a word, it is refused as coming from another url, which
+/// pub would refuse too (since 0.24.1).
+#[test]
+fn a_package_newer_than_this_fsp_spelled_otherwise_is_refused() {
+    let ssh = APP
+        .replace(
+            "https://github.com/fespalier/fespalier",
+            "git@github.com:fespalier/fespalier.git",
+        )
+        .replace(
+            "dev_dependencies:\n",
+            "  fespalier_next:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_next\n      ref: v0.21.0\ndev_dependencies:\n",
+        );
+    let e = plan(&ssh, None, v(0, 22, 1)).unwrap_err();
+    assert!(
+        e.contains(
+            "fespalier_next (dependencies) comes from https://github.com/fespalier/fespalier at v0.21.0, not from git@github.com:fespalier/fespalier.git"
+        ),
+        "{e}"
+    );
+    // A port or a user name is the same repository too (since 0.24.1), and so is a fork's not.
+    for (url, ours) in [
+        ("ssh://git@github.com:22/fespalier/fespalier", true),
+        ("https://user@github.com/fespalier/fespalier.GIT", true),
+        ("https://github.com/someone/fespalier", false),
+        ("ssh://git@gitlab.com:22/fespalier/fespalier", false),
+    ] {
+        let app = APP.replace(
+            "dev_dependencies:\n",
+            &format!(
+                "  fespalier_next:\n    git:\n      url: {url}\n      path: packages/fespalier_next\n      ref: v0.21.0\ndev_dependencies:\n"
+            ),
+        );
+        let result = plan(&app, None, v(0, 22, 1));
+        assert_eq!(
+            result.is_err_and(|e| e.contains("fespalier_next (dependencies) comes from")),
+            ours,
+            "{url}"
+        );
+    }
 }
 
 /// A fork, or a monorepo that vendors fespalier, holds packages of its own in `packages/` of the
@@ -260,6 +306,7 @@ fn overrides_to_a_folder_are_left_and_said() {
         kept,
         [
             "dependency_overrides: fespalier_transport is path ../fespalier/packages/fespalier_transport; left as it is",
+            "pub does not read the `dependency_overrides:` of pubspec.yaml (fespalier_transport) while pubspec_overrides.yaml has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
             "pubspec_overrides.yaml overrides fespalier; left as it is",
         ]
     );
@@ -304,7 +351,10 @@ fn a_git_override_in_pubspec_overrides_yaml_moves_too() {
     );
     assert_eq!(
         kept,
-        ["pubspec_overrides.yaml overrides fespalier; left as it is"]
+        [
+            "pub does not read the `dependency_overrides:` of pubspec.yaml (fespalier_transport) while pubspec_overrides.yaml has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
+            "pubspec_overrides.yaml overrides fespalier; left as it is"
+        ]
     );
     // At the target already: nothing to write there.
     let at = overrides.replace("v0.21.0", "v0.22.1");
@@ -317,8 +367,153 @@ fn a_git_override_in_pubspec_overrides_yaml_moves_too() {
     assert_eq!(moved, None);
 }
 
-/// An override of this repository at a commit is a hotfix the person chose: it is kept, with a
-/// note, and the rest moves (since 0.23.1). A commit under `dependencies:` is still refused.
+/// With a `dependency_overrides:` key in `pubspec_overrides.yaml`, pub reads none of the pubspec's
+/// overrides: they move all the same, for a checkout without that file, and a note says that pub
+/// does not read them here (since 0.24.1). A file without the key says nothing.
+#[test]
+fn the_pubspec_s_overrides_move_and_are_said_to_be_unread() {
+    let file = "dependency_overrides:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
+    let AppPlan::Refs { moves, kept, .. } = plan(APP, Some(file), v(0, 22, 1)).unwrap() else {
+        panic!()
+    };
+    assert!(
+        moves
+            .iter()
+            .any(|m| m.name == "fespalier_transport" && m.file == "pubspec.yaml"),
+        "{moves:?}"
+    );
+    assert_eq!(
+        kept,
+        [
+            "pub does not read the `dependency_overrides:` of pubspec.yaml (fespalier_transport) while pubspec_overrides.yaml has its own; they are moved or kept all the same, for a checkout without that file (one kept out of git)",
+            "pubspec_overrides.yaml overrides fespalier; left as it is",
+        ]
+    );
+    let AppPlan::Refs { kept, .. } =
+        plan(APP, Some("dependency_overrides:\n"), v(0, 22, 1)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(kept.len(), 1, "{kept:?}");
+    let AppPlan::Refs { kept, .. } = plan(APP, Some("# none\n"), v(0, 22, 1)).unwrap() else {
+        panic!()
+    };
+    assert!(kept.is_empty(), "{kept:?}");
+}
+
+/// The root of a pub workspace overrides for every member: an override there of fespalier's
+/// repository at another release is said with the line to change, and the change, by hand (the
+/// file is the whole workspace's); another of fespalier's packages there is said to be left as it
+/// is; the rest is not said (since 0.24.1).
+#[test]
+fn the_workspace_root_s_overrides_are_said() {
+    let root = "name: workspace
+workspace:
+  - apps/shop
+dependency_overrides:
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.21.0 # with the app
+  fespalier_forms:
+    git: {url: https://github.com/fespalier/fespalier, path: packages/fespalier_forms, ref: v0.22.1}
+  fespalier_auth:
+    path: ../fespalier/packages/fespalier_auth
+  fespalier_next:
+    path: ../fespalier/packages/fespalier_next
+  fespalier_extras: ^1.0.0
+  http: ^1.5.0
+";
+    assert_eq!(
+        workspace_notes(APP, "../../pubspec.yaml", root, v(0, 22, 1), false),
+        [
+            "../../pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: v0.22.1 # with the app` by hand",
+            "../../pubspec.yaml, the root of the pub workspace, overrides fespalier_auth (path ../fespalier/packages/fespalier_auth); left as it is",
+            "../../pubspec.yaml, the root of the pub workspace, overrides fespalier_next (path ../fespalier/packages/fespalier_next); left as it is",
+        ]
+    );
+    // A ref the editor cannot reach is said without its line.
+    let multi = "dependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: >-\n        v0.21.0\n";
+    assert_eq!(
+        workspace_notes(APP, "../pubspec_overrides.yaml", multi, v(0, 22, 1), false),
+        [
+            "../pubspec_overrides.yaml: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: move its ref: to v0.22.1 by hand"
+        ]
+    );
+    // A root override newer than the target is not told to move back, but to upgrade fsp, unless
+    // the release was asked for (since 0.24.1).
+    let newer = "dependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: v0.99.0\n";
+    assert_eq!(
+        workspace_notes(APP, "../pubspec_overrides.yaml", newer, v(0, 22, 1), false),
+        [
+            "../pubspec_overrides.yaml, line 6: the root of the pub workspace overrides fespalier_http at v0.99.0, which is newer than v0.22.1; left as it is. Upgrade fsp (`fsp upgrade`), or use the fsp of that release with `dart run fespalier`, or go back on purpose with `--version v0.22.1`"
+        ]
+    );
+    assert_eq!(
+        workspace_notes(APP, "../pubspec_overrides.yaml", newer, v(0, 22, 1), true),
+        [
+            "../pubspec_overrides.yaml, line 6: the root of the pub workspace overrides fespalier_http at v0.99.0, and pub reads that for this app too: make it `ref: v0.22.1` by hand"
+        ]
+    );
+    // An app whose fespalier is a checkout's has no ref to say it of.
+    let checkout = "dependencies:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
+    assert!(workspace_notes(checkout, "../pubspec.yaml", root, v(0, 22, 1), false).is_empty());
+}
+
+/// The messages name the pin and the file it is in (since 0.24.1): the refusal to move the app back
+/// names a companion in `pubspec_overrides.yaml` as that, and the lines that name the files where
+/// the refs are name both when both hold some.
+#[test]
+fn the_messages_name_the_file_and_the_pin() {
+    let newer = "dependency_overrides:\n  fespalier_auth:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_auth\n      ref: v0.25.0\n";
+    let AppPlan::Refs {
+        newest,
+        files,
+        moves,
+        ..
+    } = plan(APP, Some(newer), v(0, 22, 1)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(newest, v(0, 25, 0));
+    let pin = newest_pin(&moves, newest);
+    assert_eq!(pin, ("fespalier_auth", "pubspec_overrides.yaml"));
+    assert_eq!(files, ["pubspec.yaml", "pubspec_overrides.yaml"]);
+    assert!(
+        older_than_the_pins(v(0, 22, 1), newest, pin)
+            .starts_with(
+                "pubspec_overrides.yaml pins fespalier_auth v0.25.0 and fsp 0.22.1 is older, so `fsp upgrade --app` would move the refs back to v0.22.1; nothing was written."
+            )
+    );
+    assert_eq!(
+        files_named(&files),
+        "pubspec.yaml and pubspec_overrides.yaml"
+    );
+    // The pubspec alone: its own first pin at the newest release.
+    let AppPlan::Refs {
+        newest,
+        files,
+        moves,
+        ..
+    } = plan(APP, None, v(0, 22, 1)).unwrap()
+    else {
+        panic!()
+    };
+    assert_eq!(newest_pin(&moves, newest), ("fespalier", "pubspec.yaml"));
+    assert_eq!(files_named(&files), "pubspec.yaml");
+    assert_eq!(files_named(&[]), "pubspec.yaml");
+    // An override file that holds no ref at a release is not named.
+    let local = "dependency_overrides:\n  fespalier:\n    path: ../fespalier/packages/fespalier\n";
+    let AppPlan::Refs { files, .. } = plan(APP, Some(local), v(0, 22, 1)).unwrap() else {
+        panic!()
+    };
+    assert_eq!(files, ["pubspec.yaml"]);
+}
+
+/// An override of this repository at a commit or a branch is a hotfix the person chose: it is
+/// kept, with a note, and the rest moves (since 0.23.1). A commit under `dependencies:` is still
+/// refused.
 #[test]
 fn an_override_at_a_commit_is_kept() {
     let hotfix = APP.replace(
@@ -334,6 +529,15 @@ fn an_override_at_a_commit_is_kept() {
         ]
     );
     assert!(pubspec.contains("      ref: 0123abc\n"), "{pubspec}");
+    let branch = hotfix.replace("ref: 0123abc", "ref: fix/123");
+    let (_, moves, kept, _) = refs(&branch, v(0, 22, 1));
+    assert_eq!(moves.len(), 3);
+    assert_eq!(
+        kept,
+        [
+            "dependency_overrides: fespalier_transport is https://github.com/fespalier/fespalier at fix/123; left as it is"
+        ]
+    );
 }
 
 /// A fespalier from another repository (a fork, a mirror) moves to this repository's tag names,

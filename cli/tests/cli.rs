@@ -4908,6 +4908,63 @@ fn add_writes_a_checkouts_overrides_into_pubspec_overrides_yaml() {
     );
 }
 
+/// Makes `path` read-only, and says whether this user can write it all the same (root can).
+#[cfg(unix)]
+fn read_only(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o444)).unwrap();
+    fs::OpenOptions::new().append(true).open(path).is_ok()
+}
+
+#[cfg(unix)]
+fn writable(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o644)).unwrap();
+}
+
+/// `fsp add` writes `pubspec_overrides.yaml` and `pubspec.yaml` together or not at all: when the
+/// pubspec cannot be written, the overrides file gets its text back (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn add_writes_both_pubspec_files_or_neither() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = created_app(root);
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let local = pubspec.replace(
+        &format!(
+            "    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier\n      ref: v{}\n",
+            env!("CARGO_PKG_VERSION")
+        ),
+        "    path: ../checkout/packages/fespalier\n",
+    );
+    fs::write(app.join("pubspec.yaml"), &local).unwrap();
+    let overrides =
+        "dependency_overrides:\n  fespalier:\n    path: ../checkout/packages/fespalier\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    let can_write = read_only(&app.join("pubspec.yaml"));
+    let (code, _, err) = fsp_task(root, &["add", "http", "--project", "app"], &[]);
+    writable(&app.join("pubspec.yaml"));
+    // Root writes a read-only file: the failure can only be seen by someone who cannot (CI's user).
+    if can_write {
+        return;
+    }
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("writing app/pubspec.yaml: ")
+            && err.contains(
+                "; app/pubspec_overrides.yaml was put back as it was read, so nothing was written"
+            ),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        overrides
+    );
+    assert_eq!(fs::read_to_string(app.join("pubspec.yaml")).unwrap(), local);
+    assert!(!err.contains("  edit   "), "{err}");
+}
+
 // --- `fsp upgrade --app` (since 0.23.0) ----------------------------------------------------------
 
 /// An app that pins fespalier at an old release, by git, for `fsp upgrade --app`.
@@ -5004,6 +5061,13 @@ fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
     );
     let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
     assert_eq!(code, Some(0), "{err}");
+    // Both files move, and the header names both (since 0.24.1).
+    assert!(
+        out.starts_with(&format!(
+            "pubspec.yaml and pubspec_overrides.yaml: v0.21.0 -> {tag}\n"
+        )),
+        "{out}"
+    );
     assert!(
         out.contains("  edit  pubspec.yaml\n  edit  pubspec_overrides.yaml\n"),
         "{out}"
@@ -5012,6 +5076,39 @@ fn upgrade_app_moves_a_git_override_in_pubspec_overrides_yaml() {
     assert!(
         overrides.contains(&format!("      ref: {tag}\n")),
         "{overrides}"
+    );
+    // Up to date, the line names both files that hold the refs.
+    let (code, out, _) = fsp_task(
+        root,
+        &["upgrade", "--app", "--check", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{out}");
+    assert_eq!(
+        out,
+        format!(
+            "fespalier and every companion in pubspec.yaml and pubspec_overrides.yaml are at {tag}; nothing to move.\n"
+        )
+    );
+    // A `pub get` that fails after both moved names both.
+    fs::write(
+        app.join("pubspec_overrides.yaml"),
+        "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n",
+    )
+    .unwrap();
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    fs::write(app.join("pubspec.yaml"), pubspec.replace(&tag, "v0.21.0")).unwrap();
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--project", "app"],
+        &[("FAKE_PUBGET_EXIT", "3")],
+    );
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains(&format!(
+            "pubspec.yaml and pubspec_overrides.yaml now pin {tag}, and `flutter pub get` failed: "
+        )),
+        "{err}"
     );
 }
 
@@ -5056,6 +5153,186 @@ fn upgrade_app_names_the_overrides_file_when_it_alone_moves() {
             "pubspec_overrides.yaml now pins {tag}, and `flutter pub get` failed: "
         )),
         "{err}"
+    );
+}
+
+/// `fsp upgrade --app` writes `pubspec_overrides.yaml` and `pubspec.yaml` together or not at all:
+/// when the pubspec cannot be written, the overrides file gets its text back (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_writes_both_pubspec_files_or_neither() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let overrides = "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    let can_write = read_only(&app.join("pubspec.yaml"));
+    let (code, out, err) = fsp_task(root, &["upgrade", "--app", "--project", "app"], &[]);
+    writable(&app.join("pubspec.yaml"));
+    // Root writes a read-only file: the failure can only be seen by someone who cannot (CI's user).
+    if can_write {
+        return;
+    }
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        err.contains("writing app/pubspec.yaml: ")
+            && err.contains(
+                "; app/pubspec_overrides.yaml was put back as it was read, so nothing was written"
+            ),
+        "{err}"
+    );
+    assert!(!out.contains("  edit  "), "{out}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        overrides
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        pubspec
+    );
+    assert!(flutter_log(root).is_empty());
+}
+
+/// A write that runs out of room part-way (here `ulimit -f`, with `SIGXFSZ` ignored so that the
+/// write fails with "File too large") leaves both files as they were, and says so truthfully:
+/// the text goes to a file beside the pubspec, which is renamed over it only when it is whole
+/// (since 0.24.1). It also runs as root, which a read-only file does not.
+#[cfg(unix)]
+#[test]
+fn upgrade_app_leaves_the_pubspecs_whole_when_a_write_runs_out_of_room() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let overrides = "dependency_overrides:\n  fespalier_transport:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_transport\n      ref: v0.21.0\n";
+    fs::write(app.join("pubspec_overrides.yaml"), overrides).unwrap();
+    // Longer than one block of `ulimit -f` (512 bytes in dash, 1024 in bash).
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap()
+        + &"# padding that makes the pubspec longer\n".repeat(60);
+    fs::write(app.join("pubspec.yaml"), &pubspec).unwrap();
+    assert!(overrides.len() < 512 && pubspec.len() > 2048);
+    let out = output_locked(
+        Command::new("sh")
+            .args([
+                "-c",
+                "trap '' XFSZ; ulimit -f 1 || exit 77; exec \"$@\"",
+                "sh",
+                env!("CARGO_BIN_EXE_fsp"),
+                "upgrade",
+                "--app",
+                "--no-pub-get",
+                "--project",
+                "app",
+            ])
+            .env("PATH", path_with(&root.join("bin")))
+            .env("FAKE_LOG", root.join("flutter.log"))
+            .current_dir(root),
+    )
+    .unwrap();
+    let code = out.status.code();
+    if code == Some(77) {
+        return; // this shell cannot set a size limit
+    }
+    let (out, err) = (
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert_eq!(code, Some(1), "{out}{err}");
+    assert!(
+        err.contains("writing app/pubspec.yaml: File too large")
+            && err.contains(
+                "; app/pubspec_overrides.yaml was put back as it was read, so nothing was written"
+            ),
+        "{err}"
+    );
+    assert!(!out.contains("  edit  "), "{out}");
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec_overrides.yaml")).unwrap(),
+        overrides
+    );
+    assert_eq!(
+        fs::read_to_string(app.join("pubspec.yaml")).unwrap(),
+        pubspec
+    );
+    // No temporary file is left beside them.
+    let mut names: Vec<_> = fs::read_dir(&app)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["lib", "pubspec.yaml", "pubspec_overrides.yaml"]);
+}
+
+/// In a pub workspace, the root's overrides are read for the app too: one of fespalier's at the old
+/// release is a note with the line to change, and the root's file is left alone (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn upgrade_app_names_the_line_of_the_workspace_root_to_change() {
+    let dir = create_root();
+    let root = dir.path();
+    let app = pinned_app(root, "v0.21.0");
+    let tag = format!("v{}", env!("CARGO_PKG_VERSION"));
+    let pubspec = fs::read_to_string(app.join("pubspec.yaml")).unwrap();
+    fs::write(
+        app.join("pubspec.yaml"),
+        pubspec.replacen("name: app\n", "name: app\nresolution: workspace\n", 1),
+    )
+    .unwrap();
+    let workspace = "name: workspace\nworkspace:\n  - app\ndependency_overrides:\n  fespalier_http:\n    git:\n      url: https://github.com/fespalier/fespalier\n      path: packages/fespalier_http\n      ref: v0.21.0\n";
+    fs::write(root.join("pubspec.yaml"), workspace).unwrap();
+    let (code, out, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--dry-run", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        out.contains(&format!(
+            "note: pubspec.yaml, line 9: the root of the pub workspace overrides fespalier_http at v0.21.0, and pub reads that for this app too: make it `ref: {tag}` by hand\n"
+        )),
+        "{out}"
+    );
+    // The file is named as it is opened from where fsp runs (since 0.24.1): from the app itself it
+    // is `../pubspec.yaml`, and with a full project path it is a full path.
+    for (cwd, project, file) in [
+        (
+            app.as_path(),
+            ".".to_string(),
+            "../pubspec.yaml".to_string(),
+        ),
+        (
+            root,
+            app.display().to_string(),
+            root.join("pubspec.yaml").display().to_string(),
+        ),
+    ] {
+        let out = output_locked(
+            Command::new(env!("CARGO_BIN_EXE_fsp"))
+                .args(["upgrade", "--app", "--dry-run", "--project", &project])
+                .env("PATH", path_with(&root.join("bin")))
+                .current_dir(cwd),
+        )
+        .unwrap();
+        let out = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.contains(&format!("note: {file}, line 9: the root")),
+            "{out}"
+        );
+    }
+    let (code, _, err) = fsp_task(
+        root,
+        &["upgrade", "--app", "--no-pub-get", "--project", "app"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        fs::read_to_string(root.join("pubspec.yaml")).unwrap(),
+        workspace
+    );
+    assert!(
+        fs::read_to_string(app.join("pubspec.yaml"))
+            .unwrap()
+            .contains(&format!("ref: {tag} # with the companions"))
     );
 }
 
@@ -5131,7 +5408,7 @@ fn upgrade_app_does_not_move_the_app_back_unless_asked() {
         assert_eq!(code, Some(1), "{flags:?}: {out}{err}");
         assert!(out.is_empty(), "{out}");
         assert!(
-            err.starts_with("this app pins fespalier v99.0.0 and fsp "),
+            err.starts_with("pubspec.yaml pins fespalier v99.0.0 and fsp "),
             "{err}"
         );
         assert!(

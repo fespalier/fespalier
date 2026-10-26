@@ -196,18 +196,26 @@ fn listed(pubspec: &Value, section: &str, name: &str) -> bool {
     pubspec.get(section).and_then(|s| s.get(name)).is_some()
 }
 
-/// Whether the app has `recipe`: its packages under `dependencies:`, its `fespalier:` keys, and
-/// every file it writes. A recipe with none of these has nothing to tell it by, so it is never
-/// present.
+/// Whether the app has `recipe`: its packages under `dependencies:`, its test-only ones under
+/// `dev_dependencies:` or `dependencies:` (since 0.24.1, as the edits leave one listed in either
+/// alone), its `fespalier:` keys, and every file it writes. A recipe with none of these has nothing
+/// to tell it by, so it is never present. The files it takes out of the base app (`replaces`) tell
+/// nothing: one that is not there may never have been.
 fn has(recipe: &Recipe, pubspec: &Value, files: &BTreeMap<String, String>) -> bool {
     let dep = |name: &str| listed(pubspec, "dependencies", name);
+    let dev = |name: &str| listed(pubspec, "dev_dependencies", name);
     let marks = recipe.companions.len()
         + recipe.third_party.len()
+        + recipe.dev_third_party.len()
         + recipe.config.len()
         + recipe.files.len();
     marks > 0
         && recipe.companions.iter().all(|c| dep(c))
         && recipe.third_party.iter().all(|t| dep(t.name))
+        && recipe
+            .dev_third_party
+            .iter()
+            .all(|t| dev(t.name) || dep(t.name))
         && recipe.config.iter().all(|line| {
             line.split_once(": ")
                 .is_some_and(|(k, v)| config_value(pubspec, k) == Some(&yaml(v)))

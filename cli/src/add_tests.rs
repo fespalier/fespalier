@@ -757,19 +757,32 @@ fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
     let app = root.join("apps/shop");
     assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
     assert!(crate::add::workspace_overrides(&app, "name: shop\n").is_empty());
-    fs::write(
-        root.join("pubspec_overrides.yaml"),
-        "dependency_overrides:\n  fespalier_http:\n    path: x\n",
-    )
-    .unwrap();
+    // The file, as a person opens it from where fsp runs, and its text (since 0.24.1): here the
+    // project is a full path, so the file is too.
+    let file = |pubspec: &str| {
+        crate::packages::workspace_overrides_file(&app, &yaml(pubspec)).map(|(file, _)| file)
+    };
+    let shown = |name: &str| root.join(name).display().to_string();
+    assert_eq!(file(member), Some(shown("pubspec.yaml")));
+    assert_eq!(file("name: shop\n"), None);
+    // A `pubspec_overrides.yaml` without the key leaves the pubspec's in force.
+    fs::write(root.join("pubspec_overrides.yaml"), "# none\n").unwrap();
+    assert_eq!(file(member), Some(shown("pubspec.yaml")));
+    assert_eq!(crate::add::workspace_overrides(&app, member), ["fespalier"]);
+    let overrides = "dependency_overrides:\n  fespalier_http:\n    path: x\n";
+    fs::write(root.join("pubspec_overrides.yaml"), overrides).unwrap();
     assert_eq!(
         crate::add::workspace_overrides(&app, member),
         ["fespalier_http"]
     );
+    assert_eq!(
+        crate::packages::workspace_overrides_file(&app, &yaml(member)),
+        Some((shown("pubspec_overrides.yaml"), overrides.to_string()))
+    );
 }
 
 /// A feature with no file of its own is told by its packages and keys, and one with nothing to
-/// tell it by never is.
+/// tell it by never is. A test-only package is one of its marks too (since 0.24.1).
 #[test]
 fn a_feature_with_no_file_of_its_own_is_told_by_its_packages() {
     let http = RECIPES.iter().find(|r| r.id == "http").unwrap();
@@ -794,6 +807,20 @@ fn a_feature_with_no_file_of_its_own_is_told_by_its_packages() {
     };
     assert_eq!(ids(&with), ["http"]);
     assert!(ids(&without).is_empty());
+    // A feature whose only mark is a package of `dev_dependencies:`.
+    let otel = RECIPES.iter().find(|r| r.id == "otel").unwrap();
+    assert!(!otel.dev_third_party.is_empty());
+    let dev_only = Recipe {
+        companions: &[],
+        third_party: &[],
+        config: &[],
+        files: &[],
+        ..*otel
+    };
+    let told =
+        |tree: &Tree| !plan::present(&[dev_only], &yaml(&tree["pubspec.yaml"]), &none).is_empty();
+    assert!(told(&created(&["otel"], None)));
+    assert!(!told(&without));
 }
 
 #[test]

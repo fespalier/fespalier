@@ -7,7 +7,9 @@ use std::path::{Path, PathBuf};
 
 use serde_yaml_ng::Value;
 
-use crate::pubspec_edit::{Body, Doc, Edit, Place, apply};
+use crate::pubspec_edit::{
+    Body, Doc, Edit, Place, Rewrite, apply, write_atomic, write_atomic_with, write_files,
+};
 
 fn ok(text: &str, edits: &[Edit]) -> String {
     apply(text, edits).unwrap_or_else(|e| panic!("{e}: {}\n{text}", e.edit.by_hand()))
@@ -429,6 +431,18 @@ fn a_section_made_last_goes_before_a_document_end_marker() {
     assert!(e.contains("not valid YAML") || e.contains("not a"), "{e}");
 }
 
+/// The editor names no file in its errors: it edits `pubspec_overrides.yaml` too, and its callers
+/// say which file (since 0.24.1).
+#[test]
+fn a_text_that_is_no_yaml_is_refused_without_a_file_name() {
+    let e = err(
+        "dependency_overrides: [\n",
+        &[Edit::set(&["dependency_overrides", "x"], "1")],
+    );
+    assert!(e.starts_with("the text is not valid YAML: "), "{e}");
+    assert!(!e.contains("pubspec.yaml"), "{e}");
+}
+
 /// The indent of a new section is the file's, not that of the continuation of a folded scalar, and
 /// a file that is not a mapping is named by what it is.
 #[test]
@@ -563,4 +577,265 @@ fn the_keys_the_editor_finds_are_the_ones_yaml_reads() {
             }
         }
     }
+}
+
+/// `fsp add` and `fsp upgrade --app` write both pubspec files or neither: when the second write
+/// fails, the first file gets its text back (since 0.24.1). The writer here is a map of texts that
+/// refuses the writes it is told to, so it fails whoever runs the test.
+#[test]
+fn a_failed_second_write_puts_the_first_back() {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+    let (first, second) = (
+        Path::new("app/pubspec_overrides.yaml"),
+        Path::new("app/pubspec.yaml"),
+    );
+    let files = [
+        Rewrite {
+            path: first,
+            before: "old overrides",
+            after: "new overrides",
+        },
+        Rewrite {
+            path: second,
+            before: "old pubspec",
+            after: "new pubspec",
+        },
+    ];
+    let run = |refused: &[(&Path, &str)]| {
+        let disk = RefCell::new(BTreeMap::from([
+            (first.to_path_buf(), "old overrides".to_string()),
+            (second.to_path_buf(), "old pubspec".to_string()),
+        ]));
+        let mut write = |path: &Path, text: &str| {
+            if refused.contains(&(path, text)) {
+                return Err(std::io::Error::other("refused"));
+            }
+            disk.borrow_mut()
+                .insert(path.to_path_buf(), text.to_string());
+            Ok(())
+        };
+        let result = write_files(&files, &mut write);
+        let disk = disk.into_inner();
+        (result, disk[first].clone(), disk[second].clone())
+    };
+    assert_eq!(
+        run(&[]),
+        (
+            Ok(()),
+            "new overrides".to_string(),
+            "new pubspec".to_string()
+        )
+    );
+    assert_eq!(
+        run(&[(second, "new pubspec")]),
+        (
+            Err("writing app/pubspec.yaml: refused; app/pubspec_overrides.yaml was put back as it was read, so nothing was written".to_string()),
+            "old overrides".to_string(),
+            "old pubspec".to_string()
+        )
+    );
+    assert_eq!(
+        run(&[(first, "new overrides")]),
+        (
+            Err("writing app/pubspec_overrides.yaml: refused; nothing was written".to_string()),
+            "old overrides".to_string(),
+            "old pubspec".to_string()
+        )
+    );
+    let (result, overrides, _) = run(&[(second, "new pubspec"), (first, "old overrides")]);
+    assert_eq!(overrides, "new overrides");
+    assert!(
+        result.as_ref().unwrap_err().starts_with("writing app/pubspec.yaml: refused; and app/pubspec_overrides.yaml (refused) could not be put back as it was read, so it keeps the new text: undo this change by hand"),
+        "{result:?}"
+    );
+    // It shows the change to undo, since `fsp add` has printed none yet.
+    assert!(
+        result
+            .as_ref()
+            .unwrap_err()
+            .ends_with("\n  app/pubspec_overrides.yaml\n    - old overrides\n    + new overrides"),
+        "{result:?}"
+    );
+}
+
+/// The names in a folder, sorted: what is left of a write that went wrong.
+fn names(dir: &Path) -> Vec<String> {
+    let mut out: Vec<String> = fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    out.sort();
+    out
+}
+
+/// A write that fails part-way (a full disk, a quota, a size limit) leaves the file as it was and
+/// no temporary file behind: the text goes to a file beside it, which is renamed over it only when
+/// all of it is written (since 0.24.1). `fill` is the seam: it writes some bytes and then fails.
+#[test]
+fn a_write_that_fails_part_way_leaves_the_file_as_it_was() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("pubspec.yaml");
+    let old = "name: app\n".repeat(40);
+    fs::write(&path, &old).unwrap();
+    let new = "name: other\n".repeat(40);
+    let mut short = |file: &mut fs::File, bytes: &[u8]| {
+        file.write_all(&bytes[..bytes.len() / 2])?;
+        Err(std::io::Error::other("no space left"))
+    };
+    let e = write_atomic_with(&path, &new, &mut short).unwrap_err();
+    assert_eq!(e.to_string(), "no space left");
+    assert_eq!(fs::read_to_string(&path).unwrap(), old);
+    assert_eq!(names(dir.path()), ["pubspec.yaml"]);
+    // The same write, whole.
+    write_atomic(&path, &new).unwrap();
+    assert_eq!(fs::read_to_string(&path).unwrap(), new);
+    assert_eq!(names(dir.path()), ["pubspec.yaml"]);
+    // A file that is not there yet is made.
+    let fresh = dir.path().join("pubspec_overrides.yaml");
+    write_atomic(&fresh, "a\n").unwrap();
+    assert_eq!(fs::read_to_string(&fresh).unwrap(), "a\n");
+}
+
+/// `write_files` over real files with a writer that fails part-way on the second: the first is put
+/// back, the second was never touched, and "nothing was written" is true of both (since 0.24.1).
+/// When the put-back fails part-way too, the first keeps its whole new text, not a cut one.
+#[test]
+fn a_short_write_in_write_files_moves_nothing() {
+    use std::io::Write;
+    let dir = tempfile::tempdir().unwrap();
+    let (first, second) = (
+        dir.path().join("pubspec_overrides.yaml"),
+        dir.path().join("pubspec.yaml"),
+    );
+    let (old_a, old_b) = ("old: overrides\n".repeat(30), "old: pubspec\n".repeat(30));
+    let (new_a, new_b) = ("new: overrides\n".repeat(30), "new: pubspec\n".repeat(30));
+    let files = [
+        Rewrite {
+            path: &first,
+            before: &old_a,
+            after: &new_a,
+        },
+        Rewrite {
+            path: &second,
+            before: &old_b,
+            after: &new_b,
+        },
+    ];
+    let reset = || {
+        fs::write(&first, &old_a).unwrap();
+        fs::write(&second, &old_b).unwrap();
+    };
+    reset();
+    // The second cannot be written, after half of it.
+    let mut write = |path: &Path, text: &str| {
+        write_atomic_with(path, text, &mut |file, bytes| {
+            if path.ends_with("pubspec.yaml") && text == new_b {
+                file.write_all(&bytes[..bytes.len() / 2])?;
+                return Err(std::io::Error::other("no space left"));
+            }
+            file.write_all(bytes)
+        })
+    };
+    let message = write_files(&files, &mut write).unwrap_err();
+    assert_eq!(
+        message,
+        format!(
+            "writing {}: no space left; {} was put back as it was read, so nothing was written",
+            second.display(),
+            first.display()
+        )
+    );
+    assert_eq!(fs::read_to_string(&first).unwrap(), old_a);
+    assert_eq!(fs::read_to_string(&second).unwrap(), old_b);
+    assert_eq!(
+        names(dir.path()),
+        ["pubspec.yaml", "pubspec_overrides.yaml"]
+    );
+    // The first cannot be put back either, after half of it.
+    reset();
+    let mut write = |path: &Path, text: &str| {
+        write_atomic_with(path, text, &mut |file, bytes| {
+            if text == new_b || text == old_a {
+                file.write_all(&bytes[..bytes.len() / 2])?;
+                return Err(std::io::Error::other("no space left"));
+            }
+            file.write_all(bytes)
+        })
+    };
+    let message = write_files(&files, &mut write).unwrap_err();
+    assert!(
+        message.starts_with(&format!(
+            "writing {}: no space left; and {} (no space left) could not be put back as it was read, so it keeps the new text: undo this change by hand",
+            second.display(),
+            first.display()
+        )),
+        "{message}"
+    );
+    assert!(
+        message.contains("\n    - old: overrides\n    + new: overrides"),
+        "{message}"
+    );
+    assert_eq!(fs::read_to_string(&first).unwrap(), new_a);
+    assert_eq!(fs::read_to_string(&second).unwrap(), old_b);
+    assert_eq!(
+        names(dir.path()),
+        ["pubspec.yaml", "pubspec_overrides.yaml"]
+    );
+}
+
+/// A symbolic link is written through: the link stays a link and its target has the text. The
+/// file keeps its permissions, and a read-only one is refused untouched (since 0.24.1).
+#[cfg(unix)]
+#[test]
+fn an_atomic_write_keeps_the_link_and_the_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let (shared, app) = (dir.path().join("shared"), dir.path().join("app"));
+    fs::create_dir_all(&shared).unwrap();
+    fs::create_dir_all(&app).unwrap();
+    let real = shared.join("overrides.yaml");
+    let link = app.join("pubspec_overrides.yaml");
+    fs::write(&real, "old\n").unwrap();
+    fs::set_permissions(&real, fs::Permissions::from_mode(0o640)).unwrap();
+    std::os::unix::fs::symlink("../shared/overrides.yaml", &link).unwrap();
+    write_atomic(&link, "new\n").unwrap();
+    assert!(
+        fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+    assert_eq!(
+        fs::read_link(&link).unwrap(),
+        Path::new("../shared/overrides.yaml")
+    );
+    assert_eq!(fs::read_to_string(&real).unwrap(), "new\n");
+    assert_eq!(
+        fs::metadata(&real).unwrap().permissions().mode() & 0o7777,
+        0o640
+    );
+    assert_eq!(names(&shared), ["overrides.yaml"]);
+    assert_eq!(names(&app), ["pubspec_overrides.yaml"]);
+    // A plain file keeps its mode too, and a read-only one is not replaced (root can write it).
+    let plain = app.join("pubspec.yaml");
+    fs::write(&plain, "old\n").unwrap();
+    fs::set_permissions(&plain, fs::Permissions::from_mode(0o444)).unwrap();
+    let can_write = fs::OpenOptions::new().append(true).open(&plain).is_ok();
+    let result = write_atomic(&plain, "new\n");
+    if can_write {
+        result.unwrap();
+        assert_eq!(
+            fs::metadata(&plain).unwrap().permissions().mode() & 0o7777,
+            0o444
+        );
+    } else {
+        assert_eq!(
+            result.unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert_eq!(fs::read_to_string(&plain).unwrap(), "old\n");
+    }
+    assert_eq!(names(&app), ["pubspec.yaml", "pubspec_overrides.yaml"]);
 }

@@ -158,6 +158,32 @@ pub(crate) fn workspace_root(project: &Path, pubspec: &Value) -> Option<(PathBuf
     None
 }
 
+/// The file pub reads the overrides of the root of the app's pub workspace from, when the app says
+/// `resolution: workspace`: the root's `pubspec_overrides.yaml` when that has the key, else its
+/// `pubspec.yaml`. With its path as a person opens it from where `fsp` runs, for a message (the
+/// root's folder found from the project's path, so for the app in `apps/shop` it is `pubspec.yaml`
+/// from the root of the workspace, `../../pubspec.yaml` from the app and a full path for a full
+/// project path), and its text (since 0.24.1; `fsp add` and `fsp upgrade --app` read the root's
+/// overrides through this).
+pub(crate) fn workspace_overrides_file(
+    project: &Path,
+    pubspec: &Value,
+) -> Option<(String, String)> {
+    let (root, _) = workspace_root(project, pubspec)?;
+    let shown = |file: &str| join(&root, file).display().to_string();
+    let has_key = |text: &str| {
+        serde_yaml_ng::from_str::<Value>(text)
+            .is_ok_and(|v| v.get("dependency_overrides").is_some())
+    };
+    if let Ok(text) = std::fs::read_to_string(root.join("pubspec_overrides.yaml"))
+        && has_key(&text)
+    {
+        return Some((shown("pubspec_overrides.yaml"), text));
+    }
+    let text = std::fs::read_to_string(root.join("pubspec.yaml")).ok()?;
+    Some((shown("pubspec.yaml"), text))
+}
+
 /// A YAML file, `None` when it is missing or not YAML.
 fn yaml(path: &Path) -> Option<Value> {
     let text = std::fs::read_to_string(path).ok()?;

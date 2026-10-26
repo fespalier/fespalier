@@ -233,6 +233,93 @@ fn the_official_repository_is_told_however_it_is_spelled() {
     }
 }
 
+/// A package newer than this `fsp` is fespalier's when it comes from fespalier's repository,
+/// however either url is spelled: an https `fespalier_next` next to an ssh `fespalier` is read, and
+/// then out of line, since pub takes two spellings for two sources (since 0.24.1). Any other
+/// repository, however spelled, is still not fespalier's.
+#[test]
+fn a_package_of_fespalier_s_repository_is_read_however_its_url_is_spelled() {
+    let app = |fespalier: &str, next: &str| {
+        format!(
+            "dependencies:\n  fespalier:\n    git: {{url: {fespalier}, path: packages/fespalier, ref: v0.21.0}}\n  fespalier_next:\n    git: {{url: {next}, path: packages/fespalier_next, ref: v0.21.0}}\n"
+        )
+    };
+    let value = yaml(&app(
+        "git@github.com:fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier",
+    ));
+    let pins = pins::read(&value).unwrap();
+    let names: Vec<&str> = pins.all.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["fespalier", "fespalier_next"]);
+    assert_eq!(
+        pins.out_of_line(),
+        ["fespalier_next (dependencies): https://github.com/fespalier/fespalier at v0.21.0"]
+    );
+    // A mirror is told the same way, and another repository is not fespalier's.
+    for (next, ours) in [
+        ("https://www.git.acme.dev/Mirrors/Fespalier/", true),
+        ("ssh://git@git.acme.dev/mirrors/fespalier", true),
+        ("https://git.acme.dev/mirrors/other", false),
+    ] {
+        let value = yaml(&app("git@git.acme.dev:mirrors/fespalier.git", next));
+        let own = value["dependencies"].get("fespalier");
+        assert_eq!(
+            is_ours(
+                "fespalier_next",
+                &value["dependencies"]["fespalier_next"],
+                own
+            ),
+            ours,
+            "{next}"
+        );
+    }
+    assert!(pins::same_repository(
+        "git@github.com:fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier"
+    ));
+    assert!(!pins::same_url(
+        "git@github.com:fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier"
+    ));
+}
+
+/// A port or a user name in a url does not make another repository, and a fork, another host or a
+/// longer name still does (since 0.24.1).
+#[test]
+fn a_port_or_a_user_name_does_not_make_another_repository() {
+    for url in [
+        "ssh://git@github.com:22/fespalier/fespalier",
+        "ssh://git@github.com:22/fespalier/fespalier.git",
+        "https://github.com:443/fespalier/fespalier",
+        "https://user@github.com/fespalier/fespalier",
+        "https://user:token@www.github.com:443/Fespalier/Fespalier.GIT/",
+        "git@github.com:fespalier/fespalier.git",
+        "git://github.com/fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier.git.git/",
+    ] {
+        assert!(pins::is_official(url), "{url}");
+        assert!(
+            pins::same_repository(url, "https://github.com/fespalier/fespalier"),
+            "{url}"
+        );
+    }
+    for url in [
+        "https://github.com/someone/fespalier",
+        "ssh://git@github.com:22/someone/fespalier",
+        "https://user@github.com/someone/fespalier",
+        "https://gitlab.com/fespalier/fespalier",
+        "ssh://git@gitlab.com:22/fespalier/fespalier",
+        "https://github.com/fespalier/fespalier-mirror",
+        "https://github.com.evil.example/fespalier/fespalier",
+        // The user name is `github.com`: the host is the other one.
+        "https://github.com@evil.example/fespalier/fespalier",
+        "https://github.com:8443x/fespalier/fespalier",
+        "https://evil.example/github.com/fespalier/fespalier",
+    ] {
+        assert!(!pins::is_official(url), "{url}");
+    }
+}
+
 #[test]
 fn a_checkout_is_a_folder_named_after_each_package() {
     let pins = pins::read(&yaml(

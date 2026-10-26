@@ -231,6 +231,12 @@ pub struct Facts {
     pub fsp: Version,
     /// pubspec.yaml as YAML: what the versions are read from, even when `config.rs` refuses it.
     pub raw: Option<Value>,
+    /// `pubspec_overrides.yaml` as YAML, when there is one that reads: pub reads its
+    /// `dependency_overrides:` in place of the pubspec's when it has the key (since 0.24.1).
+    pub overrides: Option<Value>,
+    /// Why `pubspec_overrides.yaml` is there and does not read as YAML: pub stops on it (since
+    /// 0.24.1).
+    pub overrides_error: Option<String>,
     /// What `config.rs` makes of pubspec.yaml, or why it refuses it.
     pub pubspec: Result<Pubspec, String>,
     /// pubspec.lock as YAML, when there is one that reads: the project's, or, for a pub workspace
@@ -286,6 +292,14 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         Ok(t) => Pubspec::parse(t).map_err(|e| refused(format!("{e:#}"))),
         Err(e) => Err(format!("pubspec.yaml: {e}")),
     };
+    let (overrides, overrides_error) =
+        match fs::read_to_string(project.join(crate::upgrade_app::OVERRIDES)) {
+            Ok(text) => match serde_yaml_ng::from_str::<Value>(&text) {
+                Ok(value) => (Some(value), None),
+                Err(e) => (None, Some(e.to_string())),
+            },
+            Err(_) => (None, None),
+        };
     let lock = read_lock(project, raw.as_ref());
     let workspace_member = is_workspace_member(raw.as_ref());
     let toolchain = toolchain.and_then(|out| {
@@ -311,6 +325,8 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
         project: project.to_path_buf(),
         fsp: Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or(Version(0, 0, 0)),
         raw,
+        overrides,
+        overrides_error,
         pubspec,
         lock,
         workspace_member,

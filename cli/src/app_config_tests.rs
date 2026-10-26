@@ -696,6 +696,36 @@ fn a_credential_is_an_error_and_a_secret_name_a_warning() {
     );
     // An empty value named like a secret says nothing: there is nothing in it yet.
     assert!(diags(&[("config/app.yaml", "client_secret: ''\n")]).is_empty());
+    // A key that names where something is, and not the thing, is no secret by its name (since
+    // 0.24.0): the advice "give it a name that says so" would be a name that already does.
+    assert!(
+        diags(&[(
+            "config/app.yaml",
+            "password_reset_url: https://example.com/reset\nforgot_password_url: https://example.com/forgot\nprivateKeyPath: assets/key.pem\ntoken_endpoint: https://auth.example.com/token\nsecret_link: https://example.com/s\nclient_secret_uri: https://example.com/s\n"
+        )])
+        .is_empty()
+    );
+    // A value that is refused by its shape is refused whatever the key is named.
+    assert_eq!(
+        diags(&[(
+            "config/app.yaml",
+            "password_reset_url: postgres://app:hunter2@db.example.com/app\n"
+        )]),
+        [
+            "✗ config/app.yaml:1  `password_reset_url` in config/app.yaml looks like a URL with a password in it: every value in config/ is compiled into the app, where anyone who has the app can read it; keep the secret on a server and give the app only what it may show (docs/app-config.md, \"Secrets\")"
+        ]
+    );
+    // A JWT is still a warning of its own under such a name.
+    let token = format!(
+        "eyJ{}.eyJ{}.{}",
+        "hbGciOiJIUzI1NiJ9", "zdWIiOiI0MiJ9", "c2ln"
+    );
+    assert_eq!(
+        diags(&[("config/app.yaml", format!("reset_url: {token}\n").as_str())]),
+        [
+            "! config/app.yaml:1  `reset_url` in config/app.yaml is a JWT: every value in config/ is compiled into the app, where anyone who has the app can read it; if the token grants access, keep it on a server (docs/app-config.md, \"Secrets\")"
+        ]
+    );
     // A warning does not stop the file.
     let dir = project(&[("config/app.yaml", "password: abc\n")]);
     assert!(load(dir.path(), "lib/app.config.g.dart").config.is_some());

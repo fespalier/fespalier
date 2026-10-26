@@ -2,8 +2,9 @@
 //! is compiled into the app, where anyone who has the app can read it, so a credential there is a
 //! leak, however private the repository is.
 //!
-//! [`looks_like`] knows the shape of credentials whose format says what they are (a PEM private
-//! key, a URL with a password, the prefixed tokens of well-known services): those are errors, and
+//! [`looks_like`] knows the shape of credentials whose format says what they are (a PEM or PGP
+//! private key, a URL with a password, a Slack or Discord webhook URL, the prefixed tokens of
+//! well-known services): those are errors, and
 //! the check is meant to be precise rather than complete. [`named_like`] reads a key's name
 //! (`client_secret`, `password`): a warning, since a name can be wrong both ways. Neither can
 //! catch a secret with no telling shape under an innocent name; `docs/app-config.md` says so.
@@ -45,7 +46,13 @@ const PREFIXES: &[(&str, usize, &str)] = &[
     ("shpss_", 20, "a Shopify shared secret"),
     ("sb_secret_", 16, "a Supabase secret key"),
     ("sk.eyJ", 20, "a Mapbox secret token"),
+    ("whsec_", 32, "a Stripe webhook secret"),
+    ("dop_v1_", 64, "a DigitalOcean token"),
 ];
+
+/// Prefixes whose tokens are letters and digits alone, counted over those only: `hf_` is a common
+/// start of an identifier (`hf_some_long_feature_name`), whose underscores end the run.
+const ALNUM_PREFIXES: &[(&str, usize, &str)] = &[("hf_", 34, "a Hugging Face token")];
 
 fn token_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_' || c == '-'
@@ -55,11 +62,20 @@ fn token_char(c: char) -> bool {
 /// for anything else, which is not to say that it is not one.
 #[must_use]
 pub fn looks_like(value: &str) -> Option<&'static str> {
-    if value.contains("-----BEGIN ") && value.contains("PRIVATE KEY-----") {
+    // PEM (`PRIVATE KEY-----`, with a kind in front) and PGP (`PRIVATE KEY BLOCK-----`).
+    if value.contains("-----BEGIN ")
+        && (value.contains("PRIVATE KEY-----") || value.contains("PRIVATE KEY BLOCK-----"))
+    {
         return Some("a private key");
     }
     if url_with_password(value) {
         return Some("a URL with a password in it");
+    }
+    if slack_webhook(value) {
+        return Some("a Slack webhook URL");
+    }
+    if discord_webhook(value) {
+        return Some("a Discord webhook URL");
     }
     for (i, _) in value.char_indices() {
         let before = value[..i].chars().next_back();
@@ -70,6 +86,13 @@ pub fn looks_like(value: &str) -> Option<&'static str> {
         for (prefix, least, what) in PREFIXES {
             if let Some(tail) = rest.strip_prefix(prefix)
                 && tail.chars().take_while(|c| token_char(*c)).count() >= *least
+            {
+                return Some(what);
+            }
+        }
+        for (prefix, least, what) in ALNUM_PREFIXES {
+            if let Some(tail) = rest.strip_prefix(prefix)
+                && tail.chars().take_while(char::is_ascii_alphanumeric).count() >= *least
             {
                 return Some(what);
             }
@@ -113,6 +136,60 @@ fn sendgrid_key(s: &str) -> bool {
         && tail[first..]
             .strip_prefix('.')
             .is_some_and(|rest| rest.chars().take_while(|c| token_char(*c)).count() >= 43)
+}
+
+/// How many letters and digits `s` starts with.
+fn alnum_run(s: &str) -> usize {
+    s.chars().take_while(char::is_ascii_alphanumeric).count()
+}
+
+/// A Slack incoming webhook, `hooks.slack.com/services/T<team>/B<hook>/<token>`: the URL is the
+/// credential, since anyone who has it can post to the channel.
+fn slack_webhook(value: &str) -> bool {
+    const HOST: &str = "hooks.slack.com/services/";
+    value.match_indices(HOST).any(|(at, _)| {
+        let mut parts = value[at + HOST.len()..].splitn(3, '/');
+        let (Some(team), Some(hook), Some(token)) = (parts.next(), parts.next(), parts.next())
+        else {
+            return false;
+        };
+        team.starts_with('T')
+            && alnum_run(team) >= 9
+            && hook.starts_with('B')
+            && alnum_run(hook) >= 9
+            && alnum_run(token) >= 24
+    })
+}
+
+/// A Discord webhook, `discord.com/api/webhooks/<id>/<token>` (with `discordapp.com` or an API
+/// version, `/api/v10/webhooks/`, as well): the URL is the credential.
+fn discord_webhook(value: &str) -> bool {
+    ["discord.com/api/", "discordapp.com/api/"]
+        .iter()
+        .flat_map(|host| {
+            value
+                .match_indices(host)
+                .map(move |(at, _)| at + host.len())
+        })
+        .any(|from| {
+            let mut rest = &value[from..];
+            if let Some(versioned) = rest.strip_prefix('v') {
+                let digits = versioned.chars().take_while(char::is_ascii_digit).count();
+                if let Some(after) = versioned[digits..].strip_prefix('/')
+                    && digits > 0
+                {
+                    rest = after;
+                }
+            }
+            let Some(rest) = rest.strip_prefix("webhooks/") else {
+                return false;
+            };
+            let id = rest.chars().take_while(char::is_ascii_digit).count();
+            id >= 17
+                && rest[id..]
+                    .strip_prefix('/')
+                    .is_some_and(|token| token.chars().take_while(|c| token_char(*c)).count() >= 60)
+        })
 }
 
 /// A URL whose authority has a user and a non-empty password: `https://user:pass@host/`.
@@ -195,10 +272,19 @@ fn base64url(s: &str) -> Option<Vec<u8>> {
 }
 
 /// Whether a key's name says that its value is a secret: `client_secret`, `password`,
-/// `privateKey`, `refresh-token`. The words are read in any of the spellings a key can have.
+/// `privateKey`, `refresh-token`. The words are read in any of the spellings a key can have. A key
+/// whose last word is `url`, `uri`, `path`, `endpoint` or `link` names where something is and not
+/// the thing (`password_reset_url`, `private_key_path`, `token_endpoint`), so it does not say that
+/// its value is a secret: a value that is one is refused by its shape ([`looks_like`]) all the same.
 #[must_use]
 pub fn named_like(key: &str) -> bool {
     let words = words(key);
+    if words
+        .last()
+        .is_some_and(|w| matches!(w.as_str(), "url" | "uri" | "path" | "endpoint" | "link"))
+    {
+        return false;
+    }
     let has = |w: &str| words.iter().any(|x| x == w);
     let pair = |a: &str, b: &str| words.windows(2).any(|p| p[0] == a && p[1] == b);
     has("secret")

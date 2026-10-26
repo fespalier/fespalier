@@ -31,6 +31,9 @@ fn each_prefix_is_its_credential() {
         ("shpat_", 32, "a Shopify access token"),
         ("sb_secret_", 30, "a Supabase secret key"),
         ("sk.eyJ", 40, "a Mapbox secret token"),
+        ("whsec_", 40, "a Stripe webhook secret"),
+        ("hf_", 34, "a Hugging Face token"),
+        ("dop_v1_", 64, "a DigitalOcean token"),
     ];
     for (prefix, n, what) in cases {
         let value = format!("{prefix}{}", tail(n));
@@ -51,6 +54,13 @@ fn near_misses_are_not_secrets() {
         // Glued to a word: not a prefix.
         &format!("task_xoxb-{}", tail(20)),
         &format!("mysk_live_{}", tail(20)),
+        &format!("whsec_{}", tail(31)),
+        &format!("hf_{}", tail(33)),
+        &format!("dop_v1_{}", tail(63)),
+        // An identifier that starts like a Hugging Face token: its underscores end the run.
+        "hf_some_long_feature_flag_name_that_is_not_a_token",
+        &format!("my_hf_{}", tail(40)),
+        &format!("mywhsec_{}", tail(40)),
         // Public by design.
         &format!("pk_live_{}", tail(24)),
         &format!("pk.eyJ{}", tail(40)),
@@ -93,6 +103,114 @@ fn a_private_key_a_password_in_a_url_and_cloud_keys_are_secrets() {
     assert_eq!(looks_like(&format!("{aws}X")), None, "17 characters");
     let sendgrid = format!("SG.{}.{}", tail(22), tail(43));
     assert_eq!(looks_like(&sendgrid), Some("a SendGrid API key"));
+}
+
+#[test]
+fn a_pgp_private_key_block_is_a_private_key() {
+    // Built at run time, like the PEM shapes above: no literal has the armor of a key.
+    let armor = |edge: &str, kind: &str| format!("-----{edge} PGP {kind} BLOCK-----");
+    let block = |kind: &str| armor("BEGIN", kind);
+    let private = format!(
+        "{}\nlQVYBF...\n{}",
+        block("PRIVATE KEY"),
+        armor("END", "PRIVATE KEY")
+    );
+    assert_eq!(looks_like(&private), Some("a private key"));
+    assert_eq!(looks_like(&block("PRIVATE KEY")), Some("a private key"));
+    // A public key block, a signature and a message are for anyone to read.
+    for kind in ["PUBLIC KEY", "SIGNATURE", "MESSAGE"] {
+        assert_eq!(looks_like(&block(kind)), None, "{kind}");
+    }
+}
+
+#[test]
+fn a_slack_or_discord_webhook_url_is_a_secret() {
+    // The URL is the credential, and each is built at run time from the pieces of its shape.
+    let slack = |team: &str, hook: &str, token: &str| {
+        format!(
+            "https://hooks.slack.com/{}/{team}/{hook}/{token}",
+            "services"
+        )
+    };
+    let team = format!("T{}", tail(10));
+    let hook = format!("B{}", tail(10));
+    assert_eq!(
+        looks_like(&slack(&team, &hook, &tail(24))),
+        Some("a Slack webhook URL")
+    );
+    // In a longer text, with a query.
+    assert_eq!(
+        looks_like(&format!("{}?x=1", slack(&team, &hook, &tail(24)))),
+        Some("a Slack webhook URL")
+    );
+    for (name, value) in [
+        ("a short token", slack(&team, &hook, &tail(12))),
+        ("a short team", slack("T12", &hook, &tail(24))),
+        ("a short hook", slack(&team, "B12", &tail(24))),
+        ("no team letter", slack(&tail(10), &hook, &tail(24))),
+        ("no hook letter", slack(&team, &tail(10), &tail(24))),
+        (
+            "no token",
+            format!("https://hooks.slack.com/{}/{team}/{hook}", "services"),
+        ),
+        (
+            "another host",
+            slack(&team, &hook, &tail(24)).replace("hooks.slack.com", "hooks.example.com"),
+        ),
+        ("the host alone", "https://hooks.slack.com/".to_string()),
+        (
+            "a docs page",
+            "https://api.slack.com/messaging/webhooks".to_string(),
+        ),
+    ] {
+        assert_eq!(looks_like(&value), None, "{name}: {value}");
+    }
+
+    let discord = |host: &str, api: &str, id: &str, token: &str| {
+        format!("https://{host}/{api}/{}/{id}/{token}", "webhooks")
+    };
+    let id = "1".repeat(19);
+    for host in ["discord.com", "discordapp.com", "ptb.discord.com"] {
+        assert_eq!(
+            looks_like(&discord(host, "api", &id, &tail(68))),
+            Some("a Discord webhook URL"),
+            "{host}"
+        );
+    }
+    // The API version in the path.
+    assert_eq!(
+        looks_like(&discord("discord.com", "api/v10", &id, &tail(68))),
+        Some("a Discord webhook URL")
+    );
+    for (name, value) in [
+        (
+            "a short token",
+            discord("discord.com", "api", &id, &tail(40)),
+        ),
+        (
+            "a short id",
+            discord("discord.com", "api", "12345", &tail(68)),
+        ),
+        (
+            "no token",
+            format!("https://discord.com/api/{}/{id}", "webhooks"),
+        ),
+        (
+            "an id with letters",
+            discord("discord.com", "api", &tail(19), &tail(68)),
+        ),
+        (
+            "another host",
+            discord("example.com", "api", &id, &tail(68)),
+        ),
+        (
+            "another endpoint",
+            "https://discord.com/api/users/@me".to_string(),
+        ),
+        ("an invite", "https://discord.gg/abcdefg".to_string()),
+    ] {
+        assert_eq!(looks_like(&value), None, "{name}: {value}");
+    }
 }
 
 /// A JWT whose payload is `payload` (a JSON object), unsigned.
@@ -155,13 +273,37 @@ fn names_that_say_secret_in_any_spelling() {
         "api_key",
         "base_url",
         "token_header",
-        "password_min_length_hint_url",
+        "password_min_length_hint",
         "public_key",
         "csrf_header",
         "private",
     ] {
-        // `password_min_length_hint_url` has the word: named like one (the value decides, see
+        // `password_min_length_hint` has the word: named like one (the value decides, see
         // app_config_tests), and the rest do not.
         assert_eq!(named_like(key), key.contains("password"), "{key}");
+    }
+}
+
+#[test]
+fn a_key_that_names_where_a_thing_is_does_not_say_it_is_a_secret() {
+    // The last word is `url`, `uri`, `path`, `endpoint` or `link` (since 0.24.0): the key names
+    // a place, in any spelling.
+    for key in [
+        "password_reset_url",
+        "forgot-password-url",
+        "forgotPasswordURL",
+        "password_min_length_hint_url",
+        "client_secret_uri",
+        "privateKeyPath",
+        "private_key_path",
+        "token_endpoint",
+        "refresh_token_endpoint",
+        "secretLink",
+    ] {
+        assert!(!named_like(key), "{key}");
+    }
+    // The word has to be the last: a secret's own name stays one.
+    for key in ["url_secret", "path_password", "link_access_token"] {
+        assert!(named_like(key), "{key}");
     }
 }

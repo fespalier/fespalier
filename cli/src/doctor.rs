@@ -302,7 +302,8 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     );
     if let Ok(p) = &pubspec {
         // An `output:` that is not a `.g.dart` is still generated code, which says `AppAdapters.`.
-        let written = crate::outputs(&p.config, false);
+        // The app's configuration is generated too, when it is there (since 0.24.0).
+        let written = crate::outputs(&p.config, false, true);
         sources.retain(|(file, _)| !written.contains(file));
     }
     sources.sort();
@@ -420,7 +421,10 @@ fn app_facts(project: &Path, cfg: &Config) -> AppFacts {
         ),
         Err(_) => (0, 0, 0),
     };
-    let outputs = crate::outputs(cfg, main.0);
+    // What `gen` writes, the app's configuration included when `config/app.yaml` is there (since
+    // 0.24.0), so the `build_runner` rows are the warnings `fsp check` printed.
+    let with_config = crate::app_config::load(project, &cfg.output_config()).on;
+    let outputs = crate::outputs(cfg, main.0, with_config);
     let build_runner: Vec<(String, String)> = crate::build_runner::check(project, cfg, &outputs)
         .0
         .into_iter()

@@ -143,6 +143,26 @@ fn a_package_newer_than_this_fsp_spelled_otherwise_is_refused() {
         ),
         "{e}"
     );
+    // A port or a user name is the same repository too (since 0.24.1), and so is a fork's not.
+    for (url, ours) in [
+        ("ssh://git@github.com:22/fespalier/fespalier", true),
+        ("https://user@github.com/fespalier/fespalier.GIT", true),
+        ("https://github.com/someone/fespalier", false),
+        ("ssh://git@gitlab.com:22/fespalier/fespalier", false),
+    ] {
+        let app = APP.replace(
+            "dev_dependencies:\n",
+            &format!(
+                "  fespalier_next:\n    git:\n      url: {url}\n      path: packages/fespalier_next\n      ref: v0.21.0\ndev_dependencies:\n"
+            ),
+        );
+        let result = plan(&app, None, v(0, 22, 1));
+        assert_eq!(
+            result.is_err_and(|e| e.contains("fespalier_next (dependencies) comes from")),
+            ours,
+            "{url}"
+        );
+    }
 }
 
 /// A fork, or a monorepo that vendors fespalier, holds packages of its own in `packages/` of the

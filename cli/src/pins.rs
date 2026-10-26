@@ -172,24 +172,47 @@ pub fn same_url(a: &str, b: &str) -> bool {
     norm(a) == norm(b)
 }
 
-/// Whether two urls name one repository, however each is spelled: with or without `.git` or a final
-/// `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with or without `www.`, in
-/// any case. Not what pub reads as one source (two spellings are two sources to it, which
-/// [`same_url`] keeps apart): what tells which packages are fespalier's ([`is_ours`], since 0.24.1)
-/// and whether fespalier comes from its official repository ([`is_official`]).
+/// Whether two urls name one repository, however each is spelled: with or without `.git` (in any
+/// case) or a final `/`, over `http`, `https`, `ssh://git@host/...` or `git@host:...`, with or
+/// without `www.`, a port (`ssh://git@github.com:22/...`) or a user name
+/// (`https://user@github.com/...`), in any case. Not what pub reads as one source (two spellings
+/// are two sources to it, which [`same_url`] keeps apart): what tells which packages are
+/// fespalier's ([`is_ours`], since 0.24.1) and whether fespalier comes from its official repository
+/// ([`is_official`]). The host and the path still have to be the same: a fork, another host and a
+/// longer name are other repositories.
 #[must_use]
 pub fn same_repository(a: &str, b: &str) -> bool {
-    let key = |u: &str| {
-        let u = u.trim().trim_end_matches('/').trim_end_matches(".git");
-        let u = u.trim_end_matches('/').to_ascii_lowercase();
-        let u = match u.split_once("://") {
-            Some((_, rest)) => rest.to_string(),
-            None => u.replacen(':', "/", 1),
-        };
-        let u = u.strip_prefix("git@").unwrap_or(&u);
-        u.strip_prefix("www.").unwrap_or(u).to_string()
+    repository_key(a) == repository_key(b)
+}
+
+/// `host/path` of a repository url, lower case, with no scheme, user name, port, `www.`, `.git` or
+/// final `/`.
+fn repository_key(url: &str) -> String {
+    let mut url = url.trim().to_ascii_lowercase();
+    // `.git` and `/` in any order and number (`.git/`, `.git.git`).
+    loop {
+        let trimmed = url.trim_end_matches('/');
+        let trimmed = trimmed.strip_suffix(".git").unwrap_or(trimmed);
+        if trimmed.len() == url.len() {
+            break;
+        }
+        url.truncate(trimmed.len());
+    }
+    let rest = match url.split_once("://") {
+        Some((_, rest)) => rest.to_string(),
+        // `git@host:owner/repo` is `git@host/owner/repo`.
+        None => url.replacen(':', "/", 1),
     };
-    key(a) == key(b)
+    let (authority, path) = rest.split_once('/').unwrap_or((&rest, ""));
+    let host = authority
+        .rsplit_once('@')
+        .map_or(authority, |(_, host)| host);
+    let host = match host.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
+        _ => host,
+    };
+    let host = host.strip_prefix("www.").unwrap_or(host);
+    format!("{host}/{path}")
 }
 
 /// Whether `url` names fespalier's own repository ([`REPO_URL`]), however it is spelled

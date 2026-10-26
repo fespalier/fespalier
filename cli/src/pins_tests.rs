@@ -283,6 +283,43 @@ fn a_package_of_fespalier_s_repository_is_read_however_its_url_is_spelled() {
     ));
 }
 
+/// A port or a user name in a url does not make another repository, and a fork, another host or a
+/// longer name still does (since 0.24.1).
+#[test]
+fn a_port_or_a_user_name_does_not_make_another_repository() {
+    for url in [
+        "ssh://git@github.com:22/fespalier/fespalier",
+        "ssh://git@github.com:22/fespalier/fespalier.git",
+        "https://github.com:443/fespalier/fespalier",
+        "https://user@github.com/fespalier/fespalier",
+        "https://user:token@www.github.com:443/Fespalier/Fespalier.GIT/",
+        "git@github.com:fespalier/fespalier.git",
+        "git://github.com/fespalier/fespalier.git",
+        "https://github.com/fespalier/fespalier.git.git/",
+    ] {
+        assert!(pins::is_official(url), "{url}");
+        assert!(
+            pins::same_repository(url, "https://github.com/fespalier/fespalier"),
+            "{url}"
+        );
+    }
+    for url in [
+        "https://github.com/someone/fespalier",
+        "ssh://git@github.com:22/someone/fespalier",
+        "https://user@github.com/someone/fespalier",
+        "https://gitlab.com/fespalier/fespalier",
+        "ssh://git@gitlab.com:22/fespalier/fespalier",
+        "https://github.com/fespalier/fespalier-mirror",
+        "https://github.com.evil.example/fespalier/fespalier",
+        // The user name is `github.com`: the host is the other one.
+        "https://github.com@evil.example/fespalier/fespalier",
+        "https://github.com:8443x/fespalier/fespalier",
+        "https://evil.example/github.com/fespalier/fespalier",
+    ] {
+        assert!(!pins::is_official(url), "{url}");
+    }
+}
+
 #[test]
 fn a_checkout_is_a_folder_named_after_each_package() {
     let pins = pins::read(&yaml(

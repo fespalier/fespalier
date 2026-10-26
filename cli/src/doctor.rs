@@ -235,8 +235,9 @@ pub struct Facts {
     /// `dependency_overrides:`, `resolution:` and `workspace:` in place of the pubspec's, each when
     /// it has the key (since 0.24.1).
     pub overrides: Option<Value>,
-    /// Why `pubspec_overrides.yaml` is there and does not read as YAML: pub stops on it (since
-    /// 0.24.1).
+    /// Why pub stops on `pubspec_overrides.yaml`, as what follows its name in the row: it does not
+    /// read as YAML, or it does and pub refuses it all the same (a list, a key pub does not
+    /// support, a `resolution:` that is not one of its three values, since 0.24.1).
     pub overrides_error: Option<String>,
     /// What `config.rs` makes of pubspec.yaml, or why it refuses it.
     pub pubspec: Result<Pubspec, String>,
@@ -298,8 +299,11 @@ pub fn gather(project: &Path, toolchain: Result<String, String>) -> Facts {
     let (overrides, overrides_error) =
         match fs::read_to_string(project.join(crate::upgrade_app::OVERRIDES)) {
             Ok(text) => match serde_yaml_ng::from_str::<Value>(&text) {
-                Ok(value) => (Some(value), None),
-                Err(e) => (None, Some(e.to_string())),
+                Ok(value) => {
+                    let refusal = crate::packages::overrides_refusal(&value);
+                    (Some(value), refusal)
+                }
+                Err(e) => (None, Some(format!("is not valid YAML ({e})"))),
             },
             Err(_) => (None, None),
         };

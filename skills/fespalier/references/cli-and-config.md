@@ -633,7 +633,9 @@ one when `fsp` knows it, or when it is a `fespalier_` git dependency on `package
 or its place alone, so a fork's own `acme_ui` gets no row), `override` (since 0.24.1 the overrides pub reads, each naming its
 file: `pubspec_overrides.yaml`'s when it has the key, the pubspec's then said to be unread, and a path to a checkout's
 `packages/<name>` of a `fespalier_` package counts; a `companion` or `lock` row an override takes the place of names its
-file too), `lock` (what `pubspec.lock`
+file too; a `pubspec_overrides.yaml` that pub refuses is an error row that says pub stops on it: not valid YAML, not a mapping, a key
+other than `dependency_overrides`, `resolution` and `workspace`, a `resolution:` that is not `workspace`, `local` or `external`,
+a `dependency_overrides:` that is not a map, a `workspace:` that is not a list of strings), `lock` (what `pubspec.lock`
 resolved, skipped without it; a pub workspace member's is the workspace root's), `go_router` (against `>=17.2.3 <19.0.0`), `flutter` and
 `dart` (against 3.35.0 and 3.9.0, a pre-release of the floor counting as below it, a Flutter that reports `0.0.0` being an error of
 its own; `flutter` per dependency that needs a newer one). Then "Checks": `config` (a `pubspec.yaml` that `config.rs` refuses: one error row, and the

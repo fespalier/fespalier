@@ -138,7 +138,8 @@ fn overrides(dir: &Path, file: Option<&Value>, pubspec: &Value) -> Vec<(String, 
 /// What pub reads for `key` of a package whose pubspec is `pubspec`: the key of `file`, its
 /// `pubspec_overrides.yaml` as YAML, when the file has it (even with no value: `resolution:` there
 /// makes a member by its pubspec resolve on its own), else the pubspec's. A file that is not YAML
-/// counts as none here: pub stops on it, and the doctor says so.
+/// counts as none here, and a file pub refuses is read as it stands: pub stops on either, and the
+/// doctor says so ([`overrides_refusal`]).
 fn field<'a>(file: Option<&'a Value>, pubspec: &'a Value, key: &str) -> Option<&'a Value> {
     file.and_then(|f| f.get(key)).or_else(|| pubspec.get(key))
 }
@@ -220,6 +221,43 @@ pub(crate) fn workspace_overrides_file(
     }
     let text = std::fs::read_to_string(root.join("pubspec.yaml")).ok()?;
     Some((shown("pubspec.yaml"), text))
+}
+
+/// Why pub stops on `file`, a `pubspec_overrides.yaml` that reads as YAML, as what follows the file's
+/// name in a message (since 0.24.1), `None` when pub reads it. Checked with `dart pub get --offline`
+/// on Dart 3.13.5 and on the floor's 3.9.2, which refuse the same files: one that is not a mapping, a
+/// key other than the three it supports, a `resolution` that is not `workspace`, `local` or
+/// `external`, a `dependency_overrides` that is not a map and a `workspace` that is not a list of
+/// strings, each of the last three with no value being fine. The first fault in the file's order.
+pub(crate) fn overrides_refusal(file: &Value) -> Option<String> {
+    let Value::Mapping(map) = file else {
+        return (!file.is_null()).then(|| "is not a YAML mapping".to_string());
+    };
+    for (key, value) in map {
+        let given = !value.is_null();
+        let fault = match key.as_str() {
+            Some("dependency_overrides") => (given && !value.is_mapping())
+                .then_some("has a `dependency_overrides:` that is not a map"),
+            Some("resolution") => (given
+                && !matches!(value.as_str(), Some("workspace" | "local" | "external")))
+            .then_some("has a `resolution:` that is not `workspace`, `local` or `external`"),
+            Some("workspace") => (given
+                && !value
+                    .as_sequence()
+                    .is_some_and(|items| items.iter().all(Value::is_string)))
+            .then_some("has a `workspace:` that is not a list of strings"),
+            _ => {
+                return Some(format!(
+                    "has the key `{}`, which pub does not support there (only `dependency_overrides`, `resolution` and `workspace`)",
+                    crate::config::shown_value(key)
+                ));
+            }
+        };
+        if let Some(fault) = fault {
+            return Some(fault.to_string());
+        }
+    }
+    None
 }
 
 /// A YAML file, `None` when it is missing or not YAML.

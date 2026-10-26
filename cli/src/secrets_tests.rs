@@ -110,9 +110,23 @@ fn a_legacy_openai_key_is_its_credential() {
         ),
         ("no prefix", format!("{}{mark}{}", tail(20), tail(20))),
         ("the prefix alone", "sk-".to_string()),
+        // The least a real key has on each side of the mark is 20 characters (since 0.24.1).
+        ("only the mark", format!("sk-{mark}")),
+        (
+            "19 before the mark",
+            format!("sk-{}{mark}{}", tail(19), tail(20)),
+        ),
+        (
+            "19 after the mark",
+            format!("sk-{}{mark}{}", tail(20), tail(19)),
+        ),
+        ("nothing after the mark", format!("sk-{}{mark}", tail(40))),
     ] {
         assert_eq!(looks_like(&value), None, "{name}: {value}");
     }
+    // Any mark of the token counts, so a short first one does not hide a real second one.
+    let two = format!("sk-{}{mark}{}{mark}{}", tail(3), tail(20), tail(20));
+    assert_eq!(looks_like(&two), Some("an OpenAI API key"), "{two}");
 }
 
 #[test]

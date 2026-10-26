@@ -113,12 +113,20 @@ pub fn looks_like(value: &str) -> Option<&'static str> {
     None
 }
 
-/// An older `sk-` key (since 0.24.1): `sk-` and a token that has `T3BlbkFJ`, the base64 of
-/// `OpenAI`, in it, as every such key has between its two random halves.
+/// The base64 of `OpenAI`, which every older `sk-` key has between its two random halves.
+const OPENAI_MARK: &str = "T3BlbkFJ";
+
+/// An older `sk-` key (since 0.24.1): `sk-`, a token that has `T3BlbkFJ`, the base64 of `OpenAI`,
+/// in it, and at least 20 token characters on each side of it. A real key is `sk-`, 20 characters,
+/// the mark and 20 more, so that is the least number, as for the other prefixes.
 fn openai_legacy(s: &str) -> bool {
+    const SIDE: usize = 20;
     s.strip_prefix("sk-").is_some_and(|tail| {
         let end = tail.find(|c| !token_char(c)).unwrap_or(tail.len());
-        tail[..end].contains("T3BlbkFJ")
+        let token = &tail[..end];
+        token
+            .match_indices(OPENAI_MARK)
+            .any(|(at, _)| at >= SIDE && token.len() - at - OPENAI_MARK.len() >= SIDE)
     })
 }
 

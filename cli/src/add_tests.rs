@@ -783,7 +783,7 @@ fn the_overrides_of_the_workspace_root_are_read_as_pub_reads_them() {
 }
 
 /// A feature with no file of its own is told by its packages and keys, and one with nothing to
-/// tell it by never is.
+/// tell it by never is. A test-only package is one of its marks too (since 0.24.1).
 #[test]
 fn a_feature_with_no_file_of_its_own_is_told_by_its_packages() {
     let http = RECIPES.iter().find(|r| r.id == "http").unwrap();
@@ -808,6 +808,20 @@ fn a_feature_with_no_file_of_its_own_is_told_by_its_packages() {
     };
     assert_eq!(ids(&with), ["http"]);
     assert!(ids(&without).is_empty());
+    // A feature whose only mark is a package of `dev_dependencies:`.
+    let otel = RECIPES.iter().find(|r| r.id == "otel").unwrap();
+    assert!(!otel.dev_third_party.is_empty());
+    let dev_only = Recipe {
+        companions: &[],
+        third_party: &[],
+        config: &[],
+        files: &[],
+        ..*otel
+    };
+    let told =
+        |tree: &Tree| !plan::present(&[dev_only], &yaml(&tree["pubspec.yaml"]), &none).is_empty();
+    assert!(told(&created(&["otel"], None)));
+    assert!(!told(&without));
 }
 
 #[test]

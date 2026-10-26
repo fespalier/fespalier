@@ -520,8 +520,9 @@ fsp add auth --dry-run          # stderr: the pubspec's change and every file; n
 
 For an app that exists; the features are `fsp create`'s, from the one table (`cli/src/create/recipes.rs`), and the
 plan is pure (`cli/src/add/plan.rs`, pinned by `add_tests.rs`). It reads the pubspec and the files the features
-write, and takes a feature as **present** when its companions and third-party packages are under `dependencies:`,
-its `fespalier:` keys are set and all its files exist (asking for a present one is a note, `nothing to add`).
+write, and takes a feature as **present** when its companions and third-party packages are under `dependencies:`
+(since 0.24.1 its test-only ones under `dev_dependencies:` or `dependencies:` too), its `fespalier:` keys are set and
+all its files exist (asking for a present one is a note, `nothing to add`).
 
 - **The pubspec** is edited by `cli/src/pubspec_edit.rs`, a line editor that keeps comments, layout, quotes and
   line endings, puts a dependency in name order when its section is (SDK packages aside), and reads the result back

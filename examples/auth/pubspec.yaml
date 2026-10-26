@@ -26,7 +26,7 @@ dependencies:
   # AuthConfig and to OidcBackend in startup.dart.
   fespalier_http:
     path: ../../packages/fespalier_http
-  # DPoP (--dart-define=DPOP=true): proofs signed by a device key (DpopProof), and verifyDpopProof,
+  # DPoP (the `demo-dpop` profile of config/): proofs signed by a device key (DpopProof), and verifyDpopProof,
   # which the demo server checks them with.
   fespalier_keypair_dpop:
     path: ../../packages/fespalier_keypair_dpop
@@ -37,7 +37,7 @@ dependencies:
   # HttpTransport, the type the one transport has.
   fespalier_transport:
     path: ../../packages/fespalier_transport
-  # The browser step of OpenID Connect (--dart-define=OIDC_ISSUER=...). A plugin, so it is the
+  # The browser step of OpenID Connect (`oidc.issuer` in config/). A plugin, so it is the
   # app's dependency and not fespalier_auth's: an app that signs in some other way links none.
   flutter_web_auth_2: ^5.1.0
   http: ^1.5.0

@@ -44,7 +44,9 @@ flutter pub get
 flutter run
 ```
 
-The commands in the sections below run in this folder, after these steps.
+The commands in the sections below run in this folder, after these steps. The example's values are its
+configuration: `config/app.yaml` alone is the demo API, and each `config/app.<profile>.yaml` is one of
+the profiles the sections below name with `--profile` ([App configuration](../../docs/app-config.md)).
 
 ## Tests
 
@@ -57,7 +59,7 @@ demo server's Keycloak-shaped provider, with PKCE checked on the server side) an
 
 ## Device-bound tokens (DPoP)
 
-`flutter run --dart-define=OIDC_ISSUER=demo --dart-define=DPOP=true` signs in with OpenID Connect
+`fsp dev --profile demo-dpop` (or `flutter run --dart-define=FSP_PROFILE=demo-dpop`) signs in with OpenID Connect
 against the demo server's own provider, in process (no Keycloak, no browser, no network), with
 `proof: DpopProof.device(fallback: DpopFallback.software)`: the tokens are DPoP-bound, and every
 request to the API carries a proof signed by the device key (the Secure Enclave or the
@@ -90,8 +92,7 @@ docker run --rm -p 8080:8080 \
   -v "$PWD/keycloak:/opt/keycloak/data/import:ro" \
   quay.io/keycloak/keycloak:26.8.0 start-dev --import-realm
 
-flutter run -d chrome --web-port 8686 \
-  --dart-define=OIDC_ISSUER=http://localhost:8080/realms/fespalier
+fsp dev --profile keycloak -- -d chrome --web-port 8686
 ```
 
 The sign-in page then has **Sign in with Keycloak**: `flutter_web_auth_2` opens Keycloak's login
@@ -103,9 +104,9 @@ in-process demo, which accepts the tokens it cannot check: the one transport sen
 the network and the API's to the demo (`_ByOrigin` in `lib/auth_setup.dart`).
 
 - **An Android emulator reaches the host as `10.0.2.2`.** Keycloak's issuer is its configured
-  hostname (`--hostname`), so start it with `--hostname=http://10.0.2.2:8080` and use
-  `OIDC_ISSUER=http://10.0.2.2:8080/realms/fespalier`; with `adb reverse tcp:8080 tcp:8080` the
-  emulator reaches `localhost:8080` and nothing changes. A mismatch is the error
+  hostname (`--hostname`), so start it with `--hostname=http://10.0.2.2:8080`, and set `oidc.issuer` to
+  `http://10.0.2.2:8080/realms/fespalier` in a profile of your own (`config/app.<name>.yaml`); with
+  `adb reverse tcp:8080 tcp:8080` the emulator reaches `localhost:8080` and nothing changes. A mismatch is the error
   `the ID token was issued by ..., not ...`.
 - **`preferEphemeral: true`** (in `lib/auth_setup.dart`) keeps the browser's single-sign-on cookie out
   of the sign-in, so signing out and in again asks for the password. Without it the SSO cookie signs
@@ -117,10 +118,7 @@ the network and the API's to the demo (`_ByOrigin` in `lib/auth_setup.dart`).
 Against Keycloak with DPoP, use the client that requires it:
 
 ```sh
-flutter run -d chrome --web-port 8686 \
-  --dart-define=OIDC_ISSUER=http://localhost:8080/realms/fespalier \
-  --dart-define=OIDC_CLIENT_ID=fespalier-auth-example-dpop \
-  --dart-define=DPOP=true
+fsp dev --profile keycloak-dpop -- -d chrome --web-port 8686
 ```
 
 Keycloak sends no `DPoP-Nonce` and no `Date` header, so a wrong device clock there is

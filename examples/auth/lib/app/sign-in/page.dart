@@ -8,7 +8,8 @@ import 'package:fespalier_oidc/fespalier_oidc.dart';
 import 'package:flutter/material.dart';
 
 /// The sign-in form, and a "Sign in with Keycloak" button when the app is built with
-/// `--dart-define=OIDC_ISSUER=...`. Neither navigates: the sign-in guard moves the user.
+/// a profile that sets `oidc.issuer` (`fsp dev --profile keycloak`). Neither navigates: the sign-in
+/// guard moves the user.
 class SignInPage extends HookConsumerWidget {
   const SignInPage({super.key, this.from});
 

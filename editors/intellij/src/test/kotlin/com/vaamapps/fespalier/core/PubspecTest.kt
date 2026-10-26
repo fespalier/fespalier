@@ -118,6 +118,21 @@ class PubspecTest {
     }
 
     @Test
+    fun theAppConfigurationCanChangeWhatCheckFinds() {
+        val p = FespalierProject("/work/shop", "lib/app")
+        // Since 0.24.0 `fsp check` reads config/app.yaml and its profiles.
+        assertTrue(p.affectedBy("/work/shop/config/app.yaml"))
+        assertTrue(p.affectedBy("/work/shop/config/app.staging.yaml"))
+        assertTrue(p.affectedBy("\\work\\shop\\config\\app.dev.yaml"))
+        assertTrue(p.affectedBy("/work/shop/config/app.yml"))
+        assertFalse(p.affectedBy("/work/shop/config/ci.yaml"))
+        assertFalse(p.affectedBy("/work/shop/config/sub/app.yaml"))
+        assertFalse(p.affectedBy("/work/shop/lib/config/app.yaml"))
+        assertTrue(isConfigFile("./config/app.dev.yaml"))
+        assertFalse(isConfigFile("config/application.yaml"))
+    }
+
+    @Test
     fun theSchemaIsForProjectPubspecsOnly() {
         assertTrue(isPubspecPath("/work/shop/pubspec.yaml"))
         assertTrue(isPubspecPath("C:\\work\\shop\\pubspec.yaml"))

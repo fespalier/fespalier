@@ -24,6 +24,7 @@ use anyhow::{Result, bail};
 use clap::Args;
 
 use crate::Exit;
+use crate::app_config;
 use crate::config::Config;
 use crate::daemon::{self, Line};
 use crate::dev_state::{
@@ -41,6 +42,9 @@ pub struct DevCmd {
     /// Plain prefixed lines instead of the full-screen view (the default when stdout is not a terminal, with TERM=dumb or in CI)
     #[arg(long)]
     pub no_tui: bool,
+    /// The profile of the app's configuration: config/app.<PROFILE>.yaml over config/app.yaml, passed to flutter as --dart-define=FSP_PROFILE=<PROFILE>
+    #[arg(long, value_name = "PROFILE")]
+    pub profile: Option<String>,
     /// Print what would run, and run nothing
     #[arg(long)]
     pub dry_run: bool,
@@ -66,8 +70,15 @@ pub fn run_args(args: &[String], device: Option<&Device>) -> Vec<String> {
     out
 }
 
-/// What `fsp dev --dry-run` prints.
-pub fn dry_run(project: &Path, cfg: &Config, plan: &Plan, args: &[String]) -> String {
+/// What `fsp dev --dry-run` prints. `profile` is the line of the app's configuration, when it
+/// has one (since 0.24.0).
+pub fn dry_run(
+    project: &Path,
+    cfg: &Config,
+    plan: &Plan,
+    args: &[String],
+    profile: Option<&str>,
+) -> String {
     let hot = if plan.hot_reload {
         format!(
             "hot reload after a save; when {} changes, a hot reload if the app can swap its routes, else a hot restart",
@@ -85,6 +96,7 @@ pub fn dry_run(project: &Path, cfg: &Config, plan: &Plan, args: &[String]) -> St
             "gen     {}, kept current while it runs",
             cfg.output
         )),
+        profile,
         Some(&hot),
     )
 }
@@ -286,8 +298,22 @@ fn plain_print(lines: &[PlainLine], names: &[String], color: bool) {
 pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
     let cfg = Config::load(project)?;
     let plan = Tasks::from_config(&cfg)?.dev();
+    // The profile of the app's configuration (since 0.24.0): `--profile` goes to flutter as a
+    // define, in front of the arguments after `--`.
+    let profile = cmd.profile.as_deref();
+    let active = app_config::for_run(
+        project,
+        profile,
+        &cmd.args,
+        app_config::run_is_debug(&cmd.args),
+    )?;
+    let args = app_config::with_define(profile, &cmd.args)?;
+    let profile_line = active.as_ref().map(app_config::Active::line);
     if cmd.dry_run {
-        err!("{}", dry_run(project, &cfg, &plan, &cmd.args));
+        err!(
+            "{}",
+            dry_run(project, &cfg, &plan, &args, profile_line.as_deref())
+        );
         return Ok(());
     }
     procs::install_signals().map_err(anyhow::Error::msg)?;
@@ -297,7 +323,10 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         Ok(o) => errln!("{}", o.line()),
         Err(e) => {
             errln!("{e:#}");
-            if project.join(&cfg.output).is_file() {
+            if e.is::<crate::FailedAfterWriting>() {
+                // The routes were written; only something they do not depend on failed (a lint,
+                // a file of config/, since 0.24.0), and the message says what is up to date.
+            } else if project.join(&cfg.output).is_file() {
                 errln!(
                     "warning: {} is out of date until the errors above are fixed; fsp dev keeps watching",
                     cfg.output
@@ -314,13 +343,16 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
 
     // 2. The device, asked of flutter while the `before` steps run.
     let exe = std::env::current_exe()?;
-    let vars = plan.env.clone();
+    let mut vars = plan.env.clone();
+    if let Some(a) = &active {
+        vars.extend(app_config::run_vars(project, &cfg.output_config(), a));
+    }
     let env = Env {
         cwd: project,
         vars: vars.clone(),
         fsp: &exe,
     };
-    let discover = plan.run_is_default && !dev_state::names_a_device(&cmd.args);
+    let discover = plan.run_is_default && !dev_state::names_a_device(&args);
     let listing = discover.then(|| {
         let project = project.to_path_buf();
         let vars = vars.clone();
@@ -353,7 +385,7 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
             let listing = handle
                 .join()
                 .unwrap_or_else(|_| Err("the device thread panicked".into()));
-            let asked = choose_device(project, &cmd.args, listing, guard.as_mut(), stdin_tty)?;
+            let asked = choose_device(project, &args, listing, guard.as_mut(), stdin_tty)?;
             match asked {
                 Chosen::Device(d, warning) => {
                     warning_text = warning;
@@ -377,9 +409,10 @@ pub fn run(project: &Path, cmd: &DevCmd) -> Result<()> {
         &cfg,
         &plan,
         &env,
-        &cmd.args,
+        &args,
         device,
         warning_text,
+        profile_line,
         guard,
     )?;
     // The terminal is back; what flutter said last stays on screen.
@@ -444,6 +477,7 @@ fn run_loop(
     args: &[String],
     device: Option<Device>,
     warning: Option<String>,
+    profile: Option<String>,
     mut guard: Option<TerminalGuard>,
 ) -> Result<Outcome> {
     let (tx, rx) = mpsc::channel::<Input>();
@@ -461,6 +495,7 @@ fn run_loop(
         hot_reload: plan.hot_reload,
         plain: !tui,
         output: cfg.output.clone(),
+        config_output: cfg.output_config(),
         device: device.clone(),
         // The file as the first pass left it: flutter compiles what is on disk when it starts.
         stamp: std::fs::read_to_string(project.join(&cfg.output))
@@ -470,6 +505,9 @@ fn run_loop(
     });
     if let Some(w) = warning {
         state.say(&w, Kind::Warn);
+    }
+    if let Some(p) = profile {
+        state.say(&p, Kind::Normal);
     }
     let mut running = Procs {
         flutter: None,

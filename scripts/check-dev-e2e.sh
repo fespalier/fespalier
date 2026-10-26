@@ -5,7 +5,9 @@
 # (a hot reload too, since 0.20.0: the names follow the folders), opens a deferred page after a route was put before it and reloads a second deferred route in beside it while that page is on screen (its code stays loaded, since 0.20.0), changes a data() into a stream (fsp
 # dev sees that a reload would keep a provider it changes: a hot restart, and startup() runs again),
 # then changes it back behind fsp dev's back (the app refuses the swap and prints so, and fsp dev
-# restarts it on that line), and quits with `q` (since 0.19.0). This is the one check of fsp against
+# restarts it on that line), changes the app's configuration (config/app.dev.yaml, the profile of a
+# debug build: a hot restart brings the new value, since 0.24.0), and quits with `q` (since 0.19.0).
+# This is the one check of fsp against
 # flutter's real `--machine` protocol; every other test speaks it through a fake.
 #
 # Needs Flutter with web support, Chrome (`CHROME_EXECUTABLE` names one that is not on the path) and
@@ -47,12 +49,21 @@ import 'package:e2e_app/app.main.g.dart';
 
 Future<void> main() => AppMain.run();
 DART
-# startup() says when it ran, the home page says when its state was made, and the data route's page
-# shows its id: a hot reload keeps the state, and a hot restart runs all of it again.
+# The app's configuration (since 0.24.0): `dev` is the profile of a debug build.
+mkdir -p config
+printf 'greeting: e2e greeting one\n' > config/app.yaml
+printf 'greeting: e2e greeting dev one\n' > config/app.dev.yaml
+# startup() says when it ran and what the configuration holds, the home page says when its state was
+# made, and the data route's page shows its id: a hot reload keeps the state, and a hot restart runs
+# all of it again.
 cat > lib/app/startup.dart << 'DART'
+import 'package:e2e_app/app.config.g.dart';
 import 'package:flutter/foundation.dart';
 
-void startup() => debugPrint('e2e startup');
+void startup() {
+  debugPrint('e2e startup');
+  debugPrint('e2e config ${AppConfig.profile}: ${AppConfig.greeting}');
+}
 DART
 cat > lib/app/page.dart << 'DART'
 import 'package:flutter/foundation.dart';
@@ -168,6 +179,7 @@ expect_count() {
 wait_for '[fsp] app running' 300
 wait_for '[fsp] watching lib/app/' 30
 wait_for 'e2e home init' 120
+wait_for 'e2e config dev: e2e greeting dev one' 120
 expect_count 'e2e startup' 1
 
 # A new route that sorts last changes lib/app.g.dart and adds no name a hot reload keeps: a hot reload.
@@ -381,6 +393,13 @@ wait_for '[fsp] hot restart: the app kept its old routes' 120
 wait_count '✓ hot restart in' 2 120
 wait_count 'e2e startup' 3 120
 
+# A value of the app's configuration changes: fsp dev writes lib/app.config.g.dart and restarts the
+# app, which reads the new value (since 0.24.0).
+printf 'greeting: e2e greeting dev two\n' > config/app.dev.yaml
+wait_for '[fsp] hot restart: lib/app.config.g.dart changed' 120
+wait_count '✓ hot restart in' 3 120
+wait_for 'e2e config dev: e2e greeting dev two' 120
+
 echo q >&3
 wait "$dev_pid" || fail "fsp dev exited with $? after q"
 dev_pid=""
@@ -388,9 +407,10 @@ grep -qF 'stopping flutter' "$log" || fail "no 'stopping flutter…' line after 
 # One refusal is one restart, and the stream before it was one too, and nothing else restarted.
 expect_count '[fsp] hot restart: the app kept its old routes' 1
 expect_count '[fsp] hot restart: lib/app.g.dart changed' 1
-expect_count '[fsp] hot restart:' 2
-expect_count '✓ hot restart in' 2
+expect_count '[fsp] hot restart: lib/app.config.g.dart changed' 1
+expect_count '[fsp] hot restart:' 3
+expect_count '✓ hot restart in' 3
 expect_count '[fsp] hot reload: lib/app.g.dart changed' 3
 expect_count 'was not loaded' 0
-echo "fsp dev: an inserted route hot reloaded in and opened, a route put before a data route did too, a deferred page opened after a route was put before it, a second deferred route reloaded in beside it while it was on screen, a data() that became a stream restarted the app, an app that refused a swap was restarted on its own line, and q stopped it"
+echo "fsp dev: an inserted route hot reloaded in and opened, a route put before a data route did too, a deferred page opened after a route was put before it, a second deferred route reloaded in beside it while it was on screen, a data() that became a stream restarted the app, an app that refused a swap was restarted on its own line, a changed configuration restarted it with the new value, and q stopped it"
 echo "EXCEPTION CAUGHT lines in the log (reported, not asserted): $(count 'EXCEPTION CAUGHT')"

@@ -1,0 +1,5 @@
+# OpenID Connect against the demo server's own provider, with DPoP-bound tokens:
+# `fsp dev --profile demo-dpop`.
+oidc:
+  issuer: demo
+dpop: true

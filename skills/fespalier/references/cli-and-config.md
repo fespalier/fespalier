@@ -652,6 +652,14 @@ The editor setup is in `docs/configuration.md`, "Completion and checks in your e
 and it works the same on Windows), and keeps `lib/app.g.dart` current while it runs. It needs no
 configuration; everything after `--` goes to `flutter run` (`fsp dev -- -d chrome --flavor dev`).
 
+**`--profile` and the app's configuration (since 0.24.0).** `fsp dev --profile <name>` and `fsp build <target> --profile <name>`
+pass `--dart-define=FSP_PROFILE=<name>` to flutter, in front of the arguments after `--`, and print the line
+`profile <name> (FSP_PROFILE): config/app.<name>.yaml over config/app.yaml` (the reason is `(the flavour)` or `(a debug build)`
+when that picks it). A profile that `config/` does not have, `--profile release`, or a define of your own after `--` as well is
+refused before anything runs. The commands of `tasks:` (`before`, `with`, `run`, `after`) get `FSP_PROFILE` and one
+`FSP_CONFIG_<PATH>` per value. A save of a file of `config/` hot restarts the app, and `fsp run <task>` sets neither. Details:
+[`app-config.md`](app-config.md).
+
 **A hot reload after a regeneration (since 0.19.0).** In a debug build a hot reload swaps in the regenerated route table when the
 generated file's version changed and no name it keeps (a provider, a deferred library, a router setting) changed; a refused swap
 prints a message and keeps the old routes until `R`. Since 0.20.0 a route added, removed or renamed anywhere swaps, and so does a deferred route added or removed beside another (`AppRoutes.deferred` is a getter a reload lists again): the names a reload keeps follow the folders, not the order of `fsp routes`, so a route put before one with a `data()` function, an action or a deferred page renames nothing (in the shop example `zz/page.dart` and `about/page.dart` both swap). Still refused: a changed `data()` or action, a moved folder that has a `data.dart` or an `action.dart` (also the second of two folders whose names share a stem, added or removed, when a renamed name is a `data.dart`'s provider or an action: it renames the first one's names once, or back; two deferred pages alone swap, and a page of the renamed library on screen loads again through its loading view), an `import ... as m` pointed at another library (an action's input, a data route's enum segment), and a router setting; a restart (`R`) brings those in. Only the generated

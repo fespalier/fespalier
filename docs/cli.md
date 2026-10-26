@@ -30,7 +30,9 @@ fsp doctor              # what main() wires and why, and what is out of line: re
 fsp schema              # the JSON Schema of the fespalier: section, for editors (since 0.23.0; --pubspec: the whole file)
 fsp watch               # same, whenever the routing changes (keep it next to `flutter run`)
 fsp dev                 # fsp watch and flutter run in one terminal, hot reloading the app as you save (since 0.9.0)
+fsp dev --profile staging  # the same, with the values of config/app.staging.yaml (since 0.24.0)
 fsp build web           # fsp gen, then flutter build web, with the hooks of `tasks: build:` (since 0.9.0)
+fsp build web --profile prod  # the same, with the values of config/app.prod.yaml (since 0.24.0)
 fsp run codegen         # a task of your own from `tasks:` in pubspec.yaml; `fsp run` lists them (since 0.9.0)
 fsp run --json          # the same list as JSON lines, for the editor plugins (since 0.22.0)
 fsp check               # CI: non-zero exit on errors, writes nothing
@@ -324,6 +326,7 @@ fsp dev -- -d chrome     # anything after -- goes to flutter run
 
 - The header shows the device, the web address or VM service, and the DevTools link. The status line shows the route count, the first routing error (clickable in terminals that support links), and how long the last hot reload took.
 - When flutter stops by itself (a build error, say), the view stays: fix it and press `R`.
+- **`--profile`** (since 0.24.0): `fsp dev --profile staging` runs the app with the values of `config/app.staging.yaml` over `config/app.yaml`, passing `--dart-define=FSP_PROFILE=staging` to flutter, and a save of a file of `config/` hot restarts the app ([App configuration](app-config.md#profiles)).
 - `fsp dev` runs `flutter run --machine` and talks to it over flutter's own protocol, so it works the same on macOS, Linux and Windows. Flutter's other keys (`p`, `w`, ...) live in DevTools (`d`).
 - You can still run `fsp watch` next to your own `flutter run`, or your editor's.
 - With several devices, `fsp dev` asks which one and remembers the answer in `.dart_tool/fespalier/dev.json`; with one phone or emulator it picks that. To name one yourself: `fsp dev -- -d chrome`.
@@ -342,9 +345,10 @@ Since 0.19.0. In a debug build of an app that uses the generated `main()` (an `a
   hot restart: lib/app.g.dart changed
   hot restart: lib/app.g.dart changed and the hot reload failed
   hot restart: the app kept its old routes
+  hot restart: lib/app.config.g.dart changed
   ```
 
-  Plain output puts `[fsp]` and a space in front of each. The second is the line of 0.9.0, unchanged. The third follows a reload of a regeneration that flutter refused (its `✗ hot reload failed` line comes first): one restart runs the file on disk. The fourth is the refusal above, answered with a restart, once for each version: `fsp dev` hears it as an event of flutter's protocol (`app.log`) or, where flutter prints the app's output as plain lines (the web), as one of those, and acts on it only when a reload went out since the last restart, so the same line said again does not restart twice.
+  Plain output puts `[fsp]` and a space in front of each. The fifth is the line of 0.24.0: a file of `config/` changed, and the app restarts for its values ([App configuration](app-config.md#profiles)). The second is the line of 0.9.0, unchanged. The third follows a reload of a regeneration that flutter refused (its `✗ hot reload failed` line comes first): one restart runs the file on disk. The fourth is the refusal above, answered with a restart, once for each version: `fsp dev` hears it as an event of flutter's protocol (`app.log`) or, where flutter prints the app's output as plain lines (the web), as one of those, and acts on it only when a reload went out since the last restart, so the same line said again does not restart twice.
 
   `fsp dev` reloads when `lib/app.main.g.dart` was not rewritten (a reload never runs `main()` again), the app's `router()` is the generated one, and the new routes swap in from the ones the app holds: `fsp dev` reads `_version` and `_kept` back from the file on disk, and applies the rule the app applies, so that no name both keep has another hash. It restarts otherwise: when the main was rewritten, when `router()` builds its own router, when the file has no stamp, when the app has not started yet (the restart waits for `app.start`), when the app holds no routes to compare with (a save that finds a `router()` of your own drops them, so after you change it to the generated one the first regeneration restarts once and sets them), when the routes do not swap in, when the last hot result failed, when a reload still in flight does not swap to the new routes either, and when a restart is under way. A save that does not regenerate the routes reloads, as before. `hot_reload: false` in `tasks: dev:` turns the automatic ones off: a regeneration sends nothing, and `r` and `R` still work.
 
@@ -391,7 +395,7 @@ fespalier:
 | `before`     | A command or a list, run one after the other before `run`. The first that fails stops the task with its exit code.                                                                                           |
 | `with`       | Long-running commands, by name, started next to `run` and stopped with it.                                                                                                                                   |
 | `after`      | A command or a list, run when `run` exits 0.                                                                                                                                                                 |
-| `env`        | Variables for these commands (not for the app: use `--dart-define` for that).                                                                                                                                |
+| `env`        | Variables for these commands (not for the app: the app's values are in `config/`, see [App configuration](app-config.md)).                                                                                   |
 | `hot_reload` | `dev` only. `false` turns the automatic reload and restart off; `r` and `R` still work.                                                                                                                      |
 
 - `build_runner` needs no `-d` here: since build_runner 2.7.0 it ignores the flag and deletes conflicting outputs on its own. That is also why it can delete `lib/app.g.dart`, in `before`, in `with` and in `fsp run codegen` alike, when a `lib/app.dart` exists and a builder writes `.g.dart` files (json_serializable, riverpod_generator, ...): they claim an `X.g.dart` for every `X.dart`, `fsp`'s file included, and nothing is logged. Since 0.17.0 `fsp dev` warns about it (as `fsp gen` does, see [The generator](#the-generator)); set `output: lib/routes.g.dart` in the `fespalier:` section, or rename `lib/app.dart`, before you add these tasks.
@@ -405,6 +409,8 @@ fespalier:
 ### `fsp build` and `fsp run`
 
 `fsp build <target>` runs `fsp gen`, then the `build` task: `before`, `flutter build <target>` (plus your args after `--`), `after`. `fsp run <task>` runs a task of your own; `fsp run` alone lists them, and `fsp run --json` lists them for the editor plugins (since 0.22.0, see [Tasks in your editor](#tasks-in-your-editor)). `--dry-run` prints what would run and runs nothing.
+
+Since 0.24.0, `fsp build <target> --profile <name>` builds with the values of `config/app.<name>.yaml` over `config/app.yaml`, and its commands get `FSP_PROFILE` and `FSP_CONFIG_*` ([App configuration](app-config.md)). `--profile release` is refused: Flutter's build mode goes after `--`.
 
 ```yaml
 check: # fsp run check

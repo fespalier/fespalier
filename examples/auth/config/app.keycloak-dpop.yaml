@@ -1,0 +1,6 @@
+# The same Keycloak, with the client that requires DPoP-bound tokens:
+# `fsp dev --profile keycloak-dpop -- -d chrome --web-port 8686`.
+oidc:
+  issuer: http://localhost:8080/realms/fespalier
+  client_id: fespalier-auth-example-dpop
+dpop: true

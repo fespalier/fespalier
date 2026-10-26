@@ -92,6 +92,15 @@ fun isLibDartSource(relPath: String): Boolean {
     return p.startsWith("lib/") && p.endsWith(".dart") && !p.endsWith(".g.dart")
 }
 
+private val CONFIG_FILE = Regex("""^config/app(\.[^/]+)?\.ya?ml$""")
+
+/**
+ * Whether [relPath] (relative to the project root) is a file of the app's configuration:
+ * `config/app.yaml` or one of its profiles, `config/app.<profile>.yaml` (since fespalier 0.24.0;
+ * a `.yml` one too, which `fsp check` asks to rename).
+ */
+fun isConfigFile(relPath: String): Boolean = CONFIG_FILE.matches(normalizeDir(relPath))
+
 /** Folders that hold copies or build output of pubspecs, never a project of their own. */
 val SKIPPED_FOLDERS = listOf("/.dart_tool/", "/build/", "/ephemeral/", "/node_modules/", "/.symlinks/")
 
@@ -113,12 +122,13 @@ data class FespalierProject(
 ) {
     /**
      * Whether a file at [absolutePath] can change what `fsp check` finds: `pubspec.yaml` (it can
-     * move the app folder), a file under the app folder (the route tree), or a Dart file anywhere
-     * under `lib/` that `fsp` did not generate (the string paths it checks, since fespalier 0.7.0).
+     * move the app folder), a file under the app folder (the route tree), a Dart file anywhere
+     * under `lib/` that `fsp` did not generate (the string paths it checks, since fespalier 0.7.0),
+     * or a file of the app's configuration (since fespalier 0.24.0).
      */
     fun affectedBy(absolutePath: String): Boolean {
         val rel = relativePath(absolutePath) ?: return false
-        return rel == "pubspec.yaml" || isUnderAppDir(rel, appDir) || isLibDartSource(rel)
+        return rel == "pubspec.yaml" || isUnderAppDir(rel, appDir) || isLibDartSource(rel) || isConfigFile(rel)
     }
 
     /** [absolutePath] relative to [root] with `/` separators, or null when it is outside it. */

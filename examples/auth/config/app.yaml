@@ -1,0 +1,14 @@
+# The values of every build of the example (fespalier's typed configuration: lib/app.config.g.dart,
+# docs/app-config.md). A profile changes some of them: `fsp dev --profile keycloak`.
+oidc:
+  # Where the app signs in. Empty: the demo API's own sign-in form, in process, with no OpenID
+  # Connect. `demo`: OpenID Connect against the demo server's own provider, in process (no
+  # Keycloak, no browser, no network). A URL: a Keycloak realm (keycloak/realm-fespalier.json).
+  issuer: ""
+  # The Keycloak client: a public client, with PKCE.
+  client_id: fespalier-auth-example
+  # Where Keycloak sends the browser back to: registered with the client.
+  redirect: "com.example.fespalierauth:/callback"
+# Bind the tokens to a device key (DPoP, RFC 9449). Needs an `oidc.issuer`; against Keycloak, with
+# the client that requires it (`fespalier-auth-example-dpop`).
+dpop: false

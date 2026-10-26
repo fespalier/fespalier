@@ -1,4 +1,5 @@
 import 'package:auth/api.dart';
+import 'package:auth/app.config.g.dart';
 import 'package:auth/demo/demo_backend.dart';
 import 'package:auth/demo/demo_server.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
@@ -11,31 +12,26 @@ import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 
-/// Sign in with a Keycloak instead of the demo API: `--dart-define=OIDC_ISSUER=http://localhost:8080/realms/fespalier`
-/// (the realm of `keycloak/realm-fespalier.json`; on an Android emulator the host is `10.0.2.2`,
-/// which Keycloak must be told is its hostname: see the README).
-const String oidcIssuer = String.fromEnvironment('OIDC_ISSUER');
+/// Sign in with a Keycloak instead of the demo API: `fsp dev --profile keycloak`
+/// (`config/app.keycloak.yaml`, the realm of `keycloak/realm-fespalier.json`; on an Android emulator,
+/// `adb reverse tcp:8080 tcp:8080`: see the README). Empty in `config/app.yaml`: the demo API's own
+/// sign-in.
+const String oidcIssuer = AppConfig.oidcIssuer;
 
 /// The Keycloak client: `fespalier-auth-example`.
-const String oidcClientId = String.fromEnvironment(
-  'OIDC_CLIENT_ID',
-  defaultValue: 'fespalier-auth-example',
-);
+const String oidcClientId = AppConfig.oidcClientId;
 
 /// Where Keycloak sends the browser back to: registered with the client.
-const String oidcRedirect = String.fromEnvironment(
-  'OIDC_REDIRECT',
-  defaultValue: 'com.example.fespalierauth:/callback',
-);
+const String oidcRedirect = AppConfig.oidcRedirect;
 
-/// `--dart-define=OIDC_ISSUER=demo` signs in with OpenID Connect against the demo server's own
+/// `demo` (`fsp dev --profile demo-dpop`) signs in with OpenID Connect against the demo server's own
 /// provider (shaped like Keycloak, in process): no Keycloak, no browser, no network.
 const String demoIssuer = 'demo';
 
-/// `--dart-define=DPOP=true` binds the tokens to a device key (DPoP, RFC 9449). Needs
-/// `OIDC_ISSUER`; against Keycloak use the client `fespalier-auth-example-dpop`
-/// (`--dart-define=OIDC_CLIENT_ID=fespalier-auth-example-dpop`), which requires DPoP-bound tokens.
-const bool useDpop = bool.fromEnvironment('DPOP');
+/// Binds the tokens to a device key (DPoP, RFC 9449): `fsp dev --profile demo-dpop` against the demo
+/// server's provider, `fsp dev --profile keycloak-dpop` against Keycloak, with the client
+/// `fespalier-auth-example-dpop`, which requires DPoP-bound tokens. Needs an `oidc.issuer`.
+const bool useDpop = AppConfig.dpop;
 
 /// Whether the app signs in with OpenID Connect.
 bool get usesOidc => oidcIssuer.isNotEmpty;
@@ -45,7 +41,7 @@ bool get usesDemoOidc => oidcIssuer == demoIssuer;
 
 /// The API the app talks to, in process: the demo server. With a real Keycloak it takes any token,
 /// because the tokens are Keycloak's, which it cannot ask; with its own provider it checks them,
-/// and the DPoP proofs when `DPOP` is on.
+/// and the DPoP proofs when `dpop` is on.
 final DemoServer demoServer = DemoServer(
   latency: const Duration(milliseconds: 250),
   trustAnyToken: usesOidc && !usesDemoOidc,
@@ -65,7 +61,7 @@ HttpTransport Function()? debugApiTransport;
 /// `OidcBackend` (the token endpoint).
 ///
 /// In your app it is `HttpClientTransport(http.Client())` and nothing else. Here the API is the
-/// demo server, in process; with a real Keycloak (`OIDC_ISSUER`) Keycloak is on the network and the
+/// demo server, in process; with a real Keycloak (`oidc.issuer`) Keycloak is on the network and the
 /// API still the demo, so the transport sends each origin where it lives.
 HttpTransport apiTransport() {
   final debug = debugApiTransport;
@@ -92,7 +88,7 @@ final class _ByOrigin implements HttpTransport {
 }
 
 /// The app's [AuthConfig] over [transport]: the demo backend over the demo server by default,
-/// OpenID Connect (Keycloak) with `--dart-define=OIDC_ISSUER=...`.
+/// OpenID Connect (Keycloak) with a profile that sets `oidc.issuer` (`fsp dev --profile keycloak`).
 AuthConfig authSetup(HttpTransport transport) {
   final debug = debugAuthSetup;
   if (debug != null) return debug(transport);
@@ -125,7 +121,7 @@ AuthConfig authSetup(HttpTransport transport) {
   );
 }
 
-/// The browser step of `OIDC_ISSUER=demo`: asks the demo provider for the redirect a browser would
+/// The browser step of the `demo` issuer: asks the demo provider for the redirect a browser would
 /// follow, and returns it.
 Future<Uri> demoBrowser(Uri url, Uri redirect) async {
   final response = await demoServer.client.get(url);

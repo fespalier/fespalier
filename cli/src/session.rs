@@ -69,6 +69,9 @@ pub struct Session {
     /// The output's stamp as the last run left it, when the run got to writing (since 0.19.0): its
     /// `_version` and `_kept`, read back from the text that was written. `None` otherwise.
     pub stamp: Option<Stamp>,
+    /// The app's configuration (`lib/app.config.g.dart`) when the last run wrote it (since
+    /// 0.24.0): its values are constants that a hot reload may not reach, so `fsp dev` restarts.
+    pub config_written: Option<String>,
     /// Whether a hot reload can swap the routes the last run generated (since 0.19.0; see
     /// `entry::swaps`).
     pub swaps: bool,

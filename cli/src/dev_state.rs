@@ -417,6 +417,9 @@ pub struct Opts {
     /// The generated file as the user spells it, for the `hot reload: … changed` and
     /// `hot restart: … changed` lines.
     pub output: String,
+    /// The app's configuration as the user spells it (`lib/app.config.g.dart`, since 0.24.0), for
+    /// the `hot restart: … changed` line of a pass that wrote it.
+    pub config_output: String,
     /// The device fsp chose, when it did.
     pub device: Option<Device>,
     /// The stamp of the generated file when flutter starts (since 0.19.0). `None` (no file, or one
@@ -439,6 +442,7 @@ pub struct DevState {
     plain_out: VecDeque<PlainLine>,
     hot_reload: bool,
     output: String,
+    config_output: String,
     /// The stamp of the generated file as the last pass left it, or as it was when flutter started
     /// (since 0.19.0): what a request is sent for.
     disk: Option<Stamp>,
@@ -485,6 +489,7 @@ impl DevState {
             plain_out: VecDeque::new(),
             hot_reload: opts.hot_reload,
             output: opts.output,
+            config_output: opts.config_output,
             disk: opts.stamp,
             running: None,
             swappable: true,
@@ -965,7 +970,14 @@ impl DevState {
             return;
         }
         if r.wrote {
-            if self.reloads(r) {
+            if r.config_written {
+                // A value of config/ is a constant, and one read once (into a provider, a `static
+                // final`) keeps its old value through a hot reload: a restart reads them all again
+                // (since 0.24.0). The profile is a define of the running flutter, and stays.
+                let line = format!("hot restart: {} changed", self.config_output);
+                self.say(&line, Kind::Normal);
+                self.request(now, true, Ask::Regen, fx);
+            } else if self.reloads(r) {
                 let line = format!("hot reload: {} changed", self.output);
                 self.say(&line, Kind::Normal);
                 self.request(now, false, Ask::Regen, fx);

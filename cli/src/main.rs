@@ -35,6 +35,7 @@ macro_rules! errln {
 
 mod adapters;
 mod add;
+mod app_config;
 mod build_runner;
 mod config;
 mod create;
@@ -76,6 +77,7 @@ mod samples;
 mod scaffold;
 mod scan;
 mod schema;
+mod secrets;
 mod segtype;
 mod session;
 mod size;
@@ -306,6 +308,21 @@ impl Exit {
     }
 }
 
+/// The error of a pass that wrote the route outputs and then failed, for a mistake in something
+/// they do not depend on (a string-path lint, a file of `config/`, since 0.24.0). The message says
+/// what is up to date; `fsp dev` reads the type, so its first pass does not warn that the output
+/// is out of date.
+#[derive(Debug)]
+pub struct FailedAfterWriting(String);
+
+impl std::fmt::Display for FailedAfterWriting {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for FailedAfterWriting {}
+
 fn find_project(explicit: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(p) = explicit {
         return Ok(p);
@@ -392,6 +409,7 @@ fn gen_core(
     session.main_changed = false;
     session.stamp = None;
     session.swaps = false;
+    session.config_written = None;
     let app_dir = project.join(&cfg.app_dir);
     if !app_dir.is_dir() {
         bail!(
@@ -432,6 +450,15 @@ fn gen_core(
         )
     };
     let run = session.last.keep(tree, scan_diags, reads, run);
+    // The app's configuration (since 0.24.0): read on every run, like the lint, since its files
+    // are not in the tree. A few small YAML files.
+    let config_path = cfg.output_config();
+    let app_config = app_config::load(project, &config_path);
+    let config_file = app_config
+        .config
+        .as_ref()
+        .map(|c| (config_path.clone(), app_config::emit(c)));
+    let with_config = app_config.on;
     // The lint reads files outside the tree, so it runs on every run, reused or not. A tree
     // with errors is half resolved and would make every path look unknown.
     let lints = if run.diags.has_errors() {
@@ -440,28 +467,31 @@ fn gen_core(
         lint::check(project, cfg, &run.table, &mut session.sites)
     };
     let mut everything = run.diags.clone();
+    everything.0.extend(app_config.diags.0.iter().cloned());
     everything.0.extend(lints.0.iter().cloned());
     // A file on disk beside the output, not something the tree says: shown whatever the tree has.
     everything
         .0
-        .extend(build_runner::check(project, cfg, &outputs(cfg, writes_main)).0);
+        .extend(build_runner::check(project, cfg, &outputs(cfg, writes_main, with_config)).0);
     show(&app_dir, &everything);
+    // An error in the routes stops the pass and leaves every output as it was. An error in
+    // `config/` does not stop the routes: `app.g.dart` does not depend on it, so it is written
+    // and the configuration alone is left as it was (below), as a string-path lint is.
+    let config_errors = app_config.diags.error_count();
     if run.diags.has_errors() {
-        let mut outputs = outputs(cfg, writes_main);
+        let errors = run.diags.error_count() + config_errors;
+        let mut outputs = outputs(cfg, writes_main, with_config);
         let last = outputs.pop().unwrap_or_default();
         let left = if outputs.is_empty() {
             last
         } else {
             format!("{} and {last}", outputs.join(", "))
         };
-        bail!(
-            "{} error(s); {left} left unchanged",
-            run.diags.error_count()
-        );
+        bail!("{errors} error(s); {left} left unchanged");
     }
     let mut wrote = false;
     let main_path = cfg.output_main();
-    for (path, code) in &run.files {
+    for (path, code) in run.files.iter().chain(config_file.iter()) {
         let out = project.join(path);
         // `check` writes and compares nothing, so it never needs `dart`. `gen` formats
         // before comparing, so a formatted file that is up to date reads "unchanged".
@@ -486,19 +516,37 @@ fn gen_core(
             if *path == main_path {
                 session.main_changed = true;
             }
+            if *path == config_path {
+                session.config_written = Some(config_path.clone());
+            }
         }
     }
-    let output = outputs(cfg, writes_main).join(", ");
-    // A lint error fails the command but not the output: the generated file does not depend on
-    // it, and `watch` must not stop regenerating for a typo in some other file.
-    if lints.has_errors() {
-        let n = lints.error_count();
-        if write {
-            bail!(
-                "{n} error(s) in string paths (`lints: unknown_path: error`); {output} is up to date"
-            );
+    let output = outputs(cfg, writes_main, with_config).join(", ");
+    // A lint error or an error in `config/` fails the command but not the route outputs: the
+    // generated file does not depend on them, and `watch` must not stop regenerating for a typo in
+    // some other file (the configuration, since 0.24.0, is left as it was).
+    if config_errors > 0 || lints.has_errors() {
+        let mut said = vec![];
+        if config_errors > 0 {
+            said.push(if write {
+                format!("{config_errors} error(s) in config/; {config_path} left unchanged")
+            } else {
+                format!("{config_errors} error(s) in config/")
+            });
         }
-        bail!("{n} error(s) in string paths (`lints: unknown_path: error`)");
+        if lints.has_errors() {
+            said.push(format!(
+                "{} error(s) in string paths (`lints: unknown_path: error`)",
+                lints.error_count()
+            ));
+        }
+        let mut said = said.join("; ");
+        if write {
+            let up_to_date = outputs(cfg, writes_main, with_config && config_errors == 0);
+            said.push_str(&format!("; {} is up to date", up_to_date.join(", ")));
+            return Err(FailedAfterWriting(said).into());
+        }
+        bail!("{said}");
     }
     Ok(Outcome {
         wrote,
@@ -508,12 +556,16 @@ fn gen_core(
 }
 
 /// The files `gen` writes, as the user spells them: the output, the manifest library when
-/// `output_manifest:` asks for one, and the generated `main()` when `with_main`.
-fn outputs(cfg: &Config, with_main: bool) -> Vec<String> {
+/// `output_manifest:` asks for one, the generated `main()` when `with_main`, and the app's
+/// configuration when `with_config` (since 0.24.0).
+fn outputs(cfg: &Config, with_main: bool, with_config: bool) -> Vec<String> {
     let mut all = vec![cfg.output.clone()];
     all.extend(cfg.output_manifest.clone());
     if with_main {
         all.push(cfg.output_main());
+    }
+    if with_config {
+        all.push(cfg.output_config());
     }
     all
 }
@@ -590,6 +642,8 @@ fn watch(project: &Path) -> Result<()> {
 mod action_tests;
 #[cfg(test)]
 mod add_tests;
+#[cfg(test)]
+mod app_config_tests;
 #[cfg(test)]
 mod bench;
 #[cfg(test)]
@@ -682,6 +736,8 @@ mod route_api_tests;
 mod schema_tests;
 #[cfg(test)]
 mod scroll_tests;
+#[cfg(test)]
+mod secrets_tests;
 #[cfg(test)]
 mod segtype_tests;
 #[cfg(test)]

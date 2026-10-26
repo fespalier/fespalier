@@ -1078,6 +1078,65 @@ fn check_warns_about_a_string_path_that_matches_no_route() {
     assert!(ok && !err.contains("warning"), "{err}");
 }
 
+/// A mistake in `config/` fails the command (since 0.24.0) but not the routes: `lib/app.g.dart` does
+/// not depend on it, so `gen` writes it and leaves only `lib/app.config.g.dart` as it was.
+#[test]
+fn a_mistake_in_config_fails_gen_after_the_routes_are_written() {
+    let dir = project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(root.join("config/app.yaml"), "api_url: https://a.example\n").unwrap();
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(ok, "{err}");
+    let config = fs::read_to_string(root.join("lib/app.config.g.dart")).unwrap();
+    assert!(config.contains("'https://a.example'"), "{config}");
+
+    // A new page, and a typo in a profile.
+    fs::create_dir_all(root.join("lib/app/about")).unwrap();
+    fs::write(root.join("lib/app/about/page.dart"), page("AboutPage")).unwrap();
+    fs::write(
+        root.join("config/app.dev.yaml"),
+        "api_ur: http://b.example\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["check"]);
+    assert!(!ok, "{err}");
+    assert!(err.contains("`api_ur` is not in config/app.yaml"), "{err}");
+    assert!(
+        err.ends_with("1 error(s) in config/\n"),
+        "check writes nothing and says so: {err}"
+    );
+    let routes = fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    assert!(!routes.contains("AboutRoute"), "check wrote");
+
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(!ok, "{err}");
+    assert!(
+        err.ends_with(
+            "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date\n"
+        ),
+        "{err}"
+    );
+    let routes = fs::read_to_string(root.join("lib/app.g.dart")).unwrap();
+    assert!(routes.contains("AboutRoute"), "the routes were written");
+    assert_eq!(
+        fs::read_to_string(root.join("lib/app.config.g.dart")).unwrap(),
+        config,
+        "the configuration was left as it was"
+    );
+
+    // Fixed: the next run writes the configuration and succeeds.
+    fs::write(
+        root.join("config/app.dev.yaml"),
+        "api_url: http://b.example\n",
+    )
+    .unwrap();
+    let (ok, err) = fsp(root, &["gen"]);
+    assert!(ok, "{err}");
+    let config = fs::read_to_string(root.join("lib/app.config.g.dart")).unwrap();
+    assert!(config.contains("'http://b.example'"), "{config}");
+}
+
 /// `watch` runs again when a Dart file under `lib/` but outside the app folder changes.
 #[test]
 fn watch_rechecks_string_paths_outside_the_app_folder() {
@@ -3374,6 +3433,271 @@ fn build_sets_the_target_for_its_commands() {
     );
 }
 
+/// A project of [`dev_project`] with `config/app.yaml` and a `dev` and a `staging` profile.
+#[cfg(unix)]
+fn config_project(tasks_yaml: &str) -> tempfile::TempDir {
+    let dir = dev_project(tasks_yaml);
+    fs::create_dir_all(dir.path().join("config")).unwrap();
+    fs::write(
+        dir.path().join("config/app.yaml"),
+        "api_url: https://api.example.com\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("config/app.dev.yaml"),
+        "api_url: http://localhost:8080\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_url: https://staging.example.com\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[cfg(unix)]
+#[test]
+fn build_passes_the_profile_to_flutter_and_to_its_commands() {
+    let dir = config_project(
+        "    build:\n      before: echo \"$FSP_PROFILE $FSP_CONFIG_API_URL\" > profile.out\n",
+    );
+    let (code, _, err) = fsp_task(
+        dir.path(),
+        &["build", "web", "--profile", "staging", "--", "--release"],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        err.starts_with(
+            "✓ 1 route → lib/app.g.dart, lib/app.config.g.dart\nprofile staging (FSP_PROFILE): config/app.staging.yaml over config/app.yaml\n"
+        ),
+        "{err}"
+    );
+    let log = fs::read_to_string(dir.path().join("flutter.log")).unwrap();
+    assert_eq!(
+        log,
+        "build web --dart-define=FSP_PROFILE=staging --release\n"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("profile.out")).unwrap(),
+        "staging https://staging.example.com\n"
+    );
+    // Without `--profile`, a release build is config/app.yaml alone, and flutter gets no define.
+    fs::remove_file(dir.path().join("flutter.log")).unwrap();
+    let (code, _, err) = fsp_task(dir.path(), &["build", "web"], &[]);
+    assert_eq!(code, Some(0), "{err}");
+    assert!(
+        err.contains("\nprofile default: config/app.yaml\n"),
+        "{err}"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("flutter.log")).unwrap(),
+        "build web\n"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.path().join("profile.out")).unwrap(),
+        "default https://api.example.com\n"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_profile_that_config_does_not_have_runs_nothing() {
+    let dir = config_project("");
+    let (code, _, err) = fsp_task(dir.path(), &["build", "web", "--profile", "stagng"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`--profile stagng`: there is no config/app.stagng.yaml; the profiles are default, dev, staging\n"
+    );
+    let (code, _, err) = fsp_task(dir.path(), &["dev", "--profile", "release"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`--profile release` names a profile of config/, and `release` is a Flutter build mode: pass that to flutter after `--` (`-- --release`)\n"
+    );
+    let (code, _, err) = fsp_task(
+        dir.path(),
+        &[
+            "dev",
+            "--profile",
+            "dev",
+            "--",
+            "--dart-define=FSP_PROFILE=staging",
+        ],
+        &[],
+    );
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`--profile dev` and `--dart-define=FSP_PROFILE=staging` after `--` both name the profile: keep one\n"
+    );
+    // A define by hand is checked as `--profile` is.
+    let (code, _, err) = fsp_task(
+        dir.path(),
+        &["dev", "--", "--dart-define=FSP_PROFILE=prod"],
+        &[],
+    );
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`--dart-define=FSP_PROFILE=prod`: there is no config/app.prod.yaml; the profiles are default, dev, staging\n"
+    );
+    let plain = dev_project("");
+    let (code, _, err) = fsp_task(plain.path(), &["dev", "--profile", "dev"], &[]);
+    assert_eq!(code, Some(1));
+    assert_eq!(
+        err,
+        "`--profile dev`: this app has no config/app.yaml, so it has no profiles (docs/app-config.md)\n"
+    );
+    assert!(!dir.path().join("flutter.log").exists(), "flutter was run");
+    assert!(
+        !plain.path().join("flutter.log").exists(),
+        "flutter was run"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dry_runs_say_which_profile_the_build_has() {
+    let dir = config_project("");
+    let root = dir.path().display().to_string();
+    let (code, _, err) = fsp_task(
+        dir.path(),
+        &[
+            "dev",
+            "--profile",
+            "staging",
+            "--dry-run",
+            "--",
+            "-d",
+            "chrome",
+        ],
+        &[],
+    );
+    assert_eq!(code, Some(0), "{err}");
+    assert_eq!(
+        err,
+        format!(
+            "\
+fsp dev in {root}
+  gen     lib/app.g.dart, kept current while it runs
+  profile staging (FSP_PROFILE): config/app.staging.yaml over config/app.yaml
+  before  (nothing)
+  with    (nothing)
+  run     flutter run --machine --dart-define=FSP_PROFILE=staging -d chrome
+  after   (nothing)
+  env     (nothing)
+  hot reload after a save; when lib/app.g.dart changes, a hot reload if the app can swap its routes, else a hot restart
+"
+        )
+    );
+    // No `--profile`: a debug build has `dev`, and the flavour a profile is named after wins.
+    let (_, _, err) = fsp_task(dir.path(), &["dev", "--dry-run"], &[]);
+    assert!(
+        err.contains("\n  profile dev (a debug build): config/app.dev.yaml over config/app.yaml\n"),
+        "{err}"
+    );
+    let (_, _, err) = fsp_task(
+        dir.path(),
+        &["dev", "--dry-run", "--", "--flavor", "staging"],
+        &[],
+    );
+    assert!(
+        err.contains(
+            "\n  profile staging (the flavour): config/app.staging.yaml over config/app.yaml\n"
+        ),
+        "{err}"
+    );
+    let (_, _, err) = fsp_task(dir.path(), &["dev", "--dry-run", "--", "--release"], &[]);
+    assert!(
+        err.contains("\n  profile default: config/app.yaml\n"),
+        "{err}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn dev_restarts_the_app_when_the_configuration_changes() {
+    let dir = config_project("");
+    let mut d = Dev::start(dir.path(), &["--profile", "staging"]);
+    d.wait_ready();
+    d.wait_err("[fsp] profile staging (FSP_PROFILE): config/app.staging.yaml over config/app.yaml");
+    assert!(
+        d.flog().starts_with(
+            "devices --machine\nrun --machine -d fake-1 --dart-define=FSP_PROFILE=staging\n"
+        ),
+        "{}",
+        d.flog()
+    );
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_url: https://staging2.example.com\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot restart: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=true");
+    assert!(
+        fs::read_to_string(dir.path().join("lib/app.config.g.dart"))
+            .unwrap()
+            .contains("https://staging2.example.com")
+    );
+    // A page save that leaves the configuration as it is: a hot reload, as before.
+    fs::write(
+        dir.path().join("lib/app/page.dart"),
+        page("HomePage") + "\n",
+    )
+    .unwrap();
+    d.wait_log("app.restart fullRestart=false");
+    d.send("q");
+    assert_eq!(d.wait_exit(), Some(0));
+}
+
+/// An error in a file of `config/` does not stop the routes (since 0.24.0): the app reloads a new
+/// route while the error is said, and a fix of the file restarts it.
+#[cfg(unix)]
+#[test]
+fn dev_reloads_the_routes_while_a_file_of_config_has_an_error() {
+    let dir = swap_project();
+    let root = dir.path();
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(root.join("config/app.yaml"), "api_url: https://a.example\n").unwrap();
+    let mut d = Dev::start(root, &[]);
+    d.wait_ready();
+    // A typo in a profile: said, and nothing restarts.
+    fs::write(
+        root.join("config/app.staging.yaml"),
+        "api_ur: https://b.example\n",
+    )
+    .unwrap();
+    // The project has an `app.dart`, so the generated `main()` is written too.
+    d.wait_err(
+        "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart, lib/app.main.g.dart is up to date",
+    );
+    // A route put while it is there: the routes are written and the app reloads them.
+    fs::create_dir_all(root.join("lib/app/zz")).unwrap();
+    fs::write(root.join("lib/app/zz/page.dart"), page("ZzPage")).unwrap();
+    d.wait_err("[fsp] hot reload: lib/app.g.dart changed");
+    d.wait_log("app.restart fullRestart=false");
+    assert!(
+        !d.flog().contains("app.restart fullRestart=true"),
+        "{}",
+        d.flog()
+    );
+    // The fix writes the configuration: a restart.
+    fs::write(
+        root.join("config/app.staging.yaml"),
+        "api_url: https://b.example\n",
+    )
+    .unwrap();
+    d.wait_err("[fsp] hot restart: lib/app.config.g.dart changed");
+    d.wait_log("app.restart fullRestart=true");
+    d.send("q");
+    d.wait_log("app.stop");
+    assert_eq!(d.wait_exit(), Some(0), "{}", d.err());
+}
+
 #[cfg(unix)]
 #[test]
 fn build_stops_when_the_generation_fails() {
@@ -3383,6 +3707,28 @@ fn build_stops_when_the_generation_fails() {
     assert_eq!(code, Some(1));
     assert!(
         err.contains("1 error(s); lib/app.g.dart left unchanged"),
+        "{err}"
+    );
+    assert!(!dir.path().join("flutter.log").exists(), "flutter was run");
+}
+
+/// A build with an error in `config/` stops before it runs anything (since 0.24.0): the routes were
+/// written, but a configuration that is out of date would compile the old values.
+#[cfg(unix)]
+#[test]
+fn build_stops_when_the_configuration_has_an_error() {
+    let dir = config_project("");
+    fs::write(
+        dir.path().join("config/app.staging.yaml"),
+        "api_ur: https://staging.example.com\n",
+    )
+    .unwrap();
+    let (code, _, err) = fsp_task(dir.path(), &["build", "web"], &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains(
+            "1 error(s) in config/; lib/app.config.g.dart left unchanged; lib/app.g.dart is up to date"
+        ),
         "{err}"
     );
     assert!(!dir.path().join("flutter.log").exists(), "flutter was run");

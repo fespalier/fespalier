@@ -67,6 +67,10 @@ pub struct GenReport {
     pub stamp: Option<Stamp>,
     /// Whether a hot reload can swap the routes the pass generated (since 0.19.0; `entry::swaps`).
     pub swaps: bool,
+    /// Whether the pass wrote the app's configuration (`lib/app.config.g.dart`, since 0.24.0):
+    /// `fsp dev` restarts the app for it, since a value read once (into a provider, a
+    /// `static final`) keeps its old value through a hot reload.
+    pub config_written: bool,
     /// The route count of a pass that succeeded.
     pub routes: Option<usize>,
     /// How many errors the pass reported (0 when `ok`).
@@ -85,8 +89,9 @@ pub struct GenReport {
 /// `watch` also sees `lib/` outside the app folder, because an enum a segment names is
 /// declared there (`lib/models/category.dart`): of those paths only Dart files and folders
 /// (a path with no extension) count, not the `.png` or `.json` beside them. The same goes for the
-/// folders of a `path:` dependency that `watch` adds after a pass (since 0.22.0).
-pub fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
+/// folders of a `path:` dependency that `watch` adds after a pass (since 0.22.0). In `config_dir`
+/// (since 0.24.0) only its `.yaml` and `.yml` files count, and the folder itself.
+pub fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path, config_dir: &Path) -> bool {
     let kind_matters = match ev.kind {
         EventKind::Access(_) | EventKind::Modify(ModifyKind::Metadata(_)) => false,
         EventKind::Create(_)
@@ -96,6 +101,11 @@ pub fn relevant(ev: &Event, outputs: &[PathBuf], app_dir: &Path) -> bool {
         | EventKind::Other => true,
     };
     let matters = |p: &PathBuf| {
+        if p.starts_with(config_dir) {
+            return p == config_dir
+                || (p.parent() == Some(config_dir)
+                    && p.extension().is_some_and(|e| e == "yaml" || e == "yml"));
+        }
         !outputs.contains(p)
             && (p.starts_with(app_dir) || p.extension().is_none_or(|e| e == "dart"))
     };
@@ -122,10 +132,12 @@ pub fn watch_loop(
 ) -> Result<()> {
     let app_dir = project.join(&cfg.app_dir);
     let main_output = cfg.output_main();
+    let config_output = cfg.output_config();
     let outputs: Vec<PathBuf> = [
         Some(&cfg.output),
         cfg.output_manifest.as_ref(),
         Some(&main_output),
+        Some(&config_output),
     ]
     .into_iter()
     .flatten()
@@ -143,9 +155,10 @@ pub fn watch_loop(
     pass.run(true, &mut sink);
 
     let changes_under = app_dir.clone();
+    let config_dir = project.join(crate::app_config::DIR);
     let mut watcher = RecommendedWatcher::new(
         move |res: notify::Result<Event>| match res {
-            Ok(ev) if relevant(&ev, &outputs, &changes_under) => {
+            Ok(ev) if relevant(&ev, &outputs, &changes_under, &config_dir) => {
                 let _ = tx.send(Wake::Changed);
             }
             Ok(_) => {}
@@ -303,6 +316,9 @@ impl Pass<'_> {
             .map(|r| r.folders(self.project))
             .unwrap_or_default()
             .into_iter()
+            // The app's configuration (since 0.24.0), whenever the folder is there: one made while
+            // `fsp watch` runs is watched from the pass after it appears.
+            .chain(std::iter::once(self.project.join(crate::app_config::DIR)))
             .filter(|d| !d.starts_with(watched) && d.is_dir())
             .collect();
         beside.forget(&there);
@@ -360,6 +376,7 @@ impl Pass<'_> {
                 main_changed: self.session.main_changed,
                 stamp: self.session.stamp.clone(),
                 swaps: self.session.swaps,
+                config_written: self.session.config_written.is_some(),
                 routes: Some(o.routes),
                 errors: 0,
                 first_error: None,
@@ -378,6 +395,7 @@ impl Pass<'_> {
                     main_changed: self.session.main_changed,
                     stamp: self.session.stamp.clone(),
                     swaps: self.session.swaps,
+                    config_written: self.session.config_written.is_some(),
                     routes: None,
                     errors: errors.max(1),
                     first_error: first_error.or_else(|| {

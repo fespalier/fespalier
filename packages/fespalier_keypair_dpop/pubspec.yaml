@@ -1,6 +1,6 @@
 name: fespalier_keypair_dpop
 description: DPoP (RFC 9449) for fespalier_oidc — proofs signed by a device key from fespalier_keypair (Secure Enclave, AndroidKeyStore, or a browser's non-extractable CryptoKey), and verifyDpopProof for a server.
-version: 0.24.0 # x-release-please-version
+version: 0.24.1 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -25,13 +25,13 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_keypair
-      ref: v0.24.0 # x-release-please-version
+      ref: v0.24.1 # x-release-please-version
   # ProofOfPossession, which DpopProof implements, and the backend that takes it.
   fespalier_oidc:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_oidc
-      ref: v0.24.0 # x-release-please-version
+      ref: v0.24.1 # x-release-please-version
   # parseHttpDate, for the Date header of a clock correction.
   http_parser: ^4.1.0
 
@@ -41,25 +41,25 @@ dev_dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.24.0 # x-release-please-version
+      ref: v0.24.1 # x-release-please-version
   # The core the tests build a session on: AuthConfig, SessionTransport, the notifier.
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.24.0 # x-release-please-version
+      ref: v0.24.1 # x-release-please-version
   # TransportAdapter, which lets test/dio_retry_test.dart's Dio send through a SessionTransport.
   fespalier_dio:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_dio
-      ref: v0.24.0 # x-release-please-version
+      ref: v0.24.1 # x-release-please-version
   # FakeTransport and fakeResponse, the HttpTransport the tests answer from.
   fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_transport
-      ref: v0.24.0 # x-release-please-version
+      ref: v0.24.1 # x-release-please-version
   # For fespalier_dio's TransportAdapter in test/dio_retry_test.dart; fespalier_dio's constraint.
   dio: ^5.7.0
   # The retrier that test runs the real proof under; fespalier_dio's constraint.

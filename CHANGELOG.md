@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.24.1](https://github.com/fespalier/fespalier/compare/v0.24.0...v0.24.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **cli:** fsp doctor and fsp upgrade --app read every file pub takes overrides from ([#303](https://github.com/fespalier/fespalier/issues/303)) ([899eaac](https://github.com/fespalier/fespalier/commit/899eaac42e82c116556ef24769874e6177a3d361))
+* **cli:** read resolution and workspace from pubspec_overrides.yaml, as pub does ([#308](https://github.com/fespalier/fespalier/issues/308)) ([d00c11b](https://github.com/fespalier/fespalier/commit/d00c11b15cc59b3c4b8b51a79e29e3fd6b85fa00))
+* **fsp:** fsp dev compares the configuration with what the app last started or restarted with ([#307](https://github.com/fespalier/fespalier/issues/307)) ([c53d465](https://github.com/fespalier/fespalier/commit/c53d465a6b936581de62f5a5bb2b85473c50f799))
+* **fsp:** fsp dev restarts only for the profile it runs, and an older OpenAI key is refused in config/ ([#304](https://github.com/fespalier/fespalier/issues/304)) ([ba370b1](https://github.com/fespalier/fespalier/commit/ba370b163fcd25b8404af90be34dc2333fe8cbcd))
+
 ## [0.24.0](https://github.com/fespalier/fespalier/compare/v0.23.1...v0.24.0) (2026-10-26)
 
 

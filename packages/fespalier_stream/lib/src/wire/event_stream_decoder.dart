@@ -34,6 +34,11 @@ final class EventStreamTooLarge implements Exception {
 ///   comment line (`:`) is a [Heartbeat]; any other field is ignored.
 /// - The end of the body drops an event that has no blank line after it.
 ///
+/// [lastEventId] seeds the last event ID: the WHATWG buffer belongs to the event source and
+/// outlives a connection, so a connection that resumes passes the ID it resumed from, and an
+/// event with no `id:` field carries it until the server sets another (or clears it with an
+/// empty one).
+///
 /// [maxEventBytes] bounds the bytes between two blank lines (comments included): past it the
 /// output fails with [EventStreamTooLarge] and ends, and the rest of the body is not read.
 ///
@@ -42,8 +47,11 @@ final class EventStreamTooLarge implements Exception {
 final class EventStreamDecoder
     extends StreamTransformerBase<List<int>, EventStreamItem> {
   /// A decoder that refuses an event of more than [maxEventBytes] bytes (1 MiB by default).
-  const EventStreamDecoder({this.maxEventBytes = 1 << 20})
+  const EventStreamDecoder({this.maxEventBytes = 1 << 20, this.lastEventId})
     : assert(maxEventBytes > 0, 'maxEventBytes must be positive');
+
+  /// The last event ID the body starts with, or null (and an empty one) for none.
+  final String? lastEventId;
 
   /// The most bytes an event may take, from the end of the previous one to its blank line.
   final int maxEventBytes;
@@ -52,7 +60,7 @@ final class EventStreamDecoder
   Stream<EventStreamItem> bind(Stream<List<int>> stream) =>
       Stream<EventStreamItem>.eventTransformed(
         stream,
-        (sink) => _DecoderSink(sink, maxEventBytes),
+        (sink) => _DecoderSink(sink, maxEventBytes, lastEventId ?? ''),
       );
 }
 
@@ -63,7 +71,7 @@ const Utf8Decoder _utf8 = Utf8Decoder(allowMalformed: true);
 /// The parser: bytes in, items out. Lines are cut at the byte level (CR and LF never occur inside
 /// a multi-byte UTF-8 sequence), then each whole line is decoded, so nothing is split.
 final class _DecoderSink implements EventSink<List<int>> {
-  _DecoderSink(this._out, this._limit);
+  _DecoderSink(this._out, this._limit, this._lastId);
 
   final EventSink<EventStreamItem> _out;
   final int _limit;
@@ -79,7 +87,7 @@ final class _DecoderSink implements EventSink<List<int>> {
   final StringBuffer _data = StringBuffer();
   bool _hasData = false;
   String _type = '';
-  String _lastId = '';
+  String _lastId;
 
   /// Whether the current block has an `id:` field that took effect.
   bool _idInBlock = false;

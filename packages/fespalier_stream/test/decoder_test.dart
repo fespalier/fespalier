@@ -153,6 +153,19 @@ void main() {
     expect(await text('id: 9\ndata: a\n\n'), ['message|"a"|9']);
   });
 
+  test(
+    'a decoder seeded with a last event ID carries it until the server changes it',
+    () async {
+      final out = <String>[];
+      await Stream<List<int>>.value(
+        utf8.encode('data: a\n\nid: 6\ndata: b\n\nid\ndata: c\n\n'),
+      ).transform(const EventStreamDecoder(lastEventId: '5')).forEach((item) {
+        if (item is ServerEvent) out.add('${item.data}|${item.id}');
+      });
+      expect(out, ['a|5', 'b|6', 'c|null']);
+    },
+  );
+
   test('retry: is clamped to a day, and never overflows', () async {
     expect(await text('retry: 86400000\n'), ['retry 86400000']);
     expect(await text('retry: 86400001\n'), ['retry 86400000']);

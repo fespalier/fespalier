@@ -25,8 +25,9 @@ final class ServerEvent extends EventStreamItem {
   final String data;
 
   /// The last event ID of the stream when this event was dispatched: the value of the latest
-  /// `id:` field the server sent on this connection, on this event or an earlier one, or null when
-  /// it sent none (or an empty one, which clears it). It is what a reconnection sends as
+  /// `id:` field the server sent, on this event or an earlier one (also on an earlier connection
+  /// of the same `ServerEvents`: the ID outlives a reconnection), or null when it sent none (or an
+  /// empty one, which clears it). It is what a reconnection sends as
   /// `Last-Event-ID`.
   final String? id;
 

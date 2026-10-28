@@ -652,6 +652,44 @@ void main() {
     },
   );
 
+  test(
+    'the last event ID outlives a connection until the server changes it',
+    () async {
+      final seen = Seen(events.events);
+      await settle();
+      server.current
+        ..event('a', id: '5')
+        ..end();
+      await settle();
+      expect(server.current.lastEventId, '5');
+      server.current
+        ..event('b')
+        ..end();
+      await settle();
+      expect(seen.data, ['a', 'b']);
+      expect(
+        events.lastEventId,
+        '5',
+        reason: 'no id: on b keeps the previous one',
+      );
+      // The second quick end waits; the third request still resumes from 5.
+      expect(events.reconnect(), isTrue);
+      await settle();
+      expect(server.requests, hasLength(3));
+      expect(server.current.lastEventId, '5');
+      // An explicit empty id: clears it.
+      server.current
+        ..write('id\ndata: c\n\n')
+        ..end();
+      await settle();
+      expect(events.lastEventId, isNull);
+      expect(events.reconnect(), isTrue);
+      await settle();
+      expect(server.current.lastEventId, isNull);
+      await seen.subscription.cancel();
+    },
+  );
+
   test('a retry: too large for a Duration is clamped to a day', () async {
     final seen = Seen(events.events);
     await settle();

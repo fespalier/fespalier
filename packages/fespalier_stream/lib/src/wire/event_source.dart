@@ -138,7 +138,7 @@ final class EventSource implements LiveConnection<ServerEvent> {
        _deliveredId = (lastEventId == null || lastEventId.isEmpty)
            ? null
            : lastEventId,
-       _decoder = EventStreamDecoder(maxEventBytes: maxEventBytes),
+       _maxEventBytes = maxEventBytes,
        _attributes = attributes,
        _endsOnDrop = endsOnDrop {
     _events = StreamController<ServerEvent>(
@@ -156,7 +156,7 @@ final class EventSource implements LiveConnection<ServerEvent> {
   final Uri url;
 
   final Map<String, String> _headers;
-  final EventStreamDecoder _decoder;
+  final int _maxEventBytes;
   final Map<String, Object?> _attributes;
   final bool _endsOnDrop;
 
@@ -476,7 +476,14 @@ final class EventSource implements LiveConnection<ServerEvent> {
             _lastSeen = clock.now();
             return chunk;
           })
-          .transform(_decoder),
+          // The last event ID outlives a connection: an event with no `id:` keeps the one this
+          // connection resumed from.
+          .transform(
+            EventStreamDecoder(
+              maxEventBytes: _maxEventBytes,
+              lastEventId: _lastEventId,
+            ),
+          ),
     );
     attempt.iterator = iterator;
     _setStatus(

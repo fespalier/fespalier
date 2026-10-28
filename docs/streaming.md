@@ -145,6 +145,9 @@ bound; a dropped one only means that feed starts from the next event. A feed tha
 its `connect` watches changed) starts afresh and forgets its ID: the change may be another user. `connect` may ignore the
 `lastEventId` it is given and pass its own (the ID of the snapshot a page loaded, say).
 
+The last event ID belongs to the connection object and outlives each request, as the standard says: an event with no `id:` on a
+reopened connection keeps the ID the request resumed from, until the server sets another or clears it with an empty `id:`.
+
 A block with an `id:` and no `data:` dispatches no event, but it still sets the last event ID, as the standard says: the
 decoder reports it as an `EventIdUpdate`, and the next reconnection sends it (the listener's `lastEventId` moves with it once
 every event before it was handed over).

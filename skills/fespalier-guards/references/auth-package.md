@@ -41,21 +41,23 @@ dependency the same `url` (no `.git`) and the same `ref`.
 
 ## What it is made of
 
-| Piece                                             | What it does                                                                                                                                                                                                                                                       |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `authSession`                                     | The session: a `NotifierProvider<AuthSessionNotifier, SessionState>`. `SessionState` is sealed: `SessionRestoring`, `SignedOut(reason)`, `SignedIn(session)`. The notifier has `signIn`, `adopt`, `signOut`, `endSession(reason)` and `credential()`               |
-| `isSignedIn`, `authUser`, `authUserId`            | Derived providers. Riverpod filters updates with `==`, so none of them notifies on a renewal                                                                                                                                                                       |
-| `restoreAuth(config)`                             | For `startup()`: reads the stored session and returns the overrides. Synchronous with a synchronous store, and **never** touches the network                                                                                                                       |
-| `AuthConfig`                                      | `backend`, **`transport`** (required: what requests, and the backend's own calls, go through), `store` (`SecureTokenStore` by default, `MemoryTokenStore`) and `apiOrigins`. `leeway` is gone: when a credential counts as expired is `AuthBackend.renewAhead`     |
-| `AuthBackend`                                     | `name`, `scheme`, `authenticator`, `readCredential`, `renewAhead`, `signIn`, `renew` (was `refresh` until 0.20.0), `check`, `signOut`, `discard`; `keepsOwnSession` and `currentSession()` for Firebase and Supabase. Sign-in requests are typed (`SignInRequest`) |
-| `SessionCredential`, `RequestAuthenticator`       | What proves a session (`expiresAt`, `renewableUntil`, `renewable`, `toJson`), and what adds it to each send (`headers`) and reads each answer (`judge` returns an `AuthVerdict`: `Accept`, `Resend`, `Renew`, `SessionEnded`)                                      |
-| `requireSignedIn`, `requireRole`, `requireUser`   | For a `guard.dart`: null, or the sign-in location with the requested one as `from`                                                                                                                                                                                 |
-| `redirectIfSignedIn`                              | For the **sign-in route's own** `guard.dart`: signing in sends the user back by itself                                                                                                                                                                             |
-| `authTransport`, `SessionTransport`, `Authorizer` | An `HttpTransport` whose requests to `apiOrigins` carry the session, renew once on expiry and are sent again after a verdict that says so. `Authorizer` is an `HttpCredentials`, for a client that is not a transport                                              |
-| `package:fespalier_oidc`                          | `OidcBackend`, `BearerAuthenticator`, `TokenCredential`, `BrowserSignIn`, `PasswordSignIn`: OpenID Connect and Keycloak, bearer tokens. A separate package since 0.21.0. See [`auth-backends.md`](auth-backends.md)                                                |
-| `package:fespalier_keypair_dpop`                  | `DpopProof`: DPoP proofs for `OidcBackend(proof: ...)`, on a key from `fespalier_keypair`. See [`auth-dpop.md`](auth-dpop.md)                                                                                                                                      |
-| `package:fespalier_sign_keypair`                  | `DeviceAuthBackend`: a session with no token, proved by a signature from the device key over each request (since 0.21.0). See [`auth-device-sessions.md`](auth-device-sessions.md)                                                                                 |
-| `package:fespalier_auth/testing.dart`             | `FakeAuthBackend`, `FakeCredential`, `FakeAuthenticator`, `fakeSession`, `fakeAuth`                                                                                                                                                                                |
+| Piece                                             | What it does                                                                                                                                                                                                                                                                  |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authSession`                                     | The session: a `NotifierProvider<AuthSessionNotifier, SessionState>`. `SessionState` is sealed: `SessionRestoring`, `SignedOut(reason)`, `SignedIn(session)`. The notifier has `signIn`, `adopt`, `signOut`, `endSession(reason)`, `credential()` and `stepUp` (since 0.25.0) |
+| `isSignedIn`, `authUser`, `authUserId`            | Derived providers. Riverpod filters updates with `==`, so none of them notifies on a renewal                                                                                                                                                                                  |
+| `restoreAuth(config)`                             | For `startup()`: reads the stored session and returns the overrides. Synchronous with a synchronous store, and **never** touches the network                                                                                                                                  |
+| `AuthConfig`                                      | `backend`, **`transport`** (required: what requests, and the backend's own calls, go through), `store` (`SecureTokenStore` by default, `MemoryTokenStore`) and `apiOrigins`. `leeway` is gone: when a credential counts as expired is `AuthBackend.renewAhead`                |
+| `AuthBackend`                                     | `name`, `scheme`, `authenticator`, `readCredential`, `renewAhead`, `signIn`, `renew` (was `refresh` until 0.20.0), `check`, `signOut`, `discard`; `keepsOwnSession` and `currentSession()` for Firebase and Supabase. Sign-in requests are typed (`SignInRequest`)            |
+| `SessionCredential`, `RequestAuthenticator`       | What proves a session (`expiresAt`, `renewableUntil`, `renewable`, `toJson`), and what adds it to each send (`headers`) and reads each answer (`judge` returns an `AuthVerdict`: `Accept`, `Resend`, `Renew`, `StepUp` since 0.25.0, `SessionEnded`)                          |
+| `requireSignedIn`, `requireRole`, `requireUser`   | For a `guard.dart`: null, or the sign-in location with the requested one as `from`                                                                                                                                                                                            |
+| `redirectIfSignedIn`                              | For the **sign-in route's own** `guard.dart`: signing in sends the user back by itself                                                                                                                                                                                        |
+| `requireFreshAuth`, `redirectIfFreshAuth`         | Since 0.25.0: a route that needs a sign-in younger than `maxAge`, and the re-proof page's own guard. See [Step-up and recent sign-ins](#step-up-and-recent-sign-ins)                                                                                                          |
+| `StepUpChallenge`, `parseChallenges`              | Since 0.25.0: what an RFC 9470 refusal asks (`acrValues`, `maxAge`; `StepUpChallenge.fromResponse`), and a `WWW-Authenticate` parser (`HttpChallenge`)                                                                                                                        |
+| `authTransport`, `SessionTransport`, `Authorizer` | An `HttpTransport` whose requests to `apiOrigins` carry the session, renew once on expiry and are sent again after a verdict that says so. `Authorizer` is an `HttpCredentials`, for a client that is not a transport                                                         |
+| `package:fespalier_oidc`                          | `OidcBackend`, `BearerAuthenticator`, `TokenCredential`, `BrowserSignIn`, `PasswordSignIn`: OpenID Connect and Keycloak, bearer tokens. A separate package since 0.21.0. See [`auth-backends.md`](auth-backends.md)                                                           |
+| `package:fespalier_keypair_dpop`                  | `DpopProof`: DPoP proofs for `OidcBackend(proof: ...)`, on a key from `fespalier_keypair`. See [`auth-dpop.md`](auth-dpop.md)                                                                                                                                                 |
+| `package:fespalier_sign_keypair`                  | `DeviceAuthBackend`: a session with no token, proved by a signature from the device key over each request (since 0.21.0). See [`auth-device-sessions.md`](auth-device-sessions.md)                                                                                            |
+| `package:fespalier_auth/testing.dart`             | `FakeAuthBackend`, `FakeCredential`, `FakeAuthenticator`, `fakeSession`, `fakeAuth`                                                                                                                                                                                           |
 
 Signing in with **OpenID Connect or Keycloak, Firebase, Supabase, or your own API** is
 [`auth-backends.md`](auth-backends.md), binding the tokens to the device (DPoP) is [`auth-dpop.md`](auth-dpop.md), a
@@ -423,6 +425,113 @@ class OrdersPage extends StatelessWidget {
 }
 ```
 
+## Step-up and recent sign-ins
+
+Since 0.25.0. An API that accepts the session may still refuse one request because the sign-in is too weak or too old
+for it ([RFC 9470](https://www.rfc-editor.org/rfc/rfc9470)): a `401` with
+`WWW-Authenticate: Bearer error="insufficient_user_authentication", acr_values="gold", max_age=300` (both parameters
+optional; a `DPoP` challenge counts too).
+
+- **It is its own verdict, `StepUp(StepUpChallenge)`, not a `Renew`.** `fespalier_oidc`'s `BearerAuthenticator`
+  answers it for that 401 (any other 401 is still `Renew`); `StepUpChallenge.fromResponse(status, headers)` reads
+  `acrValues` and `maxAge` for an authenticator of your own, over `parseChallenges` (case-insensitive schemes, quoted and
+  token parameters, several challenges in one header or joined headers).
+- **The session asks the user once, then sends the request once more.** `AuthSessionNotifier.stepUp(challenge)` runs
+  `AuthBackend.stepUp(session, challenge)`, one at a time (every request refused meanwhile waits for it; one refused
+  after another request stepped up retries with the new credential without asking), stores the new session and
+  publishes it. `OidcBackend.stepUp` is the browser sign-in again with `acr_values` / `max_age`, or `prompt=login` when
+  the challenge names neither, and `login_hint` = the user's e-mail.
+- **At most one step-up per logical request** (kept in its `TransportMemo`, like the renewal): a second refusal is the
+  401 the caller gets, never a loop. A request can renew once and step up once.
+- **A refused or cancelled step-up keeps the session.** `AuthCancelled` (the user closed the browser, `access_denied`)
+  and `AuthRejected` (the provider refused) leave `SignedIn` as it was and the request's 401 stands; it is not a
+  renewal, whose refusal signs out. A step-up that could not run is `AuthUnavailable`. One that comes back as another
+  user is `AuthRejected('step_up_user_mismatch')` and that session is not taken.
+- **Background work never prompts.** Mark it `Authorizer.stepUpAttribute: false` (`TransportRequest.attributes`, or
+  Dio's `Options(extra: ...)`): its 401 stands.
+- **`AuthBackend.stepUp`'s default throws `UnsupportedError`.** `DeviceAuthBackend` has none: a device session signs a
+  call that needs the user with the user-present key from the start ([`auth-device-sessions.md`](auth-device-sessions.md)),
+  never after a refusal.
+- **`AuthSession.authenticatedAt`** is when the user last proved who they are: the ID token's `auth_time`, else the time
+  of `signIn`, `adopt` or `stepUp` (`clock.now()`); a renewal keeps it. It is stored as an optional key of the same
+  version-2 session, so a session stored before 0.25.0 restores with `null`, which the freshness guards read as too old.
+
+A route that needs a recent sign-in, and the re-proof page that sends the user back:
+
+```dart
+// lib/app/(signed-in)/payouts/guard.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:my_app/app.g.dart';
+
+/// Read when the route opens (no timer): a page open longer than five minutes stays open.
+GuardResult guard(Ref ref, {required Uri uri}) => requireFreshAuth(
+  ref,
+  uri,
+  maxAge: const Duration(minutes: 5),
+  signIn: (from) => SignInRoute(from: from),
+  reauthenticate: (from) => ReauthRoute(from: from),
+);
+```
+
+```dart
+// lib/app/(signed-in)/payouts/page.dart
+import 'package:flutter/material.dart';
+
+class PayoutsPage extends StatelessWidget {
+  const PayoutsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) => const Text('Payouts');
+}
+```
+
+```dart
+// lib/app/(signed-in)/reauth/guard.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+
+/// The same maxAge: a step-up on the page sends the user back to `from` by itself.
+GuardResult guard(Ref ref, {String? from}) =>
+    redirectIfFreshAuth(ref, maxAge: const Duration(minutes: 5), from: from);
+```
+
+```dart
+// lib/app/(signed-in)/reauth/page.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:flutter/material.dart';
+
+class ReauthPage extends HookConsumerWidget {
+  const ReauthPage({super.key, this.from});
+
+  /// Where requireFreshAuth was going: the page's guard uses it.
+  final String? from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => FilledButton(
+    // On a tap only. No navigation code: redirectIfFreshAuth moves the user.
+    onPressed: () async {
+      try {
+        await ref
+            .read(authSession.notifier)
+            .stepUp(const StepUpChallenge(maxAge: Duration(minutes: 5)));
+      } on AuthCancelled {
+        // The user closed the browser: stay here.
+      } on AuthRejected {
+        // The provider refused: stay here.
+      }
+    },
+    child: const Text('Confirm it is you'),
+  );
+}
+```
+
+In a test, `fakeAuth(signedInAs: ada, authenticatedAt: clock.now())` opens a fresh-only route (no `authenticatedAt`
+is too old), `tester.pump(duration)` ages it, and `FakeAuthBackend` counts `stepUps`, records `stepUpChallenges`, fails
+with `stepUpError` and answers as `stepUpUser`; `FakeAuthenticator` answers `StepUp` to a 401 that carries the
+challenge. Telemetry: an `auth` span with the step `step_up`.
+
 ## Test it
 
 ```dart
@@ -559,8 +668,10 @@ session`), deletes and answers `SignedOut()`: the user signs in once more. A wid
   (and `authBaseClient`, `SessionClient`) and `package:fespalier_auth/dio.dart`'s `SessionInterceptor`.
 - **What a response means is the authenticator's to say.** `judge` answers `Accept` (the response stands: anything
   ambiguous is this), `Resend` (same session, new headers: a DPoP nonce, a clock correction), `Renew` (renew, then send
-  once more) or `SessionEnded(reason)` (sign out and fail the request with `AuthRejected`).
-- **At most three sends per request**: the first, one after a `Resend`, and one after a `Renew`. **Every send is
+  once more), `StepUp(challenge)` (since 0.25.0: the user proves who they are again, then send once more) or
+  `SessionEnded(reason)` (sign out and fail the request with `AuthRejected`).
+- **At most four sends per request** (three before 0.25.0): the first, one after a `Resend`, one after a `Renew` and one
+  after a `StepUp`. **Every send is
   authorized again with the exact bytes of the body**, so a signature is fresh each time. A request whose body is a
   stream (`TransportRequest.replayable` false) is sent once, and its caller gets the 401, after the renewal, so its next
   attempt works.

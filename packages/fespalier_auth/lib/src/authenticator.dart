@@ -1,5 +1,6 @@
 import 'package:fespalier_transport/fespalier_transport.dart';
 
+import 'challenge.dart';
 import 'session.dart';
 
 /// What a response means for the session (since 0.21.0). Sealed: switch on it.
@@ -7,7 +8,8 @@ import 'session.dart';
 /// Anything ambiguous is [Accept]: the session is never wiped, and a request never loops, on a
 /// response that could be about something else.
 sealed class AuthVerdict {
-  /// A verdict; the subclasses are [Accept], [Resend], [Renew] and [SessionEnded].
+  /// A verdict; the subclasses are [Accept], [Resend], [Renew], [StepUp] (since 0.25.0) and
+  /// [SessionEnded].
   const AuthVerdict();
 }
 
@@ -40,6 +42,25 @@ final class Renew extends AuthVerdict {
 
   @override
   String toString() => 'Renew()';
+}
+
+/// The credential is good but the user's authentication is too weak or too old for this request
+/// (RFC 9470, `insufficient_user_authentication`) (since 0.25.0): the user proves who they are
+/// again (`AuthBackend.stepUp`: one at a time, shared by every request that asks), then the
+/// request is sent again, once.
+///
+/// It is not a [Renew]: a renewal is silent and its refusal ends the session, while a step-up
+/// asks the user and its refusal or cancellation leaves the session as it was and the request's
+/// 401 stands. A request steps up at most once, so a second refusal is the answer.
+final class StepUp extends AuthVerdict {
+  /// Step up to what [challenge] asks for.
+  const StepUp(this.challenge);
+
+  /// What the server asks of the user's authentication.
+  final StepUpChallenge challenge;
+
+  @override
+  String toString() => 'StepUp($challenge)';
 }
 
 /// The server confirmed the session is dead: sign out with [reason], forget what is bound to it

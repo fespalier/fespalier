@@ -9,9 +9,12 @@ import 'token_credential.dart';
 /// (token type `DPoP`) and a [proof], `Authorization: DPoP <token>` and the proof's headers.
 ///
 /// What a response means: a DPoP nonce challenge or clock correction (the proof says so) is a
-/// `Resend`; a 401 is a `Renew`, so the session's single-flight renewal runs once and the request
-/// goes out again; anything else stands. The authenticator never ends a session itself: only the
-/// token endpoint's refusal does.
+/// `Resend`; a 401 whose `WWW-Authenticate` says `error="insufficient_user_authentication"`
+/// (RFC 9470, since 0.25.0) is a `StepUp` with the `acr_values` and `max_age` it asks for, so the
+/// user signs in again once (`OidcBackend.stepUp`) and the request goes out again; any other 401
+/// is a `Renew`, so the session's single-flight renewal runs once and the request goes out again;
+/// anything else stands. The authenticator never ends a session itself: only the token
+/// endpoint's refusal does.
 final class BearerAuthenticator implements RequestAuthenticator {
   /// An authenticator; [proof] is the DPoP proof maker, for DPoP-bound tokens.
   const BearerAuthenticator({this.proof});
@@ -65,7 +68,9 @@ final class BearerAuthenticator implements RequestAuthenticator {
         )) {
       return const Resend();
     }
-    return statusCode == 401 ? const Renew() : const Accept();
+    if (statusCode != 401) return const Accept();
+    final challenge = StepUpChallenge.fromResponse(statusCode, headers);
+    return challenge == null ? const Renew() : StepUp(challenge);
   }
 
   TokenCredential _tokens(AuthSession session) {

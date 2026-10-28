@@ -29,6 +29,7 @@ library;
 export 'src/authenticator.dart';
 export 'src/authorizer.dart' show AuthAttempt, Authorizer, authorizer;
 export 'src/backend.dart';
+export 'src/challenge.dart';
 export 'src/config.dart'
     show AuthConfig, authConfig, authInitialState, restoreAuth;
 export 'src/errors.dart';

@@ -211,7 +211,8 @@ void main() {
   group('adopt', () {
     test('signs in with a session the app made', () async {
       signedOut();
-      final session = fakeSession(bob);
+      // With its authentication time: one without gets the time of the call (step_up_test).
+      final session = fakeSession(bob, authenticatedAt: DateTime.utc(2026));
       await notifier.adopt(session);
       expect(container.read(authSession), SignedIn(session));
       expect(log, ['write']);

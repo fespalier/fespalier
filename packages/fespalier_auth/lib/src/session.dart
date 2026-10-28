@@ -195,16 +195,19 @@ abstract interface class SessionCredential {
 
 /// A signed-in session: what the token store keeps.
 final class AuthSession {
-  /// A session made by the backend [backend], for [user], proved by [credential].
+  /// A session made by the backend [backend], for [user], proved by [credential]; the user
+  /// last authenticated at [authenticatedAt], when it is known.
   const AuthSession({
     required this.backend,
     required this.credential,
     required this.user,
+    this.authenticatedAt,
   });
 
   /// Reads what [toJson] wrote, the credential through [readCredential] (the backend's). Throws
   /// [FormatException] on anything else, an unknown `"v"` included: a session stored by 0.20.0
-  /// and before (`"v": 1`) is not read, and its user signs in once more.
+  /// and before (`"v": 1`) is not read, and its user signs in once more. A session stored before
+  /// 0.25.0 has no `"authenticatedAt"`: it reads with [authenticatedAt] null.
   static AuthSession fromJson(
     Map<String, Object?> json,
     SessionCredential Function(Map<String, Object?> json) readCredential,
@@ -221,10 +224,23 @@ final class AuthSession {
         'fespalier_auth: a stored session is malformed',
       );
     }
+    final authenticatedAt = _string(json, 'authenticatedAt', required: false);
+    final DateTime? at;
+    if (authenticatedAt == null) {
+      at = null;
+    } else {
+      at = DateTime.tryParse(authenticatedAt)?.toUtc();
+      if (at == null) {
+        throw const FormatException(
+          'fespalier_auth: "authenticatedAt" is not a date',
+        );
+      }
+    }
     return AuthSession(
       backend: _string(json, 'backend')!,
       credential: readCredential(credential),
       user: AuthUser.fromJson(user),
+      authenticatedAt: at,
     );
   }
 
@@ -237,20 +253,42 @@ final class AuthSession {
   /// Who is signed in.
   final AuthUser user;
 
-  /// This session with a new [credential] or a new [user].
-  AuthSession copyWith({SessionCredential? credential, AuthUser? user}) =>
-      AuthSession(
-        backend: backend,
-        credential: credential ?? this.credential,
-        user: user ?? this.user,
-      );
+  /// When the user last proved who they are (since 0.25.0): an OpenID Connect `auth_time`
+  /// claim when the backend has one, else the time of the sign-in or of the last step-up. A
+  /// renewal keeps it. Null when it is not known (a session stored before 0.25.0, a backend
+  /// that keeps its own session): `requireFreshAuth` reads that as too old.
+  final DateTime? authenticatedAt;
 
-  /// `{"v": 2, "backend": …, "credential": {…}, "user": {…}}`.
+  /// Whether the user authenticated at most [maxAge] before [now] (since 0.25.0). False when
+  /// [authenticatedAt] is unknown, and when it is after [now] (a clock set back is not trusted).
+  bool authenticatedWithin(Duration maxAge, DateTime now) {
+    final at = authenticatedAt;
+    if (at == null) return false;
+    final age = now.difference(at);
+    return !age.isNegative && age <= maxAge;
+  }
+
+  /// This session with a new [credential], a new [user] or a new [authenticatedAt].
+  AuthSession copyWith({
+    SessionCredential? credential,
+    AuthUser? user,
+    DateTime? authenticatedAt,
+  }) => AuthSession(
+    backend: backend,
+    credential: credential ?? this.credential,
+    user: user ?? this.user,
+    authenticatedAt: authenticatedAt ?? this.authenticatedAt,
+  );
+
+  /// `{"v": 2, "backend": …, "credential": {…}, "user": {…}}`, plus `"authenticatedAt"` (UTC,
+  /// ISO 8601) when it is known (since 0.25.0; an older reader ignores it).
   Map<String, Object?> toJson() => {
     'v': 2,
     'backend': backend,
     'credential': credential.toJson(),
     'user': user.toJson(),
+    if (authenticatedAt case final at?)
+      'authenticatedAt': at.toUtc().toIso8601String(),
   };
 
   @override
@@ -258,10 +296,11 @@ final class AuthSession {
       other is AuthSession &&
       other.backend == backend &&
       other.credential == credential &&
-      other.user == user;
+      other.user == user &&
+      other.authenticatedAt == authenticatedAt;
 
   @override
-  int get hashCode => Object.hash(backend, credential, user);
+  int get hashCode => Object.hash(backend, credential, user, authenticatedAt);
 
   @override
   String toString() => 'AuthSession(backend: $backend, $credential, $user)';

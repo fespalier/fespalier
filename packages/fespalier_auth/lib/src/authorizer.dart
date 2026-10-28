@@ -20,6 +20,7 @@ final class AuthAttempt implements HttpAuthorization {
     this.session,
     this.resent = false,
     this.renewed = false,
+    this.steppedUp = false,
   });
 
   /// What the authenticator added to the request (`Authorization`, a signature, an
@@ -42,14 +43,18 @@ final class AuthAttempt implements HttpAuthorization {
   /// Whether this send is the one that follows a `Renew`.
   final bool renewed;
 
-  /// Whether this send is the one that follows a `Resend` or a `Renew`, so a request sent again
-  /// by the authorizer: `SessionTransport` marks the request's attributes
+  /// Whether this send is the one that follows a `StepUp` (since 0.25.0).
+  final bool steppedUp;
+
+  /// Whether this send is the one that follows a `Resend`, a `Renew` or a `StepUp`, so a request
+  /// sent again by the authorizer: `SessionTransport` marks the request's attributes
   /// (`transportReplayKey`).
   @override
-  bool get isReplay => resent || renewed;
+  bool get isReplay => resent || renewed || steppedUp;
 
   bool _resendNext = false;
   bool _renewNext = false;
+  bool _stepUpNext = false;
 }
 
 /// What a transport needs from the session (since 0.9.0): the headers for a request, and the
@@ -57,7 +62,7 @@ final class AuthAttempt implements HttpAuthorization {
 ///
 /// `SessionTransport` is the client over it. A client of your own asks [authorize] before each
 /// send, with the request and the exact bytes of its body, and [retry] after each response, and
-/// sends at most three times.
+/// sends at most four times (one resend, one renewal and, since 0.25.0, one step-up).
 ///
 /// It is an [HttpCredentials] since 0.15.0, so a transfer that is not a transport can take it as
 /// it is.
@@ -67,6 +72,12 @@ final class Authorizer implements HttpCredentials {
   final AuthSessionNotifier _notifier;
   final List<Uri> _origins;
   final RequestAuthenticator _authenticator;
+
+  /// The request attribute that says whether a `StepUp` verdict may ask the user (since
+  /// 0.25.0): `false` makes the request's 401 stand. Set it on work the user is not looking at (a
+  /// sync, a queued intent, a background refresh), so a refusal never opens a sign-in page by
+  /// itself; under Dio, `Options(extra: {Authorizer.stepUpAttribute: false})`.
+  static const String stepUpAttribute = 'fespalier.auth.step_up';
 
   /// Whether [uri]'s origin (scheme, host and port) is one of `AuthConfig.apiOrigins`. Nothing
   /// else gets a credential.
@@ -114,8 +125,9 @@ final class Authorizer implements HttpCredentials {
     final prior = previous as AuthAttempt?;
     final resent = prior != null && (prior.resent || prior._resendNext);
     final renewed = prior != null && (prior.renewed || prior._renewNext);
+    final steppedUp = prior != null && (prior.steppedUp || prior._stepUpNext);
     AuthAttempt unauthenticated() =>
-        AuthAttempt._(resent: resent, renewed: renewed);
+        AuthAttempt._(resent: resent, renewed: renewed, steppedUp: steppedUp);
     if (!covers(request.uri)) return unauthenticated();
     try {
       await _notifier.credential();
@@ -137,6 +149,7 @@ final class Authorizer implements HttpCredentials {
       session: session,
       resent: resent,
       renewed: renewed,
+      steppedUp: steppedUp,
     );
   }
 
@@ -153,11 +166,18 @@ final class Authorizer implements HttpCredentials {
   /// With [mayRenew] false (since 0.21.0) a `Renew` verdict is not acted on: the response
   /// stands, as for a request that has renewed already. `SessionTransport` passes false once the
   /// logical request has spent its renewal on an earlier send.
+  ///
+  /// A `StepUp` verdict (since 0.25.0) asks the user once (`AuthSessionNotifier.stepUp`, shared
+  /// by every request that asks at the same time) and says true; the response stands when this
+  /// request already stepped up, when [mayStepUp] is false (`SessionTransport` passes false once
+  /// the logical request has spent its step-up), when the request's [stepUpAttribute] is
+  /// `false`, and when the user cancelled or the server refused the step-up.
   @override
   Future<bool> retry(
     covariant AuthAttempt attempt,
     TransportResponse response, {
     bool mayRenew = true,
+    bool mayStepUp = true,
   }) async {
     final request = attempt.request;
     final session = attempt.session;
@@ -189,6 +209,23 @@ final class Authorizer implements HttpCredentials {
           return false;
         }
         attempt._renewNext = true;
+        return true;
+      case StepUp(:final challenge):
+        if (attempt.steppedUp ||
+            !mayStepUp ||
+            request.attributes[stepUpAttribute] == false) {
+          return false;
+        }
+        try {
+          await _notifier.stepUp(challenge, rejected: session.credential);
+        } on AuthCancelled {
+          return false;
+        } on AuthRejected {
+          return false;
+        } on NotSignedIn {
+          return false;
+        }
+        attempt._stepUpNext = true;
         return true;
       case SessionEnded(:final reason):
         await _notifier.endSession(reason, only: session.user.id);

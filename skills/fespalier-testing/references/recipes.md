@@ -275,7 +275,7 @@ backend.gate!.complete();
 await tester.pumpAndSettle();
 ```
 
-- `fakeAuth({signedInAs, backend, store, apiOrigins, transport, credentialLifetime})`: `transport` is a `FakeTransport`
+- `fakeAuth({signedInAs, backend, store, apiOrigins, transport, credentialLifetime, authenticatedAt})` (`authenticatedAt` since 0.25.0, for a route behind `requireFreshAuth`): `transport` is a `FakeTransport`
   (`package:fespalier_transport/testing.dart`) for `authTransport` (the API calls; it was `client`, a `MockClient` for
   `authHttpClient`, until 0.20.0), `apiOrigins` says which hosts get the session, `credentialLifetime` (was `tokenLifetime`)
   makes the session expire against the fake clock (call `fakeAuth` inside the test body, where that clock starts).

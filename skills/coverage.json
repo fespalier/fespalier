@@ -580,6 +580,7 @@
         "docs/auth.md#Guarding signed-in routes",
         "docs/auth.md#Signing in and out",
         "docs/auth.md#Calling your API",
+        "docs/auth.md#Step-up authentication",
         "packages/fespalier_auth/README.md",
         "packages/fespalier_auth/lib/fespalier_auth.dart",
         "packages/fespalier_oidc/README.md",

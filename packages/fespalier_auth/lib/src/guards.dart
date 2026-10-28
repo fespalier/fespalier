@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:fespalier/fespalier.dart';
 
 import 'notifier.dart';
@@ -115,3 +116,85 @@ GuardResult redirectIfSignedIn(
   String? from,
   String fallback = '/',
 }) => ref.watch(isSignedIn) ? returnTo(from, fallback: fallback) : null;
+
+/// The phase, and the authentication time when signed in: what the freshness guards watch, so a
+/// renewal (which keeps the time) never runs them again, and a step-up does.
+(_Phase, DateTime?) _freshness(SessionState state) => (
+  _phaseOf(state),
+  switch (state) {
+    SignedIn(:final session) => session.authenticatedAt,
+    _ => null,
+  },
+);
+
+bool _fresh(SessionState state, Duration maxAge) => switch (state) {
+  SignedIn(:final session) => session.authenticatedWithin(maxAge, clock.now()),
+  _ => false,
+};
+
+/// For a `guard.dart` of a route that needs a recent sign-in (since 0.25.0): [requireSignedIn],
+/// then [reauthenticate] with the requested location as `from` when the user last proved who
+/// they are more than [maxAge] ago (`AuthSession.authenticatedAt`: an OpenID Connect
+/// `auth_time`, else the time of the sign-in or the last step-up). An unknown time is too old.
+///
+/// ```dart
+/// // lib/app/(signed-in)/payouts/guard.dart
+/// GuardResult guard(Ref ref, {required Uri uri}) => requireFreshAuth(
+///   ref, uri,
+///   maxAge: const Duration(minutes: 5),
+///   signIn: (from) => SignInRoute(from: from),
+///   reauthenticate: (from) => ReauthRoute(from: from),
+/// );
+/// ```
+///
+/// The age is read from `clock.now()` when the guard runs: when the route is opened, and when
+/// the session's user or authentication time changes. It starts no timer, so a page open for
+/// longer than [maxAge] stays open; the API's own step-up refusal (`StepUp`) covers what it
+/// sends from there. A renewal does not run it again (it keeps the time); a step-up does.
+GuardResult requireFreshAuth(
+  Ref ref,
+  Uri uri, {
+  required Duration maxAge,
+  required TypedLocation Function(String from) signIn,
+  required TypedLocation Function(String from) reauthenticate,
+}) {
+  final (phase, _) = ref.watch(authSession.select(_freshness));
+  String? decide(SessionState state) {
+    if (state is! SignedIn) return signIn(uri.toString()).location;
+    return _fresh(state, maxAge)
+        ? null
+        : reauthenticate(uri.toString()).location;
+  }
+
+  if (phase == _Phase.restoring) {
+    // Only without restoreAuth in startup(): the answer waits for the stored session. It reads
+    // the notifier, not the ref, which is gone by then.
+    return ref.read(authSession.notifier).ready.then<String?>(decide);
+  }
+  return decide(ref.read(authSession));
+}
+
+/// For the re-proof route's own `guard.dart` (since 0.25.0), as [redirectIfSignedIn] is for the
+/// sign-in route: `returnTo(from, fallback: fallback)` when the user authenticated within
+/// [maxAge], else null. A step-up on that page (`AuthSessionNotifier.stepUp`) sends the user back
+/// to `from` by itself.
+///
+/// ```dart
+/// // lib/app/(signed-in)/reauth/guard.dart
+/// GuardResult guard(Ref ref, {String? from}) =>
+///     redirectIfFreshAuth(ref, maxAge: const Duration(minutes: 5), from: from);
+/// ```
+///
+/// Pass the same [maxAge] as the [requireFreshAuth] that sent the user there. Put the page under
+/// the signed-in routes: signed out, this guard answers null.
+GuardResult redirectIfFreshAuth(
+  Ref ref, {
+  required Duration maxAge,
+  String? from,
+  String fallback = '/',
+}) {
+  ref.watch(authSession.select(_freshness));
+  return _fresh(ref.read(authSession), maxAge)
+      ? returnTo(from, fallback: fallback)
+      : null;
+}

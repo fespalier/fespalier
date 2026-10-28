@@ -60,7 +60,9 @@ final class Body {
 
   void add(String text) => controller.add(utf8.encode(text));
 
-  void addBytes(int count) => controller.add(Uint8List(count));
+  /// [count] bytes, each of the value [fill], so that chunks can be told apart.
+  void addBytes(int count, [int fill = 0]) =>
+      controller.add(Uint8List(count)..fillRange(0, count, fill));
 }
 
 void main() {
@@ -220,10 +222,10 @@ void main() {
         await pumpEventQueue();
         expect(log, ['sentry 401', 'otel 401', 'body listened']);
 
-        body.addBytes(32 * kib);
+        body.addBytes(32 * kib, 1);
         await pumpEventQueue();
         expect(response, isNull); // 32 KiB: still reading, to judge it
-        body.addBytes(33 * kib);
+        body.addBytes(33 * kib, 2);
         await pumpEventQueue();
         await sent;
         expect(response, isNotNull); // 65 KiB: over the limit, handed on
@@ -232,10 +234,17 @@ void main() {
         expect(judgedBody, isNull);
 
         final bytes = response!.bytes();
-        body.addBytes(kib);
+        body.addBytes(kib, 3);
         await body.controller.close();
-        // Whole: the chunks read for the judge come first, then the rest.
-        expect((await bytes).length, 66 * kib);
+        // Whole: the chunks read for the judge come first, then the rest, in order.
+        expect(
+          await bytes,
+          orderedEquals([
+            ...List.filled(32 * kib, 1),
+            ...List.filled(33 * kib, 2),
+            ...List.filled(kib, 3),
+          ]),
+        );
       },
     );
 

@@ -149,7 +149,7 @@ void main() {
 
     // The same Dio wrapper sits above TransportAdapter: a caller's cancel leaves the transport's
     // body read to its end; a CancelToken aborts it (TransportAdapter turns it into the request's
-    // abortTrigger, and Dio cancels the adapter's stream).
+    // abortTrigger, which completes, and Dio cancels the adapter's stream).
     test(
       'a cancel by the caller does not reach the transport; a CancelToken does',
       () async {
@@ -173,6 +173,7 @@ void main() {
         await first.data!.stream.listen((_) {}).cancel();
         await pumpEventQueue();
         expect(bodies[0].cancelled, isFalse);
+        expect(transport.abortCount, 0);
 
         final token = CancelToken();
         final second = await dio.getUri<ResponseBody>(
@@ -190,6 +191,8 @@ void main() {
         await done.future;
         await pumpEventQueue();
         expect(bodies[1].cancelled, isTrue);
+        expect(transport.requests[1].abortable, isTrue);
+        expect(transport.abortCount, 1);
       },
     );
   });

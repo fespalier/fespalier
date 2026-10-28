@@ -10,8 +10,8 @@
 // - a `StreamNotifier` is created once per element: its fields outlive a rebuild that a
 //   `ref.watch` causes, and not a disposal.
 //
-// Read in riverpod 3.4.3: `ProviderElement.handleStream`, `_handleAsync` and `triggerRetry`
-// (`lib/src/core/element.dart`), `ProviderContainer.defaultRetry`, and
+// Read in riverpod 3.4.3: `ElementWithFuture.handleStream` and `_handleAsync` (the mixin) and
+// `ProviderElement.triggerRetry` (`lib/src/core/element.dart`), `ProviderContainer.defaultRetry`, and
 // `$ClassProviderElement.create` (`classListenable.result ??=`); `TickerMode` in flutter_riverpod
 // 3.4.3's `ConsumerStatefulElement._updateTickerMode`.
 import 'dart:async';

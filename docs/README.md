@@ -19,6 +19,7 @@ The [README](https://github.com/fespalier/fespalier/blob/main/README.md) is the 
 | [Forms](forms.md)                                                  | `form()` and `useForm` with `fespalier_forms`: typed fields, validation, server errors                        |
 | [HTTP transport](transport.md)                                     | `fespalier_transport`: the interface, the two implementations, decorators and their order, the memo, failures |
 | [HTTP clients](http.md)                                            | Dio and `package:http` over the transport: cancelling, field errors, writes never retried                     |
+| [Streaming](streaming.md)                                          | Server-sent events with `fespalier_stream`: live feeds, reconnecting without a timer, resuming, telemetry     |
 | [`main()`, app.dart, startup.dart and splash.dart](app-startup.md) | The generated `main()` and the root files                                                                     |
 | [Adapters](adapters.md)                                            | Packages that plug into the generated `main()`                                                                |
 | [Authentication](auth.md)                                          | Signed-in routes with `fespalier_auth`: OpenID Connect, DPoP, device-signed sessions                          |

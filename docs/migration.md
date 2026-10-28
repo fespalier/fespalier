@@ -27,6 +27,12 @@ too, and either way the key is `AppRoutes.rootNavigatorKey`.)
 
 What changed between releases, newest first, each with a link to the reference section that describes the behavior today. There is no 0.8.0 release: it was tagged but never published, and the wave it carried ships as 0.8.1. Since 0.23.0, [`fsp upgrade --app`](cli.md#moving-the-apps-pins) moves an app's refs and prints, for each release in between, the first paragraph of its section here and the lead of each bullet.
 
+### 0.25.0
+
+0.25.0 changes no code you wrote and no app regenerates a different `app.g.dart`: `fespalier_stream` is new and opt-in.
+
+- **`fespalier_stream` is new and opt-in** (since 0.25.0). Server-sent events read through your own `HttpTransport`, as a `Stream` for a `data.dart` (`transport.serverEvents(url)`) or as a `LiveFeed` that Riverpod holds and that reconnects on your signals and your `streamTicker`, with no timer of its own. An app that does not list it changes nothing. [Streaming](streaming.md).
+
 ### 0.24.0
 
 0.24.0 changes no code you wrote and no app regenerates a different `app.g.dart`. An app with a `config/app.yaml` gets a new generated file, `lib/app.config.g.dart`, beside `output`.

@@ -207,6 +207,13 @@ A decorator **must pass `TransportRequest.attributes` through**: dropping the me
 - **`CredentialsUnavailable`** is what a credential throws when it could not be reached (offline while a session renews, a 5xx from the renewal endpoint): nothing was refused, so a transfer reports a network failure, not a lost session. `AuthUnavailable` implements it.
 - **CrateStack reads all of these in one place**: `TransportFailures.read` turns `TransportUnsent`, `TransportTimedOut` and `TransportPortal` into `CrateStackOffline`, `TransportAborted` into `CrateStackCancelled`, and a `TransportStatusError` by its status and body; a `TransportBroken` and a `TransportUntrusted` are unknown (null), not offline ([CrateStack](cratestack.md)).
 
+## Streaming bodies
+
+`send` answers at the headers and the body streams, so a response that never ends (server-sent events, since 0.25.0 with [`fespalier_stream`](streaming.md)) goes through the chain like any other. The decorators keep it that way: `SessionTransport` reads only the body of a 401 or a 403 (up to 64 KiB) and hands every other response on unread, and `OtelTransport` and `SentryTransport` end their span or breadcrumb at the headers, so their duration is the time to the first byte. Two things to know about a body that streams:
+
+- **An error in the middle of a body is the client's own**, not a `TransportFailure`: `package:http` ends it with a `ClientException` (a `RequestAbortedException` after an abort), Dio with a `DioException`. `fespalier_stream` reads such an error as a dropped connection, a `TransportBroken`, unless it aborted the request itself.
+- **Cancelling a body does not free every connection**: Dio keeps reading a body whose listener left, on the VM and on the web. Complete the request's `abortTrigger` to close it, as `fespalier_stream` does whenever it gives a stream up. On the web, Dio's default adapter receives a body whole, at its end; `HttpClientTransport(BrowserClient())` reads it as it arrives.
+
 ## One transport, built in startup
 
 Build the chain once, in `startup()`, and hand the same object to everything that sends: the session, the images, the downloads, the translations, the map packs.

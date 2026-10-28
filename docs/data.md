@@ -10,6 +10,8 @@
 | `ProviderListenable<AsyncValue<T>> data({…}) => productProvider(id)`                                                                     | calls it and uses the provider it returns; nothing is wrapped                 | a provider for it already exists, above all a `riverpod_generator` one                                   |
 | `final data = FutureProvider<T>(…)` (or `StreamProvider`, `AsyncNotifierProvider`, `StreamNotifierProvider`), type arguments spelled out | uses it as-is                                                                 | you want to write the provider yourself (a notifier, `keepAlive`, `retry:`) and it belongs to this route |
 
+A `Stream<T>` from a server's event stream, and a provider that holds one and reconnects, are [Streaming](streaming.md) (`fespalier_stream`, since 0.25.0): `transport.serverEvents(url)` in the function form, a `LiveFeed` in the selector form.
+
 **Selecting a provider.** If a provider for the data already exists, select it:
 
 ```dart
@@ -89,7 +91,7 @@ Future<Product> data(Ref ref, {required int id}) =>
     ref.watch(apiProvider).product(id);
 ```
 
-`freshness` is a top-level `const` or `final` variable of exactly that name, initialized with a `Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not read the duration: the generated file refers to `_i13.freshness`, and the Dart analyzer checks it. It applies to the **function form** returning a `Future<T>`, a `FutureOr<T>` or a plain `T`; in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider it is an error that says what to do instead.
+`freshness` is a top-level `const` or `final` variable of exactly that name, initialized with a `Freshness(...)` call (`const Freshness(...)` and `prefix.Freshness(...)` are fine). fsp does not read the duration: the generated file refers to `_i13.freshness`, and the Dart analyzer checks it. It applies to the **function form** returning a `Future<T>`, a `FutureOr<T>` or a plain `T`; in a `data.dart` that returns a `Stream`, selects a provider or exports its own `data` provider it is an error that says what to do instead. A stream is current by itself: one from a server is [Streaming](streaming.md), and its reconnects follow the same signals (`reconnectSignal`, `appShowSignal`).
 
 **A folder's default.** The same constant in a `route.dart` is the default of every `data()` function at and below that folder (a [section's](#section-data) included). The nearest `route.dart` wins, and a `data.dart`'s own `freshness` wins over all of them. A root `lib/app/route.dart` is the app-wide default.
 

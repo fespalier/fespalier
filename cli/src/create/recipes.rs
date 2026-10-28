@@ -800,6 +800,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "fespalier_sign_keypair",
         "needs Flutter 3.44 and a git dependency of another repository",
     ),
+    (
+        "fespalier_stream",
+        "needs a server that streams events, which is the app's own",
+    ),
 ];
 
 /// The `fespalier_*` packages each companion depends on in its `dependencies:` (not
@@ -832,6 +836,7 @@ pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
         "fespalier_sign_keypair",
         &["fespalier_auth", "fespalier_keypair", "fespalier_transport"],
     ),
+    ("fespalier_stream", &["fespalier_transport"]),
     ("fespalier_tolgee", &["fespalier_transport"]),
 ];
 

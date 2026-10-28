@@ -38,6 +38,7 @@ workspace:
   - packages/fespalier_riverpod
   - packages/fespalier_sentry
   - packages/fespalier_storage
+  - packages/fespalier_stream
   - packages/fespalier_tolgee
   - packages/fespalier_transport
 

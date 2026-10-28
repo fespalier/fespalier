@@ -154,6 +154,7 @@ jobs:
           - packages/fespalier_frb
           - packages/fespalier_riverpod
           - packages/fespalier_launch
+          - packages/fespalier_stream
           - examples/shop
           - examples/features
           - examples/tabs
@@ -301,6 +302,7 @@ jobs:
           - packages/fespalier_frb
           - packages/fespalier_riverpod
           - packages/fespalier_launch
+          - packages/fespalier_stream
           - examples/minimal
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

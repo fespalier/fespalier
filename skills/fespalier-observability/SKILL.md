@@ -97,6 +97,14 @@ query, input, result, token) and the name must be a constant (`fespalier.push.op
 `FespalierSentry` sends neither the attributes nor, by default, a failure as an event (a breadcrumb with the class only;
 `capture:` opts in).
 
+Since 0.25.0, `fespalier_stream` reports two short **root spans** per event-stream connection, never one span that lives as long
+as it: `fespalier.stream.open` (a request's send to its answer; `fespalier.stream.result` `open`, `done`, `refused`, `rejected`,
+`unavailable`, `failed` or `cancelled`, `status_code`, `resumed`) and `fespalier.stream.close` (instant, when a connection that
+was open ends; `reason` `ended`, `failed`, `idle`, `paused` or `cancelled`, and `events`), both with `kind` (`sse`) and the
+`name` the app gave `ServerEvents`. Constants only (`FespalierStreamConventions`), the package's own contract: never a URL, a
+header, an event's type, data or id, or an error's text. `OtelTransport`'s `http` span and `SentryTransport`'s breadcrumb end at
+the headers, so for a stream their duration is the time to the first byte.
+
 [`references/conventions.md`](references/conventions.md) is **contract version 1**: every span, event and
 attribute name, for anyone building a dashboard or an alert. Adding is allowed within version 1; renaming
 or removing is version 2.

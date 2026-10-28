@@ -39,13 +39,14 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`) and on `fespalier_transport` (the transport interface and the write rule `WriteGuard` shares with every transport). Both are pure Dart, and neither brings `http`.
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`), on `fespalier_transport` (the transport interface and the write rule `WriteGuard` shares with every transport) and, since 0.25.0, on `web` (0.5.0 or newer, below 2.0.0: the browser bindings of the fetch adapter). All are pure Dart, and none brings `http`.
 
 ## Libraries
 
 | Library                                    | What is in it                                                                                                                   |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | `package:fespalier_dio/fespalier_dio.dart` | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, `DioTransport` and `TransportAdapter` (since 0.21.0) |
+| `package:fespalier_dio/fetch.dart`         | `FetchHttpClientAdapter` and `webStreamingAdapter()`: a Dio that streams in a browser (since 0.25.0)                              |
 
 The server's validation-error decoders (`fieldErrorsOf`, `FieldErrorsDecoders`, `FieldNames`) are in `package:fespalier/problem.dart`: this library no longer re-exports them. `package:fespalier_dio/client.dart` and `DioHttpClient` (your Dio as an `http.Client`) were removed in 0.21.0: send through `DioTransport` instead, or use `fespalier_http`'s `HttpClientTransport` if you want `package:http`.
 
@@ -96,6 +97,27 @@ in `error` (`TransportAborted` a `cancel`, `TransportUnsent` a `connectionError`
 `receiveTimeout`, `TransportBroken` an `unknown`), and any other error the transport throws is wrapped as an `unknown`
 `DioException` whose `error` is that same object. Every retry that Dio's retry interceptors perform calls the adapter
 again, so a session below it sees every send. `close()` does nothing: the transport belongs to whoever made it.
+
+## Streaming on the web
+
+Dio's own web adapter reads a response with `XMLHttpRequest` into one buffer, so a streamed body (an event stream through
+`DioTransport`) arrives in one piece when the server ends it. `package:fespalier_dio/fetch.dart` (since 0.25.0) has
+`FetchHttpClientAdapter`, a Dio adapter over the browser's `fetch` that hands each chunk on as it arrives, and
+`webStreamingAdapter()`, which is that adapter in a web build and Dio's default adapter everywhere else:
+
+```dart
+import 'package:fespalier_dio/fetch.dart';
+
+final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))..httpClientAdapter = webStreamingAdapter();
+```
+
+A `CancelToken`, Dio closing the response, cancelling the body subscription and `close(force: true)` abort the `fetch`
+(an abort is a `cancel`, anything else a `connectionError`). It does **not** honour `connectTimeout`, `receiveTimeout`
+or `sendTimeout` (that takes a timer), the browser follows redirects, and the request body is sent in one piece.
+`withCredentials` (and `Options.extra['withCredentials']`) works as on Dio's own web adapter. The library imports neither
+Flutter nor fespalier. CI runs it in Chromium, Firefox and WebKit with dart2js and dart2wasm (`just fetch-adapter`);
+Safari on macOS and iOS is unchecked. The whole story is in
+[HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md#streaming-on-the-web).
 
 ## Cancel a load whose page is gone
 

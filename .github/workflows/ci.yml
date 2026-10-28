@@ -1260,6 +1260,43 @@ jobs:
       - name: Each committed flow's route shows on the web
         run: scripts/check-web-routes.sh examples/shop
 
+  fetch-adapter:
+    name: Dio streams on the web
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ci/web-routes/package-lock.json
+      # Playwright and the Chromium, Firefox and WebKit builds it pins, from
+      # ci/web-routes/package-lock.json (as web-routes, with the Microsoft apt source removed first:
+      # `--with-deps` runs `apt-get update`, which fails as a whole when one source does).
+      - name: Install the browsers
+        working-directory: ci/web-routes
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.*
+          npm ci
+          npx --no-install playwright install --with-deps chromium firefox webkit
+      # packages/fespalier_dio/test/browser/harness.dart compiled with dart2js and dart2wasm, served by
+      # tool/stream_server.dart, and run in each browser by ci/web-routes/fetch.mjs: over the fetch
+      # adapter and over BrowserClient, an event stream arrives as it is written, a cancel reaches the
+      # server, and headers, statuses, bodies and credentials come through. The script is
+      # `just fetch-adapter`.
+      - name: The fetch adapter streams and cancels in Chromium, Firefox and WebKit
+        run: scripts/check-fetch-adapter.sh
+
   examples-web:
     name: Example ${{ matrix.example }} opens its routes on the web
     runs-on: ubuntu-latest

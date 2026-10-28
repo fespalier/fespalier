@@ -588,6 +588,38 @@ transport pieces in `fespalier_cratestack.dart` since 0.21.0:
 
 [`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md) has the whole chain.
 
+## Streaming on the web (since 0.25.0)
+
+Dio's own web adapter reads a response with `XMLHttpRequest` into one buffer, so `ResponseType.stream` (what `DioTransport`
+asks for) gets the whole body when the server ends it: an event stream shows nothing until it closes.
+`package:fespalier_dio/fetch.dart` is the fix, and `package:http` needs none (`BrowserClient` already reads `fetch` chunk by
+chunk):
+
+```dart
+// lib/api.dart
+import 'package:dio/dio.dart';
+import 'package:fespalier_dio/fetch.dart';
+
+// The fetch adapter in a web build, Dio's default adapter everywhere else.
+Dio makeDio() => Dio(BaseOptions(baseUrl: 'https://api.example.com'))..httpClientAdapter = webStreamingAdapter();
+```
+
+- **Cancelling aborts the `fetch`:** a `CancelToken` (before or after the headers; `DioTransport` cancels one when its
+  `abortTrigger` completes), Dio closing the response, a cancelled body subscription, `close(force: true)`. An abort is
+  `DioExceptionType.cancel`; any other failure is `connectionError` (`TransportUnsent` through `DioTransport`).
+- **No timeouts:** `connectTimeout`, `receiveTimeout` and `sendTimeout` are not honoured (a timer would be needed, and
+  `AbortSignal.timeout` would end a stream that is still wanted). Do not promise them on the web; cancel instead.
+- **The browser follows redirects** (`followRedirects: false` and `maxRedirects` are ignored, `redirects` is empty), and the
+  request body is sent in one piece (Firefox and Safari cannot stream one).
+- **`withCredentials`** (`FetchHttpClientAdapter(withCredentials: true)`, or `Options.extra['withCredentials']` for one request)
+  sends cookies to another origin, as on Dio's own web adapter.
+- **dart2wasm needs `dio_web_adapter` 2.0.0 or newer** (Dio imports it in every web build; 1.x uses `dart:html`): a fresh
+  resolution picks 2.x, an app held at its lowest versions lists `dio_web_adapter: ">=2.0.0 <3.0.0"`.
+- **Outside a browser** `FetchHttpClientAdapter` exists but its `fetch` throws `UnsupportedError`: shared code uses
+  `webStreamingAdapter()`. The library imports neither Flutter nor fespalier.
+- CI (`just fetch-adapter`) runs it and `BrowserClient` in Chromium, Firefox and WebKit, with dart2js and dart2wasm. Safari on
+  macOS and iOS is **unchecked**: do not claim it.
+
 ## What it does not do
 
 No retry policy of its own (a backoff needs a timer; `RetryInterceptor` and `RetryClient` are yours). No logging. No

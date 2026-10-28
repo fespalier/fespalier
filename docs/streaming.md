@@ -31,9 +31,56 @@ to one package only if they are the same repository dependency. The snippet, kep
 [`packages/fespalier_stream/README.md`](https://github.com/fespalier/fespalier/blob/main/packages/fespalier_stream/README.md).
 List `fespalier_transport` too, and `fespalier_http` or `fespalier_dio` for a transport that sends ([HTTP transport](transport.md)).
 
-**On the web, read a stream through `package:http`.** `HttpClientTransport(BrowserClient())` reads a `fetch` body chunk by chunk;
-`DioTransport` over Dio's default web adapter receives the whole body when the server ends it, so no event arrives before that.
-A Dio app can still send its other requests through Dio and give its feeds an `HttpClientTransport` wrapped in the same decorators.
+On the web, the transport at the bottom of the chain must stream: see [On the web](#on-the-web).
+
+### On the web
+
+A browser streams a response body only through `fetch`, read chunk by chunk. Two transports do it:
+
+- **`package:http`**: `HttpClientTransport(BrowserClient())` (`fespalier_http`). `BrowserClient` reads a `fetch` body as it
+  arrives.
+- **Dio, with the fetch adapter** (since 0.25.0): `DioTransport(dio)` where `dio.httpClientAdapter` is
+  `FetchHttpClientAdapter()` from `package:fespalier_dio/fetch.dart`, or `webStreamingAdapter()`, which is that adapter in a web
+  build and Dio's default adapter everywhere else. Dio's own web adapter uses `XMLHttpRequest` with an `arraybuffer` response, so
+  the whole body arrives when the server ends it, and no event shows before that.
+
+```dart
+// lib/startup.dart
+import 'package:dio/dio.dart';
+import 'package:fespalier_dio/fespalier_dio.dart';
+import 'package:fespalier_dio/fetch.dart';
+
+final dio = Dio()..httpClientAdapter = webStreamingAdapter();
+final transport = DioTransport(dio); // wrap it in the session and the other decorators as usual
+```
+
+The fetch adapter does not honour Dio's `connectTimeout`, `receiveTimeout` and `sendTimeout` (honouring them takes a timer, and a
+stream outlives any of them: cancel through the `CancelToken`, which `abortTrigger` already does). The browser follows redirects
+(`followRedirects: false` and `maxRedirects` are not honoured), and the request body is sent in one piece (Firefox and Safari
+cannot stream one). `withCredentials` sends cookies cross-origin, as on Dio's own web adapter. [HTTP clients](http.md#streaming-on-the-web)
+has the details.
+
+What CI checks (the `fetch-adapter` job, `just fetch-adapter`), over both transports: ten events written 200 ms apart arrive one
+by one through `fespalier_stream`'s connection (the first within 300 ms of being written, the ten over at least 1.5 s), closing the
+connection after three makes the server see the disconnect, and headers and a status come through. For the fetch adapter alone, a
+cancelled body subscription, a `CancelToken` (before and after the headers) and `close(force: true)` each abort the request at the
+server, a port nothing listens on is `TransportUnsent`, a `POST` body arrives whole, and `withCredentials` chooses the request's
+credentials.
+
+| Browser                               | dart2js   | dart2wasm |
+| ------------------------------------- | --------- | --------- |
+| Chromium (Playwright's build)         | checked   | checked   |
+| Firefox (Playwright's build)          | checked   | checked   |
+| WebKit (Playwright's build, on Linux) | checked   | checked   |
+| Safari on macOS and iOS               | UNCHECKED | UNCHECKED |
+
+The browsers are those Playwright's pinned version installs (`ci/web-routes/package-lock.json`). The job runs the connection
+without fespalier's telemetry and errors (`ServerEvents` is that connection with them, and they need Flutter, which the harness
+does not build). WebKit on Linux is not Safari.
+
+A browser opens at most **six HTTP/1.1 connections to one origin**, and every open stream holds one, so a seventh request to that
+origin (a stream or an ordinary call) waits until one closes. Keep one feed per origin, with the key in each event (see
+[A live feed](#a-live-feed-livefeed)), or serve the API over HTTP/2, which shares one connection.
 
 ### The simple form: a `Stream` in `data.dart`
 
@@ -295,7 +342,7 @@ UNCHECKED, because no CI job can show them:
 - **Devices.** A stream on Android and iOS across background and foreground, Wi-Fi to mobile, airplane mode, resuming with
   `Last-Event-ID`, iOS suspending the socket, Android Doze, a carrier proxy that buffers. Whether the app's timer runs while it is
   hidden decides when a hidden page's connection closes.
-- **Browsers.** `ServerEvents` itself is run by no browser test. A spike read event streams chunk by chunk through
-  `HttpClientTransport(BrowserClient())` in Chromium, Firefox and WebKit (on Linux, not Safari), with dart2js and dart2wasm, and saw
-  Dio's default web adapter deliver a whole body at its end.
+- **Safari.** CI reads event streams in Playwright's Chromium, Firefox and WebKit on Linux, with dart2js and dart2wasm
+  ([On the web](#on-the-web)); Safari on macOS and iOS is not WebKit on Linux. `ServerEvents` with its telemetry and errors is run
+  by no browser test, only the connection under it.
 - **Proxies in production**, and HTTP/2: every measurement was HTTP/1.1 on loopback.

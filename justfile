@@ -375,6 +375,18 @@ web-routes:
     cd ci/web-routes && npm ci && npx --no-install playwright install chromium
     scripts/check-web-routes.sh examples/shop
 
+# fespalier_dio's fetch adapter (and BrowserClient next to it) in Chromium, Firefox and WebKit, or the engines
+# named, each with dart2js and dart2wasm: test/browser/harness.dart against tool/stream_server.dart, driven by
+# ci/web-routes/fetch.mjs (Playwright, pinned in ci/web-routes/package-lock.json). An event stream must arrive
+# as it is written, and a cancel must reach the server.
+# Needs Flutter and Node; about three minutes, and not part of `just ci` (CI runs it as `fetch-adapter`)
+fetch-adapter *engines:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    engines="{{ engines }}"
+    (cd ci/web-routes && npm ci && npx --no-install playwright install ${engines:-chromium firefox webkit})
+    scripts/check-fetch-adapter.sh $engines
+
 # Every example (or the named ones) as a release web build in Chromium: each URL of ci/web-routes/examples.json
 # shows its text, nothing throws or logs an error, and nothing is requested but from the local server (the examples stay
 # platform-free: each is built in a throwaway copy). FSP_CHROMIUM=/path/to/chrome uses a Chromium already on disk.
@@ -440,7 +452,8 @@ codegen-interop:
 # The scaffold job (`fsp new` / `fsp init` into a fresh app) runs in CI only, apart from its two steps
 # that have a recipe, `just dev-e2e` and `just codegen-interop`; the editor jobs are `just vscode` and
 # `just intellij`, the web builds are `just web-chunks` (the deferred pages), `just web-routes` (the
-# Maestro flows) and `just examples-web` (every example's routes, one CI job each), the stack in Docker
+# Maestro flows) and `just examples-web` (every example's routes, one CI job each), the fetch adapter in three
+# browsers is `just fetch-adapter`, the stack in Docker
 # is `just telemetry-smoke`, the Flutter 3.35 floor is `just floor`, the cose example with its Rust
 # server is `just cose`, the frb-cose example with its core and server is `just frb-cose`, and the docs
 # screenshots are `just telemetry-screenshots` (not in CI at all).

@@ -28,8 +28,10 @@ dependencies:
       ref: v0.24.1 # x-release-please-version
   # Not imported. connectivity_plus 6.0.1 allows web 0.3.0, whose JS interop does not compile for the web on
   # Dart 3.9 (`The type 'JSObject' can't be used as supertype`): an app's `flutter pub downgrade` picks it and
-  # a web build fails. Depending on it steers every app's resolution to 0.4.0 or newer.
-  web: ">=0.4.0 <2.0.0"
+  # a web build fails. Depending on it steers every app's resolution away from it. The lower bound is 0.5.0
+  # since 0.25.0, spelled as in every pubspec (cli/tests/versions.rs): fespalier_dio's fetch adapter needs
+  # 0.5.0's extension types, and connectivity_plus 6.0.1 still resolves with it (it allows web up to 0.6.0).
+  web: ">=0.5.0 <2.0.0"
 
 dev_dependencies:
   flutter_lints: ^6.0.0

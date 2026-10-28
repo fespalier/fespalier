@@ -1,6 +1,8 @@
 /// Why a connection is waiting (since 0.25.0).
 enum LiveDrop {
-  /// The server ended the body without sending an event on it.
+  /// The server ended the body in an orderly way and the connection did not open again at once:
+  /// it sent no event on it, it asked for a delay with `retry:`, or it ended quick bodies one
+  /// after the other.
   ended,
 
   /// No answer came back (a `TransportFailure`, or credentials that could not be reached), or the

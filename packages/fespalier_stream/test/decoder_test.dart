@@ -21,6 +21,7 @@ Future<List<String>> decode(
         ServerEvent(:final type, :final data, :final id) =>
           '$type|${jsonEncode(data)}|$id',
         RetryHint(:final delay) => 'retry ${delay.inMilliseconds}',
+        EventIdUpdate(:final id) => 'id ${id ?? 'cleared'}',
         Heartbeat() => 'heartbeat',
       });
     }
@@ -63,7 +64,10 @@ void main() {
   );
 
   test('a block without data is not dispatched; an empty data is', () async {
-    expect(await text('event: x\n\nid: 3\n\ndata\n\n'), ['message|""|3']);
+    expect(await text('event: x\n\nid: 3\n\ndata\n\n'), [
+      'id 3',
+      'message|""|3',
+    ]);
     expect(await text('data:\n\n'), ['message|""|null']);
   });
 
@@ -124,11 +128,41 @@ void main() {
           'message|"b"|1',
           'message|"c"|1',
           'message|"d"|null',
+          'id 3',
           'message|"e"|3',
         ],
       );
     },
   );
+
+  test('a block with an id and no data is an id update, not an event', () async {
+    // The standard sets the last event ID as it reads the field; the dispatch step only drops
+    // the empty data buffer.
+    expect(await text('id: 9\n\n'), ['id 9']);
+    expect(await text('id: 9\nevent: x\n\n'), ['id 9']);
+    expect(await text('id\n\n'), ['id cleared']);
+    expect(await text('id: 9\n\nid\n\n'), ['id 9', 'id cleared']);
+    expect(await bytewise('id: 9\r\n\r\ndata: a\n\n'), [
+      'id 9',
+      'message|"a"|9',
+    ]);
+    // Ignored: a NUL in the value, no id at all, a comment between.
+    expect(await text('id: 9\u0000\n\n'), isEmpty);
+    expect(await text('event: x\n\n'), isEmpty);
+    // A block with data carries its id on the event, not in an update.
+    expect(await text('id: 9\ndata: a\n\n'), ['message|"a"|9']);
+  });
+
+  test('retry: is clamped to a day, and never overflows', () async {
+    expect(await text('retry: 86400000\n'), ['retry 86400000']);
+    expect(await text('retry: 86400001\n'), ['retry 86400000']);
+    expect(await text('retry: 000000000000005\n'), ['retry 5']);
+    expect(await text('retry: 0\n'), ['retry 0']);
+    expect(await text('retry: 99999999999999999999999999\n'), [
+      'retry 86400000',
+    ]);
+    expect(await text('retry: 12x\n'), isEmpty);
+  });
 
   test('the event type does not carry over', () async {
     expect(await text('event: x\ndata: a\n\ndata: b\n\n'), [

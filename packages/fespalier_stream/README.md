@@ -65,7 +65,7 @@ Future<List<Order>> data(Ref ref) {
   tick, an idle one (`LiveRules.idle`, for a server that sends comments) and reopens a waiting one once the server's retry hint
   passed. Override `streamTicker` with a `StreamTicker` that fires from your timer: the package has none.
 - A feed that nothing watches is disposed with its connection, and resumes from its last event ID when watched again
-  (`liveResumePoints`: call `clear()` at sign-out). A feed rebuilt because its `connect` watched a provider that changed (the
+  (`liveResumePoints`, at most 64 kept: call `clear()` at sign-out, in either order with feeds still watched). A feed rebuilt because its `connect` watched a provider that changed (the
   user) starts afresh.
 - `transport.serverEvents(url)` is the simple form: a plain `Stream` for a `data.dart`, which ends with the error a feed would
   wait through.

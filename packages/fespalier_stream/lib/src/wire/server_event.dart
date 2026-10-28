@@ -1,5 +1,5 @@
-/// What an event stream says, item by item (since 0.25.0): an event, the server's reconnection
-/// delay, or a comment. Sealed: switch on it.
+/// What an event stream says, item by item (since 0.25.0): an event, a last event ID set by a
+/// block with no data, the server's reconnection delay, or a comment. Sealed: switch on it.
 ///
 /// `EventStreamDecoder` makes them from the bytes of a `text/event-stream` body.
 sealed class EventStreamItem {
@@ -34,8 +34,30 @@ final class ServerEvent extends EventStreamItem {
   String toString() => 'ServerEvent';
 }
 
+/// A block with an `id:` field and no `data:` line (since 0.25.0): it dispatches no event, but the
+/// WHATWG standard sets the last event ID from the field as it reads it, so a reconnection sends
+/// it as `Last-Event-ID` all the same (a server may send `id: 9` alone to move a client's position
+/// past events it will not show). [id] is null when the field was empty, which clears the last
+/// event ID. `toString` prints no field: the ID is the server's.
+final class EventIdUpdate extends EventStreamItem {
+  /// An update to [id].
+  const EventIdUpdate(this.id);
+
+  /// The new last event ID, or null when the block cleared it.
+  final String? id;
+
+  @override
+  bool operator ==(Object other) => other is EventIdUpdate && other.id == id;
+
+  @override
+  int get hashCode => Object.hash(EventIdUpdate, id);
+
+  @override
+  String toString() => 'EventIdUpdate';
+}
+
 /// The server's `retry:` field (since 0.25.0): how long it asks a client to wait before it
-/// reconnects. fespalier_stream starts no timer: a `LiveFeed` waits for at least this long on the
+/// reconnects, at most [maxRetry] (a larger value is clamped to it). fespalier_stream starts no timer: a `LiveFeed` waits for at least this long on the
 /// app's tick before it reconnects, and an app that reconnects by itself reads it in
 /// `LiveWaiting.retryHint`.
 final class RetryHint extends EventStreamItem {
@@ -44,6 +66,10 @@ final class RetryHint extends EventStreamItem {
 
   /// The delay the server asked for.
   final Duration delay;
+
+  /// The longest delay a hint carries, a day: the decoder clamps a larger `retry:` value to it
+  /// (it would overflow a `Duration` in the end, and no client waits that long).
+  static const Duration maxRetry = Duration(hours: 24);
 
   @override
   bool operator ==(Object other) => other is RetryHint && other.delay == delay;

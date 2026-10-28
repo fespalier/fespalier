@@ -502,6 +502,185 @@ void main() {
     });
   });
 
+  test('an unanswered request is given up by closeIfIdle and tried again', () {
+    // D4: a request that hangs before its headers was never recovered, because only an open
+    // connection could be idle.
+    fakeAsync((async) {
+      server.hang();
+      final seen = Seen(events.events);
+      async.flushMicrotasks();
+      expect(events.status, const LiveConnecting(1));
+      async.elapse(const Duration(seconds: 29));
+      expect(events.closeIfIdle(const Duration(seconds: 30)), isFalse);
+      async.elapse(const Duration(seconds: 1));
+      expect(events.closeIfIdle(const Duration(seconds: 30)), isTrue);
+      async.flushMicrotasks();
+      expect(server.abortCount, 1, reason: 'the hung request was aborted');
+      final waiting = events.status as LiveWaiting;
+      expect(waiting.drop, LiveDrop.failed);
+      expect(waiting.failures, 1);
+      expect(seen.errors, isEmpty);
+      expect(events.reconnect(), isTrue);
+      async.flushMicrotasks();
+      expect(server.requests, hasLength(2));
+      expect(events.status, const LiveOpen());
+      expect(async.pendingTimers, isEmpty);
+      unawaited(seen.subscription.cancel());
+      async.flushMicrotasks();
+    });
+  });
+
+  test('an id-only block sets the last event ID (WHATWG dispatch)', () async {
+    // D1
+    final seen = Seen(events.events);
+    await settle();
+    server.current.event('a', id: '5');
+    await settle();
+    expect(events.lastEventId, '5');
+    server.current.write('id: 9\n\n');
+    await settle();
+    expect(
+      events.lastEventId,
+      '9',
+      reason: 'nothing is held: the listener is up to date',
+    );
+    server.current.end();
+    await settle();
+    expect(server.current.lastEventId, '9');
+    // An empty id clears it.
+    server.current.write('id\n\n');
+    await settle();
+    expect(events.lastEventId, isNull);
+    expect(seen.data, ['a']);
+    await seen.subscription.cancel();
+  });
+
+  test(
+    'an id-only block does not move the delivered ID past a held event',
+    () async {
+      final seen = Seen(events.events);
+      await settle();
+      seen.subscription.pause();
+      server.current
+        ..event('a', id: '5')
+        ..write('id: 9\n\n');
+      await settle();
+      // Both are read (a chunk at a time) or held: the listener was handed neither.
+      expect(events.lastEventId, isNull);
+      seen.subscription.resume();
+      await settle();
+      expect(seen.data, ['a']);
+      expect(events.lastEventId, '9');
+      await seen.subscription.cancel();
+    },
+  );
+
+  test('a server that sends retry: is waited for after an orderly end', () async {
+    // D2: the classic endpoint answers retry:, one event and an end, every time.
+    final seen = Seen(events.events);
+    await settle();
+    server.current
+      ..write('retry: 5000\n')
+      ..event('a', id: '1')
+      ..end();
+    await settle();
+    expect(server.connections, hasLength(1), reason: 'not at once');
+    final waiting = events.status as LiveWaiting;
+    expect(waiting.drop, LiveDrop.ended);
+    expect(waiting.retryHint, const Duration(seconds: 5));
+    expect(events.reconnect(), isTrue);
+    await settle();
+    expect(server.current.lastEventId, '1');
+    await seen.subscription.cancel();
+  });
+
+  test(
+    'without retry:, an orderly end reopens at once only once in a row',
+    () async {
+      // D2: nothing may loop on microtasks against a server that ends every body at once.
+      final seen = Seen(events.events);
+      await settle();
+      server.current
+        ..event('a', id: '1')
+        ..end();
+      await settle();
+      expect(server.connections, hasLength(2));
+      server.current
+        ..event('b', id: '2')
+        ..end();
+      await pumpEventQueue(times: 50);
+      expect(
+        server.connections,
+        hasLength(2),
+        reason: 'the second quick end waits',
+      );
+      final waiting = events.status as LiveWaiting;
+      expect(waiting.drop, LiveDrop.ended);
+      expect(waiting.retryHint, isNull);
+      expect(events.reconnect(), isTrue);
+      await settle();
+      expect(server.connections, hasLength(3));
+      expect(server.current.lastEventId, '2');
+      await seen.subscription.cancel();
+    },
+  );
+
+  test(
+    'a connection that lasted reopens at once again after an orderly end',
+    () {
+      fakeAsync((async) {
+        final seen = Seen(events.events);
+        async.flushMicrotasks();
+        server.current
+          ..event('a', id: '1')
+          ..end();
+        async.flushMicrotasks();
+        expect(server.connections, hasLength(2));
+        async.elapse(const Duration(seconds: 30));
+        server.current
+          ..event('b', id: '2')
+          ..end();
+        async.flushMicrotasks();
+        expect(
+          server.connections,
+          hasLength(3),
+          reason: 'it was open for a while',
+        );
+        unawaited(seen.subscription.cancel());
+        async.flushMicrotasks();
+      });
+    },
+  );
+
+  test('a retry: too large for a Duration is clamped to a day', () async {
+    final seen = Seen(events.events);
+    await settle();
+    server.current.write('retry: 99999999999999999999999\n');
+    server.current.end();
+    await settle();
+    expect((events.status as LiveWaiting).retryHint, const Duration(hours: 24));
+    await seen.subscription.cancel();
+  });
+
+  test(
+    'listening after close() sends nothing and gets a done stream',
+    () async {
+      // D5
+      await events.close();
+      final errors = <Object>[];
+      var done = false;
+      events.events.listen(
+        (_) {},
+        onError: errors.add,
+        onDone: () => done = true,
+      );
+      await settle();
+      expect(server.requests, isEmpty);
+      expect(done, isTrue);
+      expect(errors, isEmpty);
+    },
+  );
+
   test(
     'the user-given headers go along; Last-Event-ID is the connection\'s own',
     () async {

@@ -1,5 +1,6 @@
 // LiveFeed and LiveFeedFamily in a ProviderContainer, over FakeEventServer: signals, the tick,
 // pauses, resume points, rebuilds and the status provider.
+import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier_stream/testing.dart';
 import 'package:fespalier_transport/fespalier_transport.dart';
@@ -281,6 +282,121 @@ void main() {
     expect(resumedFrom, [null, null]);
     expect(server.current.lastEventId, isNull);
     sub.close();
+  });
+
+  test(
+    'a feed still watched at clear() keeps no ID when it is disposed after it',
+    () async {
+      // D3: sign-out clears the points, then the page goes away.
+      final resumedFrom = <String?>[];
+      final live = LiveFeed<ServerEvent>((ref, lastEventId) {
+        resumedFrom.add(lastEventId);
+        return ServerEvents(
+          server,
+          url,
+          headers: {'X-User': ref.watch(user)},
+          lastEventId: lastEventId,
+        );
+      });
+      var sub = container.listen(live.latest, (_, _) {});
+      await settle();
+      server.current.event('a', id: '5');
+      await settle();
+      container.read(liveResumePoints).clear();
+      container.read(user.notifier).signIn('bob');
+      sub.close();
+      await settle();
+      expect(container.read(liveResumePoints).length, 0);
+      sub = container.listen(live.latest, (_, _) {});
+      await settle();
+      expect(server.current.header('X-User'), 'bob');
+      expect(server.current.lastEventId, isNull);
+      sub.close();
+    },
+  );
+
+  test(
+    'clear() while watched also holds when the feed is not rebuilt',
+    () async {
+      final resumedFrom = <String?>[];
+      final live = feed(resumedFrom: resumedFrom);
+      var sub = container.listen(live.latest, (_, _) {});
+      await settle();
+      server.current.event('a', id: '5');
+      await settle();
+      container.read(liveResumePoints).clear();
+      sub.close();
+      await settle();
+      sub = container.listen(live.latest, (_, _) {});
+      await settle();
+      expect(resumedFrom, [null, null]);
+      // A new life keeps its point again.
+      server.current.event('b', id: '6');
+      await settle();
+      sub.close();
+      await settle();
+      expect(container.read(liveResumePoints).length, 1);
+      sub = container.listen(live.latest, (_, _) {});
+      await settle();
+      expect(resumedFrom, [null, null, '6']);
+      sub.close();
+    },
+  );
+
+  test(
+    'liveResumePoints keeps at most its capacity, the oldest dropped',
+    () async {
+      final resumedFrom = <int, String?>{};
+      final family = LiveFeedFamily<ServerEvent, int>((ref, key, lastEventId) {
+        resumedFrom[key] = lastEventId;
+        return ServerEvents(server, url, lastEventId: lastEventId);
+      });
+      const total = LiveResumePoints.capacity + 5;
+      for (var key = 0; key < total; key++) {
+        final sub = container.listen(family(key), (_, _) {});
+        await settle();
+        server.current.event('e', id: 'id$key');
+        await settle();
+        sub.close();
+        await settle();
+      }
+      expect(
+        container.read(liveResumePoints).length,
+        LiveResumePoints.capacity,
+      );
+      for (final key in [0, 4, total - 1]) {
+        resumedFrom.remove(key);
+        final sub = container.listen(family(key), (_, _) {});
+        await settle();
+        sub.close();
+        await settle();
+      }
+      expect(resumedFrom[0], isNull, reason: 'the oldest was dropped');
+      expect(resumedFrom[4], isNull);
+      expect(resumedFrom[total - 1], 'id${total - 1}');
+    },
+  );
+
+  test('a request that never answers is given up on the tick (idle)', () {
+    // D4
+    fakeAsync((async) {
+      server.hang();
+      final live = feed(rules: const LiveRules(idle: Duration(seconds: 45)));
+      final sub = container.listen(live.latest, (_, _) {});
+      final st = container.listen(live.status, (_, _) {});
+      async.flushMicrotasks();
+      expect(st.read().value, const LiveConnecting(1));
+      for (var i = 0; i < 2; i++) {
+        async.elapse(const Duration(minutes: 1));
+        ticker().tick();
+        async.flushMicrotasks();
+      }
+      expect(server.requests.length, greaterThan(1));
+      expect(st.read().value, const LiveOpen(resumed: false));
+      sub.close();
+      st.close();
+      async.flushMicrotasks();
+    });
   });
 
   test(

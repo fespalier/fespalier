@@ -22,7 +22,9 @@ final class LiveRules {
   /// Closes an open connection whose server said nothing for this long, on the app's tick, so it
   /// waits and reconnects. Only for a server that sends a comment (`: ping`) more often than this
   /// while it has nothing to say: a server that sends nothing while quiet (CrateStack's
-  /// subscriptions) would be closed when it is healthy.
+  /// subscriptions) would be closed when it is healthy. It also bounds the wait for the answer:
+  /// a request that got no response headers for this long is given up (`LiveWaiting(failed)`)
+  /// and tried again.
   final Duration? idle;
 }
 
@@ -34,21 +36,45 @@ final class LiveRules {
 /// feed's next build. A feed that is **rebuilt** (a provider its `connect` watches changed: the
 /// signed-in user, the transport) forgets its ID instead: the change may be another user, whose
 /// position in the stream this is not. [clear] forgets them all: call it at sign-out, next to the
-/// app's other account data, for the feeds that nothing watched at the time.
+/// app's other account data. It is safe in either order with the feeds that are still watched: a
+/// feed that was built before the `clear` keeps nothing when it is disposed after it.
+///
+/// At most [capacity] IDs are kept, the one written longest ago dropped first (a family with a
+/// key per order would otherwise keep one for every order ever opened); a dropped ID only means
+/// that feed starts from the next event, as a feed that never had one does.
 final class LiveResumePoints {
   LiveResumePoints._();
 
+  /// The most IDs kept at once: 64.
+  static const int capacity = 64;
+
+  // A map keeps its insertion order: the first key is the oldest.
   final Map<Object, String> _ids = <Object, String>{};
+  int _epoch = 0;
 
   /// How many IDs are kept.
   int get length => _ids.length;
 
-  /// Forgets every kept ID.
-  void clear() => _ids.clear();
+  /// Forgets every kept ID, and the ones that the feeds built so far would keep when they are
+  /// disposed.
+  void clear() {
+    _epoch++;
+    _ids.clear();
+  }
 
   String? _read(Object slot) => _ids[slot];
 
-  void _keep(Object slot, String id) => _ids[slot] = id;
+  /// Keeps [id] for [slot], unless [epoch] (what [_epoch] was when the feed was built) is not the
+  /// current one: a `clear` came in between.
+  void _keep(Object slot, String id, int epoch) {
+    if (epoch != _epoch) return;
+    _ids
+      ..remove(slot)
+      ..[slot] = id;
+    while (_ids.length > capacity) {
+      _ids.remove(_ids.keys.first);
+    }
+  }
 
   void _forget(Object slot) => _ids.remove(slot);
 }

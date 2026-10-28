@@ -54,8 +54,9 @@ abstract final class FespalierStreamConventions {
 
 final RegExp _name = RegExp(r'^[a-z][a-z0-9_]*$');
 
-/// Whether [name] may be reported: lower-case letters, digits and underscores (`orders_live`), so
-/// that it can never be a URL or an id. Always true for null.
+/// Whether [name] may be reported: lower-case letters, digits and underscores (`orders_live`), the
+/// shape of a constant name you choose and not of a URL. It checks the shape only, so give a
+/// constant: a name built from an id (`order_42`) passes. Always true for null.
 bool isTelemetryName(String? name) => name == null || _name.hasMatch(name);
 
 Map<String, Object> _base(String? name) => <String, Object>{

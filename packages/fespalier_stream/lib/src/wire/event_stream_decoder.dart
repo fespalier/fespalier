@@ -28,8 +28,10 @@ final class EventStreamTooLarge implements Exception {
 ///   block had at least one `data:` line. The space after the colon is optional and removed once.
 /// - `event:` names the type (`message` when absent). `id:` sets the last event ID (one with a NUL
 ///   in it is ignored, an empty one clears it), which every later event carries.
-/// - `retry:` with ASCII digits only is a [RetryHint]; a comment line (`:`) is a [Heartbeat]; any
-///   other field is ignored.
+/// - A block with an `id:` field and no `data:` line dispatches no event but is an
+///   [EventIdUpdate], since the standard sets the last event ID as it reads the field.
+/// - `retry:` with ASCII digits only is a [RetryHint], clamped to [RetryHint.maxRetry] (a day); a
+///   comment line (`:`) is a [Heartbeat]; any other field is ignored.
 /// - The end of the body drops an event that has no blank line after it.
 ///
 /// [maxEventBytes] bounds the bytes between two blank lines (comments included): past it the
@@ -78,6 +80,9 @@ final class _DecoderSink implements EventSink<List<int>> {
   bool _hasData = false;
   String _type = '';
   String _lastId = '';
+
+  /// Whether the current block has an `id:` field that took effect.
+  bool _idInBlock = false;
 
   @override
   void add(List<int> chunk) {
@@ -170,28 +175,49 @@ final class _DecoderSink implements EventSink<List<int>> {
         _data.write(value);
         _hasData = true;
       case 'id':
-        if (!value.contains('\u0000')) _lastId = value;
+        if (!value.contains('\u0000')) {
+          _lastId = value;
+          _idInBlock = true;
+        }
       case 'retry':
         if (value.isNotEmpty && value.codeUnits.every(_isDigit)) {
-          final ms = int.tryParse(value);
-          if (ms != null) _out.add(RetryHint(Duration(milliseconds: ms)));
+          _out.add(RetryHint(_retryDelay(value)));
         }
     }
   }
 
   static bool _isDigit(int unit) => unit >= 0x30 && unit <= 0x39;
 
+  /// [digits] (ASCII digits only) as a delay of at most [RetryHint.maxRetry]; the number is never
+  /// parsed when it is longer than that could be, so it cannot overflow.
+  static Duration _retryDelay(String digits) {
+    var start = 0;
+    while (start < digits.length - 1 && digits.codeUnitAt(start) == 0x30) {
+      start++;
+    }
+    final significant = digits.substring(start);
+    if (significant.length > 9) return RetryHint.maxRetry;
+    final delay = Duration(milliseconds: int.parse(significant));
+    return delay > RetryHint.maxRetry ? RetryHint.maxRetry : delay;
+  }
+
   void _dispatch() {
     _eventBytes = 0;
     final hasData = _hasData;
     final data = _data.toString();
     final type = _type;
+    final idInBlock = _idInBlock;
     _data.clear();
     _hasData = false;
     _type = '';
-    // A block without a `data:` line is not dispatched (an `event:` or an `id:` alone); a `data:`
-    // with nothing after it is an event whose data is empty.
-    if (!hasData) return;
+    _idInBlock = false;
+    // A block without a `data:` line dispatches no event (an `event:` alone is dropped); one with
+    // an `id:` still set the last event ID, which an [EventIdUpdate] carries. A `data:` with
+    // nothing after it is an event whose data is empty.
+    if (!hasData) {
+      if (idInBlock) _out.add(EventIdUpdate(_lastId.isEmpty ? null : _lastId));
+      return;
+    }
     _out.add(
       ServerEvent(
         data,

@@ -174,6 +174,29 @@ void main() {
   });
 
   test(
+    'an unanswered request that is given up ends its open span once, failed',
+    () async {
+      server.hang();
+      final events = ServerEvents(server, url);
+      final sub = events.events.listen((_) {});
+      await settle();
+      expect(events.closeIfIdle(Duration.zero), isTrue);
+      await settle();
+      final results = sink.log.where(
+        (l) => l.contains('fespalier.stream.result'),
+      );
+      expect(results, hasLength(1));
+      expect(results.single, contains('fespalier.stream.result=failed'));
+      expect(
+        sink.log.where((l) => l.contains('fespalier.stream.reason')),
+        isEmpty,
+        reason: 'it was never open: no close span',
+      );
+      await sub.cancel();
+    },
+  );
+
+  test(
     'both spans are root spans, not children of the zone that listened',
     () async {
       final probe = ZoneProbeTelemetry();

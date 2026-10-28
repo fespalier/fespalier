@@ -22,9 +22,11 @@ import 'wire/server_event.dart';
 /// It opens when [events] is listened to and follows the WHATWG rules, with no timer:
 ///
 /// - a 200 `text/event-stream` is open; its events are decoded by `EventStreamDecoder`;
-/// - an orderly end after at least one event opens again at once, with `Last-Event-ID`; an end
-///   with no event, a `TransportFailure`, a body that breaks, a 408, 429 or 5xx wait
-///   ([LiveWaiting]) for [reconnect];
+/// - an orderly end after at least one event opens again at once, with `Last-Event-ID`, unless
+///   the server asked for a delay with `retry:` or the connection ended in an orderly way less
+///   than a second after it opened for the second time in a row; those, an end with no event, a
+///   `TransportFailure`, a body that breaks, a 408, 429 or 5xx wait ([LiveWaiting]) for
+///   [reconnect];
 /// - a 204 ends [events] (`LiveDone(done)`); another 4xx, or a decorator's refusal, ends it with
 ///   [ServerEventsRefused] (or that refusal); a 200 of another type, or a status no event stream
 ///   has, with [ServerEventsRejected].
@@ -162,7 +164,9 @@ extension ServerEventsOnTransport on HttpTransport {
   /// `TransportFailure`, a `TransportBroken` for a body that broke, a [ServerEventsUnavailable]
   /// for a 408, 429 or 5xx), which `error.dart` shows and the app's retry policy may act on; a
   /// refusal ends it with [ServerEventsRefused]. An orderly end after events still opens again at
-  /// once with `Last-Event-ID`, and an end with none, or a 204, ends the stream. A pause stops
+  /// once with `Last-Event-ID` (unless the server sent `retry:` or ended quick bodies in a row,
+  /// which it has no timer to wait for: the stream ends), and an end with none, or a 204, ends
+  /// the stream. A pause stops
   /// reading but holds the connection (nothing closes it on a tick): a page that stays hidden
   /// wants a `LiveFeed`. Cancelling the subscription aborts the request.
   Stream<ServerEvent> serverEvents(

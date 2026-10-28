@@ -80,6 +80,7 @@ class _LiveNotifier<T, K> extends StreamNotifier<T> {
       resumeFrom = points._read(_slot);
     }
     _built = true;
+    final epoch = points._epoch;
     final signals = _spec.rules.reconnectOn;
     for (var i = 0; i < signals.length; i++) {
       ref.watch(signals[i].select((value) => _signal(i, value)));
@@ -102,7 +103,7 @@ class _LiveNotifier<T, K> extends StreamNotifier<T> {
       if (id == null) {
         points._forget(_slot);
       } else {
-        points._keep(_slot, id);
+        points._keep(_slot, id, epoch);
       }
       if (identical(_connection, connection)) _connection = null;
       unawaited(connection.close());

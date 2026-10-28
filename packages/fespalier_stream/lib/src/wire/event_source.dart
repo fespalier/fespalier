@@ -50,9 +50,24 @@ abstract final class CloseReason {
   static const String cancelled = 'cancelled';
 }
 
+/// How long a connection must have been open for an orderly end of its body to count as one that
+/// lasted: a shorter one that ends in an orderly way is a quick end.
+const Duration _quickEnd = Duration(seconds: 1);
+
 /// One request and, once the headers are in, its body.
 final class _Attempt {
-  _Attempt();
+  _Attempt(this.startedAt);
+
+  /// When the request was started (`package:clock`'s time): `closeIfIdle` gives up an attempt
+  /// that was not answered for too long.
+  final DateTime startedAt;
+
+  /// When the headers came in, null before.
+  DateTime? openedAt;
+
+  /// The telemetry token of the open span, and whether that span has ended already.
+  Object? token;
+  bool openEnded = false;
 
   /// Completed by the connection, and only by it: an error the body ends with afterwards is the
   /// client's own (an aborted request), never a drop.
@@ -153,6 +168,18 @@ final class EventSource implements LiveConnection<ServerEvent> {
   _Attempt? _attempt;
   bool _done = false;
 
+  /// Orderly ends in a row of connections that were open for less than [_quickEnd] and delivered
+  /// events: the first reopens at once, a second one waits for [reconnect].
+  int _quickEnds = 0;
+
+  /// How many events were added to the stream and how many the listener was handed.
+  int _added = 0;
+  int _handed = 0;
+
+  /// An id set by an id-only block while events were still held: delivered with the last of them.
+  bool _hasTrailingId = false;
+  String? _trailingId;
+
   /// Tries since the last connection that delivered an event.
   int _tries = 0;
 
@@ -185,7 +212,12 @@ final class EventSource implements LiveConnection<ServerEvent> {
 
   @override
   Stream<ServerEvent> get events => _events.stream.map((event) {
+    _handed++;
     _deliveredId = event.id;
+    if (_hasTrailingId && _handed == _added) {
+      _hasTrailingId = false;
+      _deliveredId = _trailingId;
+    }
     return event;
   });
 
@@ -225,15 +257,19 @@ final class EventSource implements LiveConnection<ServerEvent> {
   @override
   bool closeIfIdle(Duration limit) {
     final attempt = _attempt;
-    final seen = _lastSeen;
-    if (_done ||
-        _paused ||
-        attempt == null ||
-        !attempt.opened ||
-        seen == null) {
-      return false;
+    if (_done || _paused || attempt == null) return false;
+    final now = clock.now();
+    if (!attempt.opened) {
+      // A request nobody answered: a half-open socket, a proxy that holds the headers. It is
+      // given up like a silent connection, and the connection waits to be opened again.
+      if (now.difference(attempt.startedAt) < limit) return false;
+      _endOpen(attempt, OpenResult.failed);
+      _giveUp(attempt, CloseReason.idle);
+      _dropped(LiveDrop.failed);
+      return true;
     }
-    if (clock.now().difference(seen) < limit) return false;
+    final seen = _lastSeen;
+    if (seen == null || now.difference(seen) < limit) return false;
     _giveUp(attempt, CloseReason.idle);
     _dropped(LiveDrop.idle);
     return true;
@@ -265,7 +301,10 @@ final class EventSource implements LiveConnection<ServerEvent> {
 
   // The listener.
 
-  void _onListen() => _start();
+  void _onListen() {
+    // A listen after the connection ended (or was closed) opens nothing: the stream is done.
+    if (!_done) _start();
+  }
 
   void _onPause() {
     // A pause or a resume can still come between the end and the delivery of the stream's done.
@@ -306,7 +345,7 @@ final class EventSource implements LiveConnection<ServerEvent> {
     _reopenOnResume = false;
     _waiting = null;
     _tries++;
-    final attempt = _Attempt();
+    final attempt = _Attempt(clock.now());
     _attempt = attempt;
     _setStatus(LiveConnecting(_tries));
     unawaited(_run(attempt));
@@ -331,7 +370,7 @@ final class EventSource implements LiveConnection<ServerEvent> {
     if (attempt.stale) return;
     final resumeFrom = _lastEventId;
     final resumed = resumeFrom != null;
-    final token = _hooks.reportOpenStart(resumed: resumed);
+    attempt.token = _hooks.reportOpenStart(resumed: resumed);
     final TransportResponse response;
     try {
       response = await _transport.send(
@@ -350,35 +389,31 @@ final class EventSource implements LiveConnection<ServerEvent> {
       );
     } catch (error, stackTrace) {
       if (attempt.stale) {
-        _hooks.reportOpenEnd(token, OpenResult.cancelled);
+        _endOpen(attempt, OpenResult.cancelled);
         return;
       }
       _attempt = null;
       if (_hooks.isRefusal(error)) {
-        _hooks.reportOpenEnd(token, OpenResult.refused);
+        _endOpen(attempt, OpenResult.refused);
         _end(LiveEnd.refused, error: error, stackTrace: stackTrace);
       } else if (error is Exception) {
-        _hooks.reportOpenEnd(token, OpenResult.failed);
+        _endOpen(attempt, OpenResult.failed);
         _dropped(LiveDrop.failed, error: error, stackTrace: stackTrace);
       } else {
-        _hooks.reportOpenEnd(token, OpenResult.failed);
+        _endOpen(attempt, OpenResult.failed);
         _end(LiveEnd.failed, error: error, stackTrace: stackTrace);
       }
       return;
     }
     if (attempt.stale) {
       _abort(attempt);
-      _hooks.reportOpenEnd(
-        token,
-        OpenResult.cancelled,
-        statusCode: response.statusCode,
-      );
+      _endOpen(attempt, OpenResult.cancelled, statusCode: response.statusCode);
       return;
     }
     final status = response.statusCode;
     final type = response.headers['content-type'];
     if (status == 200 && _isEventStream(type)) {
-      _hooks.reportOpenEnd(token, OpenResult.open, statusCode: status);
+      _endOpen(attempt, OpenResult.open, statusCode: status);
       await _read(attempt, response, resumed);
       return;
     }
@@ -387,10 +422,10 @@ final class EventSource implements LiveConnection<ServerEvent> {
     _abort(attempt);
     _attempt = null;
     if (status == 204) {
-      _hooks.reportOpenEnd(token, OpenResult.done, statusCode: status);
+      _endOpen(attempt, OpenResult.done, statusCode: status);
       _end(LiveEnd.done);
     } else if (status == 408 || status == 429 || status >= 500) {
-      _hooks.reportOpenEnd(token, OpenResult.unavailable, statusCode: status);
+      _endOpen(attempt, OpenResult.unavailable, statusCode: status);
       final retryAfter = _retryAfter(response.headers['retry-after']);
       _dropped(
         LiveDrop.unavailable,
@@ -398,10 +433,10 @@ final class EventSource implements LiveConnection<ServerEvent> {
         error: _hooks.unavailableError(status, retryAfter),
       );
     } else if (status >= 400 && status < 500) {
-      _hooks.reportOpenEnd(token, OpenResult.refused, statusCode: status);
+      _endOpen(attempt, OpenResult.refused, statusCode: status);
       _end(LiveEnd.refused, error: _hooks.refusedError(status));
     } else {
-      _hooks.reportOpenEnd(token, OpenResult.rejected, statusCode: status);
+      _endOpen(attempt, OpenResult.rejected, statusCode: status);
       _end(
         LiveEnd.rejected,
         error: _hooks.rejectedError(statusCode: status, contentType: type),
@@ -419,6 +454,13 @@ final class EventSource implements LiveConnection<ServerEvent> {
     return seconds == null || seconds < 0 ? null : Duration(seconds: seconds);
   }
 
+  /// Ends the attempt's open span once.
+  void _endOpen(_Attempt attempt, String result, {int? statusCode}) {
+    if (attempt.openEnded) return;
+    attempt.openEnded = true;
+    _hooks.reportOpenEnd(attempt.token, result, statusCode: statusCode);
+  }
+
   Future<void> _read(
     _Attempt attempt,
     TransportResponse response,
@@ -427,7 +469,7 @@ final class EventSource implements LiveConnection<ServerEvent> {
     attempt
       ..opened = true
       ..resumed = resumed;
-    _lastSeen = clock.now();
+    _lastSeen = attempt.openedAt = clock.now();
     final iterator = StreamIterator<EventStreamItem>(
       response.body
           .map((chunk) {
@@ -455,7 +497,18 @@ final class EventSource implements LiveConnection<ServerEvent> {
             if (attempt.events++ == 0) _tries = 0;
             // The WHATWG rule: each dispatched event sets the last event ID, cleared or not.
             _lastEventId = event.id;
+            _hasTrailingId = false;
+            _added++;
             _events.add(event);
+          case EventIdUpdate(:final id):
+            // A block with an `id:` and no data dispatches nothing, but it set the last event ID.
+            _lastEventId = id;
+            if (_handed == _added) {
+              _deliveredId = id;
+            } else {
+              _hasTrailingId = true;
+              _trailingId = id;
+            }
           case RetryHint(:final delay):
             _retry = delay;
           case Heartbeat():
@@ -472,6 +525,7 @@ final class EventSource implements LiveConnection<ServerEvent> {
     if (attempt.stale) return;
     _giveUp(attempt, failure == null ? CloseReason.ended : CloseReason.failed);
     if (failure != null) {
+      _quickEnds = 0;
       _dropped(
         LiveDrop.failed,
         error: failure is EventStreamTooLarge
@@ -479,12 +533,31 @@ final class EventSource implements LiveConnection<ServerEvent> {
             : TransportBroken(failure, url),
         stackTrace: failureTrace,
       );
-    } else if (attempt.events > 0) {
+    } else if (attempt.events > 0 && _reopensAtOnce(attempt)) {
       // An orderly end after events: open again at once, from the last event ID.
       _start();
     } else {
+      if (attempt.events == 0) _quickEnds = 0;
       _dropped(LiveDrop.ended);
     }
+  }
+
+  /// Whether an orderly end of [attempt], which delivered events, reopens the connection at once.
+  ///
+  /// Only when the server did not ask for a delay (a `retry:` of more than zero, which the
+  /// connection keeps for its life, as a browser does) and not for a second quick end in a row: a
+  /// connection that ended in an orderly way less than a second after it opened is a quick end,
+  /// the first one reopens at once and the next one waits for [reconnect] (a signal, or the tick
+  /// once the hint has passed). A server that ends every body at once, with an in-process
+  /// transport or a fast network, cannot make the connection loop.
+  bool _reopensAtOnce(_Attempt attempt) {
+    final openedAt = attempt.openedAt;
+    final quick =
+        openedAt == null || clock.now().difference(openedAt) < _quickEnd;
+    _quickEnds = quick ? _quickEnds + 1 : 0;
+    final retry = _retry;
+    if (retry != null && retry > Duration.zero) return false;
+    return _quickEnds <= 1;
   }
 
   /// Completes the attempt's abort trigger and cancels its body.

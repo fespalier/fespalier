@@ -77,7 +77,7 @@ or returns it in the selector form (`ProviderListenable<AsyncValue<Order>> data(
 ## The traps
 
 - **The tick must run while pages are hidden.** Each `fire()` sweeps every feed's connection: it closes one that was paused at the
-  tick before and still is, closes an idle one (`LiveRules.idle`), and reopens a waiting one once the server's `retry:` or
+  tick before and still is, closes an idle one or a request nobody answered (`LiveRules.idle` bounds both), and reopens a waiting one once the server's `retry:` or
   `Retry-After` has passed. Stopping the timer in `ref.onCancel` (the `ChangeBudget` recipe does, for another reason) leaves hidden
   pages holding their connections. Without an override, nothing closes a paused connection.
 - **A pause is not a close.** Riverpod pauses a feed while every watcher is hidden, and also for a moment while watchers
@@ -91,7 +91,12 @@ or returns it in the selector form (`ProviderListenable<AsyncValue<Order>> data(
 - **Resume points.** A feed that nothing watches is disposed with its connection; its last ID (of the last event handed to the
   listener) is kept in `liveResumePoints` and given to `connect` as `lastEventId` next time. A feed rebuilt because a provider its
   `connect` watches changed starts with `null`. Make `connect` watch the signed-in user, and call
-  `ref.read(liveResumePoints).clear()` at sign-out for the feeds nothing watched then.
+  `ref.read(liveResumePoints).clear()` at sign-out: it is safe in either order with feeds still watched (they keep nothing when
+  disposed after it), and at most 64 IDs are kept, the oldest dropped.
+- **After an orderly end.** A connection that delivered events reopens at once unless the server sent a `retry:` of more than zero,
+  or it is the second orderly end in a row of a connection open less than a second; then it is `LiveWaiting(ended)` until a signal
+  or the tick (past the `retry:`, at most a day). An `id:` block with no `data:` still moves the resume point (`EventIdUpdate`).
+  The simple form has no timer, so in those cases it ends instead.
 - **The simple form ends where a feed waits.** `transport.serverEvents(url)` in a `Stream` `data.dart` ends with the
   `TransportFailure`, a `TransportBroken` (a body that broke) or a `ServerEventsUnavailable` (408, 429, 5xx), and the provider's
   retry decides (Riverpod's default re-runs `data()` with a timer, even if events came after the error). It holds its connection

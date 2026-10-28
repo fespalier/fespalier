@@ -47,8 +47,9 @@ Stream<ServerEvent> data(Ref ref, {required int id}) => ref
 `transport.serverEvents(url)` is the events as a plain stream, which fespalier wraps in a `StreamProvider` like any `Stream`
 from a `data.dart`. It has no signal to reconnect on, so what a live feed waits through ends it instead:
 
-- an orderly end after at least one event opens again at once, with `Last-Event-ID`; an end with no event, or a 204, ends the
-  stream without an error;
+- an orderly end after at least one event opens again at once, with `Last-Event-ID`, unless the server sent a `retry:` of more than
+  zero or the connection ended in an orderly way less than a second after it opened for the second time in a row: it has no
+  timer to wait with, so those end the stream without an error, as does an end with no event, or a 204;
 - a `TransportFailure`, a body that breaks (`TransportBroken`), or a 408, 429 or 5xx (`ServerEventsUnavailable`) ends it with that
   error, which `error.dart` shows and the provider's `retry` may act on (Riverpod's default runs `data()` again after 200 ms,
   doubling; pass `data_retry` or a provider of your own to change it);
@@ -124,8 +125,8 @@ ProviderScope(overrides: [streamTicker.overrideWith(AppStreamTicker.new)], child
 ```
 
 Each tick closes a connection that stayed paused since the tick before (see [Paused pages](#paused-pages)), closes an idle one
-(see [Liveness](#liveness)), and reopens a waiting one once the server's retry hint has passed (its `retry:` field, or a
-`Retry-After` in seconds on a 408, 429 or 5xx). The period is your backoff: there is none of the package's. `LiveWaiting.failures`
+or a request that nobody answered (see [Liveness](#liveness)), and reopens a waiting one once the server's retry hint has passed
+(its `retry:` field, at most a day, or a `Retry-After` in seconds on a 408, 429 or 5xx). The period is your backoff: there is none of the package's. `LiveWaiting.failures`
 counts the tries in a row that delivered no event, for a ticker that wants to wait longer between them. Stop the timer in
 `ref.onDispose`, **not** in `ref.onCancel`: the tick must run while every page that watches a feed is hidden, because closing
 their connections is what it is for. The ticker lives as long as a feed does.
@@ -138,9 +139,21 @@ says the request carried one.
 
 A feed that nothing watches is disposed, and its connection closed. Its last ID is kept in `liveResumePoints`, per feed and per
 family key, and handed to `connect` as `lastEventId` the next time the feed is watched. That ID is the one of the last event the
-listener was handed: events read and held while the page was hidden are asked for again. A feed that is **rebuilt** (a provider
+listener was handed: events read and held while the page was hidden are asked for again. At most 64 IDs are kept
+(`LiveResumePoints.capacity`), the one written longest ago dropped first, so a family with a key per order cannot grow without
+bound; a dropped one only means that feed starts from the next event. A feed that is **rebuilt** (a provider
 its `connect` watches changed) starts afresh and forgets its ID: the change may be another user. `connect` may ignore the
 `lastEventId` it is given and pass its own (the ID of the snapshot a page loaded, say).
+
+A block with an `id:` and no `data:` dispatches no event, but it still sets the last event ID, as the standard says: the
+decoder reports it as an `EventIdUpdate`, and the next reconnection sends it (the listener's `lastEventId` moves with it once
+every event before it was handed over).
+
+After an orderly end that delivered events, the connection opens again at once only when the server did not ask for a delay
+(`retry:` of more than zero, kept for the connection's life as a browser does) and this is not the second orderly end in a row of
+a connection that was open less than a second: the first reopens at once, the next one waits in `LiveWaiting(ended)` for a signal
+or the tick (once the `retry:` has passed), so an endpoint that answers `retry: 5000`, one event and an end is asked every
+tick, not in a loop. `retry:` values over a day are read as a day.
 
 A server that sends no `id:` (CrateStack's `@@subscribe` sends none) cannot resume: every reopen starts from the next event, and
 what happened in between is a gap. Treat an event as "something changed" and read the state again, which is right after a gap.
@@ -149,7 +162,10 @@ what happened in between is a gap. Treat an event as "something changed" and rea
 
 A connection can stay open while nothing reaches it (a NAT that dropped it, a proxy that stalled). `LiveRules.idle` closes an
 open connection whose server sent nothing, no event and no comment, for that long, on the tick; it then waits and reopens on the
-next one. `lastSeen` is when the last bytes came.
+next one. `lastSeen` is when the last bytes came. The same limit bounds the wait for the answer: a request that got no
+response headers for that long (a half-open socket, a proxy that holds them) is given up on the tick (`LiveWaiting(failed)`,
+the open span ending `failed`) and tried again on the next. A feed without `idle` waits for ever for a request nobody answers.
+A signal of `reconnectOn` does not restart a request that is still connecting.
 
 It only works with a server that sends a comment (`: ping`) more often than the limit while it has nothing to say. A server that
 sends nothing while quiet would be closed when it is healthy: **CrateStack 0.15.4 sends no heartbeat**, so a CrateStack
@@ -170,7 +186,7 @@ a ticker, a hidden page's connection stays open, unread.
 | ----------------------------------------------------------------------------- | ------------------------------ | ---------------------------------------------- |
 | No answer (`TransportFailure`), credentials not reachable, a body that breaks | `LiveWaiting(LiveDrop.failed)` | unchanged                                      |
 | 408, 429, 5xx                                                                 | `LiveWaiting(unavailable)`     | unchanged                                      |
-| The server ended the body without an event                                    | `LiveWaiting(ended)`           | unchanged                                      |
+| The server ended the body without an event, or asked for a `retry:` delay     | `LiveWaiting(ended)`           | unchanged                                      |
 | 204                                                                           | `LiveDone(done)`               | unchanged, the stream ends                     |
 | Another 4xx, or a decorator's `DataRefusal` (a session that ended)            | `LiveDone(refused)`            | `ServerEventsRefused` (a `DataRefusal`), or it |
 | A 200 that is not `text/event-stream`, a status no event stream has           | `LiveDone(rejected)`           | `ServerEventsRejected`                         |
@@ -198,7 +214,9 @@ final orderEvents = LiveFeed<ServerEvent>((ref, lastEventId) {
 ```
 
 At sign-out, also forget the resume points of the feeds nothing watched at the time, next to your other account data:
-`ref.read(liveResumePoints).clear()`.
+`ref.read(liveResumePoints).clear()`. It is safe in either order with the feeds that are still watched: `clear()` also tells the
+feeds built before it to keep nothing when they are disposed, so a page that goes away right after the sign-out leaves no ID
+behind (and a feed that watches the user is rebuilt without one anyway).
 
 ### Telemetry
 
@@ -257,7 +275,9 @@ test('a drop waits and the tick reopens it, from the last event', () async {
 - **Send a comment while quiet** (`: ping` every 15 to 30 seconds) if you want clients to tell a dead connection from a quiet one
   (`LiveRules.idle`), and so that a proxy or a load balancer does not close an idle connection.
 - **Send `id:`** on each event to let a reconnection resume, and read `Last-Event-ID` on a request.
-- **Send `retry:`** to slow clients down after a restart: a feed does not reopen before it on the tick.
+- **Send `retry:`** to slow clients down: after an orderly end a feed does not reopen before it, and waits for the tick to pass it
+  (a `retry:` of 0, or none, reopens at once the first time, then waits for a signal or the tick when the bodies end within a
+  second in a row).
 - A subscription of CrateStack 0.15.4 (`@@subscribe`) sends none of `id:`, `retry:` or comments, and its events skip the model's
   read policy: read the row again through the API you already guard.
 

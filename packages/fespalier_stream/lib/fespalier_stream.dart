@@ -1,7 +1,7 @@
 /// Server-sent events for fespalier (since 0.25.0).
 ///
 /// - The wire: [EventStreamDecoder] reads a `text/event-stream` body by the WHATWG rules into
-///   [ServerEvent]s, [RetryHint]s and [Heartbeat]s, and [ServerEvents] is a [LiveConnection] to an
+///   [ServerEvent]s, [EventIdUpdate]s, [RetryHint]s and [Heartbeat]s, and [ServerEvents] is a [LiveConnection] to an
 ///   event stream over the app's `HttpTransport`, so its decorators (a session, a signature, a
 ///   trace) apply. `transport.serverEvents(url)` is the simple form, a plain `Stream` for a
 ///   `data.dart`.
@@ -42,4 +42,4 @@ export 'src/wire/live_status.dart'
         LiveStatus,
         LiveWaiting;
 export 'src/wire/server_event.dart'
-    show EventStreamItem, Heartbeat, RetryHint, ServerEvent;
+    show EventIdUpdate, EventStreamItem, Heartbeat, RetryHint, ServerEvent;

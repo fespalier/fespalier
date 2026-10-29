@@ -1,9 +1,9 @@
 // The feed's stream is opened once per container (a stream of flutter_rust_bridge is
 // single-subscription), and a failure is kept in `latest`. Riverpod 3's default retry would open it
-// again after 200 ms, up to ten times, with a Timer, which fespalier_frb never starts.
+// again after 200 ms, up to ten times, with a Timer, which the package never starts.
 import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_frb/testing.dart';
+import 'package:fespalier_stream/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

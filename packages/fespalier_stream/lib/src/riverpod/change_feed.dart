@@ -1,14 +1,11 @@
-import 'dart:collection';
-
-import 'package:fespalier/fespalier.dart';
-import 'package:flutter/foundation.dart' show immutable;
+part of 'live_feed.dart';
 
 /// How many recent events a feed remembers per subscription, so a watcher that rebuilds late can
-/// look at every event it missed (since 0.13.0). A watcher that missed more than this treats the
+/// look at every event it missed (since 0.13.0, in fespalier_stream since 0.25.0). A watcher that missed more than this treats the
 /// gap as a match: it rebuilds, which is always safe.
 const int changeLogCapacity = 64;
 
-/// One event of a change stream, numbered (since 0.13.0).
+/// One event of a change stream, numbered (since 0.13.0, in fespalier_stream since 0.25.0).
 ///
 /// The number is what makes two equal events two changes: Riverpod 3 does not notify when a new
 /// state is `==` the old one, and a Rust core may well say "order 42 changed" twice in a row.
@@ -24,7 +21,8 @@ final class Change<E> {
   /// What the core said.
   final E event;
 
-  /// 1 for the first event the feed saw on this subscription, then 2, 3, ...
+  /// 1 for the first event the feed saw on this subscription, then 2, 3, ... (a live feed numbers
+  /// from 1 again after a gap).
   final int seq;
 
   final _ChangeLog<E>? _log;
@@ -33,6 +31,12 @@ final class Change<E> {
 /// The last [changeLogCapacity] changes of one subscription. Riverpod rebuilds a provider lazily,
 /// so a watcher sees only the newest change of a burst; the log is how it finds the others.
 final class _ChangeLog<E> {
+  _ChangeLog([this.epoch = 0]);
+
+  /// 0, or for a live feed the number of gaps before this log: a change of a lower epoch than
+  /// the log a watcher knows is older than the gap that already moved it.
+  final int epoch;
+
   final ListQueue<Change<E>> _ring = ListQueue();
 
   void add(Change<E> change) {
@@ -52,11 +56,12 @@ final class _ChangeLog<E> {
   }
 }
 
-/// A Rust core's change stream, held by Riverpod (since 0.13.0).
+/// A change stream, held by Riverpod (since 0.13.0, in fespalier_stream since 0.25.0, where
+/// fespalier_frb re-exports it from).
 ///
 /// The generated bindings of flutter_rust_bridge (or any other core) give a `Stream<E>` of what
-/// changed: "order 42 changed", "the cart was cleared". A `ChangeFeed` is that stream as a
-/// provider. [latest] is the **one subscription**, a provider that is never auto-disposed, so it
+/// changed: "order 42 changed", "the cart was cleared"; a server says the same over a live
+/// connection ([ChangeFeed.live]). A `ChangeFeed` is that stream as a provider. [latest] is the **one subscription**, a provider that is never auto-disposed, so it
 /// lives as long as the `ProviderContainer` and is cancelled by its disposal. A provider that
 /// should be rebuilt when something changed does not listen to the stream: it **watches** a
 /// [topic] (or [any]), whose value moves only when an event the topic accepts arrives, so the watch
@@ -99,6 +104,7 @@ final class ChangeFeed<E> {
   /// times).
   ChangeFeed(Stream<E> Function(Ref ref) open, {String? name})
     : _name = name,
+      _logs = null,
       latest = StreamProvider<Change<E>>(
         (ref) {
           var seq = 0;
@@ -113,10 +119,76 @@ final class ChangeFeed<E> {
         retry: (_, _) => null,
       );
 
+  /// A feed over the live connection [connect] returns (since 0.25.0): a server's change events,
+  /// over `ServerEvents` (decoded with an `EventCodec`) or any other [LiveConnection].
+  ///
+  /// ```dart
+  /// final changes = ChangeFeed<OrderEvent>.live(
+  ///   (ref, lastEventId) => ServerEvents(
+  ///     ref.watch(apiTransport),
+  ///     Uri.parse('https://api.example.com/changes'),
+  ///     lastEventId: lastEventId,
+  ///     name: 'changes',
+  ///   ).transform(orderCodec),
+  ///   rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+  /// );
+  /// ```
+  ///
+  /// The connection behaves as a [LiveFeed]'s (with `keepAlive`): it opens when something first
+  /// watches the feed, a drop waits for a signal of [rules] or the app's [streamTicker], a
+  /// connection whose watchers are all paused (every page hidden) stops reading and is closed by
+  /// the tick, and a resume opens it again with `Last-Event-ID`. A rebuild ([connect] watches a
+  /// provider that changed) opens a new connection, with no ID. A refusal ends [latest] with it.
+  ///
+  /// **A gap moves every topic.** When the connection opens again without resuming
+  /// (`LiveOpen(resumed: false)` after an earlier open: the server has no event IDs, or forgot
+  /// the one it was given, or the feed was rebuilt), the events sent meanwhile are lost, so the
+  /// feed starts a new log and every key watched moves once at that moment, without waiting for
+  /// an event; [any] moves by one. A reopen that resumed (`LiveOpen(resumed: true)`) moves
+  /// nothing: the server sends what was missed.
+  factory ChangeFeed.live(
+    LiveConnection<E> Function(Ref ref, String? lastEventId) connect, {
+    LiveRules rules = const LiveRules(),
+    String? name,
+  }) {
+    // Where the resume point of this feed is kept (see LiveResumePoints).
+    final slot = Object();
+    final held = Provider<_LiveChanges<E>>(
+      (ref) => _LiveChanges<E>(slot),
+      name: name == null ? null : '$name.state',
+    );
+    final latest = StreamProvider<Change<E>>(
+      (ref) {
+        final changes = ref.watch(held);
+        final (connection, isCurrent) = changes.line.open(
+          ref,
+          rules,
+          (lastEventId) => connect(ref, lastEventId),
+        );
+        unawaited(changes.followGaps(connection, isCurrent));
+        return connection.events.map(changes.number);
+      },
+      name: name == null ? null : '$name.latest',
+      retry: (_, _) => null,
+    );
+    final logs = StreamProvider<_ChangeLog<E>>(
+      (ref) => ref.watch(held).logs.stream,
+      name: name == null ? null : '$name.logs',
+      retry: (_, _) => null,
+    );
+    return ChangeFeed<E>._(latest, logs, name);
+  }
+
+  ChangeFeed._(this.latest, this._logs, this._name);
+
   final String? _name;
 
+  /// A live feed's current log, which a gap replaces; null for a feed over a plain stream.
+  final ProviderListenable<AsyncValue<_ChangeLog<E>>>? _logs;
+
   /// The one subscription: the last change, numbered, as an `AsyncValue` (loading until the first
-  /// event, an error when the stream fails). Never auto-disposed.
+  /// event, an error when the stream fails, or when a live connection is refused). Never
+  /// auto-disposed.
   final StreamProvider<Change<E>> latest;
 
   /// A topic over this feed: [matches] says whether an event concerns a key.
@@ -131,6 +203,7 @@ final class ChangeFeed<E> {
   }) => ChangeTopic<E, K>._(
     latest,
     matches,
+    logs: _logs,
     countAll: false,
     tick: budget?.tick,
     name: name ?? (_name == null ? null : '$_name.topic'),
@@ -142,6 +215,7 @@ final class ChangeFeed<E> {
   ProviderListenable<int> get any => _any ??= ChangeTopic<E, Object?>._(
     latest,
     (_, _) => true,
+    logs: _logs,
     countAll: true,
     name: _name == null ? null : '$_name.any',
   )(null);
@@ -149,7 +223,8 @@ final class ChangeFeed<E> {
   ProviderListenable<int>? _any;
 }
 
-/// Watch a key of a [ChangeFeed.topic] to be rebuilt by the events that concern it (since 0.13.0).
+/// Watch a key of a [ChangeFeed.topic] to be rebuilt by the events that concern it (since 0.13.0,
+/// in fespalier_stream since 0.25.0).
 ///
 /// Each key has its own revision provider (auto-dispose: it lives while something watches it, so
 /// a screen that is gone costs nothing). Its value is a counter that moves **only** when a
@@ -168,12 +243,14 @@ final class ChangeTopic<E, K> {
   ChangeTopic._(
     StreamProvider<Change<E>> latest,
     bool Function(E event, K key) matches, {
+    required ProviderListenable<AsyncValue<_ChangeLog<E>>>? logs,
     required bool countAll,
     ProviderListenable<Object?>? tick,
     String? name,
   }) : _revisionOf = NotifierProvider.autoDispose
            .family<_Revision<E, K>, int, K>(
-             (key) => _Revision<E, K>(latest, matches, key, countAll, tick),
+             (key) =>
+                 _Revision<E, K>(latest, logs, matches, key, countAll, tick),
              name: name,
            )
            .call;
@@ -184,7 +261,8 @@ final class ChangeTopic<E, K> {
   ProviderListenable<int> call(K key) => _revisionOf(key);
 }
 
-/// A rebuild budget for the keys of a [ChangeFeed.topic] (since 0.21.0): each key moves at most
+/// A rebuild budget for the keys of a [ChangeFeed.topic] (since 0.21.0, in fespalier_stream since
+/// 0.25.0): each key moves at most
 /// once between two ticks of [tick], a provider the app fires.
 ///
 /// A key that has not moved since the last tick moves at once on the first event that concerns
@@ -250,13 +328,24 @@ final class ChangeBudget {
 ///
 /// It watches the feed through a `select` of [_observe], which Riverpod calls for each event
 /// while the key is watched; the number [_observe] returns moves only when the event concerns the
-/// key, and Riverpod rebuilds this provider only then. [_observe] and [_onTick] are memos, not
-/// listeners: they set no state and read no provider, a second call with the same value returns
-/// the same number, and the revision moves by returning it from [build].
+/// key, and Riverpod rebuilds this provider only then. A live feed's log is watched the same way
+/// through [_onLog], so a gap moves the key at once. [_observe], [_onLog] and [_onTick] are memos,
+/// not listeners: they set no state and read no provider, a second call with the same value
+/// returns the same number, and the revision moves by returning it from [build].
 class _Revision<E, K> extends Notifier<int> {
-  _Revision(this._latest, this._matches, this._key, this._countAll, this._tick);
+  _Revision(
+    this._latest,
+    this._logs,
+    this._matches,
+    this._key,
+    this._countAll,
+    this._tick,
+  );
 
   final StreamProvider<Change<E>> _latest;
+
+  /// A live feed's current log, or null for a feed over a plain stream.
+  final ProviderListenable<AsyncValue<_ChangeLog<E>>>? _logs;
   final bool Function(E event, K key) _matches;
   final K _key;
   final bool _countAll;
@@ -272,6 +361,11 @@ class _Revision<E, K> extends Notifier<int> {
   int _seen = 0;
 
   bool _started = false;
+
+  /// A live feed's log when this key first saw it, then the last one seen: a different one is a
+  /// gap.
+  bool _logSeen = false;
+  _ChangeLog<E>? _lastLog;
 
   /// The last change made by hand (it belongs to no log): told apart by identity.
   Change<E>? _handMade;
@@ -290,7 +384,31 @@ class _Revision<E, K> extends Notifier<int> {
   int build() {
     final tick = _tick;
     if (tick != null) ref.watch(tick.select(_onTick));
+    final logs = _logs;
+    if (logs != null) ref.watch(logs.select(_onLog));
     ref.watch(_latest.select(_observe));
+    return _revision;
+  }
+
+  /// The revision once a live feed's log reads [value]: a log other than the one this key knows
+  /// is a gap, which moves the key once. An event of the new log may have come first, and moved it
+  /// already through [_observe]'s new-stream path; then this changes nothing.
+  int _onLog(AsyncValue<_ChangeLog<E>> value) {
+    final log = value.value;
+    if (log == null) return _revision;
+    if (!_logSeen) {
+      // The first watch: a gap older than the watcher is history.
+      _logSeen = true;
+      _lastLog = log;
+      return _revision;
+    }
+    if (identical(log, _lastLog)) return _revision;
+    _lastLog = log;
+    final known = _log;
+    if (known != null && log.epoch <= known.epoch) return _revision;
+    _log = log;
+    _seen = 0;
+    _changed();
     return _revision;
   }
 
@@ -331,6 +449,12 @@ class _Revision<E, K> extends Notifier<int> {
       _log = change?._log;
       _seen = change?.seq ?? 0;
       _handMade = change != null && change._log == null ? change : null;
+      final live = _lastLog;
+      if (live != null && (_log == null || live.epoch > _log!.epoch)) {
+        // A live feed whose gap came after its last event: that log is empty so far.
+        _log = live;
+        _seen = 0;
+      }
     } else if (change != null && change._log == null) {
       // A `Change(event, seq)` made by hand (a test overriding `latest`): no log to scan, so
       // a different change than the last seen counts if it matches.
@@ -347,7 +471,9 @@ class _Revision<E, K> extends Notifier<int> {
         _log = change._log;
         _seen = 0;
       }
-      if (!identical(change._log, _log)) {
+      if (!identical(change._log, _log) && change._log!.epoch < _log!.epoch) {
+        // An event from before a gap that already moved this key (it was paused meanwhile).
+      } else if (!identical(change._log, _log)) {
         // A new stream: whatever came before is unknown, so rebuild (over-invalidating is safe).
         _log = change._log;
         _seen = change.seq;
@@ -369,5 +495,62 @@ class _Revision<E, K> extends Notifier<int> {
     // Last, so that a matcher that throws throws again on the rebuild it causes.
     _observed = change;
     return _revision;
+  }
+}
+
+/// What a live [ChangeFeed] keeps for its container across the builds of [ChangeFeed.latest]: the
+/// [_Line] its connections open through, and the log its events are numbered into, which a gap
+/// replaces.
+final class _LiveChanges<E> {
+  _LiveChanges(Object slot) : line = _Line<E>(slot) {
+    logs = _Hub<_ChangeLog<E>>(_log);
+  }
+
+  final _Line<E> line;
+
+  _ChangeLog<E> _log = _ChangeLog<E>();
+  int _seq = 0;
+
+  /// Whether a connection of this feed was open before: the next open that did not resume is a gap.
+  bool _opened = false;
+
+  /// Whether a request went out ([LiveConnecting]) since the last open: a [LiveOpen] that follows
+  /// a pause, not a request, is the same connection read again.
+  bool _requested = false;
+
+  /// The current log, for each topic's [_Revision._onLog].
+  late final _Hub<_ChangeLog<E>> logs;
+
+  /// [event], numbered into the current log.
+  Change<E> number(E event) {
+    final change = Change<E>._(event, ++_seq, _log);
+    _log.add(change);
+    return change;
+  }
+
+  /// Starts a new log at each request that opened without resuming, after the first open, while
+  /// [isCurrent] says [connection] is the feed's. A request is a [LiveConnecting] (each try of a
+  /// connection says it), so a [LiveOpen] that only ends a pause is not one. The `await for` is
+  /// the subscription, and it ends with the connection (its statuses end at `LiveDone`).
+  Future<void> followGaps(
+    LiveConnection<E> connection,
+    bool Function() isCurrent,
+  ) async {
+    await for (final status in connection.statusChanges) {
+      if (!isCurrent()) return;
+      switch (status) {
+        case LiveConnecting():
+          _requested = true;
+        case LiveOpen(:final resumed) when _requested:
+          if (_opened && !resumed) {
+            _log = _ChangeLog<E>(_log.epoch + 1);
+            _seq = 0;
+            logs._set(_log);
+          }
+          _opened = true;
+          _requested = false;
+        default:
+      }
+    }
   }
 }

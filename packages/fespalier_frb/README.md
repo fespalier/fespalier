@@ -6,8 +6,14 @@ providers that rebuild exactly when an event that concerns them arrives. It is a
 `flutter_rust_bridge` dependency** (the generated bindings pin their own runtime exactly, and FRB 2.13 needs a newer Dart than
 fespalier's floor), no listener, no timer.
 
+Since 0.25.0 the feed itself (`ChangeFeed`, its topics, `ChangeBudget`, `InvalidationTable`, `FakeChangeSource`) is
+[fespalier_stream](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_stream)'s, and this package re-exports the same declarations, so nothing in an app changes.
+What stays here is the core's: `initRustCore` and `ChangeCodec`, a facade over `fespalier_stream`'s `EventCodec` that reports
+under `fespalier.frb.*`.
+
 The docs cover all of it: [A Rust core's changes](https://github.com/fespalier/fespalier/blob/main/docs/data.md#a-rust-cores-changes-fespalier_frb)
-(the feed, topics, the table, starting the core, testing). This page is the short version.
+(starting the core, `ChangeCodec`) and [Something changed](https://github.com/fespalier/fespalier/blob/main/docs/streaming.md#something-changed-changefeed)
+(the feed, topics, the table, the budget, testing). This page is the short version.
 
 ## Install
 
@@ -32,6 +38,9 @@ dependencies:
 
 <!-- x-release-please-end -->
 
+It depends on `fespalier_stream` (and, through it, `fespalier_transport`) at the same tag, which pub resolves for you. An app
+that overrides `fespalier_frb` with a `path:` overrides those two the same way.
+
 ## Wire it
 
 ```dart
@@ -52,10 +61,10 @@ Future<void> startup() => initRustCore(RustLib.init);
 - `ChangeFeed.latest` is the one subscription (never auto-disposed, cancelled with the container); `topic(key)` moves only on a
   matching event (none of a burst is lost: the feed logs the last 64); `any` counts every event.
 - `InvalidationTable` is the pure form, for an app that owns its subscription: `table.apply(event, container.invalidate)`.
-- `ChangeCodec` (since 0.18.0) decodes a core that sends raw messages (JSON, bytes, a batch per message) in `open`: `(ref) => core.rawChanges().transform(codec)`. A message or item that does not decode, or whose decoder throws `UnknownChange` (a variant a newer core added), is skipped, counted and never numbered, and the feed goes on; `fespalier.frb.decode` reports it with constants and a count, never its text.
+- `ChangeCodec` (since 0.18.0) decodes a core that sends raw messages (JSON, bytes, a batch per message) in `open`: `(ref) => core.rawChanges().transform(codec)`. A message or item that does not decode, or whose decoder throws `UnknownChange` (a variant a newer core added), is skipped, counted and never numbered, and the feed goes on; `fespalier.frb.decode` reports it with constants and a count, never its text. Since 0.25.0 it is a facade over `fespalier_stream`'s `EventCodec`, with the same members.
 - `ChangeBudget` (since 0.21.0) holds a busy key to one move per tick of a provider the app fires (`topic(matches, budget: ChangeBudget(changeTick))`): a key that has not moved since the last tick moves at once on its first event, the next ones wait for the next tick, and nothing is dropped. Since 0.21.0 an event costs a key it does not concern one matcher call and no rebuild.
 - `initRustCore` reports `fespalier.frb.init` (`ok` or `error`; not the error, its text or its stack trace) and rethrows, so `startup()` shows
   `splash.dart`'s error and can retry.
-- `package:fespalier_frb/testing.dart` has `FakeChangeSource`, a stream the test feeds.
+- `package:fespalier_frb/testing.dart` re-exports `FakeChangeSource`, a stream the test feeds.
 
 The package starts no timer and listens to nothing (`test/no_timers_test.dart`).

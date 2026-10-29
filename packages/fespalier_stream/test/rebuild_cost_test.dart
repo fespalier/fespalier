@@ -4,7 +4,7 @@
 import 'dart:async';
 
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_frb/fespalier_frb.dart';
+import 'package:fespalier_stream/fespalier_stream.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 sealed class CoreEvent {

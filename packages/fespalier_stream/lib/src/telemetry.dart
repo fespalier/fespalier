@@ -19,6 +19,10 @@ import 'wire/event_source.dart';
 ///
 /// Both carry [kind] (`sse`) and, when the connection was given one, [name]. Neither carries a URL,
 /// a query, a header, an event's type, data or id, or an error's text.
+///
+/// - [decode] (since 0.25.0) is the instant span of a message an `EventCodec` skipped, at the 1st,
+///   2nd, 4th, 8th... skip of each kind: [result] (`unknown` or `error`) and the count so far,
+///   [skipped]. Never the message or the error's text.
 abstract final class FespalierStreamConventions {
   /// The span of one request, from its send to its answer.
   static const String open = 'fespalier.stream.open';
@@ -36,7 +40,7 @@ abstract final class FespalierStreamConventions {
   static const String name = 'fespalier.stream.name';
 
   /// The answer of an [open]: `open`, `done`, `refused`, `rejected`, `unavailable`, `failed` or
-  /// `cancelled`.
+  /// `cancelled`; and why a [decode] skipped a message: `unknown` (an `UnknownChange`) or `error`.
   static const String result = 'fespalier.stream.result';
 
   /// Whether the request of an [open] carried `Last-Event-ID`.
@@ -50,6 +54,13 @@ abstract final class FespalierStreamConventions {
 
   /// How many events a [close]d connection delivered.
   static const String events = 'fespalier.stream.events';
+
+  /// The instant span of a message (or batch item) an `EventCodec` skipped (since 0.25.0).
+  static const String decode = 'fespalier.stream.decode';
+
+  /// How many skips of its kind (`unknown` or `error`) a codec made so far, this one included, on
+  /// a [decode] (an `int`).
+  static const String skipped = 'fespalier.stream.skipped';
 }
 
 final RegExp _name = RegExp(r'^[a-z][a-z0-9_]*$');

@@ -1,6 +1,7 @@
 /// What tests use from fespalier_stream (since 0.25.0): [FakeEventServer], an `HttpTransport` that
 /// serves event streams the test writes to; [ManualStreamTicker], a tick fired by hand;
-/// [FakeLiveConnection], a connection the test drives; and [streamTestOverrides].
+/// [FakeLiveConnection], a connection the test drives; [FakeChangeSource], a change stream the test
+/// feeds (fespalier_frb's until 0.24); and [streamTestOverrides].
 library;
 
 import 'dart:async';
@@ -375,4 +376,55 @@ final class FakeLiveConnection<T> implements LiveConnection<T> {
 
   @override
   String toString() => 'FakeLiveConnection';
+}
+
+/// A fake change stream, a Rust core's for instance (since 0.13.0, in fespalier_stream since
+/// 0.25.0): fed by the test, counting its listeners.
+///
+/// `ChangeFeed((ref) => fake.stream)` is the feed under test. Events are delivered **synchronously**
+/// to the one subscription (a broadcast controller, or a single-subscription one with
+/// `broadcast: false`, like flutter_rust_bridge's streams, which refuse a second listener).
+///
+/// Since 0.18.0 it is also the raw source of a codec (an `EventCodec`, or fespalier_frb's
+/// `ChangeCodec`): `FakeChangeSource<String>`, or `<Uint8List>`.
+final class FakeChangeSource<E> {
+  /// Creates a source. [broadcast] false makes it single-subscription, like a generated stream.
+  FakeChangeSource({bool broadcast = true}) {
+    void listened() => listenCount++;
+    void cancelled() => cancelCount++;
+    _controller = broadcast
+        ? StreamController<E>.broadcast(
+            sync: true,
+            onListen: listened,
+            onCancel: cancelled,
+          )
+        : StreamController<E>(
+            sync: true,
+            onListen: listened,
+            onCancel: cancelled,
+          );
+  }
+
+  late final StreamController<E> _controller;
+
+  /// How many times the stream was listened to: 1 for any number of topics.
+  int listenCount = 0;
+
+  /// How many times a listener cancelled (a container's disposal does).
+  int cancelCount = 0;
+
+  /// The stream a feed opens.
+  Stream<E> get stream => _controller.stream;
+
+  /// Whether someone is subscribed now.
+  bool get hasListener => _controller.hasListener;
+
+  /// Delivers [event].
+  void emit(E event) => _controller.add(event);
+
+  /// Delivers an error.
+  void emitError(Object error) => _controller.addError(error);
+
+  /// Ends the stream.
+  Future<void> close() => _controller.close();
 }

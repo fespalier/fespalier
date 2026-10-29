@@ -291,7 +291,7 @@ The scenario's payloads are tens of bytes, so its totals are mostly headers; the
 
 - the core (`rust/`) is `include_client_schema!` over the example's own schema, on `cratestack-client` 0.15.3 with its `cose` feature: the sealed transport, the registration of the device key and the journal of the calls are CrateStack's, or the core's on top of them, never re-implemented in Dart;
 - a `CoreTransport` implements `CrateStackTransport` over the core, so [`fespalier_cratestack`](cratestack.md)'s `ref.serve` (the read) and its intents (the write, under one `Idempotency-Key`) run unchanged;
-- the core's events (`Registered`, `Forgotten`, `Called`) are one subscription in a [`ChangeFeed`](data.md#a-rust-cores-changes-fespalier_frb), and the `/core` page rebuilds on each one;
+- the core's events (`Registered`, `Forgotten`, `Called`) are one subscription in a [`ChangeFeed`](streaming.md#something-changed-changefeed), and the `/core` page rebuilds on each one;
 - a Rust server (`examples/frb-cose/server`, a copy of the cose server, in memory) and the tests: the core in Rust against the server in process, the Dart tests against the real core built by the build hook, and an end-to-end test that starts the server's binary.
 
 ```sh

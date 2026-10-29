@@ -1,11 +1,16 @@
 // The server `just fetch-adapter` runs the browser harness against (test/browser/harness.dart).
 //
-//   dart run tool/stream_server.dart --root <dir> --ports <file>
+//   dart run tool/stream_server.dart --root <dir> --ports <file> [--serve]
 //
 // It listens on two loopback ports, 0 each, and writes `{"page": A, "api": B, "dead": C}` to the
 // ports file once both listen: the page and its compiled harness are served from A, the requests
 // under test go to B (another origin, so every one of them is a CORS request, as an app's API
 // is), and nothing listens on C (a request to it is never sent). It runs until it is killed.
+//
+// `--serve` (`just fetch-adapter-serve`, for a person with a browser CI does not have, Safari
+// say) listens on every interface instead, so a phone on the same network can open the page, prints
+// the URL of the page of each build for each address of this machine, and prints every log line
+// (a connection that was closed, one that was ended) as it happens. CI never passes it.
 //
 // What B answers (A answers the same, and serves the files of --root):
 //
@@ -14,6 +19,8 @@
 //   ends. Written on the raw socket, so a client that goes away is seen: the log gets
 //   `closed <id> after <n>`, or `ended <id> after 10` when the server ended it.
 // - `GET /slow?id=<id>`: the headers after 1.5 s (`closed <id> before headers` if the client left).
+// - `GET /quiet?id=<id>`: the headers and a comment, nothing for 1.5 s, then one event whose data is
+//   `late`, and the body ends (`closed <id> after <n>` if the client left, with n 0 or 1).
 // - `GET /status?code=<n>`: that status with the reason phrase `Probe` and the body `status <n>`.
 // - `POST /echo`: the request body, unchanged.
 // - `GET /cors-star`: `ok`, with `access-control-allow-origin: *`, which a request that carries
@@ -26,6 +33,15 @@ import 'dart:convert';
 import 'dart:io';
 
 final _log = <String>[];
+var _verbose = false;
+
+/// Adds [line] to the log the harness reads, and prints it with `--serve`.
+void _record(String line) {
+  _log.add(line);
+  if (_verbose) {
+    stdout.writeln('stream_server: ${DateTime.now().toIso8601String()} $line');
+  }
+}
 
 Future<void> main(List<String> args) async {
   String? option(String name) {
@@ -35,8 +51,12 @@ Future<void> main(List<String> args) async {
 
   final root = Directory(option('--root') ?? '.');
   final portsFile = option('--ports');
-  final page = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-  final api = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  _verbose = args.contains('--serve');
+  final address = _verbose
+      ? InternetAddress.anyIPv4
+      : InternetAddress.loopbackIPv4;
+  final page = await HttpServer.bind(address, 0);
+  final api = await HttpServer.bind(address, 0);
   final dead = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
   final deadPort = dead.port;
   await dead.close();
@@ -51,6 +71,7 @@ Future<void> main(List<String> args) async {
     temporary.renameSync(portsFile);
   }
   stdout.writeln('stream_server: $ports');
+  if (_verbose) await _printPages(page.port, api.port, deadPort);
   for (final server in [page, api]) {
     unawaited(
       server.forEach(
@@ -58,6 +79,32 @@ Future<void> main(List<String> args) async {
       ),
     );
   }
+}
+
+/// The URL of each build's page, for each address of this machine.
+Future<void> _printPages(int page, int api, int dead) async {
+  final hosts = <String>['127.0.0.1'];
+  for (final interface in await NetworkInterface.list(
+    type: InternetAddressType.IPv4,
+  )) {
+    for (final address in interface.addresses) {
+      if (!address.isLoopback) hosts.add(address.address);
+    }
+  }
+  for (final host in hosts) {
+    final query =
+        'api=${Uri.encodeQueryComponent('http://$host:$api')}&dead=$dead&run=hand';
+    stdout
+      ..writeln(
+        'stream_server: JavaScript: http://$host:$page/js/index.html?$query',
+      )
+      ..writeln(
+        'stream_server: wasm:       http://$host:$page/wasm/index.html?$query',
+      );
+  }
+  stdout.writeln(
+    'stream_server: open a page, wait for its last line (all passed, or N failed); Ctrl+C stops.',
+  );
 }
 
 Map<String, String> _cors(HttpRequest request, {bool star = false}) {
@@ -95,6 +142,8 @@ Future<void> _handle(HttpRequest request, Directory root, bool isPage) async {
         return await _sse(request);
       case '/slow':
         return await _slow(request);
+      case '/quiet':
+        return await _quiet(request);
       case '/status':
         final code =
             int.tryParse(request.uri.queryParameters['code'] ?? '') ?? 200;
@@ -171,12 +220,12 @@ Future<void> _file(HttpRequest request, Directory root) async {
 }
 
 const _jsPage = '''<!doctype html>
-<html><head><meta charset="utf-8"><title>fetch adapter, dart2js</title></head>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>fetch adapter, dart2js</title></head>
 <body><script src="harness.dart.js"></script></body></html>
 ''';
 
 const _wasmPage = '''<!doctype html>
-<html><head><meta charset="utf-8"><title>fetch adapter, dart2wasm</title></head>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>fetch adapter, dart2wasm</title></head>
 <body><script type="module">
 import { compileStreaming } from './harness.mjs';
 try {
@@ -232,7 +281,7 @@ Future<void> _sse(HttpRequest request) async {
   _watch(socket, () {
     if (closed) return;
     closed = true;
-    _log.add('closed $id after $sent');
+    _record('closed $id after $sent');
   });
   try {
     socket.write(
@@ -253,13 +302,43 @@ Future<void> _sse(HttpRequest request) async {
     }
     if (!closed) {
       closed = true;
-      _log.add('ended $id after $sent');
+      _record('ended $id after $sent');
       await socket.close();
     }
   } on Object catch (error) {
     if (!closed) {
       closed = true;
-      _log.add('closed $id after $sent (${error.runtimeType})');
+      _record('closed $id after $sent (${error.runtimeType})');
+    }
+  }
+}
+
+Future<void> _quiet(HttpRequest request) async {
+  final id = request.uri.queryParameters['id'] ?? '-';
+  final socket = await request.response.detachSocket(writeHeaders: false);
+  var closed = false;
+  var sent = 0;
+  _watch(socket, () {
+    if (closed) return;
+    closed = true;
+    _record('closed $id after $sent');
+  });
+  try {
+    socket.write(_head(request, {'content-type': 'text/event-stream'}));
+    socket.write(': hello\n\n');
+    await socket.flush();
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    if (closed) return;
+    socket.write('id: 1\ndata: late\n\n');
+    await socket.flush();
+    sent = 1;
+    closed = true;
+    _record('ended $id after 1');
+    await socket.close();
+  } on Object catch (error) {
+    if (!closed) {
+      closed = true;
+      _record('closed $id after $sent (${error.runtimeType})');
     }
   }
 }
@@ -271,12 +350,12 @@ Future<void> _slow(HttpRequest request) async {
   _watch(socket, () {
     if (closed) return;
     closed = true;
-    _log.add('closed $id before headers');
+    _record('closed $id before headers');
   });
   await Future<void>.delayed(const Duration(milliseconds: 1500));
   if (closed) return;
   closed = true;
-  _log.add('ended $id after headers');
+  _record('ended $id after headers');
   try {
     socket.write(_head(request, {'content-type': 'text/plain'}));
     socket.write('slow');

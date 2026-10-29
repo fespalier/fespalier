@@ -14,15 +14,27 @@ import 'package:web/web.dart' as web;
 /// `DioTransport` asks for) hands each chunk on as the browser receives it.
 ///
 /// - Cancelling the request's `CancelToken`, closing Dio's response (`ResponseBody.close`),
-///   cancelling the body's subscription and `close(force: true)` abort the `fetch`, so the browser
-///   lets the connection go, even while nothing arrives.
-/// - An abort is a [DioExceptionType.cancel]; any other failure, before the headers or in the
-///   body, a [DioExceptionType.connectionError] whose `error` is the browser's.
+///   cancelling the body's subscription and `close(force: true)` of a request that is running
+///   abort the `fetch`, so the browser lets the connection go, even while nothing arrives. An
+///   abort while the request body is still being read also stops reading it and cancels its
+///   source.
+/// - An abort is a [DioExceptionType.cancel]. A `fetch` that fails before the headers (the
+///   network, CORS, a refused certificate) is a [DioExceptionType.connectionError] whose `error`
+///   is the browser's; a request the browser refuses to build (a `GET` with a body, a URL with a
+///   user name, a forbidden method, a header value it rejects) is a [DioExceptionType.unknown];
+///   and a failure in the body, once the headers are in, is a [DioException] (a `connectionError`
+///   too) in the body stream, which `DioTransport` hands on as it is, not a `TransportUnsent`.
 /// - The request body is read into memory before it is sent: Firefox and Safari cannot stream a
 ///   request body.
-/// - `connectTimeout`, `receiveTimeout` and `sendTimeout` are **not honoured**: honouring them
-///   takes a timer, and `AbortSignal.timeout` cannot be cleared once the headers are in, so it
-///   would end a stream that is still wanted. Cancel through the `CancelToken` instead.
+/// - `connectTimeout` and `sendTimeout` are **not honoured**: honouring them takes a timer, and
+///   `AbortSignal.timeout` cannot be cleared once the headers are in, so it would end a stream
+///   that is still wanted. `receiveTimeout` is **Dio's own**, not the adapter's: Dio watches
+///   the gap between chunks of every adapter's body (`ResponseBody.close` and an error of type
+///   [DioExceptionType.receiveTimeout] in the body stream), so a quiet stream is dropped after
+///   it. A Dio that streams leaves `BaseOptions.receiveTimeout` null (or zero), and a request
+///   on a Dio that has one passes `Options(receiveTimeout: Duration.zero)`; `null` in `Options`
+///   does not disable it, it falls back to the Dio's. Cancel through the `CancelToken` instead
+///   of a timeout.
 /// - Redirects are followed by the browser (`redirect: 'follow'`): `followRedirects: false` and
 ///   `maxRedirects` are not honoured, `isRedirect` is what `Response.redirected` says and
 ///   `redirects` is empty, because `fetch` does not list them.
@@ -53,19 +65,40 @@ final class FetchHttpClientAdapter implements HttpClientAdapter {
       unawaited(cancelFuture.then<void>((_) => request.abort()));
     }
 
-    final web.RequestInit init;
+    final Uint8List? body;
     try {
-      init = await _requestOf(options, requestStream, request);
+      body = await _readRequestBody(options, requestStream, request);
     } on Object {
-      // A request body that failed, or a header the browser refuses: nothing was sent.
+      // A request body that failed or was cancelled: nothing was sent.
       request.finish();
       rethrow;
     }
 
+    // Built here, in one synchronous step, so that a request the browser refuses to build is told
+    // from a `fetch` that fails on the network.
+    final web.Request built;
+    try {
+      built = web.Request(
+        options.uri.toString().toJS,
+        _requestInit(options, body, request),
+      );
+    } catch (error, stackTrace) {
+      request.finish();
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+        message: 'the browser refused to build the request.',
+      );
+    }
+
     final web.Response response;
     try {
+      // The signal again in the init: WebKit leaves the connection open after an abort of a
+      // signal that only the `Request` carries (the harness' cancel cases fail without it).
       response = await web.window
-          .fetch(options.uri.toString().toJS, init)
+          .fetch(built, web.RequestInit(signal: request.controller.signal))
           .toDart;
     } catch (error, stackTrace) {
       request.finish();
@@ -101,21 +134,44 @@ final class FetchHttpClientAdapter implements HttpClientAdapter {
     );
   }
 
-  /// The `fetch` options for [options], with the body read into memory.
-  Future<web.RequestInit> _requestOf(
+  /// The request body of [options], read into memory; null when there is none.
+  ///
+  /// An abort of [request] stops the reading and cancels [requestStream]'s subscription, so an
+  /// endless source is let go.
+  Future<Uint8List?> _readRequestBody(
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     _Request request,
   ) async {
-    Uint8List? body;
-    if (requestStream != null) {
-      final bytes = BytesBuilder(copy: false);
-      await for (final chunk in requestStream) {
-        bytes.add(chunk);
+    if (requestStream == null) return null;
+    final bytes = BytesBuilder(copy: false);
+    // A StreamIterator, not an `await for`: its `cancel` ends a `moveNext` that is waiting for a
+    // chunk, so an abort lets go of a source that has gone quiet too.
+    final chunks = StreamIterator<Uint8List>(requestStream);
+    request.onAbort = () => unawaited(chunks.cancel());
+    try {
+      while (await chunks.moveNext()) {
+        bytes.add(chunks.current);
       }
-      body = bytes.takeBytes();
+    } finally {
+      request.onAbort = null;
+      await chunks.cancel();
     }
+    if (request.aborted) {
+      throw DioException.requestCancelled(
+        requestOptions: options,
+        reason: 'aborted',
+      );
+    }
+    return bytes.takeBytes();
+  }
 
+  /// The `fetch` options for [options] and its [body].
+  web.RequestInit _requestInit(
+    RequestOptions options,
+    Uint8List? body,
+    _Request request,
+  ) {
     final headers = web.Headers();
     options.headers.forEach((name, value) {
       if (value == null) return;
@@ -212,8 +268,11 @@ final class FetchHttpClientAdapter implements HttpClientAdapter {
     return false;
   }
 
-  /// Aborts the requests still open when [force] is true; otherwise lets them finish, as Dio's
+  /// Aborts the requests still running when [force] is true; otherwise lets them finish, as Dio's
   /// default web adapter does.
+  ///
+  /// The set of open requests is forgotten either way, so a plain `close()` followed by
+  /// `close(force: true)` aborts nothing (as `dio_web_adapter`'s own adapter does).
   @override
   void close({bool force = false}) {
     if (force) {
@@ -238,12 +297,16 @@ final class _Request {
   /// Whether this adapter aborted the request: an error that follows is a cancel.
   bool aborted = false;
 
+  /// Runs when the request is aborted, while its request body is still being read.
+  void Function()? onAbort;
+
   /// Aborts the request, unless it already ended.
   void abort() {
     if (aborted || _ended) return;
     aborted = true;
     finish();
     controller.abort();
+    onAbort?.call();
   }
 
   /// The request ended (its body is read, or it failed): nothing is left to abort.

@@ -111,12 +111,16 @@ import 'package:fespalier_dio/fetch.dart';
 final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'))..httpClientAdapter = webStreamingAdapter();
 ```
 
-A `CancelToken`, Dio closing the response, cancelling the body subscription and `close(force: true)` abort the `fetch`
-(an abort is a `cancel`, anything else a `connectionError`). It does **not** honour `connectTimeout`, `receiveTimeout`
-or `sendTimeout` (that takes a timer), the browser follows redirects, and the request body is sent in one piece.
+A `CancelToken`, Dio closing the response, cancelling the body subscription and `close(force: true)` of a running request abort
+the `fetch` (an abort is a `cancel`; a `fetch` that fails before the headers is a `connectionError`; a request the browser refuses
+to build, such as a `GET` with a body, is `unknown`; a failure in the body is a `DioException` in the body stream, not a
+`TransportUnsent`). A cancel while the request body is read stops reading it. The adapter ignores `connectTimeout` and
+`sendTimeout` (that takes a timer). **`receiveTimeout` is Dio's own and applies to a stream on every adapter**: Dio drops a body
+that is quiet for that long, so a Dio that carries an event stream leaves it null (or zero), or the request passes
+`Options(receiveTimeout: Duration.zero)`. The browser follows redirects, and the request body is sent in one piece.
 `withCredentials` (and `Options.extra['withCredentials']`) works as on Dio's own web adapter. The library imports neither
 Flutter nor fespalier. CI runs it in Chromium, Firefox and WebKit with dart2js and dart2wasm (`just fetch-adapter`);
-Safari on macOS and iOS is unchecked. The whole story is in
+Safari on macOS and iOS is unchecked (`just fetch-adapter-serve` runs the cases by hand, issue #316). The whole story is in
 [HTTP clients](https://github.com/fespalier/fespalier/blob/main/docs/http.md#streaming-on-the-web).
 
 ## Cancel a load whose page is gone

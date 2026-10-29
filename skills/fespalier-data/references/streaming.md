@@ -110,8 +110,9 @@ or returns it in the selector form (`ProviderListenable<AsyncValue<Order>> data(
 - **On the web, `DioTransport` over Dio's default adapter buffers the whole body**: give the Dio
   `webStreamingAdapter()` (since 0.25.0, `package:fespalier_dio/fetch.dart`, the `fetch` adapter in a web build and Dio's
   default elsewhere), or give the feed an `HttpClientTransport(BrowserClient())` under the same decorators. The fetch adapter
-  honours none of Dio's timeouts. CI reads event streams through both in Chromium, Firefox and WebKit, with dart2js and
-  dart2wasm (`just fetch-adapter`); Safari on macOS and iOS is UNCHECKED, and so is `ServerEvents`' telemetry in a browser.
+  ignores Dio's `connectTimeout` and `sendTimeout`, and Dio's `receiveTimeout` drops a quiet feed on every adapter (native too), so a Dio
+  that carries a feed leaves it null or passes `Options(receiveTimeout: Duration.zero)`. CI reads event streams through both in Chromium, Firefox and WebKit, with dart2js and
+  dart2wasm (`just fetch-adapter`); Safari on macOS and iOS is UNCHECKED (`just fetch-adapter-serve`, issue #316), and so is `ServerEvents`' telemetry in a browser.
 - **Six connections per origin** over HTTP/1.1 in a browser: one feed for many keys, with the key in the event.
 
 ## Telemetry

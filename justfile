@@ -387,6 +387,13 @@ fetch-adapter *engines:
     (cd ci/web-routes && npm ci && npx --no-install playwright install ${engines:-chromium firefox webkit})
     scripts/check-fetch-adapter.sh $engines
 
+# The same harness for a browser CI does not have (Safari on a Mac or an iPhone: issue #316): compiles both builds,
+# serves them on every interface of this machine, prints the URL of each build's page (JavaScript and wasm) and the
+# server's log, and waits for Ctrl+C. Open a page: it draws a table of the cases and ends with `all passed` or
+# `N failed`. Needs Flutter only (no Node, no Playwright), about a minute
+fetch-adapter-serve:
+    scripts/check-fetch-adapter.sh --serve
+
 # Every example (or the named ones) as a release web build in Chromium: each URL of ci/web-routes/examples.json
 # shows its text, nothing throws or logs an error, and nothing is requested but from the local server (the examples stay
 # platform-free: each is built in a throwaway copy). FSP_CHROMIUM=/path/to/chrome uses a Chromium already on disk.

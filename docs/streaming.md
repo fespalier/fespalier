@@ -54,18 +54,23 @@ final dio = Dio()..httpClientAdapter = webStreamingAdapter();
 final transport = DioTransport(dio); // wrap it in the session and the other decorators as usual
 ```
 
-The fetch adapter does not honour Dio's `connectTimeout`, `receiveTimeout` and `sendTimeout` (honouring them takes a timer, and a
-stream outlives any of them: cancel through the `CancelToken`, which `abortTrigger` already does). The browser follows redirects
-(`followRedirects: false` and `maxRedirects` are not honoured), and the request body is sent in one piece (Firefox and Safari
-cannot stream one). `withCredentials` sends cookies cross-origin, as on Dio's own web adapter. [HTTP clients](http.md#streaming-on-the-web)
-has the details.
+The fetch adapter ignores Dio's `connectTimeout` and `sendTimeout` (honouring them takes a timer, and a stream outlives them:
+cancel through the `CancelToken`, which `abortTrigger` already does). **Dio's `receiveTimeout` applies to a stream on every adapter
+and every platform, `DioTransport` on a device included**: Dio closes a response whose body is quiet for that long and ends it with
+a `receiveTimeout` error, so a feed on a Dio with a `receiveTimeout` is dropped whenever the server is quiet for that long (any
+chunk, a heartbeat comment included, restarts the watch). A Dio that carries a feed leaves `BaseOptions.receiveTimeout` null (or
+zero), or the feed's requests pass `Options(receiveTimeout: Duration.zero)`; `null` in `Options` falls back to the Dio's value.
+The browser follows redirects (`followRedirects: false` and `maxRedirects` are not honoured), and the request body is sent in one
+piece (Firefox and Safari cannot stream one). `withCredentials` sends cookies cross-origin, as on Dio's own web adapter.
+[HTTP clients](http.md#streaming-on-the-web) has the details.
 
 What CI checks (the `fetch-adapter` job, `just fetch-adapter`), over both transports: ten events written 200 ms apart arrive one
 by one through `fespalier_stream`'s connection (the first within 300 ms of being written, the ten over at least 1.5 s), closing the
 connection after three makes the server see the disconnect, and headers and a status come through. For the fetch adapter alone, a
 cancelled body subscription, a `CancelToken` (before and after the headers) and `close(force: true)` each abort the request at the
-server, a port nothing listens on is `TransportUnsent`, a `POST` body arrives whole, and `withCredentials` chooses the request's
-credentials.
+server, a cancel while the request body is read cancels its source, a port nothing listens on is `TransportUnsent` and a request the
+browser refuses to build is not, a `POST` body arrives whole, Dio's `receiveTimeout` drops a quiet stream and `Duration.zero` (or
+none) lets it stream, and `withCredentials` chooses the request's credentials.
 
 | Browser                               | dart2js   | dart2wasm |
 | ------------------------------------- | --------- | --------- |
@@ -76,7 +81,8 @@ credentials.
 
 The browsers are those Playwright's pinned version installs (`ci/web-routes/package-lock.json`). The job runs the connection
 without fespalier's telemetry and errors (`ServerEvents` is that connection with them, and they need Flutter, which the harness
-does not build). WebKit on Linux is not Safari.
+does not build). WebKit on Linux is not Safari; to run the cases in Safari on a Mac or an iPhone by hand, `just fetch-adapter-serve`
+prints the address of a page for each build ([issue #316](https://github.com/fespalier/fespalier/issues/316)).
 
 A browser opens at most **six HTTP/1.1 connections to one origin**, and every open stream holds one, so a seventh request to that
 origin (a stream or an ordinary call) waits until one closes. Keep one feed per origin, with the key in each event (see

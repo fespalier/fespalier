@@ -341,10 +341,23 @@ does not:
 
 - **Cancelling aborts the `fetch`**, so the browser lets the connection go even while nothing arrives: Dio's `CancelToken` (before
   or after the headers; `DioTransport` cancels one when its `abortTrigger` completes), Dio closing the response, cancelling the body
-  subscription, and `close(force: true)`. An abort is a `DioExceptionType.cancel`; any other failure, before the headers or in the
-  body, a `connectionError` whose `error` is the browser's (`TransportUnsent` through `DioTransport`).
-- **No timeouts.** `connectTimeout`, `receiveTimeout` and `sendTimeout` are not honoured: honouring them takes a timer, and
-  `AbortSignal.timeout` cannot be cleared once the headers are in, so it would end a stream that is still wanted. Cancel instead.
+  subscription, and `close(force: true)` of a request that is running (a plain `close()` forgets the open requests, so a
+  `close(force: true)` after it aborts nothing, as with Dio's own web adapter). A cancel while the request body is still being
+  read stops reading it and cancels its source. An abort is a `DioExceptionType.cancel`.
+- **What else fails, and as what.** A `fetch` that fails before the headers (the network, CORS, a refused certificate) is a
+  `connectionError` whose `error` is the browser's (`TransportUnsent` through `DioTransport`). A request the browser refuses to
+  build (a `GET` or `HEAD` with a body, a URL with a user name, a forbidden method, a header value it rejects) is `unknown`
+  (`TransportBroken`), never a `connectionError`: a feed that reconnects on `TransportUnsent` would try for ever to send what can
+  never be sent. A failure in the body, once the headers are in, is a `DioException` in the body stream (a `connectionError`
+  too), handed on as it is by `DioTransport`, which has already returned the response: it is not a `TransportUnsent`.
+- **Timeouts.** The adapter ignores `connectTimeout` and `sendTimeout` (honouring them takes a timer, and
+  `AbortSignal.timeout` cannot be cleared once the headers are in, so it would end a stream that is still wanted). **`receiveTimeout`
+  is Dio's, not the adapter's, and it applies to every adapter, on the web and on a device:** Dio watches the gap between the
+  chunks of a response body and, when one takes longer, closes the response and ends the body with a `receiveTimeout` error. So a
+  Dio that carries a feed leaves `BaseOptions.receiveTimeout` null (or `Duration.zero`), or the feed is dropped each time it is quiet
+  for that long (any chunk, a keep-alive comment included, restarts the watch, so a heartbeat more often than the timeout is enough). To keep one on the Dio for other
+  requests, pass `Options(receiveTimeout: Duration.zero)` for the streaming request: `null` there falls back to the Dio's, and
+  only a value of zero or less turns the watch off. Cancel through the `CancelToken` rather than a timeout.
 - **The browser follows redirects** (`redirect: 'follow'`): `followRedirects: false` and `maxRedirects` are not honoured,
   `isRedirect` is what `Response.redirected` says, and `redirects` stays empty because `fetch` does not list them.
 - **The request body is sent in one piece**, read into memory first: Firefox and Safari cannot stream a request body, so
@@ -363,4 +376,5 @@ does not:
 
 CI's `fetch-adapter` job (`just fetch-adapter`) runs it, and `BrowserClient` next to it, in Playwright's Chromium, Firefox and
 WebKit, each compiled with dart2js and dart2wasm ([the table](streaming.md#on-the-web)). Safari on macOS and iOS is UNCHECKED: WebKit
-on Linux is not Safari.
+on Linux is not Safari. A person with a Mac or an iPhone can run the same cases in Safari by hand (`just fetch-adapter-serve`,
+[issue #316](https://github.com/fespalier/fespalier/issues/316)).

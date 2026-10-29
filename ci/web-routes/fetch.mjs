@@ -52,10 +52,15 @@ for (const engine of engines) {
     const tab = await context.newPage();
     const errors = [];
     // WebKit reports a CORS refusal as a page error: the two the credentials case expects (a
-    // credentialed request to /cors-star, which allows any origin) are not failures.
+    // credentialed request to /cors-star, which allows any origin) are not failures. It reports
+    // the subprotocol the socket case offers on purpose ('not a token') the same way, though the
+    // constructor threw and the harness caught it.
     tab.on('pageerror', (e) => {
       const text = String(e);
-      if (!/\/cors-star\b.*access control checks/.test(text)) errors.push(text);
+      const expected =
+        /\/cors-star\b.*access control checks/.test(text) ||
+        /Wrong protocol for WebSocket 'not a token'/.test(text);
+      if (!expected) errors.push(text);
     });
     const run = `${engine}-${build}-${Date.now() % 100000}`;
     const url = `${page}/${build}/index.html?api=${encodeURIComponent(api)}&dead=${ports.dead}&run=${run}`;

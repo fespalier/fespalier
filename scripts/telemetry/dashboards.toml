@@ -180,7 +180,9 @@ nav_matched_sel = '{sel:navigate}, fespalier_navigation_outcome=~"ok|error"'
 nav_stopped_sql = "fespalier_operation = 'navigate' AND fespalier_navigation_outcome = 'error'"
 nav_stopped_sel = '{sel:navigate}, fespalier_navigation_outcome="error"'
 action_error_sel = '{sel:action}, fespalier_action_result="error"'
-action_ok_sel = '{sel:action}, fespalier_action_result="ok"'
+# Everything but an error: a streaming action stopped on purpose ends `cancelled` (since 0.25.0), which
+# is not a failure, as `action_error_sql` has it. `!=` also matches a series with no result label.
+action_ok_sel = '{sel:action}, fespalier_action_result!="error"'
 failed_sel = '{sel}, status_code="STATUS_CODE_ERROR", fespalier_operation!="navigate"'
 data_retry_sql = "fespalier_operation = 'data' AND fespalier_data_attempt <> '1'"
 data_retry_sel = '{sel:data}, fespalier_data_attempt=~"[2-9]|[1-9][0-9]+"'

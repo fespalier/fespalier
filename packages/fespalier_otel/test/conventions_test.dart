@@ -83,6 +83,8 @@ void main() {
         'fespalier.action.rolled_back',
       );
       expect(FespalierConventions.actionInvalid, 'fespalier.action.invalid');
+      // A streaming action's count of items (since 0.25.0).
+      expect(FespalierConventions.actionItems, 'fespalier.action.items');
       expect(
         [
           FespalierConventions.dataSourceCache,
@@ -229,5 +231,7 @@ void main() {
       [FespalierConventions.resultOk, FespalierConventions.resultError],
       ['ok', 'error'],
     );
+    // A streaming action stopped on purpose (since 0.25.0).
+    expect(FespalierConventions.actionResultCancelled, 'cancelled');
   });
 }

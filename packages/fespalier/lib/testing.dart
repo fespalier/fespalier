@@ -380,6 +380,7 @@ final class RecordingTelemetry extends FespalierTelemetry {
       if (end.dataSource != null) 'source=${end.dataSource}',
       if (end.actionRolledBack != null) 'rolled_back=${end.actionRolledBack}',
       if (end.actionInvalid) 'invalid',
+      if (end.actionItems != null) 'items=${end.actionItems}',
       if (op == TelemetryOp.custom &&
           end.attributes != null &&
           end.attributes!.isNotEmpty)

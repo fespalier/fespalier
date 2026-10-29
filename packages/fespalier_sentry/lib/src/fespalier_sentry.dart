@@ -859,6 +859,11 @@ final class FespalierSentry extends FespalierTelemetry {
   /// The span status an operation's end maps to.
   static SpanStatus _status(TelemetryStart s, TelemetryEnd e) {
     final outcome = e.outcome;
+    // A streaming action stopped before its stream ended (since 0.25.0): the user or the page
+    // stopped it, which is not a failure.
+    if (outcome == TelemetryOutcome.cancelled && s.op == TelemetryOp.action) {
+      return const SpanStatus.ok();
+    }
     if (outcome == TelemetryOutcome.disposed ||
         outcome == TelemetryOutcome.cancelled) {
       return const SpanStatus.cancelled();

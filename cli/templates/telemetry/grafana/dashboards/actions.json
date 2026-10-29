@@ -143,7 +143,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "100 * (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) - (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"ok\"}[$__range])) or vector(0))) / sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) >= 20)",
+          "expr": "100 * (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) - (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result!=\"error\"}[$__range])) or vector(0))) / sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) and on() (sum(sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) >= 20)",
           "legendFormat": "__auto",
           "instant": true,
           "range": false
@@ -487,7 +487,7 @@
             "type": "prometheus",
             "uid": "fespalier-openobserve"
           },
-          "expr": "100 * (sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) - sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result=\"ok\"}[$__range]))) / sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range]))",
+          "expr": "100 * (sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range])) - sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\", fespalier_action_result!=\"error\"}[$__range]))) / sum by (fespalier_action_name, fespalier_file) (sum_over_time(fespalier_calls{fespalier_operation=\"action\", service_name=\"$service\"}[$__range]))",
           "legendFormat": "__auto",
           "instant": true,
           "range": false,

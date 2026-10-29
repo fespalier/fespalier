@@ -234,6 +234,11 @@ abstract final class FespalierConventions {
   /// fields. Recorded on an error only (since 0.18.0).
   static const String actionInvalid = 'fespalier.action.invalid';
 
+  /// How many items a streaming action's stream gave in the run, whatever its outcome
+  /// (`fespalier.action.result` is `cancelled` when the run was stopped). Absent for an action
+  /// that returns a `Future` or a value (since 0.25.0). Never the items themselves.
+  static const String actionItems = 'fespalier.action.items';
+
   // Attributes of a `deferred` span.
 
   /// How the load ended.
@@ -247,6 +252,11 @@ abstract final class FespalierConventions {
 
   /// It failed.
   static const String resultError = 'error';
+
+  /// A value of `fespalier.action.result` only (since 0.25.0): a streaming action's run was stopped
+  /// before its stream ended (`cancel()`, a newer run, or its page went away). It is not a failure:
+  /// the span's status is `ok`.
+  static const String actionResultCancelled = 'cancelled';
 
   // Attributes of an `auth` span (since 0.9.0). Never recorded: tokens, user ids, claims, user
   // names, e-mails, issuer and endpoint URLs, DPoP proofs and thumbprints.

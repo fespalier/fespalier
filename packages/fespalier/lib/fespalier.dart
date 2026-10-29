@@ -22,6 +22,8 @@ export 'package:hooks_riverpod/misc.dart'
         ProviderOrFamily;
 
 export 'src/action.dart';
+// Streaming actions (since 0.25.0): an action.dart function that returns a Stream.
+export 'src/stream_action.dart';
 // The cache of a data.dart's value for the next start (since 0.8.1).
 export 'src/data_cache.dart'
     show

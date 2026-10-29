@@ -29,7 +29,7 @@ final Refund done = await RefundRoute.submit(ref, id: 1, input: input);
 Since 0.5.0. `state` plus `invalidates` covers most pages; `validate()` and optimistic updates (since 0.8.1) are in the two subsections below, and forms (the `fespalier_forms` package, since 0.11.0) are on [their own page](forms.md).
 
 - **Parameters.** Segments and query parameters bind exactly as in [`data.dart`](data.md#datadart-a-function-a-selector-or-a-provider): same names, types and errors. The one other parameter is `input`: **named, `required`**, of any type (`RefundInput`, `String`, a record, a `List`, `Object?`). Its type is read from the source like a typed [`extra`](navigation.md#typed-extra)'s, so the generated `submit` is typed. A `Ref ref` comes first, positional.
-- **Return type.** `Future<T>`, `FutureOr<T>` or a plain `T` (`Future<void>` is fine), spelled out. **The helpers keep what the function is**: a sync action's `submit` returns its value at once (no `Future`, no extra frame), a `FutureOr<T>` one's returns what the function returned, and a `Future<T>` one's returns a `Future<T>`. A `Stream` is an error: a write has one result.
+- **Return type.** `Future<T>`, `FutureOr<T>` or a plain `T` (`Future<void>` is fine), spelled out. **The helpers keep what the function is**: a sync action's `submit` returns its value at once (no `Future`, no extra frame), a `FutureOr<T>` one's returns what the function returned, and a `Future<T>` one's returns a `Future<T>`. Since 0.25.0 a `Stream<T>` is a [streaming action](#streaming-actions-streamt), whose state follows the items as they come (until 0.24.0 it was an error).
 - **Several actions per file.** Every public top-level function that takes a `Ref` first is an action, and its name is the name of its helpers. A function called `action` gets the plain ones:
 
   | Function  | Provider (`XRoute.…`) | Runs it once                  | Hook for `build`         |
@@ -39,7 +39,7 @@ Since 0.5.0. `state` plus `invalidates` covers most pages; `validate()` and opti
 
   A helper can't be named like a member of the route (`go`, `refresh`, `watch`, `data`, …), a segment or query parameter of it, or another action's helper (a function called `submit` next to `action`): the generator says which.
 
-- **The provider** is a generated `Notifier` family, `XRoute.action(id)` (`XRoute.action` with no keys). Its state is `AsyncValue<T?>`: `AsyncData(null)` while idle, then `AsyncLoading`, then `AsyncError` or `AsyncData` of the result. It works without a widget (`container.read(RefundRoute.action(1).notifier).call(input)`, which is what a test can do). Each key has its own state; an `autoDispose` provider is dropped when nothing watches it, except while a write is in flight.
+- **The provider** is a generated `Notifier` family, `XRoute.action(id)` (`XRoute.action` with no keys). Its state is `AsyncValue<T?>`: `AsyncData(null)` while idle, then `AsyncLoading`, then `AsyncError` or `AsyncData` of the result (a streaming action has [a state of its own](#streaming-actions-streamt)). It works without a widget (`container.read(RefundRoute.action(1).notifier).call(input)`, which is what a test can do). Each key has its own state; an `autoDispose` provider is dropped when nothing watches it, except while a write is in flight.
 - **`useAction`** takes the keys and returns a handle: `state` (the same `AsyncValue<T?>`), `isPending`, `hasError`, `fieldErrors` (the [`FieldErrors`](#validate-and-fielderrors) the last run failed with, since 0.8.1, or null), `reset()` and `call(input)`.
   - `call` runs the action and completes with the result, or with `null` when it failed (the error is in `state`), so `onPressed: () => refund.call(input)` can't leave an unhandled error behind.
   - `submit` is the other way: it throws what the action threw, for code that wants to handle it (the error is in `state` too).
@@ -80,10 +80,12 @@ A listed route's `data.dart` is keyed by something, and the action has to take t
 
 - an `action.dart` with no `page.dart`, and no `layout.dart` of a page-less folder, beside it, or with no function in it that takes a `Ref` first;
 - a missing `input`, or one that is positional, not `required` or untyped;
-- a parameter that is neither a segment, a query parameter nor `input`, a missing return type, a `Stream`, a `Future` with no type argument;
+- a parameter that is neither a segment, a query parameter nor `input`, a missing return type, a `Future`, `FutureOr` or (since 0.25.0) `Stream` with no type argument;
 - an `invalidates` that is not a `const` list literal of names, a name that is neither a typed route nor a section handle or has no `data.dart`, and a key of the data it invalidates that the action doesn't take;
 - helper names that collide;
-- since 0.8.1, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below and [Forms](forms.md)).
+- since 0.8.1, a `form()`, `validate()` or `optimistic()` that doesn't fit its action (see below and [Forms](forms.md));
+- since 0.25.0, a `form()`, `steps` or `optimistic()` beside a [streaming action](#streaming-actions-streamt), which are not built for one;
+- since 0.25.0, a nullable `Stream<T>?` (also through a typedef): ``draft() returns `Stream<String>?`, and a streaming action never returns null: return a `Stream<T>`, an empty one (`const Stream.empty()`) for no items``.
 
 ### `validate()` and `FieldErrors`
 
@@ -130,3 +132,46 @@ Future<void> addMember(Ref ref, {required String teamId, required String input})
 - If the page leaves in the middle of a write, the write still finishes and still invalidates.
 
 **Telemetry** (since 0.18.0): when the write fails and its patch is taken back, the action's span says `fespalier.action.rolled_back` is `true`; a write that works says `false`. An action with no shown patch has no such attribute.
+
+### Streaming actions: `Stream<T>`
+
+Since 0.25.0. An `action.dart` function that returns `Stream<T>` is a _streaming action_: a write whose answer comes in pieces, such as a text written word by word (a language model's answer), the progress of an import, or the steps of a long job. Each item is shown as it arrives, and the user can stop it.
+
+```dart
+// lib/app/docs/new/action.dart
+FieldErrors? draftValidate(String input) => input.trim().isEmpty
+    ? const FieldErrors({'topic': 'Type what the doc is about first'})
+    : null;
+
+/// Each item is the text so far.
+Stream<String> draft(Ref ref, {required String input}) =>
+    ref.read(draftWriterProvider).write(input);
+```
+
+```dart
+// in a HookConsumerWidget (or any ConsumerWidget)
+final draft = NewDocRoute.useDraft(ref);
+if (draft.isPending)
+  TextButton(onPressed: draft.cancel, child: const Text('Stop'))
+else
+  TextButton(onPressed: () => draft.call(topic), child: const Text('Draft')),
+if (draft.value case final text?) Text(text),
+```
+
+- **The members** are an action's: the provider (`NewDocRoute.draftAction`, a `streamActionProvider`, or a `streamActionFamily` for an action with keys), the one-shot helper (`NewDocRoute.draft(ref, input: ...)`, which completes with the last item, or throws what the stream threw, or a `StreamActionCancelled` when the run was stopped) and the hook (`NewDocRoute.useDraft(ref)`).
+- **The state** is a `StreamActionState<T>`, not an `AsyncValue` (Riverpod has no public "loading, with a value"): `StreamIdle` until it runs, `StreamRunning` while items come, then `StreamDone` when the stream ended, `StreamFailed` (with `error` and `stackTrace`) when it threw, or `StreamCancelled` when the run was stopped. Every state has `latest`, the last item of the run (null before the first), and `count`, how many came. Each item is a new state, so the page rebuilds on every item, even one equal to the item before it.
+- **The handle** (`StreamActionHandle`) has `state`, `value` (`state.latest`), `isPending`, `hasError`, `fieldErrors`, `call(input)` (completes with the last item, or with `null` when the run failed or was stopped: the error, or the stop, is in `state`, and a `null` is never a partial result taken for a whole one), `cancel()` and `reset()` (stops the run, then idle).
+- **`validate()` runs first**, as for any action: an input it refuses never starts the stream, and its `FieldErrors` are the failed state's. `FieldErrors` the stream throws end it the same way.
+- **The last run wins.** A `call` while a run is in progress stops that run (it ends cancelled) and starts the new one; the state is the new run's.
+- **A stopped run is not a result.** The `Future` of a run that was stopped before its stream ended (`cancel()`, `reset()`, a newer run, or the provider's disposal) fails with a `StreamActionCancelled`, which carries `latest` and `count` for a caller that wants the partial text, and prints neither (its `toString` says the count only, since the item can be what a user typed). So `final text = await NewDocRoute.draft(ref, input: topic); save(text);` never saves a truncated text: catch `StreamActionCancelled` to treat a stop as routine. A run nobody awaits reports nothing when it is stopped (a `draft(ref, ...)` you do not await, or the run a newer one replaces). The hook's `call` is quiet and never throws.
+- **A page that goes away stops the run.** A run started from the hook lives while something watches the provider: when the page is popped, the provider is disposed and the stream's subscription is cancelled, which aborts what it was reading (a `fespalier_stream` connection, or any client that stops when its stream is cancelled). The one-shot helper (`draft`, `submit`) holds the provider alive until the stream ends instead, like a `Future` action, so a write that must finish uses it. `cancel()` stops a held run too.
+- **After the run.** When the stream ends, and when a run is stopped after at least one item, the data the action made stale is invalidated (the same default set, or `invalidates`). A run that fails after at least one item invalidates too (a partial write is a write); one that fails before its first item invalidates nothing. A run stopped because nothing watches it any more invalidates nothing either: its provider is gone, and a run nothing watches is not finished by a write, so use the one-shot helper (`submit`), which holds the run alive, for a write that must finish. A streaming action is never retried, and its errors never reach `error.dart`.
+- **Spelled any way.** `Stream<T>` is told by what it names: `async.Stream<T>` through a `dart:async` import prefix, or a typedef of either (`typedef Words = Stream<String>;`) in the app's files, is a streaming action too. A nullable `Stream<T>?` is an error. (A typedef of a `Future<T>` is still read as a plain value: spell a `Future` out.)
+- **Not built.** A `form()`, `const steps` or `optimistic()` beside a streaming action is an error that says so: return a `Future<T>` for those. `validate()` is fine.
+- **Within telemetry.** The stream is listened to inside the action's span, so an HTTP span made while it runs is its child; what fespalier does with an item or the end (the state it writes, the listeners it wakes, the data it invalidates) runs in your caller's zone instead, so an action a `ref.listen` starts when the state is `StreamDone` is not a child of the stream's ended span. The span ends once, with `fespalier.action.result` `ok`, `error` or `cancelled`, and `fespalier.action.items`, the count of items ([Telemetry conventions](telemetry-conventions.md#telemetry-conventions)); the items are never recorded. In DevTools the run is `running`, then `done` (a cancelled run too) or `error`, with the last item as its result: one entry per run, not per item.
+- **A hot reload** keeps working while the action stays a stream; turning a `Future` action into a `Stream` one (or back) changes its provider, so `fsp dev` restarts the app.
+- **No timer.** fespalier starts no timer and no listener for it: the one subscription is the one on the stream your function returned.
+
+UNCHECKED on a device: that popping the page during a run cancels the request on a phone's network, that the keyboard stays usable while the text grows under a field, and how screen readers read a text that changes on every item (a `Text` that grows may be read again at each change).
+
+The `examples/features` app drafts a doc this way on `/docs/new`. Streaming responses in general are on [Streaming](streaming.md).

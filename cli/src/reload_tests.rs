@@ -1298,6 +1298,56 @@ fn a_pass_says_what_fsp_dev_needs() {
 }
 
 #[test]
+fn an_action_that_becomes_a_stream_restarts_and_its_neighbours_keep_their_hashes() {
+    // Since 0.25.0: `Future` to `Stream` makes the action's provider a `streamActionFamily`, a
+    // different top-level final, so the reload refuses the swap; nothing else a reload keeps moves
+    // but the action's own helpers.
+    let (data, item) = (data("int"), item());
+    let generate = |action: &str| {
+        let files = [
+            ("page.dart", HOME),
+            ("app.dart", APP),
+            ("items/$id/data.dart", data.as_str()),
+            ("items/$id/page.dart", item.as_str()),
+            ("items/$id/action.dart", action),
+        ];
+        generated("", &files).0
+    };
+    let future = generate(
+        "Future<String> track(Ref ref, {required int id, required String input}) async => input;",
+    );
+    let stream = generate(
+        "Stream<String> track(Ref ref, {required int id, required String input}) async* { yield input; }",
+    );
+    has(
+        &stream,
+        &["final _actionItemsId_track = streamActionFamily("],
+    );
+    let (before, after) = (
+        read_stamp(&future).expect("a stamp"),
+        read_stamp(&stream).expect("a stamp"),
+    );
+    assert!(!before.swaps_to(&after), "Future to Stream restarts");
+    assert!(!after.swaps_to(&before), "and back");
+    let (old, new) = (kept_of(&future), kept_of(&stream));
+    let changed: Vec<&String> = old
+        .iter()
+        .filter(|(name, hash)| new.get(*name).is_some_and(|h| h != *hash))
+        .map(|(name, _)| name)
+        .collect();
+    // The provider and the two helpers that call it (`runActionStream`, `watchActionStream`).
+    assert_eq!(
+        changed,
+        [
+            "ItemRoute.track",
+            "ItemRoute.useTrack",
+            "_actionItemsId_track"
+        ],
+        "{old:?}\n{new:?}"
+    );
+}
+
+#[test]
 fn a_pass_that_stops_on_an_error_reports_nothing_written() {
     let dir = project(
         "",

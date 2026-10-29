@@ -572,7 +572,9 @@ abstract final class TelemetryOutcome {
   /// expected outcome, not an error (since 0.9.0).
   static const String rejected = 'rejected';
 
-  /// auth, sign-in: the user closed the sign-in; an expected outcome (since 0.9.0).
+  /// auth, sign-in: the user closed the sign-in; an expected outcome (since 0.9.0). action (since
+  /// 0.25.0): a streaming action's run was stopped before its stream ended (`cancel()`, a newer
+  /// run, or its page went away); not an error.
   static const String cancelled = 'cancelled';
 }
 
@@ -595,6 +597,7 @@ final class TelemetryEnd {
     this.dataSource,
     this.actionRolledBack,
     this.actionInvalid = false,
+    this.actionItems,
   });
 
   /// One of the [TelemetryOutcome] values.
@@ -646,6 +649,10 @@ final class TelemetryEnd {
   /// action (since 0.18.0): the run ended with [FieldErrors], which `validate()` or the action's own
   /// code threw. Only a run that ended with [TelemetryOutcome.error] can be invalid.
   final bool actionInvalid;
+
+  /// action (since 0.25.0): how many items a streaming action's stream gave in this run, whatever
+  /// its outcome; null for an action that returns a `Future` or a value.
+  final int? actionItems;
 
   /// custom (since 0.11.0): the operation's own result attributes. Values are `String`, `int`,
   /// `double` or `bool`; each key starts with the prefix of the start's [TelemetryStart.name]
@@ -1191,26 +1198,34 @@ Object? telemetryActionStart(TelemetrySite telemetry) {
 /// The action run [token] ended, with [error] when it failed.
 ///
 /// Since 0.18.0 [rolledBack] says whether an `optimistic()` patch was shown and then undone (null when
-/// none was shown), and [invalid] whether the run ended with `FieldErrors`.
+/// none was shown), and [invalid] whether the run ended with `FieldErrors`. Since 0.25.0 a streaming
+/// action passes [items], the count of items its stream gave, and [cancelled] when the run was stopped.
 void telemetryActionEnd(
   Object? token, {
   required bool isAsync,
   bool failed = false,
+  bool cancelled = false,
   Object? error,
   StackTrace? stackTrace,
   bool? rolledBack,
   bool invalid = false,
+  int? items,
 }) {
   if (FespalierTelemetry._current == null) return;
   telemetryFinish(
     token,
     TelemetryEnd(
-      failed ? TelemetryOutcome.error : TelemetryOutcome.ok,
+      failed
+          ? TelemetryOutcome.error
+          : cancelled
+          ? TelemetryOutcome.cancelled
+          : TelemetryOutcome.ok,
       isAsync: isAsync,
       error: error,
       stackTrace: stackTrace,
       actionRolledBack: rolledBack,
       actionInvalid: invalid,
+      actionItems: items,
     ),
   );
 }

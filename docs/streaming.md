@@ -9,14 +9,15 @@ something your app does.
 
 ## What streams, and where
 
-| Where                                                           | What it is                                                                                                                         | Read                                                         |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| A `data.dart` that returns a `Stream<T>`                        | An autoDispose `StreamProvider` fespalier wraps around it; its telemetry ends at once with `stream`                                | [Data](data.md#datadart-a-function-a-selector-or-a-provider) |
-| `TransportResponse.body`                                        | Every transport hands the body on as it arrives; a decorator that must read it uses `TransportResponse.buffered`                   | [HTTP transport](transport.md#streaming-bodies)              |
-| `fespalier_stream`                                              | Server-sent events over that body: the decoder, a connection that reconnects, live feeds, telemetry, fakes                         | this page                                                    |
-| `ChangeFeed` (since 0.25.0 here, `fespalier_frb` re-exports it) | A stream of "what changed" (a Rust core's, a server's), held once, and topics that rebuild exactly the providers an event concerns | [Something changed](#something-changed-changefeed)           |
-| `fespalier_download`'s `HttpTransfer`                           | A body streamed to a file                                                                                                          | [Downloads](downloads.md)                                    |
-| A generated CrateStack client's `stream()`                      | A procedure's items over `application/cbor-seq`                                                                                    | [CrateStack](cratestack.md)                                  |
+| Where                                                               | What it is                                                                                                                         | Read                                                            |
+| ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| A `data.dart` that returns a `Stream<T>`                            | An autoDispose `StreamProvider` fespalier wraps around it; its telemetry ends at once with `stream`                                | [Data](data.md#datadart-a-function-a-selector-or-a-provider)    |
+| `TransportResponse.body`                                            | Every transport hands the body on as it arrives; a decorator that must read it uses `TransportResponse.buffered`                   | [HTTP transport](transport.md#streaming-bodies)                 |
+| `fespalier_stream`                                                  | Server-sent events over that body: the decoder, a connection that reconnects, live feeds, telemetry, fakes                         | this page                                                       |
+| An `action.dart` function that returns a `Stream<T>` (since 0.25.0) | A write whose answer comes in pieces: its state follows each item, and leaving the page stops it                                   | [A write that streams](#a-write-that-streams-streaming-actions) |
+| `ChangeFeed` (since 0.25.0 here, `fespalier_frb` re-exports it)     | A stream of "what changed" (a Rust core's, a server's), held once, and topics that rebuild exactly the providers an event concerns | [Something changed](#something-changed-changefeed)              |
+| `fespalier_download`'s `HttpTransfer`                               | A body streamed to a file                                                                                                          | [Downloads](downloads.md)                                       |
+| A generated CrateStack client's `stream()`                          | A procedure's items over `application/cbor-seq`                                                                                    | [CrateStack](cratestack.md)                                     |
 
 ## Server-sent events: fespalier_stream
 
@@ -640,6 +641,34 @@ failed tries (a `LiveConnecting` with `attempt` above 1 or a `LiveWaiting` befor
 gap even if it is the first open, because the server may have sent events while the connection was failing: every watched key
 moves once at that open. The same holds for a key watched after the gap: it counts from the log it first sees, even when only
 `changes.latest` (a "live updates stopped" banner) stayed watched while the gap happened.
+
+## A write that streams: streaming actions
+
+Since 0.25.0 an `action.dart` function may return a `Stream<T>`: a write whose answer comes in pieces, such as a text a language
+model writes word by word, or the progress of an import. Its state is a `StreamActionState<T>` (running with the latest item, then
+done, failed or cancelled), its hook gives `call` and `cancel()`, and the page that watches it holds the run: when the page goes
+away, the subscription is cancelled, and with it the request under it. The one-shot helper holds the run until the stream ends
+instead. All of it is on [Actions](actions.md#streaming-actions-streamt).
+
+The function returns whatever stream your client gives for the answer: a generated CrateStack client's `stream()`, or a body
+read through your `HttpTransport` (every transport hands `TransportResponse.body` on as it arrives):
+
+```dart
+// lib/app/docs/new/action.dart
+Stream<String> draft(Ref ref, {required String input}) =>
+    ref.read(draftApiProvider).write(topic: input); // your client: a Stream of the text so far
+```
+
+`transport.serverEvents(url)` suits a feed rather than a write: after an orderly end with events it opens again (above), which
+would ask for the answer twice.
+
+The run is one action span (`fespalier.action.items` counts the items), and the request's own spans are its children. Like
+everything on this page, it starts no timer, so a stream that stalls (a server that stops answering and never closes) is not
+ended by fespalier. A run started from the hook stops when the user cancels it or leaves the page; a run started with the
+one-shot helper (`submit`) holds the provider and the connection until the stream ends, so a stall there goes on after the
+page is gone. Give the stream a way out: a timeout on the server (or in the client your function wraps, which turns it into
+an error the state shows), and a "Stop" button on the page (`cancel()`). The `Future` of a stopped run fails with a
+`StreamActionCancelled`, so an `await` never takes the text so far for the whole answer.
 
 ## Servers and proxies
 

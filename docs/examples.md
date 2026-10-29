@@ -75,6 +75,9 @@ a server each photo fails and shows the product's initial.
 - `teams/$teamId/action.dart` adds a member to the section, whose data reloads for the layout and the
   page.
 - `test/action_test.dart` holds a refund pending on a `Completer`, so nothing waits for time.
+- `docs/new/action.dart` is a streaming action (since 0.25.0): `draft()` returns a `Stream<String>`, the
+  page shows the text as it grows with a `Stop` button, and leaving the page stops it. `test/draft_test.dart`
+  feeds the stream through a `StreamController`.
 
 **Forms and optimistic updates** (since 0.8.1; forms are the `fespalier_forms` package since 0.11.0, which `examples/features` and `examples/auth` depend on).
 

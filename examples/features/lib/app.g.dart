@@ -18,7 +18,7 @@
 //   /counter                        CounterRoute          counter/page.dart  (data, transition)
 //   /docs                           DocsIndexRoute        docs/page.dart  (transition)
 //   /docs/*rest                     DocsRoute             docs/$$rest/page.dart  (transition)
-//   /docs/new                       NewDocRoute           docs/new/page.dart  (leave, transition)
+//   /docs/new                       NewDocRoute           docs/new/page.dart  (action, leave, transition)
 //   /feed                           FeedRoute             feed/page.dart  (transition)
 //   /files/*path?                   FilesRoute            files/$$$path/page.dart  (transition)
 //   /guide                          GuideRoute            guide/page.dart  (transition)
@@ -115,101 +115,102 @@ import 'app/counter/data.dart' as _i33;
 import 'app/counter/page.dart' as _i34;
 import 'app/docs/page.dart' as _i35;
 import 'app/docs/\$\$rest/page.dart' as _i36;
-import 'app/docs/new/page.dart' as _i37;
-import 'app/docs/new/leave.dart' as _i38;
-import 'app/feed/page.dart' as _i39;
-import 'app/files/\$\$\$path/page.dart' as _i40;
-import 'app/guide/page.dart' as _i41;
-import 'app/help/page.dart' as _i42;
-import 'app/help/not_found.dart' as _i43;
-import 'app/help/\$topic/page.dart' as _i44;
-import 'app/help/\$topic/examples/page.dart' as _i45;
-import 'app/help/contact/page.dart' as _i46;
-import 'app/labs/page.dart' as _i47;
-import 'app/labs/guard.dart' as _i48;
-import 'app/labs/nav.dart' as _i49;
-import 'app/login/page.dart' as _i50;
-import 'app/notes/layout.dart' as _i51;
-import 'app/notes/\$id/page.dart' as _i52;
-import 'app/notes/\$id/guard.dart' as _i53;
-import 'app/old-search/redirect.dart' as _i54;
-import 'app/old-shops/\$shop/redirect.dart' as _i55;
-import 'app/orders/\$id/page.dart' as _i56;
-import 'app/orders/\$id/nav.dart' as _i57;
-import 'app/orders/\$id/refund/data.dart' as _i58;
-import 'app/orders/\$id/refund/action.dart' as _i59;
-import 'app/orders/\$id/refund/page.dart' as _i60;
-import 'app/orders/\$id/refund/guard.dart' as _i61;
-import 'app/orders/\$id/refund/nav.dart' as _i62;
-import 'app/orders/\$id/refund/confirm/page.dart' as _i63;
-import 'app/orders/\$id/refund/receipt/page.dart' as _i64;
-import 'app/photos/page.dart' as _i65;
-import 'app/photos/\$id/page.dart' as _i66;
-import 'app/photos/\$id/transition.dart' as _i67;
-import 'app/photos/share/page.dart' as _i68;
-import 'app/photos/share/present.dart' as _i69;
-import 'app/photos/share/terms/page.dart' as _i70;
-import 'app/photos/sort/page.dart' as _i71;
-import 'app/photos/sort/transition.dart' as _i72;
-import 'app/photos/upload/page.dart' as _i73;
-import 'app/photos/upload/transition.dart' as _i74;
-import 'app/remount/location/\$id/page.dart' as _i75;
-import 'app/remount/never/\$id/page.dart' as _i76;
-import 'app/remount/segments/\$id/page.dart' as _i77;
-import 'app/reports/data.dart' as _i78;
-import 'app/reports/layout.dart' as _i79;
-import 'app/reports/monthly/page.dart' as _i80;
-import 'app/reports/yearly/page.dart' as _i81;
-import 'app/search/data.dart' as _i82;
-import 'app/search/page.dart' as _i83;
-import 'app/search/nav.dart' as _i84;
-import 'app/shop/\$category/data.dart' as _i85;
-import 'app/shop/\$category/page.dart' as _i86;
-import 'app/shops/\$shop/page.dart' as _i87;
-import 'app/shops/\$shop/layout.dart' as _i88;
-import 'app/shops/\$shop/guard.dart' as _i89;
-import 'app/shops/\$shop/items/\$id/data.dart' as _i90;
-import 'app/shops/\$shop/items/\$id/page.dart' as _i91;
-import 'app/shops/\$shop/items/\$id/error.dart' as _i92;
-import 'app/signup/action.dart' as _i93;
-import 'app/signup/layout.dart' as _i94;
-import 'app/signup/guard.dart' as _i95;
-import 'app/signup/leave.dart' as _i96;
-import 'app/signup/company/page.dart' as _i97;
-import 'app/signup/contact/page.dart' as _i98;
-import 'app/signup/name/page.dart' as _i99;
-import 'app/signup/review/page.dart' as _i100;
-import 'app/teams/\$teamId/data.dart' as _i101;
-import 'app/teams/\$teamId/action.dart' as _i102;
-import 'app/teams/\$teamId/route.dart' as _i103;
-import 'app/teams/\$teamId/loading.dart' as _i104;
-import 'app/teams/\$teamId/error.dart' as _i105;
-import 'app/teams/\$teamId/layout.dart' as _i106;
-import 'app/teams/\$teamId/not_found.dart' as _i107;
-import 'app/teams/\$teamId/nav.dart' as _i108;
-import 'app/teams/\$teamId/members/page.dart' as _i109;
-import 'app/teams/\$teamId/members/not_found.dart' as _i110;
-import 'app/teams/\$teamId/members/nav.dart' as _i111;
-import 'app/teams/\$teamId/members/\$member/data.dart' as _i112;
-import 'app/teams/\$teamId/members/\$member/page.dart' as _i113;
-import 'app/teams/\$teamId/settings/page.dart' as _i114;
-import 'app/teams/\$teamId/settings/nav.dart' as _i115;
-import 'app/ticks/data.dart' as _i116;
-import 'app/ticks/page.dart' as _i117;
-import 'app/ticks/transition.dart' as _i118;
-import 'app/vault/page.dart' as _i119;
-import 'app/vault/guard.dart' as _i120;
-import 'app/vault/nav.dart' as _i121;
-import 'app/wiki/\$\$article/data.dart' as _i122;
-import 'app/wiki/\$\$article/page.dart' as _i123;
-import 'app/meta.dart' as _i124;
-import 'app/docs/\$\$rest/meta.dart' as _i125;
-import 'app/files/\$\$\$path/meta.dart' as _i126;
-import 'app/help/meta.dart' as _i127;
-import 'app/login/meta.dart' as _i128;
-import 'app/old-search/meta.dart' as _i129;
-import 'app/photos/meta.dart' as _i130;
-import 'app/photos/\$id/meta.dart' as _i131;
+import 'app/docs/new/action.dart' as _i37;
+import 'app/docs/new/page.dart' as _i38;
+import 'app/docs/new/leave.dart' as _i39;
+import 'app/feed/page.dart' as _i40;
+import 'app/files/\$\$\$path/page.dart' as _i41;
+import 'app/guide/page.dart' as _i42;
+import 'app/help/page.dart' as _i43;
+import 'app/help/not_found.dart' as _i44;
+import 'app/help/\$topic/page.dart' as _i45;
+import 'app/help/\$topic/examples/page.dart' as _i46;
+import 'app/help/contact/page.dart' as _i47;
+import 'app/labs/page.dart' as _i48;
+import 'app/labs/guard.dart' as _i49;
+import 'app/labs/nav.dart' as _i50;
+import 'app/login/page.dart' as _i51;
+import 'app/notes/layout.dart' as _i52;
+import 'app/notes/\$id/page.dart' as _i53;
+import 'app/notes/\$id/guard.dart' as _i54;
+import 'app/old-search/redirect.dart' as _i55;
+import 'app/old-shops/\$shop/redirect.dart' as _i56;
+import 'app/orders/\$id/page.dart' as _i57;
+import 'app/orders/\$id/nav.dart' as _i58;
+import 'app/orders/\$id/refund/data.dart' as _i59;
+import 'app/orders/\$id/refund/action.dart' as _i60;
+import 'app/orders/\$id/refund/page.dart' as _i61;
+import 'app/orders/\$id/refund/guard.dart' as _i62;
+import 'app/orders/\$id/refund/nav.dart' as _i63;
+import 'app/orders/\$id/refund/confirm/page.dart' as _i64;
+import 'app/orders/\$id/refund/receipt/page.dart' as _i65;
+import 'app/photos/page.dart' as _i66;
+import 'app/photos/\$id/page.dart' as _i67;
+import 'app/photos/\$id/transition.dart' as _i68;
+import 'app/photos/share/page.dart' as _i69;
+import 'app/photos/share/present.dart' as _i70;
+import 'app/photos/share/terms/page.dart' as _i71;
+import 'app/photos/sort/page.dart' as _i72;
+import 'app/photos/sort/transition.dart' as _i73;
+import 'app/photos/upload/page.dart' as _i74;
+import 'app/photos/upload/transition.dart' as _i75;
+import 'app/remount/location/\$id/page.dart' as _i76;
+import 'app/remount/never/\$id/page.dart' as _i77;
+import 'app/remount/segments/\$id/page.dart' as _i78;
+import 'app/reports/data.dart' as _i79;
+import 'app/reports/layout.dart' as _i80;
+import 'app/reports/monthly/page.dart' as _i81;
+import 'app/reports/yearly/page.dart' as _i82;
+import 'app/search/data.dart' as _i83;
+import 'app/search/page.dart' as _i84;
+import 'app/search/nav.dart' as _i85;
+import 'app/shop/\$category/data.dart' as _i86;
+import 'app/shop/\$category/page.dart' as _i87;
+import 'app/shops/\$shop/page.dart' as _i88;
+import 'app/shops/\$shop/layout.dart' as _i89;
+import 'app/shops/\$shop/guard.dart' as _i90;
+import 'app/shops/\$shop/items/\$id/data.dart' as _i91;
+import 'app/shops/\$shop/items/\$id/page.dart' as _i92;
+import 'app/shops/\$shop/items/\$id/error.dart' as _i93;
+import 'app/signup/action.dart' as _i94;
+import 'app/signup/layout.dart' as _i95;
+import 'app/signup/guard.dart' as _i96;
+import 'app/signup/leave.dart' as _i97;
+import 'app/signup/company/page.dart' as _i98;
+import 'app/signup/contact/page.dart' as _i99;
+import 'app/signup/name/page.dart' as _i100;
+import 'app/signup/review/page.dart' as _i101;
+import 'app/teams/\$teamId/data.dart' as _i102;
+import 'app/teams/\$teamId/action.dart' as _i103;
+import 'app/teams/\$teamId/route.dart' as _i104;
+import 'app/teams/\$teamId/loading.dart' as _i105;
+import 'app/teams/\$teamId/error.dart' as _i106;
+import 'app/teams/\$teamId/layout.dart' as _i107;
+import 'app/teams/\$teamId/not_found.dart' as _i108;
+import 'app/teams/\$teamId/nav.dart' as _i109;
+import 'app/teams/\$teamId/members/page.dart' as _i110;
+import 'app/teams/\$teamId/members/not_found.dart' as _i111;
+import 'app/teams/\$teamId/members/nav.dart' as _i112;
+import 'app/teams/\$teamId/members/\$member/data.dart' as _i113;
+import 'app/teams/\$teamId/members/\$member/page.dart' as _i114;
+import 'app/teams/\$teamId/settings/page.dart' as _i115;
+import 'app/teams/\$teamId/settings/nav.dart' as _i116;
+import 'app/ticks/data.dart' as _i117;
+import 'app/ticks/page.dart' as _i118;
+import 'app/ticks/transition.dart' as _i119;
+import 'app/vault/page.dart' as _i120;
+import 'app/vault/guard.dart' as _i121;
+import 'app/vault/nav.dart' as _i122;
+import 'app/wiki/\$\$article/data.dart' as _i123;
+import 'app/wiki/\$\$article/page.dart' as _i124;
+import 'app/meta.dart' as _i125;
+import 'app/docs/\$\$rest/meta.dart' as _i126;
+import 'app/files/\$\$\$path/meta.dart' as _i127;
+import 'app/help/meta.dart' as _i128;
+import 'app/login/meta.dart' as _i129;
+import 'app/old-search/meta.dart' as _i130;
+import 'app/photos/meta.dart' as _i131;
+import 'app/photos/\$id/meta.dart' as _i132;
 import 'package:features/models/category.dart' show Category;
 import 'package:features/models/note.dart' show Note;
 import 'package:features/nicknames.dart' show Profile;
@@ -229,7 +230,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '927f118a8e570fbd';
+  static const String _version = 'b79f4fc76d37fc74';
   static const Map<String, String> _kept = {
     '(router)': '7dcfa259',
     'BrowseRoute.data': '30ba4ab7',
@@ -253,6 +254,9 @@ abstract final class AppRoutes {
     'MemberRoute.data': 'cfad21d5',
     'MemberRoute.read': '9573e86a',
     'MemberRoute.watch': '0a8c1f22',
+    'NewDocRoute.draft': '9bfc0cec',
+    'NewDocRoute.draftAction': '6ffea501',
+    'NewDocRoute.useDraft': 'f41de08c',
     'NicknameRoute.action': '3cfa6eaf',
     'NicknameRoute.data': '03db3b44',
     'NicknameRoute.read': '80e133b4',
@@ -297,6 +301,7 @@ abstract final class AppRoutes {
     'WikiRoute.read': '997a0f87',
     'WikiRoute.watch': '13a10fc5',
     '_actionAccountNickname_action': 'd3ec1d4b',
+    '_actionDocsNew_draft': '056122b0',
     '_actionOrdersIdRefund_action': '1162921d',
     '_actionSignup_action': 'c9a40de1',
     '_actionTeamsTeamId_addMember': 'fa6c14ba',
@@ -625,12 +630,12 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'new',
                     caseSensitive: false,
-                    onExit: (context, state) => leaveExit(context, state, 'docs/new/leave.dart', (ref, page) => _i38.leave(context, ref, page: page)),
+                    onExit: (context, state) => leaveExit(context, state, 'docs/new/leave.dart', (ref, page) => _i39.leave(context, ref, page: page)),
                     pageBuilder: (context, state) => namedPage('/docs/new', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: leaveScope(state, const _i37.NewDocPage()),
+                        child: leaveScope(state, const _i38.NewDocPage()),
                       ),
                     )),
                   ),
@@ -658,7 +663,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i39.FeedPage(),
+                    child: const _i40.FeedPage(),
                   ),
                 )),
               ),
@@ -670,7 +675,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params25(state),
-                      (v) => _i40.FilesPage(path: v.path),
+                      (v) => _i41.FilesPage(path: v.path),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -683,7 +688,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i41.GuidePage(),
+                    child: const _i42.GuidePage(),
                   ),
                 )),
               ),
@@ -694,7 +699,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i42.HelpPage(),
+                    child: const _i43.HelpPage(),
                   ),
                 )),
                 routes: [
@@ -705,7 +710,7 @@ abstract final class AppRoutes {
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i46.ContactPage(),
+                        child: const _i47.ContactPage(),
                       ),
                     )),
                   ),
@@ -718,8 +723,8 @@ abstract final class AppRoutes {
                         state: state,
                         child: buildWithParams(
                           () => _params28(state),
-                          (v) => _i44.HelpTopicPage(topic: v.topic),
-                          () => _i43.HelpNotFound(uri: state.uri),
+                          (v) => _i45.HelpTopicPage(topic: v.topic),
+                          () => _i44.HelpNotFound(uri: state.uri),
                         ),
                       ),
                     )),
@@ -733,8 +738,8 @@ abstract final class AppRoutes {
                             state: state,
                             child: buildWithParams(
                               () => _params29(state),
-                              (v) => _i45.HelpExamplesPage(topic: v.topic),
-                              () => _i43.HelpNotFound(uri: state.uri),
+                              (v) => _i46.HelpExamplesPage(topic: v.topic),
+                              () => _i44.HelpNotFound(uri: state.uri),
                             ),
                           ),
                         )),
@@ -746,12 +751,12 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'labs',
                 caseSensitive: false,
-                redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g31@31', refGuard(context, 'g31@31', (ref) => _i48.guard(ref)))),
+                redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g31@31', refGuard(context, 'g31@31', (ref) => _i49.guard(ref)))),
                 pageBuilder: (context, state) => namedPage('/labs', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: refusedView(context, state) ?? const _i47.LabsPage(),
+                    child: refusedView(context, state) ?? const _i48.LabsPage(),
                   ),
                 )),
               ),
@@ -764,7 +769,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params32(state),
-                      (v) => _i50.LoginPage(from: v.from),
+                      (v) => _i51.LoginPage(from: v.from),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -775,7 +780,7 @@ abstract final class AppRoutes {
                 caseSensitive: false,
                 redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'r35', guardWithParams(
                   () => _params35(state),
-                  (v) => _i54.redirect(q: v.q),
+                  (v) => _i55.redirect(q: v.q),
                 ))),
               ),
               GoRoute(
@@ -785,7 +790,7 @@ abstract final class AppRoutes {
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: const _i65.PhotosPage(),
+                    child: const _i66.PhotosPage(),
                   ),
                 )),
                 routes: [
@@ -793,11 +798,11 @@ abstract final class AppRoutes {
                     path: 'share',
                     parentNavigatorKey: rootNavigatorKey,
                     caseSensitive: false,
-                    pageBuilder: (context, state) => namedPage('/photos/share', () => _i69.present(
+                    pageBuilder: (context, state) => namedPage('/photos/share', () => _i70.present(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i68.ShareSheet(),
+                        child: const _i69.ShareSheet(),
                       ),
                     )),
                     routes: [
@@ -809,7 +814,7 @@ abstract final class AppRoutes {
                           state.pageKey,
                           RouteScrollMemory(
                             state: state,
-                            child: const _i70.TermsPage(),
+                            child: const _i71.TermsPage(),
                           ),
                         )),
                       ),
@@ -818,35 +823,35 @@ abstract final class AppRoutes {
                   GoRoute(
                     path: 'sort',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => namedPage('/photos/sort', () => _i72.transition(
+                    pageBuilder: (context, state) => namedPage('/photos/sort', () => _i73.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i71.SortPage(),
+                        child: const _i72.SortPage(),
                       ),
                     )),
                   ),
                   GoRoute(
                     path: 'upload',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => namedPage('/photos/upload', () => _i74.transition(
+                    pageBuilder: (context, state) => namedPage('/photos/upload', () => _i75.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: const _i73.UploadPage(),
+                        child: const _i74.UploadPage(),
                       ),
                     )),
                   ),
                   GoRoute(
                     path: ':id',
                     caseSensitive: false,
-                    pageBuilder: (context, state) => namedPage('/photos/:id', () => _i67.transition(
+                    pageBuilder: (context, state) => namedPage('/photos/:id', () => _i68.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: buildWithParams(
                           () => _params44(state),
-                          (v) => _i66.PhotoPage(id: v.id),
+                          (v) => _i67.PhotoPage(id: v.id),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -862,7 +867,7 @@ abstract final class AppRoutes {
                       (v) => DataView(
                         watch: (ref) => watchData(ref, 'dReports', _dataReports(v.period)),
                         refresh: (ref) => ref.invalidate(_dataReports(v.period)),
-                        data: (d) => _i79.ReportsLayout(data: d, child: child),
+                        data: (d) => _i80.ReportsLayout(data: d, child: child),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -882,7 +887,7 @@ abstract final class AppRoutes {
                           () => _params57(state),
                           (v) => SectionView(
                             watch: (ref) => watchData(ref, 'dReports', _dataReports(v.period)),
-                            data: (s56) => _i80.MonthlyReportPage(data: s56),
+                            data: (s56) => _i81.MonthlyReportPage(data: s56),
                           ),
                           () => notFound(state.uri),
                         ),
@@ -898,7 +903,7 @@ abstract final class AppRoutes {
                         state: state,
                         child: buildWithParams(
                           () => _params58(state),
-                          (v) => const _i81.YearlyReportPage(),
+                          (v) => const _i82.YearlyReportPage(),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -920,7 +925,7 @@ abstract final class AppRoutes {
                       (v) => DataView(
                         watch: (ref) => watchData(ref, 'dSearch', _dataSearch((q: v.q, page: v.page, tags: QueryList(v.tags)))),
                         refresh: (ref) => ref.invalidate(_dataSearch((q: v.q, page: v.page, tags: QueryList(v.tags)))),
-                        data: (d) => _i83.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
+                        data: (d) => _i84.SearchPage(results: d, q: v.q, page: v.page, tags: v.tags),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -933,58 +938,58 @@ abstract final class AppRoutes {
               ShellRoute(
                 pageBuilder: (context, state, child) => namedPage('/signup', () => _i1.transition(
                   const ValueKey<String>('layout:signup/'),
-                  _i94.SignupLayout(child: child),
+                  _i95.SignupLayout(child: child),
                 )),
                 routes: [
                   GoRoute(
                     path: 'signup/company',
                     caseSensitive: false,
-                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@67', refGuard(context, 'g66@67', (ref) => _i95.guard(ref, uri: state.uri)))),
-                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
+                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@67', refGuard(context, 'g66@67', (ref) => _i96.guard(ref, uri: state.uri)))),
+                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i97.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/company', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i97.SignupCompanyPage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i98.SignupCompanyPage())),
                       ),
                     )),
                   ),
                   GoRoute(
                     path: 'signup/contact',
                     caseSensitive: false,
-                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@68', refGuard(context, 'g66@68', (ref) => _i95.guard(ref, uri: state.uri)))),
-                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
+                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@68', refGuard(context, 'g66@68', (ref) => _i96.guard(ref, uri: state.uri)))),
+                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i97.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/contact', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i98.SignupContactPage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i99.SignupContactPage())),
                       ),
                     )),
                   ),
                   GoRoute(
                     path: 'signup/name',
                     caseSensitive: false,
-                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@69', refGuard(context, 'g66@69', (ref) => _i95.guard(ref, uri: state.uri)))),
-                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
+                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@69', refGuard(context, 'g66@69', (ref) => _i96.guard(ref, uri: state.uri)))),
+                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i97.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/name', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i99.SignupNamePage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i100.SignupNamePage())),
                       ),
                     )),
                   ),
                   GoRoute(
                     path: 'signup/review',
                     caseSensitive: false,
-                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@70', refGuard(context, 'g66@70', (ref) => _i95.guard(ref, uri: state.uri)))),
-                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i96.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
+                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g66@70', refGuard(context, 'g66@70', (ref) => _i96.guard(ref, uri: state.uri)))),
+                    onExit: (context, state) => leaveExit(context, state, 'signup/leave.dart', (ref, page) => _i97.leave(context, ref, page: page), within: joinLocation(at, '/signup')),
                     pageBuilder: (context, state) => namedPage('/signup/review', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
-                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i100.SignupReviewPage())),
+                        child: refusedView(context, state) ?? leaveScope(state, flowStep(const _i101.SignupReviewPage())),
                       ),
                     )),
                   ),
@@ -995,14 +1000,14 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'ticks',
                 caseSensitive: false,
-                pageBuilder: (context, state) => namedPage('/ticks', () => _i118.transition(
+                pageBuilder: (context, state) => namedPage('/ticks', () => _i119.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
                     child: DataView(
                       watch: (ref) => watchData(ref, 'dTicks', _dataTicks),
                       refresh: (ref) => ref.invalidate(_dataTicks),
-                      data: (d) => _i117.TicksPage(data: d),
+                      data: (d) => _i118.TicksPage(data: d),
                       loading: () => const DefaultLoading(),
                       error: (e, st, retry) => DefaultError(error: e, retry: retry),
                       keepPrevious: true,
@@ -1013,12 +1018,12 @@ abstract final class AppRoutes {
               GoRoute(
                 path: 'vault',
                 caseSensitive: false,
-                redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g77@77', refGuard(context, 'g77@77', (ref) => _i120.guard(ref, uri: state.uri)))),
+                redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g77@77', refGuard(context, 'g77@77', (ref) => _i121.guard(ref, uri: state.uri)))),
                 pageBuilder: (context, state) => namedPage('/vault', () => _i1.transition(
                   state.pageKey,
                   RouteScrollMemory(
                     state: state,
-                    child: refusedView(context, state) ?? const _i119.VaultPage(),
+                    child: refusedView(context, state) ?? const _i120.VaultPage(),
                   ),
                 )),
               ),
@@ -1040,20 +1045,20 @@ abstract final class AppRoutes {
               ShellRoute(
                 pageBuilder: (context, state, child) => namedPage('/notes', () => _i1.transition(
                   const ValueKey<String>('layout:notes/'),
-                  _i51.NotesLayout(child: child, extra: extraOrNull(state)),
+                  _i52.NotesLayout(child: child, extra: extraOrNull(state)),
                 )),
                 routes: [
                   GoRoute(
                     path: 'notes/:id',
                     caseSensitive: false,
-                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g34@34', _i53.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state)))),
+                    redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g34@34', _i54.guard(ProviderScope.containerOf(context, listen: false), extra: extraOrNull(state)))),
                     pageBuilder: (context, state) => namedPage('/notes/:id', () => _i1.transition(
                       state.pageKey,
                       RouteScrollMemory(
                         state: state,
                         child: refusedView(context, state) ?? buildWithParams(
                           () => _params34(state),
-                          (v) => _i52.NotePage(id: v.id, extra: extraOf(state)),
+                          (v) => _i53.NotePage(id: v.id, extra: extraOf(state)),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -1068,7 +1073,7 @@ abstract final class AppRoutes {
                 caseSensitive: false,
                 redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'r37', guardWithParams(
                   () => _params37(state),
-                  (v) => _i55.redirect(shop: v.shop),
+                  (v) => _i56.redirect(shop: v.shop),
                 ))),
               ),
               GoRoute(
@@ -1080,7 +1085,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params39(state),
-                      (v) => _i56.OrderPage(id: v.id),
+                      (v) => _i57.OrderPage(id: v.id),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -1091,7 +1096,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g40@40', guardWithParams(
                       () => _params40(state),
-                      (v) => _i61.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
+                      (v) => _i62.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
                     ))),
                     pageBuilder: (context, state) => namedPage('/orders/:id/refund', () => _i1.transition(
                       state.pageKey,
@@ -1102,7 +1107,7 @@ abstract final class AppRoutes {
                           (v) => DataView(
                             watch: (ref) => watchData(ref, 'dOrdersIdRefund', _dataOrdersIdRefund(v.id)),
                             refresh: (ref) => ref.invalidate(_dataOrdersIdRefund(v.id)),
-                            data: (d) => _i60.RefundPage(id: v.id, quote: d),
+                            data: (d) => _i61.RefundPage(id: v.id, quote: d),
                             loading: () => const DefaultLoading(),
                             error: (e, st, retry) => DefaultError(error: e, retry: retry),
                             keepPrevious: true,
@@ -1121,7 +1126,7 @@ abstract final class AppRoutes {
                             state: state,
                             child: refusedView(context, state) ?? buildWithParams(
                               () => _params42(state),
-                              (v) => _i64.ReceiptPage(id: v.id),
+                              (v) => _i65.ReceiptPage(id: v.id),
                               () => notFound(state.uri),
                             ),
                           ),
@@ -1134,7 +1139,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g40@41', guardWithParams(
                       () => _guard40(state),
-                      (v) => _i61.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
+                      (v) => _i62.guard(ProviderScope.containerOf(context, listen: false), id: v.id),
                     ))),
                     pageBuilder: (context, state) => namedPage('/orders/:id/refund/confirm', () => _i1.transition(
                       state.pageKey,
@@ -1142,7 +1147,7 @@ abstract final class AppRoutes {
                         state: state,
                         child: refusedView(context, state) ?? buildWithParams(
                           () => _params41(state),
-                          (v) => _i63.ConfirmRefundPage(id: v.id),
+                          (v) => _i64.ConfirmRefundPage(id: v.id),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -1159,7 +1164,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params51(state),
-                      (v) => _i75.RemountLocationPage(id: v.id, page: v.page),
+                      (v) => _i76.RemountLocationPage(id: v.id, page: v.page),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -1174,7 +1179,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params53(state),
-                      (v) => _i76.RemountNeverPage(id: v.id, page: v.page),
+                      (v) => _i77.RemountNeverPage(id: v.id, page: v.page),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -1189,7 +1194,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params55(state),
-                      (v) => _i77.RemountSegmentsPage(id: v.id, page: v.page),
+                      (v) => _i78.RemountSegmentsPage(id: v.id, page: v.page),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -1207,7 +1212,7 @@ abstract final class AppRoutes {
                       (v) => DataView(
                         watch: (ref) => watchData(ref, 'dShopCategory', _dataShopCategory(v.category)),
                         refresh: (ref) => ref.invalidate(_dataShopCategory(v.category)),
-                        data: (d) => _i86.CategoryShopPage(category: v.category, items: d, sort: v.sort),
+                        data: (d) => _i87.CategoryShopPage(category: v.category, items: d, sort: v.sort),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -1222,7 +1227,7 @@ abstract final class AppRoutes {
                   const ValueKey<String>('layout:shops/\$shop/'),
                   buildWithParams(
                       () => _layout63(state),
-                      (v) => _i88.ShopLayout(shop: v.shop, child: child),
+                      (v) => _i89.ShopLayout(shop: v.shop, child: child),
                       () => notFound(state.uri),
                     ),
                 )),
@@ -1232,7 +1237,7 @@ abstract final class AppRoutes {
                     caseSensitive: false,
                     redirect: (context, state) => runRedirect(state, () => traceGuard(state, 'g63@63', guardWithParams(
                       () => _params63(state),
-                      (v) => _i89.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
+                      (v) => _i90.guard(ProviderScope.containerOf(context, listen: false), shop: v.shop),
                     ))),
                     pageBuilder: (context, state) => namedPage('/shops/:shop', () => _i1.transition(
                       state.pageKey,
@@ -1240,7 +1245,7 @@ abstract final class AppRoutes {
                         state: state,
                         child: refusedView(context, state) ?? buildWithParams(
                           () => _params63(state),
-                          (v) => _i87.ShopPage(shop: v.shop),
+                          (v) => _i88.ShopPage(shop: v.shop),
                           () => notFound(state.uri),
                         ),
                       ),
@@ -1258,9 +1263,9 @@ abstract final class AppRoutes {
                               (v) => DataView(
                                 watch: (ref) => watchData(ref, 'dShopsShopItemsId', _dataShopsShopItemsId((shop: v.shop, id: v.id))),
                                 refresh: (ref) => ref.invalidate(_dataShopsShopItemsId((shop: v.shop, id: v.id))),
-                                data: (d) => _i91.ItemPage(d),
+                                data: (d) => _i92.ItemPage(d),
                                 loading: () => const DefaultLoading(),
-                                error: (e, st, retry) => _i92.ItemError(e, retry),
+                                error: (e, st, retry) => _i93.ItemError(e, retry),
                                 keepPrevious: true,
                               ),
                               () => notFound(state.uri),
@@ -1282,14 +1287,14 @@ abstract final class AppRoutes {
                       (v) => DataView(
                         watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
                         refresh: (ref) => ref.invalidate(_dataTeamsTeamId(v.teamId)),
-                        data: (d) => _i106.TeamLayout(team: d, child: child),
-                        loading: () => const _i104.TeamLoading(),
-                        error: (e, st, retry) => _i105.TeamError(error: e, retry: retry),
+                        data: (d) => _i107.TeamLayout(team: d, child: child),
+                        loading: () => const _i105.TeamLoading(),
+                        error: (e, st, retry) => _i106.TeamError(error: e, retry: retry),
                         keepPrevious: true,
                         optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                         keepDataOnError: true,
                       ),
-                      () => _i107.TeamNotFound(uri: state.uri),
+                      () => _i108.TeamNotFound(uri: state.uri),
                     ),
                 )),
                 routes: [
@@ -1304,10 +1309,10 @@ abstract final class AppRoutes {
                           () => _params73(state),
                           (v) => SectionView(
                             watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
-                            data: (s72) => _i109.MembersPage(s72, teamId: v.teamId),
+                            data: (s72) => _i110.MembersPage(s72, teamId: v.teamId),
                             optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                           ),
-                          () => _i110.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
+                          () => _i111.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                         ),
                       ),
                     )),
@@ -1326,15 +1331,15 @@ abstract final class AppRoutes {
                                 refresh: (ref) => ref.invalidate(_dataTeamsTeamIdMembersMember(v.member)),
                                 data: (d) => SectionView(
                                   watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
-                                  data: (s72) => _i113.MemberPage(label: d, team: s72),
+                                  data: (s72) => _i114.MemberPage(label: d, team: s72),
                                   optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                                 ),
-                                loading: () => const _i104.TeamLoading(),
-                                error: (e, st, retry) => _i105.TeamError(error: e, retry: retry),
+                                loading: () => const _i105.TeamLoading(),
+                                error: (e, st, retry) => _i106.TeamError(error: e, retry: retry),
                                 keepPrevious: true,
                                 keepDataOnError: true,
                               ),
-                              () => _i110.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
+                              () => _i111.MembersNotFound(uri: state.uri, teamId: state.pathParameters['teamId']!),
                             ),
                           ),
                         )),
@@ -1352,10 +1357,10 @@ abstract final class AppRoutes {
                           () => _params75(state),
                           (v) => SectionView(
                             watch: (ref) => watchData(ref, 'dTeamsTeamId', _dataTeamsTeamId(v.teamId)),
-                            data: (s72) => _i114.TeamSettingsPage(data: s72),
+                            data: (s72) => _i115.TeamSettingsPage(data: s72),
                             optimistic: (ref) => ref.watch(_optimisticTeamsTeamId(v.teamId)),
                           ),
-                          () => _i107.TeamNotFound(uri: state.uri),
+                          () => _i108.TeamNotFound(uri: state.uri),
                         ),
                       ),
                     )),
@@ -1416,7 +1421,7 @@ abstract final class AppRoutes {
                     state: state,
                     child: buildWithParams(
                       () => _params25(state),
-                      (v) => _i40.FilesPage(path: v.path),
+                      (v) => _i41.FilesPage(path: v.path),
                       () => notFound(state.uri),
                     ),
                   ),
@@ -1434,7 +1439,7 @@ abstract final class AppRoutes {
                       (v) => DataView(
                         watch: (ref) => watchData(ref, 'dWikiArticle', _dataWikiArticle(restKey(v.article))),
                         refresh: (ref) => ref.invalidate(_dataWikiArticle(restKey(v.article))),
-                        data: (d) => _i123.WikiPage(article: v.article, data: d),
+                        data: (d) => _i124.WikiPage(article: v.article, data: d),
                         loading: () => const DefaultLoading(),
                         error: (e, st, retry) => DefaultError(error: e, retry: retry),
                         keepPrevious: true,
@@ -1458,9 +1463,9 @@ abstract final class AppRoutes {
         uri,
         base,
         [
-          (['teams', ':teamId', 'members'], (uri) => _i110.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1)), caseSensitive: false),
-          (['teams', ':teamId'], (uri) => _i107.TeamNotFound(uri: uri), caseSensitive: false),
-          (['help|aide|hilfe'], (uri) => _i43.HelpNotFound(uri: uri), caseSensitive: false),
+          (['teams', ':teamId', 'members'], (uri) => _i111.MembersNotFound(uri: uri, teamId: pathPart(uri, base, 1)), caseSensitive: false),
+          (['teams', ':teamId'], (uri) => _i108.TeamNotFound(uri: uri), caseSensitive: false),
+          (['help|aide|hilfe'], (uri) => _i44.HelpNotFound(uri: uri), caseSensitive: false),
         ],
         (uri) => DefaultNotFound(uri),
         caseSensitive: false,
@@ -1611,7 +1616,7 @@ abstract final class AppRoutes {
     RouteMatcher(['shops', ':shop', 'items', ':id'], (s) {
       final p = _params65(s);
       return UrlMatch(s.uri, ItemRoute(shop: p.shop, id: p.id), {'shop': p.shop, 'id': p.id}, [_dataShopsShopItemsId((shop: p.shop, id: p.id))]);
-    }, caseSensitive: false, guardError: (e, st, retry) => _i92.ItemError(e, retry)),
+    }, caseSensitive: false, guardError: (e, st, retry) => _i93.ItemError(e, retry)),
     RouteMatcher(['teams', ':teamId', 'members', ':member'], (s) {
       final p = _params74(s);
       return UrlMatch(s.uri, MemberRoute(teamId: p.teamId, member: p.member), {'teamId': p.teamId, 'member': p.member}, [_dataTeamsTeamId(p.teamId), _dataTeamsTeamIdMembersMember(p.member)]);
@@ -1711,7 +1716,7 @@ abstract final class AppManifest {
       path: '/',
       folder: '',
       layouts: [''],
-      meta: _i124.meta,
+      meta: _i125.meta,
     ),
     RouteInfo(
       type: SlugRoute,
@@ -1831,7 +1836,7 @@ abstract final class AppManifest {
       folder: 'docs/\$\$rest',
       layouts: [''],
       segments: [RouteParam('rest', 'List<String>', catchAll: true)],
-      meta: _i125.meta,
+      meta: _i126.meta,
     ),
     RouteInfo(
       type: NewDocRoute,
@@ -1851,7 +1856,7 @@ abstract final class AppManifest {
       folder: 'files/\$\$\$path',
       layouts: [''],
       segments: [RouteParam('path', 'List<String>', catchAll: true)],
-      meta: _i126.meta,
+      meta: _i127.meta,
     ),
     RouteInfo(
       type: GuideRoute,
@@ -1866,7 +1871,7 @@ abstract final class AppManifest {
       paths: {'fr': '/aide', 'de': '/hilfe'},
       folder: 'help',
       layouts: [''],
-      meta: _i127.meta,
+      meta: _i128.meta,
     ),
     RouteInfo(
       type: HelpTopicRoute,
@@ -1903,7 +1908,7 @@ abstract final class AppManifest {
       folder: 'login',
       layouts: [''],
       query: [RouteParam('from', 'String?')],
-      meta: _i128.meta,
+      meta: _i129.meta,
     ),
     RouteInfo(
       type: NoteRoute,
@@ -1919,7 +1924,7 @@ abstract final class AppManifest {
       presentation: RoutePresentation.redirect,
       layouts: [''],
       query: [RouteParam('q', 'String?')],
-      meta: _i129.meta,
+      meta: _i130.meta,
     ),
     RouteInfo(
       type: OldShopsShopRoute,
@@ -1964,7 +1969,7 @@ abstract final class AppManifest {
       path: '/photos',
       folder: 'photos',
       layouts: [''],
-      meta: _i130.meta,
+      meta: _i131.meta,
     ),
     RouteInfo(
       type: PhotoRoute,
@@ -1972,7 +1977,7 @@ abstract final class AppManifest {
       folder: 'photos/\$id',
       layouts: [''],
       segments: [RouteParam('id', 'int')],
-      meta: _i131.meta,
+      meta: _i132.meta,
     ),
     RouteInfo(
       type: ShareSheetRoute,
@@ -2198,7 +2203,7 @@ abstract final class SignupSection {
   static final action = _actionSignup_action;
 
   /// Runs `action()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with its result, or throws what the action threw; the error is in the state as well.
-  static final submit = (WidgetRef ref, {required _i93.SignupFields input}) => ref.runAction(action, input);
+  static final submit = (WidgetRef ref, {required _i94.SignupFields input}) => ref.runAction(action, input);
 
   /// Watches the state of `action()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
   static final useAction = (WidgetRef ref) => ref.watchAction(action);
@@ -2210,11 +2215,11 @@ abstract final class SignupSection {
     steps: SignupStep.values,
     routes: {SignupStep.name: const SignupNameRoute(), SignupStep.company: const SignupCompanyRoute(), SignupStep.contact: const SignupContactRoute(), SignupStep.review: const SignupReviewRoute()},
     owners: const {'name': SignupStep.name, 'business': SignupStep.name, 'company': SignupStep.company, 'email': SignupStep.contact, 'phone': SignupStep.contact},
-    skip: _i93.skip,
-    initial: _i93.form,
-    fields: (ActionFormFields<_i93.SignupFields> f) => (name: f.text('name', (v) => v.name, FieldCodec.text), business: f.value('business', (v) => v.business, draft: DraftCodec.boolean), company: f.text('company', (v) => v.company, FieldCodec.optionalText), email: f.text('email', (v) => v.email, FieldCodec.text), phone: f.text('phone', (v) => v.phone, FieldCodec.optionalText)),
+    skip: _i94.skip,
+    initial: _i94.form,
+    fields: (ActionFormFields<_i94.SignupFields> f) => (name: f.text('name', (v) => v.name, FieldCodec.text), business: f.value('business', (v) => v.business, draft: DraftCodec.boolean), company: f.text('company', (v) => v.company, FieldCodec.optionalText), email: f.text('email', (v) => v.email, FieldCodec.text), phone: f.text('phone', (v) => v.phone, FieldCodec.optionalText)),
     input: (f) => (name: f.name.value, business: f.business.value, company: f.company.value, email: f.email.value, phone: f.phone.value),
-    validate: _i93.validate,
+    validate: _i94.validate,
   );
 
   /// The multi-page form of `action()` (signup/action.dart), for the `build` of the section's layout, in a `HookConsumerWidget`: a typed field per field of its input, shared by every step; `next` checks the fields of the step on screen and goes to the next one, `submit` runs the action. A draft is kept by default, with the steps done. Since 0.11.0.
@@ -2757,6 +2762,15 @@ final class NewDocRoute extends TypedLocation {
 
   /// Like [of], or null when the route around [context] is another one.
   static NewDocRoute? maybeOf(BuildContext context) => maybeRouteOf<NewDocRoute>(context, AppRoutes.matchUrl);
+
+  /// The state of `draft()` (docs/new/action.dart): `StreamActionState<T>`, idle (`StreamIdle`) until it runs, then running with the latest item, then done, failed or cancelled (since 0.25.0). An action never replaces the page with `error.dart` and is never retried.
+  static final draftAction = _actionDocsNew_draft;
+
+  /// Runs `draft()` once and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled or failed after an item, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with the last item, or throws what the stream threw, or a `StreamActionCancelled` when the run is stopped before the stream ends; the error is in the state as well.
+  static final draft = (WidgetRef ref, {required String input}) => ref.runActionStream(draftAction, input);
+
+  /// Watches the state of `draft()` and gives `call(input)` to run it and `cancel()` to stop it (the run stops too when nothing watches it any more), for `build`. A failed run is in `state`, not thrown.
+  static final useDraft = (WidgetRef ref) => ref.watchActionStream(draftAction);
 }
 
 /// `/feed` → feed/page.dart
@@ -3474,7 +3488,7 @@ final class CategoryShopRoute extends TypedLocation {
   const CategoryShopRoute({required this.category, this.sort});
 
   final Category category;
-  final _i86.Sort? sort;
+  final _i87.Sort? sort;
 
   /// shop/$category/data.dart as a Riverpod provider keyed by `category`.
   static final data = _dataShopCategory;
@@ -3499,10 +3513,10 @@ final class CategoryShopRoute extends TypedLocation {
   /// A copy with the given segments and query parameters changed; one left out keeps its value, and
   /// `null` clears an optional one. (A getter of a function type, so that leaving a parameter out
   /// and passing `null` differ without a parameter's type widening: `copyWith(page: null)`.)
-  CategoryShopRoute Function({Category category, _i86.Sort? sort}) get copyWith => _copyWith;
+  CategoryShopRoute Function({Category category, _i87.Sort? sort}) get copyWith => _copyWith;
 
   CategoryShopRoute _copyWith({Object? category = _keep, Object? sort = _keep}) =>
-      CategoryShopRoute(category: _kept<Category>(category, this.category), sort: _kept<_i86.Sort?>(sort, this.sort));
+      CategoryShopRoute(category: _kept<Category>(category, this.category), sort: _kept<_i87.Sort?>(sort, this.sort));
 
   /// Watches shop/$category/data.dart: an `AsyncValue`, typed by inference (static, so it can name the keys).
   static final watch = (WidgetRef ref, {required Category category}) => ref.watch(data(category));
@@ -3912,7 +3926,7 @@ T _kept<T>(Object? value, T current) => identical(value, _keep) ? current : valu
 
 ({String? q, int? page, List<String> tags}) _params59(GoRouterState s) => (q: Query.asString(s, 'q'), page: Query.asInt(s, 'page'), tags: Query.asStringList(s, 'tags'));
 
-({Category category, _i86.Sort? sort}) _params61(GoRouterState s) => (category: Segment.asEnum(s, 'category', Category.values, caseSensitive: false), sort: Query.asEnum(s, 'sort', _i86.Sort.values, caseSensitive: false));
+({Category category, _i87.Sort? sort}) _params61(GoRouterState s) => (category: Segment.asEnum(s, 'category', Category.values, caseSensitive: false), sort: Query.asEnum(s, 'sort', _i87.Sort.values, caseSensitive: false));
 
 ({String shop}) _params63(GoRouterState s) => (shop: Segment.asString(s, 'shop'));
 
@@ -3958,43 +3972,43 @@ final _dataCompareIds = FutureProvider.autoDispose.family(
 );
 
 final _dataOrdersIdRefund = FutureProvider.autoDispose.family(
-  (Ref ref, int id) => traceData(ref, 'dOrdersIdRefund', id, _i58.data(ref, id: id)),
+  (Ref ref, int id) => traceData(ref, 'dOrdersIdRefund', id, _i59.data(ref, id: id)),
 );
 
 final _dataReports = FutureProvider.autoDispose.family(
-  (Ref ref, String? period) => traceData(ref, 'dReports', period, _i78.data(ref, period: period)),
+  (Ref ref, String? period) => traceData(ref, 'dReports', period, _i79.data(ref, period: period)),
 );
 
 final _dataSearch = FutureProvider.autoDispose.family(
-  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'dSearch', k, _i82.data(ref, q: k.q, page: k.page, tags: k.tags)),
+  (Ref ref, ({String? q, int? page, QueryList<String> tags}) k) => traceData(ref, 'dSearch', k, _i83.data(ref, q: k.q, page: k.page, tags: k.tags)),
 );
 
 final _dataShopCategory = FutureProvider.autoDispose.family(
-  (Ref ref, Category category) => traceData(ref, 'dShopCategory', category, _i85.data(ref, category: category)),
+  (Ref ref, Category category) => traceData(ref, 'dShopCategory', category, _i86.data(ref, category: category)),
 );
 
 final _dataShopsShopItemsId = FutureProvider.autoDispose.family(
-  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'dShopsShopItemsId', k, _i90.data(ref, shop: k.shop, id: k.id)),
+  (Ref ref, ({String shop, int id}) k) => traceData(ref, 'dShopsShopItemsId', k, _i91.data(ref, shop: k.shop, id: k.id)),
 );
 
 final _dataTeamsTeamId = cachedDataFamily(
-  (Ref ref, String teamId) => traceData(ref, 'dTeamsTeamId', teamId, _i101.data(ref, teamId: teamId)),
-  cache: _i101.dataCache,
+  (Ref ref, String teamId) => traceData(ref, 'dTeamsTeamId', teamId, _i102.data(ref, teamId: teamId)),
+  cache: _i102.dataCache,
   name: 'teams/\$teamId',
   keyParts: (String teamId) => [teamId],
-  freshness: _i103.freshness,
+  freshness: _i104.freshness,
 );
 
 final _dataTeamsTeamIdMembersMember = FutureProvider.autoDispose.family(
-  (Ref ref, int member) => freshData(ref, _i103.freshness, traceData(ref, 'dTeamsTeamIdMembersMember', member, _i112.data(ref, member: member))),
+  (Ref ref, int member) => freshData(ref, _i104.freshness, traceData(ref, 'dTeamsTeamIdMembersMember', member, _i113.data(ref, member: member))),
 );
 
 final _dataTicks = StreamProvider.autoDispose(
-  (Ref ref) => traceData(ref, 'dTicks', null, _i116.data(ref)),
+  (Ref ref) => traceData(ref, 'dTicks', null, _i117.data(ref)),
 );
 
 final _dataWikiArticle = FutureProvider.autoDispose.family(
-  (Ref ref, String article) => traceData(ref, 'dWikiArticle', article, _i122.data(ref, article: restParts(article))),
+  (Ref ref, String article) => traceData(ref, 'dWikiArticle', article, _i123.data(ref, article: restParts(article))),
 );
 
 /// What reads of (account)/nickname/data.dart show while a write that patches it is in flight (`optimistic()` of (account)/nickname/action.dart). Since 0.8.1.
@@ -4012,26 +4026,34 @@ final _actionAccountNickname_action = actionProvider(
   site: 'aAccountNickname_action',
 );
 
+/// `draft()` of docs/new/action.dart: its state, and what it invalidates when its stream ends, or is stopped or fails after an item.
+final _actionDocsNew_draft = streamActionProvider(
+  (Ref ref, String input) => _i37.draft(ref, input: input),
+  invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],
+  validate: _i37.draftValidate,
+  site: 'aDocsNew_draft',
+);
+
 /// `action()` of orders/$id/refund/action.dart: its state, and what it invalidates after a success.
 final _actionOrdersIdRefund_action = actionFamily(
-  (Ref ref, int id, RefundInput input) => _i59.action(ref, id: id, input: input),
+  (Ref ref, int id, RefundInput input) => _i60.action(ref, id: id, input: input),
   invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersIdRefund(id)],
   site: 'aOrdersIdRefund_action',
 );
 
 /// `action()` of signup/action.dart: its state, and what it invalidates after a success.
 final _actionSignup_action = actionProvider(
-  (Ref ref, _i93.SignupFields input) => _i93.action(ref, input: input),
+  (Ref ref, _i94.SignupFields input) => _i94.action(ref, input: input),
   invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],
-  validate: _i93.validate,
+  validate: _i94.validate,
   site: 'aSignup_action',
 );
 
 /// `addMember()` of teams/$teamId/action.dart: its state, and what it invalidates after a success.
 final _actionTeamsTeamId_addMember = actionFamily(
-  (Ref ref, String teamId, String input) => _i102.addMember(ref, teamId: teamId, input: input),
+  (Ref ref, String teamId, String input) => _i103.addMember(ref, teamId: teamId, input: input),
   invalidates: (String teamId) => <ProviderListenable<AsyncValue<Object?>>>[_dataTeamsTeamId(teamId)],
-  optimistic: (String teamId) => _optimisticTeamsTeamId(teamId).patch(_i102.addMemberOptimistic),
+  optimistic: (String teamId) => _optimisticTeamsTeamId(teamId).patch(_i103.addMemberOptimistic),
   site: 'aTeamsTeamId_addMember',
 );
 
@@ -4140,14 +4162,14 @@ const _nav8 = NavNode(
 
 const _nav31 = NavNode(
   folder: 'labs',
-  nav: _i49.nav,
+  nav: _i50.nav,
   route: _navRoute31,
   guard: _navGuard31,
 );
 
 const _nav39 = NavNode(
   folder: 'orders/\$id',
-  nav: _i57.nav,
+  nav: _i58.nav,
   route: _navRoute39,
   within: _within39,
   label: _navLabel39,
@@ -4156,7 +4178,7 @@ const _nav39 = NavNode(
 
 const _nav40 = NavNode(
   folder: 'orders/\$id/refund',
-  nav: _i62.nav,
+  nav: _i63.nav,
   route: _navRoute40,
   within: _within39,
   guard: _navGuard40,
@@ -4164,14 +4186,14 @@ const _nav40 = NavNode(
 
 const _nav59 = NavNode(
   folder: 'search',
-  nav: _i84.nav,
+  nav: _i85.nav,
   route: _navRoute59,
   label: _navLabel59,
 );
 
 const _nav72 = NavNode(
   folder: 'teams/\$teamId',
-  nav: _i108.nav,
+  nav: _i109.nav,
   within: _within72,
   label: _navLabel72,
   children: [_nav73, _nav75],
@@ -4179,21 +4201,21 @@ const _nav72 = NavNode(
 
 const _nav73 = NavNode(
   folder: 'teams/\$teamId/members',
-  nav: _i111.nav,
+  nav: _i112.nav,
   route: _navRoute73,
   within: _within72,
 );
 
 const _nav75 = NavNode(
   folder: 'teams/\$teamId/settings',
-  nav: _i115.nav,
+  nav: _i116.nav,
   route: _navRoute75,
   within: _within72,
 );
 
 const _nav77 = NavNode(
   folder: 'vault',
-  nav: _i121.nav,
+  nav: _i122.nav,
   route: _navRoute77,
   guard: _navGuard77,
 );
@@ -4214,10 +4236,10 @@ TypedLocation _navRoute75(Map<String, Object?> p) =>
 TypedLocation _navRoute77(Map<String, Object?> p) => const VaultRoute();
 
 String _navLabel39(BuildContext context, Map<String, Object?> p) =>
-    _i57.label(context, id: p['id'] as int);
-String _navLabel59(BuildContext context, Map<String, Object?> p) => _i84.label(context);
+    _i58.label(context, id: p['id'] as int);
+String _navLabel59(BuildContext context, Map<String, Object?> p) => _i85.label(context);
 String _navLabel72(BuildContext context, Map<String, Object?> p) =>
-    _i108.label(context, teamId: p['teamId'] as String);
+    _i109.label(context, teamId: p['teamId'] as String);
 
 GuardResult _navGuard7(Ref ref, TypedLocation route) {
   return firstRedirect([
@@ -4227,13 +4249,13 @@ GuardResult _navGuard7(Ref ref, TypedLocation route) {
 }
 GuardResult _navGuard8(Ref ref, TypedLocation route) =>
     _i13.guard(ref, uri: Uri.parse(route.location));
-GuardResult _navGuard31(Ref ref, TypedLocation route) => _i48.guard(ref);
+GuardResult _navGuard31(Ref ref, TypedLocation route) => _i49.guard(ref);
 GuardResult _navGuard40(Ref ref, TypedLocation route) {
   final r = route as RefundRoute;
-  return _i61.guard(ref.container, id: r.id);
+  return _i62.guard(ref.container, id: r.id);
 }
 GuardResult _navGuard77(Ref ref, TypedLocation route) =>
-    _i120.guard(ref, uri: Uri.parse(route.location));
+    _i121.guard(ref, uri: Uri.parse(route.location));
 
 /// Each data.dart's provider (the family, for one keyed by the URL) by its DevTools site, for a prefetch made before any page watched it. A function, so nothing is read until DevTools asks; only called under `kFespalierDevTools`.
 Map<Object, String> _devToolsProviders() => {
@@ -4256,4 +4278,4 @@ Map<Object, String> _devToolsProviders() => {
 /// The route tree as JSON (`fsp routes --graph json`), for the DevTools extension: a function, so
 /// a hot reload hands it the new one. It is only read under `kFespalierDevTools`, which a release
 /// build has false, so the string is not in one.
-String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/nickname","route":"NicknameRoute","file":"(account)/nickname/page.dart","folder":"(account)/nickname","markers":["data","action","leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":["leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/feed","route":"FeedRoute","file":"feed/page.dart","folder":"feed","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/labs","route":"LabsRoute","file":"labs/page.dart","folder":"labs","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"signup/layout.dart","folder":"signup","markers":["guard"],"items":[{"type":"route","pattern":"/signup/company","route":"SignupCompanyRoute","file":"signup/company/page.dart","folder":"signup/company","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/contact","route":"SignupContactRoute","file":"signup/contact/page.dart","folder":"signup/contact","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/name","route":"SignupNameRoute","file":"signup/name/page.dart","folder":"signup/name","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/review","route":"SignupReviewRoute","file":"signup/review/page.dart","folder":"signup/review","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/vault","route":"VaultRoute","file":"vault/page.dart","folder":"vault","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh","cached"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"aAccountNickname_action":{"kind":"action","file":"(account)/nickname/action.dart","name":"action","route":"NicknameRoute"},"aOrdersIdRefund_action":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"aSignup_action":{"kind":"action","file":"signup/action.dart","name":"action","route":null},"aTeamsTeamId_addMember":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"dAccountNickname":{"kind":"data","file":"(account)/nickname/data.dart","route":"NicknameRoute","section":null,"traced":true},"dBrowseCategories":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"dCatalog":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"dCatalogProductId":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"dCatalogProductIdReviews":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"dCompareIds":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"dCounter":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"dOrdersIdRefund":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"dReports":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"dSearch":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"dShopCategory":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"dShopsShopItemsId":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"dTeamsTeamId":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"dTeamsTeamIdMembersMember":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"dTicks":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"dWikiArticle":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g31@31":{"kind":"guard","file":"labs/guard.dart","route":"LabsRoute","pattern":"/labs"},"g34@34":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g40@40":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g40@41":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g63@63":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g66@67":{"kind":"guard","file":"signup/guard.dart","route":"SignupCompanyRoute","pattern":"/signup/company"},"g66@68":{"kind":"guard","file":"signup/guard.dart","route":"SignupContactRoute","pattern":"/signup/contact"},"g66@69":{"kind":"guard","file":"signup/guard.dart","route":"SignupNameRoute","pattern":"/signup/name"},"g66@70":{"kind":"guard","file":"signup/guard.dart","route":"SignupReviewRoute","pattern":"/signup/review"},"g6@7":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@8":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g77@77":{"kind":"guard","file":"vault/guard.dart","route":"VaultRoute","pattern":"/vault"},"g7@7":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r35":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r37":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';
+String _devToolsTree() => '{"protocol":1,"package":"features","appDir":"lib/app","items":[{"type":"shell","file":"layout.dart","folder":"","markers":[],"items":[{"type":"route","pattern":"/","route":"HomeRoute","file":"page.dart","folder":"","markers":[],"params":[],"redirect":false,"children":[{"type":"shell","file":"(account)/layout.dart","folder":"(account)","markers":[],"items":[{"type":"route","pattern":"/nickname","route":"NicknameRoute","file":"(account)/nickname/page.dart","folder":"(account)/nickname","markers":["data","action","leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/profile","route":"ProfileRoute","file":"(account)/profile/page.dart","folder":"(account)/profile","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/settings","route":"SettingsRoute","file":"(account)/settings/page.dart","folder":"(account)/settings","markers":[],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/admin","route":"AdminRoute","file":"(members)/admin/page.dart","folder":"(members)/admin","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/inbox","route":"InboxRoute","file":"(members)/inbox/page.dart","folder":"(members)/inbox","markers":["guard"],"params":[{"name":"folder","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/free","route":"FreeRoute","file":"(plans)/free/page.dart","folder":"(plans)/free","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/pro","route":"ProPlanRoute","file":"(plans)/pro/page.dart","folder":"(plans)/pro","markers":[],"params":[{"name":"coupon","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/catalog","route":"CatalogRoute","file":"catalog/page.dart","folder":"catalog","markers":["data"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId","route":"ProductDetailRoute","file":"catalog/\$productId/page.dart","folder":"catalog/\$productId","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/catalog/:productId/reviews","route":"ReviewsRoute","file":"catalog/\$productId/reviews/page.dart","folder":"catalog/\$productId/reviews","markers":["data"],"params":[{"name":"productId","type":"String","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/counter","route":"CounterRoute","file":"counter/page.dart","folder":"counter","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs","route":"DocsIndexRoute","file":"docs/page.dart","folder":"docs","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/docs/new","route":"NewDocRoute","file":"docs/new/page.dart","folder":"docs/new","markers":["action","leave"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/docs/*rest","route":"DocsRoute","file":"docs/\$\$rest/page.dart","folder":"docs/\$\$rest","markers":[],"params":[{"name":"rest","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/feed","route":"FeedRoute","file":"feed/page.dart","folder":"feed","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/files","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/guide","route":"GuideRoute","file":"guide/page.dart","folder":"guide","markers":[],"spellings":{"de":"/führer","ru":"/руководство"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help","route":"HelpRoute","file":"help/page.dart","folder":"help","markers":[],"spellings":{"fr":"/aide","de":"/hilfe"},"params":[],"redirect":false,"children":[{"type":"route","pattern":"/help/contact","route":"ContactRoute","file":"help/contact/page.dart","folder":"help/contact","markers":[],"spellings":{"fr":"/aide/contact","de":"/hilfe/kontakt"},"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/help/:topic","route":"HelpTopicRoute","file":"help/\$topic/page.dart","folder":"help/\$topic","markers":[],"spellings":{"fr":"/aide/:topic","de":"/hilfe/:topic"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/help/:topic/examples","route":"HelpExamplesRoute","file":"help/\$topic/examples/page.dart","folder":"help/\$topic/examples","markers":[],"spellings":{"fr":"/aide/:topic/exemples","de":"/hilfe/:topic/beispiele"},"params":[{"name":"topic","type":"String","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"route","pattern":"/labs","route":"LabsRoute","file":"labs/page.dart","folder":"labs","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/login","route":"LoginRoute","file":"login/page.dart","folder":"login","markers":[],"params":[{"name":"from","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/old-search","route":"OldSearchRoute","file":"old-search/redirect.dart","folder":"old-search","markers":["redirect"],"params":[{"name":"q","type":"String?","in":"query"}],"redirect":true,"children":[]},{"type":"route","pattern":"/photos","route":"PhotosRoute","file":"photos/page.dart","folder":"photos","markers":[],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share","route":"ShareSheetRoute","file":"photos/share/page.dart","folder":"photos/share","markers":["present","root"],"params":[],"redirect":false,"children":[{"type":"route","pattern":"/photos/share/terms","route":"TermsRoute","file":"photos/share/terms/page.dart","folder":"photos/share/terms","markers":["root"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/photos/sort","route":"SortRoute","file":"photos/sort/page.dart","folder":"photos/sort","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/upload","route":"UploadRoute","file":"photos/upload/page.dart","folder":"photos/upload","markers":[],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/photos/:id","route":"PhotoRoute","file":"photos/\$id/page.dart","folder":"photos/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"shell","file":"reports/layout.dart","folder":"reports","markers":["data"],"items":[{"type":"route","pattern":"/reports/monthly","route":"MonthlyReportRoute","file":"reports/monthly/page.dart","folder":"reports/monthly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/reports/yearly","route":"YearlyReportRoute","file":"reports/yearly/page.dart","folder":"reports/yearly","markers":[],"params":[{"name":"period","type":"String?","in":"query"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/search","route":"SearchRoute","file":"search/page.dart","folder":"search","markers":["data"],"params":[{"name":"q","type":"String?","in":"query"},{"name":"page","type":"int?","in":"query"},{"name":"tags","type":"List<String>","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"signup/layout.dart","folder":"signup","markers":["guard"],"items":[{"type":"route","pattern":"/signup/company","route":"SignupCompanyRoute","file":"signup/company/page.dart","folder":"signup/company","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/contact","route":"SignupContactRoute","file":"signup/contact/page.dart","folder":"signup/contact","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/name","route":"SignupNameRoute","file":"signup/name/page.dart","folder":"signup/name","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/signup/review","route":"SignupReviewRoute","file":"signup/review/page.dart","folder":"signup/review","markers":["guard","leave","flow"],"params":[],"redirect":false,"children":[]}]},{"type":"route","pattern":"/ticks","route":"TicksRoute","file":"ticks/page.dart","folder":"ticks","markers":["data"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/vault","route":"VaultRoute","file":"vault/page.dart","folder":"vault","markers":["guard"],"params":[],"redirect":false,"children":[]},{"type":"route","pattern":"/:slug","route":"SlugRoute","file":"\$slug/page.dart","folder":"\$slug","markers":[],"params":[{"name":"slug","type":"String","in":"path"}],"redirect":false,"children":[]},{"type":"shell","file":"notes/layout.dart","folder":"notes","markers":[],"items":[{"type":"route","pattern":"/notes/:id","route":"NoteRoute","file":"notes/\$id/page.dart","folder":"notes/\$id","markers":["guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/old-shops/:shop","route":"OldShopsShopRoute","file":"old-shops/\$shop/redirect.dart","folder":"old-shops/\$shop","markers":["redirect"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":true,"children":[]},{"type":"route","pattern":"/orders/:id","route":"OrderRoute","file":"orders/\$id/page.dart","folder":"orders/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund","route":"RefundRoute","file":"orders/\$id/refund/page.dart","folder":"orders/\$id/refund","markers":["data","action","guard"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/orders/:id/refund/receipt","route":"ReceiptRoute","file":"orders/\$id/refund/receipt/page.dart","folder":"orders/\$id/refund/receipt","markers":[],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/orders/:id/refund/confirm","route":"ConfirmRefundRoute","file":"orders/\$id/refund/confirm/page.dart","folder":"orders/\$id/refund/confirm","markers":["guard","sibling"],"params":[{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/remount/location/:id","route":"RemountLocationRoute","file":"remount/location/\$id/page.dart","folder":"remount/location/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/never/:id","route":"RemountNeverRoute","file":"remount/never/\$id/page.dart","folder":"remount/never/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/remount/segments/:id","route":"RemountSegmentsRoute","file":"remount/segments/\$id/page.dart","folder":"remount/segments/\$id","markers":[],"params":[{"name":"id","type":"int","in":"path"},{"name":"page","type":"int?","in":"query"}],"redirect":false,"children":[]},{"type":"route","pattern":"/shop/:category","route":"CategoryShopRoute","file":"shop/\$category/page.dart","folder":"shop/\$category","markers":["data"],"spellings":{"fr":"/boutique/:category","de":"/laden/:category"},"params":[{"name":"category","type":"Category","in":"path"},{"name":"sort","type":"Sort?","in":"query"}],"redirect":false,"children":[]},{"type":"shell","file":"shops/\$shop/layout.dart","folder":"shops/\$shop","markers":["guard"],"items":[{"type":"route","pattern":"/shops/:shop","route":"ShopRoute","file":"shops/\$shop/page.dart","folder":"shops/\$shop","markers":["guard"],"params":[{"name":"shop","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/shops/:shop/items/:id","route":"ItemRoute","file":"shops/\$shop/items/\$id/page.dart","folder":"shops/\$shop/items/\$id","markers":["data"],"params":[{"name":"shop","type":"String","in":"path"},{"name":"id","type":"int","in":"path"}],"redirect":false,"children":[]}]}]},{"type":"shell","file":"teams/\$teamId/layout.dart","folder":"teams/\$teamId","markers":["data","fresh","cached"],"items":[{"type":"route","pattern":"/teams/:teamId/members","route":"MembersRoute","file":"teams/\$teamId/members/page.dart","folder":"teams/\$teamId/members","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[{"type":"route","pattern":"/teams/:teamId/members/:member","route":"MemberRoute","file":"teams/\$teamId/members/\$member/page.dart","folder":"teams/\$teamId/members/\$member","markers":["data","fresh"],"params":[{"name":"teamId","type":"String","in":"path"},{"name":"member","type":"int","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/teams/:teamId/settings","route":"TeamSettingsRoute","file":"teams/\$teamId/settings/page.dart","folder":"teams/\$teamId/settings","markers":[],"params":[{"name":"teamId","type":"String","in":"path"}],"redirect":false,"children":[]}]},{"type":"route","pattern":"/browse/*categories","route":"BrowseRoute","file":"browse/\$\$categories/page.dart","folder":"browse/\$\$categories","markers":["data"],"params":[{"name":"categories","type":"List<Category>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/compare/*ids","route":"CompareRoute","file":"compare/\$\$ids/page.dart","folder":"compare/\$\$ids","markers":["data"],"params":[{"name":"ids","type":"List<int>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/files/*path?","route":"FilesRoute","file":"files/\$\$\$path/page.dart","folder":"files/\$\$\$path","markers":[],"params":[{"name":"path","type":"List<String>","in":"path"}],"redirect":false,"children":[]},{"type":"route","pattern":"/wiki/*article","route":"WikiRoute","file":"wiki/\$\$article/page.dart","folder":"wiki/\$\$article","markers":["data"],"params":[{"name":"article","type":"List<String>","in":"path"}],"redirect":false,"children":[]}]}]}],"sites":{"aAccountNickname_action":{"kind":"action","file":"(account)/nickname/action.dart","name":"action","route":"NicknameRoute"},"aDocsNew_draft":{"kind":"action","file":"docs/new/action.dart","name":"draft","route":"NewDocRoute"},"aOrdersIdRefund_action":{"kind":"action","file":"orders/\$id/refund/action.dart","name":"action","route":"RefundRoute"},"aSignup_action":{"kind":"action","file":"signup/action.dart","name":"action","route":null},"aTeamsTeamId_addMember":{"kind":"action","file":"teams/\$teamId/action.dart","name":"addMember","route":null},"dAccountNickname":{"kind":"data","file":"(account)/nickname/data.dart","route":"NicknameRoute","section":null,"traced":true},"dBrowseCategories":{"kind":"data","file":"browse/\$\$categories/data.dart","route":"BrowseRoute","section":null,"traced":true},"dCatalog":{"kind":"data","file":"catalog/data.dart","route":"CatalogRoute","section":null,"traced":false},"dCatalogProductId":{"kind":"data","file":"catalog/\$productId/data.dart","route":"ProductDetailRoute","section":null,"traced":false},"dCatalogProductIdReviews":{"kind":"data","file":"catalog/\$productId/reviews/data.dart","route":"ReviewsRoute","section":null,"traced":false},"dCompareIds":{"kind":"data","file":"compare/\$\$ids/data.dart","route":"CompareRoute","section":null,"traced":true},"dCounter":{"kind":"data","file":"counter/data.dart","route":"CounterRoute","section":null,"traced":false},"dOrdersIdRefund":{"kind":"data","file":"orders/\$id/refund/data.dart","route":"RefundRoute","section":null,"traced":true},"dReports":{"kind":"data","file":"reports/data.dart","route":null,"section":"reports","traced":true},"dSearch":{"kind":"data","file":"search/data.dart","route":"SearchRoute","section":null,"traced":true},"dShopCategory":{"kind":"data","file":"shop/\$category/data.dart","route":"CategoryShopRoute","section":null,"traced":true},"dShopsShopItemsId":{"kind":"data","file":"shops/\$shop/items/\$id/data.dart","route":"ItemRoute","section":null,"traced":true},"dTeamsTeamId":{"kind":"data","file":"teams/\$teamId/data.dart","route":null,"section":"teams/\$teamId","traced":true},"dTeamsTeamIdMembersMember":{"kind":"data","file":"teams/\$teamId/members/\$member/data.dart","route":"MemberRoute","section":null,"traced":true},"dTicks":{"kind":"data","file":"ticks/data.dart","route":"TicksRoute","section":null,"traced":true},"dWikiArticle":{"kind":"data","file":"wiki/\$\$article/data.dart","route":"WikiRoute","section":null,"traced":true},"g31@31":{"kind":"guard","file":"labs/guard.dart","route":"LabsRoute","pattern":"/labs"},"g34@34":{"kind":"guard","file":"notes/\$id/guard.dart","route":"NoteRoute","pattern":"/notes/:id"},"g40@40":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"RefundRoute","pattern":"/orders/:id/refund"},"g40@41":{"kind":"guard","file":"orders/\$id/refund/guard.dart","route":"ConfirmRefundRoute","pattern":"/orders/:id/refund/confirm"},"g63@63":{"kind":"guard","file":"shops/\$shop/guard.dart","route":"ShopRoute","pattern":"/shops/:shop"},"g66@67":{"kind":"guard","file":"signup/guard.dart","route":"SignupCompanyRoute","pattern":"/signup/company"},"g66@68":{"kind":"guard","file":"signup/guard.dart","route":"SignupContactRoute","pattern":"/signup/contact"},"g66@69":{"kind":"guard","file":"signup/guard.dart","route":"SignupNameRoute","pattern":"/signup/name"},"g66@70":{"kind":"guard","file":"signup/guard.dart","route":"SignupReviewRoute","pattern":"/signup/review"},"g6@7":{"kind":"guard","file":"(members)/guard.dart","route":"AdminRoute","pattern":"/admin"},"g6@8":{"kind":"guard","file":"(members)/guard.dart","route":"InboxRoute","pattern":"/inbox"},"g77@77":{"kind":"guard","file":"vault/guard.dart","route":"VaultRoute","pattern":"/vault"},"g7@7":{"kind":"guard","file":"(members)/admin/guard.dart","route":"AdminRoute","pattern":"/admin"},"r35":{"kind":"redirect","file":"old-search/redirect.dart","route":"OldSearchRoute","pattern":"/old-search"},"r37":{"kind":"redirect","file":"old-shops/\$shop/redirect.dart","route":"OldShopsShopRoute","pattern":"/old-shops/:shop"}}}';

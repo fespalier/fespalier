@@ -28,6 +28,11 @@ enum SyncReason {
 
   /// A person or an action asked for it.
   manual,
+
+  /// The server said something changed (since 0.25.0): `autoSync` saw `syncPushSignal` move, for
+  /// instance a CrateStack subscription's event. It skips the minimum interval, and one that
+  /// arrives while a sync runs is not joined to it: [SyncEngine] runs one more after it.
+  push,
 }
 
 /// A row that was rolled back to the server's version (or dropped) because the server refused it.
@@ -141,19 +146,31 @@ final class SyncEngine implements SyncRunner {
   final WipeGenerations _wipes;
 
   /// A sync caused by a signal (resume, reconnect, tick) within this long of the last one that
-  /// reached the server does nothing. `start` and `manual` always run.
+  /// reached the server does nothing. `start`, `manual` and `push` always run.
   final Duration minInterval;
 
   Future<SyncReport>? _running;
+
+  /// The one sync queued behind the running one by a push (the dirty bit), or null.
+  Future<SyncReport>? _queued;
   DateTime? _lastReached;
   SyncReport? _lastReport;
 
   /// Single-flight: a call while one runs joins it (the same `Future`). Never throws: the report
   /// says what failed.
+  ///
+  /// A [SyncReason.push] is the exception (since 0.25.0): the server changed something that the
+  /// running sync may already have pulled past, so joining it could lose the change. A push while a
+  /// sync runs marks the engine dirty instead, and one more sync runs after it; every push until
+  /// that one starts joins it. A burst of pushes during a run gives two runs, never more, and no
+  /// timer: the queued run starts from the running one's `then`. A push skips [minInterval].
   @override
   Future<SyncReport> sync(SyncReason reason) {
     final running = _running;
-    if (running != null) return running;
+    if (running != null) {
+      if (reason == SyncReason.push) return _queued ??= _after(running);
+      return running;
+    }
     final bySignal =
         reason == SyncReason.resume ||
         reason == SyncReason.reconnect ||
@@ -165,6 +182,26 @@ final class SyncEngine implements SyncRunner {
       return _unlessRecent(reason);
     }
     return _start(_run(reason));
+  }
+
+  /// The push sync that runs once [running] ended, for the account of now: if the account changed
+  /// or was wiped meanwhile, it does nothing (the new account's engine syncs on its own).
+  Future<SyncReport> _after(Future<SyncReport> running) {
+    final scope = _scope?.call();
+    final generation = scope == null ? 0 : _wipes.of(scope);
+    Future<SyncReport> next(Object? _, [StackTrace? _]) {
+      _queued = null;
+      if (_scope != null &&
+          (_scope() != scope ||
+              (scope != null && _wipes.of(scope) != generation))) {
+        return Future<SyncReport>.value(
+          const SyncReport(reason: SyncReason.push),
+        );
+      }
+      return sync(SyncReason.push);
+    }
+
+    return running.then<SyncReport>(next, onError: next);
   }
 
   Future<SyncReport> _start(Future<SyncReport> run) {

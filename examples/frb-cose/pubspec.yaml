@@ -35,7 +35,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_cratestack (through fespalier_transport) and fespalier_frb (through fespalier_stream, since 0.25.0) depend on
+# fespalier_cratestack and fespalier_frb (through fespalier_stream and fespalier_transport, since 0.25.0) depend on
 # fespalier by repository tag, as an app does; here all are the checkout's.
 dependency_overrides:
   fespalier:

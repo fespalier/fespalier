@@ -18,6 +18,25 @@ final syncTicker = NotifierProvider.autoDispose<RefetchSignal, int>(
   RefetchSignal.new,
 );
 
+/// The push trigger (since 0.25.0): a count that moves when the server says something changed. It
+/// is 0 and never moves until the app overrides it with what it hears from its server, usually a
+/// change feed over a CrateStack subscription:
+///
+/// ```dart
+/// final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
+///   (ref, _) => crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe'),
+///   rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+/// );
+/// // in startup():
+/// syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
+/// ```
+///
+/// `autoSync` watches it like its other signals (no listener) and runs a [SyncReason.push] each
+/// time the count changes. An event is only a hint that something changed: the sync reads the
+/// rows through the app's API, never from the event. A signal that throws is ignored, and a feed
+/// that was refused moves nothing (its `latest` holds the error): the other triggers keep working.
+final syncPushSignal = Provider<int>((ref) => 0, name: 'syncPushSignal');
+
 /// Which triggers `autoSync` follows. Resume needs a `WidgetsBinding`: a bare container test turns
 /// it off.
 final class SyncTriggers {
@@ -27,6 +46,7 @@ final class SyncTriggers {
     this.onResume = true,
     this.onReconnect = true,
     this.onTick = true,
+    this.onPush = true,
   });
 
   /// Sync when `autoSync` starts.
@@ -40,6 +60,10 @@ final class SyncTriggers {
 
   /// Sync when [syncTicker] fires.
   final bool onTick;
+
+  /// Sync when [syncPushSignal] moves (since 0.25.0). It does nothing until the app overrides
+  /// that signal.
+  final bool onPush;
 }
 
 /// The triggers `autoSync` follows.
@@ -62,6 +86,7 @@ class AutoSync extends Notifier<SyncStatus> {
   int? _resume;
   int? _reconnect;
   int? _tick;
+  int? _push;
   var _started = false;
   var _running = 0;
   SyncReport? _last;
@@ -89,6 +114,22 @@ class AutoSync extends Notifier<SyncStatus> {
       final count = ref.watch(syncTicker);
       if (_tick != null && count != _tick) reason = SyncReason.tick;
       _tick = count;
+    }
+    if (triggers.onPush) {
+      // Last, so that it wins over resume, reconnect and tick when two moved at once: a push
+      // skips the minimum interval, which would skip the others.
+      int? count;
+      try {
+        count = ref.watch(syncPushSignal);
+      } on Object {
+        // A signal that throws (an override with a bug): the other triggers keep working, and the
+        // count kept stays, so the next value is compared with the last good one.
+        count = null;
+      }
+      if (count != null) {
+        if (_push != null && count != _push) reason = SyncReason.push;
+        _push = count;
+      }
     }
     if (!_started) {
       _started = true;
@@ -121,8 +162,8 @@ class AutoSync extends Notifier<SyncStatus> {
   }
 }
 
-/// Runs [syncRunner] on start and whenever core's `appResumeSignal`, `reconnectSignal` or
-/// [syncTicker] changes.
+/// Runs [syncRunner] on start and whenever core's `appResumeSignal`, `reconnectSignal`,
+/// [syncTicker] or (since 0.25.0) [syncPushSignal] changes.
 ///
 /// It watches them (no listener: it rebuilds), tells which one moved by comparing counts it kept,
 /// and starts the sync with a side `then`. Its state is the last report, and `isSyncing` for a

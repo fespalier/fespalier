@@ -151,23 +151,26 @@ A sync does three things, in this order: **push** the dirty rows, **pull** each 
 intents. The order matters: an intent may name a row made offline, and the server must have the row first. The drain
 runs even when the push failed, and stops at the first sign of no network.
 
-- **Single flight.** A sync that starts while another runs joins it and gets the same result.
+- **Single flight.** A sync that starts while another runs joins it and gets the same result. A push from the server
+  is the exception (since 0.25.0): it marks the engine dirty and one more sync runs after the running one, so a burst
+  of pushes gives two syncs, never more ([A push from the server](#a-push-from-the-server)).
 - **A minimum interval.** A sync started by a signal (resume, reconnect, the app's tick) within `minInterval`
   (10 seconds by default) of the last one that reached the server does nothing, unless the last one found no
-  network or work has been queued since (an intent, an edited row). A manual sync, and the first one at start,
-  always run.
+  network or work has been queued since (an intent, an edited row). A manual sync, the first one at start, and a
+  push always run.
 - **It never throws.** The report says what failed (`failure`), what was pushed, what was pulled, and what the drain did.
 
 ## Triggers
 
-`autoSync`, watched once in the root `layout.dart`, runs a sync on four occasions, and each one exists for a reason:
+`autoSync`, watched once in the root `layout.dart`, runs a sync on five occasions, and each one exists for a reason:
 
-| Trigger        | Why it is needed                                                                  |
-| -------------- | --------------------------------------------------------------------------------- |
-| start          | work queued in the last session should not wait for an event                      |
-| resume         | the app came back; the device may have been offline for hours                     |
-| reconnect      | the network came back while the app stayed open                                   |
-| the app's tick | a device that never backgrounds and never loses signal would otherwise never push |
+| Trigger               | Why it is needed                                                                   |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| start                 | work queued in the last session should not wait for an event                       |
+| resume                | the app came back; the device may have been offline for hours                      |
+| reconnect             | the network came back while the app stayed open                                    |
+| the app's tick        | a device that never backgrounds and never loses signal would otherwise never push  |
+| a push (since 0.25.0) | another device or the server changed a row, and the open screen should show it now |
 
 The first three come from fespalier: `appResumeSignal`, `reconnectSignal` (override it with
 `ConnectivitySignal.new` from `fespalier_connectivity`) and the start of `autoSync`. The tick is a signal the
@@ -195,6 +198,37 @@ Two patterns around the triggers:
   offline calls `await ref.read(syncEngine).push()` first. Unlike `sync`, `push()` throws: if the rows are not on the
   server, say so rather than send a decision that names a row the server has never seen.
 
+### A push from the server
+
+Since 0.25.0 `autoSync` also follows `syncPushSignal`, a count that moves when the server says something changed
+(`SyncTriggers(onPush: true)`, on by default). It is 0 and never moves until the app overrides it, usually with a
+change feed over the server's own stream ([Streaming](streaming.md#a-feed-over-a-live-connection)); with CrateStack,
+over a subscription ([Subscriptions](cratestack.md#subscriptions-subscribe)):
+
+```dart
+final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
+  (ref, _) => crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe'),
+  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+);
+// startup():
+syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
+```
+
+Each move is a `SyncReason.push`, and the engine treats it differently from the other signals:
+
+- **It skips the minimum interval.** The server just said there is something to pull.
+- **It is not joined to a sync that runs.** That sync may have pulled past the change already, so the push marks the
+  engine dirty and one more sync runs once it ends; every push until then joins that one. A burst of a hundred events
+  during a sync gives two syncs, and no timer waits between them.
+- **The event is a hint.** The sync pulls the rows through your API, and the page shows those, never what the event
+  carried: a server may send an event to someone who may not read the row (CrateStack 0.15.4 checks no read policy on
+  a subscription).
+- **A gap is a push too.** A change feed whose connection opened again without resuming moves `any` by one, so the
+  app syncs after every reopen that may have missed an event.
+
+A feed the server refused moves nothing (its `latest` holds the error, which a banner can watch), and a signal that throws is ignored: the other triggers keep working. A `SyncRunner` of
+your own gets `SyncReason.push` too, and decides for itself what a push during a run means.
+
 ## Freshness in the UI
 
 `Served` and `pendingIntents` are what a banner is made of.
@@ -219,7 +253,8 @@ to `serve`, for the screens where an old answer needs a warning.
 - **The clock.** Everything reads `package:clock`: use `withClock` or a `testWidgets` fake clock, then pump a day or a
   year and watch an intent still send.
 - **The triggers.** `ManualSyncTicker.tick()` for the tick; `FakeConnectivity` for the network; the lifecycle through
-  `tester.binding.handleAppLifecycleStateChanged`.
+  `tester.binding.handleAppLifecycleStateChanged`; for a push, fespalier_stream's `FakeEventServer` as the subscription's
+  transport and `server.current.modelEvent('Note', 'Updated')` (`package:fespalier_cratestack/testing.dart`, since 0.25.0).
 - **No timers.** Nothing in the package starts one, so a `testWidgets` that ends with a timer pending points at
   your own code.
 

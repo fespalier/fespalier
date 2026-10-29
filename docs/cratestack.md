@@ -349,6 +349,57 @@ app. The merge rule is per-field last-writer-wins with a hybrid logical clock; t
 rule, and write through the model layer so policies still apply. The details, with examples, are in
 [Offline-first](offline-first.md#owned-rows).
 
+### Subscriptions (`@@subscribe`)
+
+A model with `@@subscribe` (and `@@emit(created, updated, deleted)`) has a server-sent event stream at
+`GET /rpc/subscribe/<op id>`. Since 0.25.0 `crateStackEvents` reads it through your transport, as a
+`LiveConnection<CrateStackModelEvent>` from [fespalier_stream](streaming.md), and the usual use is to sync when it says
+something changed ([A push from the server](offline-first.md#a-push-from-the-server)):
+
+```dart
+// lib/server_changes.dart
+final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
+  (ref, _) => crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe'),
+  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+);
+
+// startup():
+syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
+```
+
+A topic of the same feed moves a page by model or by row (`serverChanges.topic<String>((e, model) => e.model ==
+model)`), for a screen that reads through `ref.serve` rather than owned rows. `fespalier_cratestack` now depends on
+`fespalier_stream`, at the same `ref`.
+
+What CrateStack 0.15.4 sends, and what follows from it (measured against a 0.15.4 server):
+
+- **Each change** is `event: message` with `data: {"id": n, "next": {"event_id", "model", "operation",
+"occurred_at", "data"}}`. `CrateStackModelEvent` has the model, the operation (`Created`, `Updated`, `Deleted`), the
+  `eventId` (a UUID, the same for every subscriber, which tells a duplicate after a reopen), `occurredAt`, `data` and
+  `sequence` (the JSON `id`, from 1 on each connection). Its `toString` prints the model and the operation only. A
+  message that does not decode is skipped and counted, never an error.
+- **No event ID, so every reopen is a gap.** The server sends no `id:` field and ignores `Last-Event-ID`: a connection
+  that opens again cannot ask for what it missed. A `ChangeFeed.live` moves every watched key (and `any`) at such a
+  reopen, so the app syncs once more.
+- **A subscriber that lags is dropped.** Past a buffer of 64 events (and whatever the socket holds), the server sends
+  `event: error` with `{"code": "unavailable", "message": "subscription lagged"}` and ends the response.
+  `crateStackEvents` drops that event; the connection opens again at once (a gap, so a sync).
+- **No heartbeat.** A quiet model sends no byte, so `LiveRules.idle` would close a healthy subscription: leave it
+  unset. A connection that died without a word is found by your `reconnectOn` signals and your `streamTicker`
+  ([Liveness](streaming.md#liveness)), not by the stream.
+- **`Accept` is required.** Without `Accept: text/event-stream` (or `*/*`) the server answers 406;
+  `crateStackEvents` always sends it. A refusal (a 406, a 401 from your `AuthProvider`) ends the connection with
+  `ServerEventsRefused`.
+- **No read policy on a subscription.** CrateStack 0.15.4 authenticates a subscriber through your `AuthProvider` and
+  then checks neither the model's `@@allow("read", ...)` nor its row policy: an event, and the row in its `data`, goes
+  to every subscriber, and **an anonymous caller gets every event unless your `AuthProvider` refuses it**. So treat an
+  event as a hint that something changed, read the rows through the policy-checked API (a sync, a `ref.serve`), never
+  render from `data`, and make sure your `AuthProvider` (or a layer in front of the router) refuses an anonymous
+  subscriber.
+
+A device signature over the subscription's `GET` (an empty body, like any other request through a signing transport)
+is expected to work and is unchecked: the 0.15.4 example server has no model to subscribe to.
+
 ## 8. Where CrateStack's embedded mode fits
 
 CrateStack can also run inside the app: the same `.cstack` schema generates an embedded SQLite store
@@ -426,3 +477,6 @@ that uses them leaves nothing pending. `ManualSyncTicker`, `FakeRowServer` and `
   fespalier's data and action spans. A sync span is planned as a `TelemetryOp.custom` operation (since 0.11.0) named
   `fespalier.cratestack.sync`, an additive change to the telemetry conventions with no new `TelemetryOp` value; nothing from an intent, a row, a subject or a server message will ever be sent.
 - **A background isolate.** Sync runs in the app's isolate while the app is open; a background sync is the app's.
+- **Resuming a subscription, or applying its events.** CrateStack 0.15.4 sends no event ID and applies no read policy
+  to a subscription, so an event is never written to a row or a cache: it starts a sync (since 0.25.0), and a reopen is
+  a gap that starts one too. A server that one day sends IDs and checks read policies could make both possible.

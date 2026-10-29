@@ -812,7 +812,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
 /// is overridden. `create_tests` compares this table with the pubspecs.
 pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
     ("fespalier_auth", &["fespalier_transport"]),
-    ("fespalier_cratestack", &["fespalier_transport"]),
+    (
+        "fespalier_cratestack",
+        &["fespalier_stream", "fespalier_transport"],
+    ),
     ("fespalier_dio", &["fespalier_transport"]),
     ("fespalier_download", &["fespalier_transport"]),
     (

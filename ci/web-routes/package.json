@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Replays the committed `fsp maestro` flows in Chromium against a release web build, and opens every example's routes the same way (examples.mjs).",
+  "description": "Replays the committed `fsp maestro` flows in Chromium against a release web build, opens every example's routes the same way (examples.mjs), and runs fespalier_dio's fetch adapter harness in Chromium, Firefox and WebKit (fetch.mjs).",
   "scripts": {
     "check": "node check.mjs"
   },

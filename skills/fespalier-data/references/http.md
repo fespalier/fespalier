@@ -588,6 +588,47 @@ transport pieces in `fespalier_cratestack.dart` since 0.21.0:
 
 [`fespalier-cratestack`](../../fespalier-cratestack/SKILL.md) has the whole chain.
 
+## Streaming on the web (since 0.25.0)
+
+Dio's own web adapter reads a response with `XMLHttpRequest` into one buffer, so `ResponseType.stream` (what `DioTransport`
+asks for) gets the whole body when the server ends it: an event stream shows nothing until it closes.
+`package:fespalier_dio/fetch.dart` is the fix, and `package:http` needs none (`BrowserClient` already reads `fetch` chunk by
+chunk):
+
+```dart
+// lib/api.dart
+import 'package:dio/dio.dart';
+import 'package:fespalier_dio/fetch.dart';
+
+// The fetch adapter in a web build, Dio's default adapter everywhere else.
+Dio makeDio() => Dio(BaseOptions(baseUrl: 'https://api.example.com'))..httpClientAdapter = webStreamingAdapter();
+```
+
+- **Cancelling aborts the `fetch`:** a `CancelToken` (before or after the headers; `DioTransport` cancels one when its
+  `abortTrigger` completes), Dio closing the response, a cancelled body subscription, `close(force: true)` of a running request
+  (a plain `close()` forgets the open requests, so a `close(force: true)` after it aborts nothing). A cancel while the request
+  body is still being read stops reading it. An abort is `DioExceptionType.cancel`.
+- **Other failures:** a `fetch` that fails before the headers is `connectionError` (`TransportUnsent` through `DioTransport`); a
+  request the browser refuses to build (a `GET` with a body, a URL with a user name, a forbidden method, a header value it
+  rejects) is `unknown` (`TransportBroken`), never `connectionError`, so a feed does not reconnect for ever on it; a failure in the
+  body, after the headers, is a `DioException` in the body stream, not a `TransportUnsent`.
+- **Timeouts:** the adapter ignores `connectTimeout` and `sendTimeout` (a timer would be needed). `receiveTimeout` is **Dio's,
+  on every adapter and platform** (`DioTransport` on a device too): Dio closes a body that is quiet for that long and ends it with
+  a `receiveTimeout` error, which `DioTransport` hands on in the body stream as it is (the response was already returned). A Dio that carries an event stream leaves
+  `BaseOptions.receiveTimeout` null (or `Duration.zero`), or the stream's request passes `Options(receiveTimeout: Duration.zero)`
+  (`null` in `Options` falls back to the Dio's; only zero or less turns the watch off). Any chunk, a heartbeat comment included,
+  restarts the watch. Cancel through the `CancelToken` rather than a timeout.
+- **The browser follows redirects** (`followRedirects: false` and `maxRedirects` are ignored, `redirects` is empty), and the
+  request body is sent in one piece (Firefox and Safari cannot stream one).
+- **`withCredentials`** (`FetchHttpClientAdapter(withCredentials: true)`, or `Options.extra['withCredentials']` for one request)
+  sends cookies to another origin, as on Dio's own web adapter.
+- **dart2wasm needs `dio_web_adapter` 2.0.0 or newer** (Dio imports it in every web build; 1.x uses `dart:html`): a fresh
+  resolution picks 2.x, an app held at its lowest versions lists `dio_web_adapter: ">=2.0.0 <3.0.0"`.
+- **Outside a browser** `FetchHttpClientAdapter` exists but its `fetch` throws `UnsupportedError`: shared code uses
+  `webStreamingAdapter()`. The library imports neither Flutter nor fespalier.
+- CI (`just fetch-adapter`) runs it and `BrowserClient` in Chromium, Firefox and WebKit, with dart2js and dart2wasm. Safari on
+  macOS and iOS is **unchecked**: do not claim it (`just fetch-adapter-serve` and issue #316 are how a tester checks it).
+
 ## What it does not do
 
 No retry policy of its own (a backoff needs a timer; `RetryInterceptor` and `RetryClient` are yours). No logging. No

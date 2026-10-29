@@ -45,6 +45,7 @@ dependencies:
 | `package:fespalier_http/fespalier_http.dart`           | `package:http` | `ref.abortTrigger()`, `ref.abortable(client)`, `withFieldErrors()`, `HttpClientTransport`, `TransportClient` (since 0.21.0)               |
 | `package:fespalier_http/testing.dart`                  | tests          | `FakeHttpClient`                                                                                                                          |
 | `package:fespalier_dio/fespalier_dio.dart`             | Dio            | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, `DioTransport`, `TransportAdapter`, `DioErrors` (since 0.21.0) |
+| `package:fespalier_dio/fetch.dart`                     | Dio, web       | `FetchHttpClientAdapter`, `webStreamingAdapter()`: a Dio that streams in a browser (since 0.25.0)                                         |
 | `package:fespalier_transport/fespalier_transport.dart` | no client      | `HttpTransport`, `TransportRequest`, `TransportResponse`, `TransportFailure`, `HttpCredentials`, `HttpWrites`, `WriteGuardTransport`      |
 | `package:fespalier_transport/testing.dart`             | tests          | `FakeTransport`, `FakeHttpCredentials`, `fakeResponse`                                                                                    |
 | `package:fespalier/problem.dart`                       | no client      | `FieldErrorsDecoders`, `FieldNames`, `fieldErrorsOf`: for chopper, or a client of your own                                                |
@@ -315,3 +316,65 @@ Future<int> send(HttpCredentials credentials, TransportRequest request, HttpTran
 - **Buffer a 401 or a 403 before you ask `retry`** (`TransportResponse.buffered`): the credentials read its body to tell a challenge from a refusal. A response that is not buffered has no body to read there.
 - **A request with a body stream is sent once.** `request.replayable` is false for it, and an authenticator that needs the bytes refuses it with an `ArgumentError`.
 - **In a test**, `FakeHttpCredentials(origins: [...])` (`package:fespalier_transport/testing.dart`) attaches a canned header, asks for one re-send of the statuses in `retryOn`, and records every call (`authorizeCalls`, `retryCalls`).
+
+## Streaming on the web
+
+A response body arrives chunk by chunk in a browser only through `fetch`. `package:http`'s `BrowserClient` reads it that way, so
+`HttpClientTransport(BrowserClient())` streams. Dio's own web adapter does not: it uses `XMLHttpRequest` with an `arraybuffer`
+response, so `ResponseType.stream` (what `DioTransport` asks for) gets the whole body in one chunk when the server ends it, and an
+event stream ([Streaming](streaming.md#on-the-web)) shows nothing until it closes.
+
+`package:fespalier_dio/fetch.dart` (since 0.25.0) is the Dio side: `FetchHttpClientAdapter`, an `HttpClientAdapter` over `fetch`
+that hands each chunk on as it comes, and `webStreamingAdapter()`, which is that adapter in a web build and Dio's default adapter
+everywhere else, so one line serves every platform:
+
+```dart
+// lib/api.dart
+import 'package:dio/dio.dart';
+import 'package:fespalier_dio/fetch.dart';
+
+Dio makeDio() => Dio(BaseOptions(baseUrl: 'https://api.example.com'))..httpClientAdapter = webStreamingAdapter();
+```
+
+The library imports neither Flutter nor fespalier, only Dio and, in a web build, `package:web`. What the adapter does, and what it
+does not:
+
+- **Cancelling aborts the `fetch`**, so the browser lets the connection go even while nothing arrives: Dio's `CancelToken` (before
+  or after the headers; `DioTransport` cancels one when its `abortTrigger` completes), Dio closing the response, cancelling the body
+  subscription, and `close(force: true)` of a request that is running (a plain `close()` forgets the open requests, so a
+  `close(force: true)` after it aborts nothing, as with Dio's own web adapter). A cancel while the request body is still being
+  read stops reading it and cancels its source. An abort is a `DioExceptionType.cancel`.
+- **What else fails, and as what.** A `fetch` that fails before the headers (the network, CORS, a refused certificate) is a
+  `connectionError` whose `error` is the browser's (`TransportUnsent` through `DioTransport`). A request the browser refuses to
+  build (a `GET` or `HEAD` with a body, a URL with a user name, a forbidden method, a header value it rejects) is `unknown`
+  (`TransportBroken`), never a `connectionError`: a feed that reconnects on `TransportUnsent` would try for ever to send what can
+  never be sent. A failure in the body, once the headers are in, is a `DioException` in the body stream (a `connectionError`
+  too), handed on as it is by `DioTransport`, which has already returned the response: it is not a `TransportUnsent`.
+- **Timeouts.** The adapter ignores `connectTimeout` and `sendTimeout` (honouring them takes a timer, and
+  `AbortSignal.timeout` cannot be cleared once the headers are in, so it would end a stream that is still wanted). **`receiveTimeout`
+  is Dio's, not the adapter's, and it applies to every adapter, on the web and on a device:** Dio watches the gap between the
+  chunks of a response body and, when one takes longer, closes the response and ends the body with a `receiveTimeout` error. So a
+  Dio that carries a feed leaves `BaseOptions.receiveTimeout` null (or `Duration.zero`), or the feed is dropped each time it is quiet
+  for that long (any chunk, a keep-alive comment included, restarts the watch, so a heartbeat more often than the timeout is enough). To keep one on the Dio for other
+  requests, pass `Options(receiveTimeout: Duration.zero)` for the streaming request: `null` there falls back to the Dio's, and
+  only a value of zero or less turns the watch off. Cancel through the `CancelToken` rather than a timeout.
+- **The browser follows redirects** (`redirect: 'follow'`): `followRedirects: false` and `maxRedirects` are not honoured,
+  `isRedirect` is what `Response.redirected` says, and `redirects` stays empty because `fetch` does not list them.
+- **The request body is sent in one piece**, read into memory first: Firefox and Safari cannot stream a request body, so
+  `onSendProgress` counts that read, not the upload.
+- **Credentials.** `FetchHttpClientAdapter(withCredentials: true)` (or `webStreamingAdapter(withCredentials: true)`) sends cookies
+  to another origin (`credentials: 'include'`; `'same-origin'` otherwise), and `Options.extra['withCredentials']` overrides it for
+  one request, as with Dio's own web adapter. The server must then name the origin and allow credentials.
+- **Headers** come with lower-case names, one value each: the browser joins a repeated header's values with a comma and a space, keeps `set-cookie` to
+  itself, and shows another origin only the headers it lists in `Access-Control-Expose-Headers`. `content-length` and `host` are
+  not sent from the request's headers: the browser sets them.
+- **dart2wasm needs `dio_web_adapter` 2.0.0 or newer**, which Dio imports in every web build: 1.x uses `dart:html`, which wasm
+  does not have. A fresh resolution picks 2.x; an app held at the lowest versions (`flutter pub downgrade`) builds with dart2js
+  only, unless it lists `dio_web_adapter: ">=2.0.0 <3.0.0"`.
+- **Outside a browser** `FetchHttpClientAdapter` exists, so shared code compiles, but its `fetch` throws an `UnsupportedError`:
+  use `webStreamingAdapter()` in code that also runs on a device.
+
+CI's `fetch-adapter` job (`just fetch-adapter`) runs it, and `BrowserClient` next to it, in Playwright's Chromium, Firefox and
+WebKit, each compiled with dart2js and dart2wasm ([the table](streaming.md#on-the-web)). Safari on macOS and iOS is UNCHECKED: WebKit
+on Linux is not Safari. A person with a Mac or an iPhone can run the same cases in Safari by hand (`just fetch-adapter-serve`,
+[issue #316](https://github.com/fespalier/fespalier/issues/316)).

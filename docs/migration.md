@@ -29,9 +29,11 @@ What changed between releases, newest first, each with a link to the reference s
 
 ### 0.25.0
 
-0.25.0 changes no code you wrote and no app regenerates a different `app.g.dart`: `fespalier_stream` is new and opt-in.
+0.25.0 changes no code you wrote and no app regenerates a different `app.g.dart`: `fespalier_stream` and Dio's fetch adapter are new and opt-in, and three packages ask for `web` 0.5.0 or newer.
 
 - **`fespalier_stream` is new and opt-in** (since 0.25.0). Server-sent events read through your own `HttpTransport`, as a `Stream` for a `data.dart` (`transport.serverEvents(url)`) or as a `LiveFeed` that Riverpod holds and that reconnects on your signals and your `streamTicker`, with no timer of its own. An app that does not list it changes nothing. [Streaming](streaming.md).
+- **Dio streams on the web** (since 0.25.0). `package:fespalier_dio/fetch.dart` has `FetchHttpClientAdapter`, a Dio adapter over the browser's `fetch`, and `webStreamingAdapter()`, that adapter in a web build and Dio's default elsewhere: set `dio.httpClientAdapter = webStreamingAdapter()` for an event stream through `DioTransport` to arrive as it is written, since Dio's own web adapter delivers a body whole. It honours none of Dio's timeouts. A Dio that keeps its adapter changes nothing. [HTTP clients](http.md#streaming-on-the-web).
+- **`web` 0.5.0 or newer** (since 0.25.0). `fespalier_dio` (new), `fespalier_connectivity` and `fespalier_keypair` (were `>=0.4.0`) ask for `web: ">=0.5.0 <2.0.0"`. An app that pins `web` below 0.5.0, or depends on a package that does, no longer resolves: raise it. `package:http` 1.5.0 already asked for 0.5.0, so an app that uses `fespalier_http` is there.
 
 ### 0.24.0
 

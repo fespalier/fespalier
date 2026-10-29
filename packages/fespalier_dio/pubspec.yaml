@@ -37,6 +37,10 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_transport
       ref: v0.24.1 # x-release-please-version
+  # FetchHttpClientAdapter (lib/fetch.dart, since 0.25.0): fetch, AbortController and the body's
+  # ReadableStream, in a web build only. 0.5.0 is where these are extension types, which dart2js
+  # and dart2wasm both compile; 1.1.2 asks for Dart 3.13, so the 3.35 floor resolves 1.1.1.
+  web: ">=0.5.0 <2.0.0"
 
 dev_dependencies:
   # The tests run the real SessionTransport under the retry interceptor (test/session_retry_test.dart).
@@ -47,6 +51,23 @@ dev_dependencies:
       ref: v0.24.1 # x-release-please-version
   # The tests run WriteGuard against the retry interceptor apps actually use, with zero delays.
   dio_smart_retry: ^7.0.1
+  # The browser harness (test/browser/harness.dart, `just fetch-adapter`) reads an event stream
+  # through HttpClientTransport(BrowserClient()) next to the fetch adapter. Never a regular
+  # dependency: test/no_http_test.dart checks that the package links no package:http.
+  fespalier_http:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_http
+      ref: v0.24.1 # x-release-please-version
+  # The browser harness reads events with fespalier_stream's wire layer (EventSource), which has
+  # no Flutter in it, over both transports.
+  fespalier_stream:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_stream
+      ref: v0.24.1 # x-release-please-version
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+  # BrowserClient, for the browser harness only.
+  http: ^1.5.0

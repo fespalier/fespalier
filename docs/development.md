@@ -57,6 +57,8 @@ examples/i18n/       fespalier_tolgee: a $lang segment, bundled catalogs, a lang
 examples/maps/       fespalier_maps: a pin picker and one offline pack, with fakes and widget tests
 examples/adopt/      a go_router app half-way through adopting fespalier (AppRoutes.mount, ready/attach), with a before/after parity test
 examples/offline/    fespalier_cratestack offline-first: reads, intents and owned rows on a demo server, with widget tests
+examples/live/       fespalier_stream: event streams, a live change feed, a streaming action and a WebSocket chat, on a
+                     demo server or tool/server.dart, with widget tests
 skills/              agent skills: how to write lib/app/ and read fsp's errors (skills/README.md);
                      scripts/skills/ checks them against the code
 ```

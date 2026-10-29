@@ -280,6 +280,7 @@ Following a link to an old README section? [docs/README.md](docs/README.md) maps
 - [`examples/maps`](examples/maps): a pin picker that returns a place and one offline map pack (`fespalier_maps`), with a fixed gazetteer and fakes.
 - [`examples/adopt`](examples/adopt): a go_router app half-way through adopting fespalier: the old routes stay, the new pages are mounted under `/shop`, with `ready()` and `attach()` in `startup.dart`.
 - [`examples/offline`](examples/offline): `fespalier_cratestack` offline-first on an in-process demo server: a read served from the device, a decision queued as an intent, and a note edited offline and merged.
+- [`examples/live`](examples/live): `fespalier_stream`: an order followed by server-sent events, an inbox kept current by a live change feed, an answer streamed by an action, and a WebSocket chat signed in with a ticket, on an in-process demo server or on `tool/server.dart` for a test on a phone or in Safari.
 
 How to run them: [Run the examples](docs/examples.md).
 

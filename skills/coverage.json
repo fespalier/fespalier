@@ -474,6 +474,8 @@
         "docs/data.md#A cache on disk: fespalier_storage",
         "docs/data.md#A Rust core's changes: fespalier_frb",
         "examples/frb-cose",
+        "docs/examples.md#live",
+        "examples/live",
         "packages/fespalier_frb/README.md",
         "packages/fespalier_frb/lib/fespalier_frb.dart",
         "packages/fespalier_frb/lib/src/codec.dart",

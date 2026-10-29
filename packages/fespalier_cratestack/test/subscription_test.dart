@@ -39,7 +39,12 @@ void main() {
 
   test('the captured events decode, whole or cut anywhere', () async {
     for (final size in [capturedEvents.length, 1, 7, 64]) {
-      final connection = crateStackEvents(server, base, 'model.Note.subscribe');
+      final connection = crateStackEvents(
+        server,
+        base,
+        'model.Note.subscribe',
+        keepData: true,
+      );
       final events = <CrateStackModelEvent>[];
       final sub = connection.events.listen(events.add);
       await settle();
@@ -61,6 +66,20 @@ void main() {
       expect(first.data, {'id': 1, 'text': 'xxxxx'});
       await sub.cancel();
     }
+  });
+
+  test('the row is a hint and is not kept unless asked for', () async {
+    final connection = crateStackEvents(server, base, 'model.Note.subscribe');
+    final events = <CrateStackModelEvent>[];
+    final sub = connection.events.listen(events.add);
+    await settle();
+    server.current.write(capturedEvents);
+    await settle();
+    expect(events, hasLength(3));
+    expect(events.map((e) => e.data), everyElement(isNull));
+    expect(events.first.model, 'Note');
+    expect(events.first.eventId, isNotNull);
+    await sub.cancel();
   });
 
   test(

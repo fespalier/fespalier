@@ -58,8 +58,9 @@ class _NoteEditPageState extends ConsumerState<NoteEditPage> {
           // The note on this page is the one on this phone: waiting means the server has not seen it yet.
           if (note.waiting) const Text('Waiting to sync'),
           const SizedBox(height: 32),
-          // The demo's other phone: it edits the same note on the server, with a later stamp. This phone
-          // gets it at its next sync and merges it with its own edits, field by field.
+          // The demo's other phone: it edits the same note on the server, with a later stamp. The server tells
+          // this phone (the subscription in server_changes.dart), which syncs and merges it with its own
+          // edits, field by field.
           OutlinedButton(
             onPressed: () => ref.read(demoServer).editOnAnotherDevice(note.id, {
               'title': '${note.title} (renamed elsewhere)',

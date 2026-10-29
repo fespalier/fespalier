@@ -23,8 +23,14 @@ final apiBase = Uri.parse('https://api.example.com/');
 /// The server's changes to notes. No `idle`: CrateStack sends no heartbeat, so a quiet subscription would be
 /// closed while healthy. A drop waits for one of these signals, or for the app's streamTicker.
 final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
-  (ref, _) => crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe'),
-  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+  (ref, _) {
+    // Who is signed in. The feed opens at start, usually signed out, and the server's 401 ends it
+    // (ServerEventsRefused); only a rebuild opens it again, and signing in is one. Sign-out and another
+    // account replace the connection too, so one account never reads under the other's session.
+    ref.watch(crateStackScope);
+    return crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe');
+  },
+  rules: LiveRules(reconnectOn: [reconnectSignal]),
   name: 'serverChanges',
 );
 
@@ -48,15 +54,71 @@ What `SyncReason.push` does that the other triggers do not:
 The traps:
 
 - **Never render from an event.** CrateStack 0.15.4 checks no read policy on a subscription, neither `@@allow("read")`
-  nor the row policy: `CrateStackModelEvent.data` is the row as written, sent to every subscriber. The sync pulls through
-  your procedures, and the page shows the rows. `toString` prints the model and the operation only.
+  nor the row policy: the row in an event is the row as written, sent to every subscriber (`CrateStackModelEvent.data` is
+  null unless you pass `keepData: true` to `crateStackEvents`: the feed keeps its last 64 events). The sync pulls through
+  your procedures, and the page shows the rows. `onSkipped` hears a bad message with an error that quotes it: log its type. `toString` prints the model and the operation only.
 - **The `AuthProvider` is the only gate.** An anonymous subscriber gets every event unless the server's `AuthProvider`
   (or a layer in front of the router) refuses it. A refusal (`401`, or the `406` of a missing `Accept`) ends the
   connection with `ServerEventsRefused`; `crateStackEvents` always sends `Accept: text/event-stream`.
 - **A feed that fails is a push trigger that never fires**, with no error anywhere `autoSync` shows: its `latest` holds
-  the error and `any` stays where it was. A refusal is one cause; in a bare `ProviderContainer` test, a `reconnectOn`
-  signal that needs a `WidgetsBinding` (`appShowSignal`, `appResumeSignal`) is another: override it with
-  `RefetchSignal.new`, or use `testWidgets`. Watch `serverChanges.latest` for a banner if it matters.
+  the error and `any` stays where it was. A refusal is one cause, and it ends the feed until it is rebuilt, which is why
+  `connect` watches `crateStackScope`. In a bare `ProviderContainer` test, a `reconnectOn` signal that needs a
+  `WidgetsBinding` (`appShowSignal`, `appResumeSignal`) is another: override it with `RefetchSignal.new`, or use
+  `testWidgets`. Watch `serverChanges.latest` for a banner if it matters.
+- **A connection that died silently is not found.** There is no heartbeat, so no `idle`; a `reconnectOn` signal and the
+  `streamTicker` act on a connection that is _waiting_ (the ticker also on an idle or paused one), never on one that
+  looks open. What replaces it is a rebuild of the feed: add `ref.watch(appShowSignal)` to `connect` and each show of
+  the app opens a new connection, which has no resume point, so it is a gap and one sync. (Override `appShowSignal`
+  with `RefetchSignal.new` in a bare container.) The other triggers keep syncing meanwhile.
+- **It reaches every device of every user, and your own writes echo.** A subscription is per model, with no per-account
+  filter: when anyone writes a `Note`, every connected device syncs, and the writer's device syncs twice for one local
+  edit (the push, then the echo's). `any` has no budget; bound it with a topic and a `ChangeBudget`, which moves at most
+  once between two ticks of a signal your own timer fires, still at once for the first event after a quiet period, and
+  loses nothing (the held events move it once at the next tick):
+
+```dart
+// lib/push_budget.dart
+import 'dart:async';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_cratestack/fespalier_cratestack.dart';
+import 'package:fespalier_stream/fespalier_stream.dart';
+import 'package:my_app/server_changes.dart';
+
+/// Ends a period of the budget. It never fires by itself: the timer is the app's, and it runs only while
+/// something watches the topic and is not paused.
+final syncPushTick = NotifierProvider.autoDispose<RefetchSignal, int>(PushTick.new);
+
+class PushTick extends RefetchSignal {
+  Timer? _timer;
+
+  void _start() => _timer ??= Timer.periodic(const Duration(seconds: 5), (_) => fire());
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  int build() {
+    _start();
+    ref.onCancel(_stop);
+    ref.onResume(_start);
+    ref.onDispose(_stop);
+    return 0;
+  }
+}
+
+/// Every event, or `event.model == 'Note'` for one model, at most once per tick.
+final syncPushTopic = serverChanges.topic<Object?>(
+  (event, _) => true,
+  budget: ChangeBudget(syncPushTick),
+);
+
+/// The override startup() returns instead of `serverPush`.
+final boundedPush = syncPushSignal.overrideWith((ref) => ref.watch(syncPushTopic(null)));
+```
+
 - **Watch it where it lives as long as the app.** `ChangeFeed.live` keeps its connection while the container lives,
   and `autoSync` (watched in the root layout) watches the signal, so the subscription opens with the app. A page that
   wants to move on one model's events watches a topic of the same feed (`serverChanges.topic<String>((e, m) => e.model ==
@@ -79,8 +141,6 @@ void main() {
       overrides: [
         ...crateStackTestOverrides(rowServer: rows, collections: ['notes']),
         ...streamTestOverrides(),
-        // A bare container has no WidgetsBinding, which appShowSignal (one of the feed's reconnectOn signals) needs.
-        appShowSignal.overrideWith(RefetchSignal.new),
         apiTransport.overrideWithValue(events),
         serverPush,
       ],

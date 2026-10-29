@@ -35,7 +35,14 @@ final syncTicker = NotifierProvider.autoDispose<RefetchSignal, int>(
 /// time the count changes. An event is only a hint that something changed: the sync reads the
 /// rows through the app's API, never from the event. A signal that throws is ignored, and a feed
 /// that was refused moves nothing (its `latest` holds the error): the other triggers keep working.
-final syncPushSignal = Provider<int>((ref) => 0, name: 'syncPushSignal');
+///
+/// It sets `retry` to null: an override that throws an `Exception` (a feed whose `connect` failed)
+/// would otherwise be tried again by Riverpod's own timer.
+final syncPushSignal = Provider<int>(
+  (ref) => 0,
+  name: 'syncPushSignal',
+  retry: (_, _) => null,
+);
 
 /// Which triggers `autoSync` follows. Resume needs a `WidgetsBinding`: a bare container test turns
 /// it off.
@@ -147,15 +154,23 @@ class AutoSync extends Notifier<SyncStatus> {
       Future<void>.value()
           .then<SyncReport?>((_) => ref.mounted ? runner.sync(reason) : null)
           .then<void>(
-            (report) => _finish(report),
-            onError: (Object _, StackTrace _) => _finish(null),
+            (report) => _finish(report, runner, reason),
+            onError: (Object _, StackTrace _) => _finish(null, runner, reason),
           ),
     );
   }
 
-  void _finish(SyncReport? report) {
+  void _finish(SyncReport? report, SyncRunner runner, SyncReason reason) {
     _running--;
     if (!ref.mounted) return;
+    // A push is never held off by the minimum interval, so a push that came back skipped was
+    // dropped: the engine it queued behind was replaced (its account changed, or a provider it
+    // reads did) before it started. The change it announced is still unread, so the runner of now
+    // takes it, once: it is a different runner, and it is dropped again only if it is replaced too.
+    if (report != null && report.skipped && reason == SyncReason.push) {
+      final current = ref.read(syncRunner);
+      if (!identical(current, runner)) _start(current, SyncReason.push);
+    }
     // A sync that was skipped (too recent) did nothing: the banner keeps the last real result.
     if (report != null && !report.skipped) _last = report;
     state = SyncStatus(isSyncing: _running > 0, last: _last);

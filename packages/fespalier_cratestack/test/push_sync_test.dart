@@ -25,11 +25,18 @@ final class GatedSync implements RowSync {
   /// While set, each pull waits for it after its answer.
   Completer<void>? gate;
 
+  /// While set, each push waits for it before it goes to the server.
+  Completer<void>? pushGate;
+
   /// How many pulls started.
   var pulls = 0;
 
   @override
-  Future<PushResult> push(List<OwnedRow> dirty) => inner.push(dirty);
+  Future<PushResult> push(List<OwnedRow> dirty) async {
+    final held = pushGate;
+    if (held != null) await held.future;
+    return inner.push(dirty);
+  }
 
   @override
   Future<PullPage> pull(String collection, String? cursor) async {
@@ -194,9 +201,83 @@ void main() {
         await first;
         final report = await pushed;
         expect(report.reachedServer, isFalse);
+        expect(
+          report.skipped,
+          isTrue,
+          reason: 'not run: a banner keeps the last real report',
+        );
         expect(r.rows.pulls, 1, reason: 'the old account is not synced again');
       },
     );
+
+    test(
+      'awaited push() and the push run queued behind a sync never push together',
+      () async {
+        final r = pushRig();
+        r.rows.gate = Completer<void>();
+        final first = r.engine.sync(SyncReason.manual);
+        await pumpEventQueue();
+        // A row edited after the running sync's push step: it is dirty for the next run.
+        await r.container.read(ownedRows).edit('notes', 'n1', {
+          'title': 'mine',
+        });
+        // An action awaits its rows (push()), and a server push queues one more run. Either order.
+        final awaited = r.engine.push();
+        final queued = r.engine.sync(SyncReason.push);
+        final awaitedAfter = r.engine.push();
+
+        r.rows.gate!.complete();
+        r.rows.gate = null;
+        await first;
+        await queued;
+        await awaited;
+        await awaitedAfter;
+        expect(
+          r.server.pushes,
+          hasLength(1),
+          reason: 'the row went to the server once',
+        );
+        expect(r.server.pushes.single.single.id, 'n1');
+      },
+    );
+
+    test(
+      'while push() pushes it is the running operation: a signal joins it, a push waits for it',
+      () async {
+        final r = pushRig();
+        await r.container.read(ownedRows).edit('notes', 'n1', {
+          'title': 'mine',
+        });
+        r.rows.pushGate = Completer<void>();
+        final awaited = r.engine.push();
+        await pumpEventQueue();
+
+        final tick = r.engine.sync(SyncReason.tick);
+        final pushed = r.engine.sync(SyncReason.push);
+        expect(pushed, isNot(same(tick)));
+        r.rows.pushGate!.complete();
+        r.rows.pushGate = null;
+        expect((await awaited).accepted, hasLength(1));
+        expect((await tick).pushed, 1, reason: 'the report says what push did');
+        expect((await pushed).reason, SyncReason.push);
+        expect(r.server.pushes, hasLength(1));
+        expect(r.rows.pulls, 1, reason: 'only the queued run pulled');
+      },
+    );
+
+    test('a failed awaited push() leaves the engine free', () async {
+      final r = pushRig();
+      await r.container.read(ownedRows).edit('notes', 'n1', {'title': 'mine'});
+      r.server.offline = true;
+      await expectLater(r.engine.push(), throwsA(isA<CrateStackOffline>()));
+      r.server.offline = false;
+      final rep = await r.engine.sync(SyncReason.manual);
+      expect(
+        rep.pushed,
+        1,
+        reason: 'the failed push() is not the running operation',
+      );
+    });
   });
 
   group('autoSync', () {
@@ -296,6 +377,205 @@ void main() {
     });
 
     test(
+      'a push queued behind a run of an engine that is replaced is run again by the new one',
+      () {
+        fakeAsync((async) {
+          final rows = GatedSync(FakeRowServer());
+          final container = ProviderContainer(
+            overrides: [
+              ...crateStackTestOverrides(
+                rowServer: rows,
+                collections: const ['notes'],
+                scope: 'ada',
+              ),
+              syncPushSignal.overrideWith((ref) => ref.watch(countProvider)),
+            ],
+          );
+          final reports = <SyncReport>[];
+          final sub = container.listen(autoSync, (_, next) {
+            final last = next.last;
+            if (!next.isSyncing && last != null) reports.add(last);
+          });
+          rows.gate = Completer<void>();
+          settleFake(async);
+          expect(rows.pulls, 1, reason: 'the start sync, held');
+
+          // A push queues behind it; then the engine is rebuilt (a provider it reads changed), the
+          // account being the same.
+          container.read(countProvider.notifier).bump();
+          settleFake(async);
+          final first = container.read(syncEngine);
+          container.invalidate(syncEngine);
+          settleFake(async);
+          expect(container.read(syncEngine), isNot(same(first)));
+
+          rows.gate!.complete();
+          rows.gate = null;
+          settleFake(async);
+          expect(
+            rows.pulls,
+            2,
+            reason: 'the new engine ran the push once; the old one ran nothing',
+          );
+          expect(container.read(autoSync).isSyncing, isFalse);
+          final last = container.read(autoSync).last!;
+          expect(last.reason, SyncReason.push);
+          expect(last.skipped, isFalse);
+          expect(last.reachedServer, isTrue);
+          expect(reports.every((r) => !r.skipped), isTrue);
+
+          async.elapse(const Duration(minutes: 5));
+          expect(async.pendingTimers, isEmpty);
+          sub.close();
+          container.dispose();
+          settleFake(async);
+        });
+      },
+    );
+
+    test('a feed that was refused signed out opens again after sign-in, and '
+        'follows the next account', () {
+      fakeAsync((async) {
+        final server = FakeEventServer()..respond(401);
+        final changes = ChangeFeed<CrateStackModelEvent>.live((ref, _) {
+          // The account: sign-in and sign-out replace the connection.
+          ref.watch(crateStackScope);
+          return crateStackEvents(server, base, 'model.Note.subscribe');
+        }, name: 'serverChanges');
+        final rows = GatedSync(FakeRowServer());
+        final container = ProviderContainer(
+          overrides: [
+            // crateStackTestOverrides fixes the scope, and this test moves it.
+            localStore.overrideWithValue(InMemoryLocalStore()),
+            appResumeSignal.overrideWith(RefetchSignal.new),
+            rowSync.overrideWithValue(rows),
+            syncCollections.overrideWithValue(const ['notes']),
+            crateStackScope.overrideWith((ref) => ref.watch(accountProvider)),
+            ...streamTestOverrides(),
+            syncPushSignal.overrideWith((ref) => ref.watch(changes.any)),
+          ],
+        );
+        final sub = container.listen(autoSync, (_, _) {});
+        final latest = container.listen(changes.latest, (_, _) {});
+        settleFake(async);
+        expect(server.requests, hasLength(1));
+        expect(
+          container.read(changes.latest).hasError,
+          isTrue,
+          reason: 'a 401 at a signed-out start ends the feed with its refusal',
+        );
+
+        // Nothing but the account reopens it.
+        async.elapse(const Duration(minutes: 5));
+        expect(server.requests, hasLength(1));
+
+        container.read(accountProvider.notifier).set('ada');
+        settleFake(async);
+        expect(server.requests, hasLength(2), reason: 'opened as ada');
+        final pulls = rows.pulls;
+        server.current.modelEvent('Note', 'Created');
+        settleFake(async);
+        expect(rows.pulls, greaterThan(pulls), reason: 'and now it syncs');
+        expect(container.read(changes.latest).value?.event.model, 'Note');
+        expect(container.read(changes.latest).hasError, isFalse);
+
+        // Signing out as ada closes her connection; the next account gets one of its own.
+        final adas = server.current;
+        container.read(accountProvider.notifier).set('grace');
+        settleFake(async);
+        expect(server.requests, hasLength(3));
+        expect(server.connections.last, isNot(same(adas)));
+        expect(server.abortCount, greaterThan(0));
+
+        latest.close();
+        sub.close();
+        container.dispose();
+        settleFake(async);
+      });
+    });
+
+    test('a feed whose connect watches appShowSignal opens a new connection at each show, '
+        'and the gap syncs', () {
+      fakeAsync((async) {
+        final server = FakeEventServer();
+        // How a silently dead connection is replaced: a show of the app is a rebuild of the feed,
+        // not a reconnect (which acts only on a connection that is waiting).
+        final changes = ChangeFeed<CrateStackModelEvent>.live((ref, _) {
+          ref.watch(appShowSignal);
+          return crateStackEvents(server, base, 'model.Note.subscribe');
+        }, rules: LiveRules(reconnectOn: [appShowSignal]));
+        final rows = GatedSync(FakeRowServer());
+        final container = ProviderContainer(
+          overrides: [
+            ...crateStackTestOverrides(
+              rowServer: rows,
+              collections: const ['notes'],
+            ),
+            ...streamTestOverrides(),
+            appShowSignal.overrideWith(RefetchSignal.new),
+            syncPushSignal.overrideWith((ref) => ref.watch(changes.any)),
+          ],
+        );
+        final sub = container.listen(autoSync, (_, _) {});
+        settleFake(async);
+        expect(server.requests, hasLength(1));
+        final pulls = rows.pulls;
+
+        // The connection looks open and is dead: nothing arrives. The app is shown again.
+        container.read(appShowSignal.notifier).fire();
+        settleFake(async);
+        expect(server.requests, hasLength(2));
+        expect(server.current.lastEventId, isNull);
+        expect(
+          rows.pulls,
+          pulls + 1,
+          reason: 'the new connection is a gap: one sync',
+        );
+
+        async.elapse(const Duration(minutes: 5));
+        sub.close();
+        container.dispose();
+        settleFake(async);
+      });
+    });
+
+    test(
+      'a push signal that throws an Exception is not tried again by a timer',
+      () {
+        fakeAsync((async) {
+          final container = ProviderContainer(
+            overrides: [
+              ...crateStackTestOverrides(),
+              syncRunner.overrideWithValue(Recorder()),
+              syncPushSignal.overrideWith(
+                (ref) => throw Exception('connect failed'),
+              ),
+            ],
+          );
+          // Something that watches the signal itself (a banner, a debug screen) sees the error:
+          // without `retry:` on the provider, Riverpod 3 would try it again after 200 ms, doubling.
+          final signal = container.listen(
+            syncPushSignal,
+            (_, _) {},
+            onError: (_, _) {},
+          );
+          final sub = container.listen(autoSync, (_, _) {});
+          settleFake(async);
+          // Asked before time passes: the retries run out in a few seconds.
+          expect(
+            async.pendingTimers,
+            isEmpty,
+            reason: 'no retry timer of Riverpod',
+          );
+          signal.close();
+          sub.close();
+          container.dispose();
+          settleFake(async);
+        });
+      },
+    );
+
+    test(
       'off, a push signal is not followed; a signal that throws stops nothing',
       () async {
         final runner = Recorder();
@@ -340,6 +620,17 @@ class StateCount extends Notifier<int> {
   int build() => 0;
 
   void bump() => state++;
+}
+
+/// The signed-in account a test changes by hand.
+final accountProvider = NotifierProvider<Account, String?>(Account.new);
+
+/// The state of [accountProvider]: null while signed out.
+class Account extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? account) => state = account;
 }
 
 /// A [SyncRunner] that records why it ran.

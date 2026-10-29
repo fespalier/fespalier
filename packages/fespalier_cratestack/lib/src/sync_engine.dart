@@ -185,7 +185,9 @@ final class SyncEngine implements SyncRunner {
   }
 
   /// The push sync that runs once [running] ended, for the account of now: if the account changed
-  /// or was wiped meanwhile, it does nothing (the new account's engine syncs on its own).
+  /// or was wiped meanwhile, or this engine was replaced (its `scope` reads null once its provider
+  /// is disposed), it does nothing and answers [SyncReport.skipped], which `autoSync` reads as "not
+  /// run" (it keeps its last report, and asks the engine that replaced this one instead).
   Future<SyncReport> _after(Future<SyncReport> running) {
     final scope = _scope?.call();
     final generation = scope == null ? 0 : _wipes.of(scope);
@@ -195,7 +197,7 @@ final class SyncEngine implements SyncRunner {
           (_scope() != scope ||
               (scope != null && _wipes.of(scope) != generation))) {
         return Future<SyncReport>.value(
-          const SyncReport(reason: SyncReason.push),
+          const SyncReport.skipped(SyncReason.push),
         );
       }
       return sync(SyncReason.push);
@@ -395,10 +397,44 @@ final class SyncEngine implements SyncRunner {
 
   /// Push only, awaited: for an action that needs its rows on the server before the server
   /// decides (a checkout that names a row made offline). Unlike [sync] it throws: a
-  /// `CrateStackOffline` is the honest answer to "are they there?". Waits for a running sync first.
+  /// `CrateStackOffline` is the honest answer to "are they there?". Waits for a running sync, and
+  /// for the one a push queued behind it, first; while it pushes, it is the engine's running
+  /// operation, so no sync starts alongside it (a signal joins it; a push queues behind it).
   Future<PushResult> push() async {
-    final running = _running;
-    if (running != null) await running;
+    while (true) {
+      final pending = _running ?? _queued;
+      if (pending == null) break;
+      // These futures never fail (`sync` never throws); the handler keeps the loop alive if one ever does.
+      await pending.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    }
+    final held = Completer<SyncReport>();
+    _running = held.future;
+    var pushed = 0;
+    CrateStackFailure? failure;
+    try {
+      final result = await _pushOnly();
+      pushed = result.accepted.length;
+      return result;
+    } on CrateStackFailure catch (error) {
+      failure = error;
+      rethrow;
+    } finally {
+      // Free before the report is out, so that a caller that continues after this call finds the
+      // engine idle (a `then` registered on the future would run a turn later).
+      if (identical(_running, held.future)) _running = null;
+      held.complete(
+        SyncReport(
+          reason: SyncReason.manual,
+          reachedServer:
+              pushed > 0 || (failure != null && failure is! CrateStackOffline),
+          pushed: pushed,
+          failure: failure,
+        ),
+      );
+    }
+  }
+
+  Future<PushResult> _pushOnly() async {
     final rowSync = _rowSync;
     if (rowSync == null || _collections.isEmpty) return const PushResult();
     final dirty = await _rows.dirty(_collections);

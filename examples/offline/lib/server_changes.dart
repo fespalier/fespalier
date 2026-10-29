@@ -23,12 +23,19 @@ final subscriptionTransport = Provider<HttpTransport>(
 /// the network comes back. CrateStack sends no event ids, so every reopen is a gap, and a gap moves
 /// `any` too: the app syncs after it, since it may have missed a change. No `idle`: CrateStack sends no
 /// heartbeat, so a quiet subscription would be closed while healthy.
+///
+/// `connect` watches who is signed in (`crateStackScope`, which is `accountId` here): signing in as
+/// someone else, or out, closes the connection and opens one under the new session. That is also how a
+/// subscription the server refused (a 401 at a signed-out start ends it for good) opens after sign-in.
 final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
-  (ref, _) => crateStackEvents(
-    ref.watch(subscriptionTransport),
-    demoBase,
-    'model.Note.subscribe',
-  ),
+  (ref, _) {
+    ref.watch(crateStackScope);
+    return crateStackEvents(
+      ref.watch(subscriptionTransport),
+      demoBase,
+      'model.Note.subscribe',
+    );
+  },
   rules: LiveRules(reconnectOn: [reconnectSignal]),
   name: 'serverChanges',
 );

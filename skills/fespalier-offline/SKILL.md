@@ -284,11 +284,13 @@ Future<List<Override>> startup() async => [
   within it of the last sync that reached the server does nothing unless the last found no network or work was queued
   since. A manual sync and the first one at start always run. **A push is the exception to both** (since 0.25.0): it
   skips `minInterval`, and one that arrives during a run marks the engine dirty, so one more sync runs after it (a
-  burst gives two, never more). A `switch` over `SyncReason` that lists every value needs a `push` case. **A sync never throws**: its `SyncReport` has `failure`,
+  burst gives two, never more; a push queued behind an engine that is then replaced is asked again of the new one, once). A
+  `switch` over `SyncReason` that lists every value needs a `push` case. **A sync never throws**: its `SyncReport` has `failure`,
   `pushed`, `pulled`, `rolledBack` and the drain's `DrainReport`.
 - **Save locally, then sync best-effort**: an action edits the row, calls `engine.sync(SyncReason.manual)` and ignores
   the failure. **Push before a server decision that names a local row**: `await ref.read(syncEngine).push()` throws when
-  it fails, where `sync` does not, so you do not send a decision about a row the server has never seen. The report of a sync an action starts does not reach `autoSync`'s state, so its `rolledBack` is not shown by a banner on `autoSync` alone: keep it yourself (`examples/offline`'s `lastSync` notifier).
+  it fails, where `sync` does not, so you do not send a decision about a row the server has never seen (it waits for a
+  running sync and for the push run queued behind it, and while it pushes no sync starts alongside it). The report of a sync an action starts does not reach `autoSync`'s state, so its `rolledBack` is not shown by a banner on `autoSync` alone: keep it yourself (`examples/offline`'s `lastSync` notifier).
 
 ## Golden rules and traps
 

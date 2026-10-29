@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:offline/app.g.dart';
 import 'package:offline/demo/demo_server.dart';
 import 'package:offline/server_changes.dart';
+import 'package:offline/session.dart';
 import 'package:offline/wiring.dart';
 
 import 'support.dart';
@@ -105,6 +106,36 @@ void main() {
       await tester.pumpAndSettle();
       expect(events.connections, hasLength(2));
       expect(shop.rows.pulls, pulls + 2);
+    },
+  );
+
+  testWidgets(
+    'the subscription follows the account: a new one opens as someone else',
+    (tester) async {
+      final shop = Harness();
+      final events = FakeEventServer();
+      final container = await pumpRouter(
+        tester,
+        AppRoutes.router(initialLocation: '/notes'),
+        overrides: [
+          ...shop.overrides,
+          serverPush(),
+          subscriptionTransport.overrideWithValue(events),
+        ],
+      );
+      await tester.pumpAndSettle();
+      expect(events.requests, hasLength(1));
+
+      // Another account signs in on this phone: the first one's connection is closed, and the new
+      // session opens its own. (It would be the one that opens a subscription the server refused.)
+      container.read(accountId.notifier).signIn('grace');
+      await tester.pumpAndSettle();
+      expect(events.requests, hasLength(2));
+      expect(events.abortCount, 1);
+      expect(
+        events.current.request.uri.path,
+        '/rpc/subscribe/model.Note.subscribe',
+      );
     },
   );
 }

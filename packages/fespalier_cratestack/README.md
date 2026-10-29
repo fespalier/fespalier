@@ -46,11 +46,11 @@ Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `fespalier_tran
 
 ## Three libraries
 
-| Library                                                  | For                         | What is in it                                                                                                                                                                                                                |
-| -------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Library                                                  | For                         | What is in it                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync` and `syncPushSignal`, subscriptions (`crateStackEvents`, `CrateStackModelEvent`), and the HTTP pieces: `ref.cancellable`, `PortalTransport`, `TransportFailures` |
-| `package:fespalier_cratestack/hive.dart`                 | a durable store             | `HiveLocalStore`, a hive_ce box that never evicts                                                                                                                                                                            |
-| `package:fespalier_cratestack/testing.dart`              | tests                       | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`, `modelEvent` and `lagged` on fespalier_stream's `FakeEventConnection`                                                             |
+| `package:fespalier_cratestack/hive.dart`                 | a durable store             | `HiveLocalStore`, a hive_ce box that never evicts                                                                                                                                                                                                                                                             |
+| `package:fespalier_cratestack/testing.dart`              | tests                       | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`, `modelEvent` and `lagged` on fespalier_stream's `FakeEventConnection`                                                                                                                                              |
 
 ## Wire it
 
@@ -167,8 +167,13 @@ then, usually a change feed over a CrateStack subscription.
 
 ```dart
 final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
-  (ref, _) => crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe'),
-  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+  (ref, _) {
+    // Who is signed in: signing in, out or as someone else replaces the connection (a feed the
+    // server refused at a signed-out start opens again at sign-in).
+    ref.watch(crateStackScope);
+    return crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe');
+  },
+  rules: LiveRules(reconnectOn: [reconnectSignal]),
 );
 // startup():
 syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
@@ -176,8 +181,12 @@ syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
 
 A push skips the minimum interval, and one that arrives during a sync marks the engine dirty: one more sync runs after
 it, so a burst gives two. CrateStack 0.15.4 sends no event ID (every reopen is a gap, which syncs too), no heartbeat
-(leave `LiveRules.idle` unset), and applies no read policy to a subscription: an event is a hint, never something to
-render, and your `AuthProvider` must refuse an anonymous subscriber. The details are in
+(leave `LiveRules.idle` unset; a connection that died silently is replaced by a rebuild of the feed, for instance
+`connect` watching `appShowSignal`, not by a signal or the tick), and applies no read policy to a subscription: an event
+is a hint, never something to render (its row is not even kept unless you pass `keepData: true`), and your
+`AuthProvider` must refuse an anonymous subscriber. A subscription is per model, not per account, so every device of
+every user syncs when anyone writes, and a device hears its own pushes (two syncs per local edit): give `syncPushSignal`
+a `topic` of the feed with a `ChangeBudget` to bound it. The details are in
 [Subscriptions](../../docs/cratestack.md#subscriptions-subscribe).
 
 ## Test it

@@ -207,12 +207,23 @@ over a subscription ([Subscriptions](cratestack.md#subscriptions-subscribe)):
 
 ```dart
 final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
-  (ref, _) => crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe'),
-  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+  (ref, _) {
+    // Who is signed in: signing in, out or as someone else replaces the connection.
+    ref.watch(crateStackScope);
+    return crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe');
+  },
+  rules: LiveRules(reconnectOn: [reconnectSignal]),
+  name: 'serverChanges',
 );
 // startup():
 syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
 ```
+
+`connect` watches the account on purpose. The feed opens when the app starts, usually signed out, and the server answers
+that `GET` with a `401`, which ends the feed (`ServerEventsRefused`) and nothing reopens it by itself; after a sign-out
+the old connection would stay under the old session. Watching `crateStackScope` (or `authSession.select`, as in
+[Sign-in and sign-out](streaming.md#sign-in-and-sign-out)) replaces the connection at each change of account, so a refused
+feed recovers at sign-in and one account never reads the other's.
 
 Each move is a `SyncReason.push`, and the engine treats it differently from the other signals:
 
@@ -226,8 +237,36 @@ Each move is a `SyncReason.push`, and the engine treats it differently from the 
 - **A gap is a push too.** A change feed whose connection opened again without resuming moves `any` by one, so the
   app syncs after every reopen that may have missed an event.
 
-A feed the server refused moves nothing (its `latest` holds the error, which a banner can watch), and a signal that throws is ignored: the other triggers keep working. A `SyncRunner` of
-your own gets `SyncReason.push` too, and decides for itself what a push during a run means.
+A feed the server refused moves nothing (its `latest` holds the error, which a banner can watch; it opens again when the
+account changes), and a signal that throws is ignored: the other triggers keep working. A `SyncRunner` of your own gets
+`SyncReason.push` too, and decides for itself what a push during a run means. A push that was queued behind a sync of an
+engine that is then replaced (its account changed, or a provider it reads did) is asked again of the new engine, once,
+so it is not lost.
+
+What a push costs, with CrateStack 0.15.4:
+
+- **It reaches every device of every user.** A subscription is per model, with no per-account filter: when anyone writes
+  a `Note`, every connected device syncs, whoever's note it was. Fine for a small app; for many users, bound it (below)
+  or filter in front of the router.
+- **A device hears its own writes.** The one that pushed a row gets the event about it too, so a local edit is two syncs:
+  the push, then the echo's. The [offline example](examples.md#offline) shows both.
+- **`any` has no budget.** A topic of the feed with a [`ChangeBudget`](streaming.md#a-rebuild-budget-changebudget) moves
+  at most once between two ticks of a signal your own timer fires, and still moves at once for the first event after a
+  quiet period. The events held back are not lost: the next tick moves the topic once for all of them.
+
+```dart
+final syncPushTopic = serverChanges.topic<Object?>(
+  (event, _) => true,
+  budget: ChangeBudget(syncPushTick), // a RefetchSignal fired from your timer, every 5 s say
+);
+// startup():
+syncPushSignal.overrideWith((ref) => ref.watch(syncPushTopic(null))),
+```
+
+- **A silently dead connection is not found.** CrateStack sends no heartbeat, so `LiveRules.idle` stays unset, and a
+  `reconnectOn` signal or the streamTicker act only on a connection that is waiting. Add `ref.watch(appShowSignal)` to
+  `connect` to open a new connection each time the app is shown again (a gap, so one sync); the other triggers keep
+  syncing meanwhile ([Subscriptions](cratestack.md#subscriptions-subscribe)).
 
 ## Freshness in the UI
 

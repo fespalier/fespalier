@@ -387,11 +387,19 @@ it means:
   restarts on every connection.
 - **A lagging subscriber is dropped** (past 64 buffered events): `event: error` with `unavailable` / `subscription lagged`,
   then the response ends. `crateStackEvents` drops the event; the connection opens again at once, a gap.
-- **No heartbeat.** Leave `LiveRules.idle` unset (it would close a healthy quiet subscription); a dead connection is found
-  by `reconnectOn` signals and the app's `streamTicker`.
+- **No heartbeat, so a silently dead connection is not found.** Leave `LiveRules.idle` unset (it would close a healthy quiet
+  subscription). A `reconnectOn` signal and the `streamTicker` act on a connection that is _waiting_ (the ticker also on an
+  idle or paused one), not on one that looks open. What replaces a dead one is a rebuild of the feed: have `connect` watch
+  `appShowSignal`, and each show opens a new connection (no resume point: a gap, so one sync).
+- **`connect` must watch the account** (`ref.watch(crateStackScope)`, or `authSession.select` as in `docs/streaming.md`
+  "Sign-in and sign-out"). A feed that starts signed out is refused with a `401` (`ServerEventsRefused`) and nothing
+  reopens it but a rebuild; after a sign-out the old connection would stay under the old session.
+- **Per model, not per account, and your own push echoes back.** Every device of every user syncs when anyone writes, and the
+  writer's device syncs twice per local edit (the push, then the echo). Bound `syncPushSignal` with a topic of the feed and a
+  `ChangeBudget` (the recipe is in `fespalier-offline`'s `push-sync.md`).
 - **No read policy at all on a subscription**: neither `@@allow("read")` nor the row policy is checked, and an anonymous
   caller gets every event unless the `AuthProvider` refuses it. Treat an event as a hint, read rows through the
-  policy-checked API, never render `data`, and make the server's `AuthProvider` (or a layer in front) refuse anonymous
+  policy-checked API, never render `data` (not kept unless `keepData: true`), and make the server's `AuthProvider` (or a layer in front) refuse anonymous
   subscribers.
 - **`Accept: text/event-stream` is required** (a 406 otherwise); `crateStackEvents` always sends it and replaces one given
   in `headers`. A device signature over the `GET` (an empty body) is expected to work and is UNCHECKED.

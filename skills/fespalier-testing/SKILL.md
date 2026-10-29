@@ -58,7 +58,9 @@ dev.fluttercommunity.plus/connectivity_status`). See `references/recipes.md` and
   writes to (`server.current.event('a', id: '1')`, `comment()`, `end()`, `drop()`), or what `respond(503)`, `fail(...)` or
   `hang()` scripted. `overrides: streamTestOverrides()` makes `streamTicker` a `ManualStreamTicker` you `tick()`. Nothing in the
   package starts a timer, so no test waits on one; `pumpEventQueue()` (or a few `pump()`s in a widget test) lets the
-  connection's microtasks run. See [`fespalier-data`](../fespalier-data/SKILL.md) (its streaming page).
+  connection's microtasks run. A WebSocket (since 0.25.0) takes a `FakeSocketConnector` instead: each connect opens a
+  `FakeSocket` the test plays the peer of (`text`, `bytes`, `closeFromPeer(code)`, `drop()`, what the client `sent`), unless
+  `fail(...)` or `hang()` scripted it. See [`fespalier-data`](../fespalier-data/SKILL.md) (its streaming page).
 - **Translated routes (since 0.10.0).** With `package:fespalier_tolgee`, `overrides: fakeTranslations(bundled: {...}, remote:
 FakeTranslations.strict())` (from `package:fespalier_tolgee/testing.dart`) **and `app: (router) => App(router: router)`**:
   `pumpRouter`'s default app has no `TranslationScope`, so `context.tr` throws there. `FakeTranslations.strict()` fails the

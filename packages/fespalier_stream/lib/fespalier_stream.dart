@@ -17,6 +17,9 @@
 ///   decodes raw messages on the way in, and skips a bad or unknown one without ending the stream.
 /// - Telemetry: [FespalierStreamConventions], two short root spans per connection and one per
 ///   skipped message, constants only.
+/// - WebSockets (since 0.25.0) are `package:fespalier_stream/web_socket.dart`, a library of its
+///   own, so that this one imports no `package:web_socket`: a socket held by the same feeds, signed
+///   in with a ticket fetched through the transport.
 ///
 /// `package:fespalier_stream/testing.dart` has the fakes.
 library;

@@ -1,5 +1,5 @@
 name: fespalier_stream
-description: "Server-sent events for fespalier: a WHATWG event-stream decoder over fespalier_transport's HttpTransport, and live feeds held by Riverpod that reconnect on the app's own signals, with no timer of their own."
+description: "Server-sent events and WebSockets for fespalier: a WHATWG event-stream decoder over fespalier_transport's HttpTransport, a WebSocket connection whose ticket goes through it, and live feeds held by Riverpod that reconnect on the app's own signals, with no timer of their own."
 version: 0.24.1 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
@@ -33,6 +33,11 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_transport
       ref: v0.24.1 # x-release-please-version
+  # WebSocketConnector (lib/web_socket.dart, since 0.25.0): dart:io's WebSocket natively, the
+  # browser's in a web build, dart2js and wasm alike. Not an HTTP client (no_http_test.dart is
+  # unaffected), and only lib/web_socket.dart reaches it (web_socket_library_test.dart).
+  # 1.0.1 asks for Dart 3.4 and web 0.5.0, both under the 3.35 floor.
+  web_socket: ^1.0.1
 
 dev_dependencies:
   # retry_test.dart counts the timers a feed that fails leaves behind (none), and the idle tests

@@ -1,6 +1,6 @@
 # fespalier_stream
 
-Server-sent events for [fespalier](https://github.com/fespalier/fespalier) (since 0.25.0): a `text/event-stream` read through
+Server-sent events and WebSockets for [fespalier](https://github.com/fespalier/fespalier) (since 0.25.0): a `text/event-stream` read through
 the app's own `HttpTransport`, so its session, signature and trace apply to it like to any request, and live feeds held by
 Riverpod that reconnect on the app's signals and tick. **No timer, no backoff, no retry of its own**, no `package:http` and no
 Dio: it sends through `fespalier_transport`, and an app picks the client.
@@ -79,10 +79,21 @@ Future<List<Order>> data(Ref ref) {
 - Telemetry: `fespalier.stream.open` and `fespalier.stream.close`, short root spans with constants only
   (`FespalierStreamConventions`), never a URL, an event or an error's text; `fespalier.stream.decode` for a message an
   `EventCodec` skipped, with a count.
+- WebSockets (since 0.25.0) are `package:fespalier_stream/web_socket.dart`, a library of its own (the main one imports no
+  `package:web_socket`): `SocketConnection` is a WebSocket as a `LiveConnection<SocketMessage>`, so a `LiveFeed` or
+  `ChangeFeed.live` holds it with the same rules (a close waits for a signal or the tick, a pause buffers until the tick closes
+  it, `onOpen` sends the subscribe messages again on every open through a send-only `SocketSender`, `send` while open). A connection
+  is single-use: make it in the feed's builder, and send through a `SocketHandle` the builder attaches it to.
+  `WebSocketConnector` opens it with
+  `package:web_socket` (headers natively only); its credential is a grant fetched before each connect, usually
+  `ticketGrantor(transport, endpoint)`, a `POST` through the app's chain whose single-use ticket goes in the URL. Telemetry adds
+  `fespalier.stream.kind` `websocket` and `fespalier.stream.close_code`.
 - `package:fespalier_stream/testing.dart` has `FakeEventServer` (an `HttpTransport` that serves streams the test writes to and
-  honours the abort trigger), `ManualStreamTicker`, `FakeLiveConnection`, `FakeChangeSource` and `streamTestOverrides()`.
+  honours the abort trigger), `ManualStreamTicker`, `FakeLiveConnection`, `FakeChangeSource`, `FakeSocketConnector` (sockets the
+  test plays the peer of) and `streamTestOverrides()`.
 
 UNCHECKED (no CI job shows them): a stream on Android and iOS across background and foreground, a network change, iOS
-socket suspension, Android Doze and a carrier proxy that buffers; and `ServerEvents` in a browser (a spike measured
+socket suspension, Android Doze and a carrier proxy that buffers; a WebSocket on a device, in Safari and with a ticket against a
+real server; and `ServerEvents` in a browser (a spike measured
 `HttpClientTransport(BrowserClient())` streaming chunk by chunk in Chromium, Firefox and WebKit, not this package). See
 [docs/streaming.md](https://github.com/fespalier/fespalier/blob/main/docs/streaming.md#not-built-and-unchecked).

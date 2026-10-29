@@ -500,6 +500,7 @@
         "docs/streaming.md#Gaps",
         "docs/streaming.md#WebSockets",
         "docs/streaming.md#Connect",
+        "docs/streaming.md#A refused socket",
         "docs/streaming.md#Signing in: tickets",
         "docs/streaming.md#Resubscribing",
         "docs/streaming.md#Liveness and pings",

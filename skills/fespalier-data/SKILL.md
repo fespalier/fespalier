@@ -133,7 +133,10 @@ A server that also listens wants a **WebSocket** (since 0.25.0): `package:fespal
 (the main one imports no `package:web_socket`). `SocketConnection(const WebSocketConnector(), url, grantor: ..., onOpen: ...)` is
 a `LiveConnection<SocketMessage>` that a `LiveFeed` or `ChangeFeed.live` holds with the same rules: every close waits for a
 signal or the tick (it never reopens by itself, and never resumes, so a live change feed reads a reopen as a gap), a pause
-buffers until the tick closes it, `onOpen` sends the subscribe messages again on every open, `send` only while a socket is open.
+buffers until the tick closes it, `onOpen` sends the subscribe messages again on every open (through a send-only `SocketSender`),
+`send` only while a socket is open. A connection is single-use: make it in the feed's builder and send through a `SocketHandle`
+the builder attaches it to. A refused socket (a 401 or 403 at the upgrade, a close 1008) waits and is retried by every tick, with
+a new ticket each time, until the app reads `lastCloseCode` and closes it.
 An upgrade cannot go through `HttpTransport` and a browser cannot set its headers, so its credential is a grant fetched before
 each connect: `ticketGrantor(transport, endpoint)` POSTs through the app's chain (the session applies) and puts the single-use
 ticket in the URL. Liveness is a message of the app's own (no ping is sent).

@@ -131,36 +131,46 @@ import 'package:fespalier_stream/web_socket.dart';
 
 import 'orders.dart' show apiTransport;
 
-/// The socket, held by the feed below (read it, do not watch it, where you send).
-final chatConnection = Provider.autoDispose<SocketConnection>((ref) {
-  final connection = SocketConnection(
-    const WebSocketConnector(),
-    Uri.parse('wss://api.example.com/chat'),
-    // A single-use ticket, POSTed for through the app's chain before every connect.
-    grantor: ticketGrantor(
-      ref.watch(apiTransport),
-      Uri.parse('https://api.example.com/ws-ticket'),
-    ),
-    // Runs on every open: a server forgets subscriptions with the socket.
-    onOpen: (socket) => socket.sendText('{"join":"room-1"}'),
-    name: 'chat',
-  );
-  ref.onDispose(connection.close);
-  return connection;
-});
+/// How the rest of the app sends: it reaches whichever connection the feed holds now.
+final chatSocket = Provider<SocketHandle>((ref) => SocketHandle());
 
+/// The connection is made **in the feed's builder** and lives with that build: it is single-use.
 final chat = LiveFeed<SocketMessage>(
-  (ref, _) => ref.watch(chatConnection),
+  (ref, _) {
+    final connection = SocketConnection(
+      const WebSocketConnector(),
+      Uri.parse('wss://api.example.com/chat'),
+      // A single-use ticket, POSTed for through the app's chain before every connect.
+      grantor: ticketGrantor(
+        ref.watch(apiTransport),
+        Uri.parse('https://api.example.com/ws-ticket'),
+      ),
+      // Runs on every open: a server forgets subscriptions with the socket. It can send, not listen.
+      onOpen: (socket) => socket.sendText('{"join":"room-1"}'),
+      name: 'chat',
+    );
+    ref.onDispose(ref.watch(chatSocket).attach(connection));
+    return connection;
+  },
   rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
 );
 
-/// Sends while a socket is open; a StateError otherwise.
+/// Sends while a socket is open; a StateError otherwise (`isOpen` asks first).
 void say(WidgetRef ref, String text) =>
-    ref.read(chatConnection).send(SocketText(jsonEncode({'say': text})));
+    ref.read(chatSocket).send(SocketText(jsonEncode({'say': text})));
 ```
 
-- **A close always waits.** 1000 and 1001 are `LiveWaiting(ended)`, 1012 to 1014 `unavailable`, 1006 and the rest `failed`; it
-  never reopens by itself (the tick or a `reconnectOn` signal does), and `lastCloseCode` says what the server sent.
+- **A connection is single-use.** Make it in the feed's builder, never in a provider of its own that outlives the feed: the feed
+  closes it when that build ends, and a rebuilt feed handed the closed one cannot listen to it again (its `events` throw a
+  `StateError` that says so). Send through a `SocketHandle`, which the builder `attach`es each connection to and which always
+  reaches the current one; to change the connection (another room), make the builder watch what picks it.
+- **A close always waits.** 1000, 1001 and 1005 (a close frame with no code) are `LiveWaiting(ended)`, 1012 to 1014
+  `unavailable`, 1006 and the rest `failed`; it never reopens by itself (the tick or a `reconnectOn` signal does), and
+  `lastCloseCode` says what the server sent.
+- **A refused socket is retried.** A 401 or 403 at the upgrade, or a close with 1008 or the server's own code, is
+  `LiveWaiting(failed)`, and each tick opens it again with a new ticket. Only the ticket endpoint's 4xx ends the connection
+  (`SocketTicketRefused`): refuse there, or read `lastCloseCode` and `LiveWaiting.failures` and close the connection
+  (`ref.read(chatSocket).connection?.close()`) or stop watching the feed.
 - **No resume.** `lastEventId` is always null: `onOpen` subscribes again, and a live change feed reads every reopen as a gap.
 - **A pause buffers.** A WebSocket has no backpressure: a hidden page's messages are held until it is shown or until the tick
   closes the socket (`closeIfPaused`). The tick period bounds the memory.
@@ -168,10 +178,14 @@ void say(WidgetRef ref, String text) =>
   handshake header (`WebSocketConnector` refuses one there with an `ArgumentError`, which ends the connection). `ticketGrantor`
   POSTs through the chain (the session renews a 401 and sends it again; it is a write, so no retrier repeats it after an unknown
   outcome) and puts the ticket in the URL: make the server accept it once, within seconds. A 4xx is `SocketTicketRefused` (a
-  `DataRefusal`: the feed ends), a 408, 429 or 5xx a `TransportStatusError` (it waits, `unavailable`).
+  `DataRefusal`: the feed ends), a 408, 429 or 5xx a `TransportStatusError` (it waits, `unavailable`). The answer is read to
+  16 KiB at most, and not at all when it is not a 2xx. On Android, iOS and the desktop the handshake is `dart:io`'s own: a pin, a
+  `SecurityContext` or a proxy setting of the HTTP client behind your transport does not apply to the socket.
 - **Liveness is a message.** Pings are invisible to Dart and the package sends none: `LiveRules.idle` needs the server to send a
   message while quiet, or the app's ticker to send one that the server answers.
-- **`send` only while open** (`LiveOpen`, or `LivePaused(connected: true)`); inside `onOpen`, send on the socket it is given.
+- **`send` only while open** (`LiveOpen`, or `LivePaused(connected: true)`); inside `onOpen`, send on the `SocketSender` it is
+  given (`sendText`, `sendBytes`, `protocol`: the connection reads the messages, so `onOpen` cannot). To wait for a server's
+  answer, read the feed's messages, not `onOpen`.
 
 ```dart
 // test/chat_test.dart
@@ -208,7 +222,7 @@ void main() {
 `unavailable`, `failed` or `cancelled`, `status_code`, `resumed`) and `fespalier.stream.close` (instant, at the end of a
 connection that was open: `reason` `ended`, `failed`, `idle`, `paused` or `cancelled`, and `events`), both with `kind` `sse` and
 the `name` given to `ServerEvents`; a WebSocket's carry `kind` `websocket`, and its close `close_code` (the server's code, 1006
-for a socket that broke). Root spans, constants only: never a URL, a header, an event, a message, a close reason or an error's
+for a socket that broke, 1005 for no code). Root spans, constants only: never a URL, a header, an event, a message, a close reason or an error's
 text. An
 `EventCodec` that skips a message makes `fespalier.stream.decode` (`result` `unknown` or `error`, `skipped`, a count). See
 `fespalier-observability`.

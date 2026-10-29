@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:clock/clock.dart';
 import 'package:fespalier_transport/fespalier_transport.dart';
@@ -48,6 +49,26 @@ final class _Attempt {
   StreamIterator<SocketMessage>? iterator;
 }
 
+/// A [SocketSender] over an open socket: `onOpen` gets this and not the socket, so it cannot
+/// listen to the messages the connection reads.
+final class _Sender implements SocketSender {
+  _Sender(this._socket);
+
+  final StreamSocket _socket;
+
+  @override
+  String get protocol => _socket.protocol;
+
+  @override
+  void sendText(String text) => _socket.sendText(text);
+
+  @override
+  void sendBytes(Uint8List bytes) => _socket.sendBytes(bytes);
+
+  @override
+  String toString() => 'SocketSender';
+}
+
 /// The WebSocket connection, with no Flutter, Riverpod or telemetry in it (since 0.25.0):
 /// `SocketConnection` is it, with fespalier's refusals and telemetry filled in through
 /// [SocketSourceHooks], and the browser harness of `just fetch-adapter` runs it as it is.
@@ -67,10 +88,10 @@ final class SocketSource implements LiveConnection<SocketMessage> {
     SocketGrantor? grantor,
     Iterable<String> protocols = const <String>[],
     Map<String, String> headers = const <String, String>{},
-    FutureOr<void> Function(StreamSocket socket)? onOpen,
+    FutureOr<void> Function(SocketSender socket)? onOpen,
   }) : _hooks = hooks,
        _grantor = grantor,
-       _protocols = List<String>.unmodifiable(protocols),
+       _protocols = List<String>.unmodifiable(<String>{...protocols}),
        _headers = Map<String, String>.unmodifiable(headers),
        _onOpenSocket = onOpen {
     _events = StreamController<SocketMessage>(
@@ -86,7 +107,7 @@ final class SocketSource implements LiveConnection<SocketMessage> {
   final SocketGrantor? _grantor;
   final List<String> _protocols;
   final Map<String, String> _headers;
-  final FutureOr<void> Function(StreamSocket socket)? _onOpenSocket;
+  final FutureOr<void> Function(SocketSender socket)? _onOpenSocket;
 
   /// The URL the connection asks its grantor for, and connects to without one.
   final Uri url;
@@ -98,6 +119,7 @@ final class SocketSource implements LiveConnection<SocketMessage> {
   LiveStatus _status = const LiveConnecting(1);
   _Attempt? _attempt;
   bool _done = false;
+  bool _listened = false;
   int _tries = 0;
   bool _paused = false;
   bool _pauseSeen = false;
@@ -109,8 +131,20 @@ final class SocketSource implements LiveConnection<SocketMessage> {
 
   // LiveConnection
 
+  /// The messages. A connection is **single-use**: it is listened to once, and once it has been
+  /// listened to or closed, asking for [events] again throws a `StateError`. Create it where its
+  /// owner is built (a feed's builder), so each build has a connection of its own.
   @override
-  Stream<SocketMessage> get events => _events.stream;
+  Stream<SocketMessage> get events {
+    if (_listened || _done) {
+      throw StateError(
+        'SocketConnection is single-use: this one was listened to or closed already. '
+        "Create it in the feed's builder (LiveFeed(connect)), not in a provider that outlives the "
+        'feed, so every build of the feed opens its own connection.',
+      );
+    }
+    return _events.stream;
+  }
 
   @override
   LiveStatus get status => _status;
@@ -136,7 +170,7 @@ final class SocketSource implements LiveConnection<SocketMessage> {
   String? get lastEventId => null;
 
   /// The close code the peer sent when it last closed a socket of this connection (1006 for one
-  /// that broke), or null.
+  /// that broke, 1005 for a close with no code), or null.
   int? get lastCloseCode => _lastCloseCode;
 
   /// Sends [message] on the open socket.
@@ -223,6 +257,7 @@ final class SocketSource implements LiveConnection<SocketMessage> {
   // The listener.
 
   void _onListen() {
+    _listened = true;
     if (!_done) _start();
   }
 
@@ -292,8 +327,8 @@ final class SocketSource implements LiveConnection<SocketMessage> {
           return;
         }
         target = grant.url;
-        protocols = <String>[..._protocols, ...grant.protocols];
-        headers = <String, String>{..._headers, ...grant.headers};
+        protocols = <String>{..._protocols, ...grant.protocols}.toList();
+        headers = mergeHeaders(_headers, grant.headers);
       }
       final socket = await _connector.connect(
         target,
@@ -309,7 +344,7 @@ final class SocketSource implements LiveConnection<SocketMessage> {
       // The app's resubscribe messages, before the connection says it is open: a live change feed
       // reloads at the open, and what changed after the reload must be subscribed to already.
       final onOpen = _onOpenSocket;
-      if (onOpen != null) await onOpen(socket);
+      if (onOpen != null) await onOpen(_Sender(socket));
     } catch (error, stackTrace) {
       if (attempt.stale) {
         _endOpen(attempt, OpenResult.cancelled);
@@ -385,7 +420,8 @@ final class SocketSource implements LiveConnection<SocketMessage> {
     } on SocketClosed catch (close) {
       if (attempt.stale) return;
       closed = true;
-      closeCode = close.code;
+      // A close frame with no code is 1005, as dart:io and the browsers report it.
+      closeCode = close.code ?? 1005;
     } catch (_) {
       // A failure the socket reported: read as a connection that broke. Its text is not kept.
       if (attempt.stale) return;
@@ -400,7 +436,7 @@ final class SocketSource implements LiveConnection<SocketMessage> {
       closeCode: closeCode,
     );
     _dropped(switch (closeCode) {
-      null || 1000 || 1001 => LiveDrop.ended,
+      1000 || 1001 || 1005 => LiveDrop.ended,
       1012 || 1013 || 1014 => LiveDrop.unavailable,
       _ => LiveDrop.failed,
     });

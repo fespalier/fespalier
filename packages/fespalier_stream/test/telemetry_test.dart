@@ -363,6 +363,26 @@ void main() {
       }
     });
 
+    test(
+      'a close frame with no code is an orderly close: ended, close_code 1005',
+      () async {
+        final connection = SocketConnection(connector, socketUrl, name: 'chat');
+        final sub = connection.events.listen((_) {});
+        await settle();
+        connector.current.closeFromPeer(null);
+        await settle();
+        expect((connection.status as LiveWaiting).drop, LiveDrop.ended);
+        await sub.cancel();
+        expect(
+          sink.log,
+          contains(
+            '#2 end custom ok fespalier.stream.close_code=1005 fespalier.stream.events=0 '
+            'fespalier.stream.reason=ended',
+          ),
+        );
+      },
+    );
+
     test('the start carries no resumed and no status', () async {
       final starts = <TelemetryStart>[];
       FespalierTelemetry.install(_Starts(starts));

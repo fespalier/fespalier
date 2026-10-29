@@ -499,11 +499,12 @@ final class FakeSocket implements StreamSocket {
     if (!_ended) _messages.add(SocketBytes(Uint8List.fromList(bytes)));
   }
 
-  /// The peer closes it with [code] (null: a close frame with no code).
+  /// The peer closes it with [code]. A close frame with no code is 1005 on `dart:io` and in a
+  /// browser, so null here is 1005 too: `SocketClosed(1005)`, an orderly close.
   void closeFromPeer([int? code = 1000]) {
     if (_ended) return;
     _ended = true;
-    _messages.addError(SocketClosed(code));
+    _messages.addError(SocketClosed(code ?? 1005));
     unawaited(_messages.close());
   }
 
@@ -518,15 +519,17 @@ final class FakeSocket implements StreamSocket {
   @override
   Stream<SocketMessage> get messages => _messages.stream;
 
+  /// Throws a `WebSocketConnectionClosed` (an `Exception`) once either side closed it, as a real
+  /// socket does.
   @override
   void sendText(String text) {
-    if (_ended) throw StateError('FakeSocket: closed');
+    if (_ended) throw WebSocketConnectionClosed();
     sent.add(SocketText(text));
   }
 
   @override
   void sendBytes(Uint8List bytes) {
-    if (_ended) throw StateError('FakeSocket: closed');
+    if (_ended) throw WebSocketConnectionClosed();
     sent.add(SocketBytes(bytes));
   }
 

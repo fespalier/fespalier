@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -41,10 +42,13 @@ final class SocketTicketRefused implements Exception, DataRefusal {
 /// asked for again before every connect.
 ///
 /// The answer is `application/json` with the ticket in [field] (`{"ticket": "..."}`), or
-/// `text/plain` with the ticket as the body. A 4xx other than 408 and 429 throws
-/// [SocketTicketRefused] (the connection ends); a 408, 429 or 5xx a `TransportStatusError` (the
-/// connection waits, `unavailable`); another answer (a captive portal's page, an empty ticket) a
-/// `FormatException` with no text of the answer (the connection waits, `failed`).
+/// `text/plain` with the ticket as the body, at most 16 KiB. A 4xx other than 408 and 429 throws
+/// [SocketTicketRefused] (the connection ends); a 408, 429 or 5xx a `TransportStatusError` with an
+/// empty body (the connection waits, `unavailable`); another answer (a captive portal's page, an
+/// empty ticket, a body over 16 KiB) a `FormatException` with no text of the answer (the
+/// connection waits, `failed`). The body of an answer that is not a 2xx is never read: the request
+/// is aborted, so a large error page costs nothing. [headers] are added to the request's, a name
+/// compared without regard to case (yours replace `Accept`, never sit beside it).
 ///
 /// The `POST` is a write (no `Idempotency-Key`): a `WriteGuardTransport` keeps a retrier from
 /// sending it again after a failure whose outcome is unknown, which is right for a ticket the
@@ -61,32 +65,39 @@ SocketGrantor ticketGrantor(
   String field = 'ticket',
   Map<String, String> headers = const <String, String>{},
 }) => (url) async {
+  // Completed to give the answer up without reading it (or what is left of it).
+  final giveUp = Completer<void>();
   final response = await transport.send(
     TransportRequest(
       method: 'POST',
       uri: ticketEndpoint,
-      headers: <String, String>{
+      headers: mergeHeaders(<String, String>{
         'Accept': 'application/json, text/plain',
-        ...headers,
-      },
+      }, headers),
       body: Uint8List(0),
-      // The connection's attempt: given up, the request is aborted.
-      abortTrigger: TransportZone.current(),
+      // The connection's attempt: given up, the request is aborted. So is an answer not read.
+      abortTrigger: TransportZone.merge(TransportZone.current(), giveUp.future),
       attributes: <String, Object?>{TransportMemo.key: TransportMemo()},
     ),
   );
   final status = response.statusCode;
-  final body = await response.bytes();
-  if (status == 408 || status == 429 || status >= 500) {
-    throw TransportStatusError(
-      statusCode: status,
-      headers: response.headers,
-      body: body,
-      reasonPhrase: response.reasonPhrase,
-    );
-  }
-  if (status >= 400) throw SocketTicketRefused(status);
   if (status < 200 || status >= 300) {
+    // Nothing of an answer that is no ticket is read: the request is aborted, so neither a large
+    // page nor a slow one is waited for.
+    _letGo(giveUp);
+    if (status == 408 || status == 429 || status >= 500) {
+      throw TransportStatusError(
+        statusCode: status,
+        headers: response.headers,
+        body: Uint8List(0),
+        reasonPhrase: response.reasonPhrase,
+      );
+    }
+    if (status >= 400) throw SocketTicketRefused(status);
+    throw const FormatException('ticketGrantor: the answer is not a ticket');
+  }
+  final body = await _readCapped(response, giveUp);
+  if (body == null) {
     throw const FormatException('ticketGrantor: the answer is not a ticket');
   }
   final ticket = _ticketOf(response.headers['content-type'], body, field);
@@ -102,6 +113,42 @@ SocketGrantor ticketGrantor(
     ),
   );
 };
+
+/// The most a ticket answer may weigh: a ticket is a few hundred bytes.
+const int _maxTicketBytes = 16 * 1024;
+
+/// Aborts the request behind an answer that is not read, as `EventSource` gives up an answer it
+/// does not read: cancelling a body is not enough to close a connection with every client.
+void _letGo(Completer<void> giveUp) {
+  if (!giveUp.isCompleted) giveUp.complete();
+}
+
+/// The body of [response], or null when it is longer than [_maxTicketBytes] (the rest is not
+/// read: the request is aborted).
+Future<Uint8List?> _readCapped(
+  TransportResponse response,
+  Completer<void> giveUp,
+) async {
+  final builder = BytesBuilder(copy: false);
+  final iterator = StreamIterator<List<int>>(response.body);
+  try {
+    while (await iterator.moveNext()) {
+      builder.add(iterator.current);
+      if (builder.length > _maxTicketBytes) {
+        if (!giveUp.isCompleted) giveUp.complete();
+        return null;
+      }
+    }
+  } finally {
+    unawaited(
+      iterator.cancel().then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {},
+      ),
+    );
+  }
+  return builder.takeBytes();
+}
 
 String? _ticketOf(String? contentType, Uint8List body, String field) {
   final type = contentType?.split(';').first.trim().toLowerCase() ?? '';

@@ -22,24 +22,44 @@ abstract interface class SocketConnector {
   });
 }
 
+/// What `SocketConnection.onOpen` is given to send with (since 0.25.0): the open socket, without its
+/// [StreamSocket.messages].
+///
+/// The connection owns the messages: it reads them itself, once, and a handler that listened to
+/// them would take them from the connection, which would then see no message and no close. So a
+/// handler can send, and nothing else. To wait for a server's answer to what it sent, read the
+/// feed's messages (`LiveFeed.latest`) and act on them there.
+abstract interface class SocketSender {
+  /// The subprotocol the peer chose, or the empty string.
+  String get protocol;
+
+  /// Sends a text frame. Throws an `Exception` when the socket is closed (the connection then
+  /// waits, `failed`).
+  void sendText(String text);
+
+  /// Sends a binary frame. Throws an `Exception` when the socket is closed.
+  void sendBytes(Uint8List bytes);
+}
+
 /// An open WebSocket, as a [SocketConnector] answers it (since 0.25.0).
-abstract interface class StreamSocket {
+abstract interface class StreamSocket implements SocketSender {
   /// What the peer sends, single-subscription. It ends when the socket closes, by either side or
   /// by a failure: with a [SocketClosed] error that carries the close code first when the peer
-  /// closed it or the connection broke (1006), with nothing when this side closed it. Another
+  /// closed it (1005 when its close frame had no code) or the connection broke (1006), with nothing
+  /// when this side closed it. Another
   /// error is a failure, and a `SocketConnection` reads it as one.
   ///
   /// A pause buffers: a WebSocket has no backpressure, so what arrives while the subscription is
   /// paused is held in memory until it resumes or the socket closes.
   Stream<SocketMessage> get messages;
 
-  /// The subprotocol the peer chose, or the empty string.
-  String get protocol;
-
-  /// Sends a text frame. Throws when the socket is closed.
+  /// Sends a text frame. Throws an `Exception` (a `WebSocketConnectionClosed`, from
+  /// `package:web_socket`) when the socket is closed.
+  @override
   void sendText(String text);
 
-  /// Sends a binary frame. Throws when the socket is closed.
+  /// Sends a binary frame. Throws an `Exception` when the socket is closed.
+  @override
   void sendBytes(Uint8List bytes);
 
   /// Closes the socket with [code] (1000, or 3000 to 4999) and [reason] (at most 123 UTF-8
@@ -85,11 +105,13 @@ final class SocketBytes extends SocketMessage {
 /// It carries the close code only (RFC 6455, section 7.4): the peer's reason text is never kept,
 /// so it can reach neither a log nor telemetry.
 class SocketClosed implements Exception {
-  /// A close with [code], null when the peer gave none (1005).
+  /// A close with [code]. A connector reports a close frame that had no code as 1005, as
+  /// `dart:io` and the browsers do; a null is read the same way.
   const SocketClosed(this.code);
 
-  /// The close code: 1000 normal, 1001 going away, 1006 a connection that broke with no close
-  /// frame, 1012 a restart, 1013 try again later, 3000 to 4999 the server's own.
+  /// The close code: 1000 normal, 1001 going away, 1005 a close frame with no code (an orderly
+  /// close all the same), 1006 a connection that broke with no close frame, 1012 a restart, 1013
+  /// try again later, 3000 to 4999 the server's own. The shipped connectors never give null.
   final int? code;
 
   @override

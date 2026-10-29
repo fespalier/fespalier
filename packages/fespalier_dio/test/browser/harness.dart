@@ -16,7 +16,8 @@
 // - `status`: a 418 is an answer with its status, reason phrase and body;
 //
 // and, over fespalier_stream's WebSocketConnector (since 0.25.0, the browser's WebSocket through
-// package:web_socket), `socket`: a header on the handshake is refused (`ArgumentError`), and its
+// package:web_socket), `socket`: a header on the handshake is refused (`ArgumentError`), so is a
+// subprotocol the browser throws on (an `ArgumentError` that names no URL), and its
 // SocketSource (what SocketConnection is, without the fespalier telemetry and refusals that need
 // Flutter) connects with a grant (a ticket in the query, a subprotocol), runs onOpen, receives text
 // and bytes, sends both, waits after the server closes with 4001 (the code, never the reason),
@@ -676,6 +677,24 @@ Future<Map<String, Object?>> _socket() async {
     refused = error;
   }
   _expect(refused != null, 'a header on the handshake was not refused');
+
+  // A subprotocol the browser's constructor throws on at once (a space): an ArgumentError with a
+  // fixed text, which names neither the URL nor its ticket.
+  Object? badProtocol;
+  try {
+    await connector.connect(
+      url.replace(queryParameters: {'ticket': 'tk-secret'}),
+      protocols: const ['not a token'],
+    );
+  } on ArgumentError catch (error) {
+    badProtocol = error;
+  }
+  _expect(
+    badProtocol != null &&
+        !'$badProtocol'.contains('tk-secret') &&
+        !'$badProtocol'.contains(url.host),
+    'a subprotocol the browser refuses was $badProtocol',
+  );
 
   var attempt = 0;
   final opened = <String>[];

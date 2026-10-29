@@ -661,34 +661,41 @@ connection. `package:fespalier_stream/web_socket.dart` is a library of its own, 
 import 'package:fespalier_stream/fespalier_stream.dart';
 import 'package:fespalier_stream/web_socket.dart';
 
-final chatConnection = Provider.autoDispose<SocketConnection>((ref) {
-  final connection = SocketConnection(
-    const WebSocketConnector(),
-    Uri.parse('wss://api.example.com/chat'),
-    grantor: ticketGrantor(ref.watch(apiTransport), Uri.parse('https://api.example.com/ws-ticket')),
-    onOpen: (socket) => socket.sendText('{"join":"room-1"}'),
-    name: 'chat',
-  );
-  ref.onDispose(connection.close);
-  return connection;
-});
+// How the rest of the app sends: a handle that reaches whichever connection the feed holds now.
+final chatSocket = Provider<SocketHandle>((ref) => SocketHandle());
 
 final chat = LiveFeed<SocketMessage>(
-  (ref, _) => ref.watch(chatConnection),
+  (ref, _) {
+    final connection = SocketConnection(
+      const WebSocketConnector(),
+      Uri.parse('wss://api.example.com/chat'),
+      grantor: ticketGrantor(ref.watch(apiTransport), Uri.parse('https://api.example.com/ws-ticket')),
+      onOpen: (socket) => socket.sendText('{"join":"room-1"}'),
+      name: 'chat',
+    );
+    ref.onDispose(ref.watch(chatSocket).attach(connection));
+    return connection;
+  },
   rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
 );
 
 // A page watches `chat.latest` (each message is a `SocketText` or a `SocketBytes`) and sends with
-// ref.read(chatConnection).send(SocketText('{"say":"hello"}'));
+// ref.read(chatSocket).send(const SocketText('{"say":"hello"}'));
 ```
 
 - **`WebSocketConnector`** opens the socket with `package:web_socket`: `dart:io`'s WebSocket on Android, iOS and the desktop, the
-  browser's in a web build (dart2js and wasm). It is the `SocketConnector` port; a test passes a fake.
-- **`send`** sends a `SocketText` or a `SocketBytes` while a socket is open (`LiveOpen`, or `LivePaused(connected: true)`, since
-  Riverpod pauses a feed for a moment while it rebuilds), and throws a `StateError` otherwise. A message sent to a peer that went
-  away without a word is lost: a WebSocket says nothing about it.
-- **A close or a failure waits.** Every close is `LiveWaiting`: `ended` for 1000 or 1001, `unavailable` for 1012, 1013 or 1014,
-  `failed` for 1006 (a socket that broke) and every other code. Unlike an event stream, a socket never opens again by itself:
+  browser's in a web build (dart2js and wasm). It is the `SocketConnector` port; a test passes a fake. **On Android, iOS and the
+  desktop the handshake is `dart:io`'s own, not your `HttpTransport`'s client**: certificate pinning, a custom `SecurityContext`, a
+  proxy setting or a `badCertificateCallback` set on the `http` client or the Dio behind your transport do not apply to the socket
+  (only the ticket `POST` goes through the chain, so a pin protects the credential, not the socket that uses it). There is no option
+  for it yet. In a browser the page's own TLS and proxy rules apply, as they do to any `WebSocket`.
+- **`SocketHandle.send`** (or `SocketConnection.send`) sends a `SocketText` or a `SocketBytes` while a socket is open (`LiveOpen`,
+  or `LivePaused(connected: true)`, since Riverpod pauses a feed for a moment while it rebuilds), and throws a `StateError`
+  otherwise (`handle.isOpen` asks first). A message sent to a peer that went away without a word is lost: a WebSocket says nothing
+  about it.
+- **A close or a failure waits.** Every close is `LiveWaiting`: `ended` for 1000, 1001 or 1005 (a close frame with no code, which
+  `dart:io` and the browsers report as 1005: an orderly close all the same), `unavailable` for 1012, 1013 or 1014, `failed` for 1006
+  (a socket that broke) and every other code. Unlike an event stream, a socket never opens again by itself:
   the next open is a `reconnectOn` signal or [the tick](#reconnecting-without-a-timer-streamticker). `lastCloseCode` is the code
   the server sent, for an app that gave its own codes (3000 to 4999) a meaning.
 - **A pause buffers.** A WebSocket cannot slow its server down, so while the page is hidden the messages that arrive are held in
@@ -701,8 +708,46 @@ final chat = LiveFeed<SocketMessage>(
   would fail the same way. A grant or a handshake that fails otherwise waits (`failed`, or `unavailable` with the
   `Retry-After` for a ticket endpoint's 408, 429 or 5xx).
 
-Read the provider with `ref.read`, not `ref.watch`, where it sends: the feed is what holds it, so the connection lives exactly as
-long as the page watches `chat.latest`. To replace the connection (another room), invalidate `chatConnection`, not the feed.
+**A connection is single-use, and lives with its feed's build.** Create it in the feed's builder, as above and as `ServerEvents` is
+made, never in a provider of its own. Its `events` are listened to once, and the feed closes the connection when that build ends:
+when nothing watches the feed any more, or when a provider the builder watches changes. A provider that kept the connection alive
+across builds would hand a rebuilt feed a closed one, which cannot listen again; asking such a connection for its `events` throws a
+`StateError` that says to create it in the feed's builder.
+
+`SocketHandle` is how the rest of the app sends without holding the connection: the builder `attach`es each connection it makes
+(`ref.onDispose(handle.attach(connection))` forgets it again when that build ends), and `handle.send` reaches whichever one is
+current. It holds no listener, timer or message. Keep one handle per feed (a `Provider.family` of handles for a `LiveFeedFamily`).
+To replace the connection (another room), make the builder watch what picks the room (`ref.watch(room)`): the feed rebuilds, the
+old connection closes, and the handle follows the new one.
+
+### A refused socket
+
+A server that turns a client away does not end the connection by itself. An HTTP 401 or 403 at the upgrade is a handshake that
+failed (the connector throws a `WebSocketException` that names nothing, and no close code exists), and a close with 1008 (policy
+violation) or a code of the server's own (4401, say) is a close like any other: all of them are `LiveWaiting(failed)`, and the
+next signal or tick opens the socket again, **asking the grantor, and so minting a ticket, each time**. Only the ticket endpoint's
+4xx ends it (`SocketTicketRefused`), so the cleanest place to refuse is there: answer a session that ended with a 401 or 403 from
+the endpoint, and the connection ends with the refusal.
+
+To end on a refusal the socket gave, read it and stop. `lastCloseCode` is the code of the last close the server sent, and
+`LiveWaiting.failures` counts the tries since a message last arrived (an upgrade refusal has no code, so it can only be told by
+repeating):
+
+```dart
+// lib/live/chat_guard.dart
+final chatWatchdog = Provider<void>((ref) {
+  ref.listen(chat.status, (_, status) {
+    final waiting = status.value;
+    if (waiting is! LiveWaiting) return;
+    final connection = ref.read(chatSocket).connection;
+    final refused = connection?.lastCloseCode == 4401 || waiting.failures >= 3;
+    if (refused) {
+      unawaited(connection?.close()); // LiveDone(closed): nothing opens it again until the feed is rebuilt
+      // and tell the user: the page stops watching chat.latest, which disposes the feed
+    }
+  });
+});
+```
 
 ### Signing in: tickets
 
@@ -721,6 +766,10 @@ its error), a 408, 429 or 5xx a `TransportStatusError` (the connection waits, `u
 portal's page, an empty ticket) a `FormatException` that quotes nothing of it. The request is aborted with the attempt (the
 grantor runs in a `TransportZone`).
 
+The answer is read to 16 KiB at most (a ticket is a few hundred bytes): a larger one is a `FormatException` that quotes nothing, and
+the request is aborted. The body of an answer that is not a 2xx is never read at all, so a large error page costs nothing. A
+`headers:` argument is merged with the request's own without regard to case (your `accept` replaces `Accept`).
+
 The `POST` is a **write** (it has no `Idempotency-Key`): `WriteGuardTransport` keeps a retrier from sending it again after a failure
 whose outcome is unknown, which is right for a ticket the server may already have minted, and costs nothing, since the next
 connect asks for a new one. A session still renews and sends it again after a 401, which the server did not process.
@@ -734,10 +783,15 @@ cookie needs CSRF care).
 
 ### Resubscribing
 
-A server forgets what a socket subscribed to when the socket closes. `onOpen` runs with the new socket on **every** open, the
-first and each reopen, before the status says `LiveOpen`, so the subscribe messages go first and a live change feed reloads
-after them. Send on the socket it is given (`connection.send` refuses until the status is open). An `onOpen` that throws an
-`Exception` closes that socket and waits (`failed`).
+A server forgets what a socket subscribed to when the socket closes. `onOpen` runs on **every** open, the first and each reopen,
+before the status says `LiveOpen`, so the subscribe messages go first and a live change feed reloads after them. It is given a
+`SocketSender`, not the socket: `sendText`, `sendBytes` and `protocol` (the subprotocol the server chose), nothing to listen to,
+because the connection reads the messages itself and a handler that read them would take them from it, and the connection would
+see no message and no close. Send on the sender it is given (`connection.send` refuses until the status is open). An `onOpen`
+that throws an `Exception` closes that socket and waits (`failed`): sending on a socket the server closed a moment ago is one.
+
+To wait for the server's answer to what `onOpen` sent (a `joined` message), read the feed's messages, not `onOpen`: the answer is
+the first message of `chat.latest`, and the page acts on it there.
 
 ```dart
 SocketConnection(
@@ -768,9 +822,14 @@ final class AppStreamTicker extends StreamTicker {
   @override
   int build() {
     final timer = Timer.periodic(const Duration(seconds: 15), (_) {
-      final connection = ref.read(chatConnection);
-      if (connection.status is LiveOpen) connection.send(const SocketText('{"type":"ping"}'));
-      fire();
+      fire(); // first: the sweep must not wait on a send
+      final chat = ref.read(chatSocket); // the handle: it builds no connection
+      if (!chat.isOpen) return;
+      try {
+        chat.send(const SocketText('{"type":"ping"}'));
+      } on StateError {
+        // closed since the check: the next tick opens it again
+      }
     });
     ref.onDispose(timer.cancel);
     return super.build();
@@ -789,8 +848,8 @@ The same two root spans as an event stream, with `fespalier.stream.kind` `websoc
 | `fespalier.stream.open`  | `.kind`, `.name`; at the end `.result` (`open`, `refused`, `unavailable`, `failed`, `cancelled`). It covers the grant and the handshake; no `.status_code`, no `.resumed` |
 | `fespalier.stream.close` | `.kind`, `.name`; at the end `.reason` (`ended`, `failed` for a socket that broke, `idle`, `paused`, `cancelled`), `.events` (its messages) and `.close_code`             |
 
-`fespalier.stream.close_code` (an `int`, since 0.25.0) is the code the server sent, or 1006 for a socket that broke; it is left
-out when the app closed the socket. Never a URL, a ticket, a message or the close reason's text: the reason is dropped where the
+`fespalier.stream.close_code` (an `int`, since 0.25.0) is the code the server sent (1005 for a close frame with no code, with the
+reason `ended`, as the status reads it), or 1006 for a socket that broke; it is left out when the app closed the socket. Never a URL, a ticket, a message or the close reason's text: the reason is dropped where the
 socket is read, before anything can keep it. The ticket `POST` is an ordinary request, with the spans of your transport's
 decorators.
 
@@ -799,7 +858,8 @@ decorators.
 `package:fespalier_stream/testing.dart` exports the socket library too, and has **`FakeSocketConnector`**: each connect opens a
 `FakeSocket` at once (`connector.current`, `connector.sockets`), unless `fail(error)` or `hang()` scripted it (a hung handshake is
 answered with `connector.handshakes.last.open()` or `.fail(error)`). The test is the peer: `text(...)`, `bytes(...)`,
-`closeFromPeer(code)`, `drop()`; it reads what the client `sent` (`sentTexts`), whether it closed it (`closedByClient`,
+`closeFromPeer(code)` (null is a close frame with no code: 1005, as on a device), `drop()`; once closed its `sendText` throws a
+`WebSocketConnectionClosed`, an `Exception` like a real socket's; it reads what the client `sent` (`sentTexts`), whether it closed it (`closedByClient`,
 `clientCloseCode`) and whether it is reading (`isPaused`), and the `url`, `protocols` and `headers` it opened with, the ticket
 included.
 

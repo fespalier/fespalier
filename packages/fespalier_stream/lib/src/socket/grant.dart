@@ -33,3 +33,20 @@ final class SocketGrant {
 /// it wait (`LiveWaiting` with `failed`, or `unavailable` for a `TransportStatusError` 408, 429 or
 /// 5xx) for its next reconnect.
 typedef SocketGrantor = Future<SocketGrant> Function(Uri url);
+
+/// [base] with [over] added, a header name compared without regard to case, the later one winning
+/// (with its own spelling): `accept` in [over] replaces `Accept` in [base], never sits beside it.
+Map<String, String> mergeHeaders(
+  Map<String, String> base,
+  Map<String, String> over,
+) {
+  final byName = <String, MapEntry<String, String>>{};
+  for (final entries in <Map<String, String>>[base, over]) {
+    for (final entry in entries.entries) {
+      byName[entry.key.toLowerCase()] = entry;
+    }
+  }
+  return <String, String>{
+    for (final entry in byName.values) entry.key: entry.value,
+  };
+}

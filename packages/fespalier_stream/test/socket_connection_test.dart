@@ -72,7 +72,7 @@ void main() {
 
   SocketConnection make({
     SocketGrantor? grant,
-    FutureOr<void> Function(StreamSocket socket)? onOpen,
+    FutureOr<void> Function(SocketSender socket)? onOpen,
   }) => SocketConnection(
     connector,
     url,
@@ -206,9 +206,9 @@ void main() {
   );
 
   final drops = <int?, LiveDrop>{
-    null: LiveDrop.ended,
     1000: LiveDrop.ended,
     1001: LiveDrop.ended,
+    1005: LiveDrop.ended,
     1012: LiveDrop.unavailable,
     1013: LiveDrop.unavailable,
     1014: LiveDrop.unavailable,
@@ -585,4 +585,202 @@ void main() {
       sub.close();
     },
   );
+
+  test(
+    'a close frame with no code is 1005 and an orderly close, as dart:io reports it',
+    () async {
+      final seen = Seen(connection.events);
+      await settle();
+      connector.current.closeFromPeer(null);
+      await settle();
+      final waiting = connection.status as LiveWaiting;
+      expect(waiting.drop, LiveDrop.ended);
+      expect(connection.lastCloseCode, 1005);
+      expect(seen.errors, isEmpty);
+      await seen.subscription.cancel();
+    },
+  );
+
+  test('a SocketClosed with a null code is read as 1005 too', () async {
+    final seen = Seen(connection.events);
+    await settle();
+    connector.current.drop(const SocketClosed(null));
+    await settle();
+    expect((connection.status as LiveWaiting).drop, LiveDrop.ended);
+    expect(connection.lastCloseCode, 1005);
+    await seen.subscription.cancel();
+  });
+
+  test('onOpen is given a view that sends and cannot listen', () async {
+    SocketSender? given;
+    connection = make(
+      onOpen: (socket) {
+        given = socket;
+        socket.sendText('hello');
+        socket.sendBytes(Uint8List.fromList([1]));
+      },
+    );
+    final seen = Seen(connection.events);
+    await settle();
+    expect(given, isNotNull);
+    expect(given, isNot(isA<StreamSocket>()));
+    expect(given!.protocol, '');
+    expect(connector.current.sentTexts, ['hello']);
+    // The connection kept the messages: it reads them, and sees the close.
+    connector.current.text('a');
+    await settle();
+    expect(seen.messages, ['a']);
+    connector.current.closeFromPeer(1001);
+    await settle();
+    expect((connection.status as LiveWaiting).drop, LiveDrop.ended);
+    await seen.subscription.cancel();
+  });
+
+  test(
+    'an onOpen that sends after the peer closed waits, it does not end',
+    () async {
+      final gate = Completer<void>();
+      connection = make(
+        onOpen: (socket) async {
+          await gate.future;
+          socket.sendText('join');
+        },
+      );
+      final seen = Seen(connection.events);
+      await settle();
+      connector.current.closeFromPeer(1001);
+      gate.complete();
+      await settle();
+      expect(connection.status, isA<LiveWaiting>());
+      expect((connection.status as LiveWaiting).drop, LiveDrop.failed);
+      expect(seen.errors, isEmpty);
+      expect(seen.done, isFalse);
+      await seen.subscription.cancel();
+    },
+  );
+
+  test(
+    'the fake socket throws the Exception a real one throws once closed',
+    () async {
+      final seen = Seen(connection.events);
+      await settle();
+      final socket = connector.current..closeFromPeer(1000);
+      expect(
+        () => socket.sendText('x'),
+        throwsA(isA<WebSocketConnectionClosed>()),
+      );
+      expect(() => socket.sendBytes(Uint8List(1)), throwsA(isA<Exception>()));
+      expect(
+        () => connection.send(const SocketText('x')),
+        throwsStateError,
+        reason: 'the connection says it once, whatever the socket threw',
+      );
+      await seen.subscription.cancel();
+    },
+  );
+
+  test('the protocols offered are deduplicated, in order', () async {
+    connection = SocketConnection(
+      connector,
+      url,
+      grantor: (asked) async =>
+          SocketGrant(asked, protocols: const ['v2', 'v1', 'v3', 'v2']),
+      protocols: const ['v1', 'v1', 'v0'],
+    );
+    final seen = Seen(connection.events);
+    await settle();
+    expect(connector.current.protocols, ['v1', 'v0', 'v2', 'v3']);
+    await seen.subscription.cancel();
+  });
+
+  test('a grant header replaces the connection header of any case', () async {
+    connection = SocketConnection(
+      connector,
+      url,
+      grantor: (asked) async =>
+          SocketGrant(asked, headers: const {'x-app': 'grant', 'X-Other': 'o'}),
+      headers: const {'X-App': 'connection', 'X-Keep': 'k'},
+    );
+    final seen = Seen(connection.events);
+    await settle();
+    expect(connector.current.headers, {
+      'X-Keep': 'k',
+      'x-app': 'grant',
+      'X-Other': 'o',
+    });
+    await seen.subscription.cancel();
+  });
+
+  group('a connection is single-use', () {
+    test('events after a listen is a StateError that says so', () async {
+      final seen = Seen(connection.events);
+      await settle();
+      expect(
+        () => connection.events,
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('single-use'), contains("feed's builder")),
+          ),
+        ),
+      );
+      await seen.subscription.cancel();
+    });
+
+    test('events after a close is one too', () async {
+      await connection.close();
+      expect(() => connection.events, throwsStateError);
+    });
+
+    test(
+      'closed by the listener leaving, it cannot be listened to again',
+      () async {
+        final seen = Seen(connection.events);
+        await settle();
+        await seen.subscription.cancel();
+        expect(connection.status, const LiveDone(LiveEnd.closed));
+        expect(() => connection.events, throwsStateError);
+      },
+    );
+  });
+
+  group('a SocketHandle', () {
+    test(
+      'reaches the connection that is current, and forgets a closed one',
+      () async {
+        final handle = SocketHandle();
+        expect(handle.connection, isNull);
+        expect(handle.isOpen, isFalse);
+        expect(
+          () => handle.send(const SocketText('x')),
+          throwsA(isA<StateError>()),
+        );
+        final first = connection;
+        final forgetFirst = handle.attach(first);
+        final seen = Seen(first.events);
+        await settle();
+        expect(handle.connection, same(first));
+        expect(handle.isOpen, isTrue);
+        handle.send(const SocketText('one'));
+        expect(connector.current.sentTexts, ['subscribe', 'one']);
+
+        // A rebuild: the second connection is attached before the first is forgotten.
+        final second = make();
+        handle.attach(second);
+        forgetFirst();
+        expect(
+          handle.connection,
+          same(second),
+          reason: 'the late forget is a no-op',
+        );
+        expect(handle.isOpen, isFalse, reason: 'it is not open yet');
+        expect(
+          () => handle.send(const SocketText('two')),
+          throwsA(isA<StateError>()),
+        );
+        await seen.subscription.cancel();
+      },
+    );
+  });
 }

@@ -3,6 +3,7 @@
 // never reaches a toString, an error's text or telemetry. The chain through fespalier_auth's real
 // SessionTransport is fespalier_auth's test/socket_ticket_chain_test.dart.
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
@@ -157,6 +158,104 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+
+  /// A transport that answers [status] with a body stream the test controls, and notes whether
+  /// the request was aborted and whether anybody listened to the body.
+  ({
+    FakeTransport transport,
+    StreamController<List<int>> body,
+    List<bool> aborted,
+  })
+  streaming(int status, {Map<String, String> headers = const {}}) {
+    final body = StreamController<List<int>>();
+    final aborted = <bool>[];
+    final transport = FakeTransport((request, _) {
+      unawaited(request.abortTrigger?.then((_) => aborted.add(true)));
+      return TransportResponse(
+        statusCode: status,
+        headers: headers,
+        body: body.stream,
+      );
+    });
+    return (transport: transport, body: body, aborted: aborted);
+  }
+
+  for (final status in [302, 400, 403, 408, 500]) {
+    test('$status: its body is never read, the request is aborted', () async {
+      final answer = streaming(status);
+      answer.body.add(utf8.encode('a page of secret detail'));
+      Object? thrown;
+      try {
+        await ticketGrantor(answer.transport, endpoint)(socketUrl);
+      } on Object catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isNotNull);
+      await settle();
+      expect(answer.body.hasListener, isFalse);
+      expect(answer.aborted, [true]);
+      if (thrown case TransportStatusError(:final body)) {
+        expect(body, isEmpty);
+      }
+      expect('$thrown', isNot(contains('secret')));
+      unawaited(answer.body.close());
+    });
+  }
+
+  test(
+    'a 2xx body is capped at 16 KiB: more is a FormatException that quotes nothing',
+    () async {
+      final answer = streaming(200, headers: {'content-type': 'text/plain'});
+      final chunk = List<int>.filled(8 * 1024, 0x61);
+      answer.body
+        ..add(chunk)
+        ..add(chunk)
+        ..add(<int>[0x62]);
+      Object? thrown;
+      try {
+        await ticketGrantor(answer.transport, endpoint)(socketUrl);
+      } on Object catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<FormatException>());
+      expect('$thrown', isNot(contains('aaa')));
+      await settle();
+      expect(answer.aborted, [true], reason: 'the rest is not waited for');
+      expect(answer.body.hasListener, isFalse);
+      unawaited(answer.body.close());
+    },
+  );
+
+  test('a ticket that fills the cap exactly is read', () async {
+    final answer = streaming(200, headers: {'content-type': 'text/plain'});
+    answer.body
+      ..add(List<int>.filled(8 * 1024, 0x61))
+      ..add(List<int>.filled(8 * 1024, 0x61));
+    unawaited(answer.body.close());
+    final grant = await ticketGrantor(answer.transport, endpoint)(socketUrl);
+    expect(grant.url.queryParameters['ticket'], hasLength(16 * 1024));
+    expect(answer.aborted, isEmpty);
+  });
+
+  test(
+    'a caller header replaces Accept of any case, it does not sit beside it',
+    () async {
+      final transport = FakeTransport(
+        (request, body) => fakeResponse(
+          200,
+          body: 'tk',
+          headers: {'content-type': 'text/plain'},
+        ),
+      );
+      await ticketGrantor(
+        transport,
+        endpoint,
+        headers: {'accept': 'text/plain', 'X-Purpose': 'socket'},
+      )(socketUrl);
+      final headers = transport.requests.single.headers;
+      expect(headers, {'accept': 'text/plain', 'X-Purpose': 'socket'});
+    },
+  );
 
   group('in a SocketConnection', () {
     late FakeSocketConnector connector;

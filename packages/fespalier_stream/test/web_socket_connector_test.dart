@@ -12,6 +12,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier/testing.dart';
 import 'package:fespalier_stream/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -203,4 +205,69 @@ void main() {
     expect(peer.received, contains('ping'));
     await sub.cancel();
   });
+
+  test(
+    'a close frame with no code reaches the connector as SocketClosed(1005)',
+    () async {
+      final raw = await connector.connect(at('/chat'));
+      final rawPeer = await peers.stream.first;
+      final iterator = StreamIterator<SocketMessage>(raw.messages);
+      await rawPeer.socket.close(); // a close frame that carries no code
+      await expectLater(
+        iterator.moveNext(),
+        throwsA(isA<SocketClosed>().having((e) => e.code, 'code', 1005)),
+      );
+      await iterator.cancel();
+      await raw.close();
+    },
+  );
+
+  test(
+    'a close with no code is ended with 1005 in the status and in telemetry',
+    () async {
+      final sink = RecordingTelemetry();
+      FespalierTelemetry.install(sink);
+      addTearDown(() => FespalierTelemetry.install(null));
+      final connection = SocketConnection(connector, at('/chat'), name: 'chat');
+      final sub = connection.events.listen((_) {});
+      final peer = await peers.stream.first;
+      await peer.socket.close();
+      await connection.statusChanges.firstWhere((s) => s is LiveWaiting);
+      expect((connection.status as LiveWaiting).drop, LiveDrop.ended);
+      expect(connection.lastCloseCode, 1005);
+      final closes = sink.log.where((l) => l.contains('close_code'));
+      expect(closes, hasLength(1));
+      expect(
+        closes.single,
+        allOf(contains('close_code=1005'), contains('reason=ended')),
+      );
+      await sub.cancel();
+    },
+  );
+
+  test(
+    'an onOpen that sends after the peer closed waits, it does not end',
+    () async {
+      final gate = Completer<void>();
+      final connection = SocketConnection(
+        connector,
+        at('/chat'),
+        onOpen: (socket) async {
+          await gate.future;
+          socket.sendText('join');
+        },
+      );
+      final errors = <Object>[];
+      final sub = connection.events.listen((_) {}, onError: errors.add);
+      final peer = await peers.stream.first;
+      await peer.socket.close(1001);
+      // Let the client see the close frame, then let onOpen go on.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      gate.complete();
+      await connection.statusChanges.firstWhere((s) => s is LiveWaiting);
+      expect((connection.status as LiveWaiting).drop, LiveDrop.failed);
+      expect(errors, isEmpty);
+      await sub.cancel();
+    },
+  );
 }

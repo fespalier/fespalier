@@ -82,7 +82,9 @@ Future<List<Order>> data(Ref ref) {
 - WebSockets (since 0.25.0) are `package:fespalier_stream/web_socket.dart`, a library of its own (the main one imports no
   `package:web_socket`): `SocketConnection` is a WebSocket as a `LiveConnection<SocketMessage>`, so a `LiveFeed` or
   `ChangeFeed.live` holds it with the same rules (a close waits for a signal or the tick, a pause buffers until the tick closes
-  it, `onOpen` sends the subscribe messages again on every open, `send` while open). `WebSocketConnector` opens it with
+  it, `onOpen` sends the subscribe messages again on every open through a send-only `SocketSender`, `send` while open). A connection
+  is single-use: make it in the feed's builder, and send through a `SocketHandle` the builder attaches it to.
+  `WebSocketConnector` opens it with
   `package:web_socket` (headers natively only); its credential is a grant fetched before each connect, usually
   `ticketGrantor(transport, endpoint)`, a `POST` through the app's chain whose single-use ticket goes in the URL. Telemetry adds
   `fespalier.stream.kind` `websocket` and `fespalier.stream.close_code`.

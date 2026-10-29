@@ -68,7 +68,7 @@ void main() {
   });
 
   test(
-    'only the connector files import package:web_socket, and dart:io only in its io one',
+    'only the connector files and the socket library import package:web_socket, and dart:io only in its io one',
     () {
       final files = Directory('lib')
           .listSync(recursive: true)
@@ -84,6 +84,8 @@ void main() {
         if (uris.contains('dart:io')) io.add(local(file.absolute.path));
       }
       expect(webSocket, {
+        // It re-exports the two exceptions a socket throws, so an app imports no web_socket.
+        'lib/web_socket.dart',
         'lib/src/socket/web_socket_connector.dart',
         'lib/src/socket/web_socket_open.dart',
         'lib/src/socket/web_socket_open_io.dart',

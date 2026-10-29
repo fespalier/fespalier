@@ -618,16 +618,24 @@ refusal.
 ### Gaps
 
 A connection that opens again **without resuming** has missed whatever the server sent meanwhile: a server that sends no `id:`
-(CrateStack's `@@subscribe` sends none), one that forgot the ID it was given, or a feed that was rebuilt. So a live change feed
-treats `LiveOpen(resumed: false)` on a request made after an earlier open as a **gap**: it starts a new log, and **every watched
-key moves once, at that moment**, without waiting for an event (`changes.any` moves by one). Each `data.dart` that watches a
+(CrateStack's `@@subscribe` sends none), or a feed that was rebuilt (which forgets its ID). So a live change feed
+treats `LiveOpen(resumed: false)` on a request made after an earlier open, or after failed tries (below), as a **gap**: it starts a
+new log, and **every watched key moves once, at that moment**, without waiting for an event (`changes.any` moves by one). Each `data.dart` that watches a
 topic reloads, which is the only safe answer to "something may have changed". A reopen that resumed (`LiveOpen(resumed: true)`,
 the request carried `Last-Event-ID`) moves nothing: the server sends what was missed, and those events move their keys as usual.
 After a gap the new log numbers from 1 again (`Change.seq`).
 
+`resumed` only says that the request **carried** an ID: the feed cannot tell that a server ignored it. A server that cannot honour
+`Last-Event-ID` (it keeps no history, or its IDs restart with the process) must not send `id:` at all, or must clear the ID with an
+empty `id:` line before it ends a stream; the next request then carries none, and that open is a gap.
+
 The rule reads the statuses of the connection: a request is a `LiveConnecting`, so the `LiveOpen` that only ends a pause is not
 a reopen and moves nothing. A key watched for the first time after a gap starts from there, and a key that was paused during a
-gap moves once when it is shown again. The first open of the feed is no gap: there is nothing before it to have missed.
+gap moves once when it is shown again. The first open of the feed is no gap when the first request opens it. An open that follows
+failed tries (a `LiveConnecting` with `attempt` above 1 or a `LiveWaiting` before any open: a 503, a timeout, a network error) is a
+gap even if it is the first open, because the server may have sent events while the connection was failing: every watched key
+moves once at that open. The same holds for a key watched after the gap: it counts from the log it first sees, even when only
+`changes.latest` (a "live updates stopped" banner) stayed watched while the gap happened.
 
 ## Servers and proxies
 

@@ -125,7 +125,7 @@ the `name` given to `ServerEvents`. Root spans, constants only: never a URL, a h
 `fespalier-observability`.
 
 A server that says only what changed is a change feed over a live connection, `ChangeFeed.live` (since 0.25.0): topics that
-move only for the keys an event concerns, and a gap (a reopen that cannot resume) that moves every watched key once. See
+move only for the keys an event concerns, and a gap (a reopen that cannot resume, or an open that follows failed tries) that moves every watched key once. See
 [`change-feeds.md`](change-feeds.md).
 
 ## Testing

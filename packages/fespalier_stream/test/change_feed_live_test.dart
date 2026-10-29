@@ -341,6 +341,77 @@ void main() {
     first.close();
   });
 
+  test(
+    'a key watched after a gap starts from there when only latest stayed watched',
+    () async {
+      // A banner watches latest all the time ("live updates stopped"), so the connection keeps
+      // reading, while the keep-alive log provider has no listener and holds the new log back.
+      final banner = container.listen(feed.latest, (_, _) {});
+      final page = container.listen(
+        feed.topic<String>((e, k) => e == k)('a'),
+        (_, _) {},
+      );
+      await settle();
+      server.current.event('a');
+      await settle();
+      page.close();
+      await settle();
+      server.current.drop();
+      await settle();
+      ticker().tick();
+      await settle();
+      expect(server.requests, hasLength(2));
+      final seen = <int>[];
+      final again = container.listen(
+        feed.topic<String>((e, k) => e == k)('b'),
+        (_, next) => seen.add(next),
+      );
+      await settle();
+      expect(seen, isEmpty, reason: 'the gap is older than this watcher');
+      // The next event of the new log moves its key as usual.
+      server.current.event('b');
+      await settle();
+      expect(seen, [1]);
+      again.close();
+      banner.close();
+    },
+  );
+
+  test(
+    'the first open after failed tries is a gap: what was sent meanwhile is lost',
+    () async {
+      server.respond(503);
+      final subs = watch();
+      await settle();
+      expect(server.requests, hasLength(1));
+      expect(moves, isEmpty);
+      ticker().tick();
+      await settle();
+      expect(server.requests, hasLength(2));
+      expect(server.current.isOpen, isTrue);
+      expect(moves, {
+        'a': [1],
+        'b': [1],
+        'c': [1],
+      });
+      expect(anyMoves, [1]);
+      for (final sub in subs) {
+        sub.close();
+      }
+    },
+  );
+
+  test('the first open at the first try is no gap', () async {
+    final subs = watch();
+    await settle();
+    expect(server.requests, hasLength(1));
+    expect(moves, isEmpty);
+    expect(anyMoves, isEmpty);
+    for (final sub in subs) {
+      sub.close();
+    }
+  });
+
   test('a refusal is the error of latest and moves no key', () async {
     server.respond(403);
     final subs = watch();

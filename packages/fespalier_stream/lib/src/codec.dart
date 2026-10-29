@@ -29,6 +29,11 @@ final class UnknownChange implements Exception {
 final class DecodeReport {
   /// A report under [operation], whose end carries [resultAttribute] (`unknown` or `error`) and
   /// [skippedAttribute] (the count).
+  ///
+  /// This constructor exists for companion packages that keep names of their own (fespalier_frb's
+  /// `ChangeCodec` reports `fespalier.frb.decode`); an app uses [DecodeReport.stream], the
+  /// default. It is not marked `@internal`, because another package could not then use it
+  /// without an analyzer warning.
   const DecodeReport({
     required this.operation,
     required this.resultAttribute,

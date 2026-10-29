@@ -656,7 +656,11 @@ final orderUpdated = serverChanges.topic<int>(
 - **A gap moves every key once.** A reopen that cannot resume (`LiveOpen(resumed: false)` after an earlier open: the server
   sends no `id:`, as CrateStack's `@@subscribe` does not, or the feed was rebuilt by a provider `connect` watches) has missed
   what was sent meanwhile, so the feed starts a new log and every watched key moves once at that moment, with no event
-  (`any` moves by one). A reopen that resumed moves nothing. A pause that ends without a new request is not a reopen.
+  (`any` moves by one). An open that follows failed tries (a 503, a timeout: `LiveConnecting` with `attempt` above 1, or a
+  `LiveWaiting`, before any open) is a gap too, even the first open. A reopen that resumed moves nothing. A pause that ends
+  without a new request is not a reopen. `resumed` only says the request carried `Last-Event-ID`: the feed cannot tell that a
+  server ignored it, so a server that cannot honour the ID must send no `id:` (or clear it with an empty `id:` line before it
+  ends a stream). A key watched after a gap counts from there, even when only `latest` stayed watched.
 - **No `status`.** `ChangeFeed.live` exposes `latest` and the topics; a banner watches
   `serverChanges.latest.select((v) => v.hasError)`.
 

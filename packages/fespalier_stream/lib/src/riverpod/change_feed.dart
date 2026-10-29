@@ -105,6 +105,7 @@ final class ChangeFeed<E> {
   ChangeFeed(Stream<E> Function(Ref ref) open, {String? name})
     : _name = name,
       _logs = null,
+      _currentLog = null,
       latest = StreamProvider<Change<E>>(
         (ref) {
           var seq = 0;
@@ -141,11 +142,16 @@ final class ChangeFeed<E> {
   /// provider that changed) opens a new connection, with no ID. A refusal ends [latest] with it.
   ///
   /// **A gap moves every topic.** When the connection opens again without resuming
-  /// (`LiveOpen(resumed: false)` after an earlier open: the server has no event IDs, or forgot
-  /// the one it was given, or the feed was rebuilt), the events sent meanwhile are lost, so the
-  /// feed starts a new log and every key watched moves once at that moment, without waiting for
-  /// an event; [any] moves by one. A reopen that resumed (`LiveOpen(resumed: true)`) moves
-  /// nothing: the server sends what was missed.
+  /// (`LiveOpen(resumed: false)` after an earlier open: the server sends no event IDs, or the
+  /// feed was rebuilt), the events sent meanwhile are lost, so the feed starts a new log and
+  /// every key watched moves once at that moment, without waiting for an event; [any] moves by
+  /// one. An open that follows failed tries (a 503, a timeout or a network error, before any open)
+  /// is a gap too, even the first open: the server may have said something while the connection
+  /// was failing. A reopen that resumed (`LiveOpen(resumed: true)`, the
+  /// request carried `Last-Event-ID`) moves nothing: the server sends what was missed. The
+  /// feed cannot tell that a server ignored the ID it was given, so a server that cannot honour
+  /// `Last-Event-ID` must send no `id:` (or clear it with an empty `id:` line before it ends a
+  /// stream), which makes every reopen a gap.
   factory ChangeFeed.live(
     LiveConnection<E> Function(Ref ref, String? lastEventId) connect, {
     LiveRules rules = const LiveRules(),
@@ -176,15 +182,19 @@ final class ChangeFeed<E> {
       name: name == null ? null : '$name.logs',
       retry: (_, _) => null,
     );
-    return ChangeFeed<E>._(latest, logs, name);
+    return ChangeFeed<E>._(latest, logs, name, (ref) => ref.read(held)._log);
   }
 
-  ChangeFeed._(this.latest, this._logs, this._name);
+  ChangeFeed._(this.latest, this._logs, this._name, [this._currentLog]);
 
   final String? _name;
 
   /// A live feed's current log, which a gap replaces; null for a feed over a plain stream.
   final ProviderListenable<AsyncValue<_ChangeLog<E>>>? _logs;
+
+  /// Reads the log a live feed holds now (not the one its paused `logs` provider last handed
+  /// out), for a topic's first build; null for a feed over a plain stream.
+  final _ChangeLog<E> Function(Ref ref)? _currentLog;
 
   /// The one subscription: the last change, numbered, as an `AsyncValue` (loading until the first
   /// event, an error when the stream fails, or when a live connection is refused). Never
@@ -204,6 +214,7 @@ final class ChangeFeed<E> {
     latest,
     matches,
     logs: _logs,
+    currentLog: _currentLog,
     countAll: false,
     tick: budget?.tick,
     name: name ?? (_name == null ? null : '$_name.topic'),
@@ -216,6 +227,7 @@ final class ChangeFeed<E> {
     latest,
     (_, _) => true,
     logs: _logs,
+    currentLog: _currentLog,
     countAll: true,
     name: _name == null ? null : '$_name.any',
   )(null);
@@ -244,13 +256,21 @@ final class ChangeTopic<E, K> {
     StreamProvider<Change<E>> latest,
     bool Function(E event, K key) matches, {
     required ProviderListenable<AsyncValue<_ChangeLog<E>>>? logs,
+    required _ChangeLog<E> Function(Ref ref)? currentLog,
     required bool countAll,
     ProviderListenable<Object?>? tick,
     String? name,
   }) : _revisionOf = NotifierProvider.autoDispose
            .family<_Revision<E, K>, int, K>(
-             (key) =>
-                 _Revision<E, K>(latest, logs, matches, key, countAll, tick),
+             (key) => _Revision<E, K>(
+               latest,
+               logs,
+               currentLog,
+               matches,
+               key,
+               countAll,
+               tick,
+             ),
              name: name,
            )
            .call;
@@ -336,6 +356,7 @@ class _Revision<E, K> extends Notifier<int> {
   _Revision(
     this._latest,
     this._logs,
+    this._currentLog,
     this._matches,
     this._key,
     this._countAll,
@@ -346,6 +367,9 @@ class _Revision<E, K> extends Notifier<int> {
 
   /// A live feed's current log, or null for a feed over a plain stream.
   final ProviderListenable<AsyncValue<_ChangeLog<E>>>? _logs;
+
+  /// Reads the live feed's current log without watching it.
+  final _ChangeLog<E> Function(Ref ref)? _currentLog;
   final bool Function(E event, K key) _matches;
   final K _key;
   final bool _countAll;
@@ -385,7 +409,17 @@ class _Revision<E, K> extends Notifier<int> {
     final tick = _tick;
     if (tick != null) ref.watch(tick.select(_onTick));
     final logs = _logs;
-    if (logs != null) ref.watch(logs.select(_onLog));
+    if (logs != null) {
+      if (!_logSeen) {
+        // The first build: a gap older than the watcher is history. The log is read from the
+        // holder, not taken from `logs`: that provider may have been paused with nothing
+        // listening (only `latest` stayed watched), and then it hands out the log from before
+        // the gap first and the current one after it.
+        _logSeen = true;
+        _lastLog = _currentLog!(ref);
+      }
+      ref.watch(logs.select(_onLog));
+    }
     ref.watch(_latest.select(_observe));
     return _revision;
   }
@@ -396,13 +430,9 @@ class _Revision<E, K> extends Notifier<int> {
   int _onLog(AsyncValue<_ChangeLog<E>> value) {
     final log = value.value;
     if (log == null) return _revision;
-    if (!_logSeen) {
-      // The first watch: a gap older than the watcher is history.
-      _logSeen = true;
-      _lastLog = log;
-      return _revision;
-    }
-    if (identical(log, _lastLog)) return _revision;
+    final last = _lastLog;
+    // The log this key started from, or one from before it (a paused provider's buffer).
+    if (last != null && log.epoch <= last.epoch) return _revision;
     _lastLog = log;
     final known = _log;
     if (known != null && log.epoch <= known.epoch) return _revision;
@@ -518,6 +548,10 @@ final class _LiveChanges<E> {
   /// a pause, not a request, is the same connection read again.
   bool _requested = false;
 
+  /// Whether a try failed before the first open: that open is a gap too, because the server may
+  /// have sent events while the connection was failing.
+  bool _failedBeforeOpen = false;
+
   /// The current log, for each topic's [_Revision._onLog].
   late final _Hub<_ChangeLog<E>> logs;
 
@@ -528,8 +562,8 @@ final class _LiveChanges<E> {
     return change;
   }
 
-  /// Starts a new log at each request that opened without resuming, after the first open, while
-  /// [isCurrent] says [connection] is the feed's. A request is a [LiveConnecting] (each try of a
+  /// Starts a new log at each request that opened without resuming, after the first open or after
+  /// failed tries before it, while [isCurrent] says [connection] is the feed's. A request is a [LiveConnecting] (each try of a
   /// connection says it), so a [LiveOpen] that only ends a pause is not one. The `await for` is
   /// the subscription, and it ends with the connection (its statuses end at `LiveDone`).
   Future<void> followGaps(
@@ -539,10 +573,13 @@ final class _LiveChanges<E> {
     await for (final status in connection.statusChanges) {
       if (!isCurrent()) return;
       switch (status) {
-        case LiveConnecting():
+        case LiveConnecting(:final attempt):
           _requested = true;
+          if (!_opened && attempt > 1) _failedBeforeOpen = true;
+        case LiveWaiting():
+          if (!_opened) _failedBeforeOpen = true;
         case LiveOpen(:final resumed) when _requested:
-          if (_opened && !resumed) {
+          if ((_opened || _failedBeforeOpen) && !resumed) {
             _log = _ChangeLog<E>(_log.epoch + 1);
             _seq = 0;
             logs._set(_log);

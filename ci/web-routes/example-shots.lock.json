@@ -109,6 +109,20 @@
       "png": "bc82895dbfc4cc08a1725ac0052365c3c9177858c214adc4280c6e17674cbcf8"
     }
   },
+  "live": {
+    "chat.png": {
+      "spec": "df7df7143c9ab0a03e7718d04692fc6eff146326ca7faf811e95da1f7d205f30",
+      "png": "f03a8c56d574db2d3060b016bf48157063f37d5eda337cf97a1bcf350aed2fc5"
+    },
+    "inbox.png": {
+      "spec": "631335fe37e3990cee91a2ea845edc08a35877e16128b641b7c26eef2170f3f4",
+      "png": "f0ab9476246f5f8451627188a5bd056032b202da39b06a72aa494bee47303de3"
+    },
+    "order.png": {
+      "spec": "d5cad5b8c0a636db33a72bc65189036d1ab26ebaa3bacb63df34240ed8c4ddb5",
+      "png": "628c8c011e24c0586ee02fbcaddd3cee3aa3ae7ea94286f191c7cde9d7ecda6c"
+    }
+  },
   "maps": {
     "home.png": {
       "spec": "9f00c3687dddc21e0bedd5793fe190cae2e6c247b4d81fdcb9f31f7c45cbcda1",

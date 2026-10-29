@@ -8,6 +8,10 @@ exactly the providers an event concerns, and a [WebSocket](#websockets) is a liv
 fetched through your transport. It starts no timer, no backoff and no retry of its own: whatever waits, waits for something your
 app does.
 
+[`examples/live`](examples.md#live) shows each of them in an app: an order followed by events, an inbox kept current by a live
+change feed, an answer streamed by an action, and a WebSocket chat signed in with a ticket, on an in-process demo server or on a
+`dart:io` server you run for a test on a phone or in Safari.
+
 ## What streams, and where
 
 | Where                                                               | What it is                                                                                                                         | Read                                                            |
@@ -935,7 +939,8 @@ Not built: the browser's `EventSource` (above), an automatic backoff or reconnec
 a WebSocket ping of the package's own, a WebSocket through `HttpTransport`, WebTransport, GraphQL subscriptions, background streaming, `freshness` on a stream, a streaming `form()`, a dashboard
 panel for streams, a scaffold in `fsp create` or `fsp new`, and a `status` on `ChangeFeed.live`.
 
-UNCHECKED, because no CI job can show them:
+UNCHECKED, because no CI job can show them (the [`examples/live`](examples.md#live) app and its `tool/server.dart` are how a
+person checks them: its README has the steps):
 
 - **Devices.** A stream on Android and iOS across background and foreground, Wi-Fi to mobile, airplane mode, resuming with
   `Last-Event-ID`, iOS suspending the socket, Android Doze, a carrier proxy that buffers. Whether the app's timer runs while it is

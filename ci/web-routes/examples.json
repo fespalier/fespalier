@@ -1022,6 +1022,58 @@
           "alt": "The enrolment page a device that is not enrolled gets for /orders: Enrol to see /orders above a Phone number field and a Send code button."
         }
       ]
+    },
+    "live": {
+      "urls": [
+        {
+          "path": "/",
+          "expect": "Order 1: Ceramic mug",
+          "at": "/orders"
+        },
+        {
+          "path": "/orders",
+          "expect": "Order 2: Linen apron"
+        },
+        {
+          "path": "/orders/1",
+          "expect": "Status: placed"
+        },
+        {
+          "path": "/inbox",
+          "expect": "2 messages, read 1 time"
+        },
+        {
+          "path": "/ask",
+          "expect": "Ask the server"
+        },
+        {
+          "path": "/chat",
+          "expect": "Joined lobby as guest-1"
+        }
+      ],
+      "shots": [
+        {
+          "file": "order.png",
+          "path": "/orders/1",
+          "expect": "Status: placed",
+          "title": "`/orders/1`",
+          "alt": "An order followed by server-sent events: a Live banner, Order 1: Ceramic mug, event 1 from the server, Status: placed, and the server's buttons to advance the order or drop the connection."
+        },
+        {
+          "file": "inbox.png",
+          "path": "/inbox",
+          "expect": "2 messages, read 1 time",
+          "title": "`/inbox`",
+          "alt": "The inbox kept current by a live change feed: Billing, Shipping and Returns with their message counts and how many times each was read, and the server's buttons to post a message in each or drop the connection."
+        },
+        {
+          "file": "chat.png",
+          "path": "/chat",
+          "expect": "Joined lobby as guest-1",
+          "title": "`/chat`",
+          "alt": "A WebSocket chat signed in with a ticket: a Live banner, Joined lobby as guest-1, a message field with Send, and the server's buttons to send a message from another phone, close the socket, refuse tickets or accept them."
+        }
+      ]
     }
   }
 }

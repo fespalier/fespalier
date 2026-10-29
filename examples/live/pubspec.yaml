@@ -1,0 +1,52 @@
+name: live
+description: fespalier example — streaming with fespalier_stream. An order followed by server-sent events, an inbox kept current by a live change feed, an answer streamed by an action, and a WebSocket chat signed in with a ticket, on an in-process demo server or on tool/server.dart.
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  fespalier:
+    path: ../../packages/fespalier
+  # reconnectSignal from connectivity_plus: a feed that waits opens again when the network comes back,
+  # without waiting for the tick (lib/app/startup.dart).
+  fespalier_connectivity:
+    path: ../../packages/fespalier_connectivity
+  # Against tool/server.dart (--dart-define=LIVE_ORIGIN=...): DioTransport, with the fetch adapter in a web
+  # build (webStreamingAdapter()), so an event stream arrives as it is written (lib/wiring.dart).
+  fespalier_dio:
+    path: ../../packages/fespalier_dio
+  # The other transport (--dart-define=LIVE_CLIENT=http): HttpClientTransport over http.Client(), which is
+  # BrowserClient in a web build.
+  fespalier_http:
+    path: ../../packages/fespalier_http
+  # The feeds: ServerEvents, LiveFeedFamily, ChangeFeed.live, streamTicker, and (web_socket.dart) the chat's
+  # SocketConnection, SocketHandle and ticketGrantor.
+  fespalier_stream:
+    path: ../../packages/fespalier_stream
+  # HttpTransport: what every request, every event stream and the ticket go through.
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
+  dio: ^5.7.0
+  http: ^1.5.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+# The companions depend on fespalier, fespalier_transport and fespalier_stream by git, as an app does; here they
+# are all the checkout's.
+dependency_overrides:
+  fespalier:
+    path: ../../packages/fespalier
+  fespalier_stream:
+    path: ../../packages/fespalier_stream
+  fespalier_transport:
+    path: ../../packages/fespalier_transport
+
+flutter:
+  uses-material-design: true

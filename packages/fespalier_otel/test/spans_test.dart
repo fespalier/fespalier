@@ -1003,7 +1003,7 @@ void main() {
       controllers[1].add('x');
       await Future<void>.delayed(Duration.zero);
       c.read(draft.notifier).cancel();
-      await stopped;
+      await expectLater(stopped, throwsA(isA<StreamActionCancelled<String>>()));
       final last = exporter
           .findSpansByName('action items/\$id/action.dart#rename')
           .last;

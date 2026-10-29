@@ -663,7 +663,12 @@ Stream<String> draft(Ref ref, {required String input}) =>
 would ask for the answer twice.
 
 The run is one action span (`fespalier.action.items` counts the items), and the request's own spans are its children. Like
-everything on this page, it starts no timer: a stalled stream stays stalled until the user stops it or leaves the page.
+everything on this page, it starts no timer, so a stream that stalls (a server that stops answering and never closes) is not
+ended by fespalier. A run started from the hook stops when the user cancels it or leaves the page; a run started with the
+one-shot helper (`submit`) holds the provider and the connection until the stream ends, so a stall there goes on after the
+page is gone. Give the stream a way out: a timeout on the server (or in the client your function wraps, which turns it into
+an error the state shows), and a "Stop" button on the page (`cancel()`). The `Future` of a stopped run fails with a
+`StreamActionCancelled`, so an `await` never takes the text so far for the whole answer.
 
 ## Servers and proxies
 

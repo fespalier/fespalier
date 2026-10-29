@@ -474,6 +474,9 @@ struct ActionCx {
     /// The state, as the provider's doc says it: `AsyncValue<T?>`, or (since 0.25.0) a stream
     /// action's `StreamActionState<T>`.
     state_doc: &'static str,
+    /// What the provider's doc says after the action's name and file: a stream action's runs end
+    /// in more ways than a success (since 0.25.0).
+    provider_doc: &'static str,
     /// What the one-shot helper's doc says between "once" and "the data it made stale".
     run_doc: &'static str,
     /// What the hook's doc adds after "to run it": nothing, or a stream action's `cancel()`.
@@ -2830,13 +2833,18 @@ fn actions_of(app: &App, r: &Route) -> Vec<ActionCx> {
                 Flow::Future => ("runAction", "watchAction", "Completes with its result, or throws what the action threw"),
                 Flow::FutureOr => ("runActionOr", "watchActionOr", "Returns its result as the action does (a value when the action gave one, else a `Future`), or throws what the action threw"),
                 Flow::Sync => ("runActionSync", "watchActionSync", "Returns its result at once, or throws what the action threw"),
-                Flow::Stream => ("runActionStream", "watchActionStream", "Completes with the last item, or throws what the stream threw"),
+                Flow::Stream => ("runActionStream", "watchActionStream", "Completes with the last item, or throws what the stream threw, or a `StreamActionCancelled` when the run is stopped before the stream ends"),
             };
             let stream = a.flow == Flow::Stream;
+            let provider_doc = if stream {
+                "its state, and what it invalidates when its stream ends, or is stopped or fails after an item."
+            } else {
+                "its state, and what it invalidates after a success."
+            };
             let (state_doc, run_doc, hook_doc) = if stream {
                 (
                     "`StreamActionState<T>`, idle (`StreamIdle`) until it runs, then running with the latest item, then done, failed or cancelled (since 0.25.0).",
-                    " and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled after an item,",
+                    " and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled or failed after an item,",
                     " and `cancel()` to stop it (the run stops too when nothing watches it any more)",
                 )
             } else {
@@ -2892,6 +2900,7 @@ fn actions_of(app: &App, r: &Route) -> Vec<ActionCx> {
                 watch_with,
                 returns,
                 state_doc,
+                provider_doc,
                 run_doc,
                 hook_doc,
                 keyed: keyed_label(&d),

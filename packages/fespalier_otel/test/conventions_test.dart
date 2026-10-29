@@ -231,5 +231,7 @@ void main() {
       [FespalierConventions.resultOk, FespalierConventions.resultError],
       ['ok', 'error'],
     );
+    // A streaming action stopped on purpose (since 0.25.0).
+    expect(FespalierConventions.actionResultCancelled, 'cancelled');
   });
 }

@@ -230,7 +230,7 @@ abstract final class AppRoutes {
 
   // What a hot reload compares in a debug build (since 0.19.0; see `_AppRoutesReload`): a hash of
   // this file, and one of each field a hot reload keeps the first value of.
-  static const String _version = '0db62aacb227cd58';
+  static const String _version = 'b79f4fc76d37fc74';
   static const Map<String, String> _kept = {
     '(router)': '7dcfa259',
     'BrowseRoute.data': '30ba4ab7',
@@ -2766,7 +2766,7 @@ final class NewDocRoute extends TypedLocation {
   /// The state of `draft()` (docs/new/action.dart): `StreamActionState<T>`, idle (`StreamIdle`) until it runs, then running with the latest item, then done, failed or cancelled (since 0.25.0). An action never replaces the page with `error.dart` and is never retried.
   static final draftAction = _actionDocsNew_draft;
 
-  /// Runs `draft()` once and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled after an item, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with the last item, or throws what the stream threw; the error is in the state as well.
+  /// Runs `draft()` once and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled or failed after an item, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. Completes with the last item, or throws what the stream threw, or a `StreamActionCancelled` when the run is stopped before the stream ends; the error is in the state as well.
   static final draft = (WidgetRef ref, {required String input}) => ref.runActionStream(draftAction, input);
 
   /// Watches the state of `draft()` and gives `call(input)` to run it and `cancel()` to stop it (the run stops too when nothing watches it any more), for `build`. A failed run is in `state`, not thrown.
@@ -4026,7 +4026,7 @@ final _actionAccountNickname_action = actionProvider(
   site: 'aAccountNickname_action',
 );
 
-/// `draft()` of docs/new/action.dart: its state, and what it invalidates after a success.
+/// `draft()` of docs/new/action.dart: its state, and what it invalidates when its stream ends, or is stopped or fails after an item.
 final _actionDocsNew_draft = streamActionProvider(
   (Ref ref, String input) => _i37.draft(ref, input: input),
   invalidates: () => const <ProviderListenable<AsyncValue<Object?>>>[],

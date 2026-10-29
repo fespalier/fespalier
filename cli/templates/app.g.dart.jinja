@@ -862,7 +862,7 @@ final {{ l.name }} = {{ l.def }};
 {% for r in routes %}
 {% for a in r.actions %}
 
-/// `{{ a.name }}()` of {{ a.file }}: its state, and what it invalidates after a success.
+/// `{{ a.name }}()` of {{ a.file }}: {{ a.provider_doc }}
 final {{ a.top }} = {{ a.factory }}(
   ({{ a.run_params }}) => {{ a.call }},
 {% if a.key_param %}
@@ -886,7 +886,7 @@ final {{ a.top }} = {{ a.factory }}(
 {% for r in sections %}
 {% for a in r.actions %}
 
-/// `{{ a.name }}()` of {{ a.file }}: its state, and what it invalidates after a success.
+/// `{{ a.name }}()` of {{ a.file }}: {{ a.provider_doc }}
 final {{ a.top }} = {{ a.factory }}(
   ({{ a.run_params }}) => {{ a.call }},
 {% if a.key_param %}

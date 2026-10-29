@@ -87,6 +87,29 @@ void main() {
     expect(find.text('Use draft'), findsOneWidget);
   });
 
+  testWidgets('a stream that fails says so and keeps what arrived', (
+    tester,
+  ) async {
+    final (_, writer) = await boot(tester);
+    await tester.enterText(find.byType(TextField), 'otters');
+    await tester.tap(find.text('Draft'));
+    await tester.pump();
+    expect(find.text('The draft stopped: try again'), findsNothing);
+    writer.runs.single
+      ..add('A short')
+      ..addError(StateError('the model is down'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('The draft stopped: try again'), findsOneWidget);
+    expect(find.text('A short'), findsOneWidget);
+    // A failure is not a refused topic: the field shows no error.
+    expect(find.text('Type what the doc is about first'), findsNothing);
+    // Drafting again clears it.
+    await tester.tap(find.text('Draft'));
+    await tester.pump();
+    expect(find.text('The draft stopped: try again'), findsNothing);
+  });
+
   testWidgets('leaving the page stops the draft', (tester) async {
     final (router, writer) = await boot(tester);
     await tester.enterText(find.byType(TextField), 'otters');

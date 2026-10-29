@@ -201,7 +201,9 @@ await RefundRoute.submit(ref, id: 1, input: input);  // a callback or a test: th
 - **A `Stream<T>` is a streaming action** (since 0.25.0; it was an error before): its state is a
   `StreamActionState<T>` (`StreamIdle`, `StreamRunning`, `StreamDone`, `StreamFailed`,
   `StreamCancelled`, each with `latest` and `count`), the hook adds `cancel()`, the last run wins,
-  the page going away stops it (`submit` holds it to the end), and a `form()`, `steps` or
+  the page going away stops it (`submit` holds it to the end), the `Future` of a stopped run fails
+  with a `StreamActionCancelled` (the hook's `call` returns `null`), a failure after an item
+  invalidates like a stop does, a `Stream<T>?` is an error, and a `form()`, `steps` or
   `optimistic()` beside it is an error.
 
 [`references/actions.md`](references/actions.md) has the rules, the generated members,

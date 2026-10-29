@@ -141,7 +141,8 @@ class Conventions(unittest.TestCase):
         self.assertEqual([], c.attrs["fespalier.image.cdn"])
         self.assertEqual([], c.attrs["fespalier.image.width"])
         self.assertEqual([], c.attrs["fespalier.image.status"])
-        self.assertEqual(["ok", "error"], c.attrs["fespalier.action.result"])
+        # A streaming action stopped on purpose ends `cancelled` (since 0.25.0): not a failure.
+        self.assertEqual(["ok", "error", "cancelled"], c.attrs["fespalier.action.result"])
         self.assertEqual(["ok", "error"], c.attrs["fespalier.deferred.result"])
         self.assertEqual(["true", "false"], c.attrs["fespalier.async"])
         self.assertEqual([], c.attrs["fespalier.route"])
@@ -429,6 +430,24 @@ class Structure(unittest.TestCase):
         # The smoke fails a PromQL target that has no data, so each count must be above zero.
         for name, count in seed_module.Seed(now=1_700_000_000).expected().items():
             self.assertGreater(count, 0, name)
+
+    def test_a_cancelled_action_is_not_a_failure_on_either_backend(self):
+        seed = seed_module.Seed(now=1_700_000_000)
+        cancelled = seed.count(
+            lambda a: a["fespalier.operation"] == "action" and a.get("fespalier.action.result") == "cancelled"
+        )
+        self.assertGreater(cancelled, 0)
+        # The seed's own failure count has no cancelled run in it, nor has OpenObserve's SQL.
+        self.assertEqual(
+            seed.count(lambda a: a["fespalier.operation"] == "action" and a["_error"]),
+            seed.expected()["actions/failures"],
+        )
+        spec = bd.load_spec()
+        self.assertIn("fespalier_action_result = 'error'", spec["macros"]["action_error_sql"])
+        # Grafana takes the failures as the calls minus the ones that are not an error.
+        ok = spec["macros"]["action_ok_sel"]
+        self.assertIn('fespalier_action_result!="error"', ok)
+        self.assertNotIn('="ok"', ok)
 
     def test_the_seed_has_enough_samples_for_every_gate(self):
         seed = seed_module.Seed(now=1_700_000_000)

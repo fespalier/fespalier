@@ -108,6 +108,33 @@ final class StreamCancelled<T> extends StreamActionState<T> {
   final int count;
 }
 
+/// What the `Future` of a streaming action's run fails with when the run was stopped before its
+/// stream ended (since 0.25.0): by `cancel()`, by `reset()`, by a newer run, or because the provider
+/// was disposed.
+///
+/// A `Future` that completed with a partial value would let `final text = await XRoute.draft(...)`
+/// save a truncated text without knowing it. [latest] and [count] say what arrived before the stop,
+/// for a caller that wants to keep it. The page's own state follows the run as [StreamCancelled]; the
+/// hook's `call` never throws this, it completes with `null`.
+///
+/// It is thrown nowhere else, and a run nobody awaits reports nothing. [toString] says the count
+/// only: [latest] can be what the user typed or what a server said.
+final class StreamActionCancelled<T> implements Exception {
+  /// A run stopped after [count] items, the last being [latest].
+  const StreamActionCancelled({this.latest, this.count = 0});
+
+  /// The last item the stream gave before the stop; null when there was none.
+  final T? latest;
+
+  /// How many items the stream gave before the stop.
+  final int count;
+
+  @override
+  String toString() =>
+      'StreamActionCancelled: the run was stopped after $count '
+      '${count == 1 ? 'item' : 'items'}';
+}
+
 /// The provider of one function of an `action.dart` that returns a `Stream<T>` (since 0.25.0): what
 /// the generated `XRoute.action` (or `XRoute.draftAction`, ...) is, called with the action's keys
 /// when it has any. It works without a widget: read `.notifier` from a `ProviderContainer` and call
@@ -137,17 +164,22 @@ final class _Run<T> {
 ///
 /// - `validate()` runs first: an input it refuses never starts the stream.
 /// - The last run wins: a call while a run is in progress stops it ([StreamCancelled]) and starts
-///   the new one.
+///   the new one. The `Future` of a stopped run fails with [StreamActionCancelled], so that an
+///   `await` never takes a partial result for a whole one; a run nobody awaits reports nothing.
 /// - A run lives while something watches the provider: when the provider is disposed (the page
 ///   that watched it went away), the subscription is cancelled, which aborts what the stream was
 ///   reading. A run started with `hold: true` (what the generated `submit` does) keeps the provider
 ///   alive until its stream ends, like a `Future` action.
 /// - The stream is listened to within the action's telemetry span, so a span made while it runs
-///   (an HTTP client's) is its child.
-/// - When the stream ends, and when a run is stopped after at least one item, the data the action
-///   made stale is invalidated (the route's own `data.dart` and the sections' above it, or what
-///   `invalidates` lists), as long as the provider is alive. A failed run invalidates nothing, and
-///   neither does a run stopped because the provider was disposed.
+///   (an HTTP client's) is its child. Only the stream's own body is: what the notifier does with an
+///   item, the end or an error (the state it writes, the listeners that wake, the data it
+///   invalidates) runs in the zone of the call, so a span made there is not the stream's child.
+/// - When the stream ends, and when a run is stopped or fails after at least one item (a partial
+///   write is a write), the data the action made stale is invalidated (the route's own `data.dart`
+///   and the sections' above it, or what `invalidates` lists), as long as the provider is alive. A
+///   run that fails before its first item invalidates nothing, and neither does a run stopped
+///   because the provider was disposed: a run nothing watches any more is not finished by a
+///   write, so use `hold` (what `submit` does) for a write that must finish.
 /// - [FieldErrors] thrown by the stream end it as [StreamFailed], like any error, and stay
 ///   readable there. A stream is never retried.
 ///
@@ -198,14 +230,18 @@ final class StreamActionNotifier<I, T> extends Notifier<StreamActionState<T>> {
 
   /// Runs the action with [input] and listens to its stream. The state follows it: running, with
   /// each item as it comes, then done, failed or cancelled. The `Future` completes with the last
-  /// item (null when there was none) when the stream ends or the run is stopped, or fails with what
-  /// the stream threw. An input `validate()` refuses, and a function that throws before it returns
-  /// its stream, throw here at once, as an `ActionNotifier`'s `call` does.
+  /// item (null when there was none) when the stream ends, fails with what the stream threw, or
+  /// fails with a [StreamActionCancelled] when the run is stopped before its stream ends (by
+  /// [cancel], [reset], a newer call, or the provider's disposal). An input `validate()` refuses,
+  /// and a function that throws before it returns its stream, throw here at once, as an
+  /// `ActionNotifier`'s `call` does; so does a call after the provider was disposed, and one made
+  /// while the widget tree builds (Riverpod refuses the state write), with nothing left running.
   ///
   /// With [hold], the provider stays alive until the stream ends, even when nothing watches it
   /// (a submission that outlives its page); without it, the run stops when the provider is
   /// disposed.
   Future<T?> call(I input, {bool hold = false}) {
+    if (!_alive || !ref.mounted) throw StateError(_calledAfterDispose);
     final number = ++_runs;
     // The last run wins: the one in progress stops, and no longer writes the state.
     final previous = _current;
@@ -223,43 +259,58 @@ final class StreamActionNotifier<I, T> extends Notifier<StreamActionState<T>> {
       _failed(run, errors, StackTrace.current, isAsync: false);
       throw errors;
     }
-    if (hold) run.release = ref.keepAlive().close;
     _current = run;
-    if (_alive && ref.mounted) state = StreamRunning<T>();
     try {
+      if (hold) run.release = ref.keepAlive().close;
+      state = StreamRunning<T>();
       // Within the action's span: the stream's body runs when it is listened to, so a span it
-      // makes (an HTTP client's) is the action's child.
+      // makes (an HTTP client's) is the action's child. What the notifier does with its events
+      // runs in the caller's zone, not in the span's.
+      final caller = Zone.current;
       final subscription = span == null
-          ? _listen(run, input)
-          : telemetryWithin(span, () => _listen(run, input));
+          ? _listen(run, input, caller)
+          : telemetryWithin(span, () => _listen(run, input, caller));
       if (run.ended) {
         subscription.cancel().ignore();
       } else {
         run.subscription = subscription;
       }
     } catch (error, stackTrace) {
-      _failed(run, error, stackTrace, isAsync: false);
+      // Anything that throws here ends the run through the failure path, once: the span, the trace
+      // and the keep-alive link are closed whatever the state write does, and the original error
+      // is the one the caller sees.
+      try {
+        _failed(run, error, stackTrace, isAsync: false);
+      } catch (_) {
+        // The same refusal again (a state write during a build): the run is over either way.
+      }
       rethrow;
     }
     return run.result.future;
   }
 
-  StreamSubscription<T> _listen(_Run<T> run, I input) =>
+  StreamSubscription<T> _listen(_Run<T> run, I input, Zone caller) =>
       _run(ref, input).listen(
-        (item) {
-          if (run.ended) return;
-          run
-            ..latest = item
-            ..count += 1;
-          if (_writes(run)) {
-            state = StreamRunning<T>(latest: item, count: run.count);
-          }
-        },
-        onError: (Object error, StackTrace stackTrace) =>
-            _failed(run, error, stackTrace, isAsync: true),
-        onDone: () => _done(run),
+        (item) => caller.runUnary(_item, (run, item)),
+        onError: (Object error, StackTrace stackTrace) => caller.runBinary(
+          (Object e, StackTrace s) => _failed(run, e, s, isAsync: true),
+          error,
+          stackTrace,
+        ),
+        onDone: () => caller.runUnary(_done, run),
         cancelOnError: true,
       );
+
+  void _item((_Run<T>, T) arrival) {
+    final (run, item) = arrival;
+    if (run.ended) return;
+    run
+      ..latest = item
+      ..count += 1;
+    if (_writes(run)) {
+      state = StreamRunning<T>(latest: item, count: run.count);
+    }
+  }
 
   /// Stops the run in progress: it ends as [StreamCancelled], and, after at least one item, what
   /// the action made stale is invalidated. Nothing happens when no run is in progress.
@@ -329,17 +380,23 @@ final class StreamActionNotifier<I, T> extends Notifier<StreamActionState<T>> {
         items: run.count,
       );
     }
-    if (_writes(run)) {
-      state = StreamFailed<T>(
-        error,
-        stackTrace,
-        latest: run.latest,
-        count: run.count,
-      );
+    try {
+      if (_writes(run)) {
+        state = StreamFailed<T>(
+          error,
+          stackTrace,
+          latest: run.latest,
+          count: run.count,
+        );
+      }
+      // A partial write is a write: after an item, what the action made stale is invalidated, as
+      // when the run is stopped. Before the first item nothing was written.
+      if (run.count > 0 && _alive && ref.mounted) _invalidate();
+    } finally {
+      run.release?.call();
+      // A refusal before the stream started is thrown by `call` itself, not through its Future.
+      if (isAsync) run.result.completeError(error, stackTrace);
     }
-    run.release?.call();
-    // A refusal before the stream started is thrown by `call` itself, not through its Future.
-    if (isAsync) run.result.completeError(error, stackTrace);
   }
 
   /// Stops [run]: its subscription is cancelled (which aborts what the stream was reading), and it
@@ -367,12 +424,18 @@ final class StreamActionNotifier<I, T> extends Notifier<StreamActionState<T>> {
       }
     } finally {
       run.release?.call();
-      run.result.complete(run.latest);
+      // A stop is routine (a newer run, a page that left): a run nobody awaits reports nothing,
+      // and one that is awaited fails, so that a partial result is never taken for a whole one.
+      run.result.future.ignore();
+      run.result.completeError(
+        StreamActionCancelled<T>(latest: run.latest, count: run.count),
+      );
     }
   }
 
   /// The provider is disposed (nothing watches it and no run holds it, or it is rebuilt): the run
-  /// in progress stops. Nothing is written or invalidated: `ref` is not usable here.
+  /// in progress stops. Nothing is written or invalidated: `ref` is not usable here, and a run
+  /// nothing watches any more is not finished by a write (`hold` keeps the provider alive).
   void _disposed() {
     _alive = false;
     final run = _current;
@@ -386,6 +449,12 @@ final class StreamActionNotifier<I, T> extends Notifier<StreamActionState<T>> {
     }
   }
 }
+
+const _calledAfterDispose =
+    'A streaming action was called after its provider was disposed: nothing '
+    'watches it any more, so the run would have no state to report to. Watch '
+    'the action while it runs (`useAction`), or run it with `hold` (what '
+    '`submit` does).';
 
 StateError _notAProvider(Object target) => StateError(
   'A streaming action tried to invalidate `$target`, which is not a provider '
@@ -448,9 +517,12 @@ final class StreamActionHandle<I, T> {
   final StreamActionState<T> state;
 
   /// Runs the action with the input. The run lives while the page watches the action: it stops
-  /// when the page goes away. It completes with the last item, or with `null` when the action
-  /// failed: the error is in [state], so `onPressed: () => draft.call(topic)` needs no `try`.
-  /// (`XRoute.submit` throws instead, and keeps the run alive until its stream ends.)
+  /// when the page goes away. It completes with the last item when the stream ended, or with
+  /// `null` when the action failed or the run was stopped (by [cancel], [reset], a newer call or
+  /// the page going away): the error or the stop is in [state], so `onPressed: () =>
+  /// draft.call(topic)` needs no `try`, and `null` is never a partial result taken for a whole
+  /// one. (`XRoute.submit` throws instead, a [StreamActionCancelled] for a stop, and keeps the
+  /// run alive until its stream ends.)
   ///
   /// Call it from an event handler, not from `build`, and not after the widget is gone.
   final Future<T?> Function(I input) call;
@@ -496,7 +568,8 @@ Future<T?> _quietStream<I, T>(StreamActionNotifier<I, T> notifier, I input) {
 extension StreamActionRef on WidgetRef {
   /// Runs a streaming [action] once with [input], holding it alive until its stream ends, even
   /// when the page goes away: completes with the last item, or fails with what the stream threw
-  /// (the error is in its state as well).
+  /// (the error is in its state as well), or with a [StreamActionCancelled] when a newer run, a
+  /// `cancel()` or a `reset()` stops it before its stream ends.
   Future<T?> runActionStream<I, T>(StreamActionProvider<I, T> action, I input) {
     try {
       return read(action.notifier).call(input, hold: true);

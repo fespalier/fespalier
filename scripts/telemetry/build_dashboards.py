@@ -80,6 +80,7 @@ BOOLEAN_ATTRS = {
 # A constant named `<prefix><Value>` is a value of the attribute on the right; one named
 # `result<Value>` is a value of both result attributes.
 VALUE_OF = {
+    "actionResult": ["fespalier.action.result"],
     "authOp": ["fespalier.auth.operation"],
     "authResult": ["fespalier.auth.result"],
     "authTrigger": ["fespalier.auth.trigger"],
@@ -105,7 +106,7 @@ class Conventions:
         self.event_attrs = set(SEMCONV_EVENT_ATTRS)
         values = {}  # attribute key -> its values, in declaration order
         for name, value in DART_CONST.findall(text):
-            prefix = re.match(r"(authOp|authResult|authTrigger|op|kind|outcome|decision|state|result|source|dataSource)[A-Z]", name)
+            prefix = re.match(r"(actionResult|authOp|authResult|authTrigger|op|kind|outcome|decision|state|result|source|dataSource)[A-Z]", name)
             if name in ("version", "scope", "spanNavigateNotFound"):
                 continue
             if prefix:

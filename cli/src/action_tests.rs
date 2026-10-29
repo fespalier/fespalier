@@ -230,10 +230,15 @@ fn a_stream_is_a_streaming_action_with_its_own_provider_and_helpers() {
             "final _actionOrdersId_track = streamActionFamily(",
             "(Ref ref, int id, int input) => _i1.track(ref, id: id, input: input),",
             "site: 'aOrdersId_track',",
-            // The doc follows the flow: a stream's state is a `StreamActionState`.
+            // The doc follows the flow: a stream's state is a `StreamActionState`, and its provider's
+            // doc says when it invalidates (not "after a success").
+            "/// `track()` of orders/$id/action.dart: its state, and what it invalidates when its stream ends, or is stopped or fails after an item.\n\
+             final _actionOrdersId_track = streamActionFamily(",
+            "/// `later()` of orders/$id/action.dart: its state, and what it invalidates after a success.\n\
+             final _actionOrdersId_later = actionFamily(",
             "`StreamActionState<T>`, idle (`StreamIdle`) until it runs",
-            "and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled after an item, the data it made stale",
-            "Completes with the last item, or throws what the stream threw",
+            "and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled or failed after an item, the data it made stale",
+            "Completes with the last item, or throws what the stream threw, or a `StreamActionCancelled` when the run is stopped before the stream ends",
             "gives `call(input)` to run it and `cancel()` to stop it (the run stops too when nothing watches it any more), for `build`.",
             // The Future beside it is as it always was.
             "final _actionOrdersId_later = actionFamily(",
@@ -257,6 +262,105 @@ fn a_stream_is_a_streaming_action_with_its_own_provider_and_helpers() {
             "static final useAction = (WidgetRef ref) => ref.watchActionStream(action);",
         ],
     );
+}
+
+#[test]
+fn a_stream_is_told_by_what_it_names_through_a_prefix_or_a_typedef() {
+    // Since 0.25.0: the spelling does not decide. All of these are streaming actions.
+    let streams = |body: &'static str| code(&order(&[("orders/$id/action.dart", body)]));
+    let prefixed = streams(
+        "import 'dart:async' as async;\n\
+         async.Stream<String> track(Ref ref, {required int id, required int input}) async* {}",
+    );
+    has(
+        &prefixed,
+        &[
+            "final _actionOrdersId_track = streamActionFamily(",
+            "ref.runActionStream(trackAction(id), input)",
+        ],
+    );
+    let aliased = streams(
+        "typedef Words = Stream<String>;\n\
+         Words track(Ref ref, {required int id, required int input}) async* {}",
+    );
+    has(
+        &aliased,
+        &["final _actionOrdersId_track = streamActionFamily("],
+    );
+    // A typedef of a prefixed Stream, and a typedef of a typedef.
+    let chained = streams(
+        "import 'dart:async' as a;\n\
+         typedef Words = a.Stream<String>;\n\
+         typedef More = Words;\n\
+         More track(Ref ref, {required int id, required int input}) async* {}",
+    );
+    has(
+        &chained,
+        &["final _actionOrdersId_track = streamActionFamily("],
+    );
+    // A typedef that another file of the app declares, through its own import.
+    let c = code(&order(&[
+        (
+            "orders/$id/action.dart",
+            "import 'words.dart';\n\
+             Words track(Ref ref, {required int id, required int input}) async* {}",
+        ),
+        (
+            "orders/$id/words.dart",
+            "import 'dart:async' as async;\ntypedef Words = async.Stream<String>;",
+        ),
+    ]));
+    has(&c, &["final _actionOrdersId_track = streamActionFamily("]);
+    // A prefix that is not dart:async does not make a Stream of it.
+    let other = streams(
+        "import 'package:other/other.dart' as async;\n\
+         async.Stream<String> track(Ref ref, {required int id, required int input}) => x;",
+    );
+    has(&other, &["ref.runActionSync(trackAction(id), input)"]);
+    // A typedef of a Future stays what it was (a plain action): only Stream is told by its name.
+    lacks(
+        &streams(
+            "typedef Saved = Future<String>;\n\
+             Saved track(Ref ref, {required int id, required int input}) async => '';",
+        ),
+        &["streamActionFamily("],
+    );
+}
+
+#[test]
+fn a_nullable_stream_is_an_error() {
+    let message = |name: &str, ty: &str| {
+        format!(
+            "{name}() returns `{ty}`, and a streaming action never returns null: return a `Stream<T>`, an empty one (`const Stream.empty()`) for no items"
+        )
+    };
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "Stream<String>? track(Ref ref, {required int id, required int input}) => null;",
+    )]));
+    assert!(e.contains(&message("track", "Stream<String>?")), "{e}");
+    // Through a prefix and through a typedef, the same.
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "import 'dart:async' as async;\n\
+         async.Stream<String>? track(Ref ref, {required int id, required int input}) => null;",
+    )]));
+    assert!(
+        e.contains(&message("track", "async.Stream<String>?")),
+        "{e}"
+    );
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "typedef Words = Stream<String>;\n\
+         Words? track(Ref ref, {required int id, required int input}) => null;",
+    )]));
+    assert!(e.contains(&message("track", "Words?")), "{e}");
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "typedef Maybe = Stream<String>?;\n\
+         Maybe track(Ref ref, {required int id, required int input}) => null;",
+    )]));
+    assert!(e.contains(&message("track", "Maybe")), "{e}");
 }
 
 #[test]

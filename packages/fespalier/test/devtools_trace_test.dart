@@ -1251,7 +1251,7 @@ void main() {
       controllers[0].add('partial');
       await Future<void>.delayed(Duration.zero);
       c.read(p.notifier).cancel();
-      await first;
+      await expectLater(first, throwsA(isA<StreamActionCancelled<String>>()));
       final second = c.read(p.notifier).call('two');
       controllers[1].addError(StateError('refused'));
       await expectLater(second, throwsStateError);

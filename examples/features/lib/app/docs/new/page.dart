@@ -8,7 +8,8 @@ import 'package:flutter/material.dart';
 /// before the page goes while it is not empty.
 ///
 /// `Draft` runs the streaming action of `action.dart` (since 0.25.0) on what is typed: the text
-/// grows below the field as it comes, `Stop` cancels it, and `Use draft` puts it in the field.
+/// grows below the field as it comes, `Stop` cancels it, `Use draft` puts it in the field, and a
+/// stream that fails says so and keeps the text it had.
 class NewDocPage extends HookConsumerWidget {
   const NewDocPage({super.key});
 
@@ -51,6 +52,9 @@ class NewDocPage extends HookConsumerWidget {
               onPressed: () => draft.call(source.text),
               child: const Text('Draft'),
             ),
+          // A stream that failed (not a refused topic, which the field shows) keeps what it wrote.
+          if (draft.hasError && draft.fieldErrors == null)
+            const Text('The draft stopped: try again'),
           if (drafted != null) ...[
             Text(drafted),
             if (!draft.isPending)

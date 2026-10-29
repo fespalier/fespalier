@@ -537,6 +537,56 @@ impl Libs {
         self.record_from(&from, prefix, name, 0)
     }
 
+    /// Whether the return type `ty` of an `action.dart` function (as written in the tree file `file`,
+    /// holding `src`) names `dart:async`'s `Stream` (since 0.25.0): `Stream<T>`, `async.Stream<T>`
+    /// through the prefix of a `dart:async` import, or a typedef of either in the app's files (or a
+    /// `path:` dependency's) that is not generic. A nullable spelling, `Stream<T>?` or a typedef of
+    /// one, says so, since a streaming action never returns null.
+    pub fn stream_type(&self, file: &str, src: &str, ty: &str) -> StreamType {
+        let from = self.own(file, src);
+        self.stream_from(&from, ty, false, 0)
+    }
+
+    fn stream_from(&self, path: &str, ty: &str, nullable: bool, depth: usize) -> StreamType {
+        let ty = ty.trim();
+        let (ty, here) = match ty.strip_suffix('?') {
+            Some(inner) => (inner.trim_end(), true),
+            None => (ty, false),
+        };
+        let nullable = nullable || here;
+        let written = dart::Ty {
+            text: ty.to_string(),
+            record: None,
+        };
+        let (head, args) = written.generic();
+        let (prefix, name) = split(head);
+        if name == "Stream" && args.len() == 1 {
+            let from_async = match prefix {
+                None => true,
+                Some(p) => self.lib(path).is_some_and(|lib| {
+                    lib.imports()
+                        .iter()
+                        .any(|i| i.prefix.as_deref() == Some(p) && i.uri == "dart:async")
+                }),
+            };
+            return match (from_async, nullable) {
+                (false, _) => StreamType::No,
+                (true, false) => StreamType::Yes,
+                (true, true) => StreamType::Nullable,
+            };
+        }
+        if depth > DEPTH || !args.is_empty() || !is_candidate(head) {
+            return StreamType::No;
+        }
+        let Some(declared) = self.declared(path, prefix, name) else {
+            return StreamType::No;
+        };
+        match declared.alias {
+            Some(alias) => self.stream_from(&declared.decl, &alias, nullable, depth + 1),
+            None => StreamType::No,
+        }
+    }
+
     fn record_from(
         &self,
         path: &str,
@@ -560,6 +610,17 @@ impl Libs {
         let (p, n) = split(&typedef.ty.text);
         self.record_from(&declared.decl, p, n, depth + 1)
     }
+}
+
+/// What [`Libs::stream_type`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamType {
+    /// Not a `Stream<T>`, as far as the files fsp reads say.
+    No,
+    /// A `Stream<T>`.
+    Yes,
+    /// A `Stream<T>?`.
+    Nullable,
 }
 
 /// How deep typedefs are followed: a typedef of a typedef of ..., and a cycle, stop here.

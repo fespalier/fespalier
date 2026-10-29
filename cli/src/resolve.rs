@@ -24,7 +24,7 @@ use heck::{ToLowerCamelCase, ToUpperCamelCase};
 use crate::config::Remount;
 use crate::dart::{self, Class, Function, Lit, Module, Span, Ty};
 use crate::diag::Diags;
-use crate::enums::{self, Libs, Lookup};
+use crate::enums::{self, Libs, Lookup, StreamType};
 use crate::extra::{self, ExtraType};
 use crate::forms::{self, Companion, RecordError};
 use crate::locale::{self, Localized};
@@ -3412,7 +3412,7 @@ impl Resolver<'_> {
                 );
                 self.diags.error(&file, Some(&f.span), msg);
             }
-            let flow = self.action_flow(f, &file);
+            let flow = self.action_flow(f, &file, src);
             let (Some(input), Some(flow)) = (input, flow) else {
                 continue;
             };
@@ -3904,7 +3904,11 @@ impl Resolver<'_> {
     }
 
     /// What an action returns: `Future<T>`, `FutureOr<T>`, `Stream<T>` (since 0.25.0) or a plain `T`.
-    fn action_flow(&mut self, f: &Function, file: &str) -> Option<Flow> {
+    ///
+    /// A `Stream<T>` is told by what it names, not by its spelling (since 0.25.0): `async.Stream<T>`
+    /// through a `dart:async` prefix and a typedef of one are streaming actions too. A nullable
+    /// `Stream<T>?` is refused: a stream is never null.
+    fn action_flow(&mut self, f: &Function, file: &str, src: &str) -> Option<Flow> {
         let Some(ret) = &f.ret else {
             let msg = format!(
                 "{}() needs an explicit return type (Future<T>, FutureOr<T>, Stream<T> or T)",
@@ -3913,6 +3917,18 @@ impl Resolver<'_> {
             self.diags.error(file, Some(&f.span), msg);
             return None;
         };
+        match self.libs.stream_type(file, src, &ret.text) {
+            StreamType::Yes => return Some(Flow::Stream),
+            StreamType::Nullable => {
+                let (name, written) = (&f.name, &ret.text);
+                let msg = format!(
+                    "{name}() returns `{written}`, and a streaming action never returns null: return a `Stream<T>`, an empty one (`const Stream.empty()`) for no items"
+                );
+                self.diags.error(file, Some(&f.span), msg);
+                return None;
+            }
+            StreamType::No => {}
+        }
         let (head, args) = ret.generic();
         match (head, args.len()) {
             ("Future", 1) => Some(Flow::Future),

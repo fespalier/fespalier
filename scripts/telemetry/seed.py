@@ -51,6 +51,8 @@ class Seed:
         self.rng = random.Random(seed)
         # Its own generator for the attributes added in 0.18.0, so the other spans are the same as before.
         self.extra = random.Random(seed + 7)
+        # Its own stream, so that a run stopped on purpose moves nothing else in the session.
+        self.stopped = random.Random(seed + 11)
         self.service = service
         self.now = int((time.time() if now is None else now) * 1e9)
         self.spans = []  # (span dict for OTLP, flat attributes for counting)
@@ -228,6 +230,8 @@ class Seed:
                 invalid = bool(error) and extra.random() < 0.4
                 if invalid:
                     error = "FieldErrors"
+                # A streaming action stopped on purpose (since 0.25.0): not a failure, with the items it gave.
+                cancelled = not error and self.stopped.random() < 0.12
                 self.span(
                     f"action {file}#{action}",
                     clock,
@@ -240,7 +244,8 @@ class Seed:
                         "fespalier.file": file,
                         "fespalier.async": True,
                         "fespalier.action.name": action,
-                        "fespalier.action.result": "error" if error else "ok",
+                        "fespalier.action.result": "error" if error else "cancelled" if cancelled else "ok",
+                        "fespalier.action.items": self.stopped.randint(1, 40) if cancelled else None,
                         "fespalier.action.invalid": invalid if error else None,
                         "fespalier.action.rolled_back": bool(error) if action == "approve" else None,
                         "error.type": error,

@@ -356,7 +356,7 @@ void main() {
           ..add('secret two');
         await tester.pump();
         c.read(draft.notifier).cancel();
-        await run;
+        await expectLater(run, throwsA(isA<StreamActionCancelled<String>>()));
         await tester.pumpAndSettle();
         final sent = await rig.sent(tester);
         final tx = sent.lastWhere((e) => e['type'] == 'transaction');

@@ -184,8 +184,8 @@ void main() {
   });
 
   group('the last run wins', () {
-    test('a new run stops the one in progress, which completes with what '
-        'it had', () async {
+    test('a new run stops the one in progress, whose call fails with '
+        'StreamActionCancelled and what it had', () async {
       final c = container();
       c.listen(draft, (_, _) {});
       final first = c.read(draft.notifier).call('one');
@@ -193,7 +193,14 @@ void main() {
       await settle();
       final second = c.read(draft.notifier).call('two');
       expect(feeds.cancelled, [0]);
-      expect(await first, 'a');
+      await expectLater(
+        first,
+        throwsA(
+          isA<StreamActionCancelled<String>>()
+              .having((e) => e.latest, 'latest', 'a')
+              .having((e) => e.count, 'count', 1),
+        ),
+      );
       // The state is the new run's, not the stopped one's.
       expect(c.read(draft), isA<StreamRunning<String>>());
       expect(c.read(draft).count, 0);
@@ -213,7 +220,7 @@ void main() {
       await settle();
       c.read(draft.notifier).cancel();
       expect(feeds.cancelled, [0]);
-      expect(await run, 'partial');
+      await expectLater(run, throwsA(isA<StreamActionCancelled<String>>()));
       final state = c.read(draft);
       expect(state, isA<StreamCancelled<String>>());
       expect(state.latest, 'partial');
@@ -235,8 +242,38 @@ void main() {
       await settle();
       c.read(draft.notifier).reset();
       expect(feeds.cancelled, [0]);
-      expect(await run, 'partial');
+      await expectLater(run, throwsA(isA<StreamActionCancelled<String>>()));
       expect(c.read(draft), isA<StreamIdle<String>>());
+    });
+
+    test('a stopped run nobody awaits reports no error', () async {
+      final unhandled = <Object>[];
+      await runZonedGuarded(() async {
+        final c = container();
+        c.listen(draft, (_, _) {});
+        // Fire and forget: a newer run, a cancel() and a reset() stop three runs.
+        unawaited(c.read(draft.notifier).call('one'));
+        unawaited(c.read(draft.notifier).call('two'));
+        c.read(draft.notifier).cancel();
+        unawaited(c.read(draft.notifier).call('three'));
+        c.read(draft.notifier).reset();
+        await settle();
+        await settle();
+      }, (error, _) => unhandled.add(error));
+      expect(unhandled, isEmpty);
+    });
+
+    test('the exception does not print what the run had', () {
+      const stopped = StreamActionCancelled<String>(
+        latest: 'my secret draft',
+        count: 3,
+      );
+      expect('$stopped', isNot(contains('secret')));
+      expect('$stopped', contains('3 items'));
+      expect(
+        '${const StreamActionCancelled<String>(count: 1)}',
+        contains('1 item'),
+      );
     });
   });
 
@@ -262,19 +299,20 @@ void main() {
       c.listen(draft, (_, _) {});
       final empty = c.read(draft.notifier).call('x');
       c.read(draft.notifier).cancel();
-      await empty;
+      await expectLater(empty, throwsA(isA<StreamActionCancelled<String>>()));
       await c.read(counted.data.future);
       expect(counted.builds, 1);
       final some = c.read(draft.notifier).call('y');
       feeds.runs[1].add('a');
       await settle();
       c.read(draft.notifier).cancel();
-      await some;
+      await expectLater(some, throwsA(isA<StreamActionCancelled<String>>()));
       await c.read(counted.data.future);
       expect(counted.builds, 2);
     });
 
-    test('a failed run invalidates nothing', () async {
+    test('a run that fails after an item invalidates, as a stopped one '
+        'does: a partial write is a write', () async {
       final c = container();
       await counted.watch(c);
       c.listen(draft, (_, _) {});
@@ -284,7 +322,46 @@ void main() {
         ..addError(StateError('no'));
       await expectLater(run, throwsStateError);
       await c.read(counted.data.future);
+      expect(counted.builds, 2);
+    });
+
+    test('a run that fails before its first item invalidates nothing, '
+        'whether the stream or the function fails', () async {
+      final c = container();
+      await counted.watch(c);
+      c.listen(draft, (_, _) {});
+      final run = c.read(draft.notifier).call('x');
+      feeds.runs.single.addError(StateError('no'));
+      await expectLater(run, throwsStateError);
+      // A refused input never started.
+      expect(
+        () => c.read(draft.notifier).call(''),
+        throwsA(isA<FieldErrors>()),
+      );
+      // Nor does a function that throws before it returns its stream.
+      final p = streamActionProvider<String, String>(
+        (ref, input) => throw StateError('no stream'),
+        invalidates: () => [counted.data],
+      );
+      c.listen(p, (_, _) {});
+      expect(() => c.read(p.notifier).call('x'), throwsStateError);
+      await c.read(counted.data.future);
       expect(counted.builds, 1);
+    });
+
+    test('a run stopped because nothing watches it any more invalidates '
+        'nothing', () async {
+      final c = container();
+      await counted.watch(c);
+      final sub = c.listen(draft, (_, _) {});
+      final run = c.read(draft.notifier).call('x');
+      feeds.runs.single.add('a');
+      await settle();
+      sub.close();
+      await settle();
+      await expectLater(run, throwsA(isA<StreamActionCancelled<String>>()));
+      await c.read(counted.data.future);
+      expect(counted.builds, 1, reason: 'the item was not written');
     });
   });
 
@@ -298,7 +375,16 @@ void main() {
       sub.close();
       await settle();
       expect(feeds.cancelled, [0], reason: 'the subscription is cancelled');
-      expect(await run, 'a');
+      await expectLater(
+        run,
+        throwsA(
+          isA<StreamActionCancelled<String>>().having(
+            (e) => e.latest,
+            'latest',
+            'a',
+          ),
+        ),
+      );
     });
 
     test('with hold, the provider stays alive until the stream ends', () async {
@@ -321,7 +407,7 @@ void main() {
       final run = c.read(draft.notifier).call('x', hold: true);
       c.read(draft.notifier).cancel();
       expect(feeds.cancelled, [0]);
-      expect(await run, isNull);
+      await expectLater(run, throwsA(isA<StreamActionCancelled<String>>()));
     });
   });
 
@@ -410,7 +496,7 @@ void main() {
       feeds.runs[0].add('a');
       await settle();
       final second = c.read(p.notifier).call('y');
-      await first;
+      await expectLater(first, throwsA(isA<StreamActionCancelled<String>>()));
       feeds.runs[1].addError(StateError('no'));
       await expectLater(second, throwsStateError);
       expect(() => c.read(p.notifier).call(''), throwsA(isA<FieldErrors>()));
@@ -440,6 +526,131 @@ void main() {
       c.listen(p, (_, _) {});
       expect(await c.read(p.notifier).call('x'), 'x');
       expect(seen, 'span');
+    });
+
+    test('only the stream itself runs in the span: what the notifier does '
+        'with its events, and the listeners it wakes, run in the caller\'s '
+        'zone', () async {
+      final key = Object();
+      final sink = _ParentSink(key);
+      FespalierTelemetry.install(sink);
+      Object? inBody;
+      final first = streamActionProvider<String, String>(
+        (ref, input) async* {
+          inBody = Zone.current[key];
+          yield input;
+        },
+        invalidates: () => const [],
+        telemetry: site,
+      );
+      final second = streamActionProvider<String, String>(
+        (ref, input) => Stream.value(input),
+        invalidates: () => const [],
+        telemetry: const TelemetrySite(
+          'docs/new/action.dart',
+          route: '/docs/new',
+          name: 'again',
+        ),
+      );
+      final c = container();
+      Object? inListener;
+      Object? startedUnder = 'not started';
+      Future<String?>? followUp;
+      c.listen(first, (_, next) {
+        if (next is! StreamDone<String>) return;
+        inListener = Zone.current[key];
+        // What a page does when the first action is done: another action.
+        followUp = c.read(second.notifier).call('next');
+      });
+      c.listen(second, (_, _) {});
+      await c.read(first.notifier).call('x');
+      await followUp;
+      startedUnder = sink.parents.last;
+      expect(inBody, isNotNull, reason: 'the body is the span\'s child');
+      expect(inListener, isNull, reason: 'a listener is not in the span');
+      expect(
+        startedUnder,
+        isNull,
+        reason: 'the follow-up is not a child of the ended stream span',
+      );
+    });
+  });
+
+  group('a call that cannot run starts nothing, or ends what it started', () {
+    late RecordingTelemetry rec;
+    const site = TelemetrySite(
+      'docs/new/action.dart',
+      route: '/docs/new',
+      name: 'draft',
+    );
+
+    setUp(() {
+      rec = RecordingTelemetry();
+      FespalierTelemetry.install(rec);
+    });
+    tearDown(() => FespalierTelemetry.install(null));
+
+    StreamActionProvider<String, String> traced() =>
+        streamActionProvider<String, String>(
+          feeds.open,
+          invalidates: () => const [],
+          telemetry: site,
+        );
+
+    test('after the provider was disposed: a StateError, and no span, '
+        'stream or run', () async {
+      final p = traced();
+      final c = container();
+      final sub = c.listen(p, (_, _) {});
+      final notifier = c.read(p.notifier);
+      sub.close();
+      await settle();
+      expect(() => notifier.call('x'), throwsStateError);
+      expect(() => notifier.call('x', hold: true), throwsStateError);
+      expect(feeds.runs, isEmpty);
+      expect(rec.log, isEmpty);
+    });
+
+    testWidgets('while the widget tree builds: the refusal is thrown, the '
+        'span ends once with an error, the link is released and the next '
+        'call runs', (tester) async {
+      final p = traced();
+      Object? refused;
+      late WidgetRef widgetRef;
+      await tester.pumpWidget(
+        ProviderScope(
+          child: Consumer(
+            builder: (context, ref, _) {
+              widgetRef = ref;
+              if (refused == null) {
+                try {
+                  ref.read(p.notifier).call('x', hold: true);
+                } catch (e) {
+                  refused = e;
+                }
+              }
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
+      expect(refused, isNotNull, reason: 'Riverpod refuses the state write');
+      expect(feeds.runs, isEmpty, reason: 'the stream was never opened');
+      expect(rec.log, hasLength(2));
+      expect(rec.log.first, '#1 start action docs/new/action.dart#draft');
+      expect(rec.log.last, startsWith('#1 end action error'));
+      // Nothing holds the provider any more, and nothing is left running.
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(Consumer)),
+      );
+      expect(container.exists(p), isFalse, reason: 'the link was released');
+      // The next call, from an event handler, runs.
+      final run = widgetRef.read(p.notifier).call('y', hold: true);
+      feeds.runs.single.add('a');
+      await feeds.runs.single.close();
+      expect(await run, 'a');
+      expect(rec.log.last, '#2 end action ok async items=1');
     });
   });
 
@@ -481,7 +692,8 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(feeds.cancelled, [0], reason: 'the page went away');
-      expect(await run, 'Hello');
+      // The handle never throws, and never takes a partial result for a whole one.
+      expect(await run, isNull);
     });
 
     testWidgets('a failed run is in the state, not thrown, with its field '
@@ -519,6 +731,26 @@ final class _ZoneSink extends FespalierTelemetry {
 
   @override
   Object? start(TelemetryStart start) => 'span';
+
+  @override
+  void within(Object? token, Object? Function() body) =>
+      runZoned(body, zoneValues: {key: token});
+}
+
+/// A sink that makes the zone of `within` name the span, and notes which zone each span starts in
+/// (null: none), as an OpenTelemetry sink parents a span to the current context.
+final class _ParentSink extends FespalierTelemetry {
+  _ParentSink(this.key);
+
+  final Object key;
+  final List<Object?> parents = [];
+  int _last = 0;
+
+  @override
+  Object? start(TelemetryStart start) {
+    parents.add(Zone.current[key]);
+    return 'span#${++_last}';
+  }
 
   @override
   void within(Object? token, Object? Function() body) =>

@@ -46,7 +46,7 @@ Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `dio` (`^5.7.0`), on `fe
 | Library                                    | What is in it                                                                                                                   |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
 | `package:fespalier_dio/fespalier_dio.dart` | `ref.cancelToken()`, `withFieldErrors()`, `WriteGuard`, `WriteNotRetried`, `DioTransport` and `TransportAdapter` (since 0.21.0) |
-| `package:fespalier_dio/fetch.dart`         | `FetchHttpClientAdapter` and `webStreamingAdapter()`: a Dio that streams in a browser (since 0.25.0)                              |
+| `package:fespalier_dio/fetch.dart`         | `FetchHttpClientAdapter` and `webStreamingAdapter()`: a Dio that streams in a browser (since 0.25.0)                            |
 
 The server's validation-error decoders (`fieldErrorsOf`, `FieldErrorsDecoders`, `FieldNames`) are in `package:fespalier/problem.dart`: this library no longer re-exports them. `package:fespalier_dio/client.dart` and `DioHttpClient` (your Dio as an `http.Client`) were removed in 0.21.0: send through `DioTransport` instead, or use `fespalier_http`'s `HttpClientTransport` if you want `package:http`.
 

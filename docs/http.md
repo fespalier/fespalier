@@ -365,7 +365,7 @@ does not:
 - **Credentials.** `FetchHttpClientAdapter(withCredentials: true)` (or `webStreamingAdapter(withCredentials: true)`) sends cookies
   to another origin (`credentials: 'include'`; `'same-origin'` otherwise), and `Options.extra['withCredentials']` overrides it for
   one request, as with Dio's own web adapter. The server must then name the origin and allow credentials.
-- **Headers** come with lower-case names, one value each: the browser joins a repeated header with `, `, keeps `set-cookie` to
+- **Headers** come with lower-case names, one value each: the browser joins a repeated header's values with a comma and a space, keeps `set-cookie` to
   itself, and shows another origin only the headers it lists in `Access-Control-Expose-Headers`. `content-length` and `host` are
   not sent from the request's headers: the browser sets them.
 - **dart2wasm needs `dio_web_adapter` 2.0.0 or newer**, which Dio imports in every web build: 1.x uses `dart:html`, which wasm

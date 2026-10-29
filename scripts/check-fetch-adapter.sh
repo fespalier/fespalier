@@ -19,19 +19,25 @@
 set -euo pipefail
 
 serve=
-if [ "${1:-}" = "--serve" ]; then serve=1; shift; fi
+if [ "${1:-}" = "--serve" ]; then
+  serve=1
+  shift
+fi
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 package="$root/packages/fespalier_dio"
 work=$(mktemp -d)
 server=
 cleanup() {
-  if [ -n "$server" ]; then kill "$server" 2>/dev/null || true; wait "$server" 2>/dev/null || true; fi
+  if [ -n "$server" ]; then
+    kill "$server" 2> /dev/null || true
+    wait "$server" 2> /dev/null || true
+  fi
   rm -rf "$work"
 }
 trap cleanup EXIT
 
-(cd "$package" && flutter pub get >/dev/null)
+(cd "$package" && flutter pub get > /dev/null)
 
 # An entry under packages/fespalier_dio finds the workspace's package config by walking up.
 started=$(date +%s)
@@ -44,10 +50,16 @@ if [ -n "$serve" ]; then serve_flag=--serve; else serve_flag=; fi
 server=$!
 for _ in $(seq 1 300); do
   [ -f "$work/ports.json" ] && break
-  kill -0 "$server" 2>/dev/null || { echo "check-fetch-adapter: the server did not start" >&2; exit 1; }
+  kill -0 "$server" 2> /dev/null || {
+    echo "check-fetch-adapter: the server did not start" >&2
+    exit 1
+  }
   sleep 0.1
 done
-[ -f "$work/ports.json" ] || { echo "check-fetch-adapter: the server wrote no ports" >&2; exit 1; }
+[ -f "$work/ports.json" ] || {
+  echo "check-fetch-adapter: the server wrote no ports" >&2
+  exit 1
+}
 
 if [ -n "$serve" ]; then
   # The server prints the URLs and the log; this waits for Ctrl+C (cleanup stops the server).

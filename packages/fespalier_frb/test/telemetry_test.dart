@@ -102,6 +102,20 @@ void main() {
     ]);
     expect(sink.log.join('\n'), isNot(contains('secret')));
     expect(sink.log.join('\n'), isNot(contains('FormatException')));
+    // Since 0.25.0 the span is EventCodec's, under fespalier_frb's names: never fespalier_stream's.
+    expect(sink.log.join('\n'), isNot(contains('fespalier.stream')));
+  });
+
+  test('a batch codec reports under the same names', () {
+    final codec = ChangeCodec.batch<String, String, int>(
+      (raw) => raw.split(','),
+      int.parse,
+    );
+    expect(codec.decode('1,x'), [1]);
+    expect(sink.log, [
+      '#1 start custom fespalier.frb.decode',
+      '#1 end custom error fespalier.frb.result=error fespalier.frb.skipped=1',
+    ]);
   });
 
   test('skips are reported at the 1st, 2nd, 4th and 8th of a kind', () {

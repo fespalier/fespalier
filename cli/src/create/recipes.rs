@@ -819,6 +819,7 @@ pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
         "fespalier_download_background",
         &["fespalier_download", "fespalier_transport"],
     ),
+    ("fespalier_frb", &["fespalier_stream"]),
     ("fespalier_http", &["fespalier_transport"]),
     ("fespalier_image", &["fespalier_transport"]),
     (

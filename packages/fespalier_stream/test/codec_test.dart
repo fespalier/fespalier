@@ -1,10 +1,9 @@
-// ChangeCodec (since 0.18.0): a raw message decodes to events in the feed's open, a bad or unknown
-// message is skipped and counted, and nothing about the skip ever numbers an event or ends the
-// stream.
+// EventCodec (fespalier_frb's ChangeCodec since 0.18.0, here since 0.25.0): a raw message
+// decodes to events in the feed's open, a bad or unknown message is skipped and counted, and
+// nothing about the skip ever numbers an event or ends the stream.
 import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_frb/fespalier_frb.dart';
-import 'package:fespalier_frb/testing.dart';
+import 'package:fespalier_stream/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 sealed class CoreEvent {
@@ -48,9 +47,9 @@ Iterable<String> splitLines(String raw) => switch (raw) {
   _ => raw.split(','),
 };
 
-ChangeCodec<String, CoreEvent> lines({
+EventCodec<String, CoreEvent> lines({
   void Function(Object, StackTrace)? onSkipped,
-}) => ChangeCodec.batch<String, String, CoreEvent>(
+}) => EventCodec.batch<String, String, CoreEvent>(
   splitLines,
   decodeLine,
   onSkipped: onSkipped,
@@ -61,7 +60,7 @@ Matcher order(int id) => isA<OrderChanged>().having((e) => e.id, 'id', id);
 void main() {
   group('decode', () {
     test('one message is one event', () {
-      final codec = ChangeCodec<String, CoreEvent>(decodeLine);
+      final codec = EventCodec<String, CoreEvent>(decodeLine);
       expect(codec.decode('order:42'), [order(42)]);
       expect(codec.unknownCount, 0);
       expect(codec.errorCount, 0);
@@ -69,7 +68,7 @@ void main() {
 
     test('an unknown variant is skipped and counted, not thrown', () {
       final skipped = <Object>[];
-      final codec = ChangeCodec<String, CoreEvent>(
+      final codec = EventCodec<String, CoreEvent>(
         decodeLine,
         onSkipped: (r, _) => skipped.add(r),
       );
@@ -83,7 +82,7 @@ void main() {
       'a message that does not decode is skipped and counted, not thrown',
       () {
         final skipped = <Object>[];
-        final codec = ChangeCodec<String, CoreEvent>(
+        final codec = EventCodec<String, CoreEvent>(
           decodeLine,
           onSkipped: (r, _) => skipped.add(r),
         );
@@ -143,7 +142,7 @@ void main() {
       }
 
       final skipped = <Object>[];
-      final codec = ChangeCodec.batch<String, String, CoreEvent>(
+      final codec = EventCodec.batch<String, String, CoreEvent>(
         torn,
         decodeLine,
         onSkipped: (r, _) => skipped.add(r),
@@ -161,7 +160,7 @@ void main() {
       () {
         late FakeChangeSource<String> source;
         late List<Object> skipped;
-        late ChangeCodec<String, CoreEvent> codec;
+        late EventCodec<String, CoreEvent> codec;
         late ChangeFeed<CoreEvent> feed;
         late ChangeTopic<CoreEvent, int> orderChanged;
         late ProviderContainer container;
@@ -169,7 +168,7 @@ void main() {
         setUp(() {
           source = FakeChangeSource<String>(broadcast: broadcast);
           skipped = [];
-          codec = ChangeCodec<String, CoreEvent>(
+          codec = EventCodec<String, CoreEvent>(
             decodeLine,
             onSkipped: (r, _) => skipped.add(r),
           );
@@ -323,7 +322,7 @@ void main() {
         test(
           'what onSkipped throws is an error of latest, and the feed goes on',
           () async {
-            final throwing = ChangeCodec<String, CoreEvent>(
+            final throwing = EventCodec<String, CoreEvent>(
               decodeLine,
               onSkipped: (_, _) => throw StateError('logger down'),
             );
@@ -367,7 +366,7 @@ void main() {
       sources.add(FakeChangeSource<String>(broadcast: false));
       return sources.length;
     });
-    final codec = ChangeCodec<String, CoreEvent>(decodeLine);
+    final codec = EventCodec<String, CoreEvent>(decodeLine);
     final feed = ChangeFeed<CoreEvent>(
       (ref) => sources[ref.watch(core) - 1].stream.transform(codec),
     );
@@ -411,7 +410,7 @@ void main() {
       final source = FakeChangeSource<String>();
       final feed = ChangeFeed<CoreEvent>(
         (ref) =>
-            source.stream.transform(ChangeCodec<String, CoreEvent>(decodeLine)),
+            source.stream.transform(EventCodec<String, CoreEvent>(decodeLine)),
       );
       final container = ProviderContainer();
       final held = container.listen(feed.latest, (_, _) {});

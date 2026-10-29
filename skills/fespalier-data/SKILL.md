@@ -113,7 +113,7 @@ do not add one. Starting the core is the app's, not an adapter's: `Future<void> 
 `ready(container)` for what must run on the container after it. Equal events are two changes (`Change.seq`), events fed together
 are one rebuild, and since 0.21.0 an event costs a key it does not concern one matcher call and no rebuild; a debounce in the
 package would be a timer, so a busy key gets `ChangeBudget(tick)`, one move per tick of a provider the app fires. [`references/change-feeds.md`](references/change-feeds.md) has the samples that compile,
-`startup()` versus `ready()`, the tests with `FakeChangeSource`, and (since 0.18.0) `ChangeCodec`: a core that sends raw messages (JSON or bytes, one event or a batch each) is decoded in `open` with `raw.transform(codec)`, and a message or item that does not decode, or whose decoder throws `UnknownChange`, is skipped, counted and never numbered while the feed goes on. Since 0.21.0 it also has what a busy core costs (a reload per event, a slow `data()` that never settles, a burst taken one event per turn) and `ChangeBudget`, with a test that fires the tick by hand.
+`startup()` versus `ready()`, the tests with `FakeChangeSource`, and (since 0.18.0) `ChangeCodec`: a core that sends raw messages (JSON or bytes, one event or a batch each) is decoded in `open` with `raw.transform(codec)`, and a message or item that does not decode, or whose decoder throws `UnknownChange`, is skipped, counted and never numbered while the feed goes on. Since 0.21.0 it also has what a busy core costs (a reload per event, a slow `data()` that never settles, a burst taken one event per turn) and `ChangeBudget`, with a test that fires the tick by hand. Since 0.25.0 the feed, its topics, `ChangeBudget`, `InvalidationTable` and `FakeChangeSource` are `fespalier_stream`'s, and `fespalier_frb` re-exports the same declarations (an import of either library works, and both together are not ambiguous); `fespalier_frb` keeps `initRustCore` and `ChangeCodec`, now a facade over `fespalier_stream`'s `EventCodec` that still reports `fespalier.frb.decode`. An app that overrides `fespalier_frb` with a `path:` overrides `fespalier_stream` too.
 
 **A server that says what changed (since 0.25.0).** `fespalier_stream`: server-sent events read through the app's own
 `HttpTransport` (its session, signature and trace apply; never the browser's `EventSource`). `transport.serverEvents(url)` is a
@@ -125,6 +125,10 @@ A pause only stops reading; a pause that outlasts a whole tick is closed, and a 
 `LiveRules.idle` needs a server that sends comments (CrateStack's subscriptions send none). On the web the transport at the
 bottom must stream: `HttpClientTransport(BrowserClient())`, or a Dio whose adapter is `webStreamingAdapter()` (since 0.25.0,
 `package:fespalier_dio/fetch.dart`); Dio's own web adapter hands the body on whole when the server ends it.
+A server that says only what changed is a `ChangeFeed.live((ref, lastEventId) => ServerEvents(...).transform(codec))`
+(since 0.25.0): the topics of a change feed over a live connection, with a `LiveFeed`'s pause, tick and resume, and an
+`EventCodec` that decodes `ServerEvent.data` and skips a bad message; a reopen that cannot resume (no `id:`, as CrateStack's
+subscriptions) is a gap, and every watched key moves once ([`references/change-feeds.md`](references/change-feeds.md)).
 [`references/streaming.md`](references/streaming.md) has the samples that compile, the traps and a test with `FakeEventServer`.
 
 **State that belongs to one page on a navigator (since 0.13.0).** A `data.dart` is keyed by the location, so `/c/1` is one

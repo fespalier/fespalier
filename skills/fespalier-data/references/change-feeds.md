@@ -1,11 +1,19 @@
-# `fespalier_frb`: providers rebuilt by a Rust core's change stream
+# `ChangeFeed`: providers rebuilt by a change stream (a Rust core's, or a server's)
 
 Since 0.13.0. A Rust core behind `flutter_rust_bridge` (or any core) answers calls and **says what changed** on a `Stream`. A
 `data.dart` that reads the core is stale the moment the core says something changed, and nothing in fespalier knew: the
 usual answers were a `Timer`, a `ref.listen` in every page, or an `invalidate` call in the code that happened to hold the
-stream. `package:fespalier_frb` is the Riverpod-shaped answer: the stream is held **once**, a `topic` is a provider whose
+stream. `ChangeFeed` is the Riverpod-shaped answer: the stream is held **once**, a `topic` is a provider whose
 value moves only on a matching event, and a `data.dart` that **watches** the topic is rebuilt exactly then. It changes no
 generated code and adds no file kind, key or command; an app that does not depend on it pays nothing.
+
+**Where it lives.** `fespalier_frb` had it from 0.13.0. Since 0.25.0 `ChangeFeed`, `ChangeTopic`, `ChangeBudget`, `Change`,
+`InvalidationTable`, `UnknownChange` and `FakeChangeSource` are `fespalier_stream`'s, and `fespalier_frb` re-exports the same
+declarations: the samples below import `package:fespalier_frb/...`, which works unchanged, and an app may import
+`package:fespalier_stream/fespalier_stream.dart` instead, or both (no name is ambiguous). `fespalier_frb` keeps what is the
+core's: `initRustCore` and `ChangeCodec`. A server that says what changed is [`ChangeFeed.live`](#a-server-that-says-what-changed-changefeedlive)
+over `fespalier_stream`'s live connection. An app that overrides `fespalier_frb` with a `path:` overrides `fespalier_stream`
+(and `fespalier_transport`) too.
 
 It has **no `flutter_rust_bridge` dependency, on purpose.** The generated bindings pin the FRB runtime exactly per app (FRB 2.13
 needs Dart 3.9.2, which is Flutter 3.35.3, above fespalier's 3.35.0 floor), and the generic part is a `Stream<E>`. Do not add one.
@@ -25,7 +33,8 @@ dependencies:
       ref: <the same tag>
 ```
 
-(A fragment, not a sample: pub resolves the pair only at a release tag. `docs/data.md` has the annotated block.)
+(A fragment, not a sample: pub resolves the pair only at a release tag. `docs/data.md` has the annotated block. `fespalier_frb`
+brings `fespalier_stream` with it, at the same tag.)
 
 ## Wire it
 
@@ -303,7 +312,9 @@ The worked case is `examples/frb-cose` (since 0.21.1): a Rust core that is Crate
 
 ## A core that sends raw messages: `ChangeCodec`
 
-Since 0.18.0. A typed flutter_rust_bridge stream needs none of this: FRB decodes the enum into the Dart classes, and a core
+Since 0.18.0. Since 0.25.0 `ChangeCodec` is a facade over `fespalier_stream`'s `EventCodec`, with the same members and rules,
+that keeps reporting `fespalier.frb.decode`; `EventCodec` itself (the same codec, reporting `fespalier.stream.decode`) is what a
+server's events take ([below](#a-server-that-says-what-changed-changefeedlive)). A typed flutter_rust_bridge stream needs none of this: FRB decodes the enum into the Dart classes, and a core
 that sends a `Vec<CoreEvent>` per message is `changes().expand((batch) => batch)`. `ChangeCodec` is for a core that sends
 **raw messages** (a `StreamSink<String>` of JSON, a `Vec<u8>` of CBOR, protobuf or bincode, a `ReceivePort` of plain
 `dart:ffi`, a socket to a sidecar, or a core updated apart from the app) and decodes them in Dart, where one bad message
@@ -572,9 +583,133 @@ void main() {
 - **Pick the period from the screen**: 100 ms is ten updates a second; a key with a slow `data()` wants a period longer than one
   load.
 
+## A server that says what changed: `ChangeFeed.live`
+
+Since 0.25.0. A server that says what changed over server-sent events (`data: {"type":"OrderUpdated","id":42}`) is a change feed
+too: `ChangeFeed.live` takes what a `LiveFeed` takes, `(ref, lastEventId) => LiveConnection`, and its events become the feed's
+changes, so topics, `any`, budgets and `InvalidationTable` work as over a core's stream. `EventCodec` decodes each
+`ServerEvent` (and skips a bad or unknown one, `UnknownChange`, without ending the feed).
+
+```dart
+// lib/live/changes.dart
+import 'dart:convert';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_stream/fespalier_stream.dart';
+import 'package:fespalier_transport/fespalier_transport.dart';
+
+/// What the server says changed.
+sealed class OrderEvent {
+  const OrderEvent();
+}
+
+final class OrderUpdated extends OrderEvent {
+  const OrderUpdated(this.id);
+
+  final int id;
+}
+
+final class OrdersCleared extends OrderEvent {
+  const OrdersCleared();
+}
+
+/// The app's one transport (`SessionTransport(HttpClientTransport(...), ...)`), overridden where the
+/// container is made.
+final apiTransport = Provider<HttpTransport>(
+  (ref) => throw StateError('override apiTransport with the app transport'),
+);
+
+final changesUrl = Uri.parse('https://api.example.com/changes');
+
+/// One event per server event; a type this app does not know is skipped.
+final orderCodec = EventCodec<ServerEvent, OrderEvent>((event) {
+  final json = jsonDecode(event.data) as Map<String, Object?>;
+  return switch (json['type']) {
+    'OrderUpdated' => OrderUpdated(json['id'] as int),
+    'OrdersCleared' => const OrdersCleared(),
+    _ => throw const UnknownChange(),
+  };
+});
+
+/// One connection for every topic, held for the container's life.
+final serverChanges = ChangeFeed<OrderEvent>.live(
+  (ref, lastEventId) => ServerEvents(
+    ref.watch(apiTransport),
+    changesUrl,
+    lastEventId: lastEventId,
+    name: 'changes',
+  ).transform(orderCodec),
+  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+  name: 'changes',
+);
+
+/// Watch `orderUpdated(id)` in the order's `data.dart`.
+final orderUpdated = serverChanges.topic<int>(
+  (event, id) => (event is OrderUpdated && event.id == id) || event is OrdersCleared,
+);
+```
+
+- **The connection is a `LiveFeed`'s, kept alive.** It opens with the first topic watched; a drop is never an error and waits
+  for a `reconnectOn` signal or the app's `streamTicker` (override it, as for any live feed: [streaming](streaming.md)); when
+  every topic is paused or unwatched the connection stops reading, the tick closes it, and a watch or a resume reopens it with
+  `Last-Event-ID`. A refusal ends `serverChanges.latest` with its error and moves no topic. No timer, no retry.
+- **A gap moves every key once.** A reopen that cannot resume (`LiveOpen(resumed: false)` after an earlier open: the server
+  sends no `id:`, as CrateStack's `@@subscribe` does not, or the feed was rebuilt by a provider `connect` watches) has missed
+  what was sent meanwhile, so the feed starts a new log and every watched key moves once at that moment, with no event
+  (`any` moves by one). An open that follows failed tries (a 503, a timeout: `LiveConnecting` with `attempt` above 1, or a
+  `LiveWaiting`, before any open) is a gap too, even the first open. A reopen that resumed moves nothing. A pause that ends
+  without a new request is not a reopen. `resumed` only says the request carried `Last-Event-ID`: the feed cannot tell that a
+  server ignored it, so a server that cannot honour the ID must send no `id:` (or clear it with an empty `id:` line before it
+  ends a stream). A key watched after a gap counts from there, even when only `latest` stayed watched.
+- **No `status`.** `ChangeFeed.live` exposes `latest` and the topics; a banner watches
+  `serverChanges.latest.select((v) => v.hasError)`.
+
+```dart
+// test/live_changes_test.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_stream/testing.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/live/changes.dart';
+
+void main() {
+  test('an event moves its order; a reopen that cannot resume moves every order', () async {
+    final server = FakeEventServer();
+    final container = ProviderContainer(
+      overrides: [
+        apiTransport.overrideWithValue(server),
+        appShowSignal.overrideWith(RefetchSignal.new), // no binding in a plain test
+        ...streamTestOverrides(),
+      ],
+    );
+    addTearDown(container.dispose);
+    final moves = <int, List<int>>{};
+    for (final id in [7, 42]) {
+      container.listen(orderUpdated(id), (_, next) => (moves[id] ??= []).add(next));
+    }
+    await pumpEventQueue();
+
+    server.current.event('{"type":"OrderUpdated","id":42}');
+    server.current.event('{"type":"OrderArchived","id":42}'); // newer than this app: skipped
+    await pumpEventQueue();
+    expect(moves, {
+      42: [1],
+    });
+
+    server.current.drop(); // the server sent no `id:`, so the reopen cannot resume
+    await pumpEventQueue();
+    (container.read(streamTicker.notifier) as ManualStreamTicker).tick();
+    await pumpEventQueue();
+    expect(moves, {
+      42: [1, 2],
+      7: [1],
+    }); // the gap: every watched order, once
+  });
+}
+```
+
 ## Not built
 
-A `flutter_rust_bridge` dependency (the generated bindings own it); a codec per format in the package (JSON is `jsonDecode`
+A `status` on `ChangeFeed.live` (a `LiveFeed` has one); a `flutter_rust_bridge` dependency (the generated bindings own it); a codec per format in the package (JSON is `jsonDecode`
 and a `switch`; protobuf, CBOR and bincode would be dependencies, and their generated types are per app: the codec takes your
 decoder); a provider that counts skips (`unknownCount`, `errorCount` and `onSkipped` are enough); a clock of the package's own
 for `ChangeBudget` (a timer or a frame callback: the tick is the app's), and a budget on `changes.any`.

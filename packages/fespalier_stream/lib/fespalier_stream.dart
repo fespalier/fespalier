@@ -9,15 +9,30 @@
 ///   last event and whose [LiveStatus] says where the connection is; they reconnect on the app's
 ///   signals ([LiveRules]) and its tick ([streamTicker]), and never start a timer, a backoff or a
 ///   retry of their own.
-/// - Telemetry: [FespalierStreamConventions], two short root spans per connection, constants only.
+/// - Changes (in fespalier_frb from 0.13.0, here since 0.25.0, and re-exported there): [ChangeFeed]
+///   holds a change stream (a Rust core's, or a server's over a live connection with
+///   [ChangeFeed.live]) in one subscription, a [ChangeTopic] is a provider that moves only when an
+///   event that concerns its key arrives (so watching it is the invalidation), [ChangeBudget] holds
+///   a busy key to one move per tick, and [InvalidationTable] is the pure form. [EventCodec]
+///   decodes raw messages on the way in, and skips a bad or unknown one without ending the stream.
+/// - Telemetry: [FespalierStreamConventions], two short root spans per connection and one per
+///   skipped message, constants only.
 ///
 /// `package:fespalier_stream/testing.dart` has the fakes.
 library;
 
+export 'src/codec.dart' show DecodeReport, EventCodec, UnknownChange;
 export 'src/errors.dart'
     show ServerEventsRefused, ServerEventsRejected, ServerEventsUnavailable;
+export 'src/riverpod/invalidation.dart'
+    show InvalidationRule, InvalidationTable;
 export 'src/riverpod/live_feed.dart'
     show
+        Change,
+        ChangeBudget,
+        ChangeFeed,
+        ChangeTopic,
+        changeLogCapacity,
         LiveFeed,
         LiveFeedFamily,
         LiveResumePoints,

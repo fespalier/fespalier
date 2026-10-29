@@ -49,6 +49,84 @@ void main() {
     );
     expect(FespalierStreamConventions.reason, 'fespalier.stream.reason');
     expect(FespalierStreamConventions.events, 'fespalier.stream.events');
+    expect(FespalierStreamConventions.decode, 'fespalier.stream.decode');
+    expect(FespalierStreamConventions.skipped, 'fespalier.stream.skipped');
+    expect(DecodeReport.stream.operation, FespalierStreamConventions.decode);
+    expect(
+      DecodeReport.stream.resultAttribute,
+      FespalierStreamConventions.result,
+    );
+    expect(
+      DecodeReport.stream.skippedAttribute,
+      FespalierStreamConventions.skipped,
+    );
+  });
+
+  test('a decoded event reports nothing', () {
+    final codec = EventCodec<String, int>(int.parse);
+    for (var i = 0; i < 3; i++) {
+      expect(codec.decode('1'), [1]);
+    }
+    expect(sink.log, isEmpty);
+  });
+
+  test(
+    'a skipped message is one span of constants, never the message or the error',
+    () {
+      final codec = EventCodec<String, int>(
+        (raw) => raw == 'new' ? throw const UnknownChange() : int.parse(raw),
+      );
+      expect(codec.decode('secret-order-42'), isEmpty);
+      expect(codec.decode('new'), isEmpty);
+      expect(sink.log, [
+        '#1 start custom fespalier.stream.decode',
+        '#1 end custom error fespalier.stream.result=error fespalier.stream.skipped=1',
+        '#2 start custom fespalier.stream.decode',
+        '#2 end custom skipped fespalier.stream.result=unknown fespalier.stream.skipped=1',
+      ]);
+      final all = sink.log.join('\n');
+      expect(all, isNot(contains('secret')));
+      expect(all, isNot(contains('FormatException')));
+      expect(all, isNot(contains('fespalier.frb')));
+    },
+  );
+
+  test('skips are reported at the 1st, 2nd, 4th and 8th of a kind', () {
+    final codec = EventCodec.batch<String, String, int>(
+      (raw) => raw.split(','),
+      int.parse,
+    );
+    expect(codec.decode('x,x,x,x,x,x,x,x,x,1'), [1]);
+    final ends = sink.log.where((l) => l.contains(' end '));
+    expect(
+      [for (final l in ends) l.split('fespalier.stream.skipped=').last],
+      ['1', '2', '4', '8'],
+    );
+    expect(codec.errorCount, 9);
+  });
+
+  test('a skip is a root span, not a child of the zone that decoded it', () {
+    final probe = ZoneProbeTelemetry();
+    FespalierTelemetry.install(probe);
+    final codec = EventCodec<String, int>(int.parse);
+    runZoned(() {
+      expect(codec.decode('x'), isEmpty);
+    }, zoneValues: {#probe: 'page A'});
+    expect(probe.seen, [null]);
+  });
+
+  test('a report of its own names the span (what ChangeCodec does)', () {
+    const report = DecodeReport(
+      operation: 'fespalier.example.decode',
+      resultAttribute: 'fespalier.example.result',
+      skippedAttribute: 'fespalier.example.skipped',
+    );
+    final codec = EventCodec<String, int>(int.parse, report: report);
+    expect(codec.decode('x'), isEmpty);
+    expect(sink.log, [
+      '#1 start custom fespalier.example.decode',
+      '#1 end custom error fespalier.example.result=error fespalier.example.skipped=1',
+    ]);
   });
 
   test('a connection is an open span at its answer and a close span at its end', () async {

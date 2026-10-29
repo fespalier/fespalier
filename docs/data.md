@@ -360,7 +360,7 @@ Without `fakePrefsStore()`, `open()` finds no platform and returns `null` (a deb
 
 ### A Rust core's changes: fespalier_frb
 
-Since 0.13.0. A Rust core behind [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge) (or any other core) usually does two things: it answers calls (`core.order(42)`) and it **says what changed** on a `Stream` (`OrderChanged(42)`, `CartCleared`). The answers are a `data.dart`'s business; the stream is what keeps them current, and `package:fespalier_frb` is the part that wires the two without a listener of your own. It is a `Stream<E>` and Riverpod, so it has **no `flutter_rust_bridge` dependency**: the generated bindings pin their own runtime exactly (FRB 2.13 needs Dart 3.9.2, which is Flutter 3.35.3, above the 3.35.0 floor), and a second pin could only conflict. Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why):
+Since 0.13.0. A Rust core behind [flutter_rust_bridge](https://github.com/fzyzcjy/flutter_rust_bridge) (or any other core) usually does two things: it answers calls (`core.order(42)`) and it **says what changed** on a `Stream` (`OrderChanged(42)`, `CartCleared`). The answers are a `data.dart`'s business; the stream is what keeps them current, through a `ChangeFeed` and its topics: a `data.dart` **watches** a topic, and the watch is the invalidation. Since 0.25.0 the feed, its topics, `ChangeBudget`, `InvalidationTable` and `FakeChangeSource` are `fespalier_stream`'s and documented in [Something changed: `ChangeFeed`](streaming.md#something-changed-changefeed); `package:fespalier_frb` re-exports them (the same declarations, so nothing in an app changes) and keeps what is the core's: starting it (`initRustCore`) and `ChangeCodec`. It is a `Stream<E>` and Riverpod, so it has **no `flutter_rust_bridge` dependency**: the generated bindings pin their own runtime exactly (FRB 2.13 needs Dart 3.9.2, which is Flutter 3.35.3, above the 3.35.0 floor), and a second pin could only conflict. Add it next to fespalier, with the same `url` and the same `ref` ([Companion packages](getting-started.md#companion-packages) says why); it brings `fespalier_stream` with it, at the same `ref`:
 
 <!-- x-release-please-start-version -->
 
@@ -380,7 +380,7 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-**The feed and its topics.** A `ChangeFeed` is your core's stream as a provider; a topic says which events concern a key; a `data.dart` **watches** the topic, and the watch is the invalidation:
+An app that overrides `fespalier_frb` with a `path:` (a checkout, a fork) overrides `fespalier_stream` and `fespalier_transport` the same way (since 0.25.0), as `examples/frb-cose` does.
 
 ```dart
 // lib/core/changes.dart
@@ -396,27 +396,7 @@ Future<Order> data(Ref ref, {required int id}) {
 }
 ```
 
-`changes.latest` is the **one subscription**: a provider that is never auto-disposed, so it is opened by the first topic anyone watches (the function you gave it runs once per container, because a generated stream accepts one listener: since 0.16.0 not again after a failure either, because the provider does not retry, which would be a `Timer`) and cancelled by the container's disposal. Ten thousand topics are still one subscription. A topic's value is a counter per key that moves **only** when a matching event arrives after the first watch, so `data()` is rebuilt exactly then and the screen shows the usual reload (the old value stays up, `keepDataOnError` keeps the page if the reload fails, and the rest of [freshness](#freshness-staletime-resume-and-reconnect) applies). `changes.any` is the topic of every event (it counts them, each event of a burst included), for a provider that depends on the whole core (a badge count).
-
-What it does not do. It starts no timer, schedules nothing and has no `listen` of its own: `test/no_timers_test.dart` allows none in `lib/`. A key is rebuilt only by an event that concerns it (since 0.21.0): Riverpod calls the topic's matcher for each event through a `select`, and an event about another key costs that call and nothing else. Events that arrive before a dependent rebuilds (a burst, or a page that was paused) can share one rebuild, but **none is lost**: the feed remembers the last 64 events of its subscription (`changeLogCapacity`) and a topic looks at every one it missed, so a `[7, 42, 7]` burst still rebuilds the watcher of order 42, and `changes.any` counts each event of a burst. A watcher that missed more than 64, or whose core was restarted, rebuilds anyway (a rebuild too many is safe, one too few is not). Two equal events one after the other are still two changes (`Change.seq` numbers them, because Riverpod drops a state equal to the last). A stream error stays in `changes.latest` as an `AsyncError` and rebuilds no topic. What a core that emits thousands of events a second costs, and the budget that bounds it, are in [A rebuild budget](#a-rebuild-budget-changebudget). A page that is hidden in a tab has its watchers paused by Riverpod; they catch up when it comes back _(not checked on a device)_. If `open` does `ref.watch(coreProvider)` and the core is restarted, the stream is opened again and the next event counts as a change.
-
-**A table, when you own the subscription.** If the app already has code that receives the events (or does not want to edit its `data.dart` files), an `InvalidationTable` is the pure form: rules from an event to the providers it makes stale, applied by a function you pass. It holds no container and no stream:
-
-```dart
-// lib/core/changes.dart
-final table = InvalidationTable<CoreEvent>([
-  InvalidationRule.on<OrderChanged, CoreEvent>((e) => [orderProvider(e.id), ordersProvider]),
-  InvalidationRule.on<CartCleared, CoreEvent>((_) => [cartProvider]),
-]);
-
-// lib/app/startup.dart, in ready(container): the app's own subscription, held in a provider of the container
-container.listen(changes.latest, (_, next) {
-  final change = next.value;
-  if (change != null) table.apply(change.event, container.invalidate);
-});
-```
-
-`apply` invalidates each provider once and returns how many it invalidated. The `container.listen` in the app's `ready()` is the app's listener, not the package's; it dies with the container.
+The feed opens the core's stream once per container (a generated stream accepts one listener), a topic moves only on an event that concerns its key, none of a burst is lost, and if `open` does `ref.watch(coreProvider)` a restarted core reopens the stream: [Topics](streaming.md#topics) has the rules, the table form and the tests, and [A rebuild budget](streaming.md#a-rebuild-budget-changebudget) what a busy core costs.
 
 **Starting the core is the app's.** `RustLib.init` belongs to the generated bindings, which a generic package cannot name, so there is no adapter: call it from `startup()` through `initRustCore`, which reports one span, `fespalier.frb.init`, ending `ok` or `error` (the attribute `fespalier.frb.result`; not the error, its text or its stack trace) and rethrows the failure unchanged:
 
@@ -427,42 +407,12 @@ Future<void> startup() => initRustCore(RustLib.init);
 
 `startup()` runs before the router exists, behind `splash.dart`; a failure there is reported and shown with `retry`, which runs `startup()` again. Use `ready(container)` ([App startup](app-startup.md)) **instead of or after** it when the core must be read on the app's own container before the first route: `startup()` has no container and can only return overrides, so a core that is a provider (a database to open from the app's directory, a session to restore) is awaited in `ready()`, after `RustLib.init` has run in `startup()`. The split also decides what a retry repeats: `startup()` retried runs `init` again, `ready()` retried does not. FRB's `init` throws `StateError('Should not initialize flutter_rust_bridge twice')` the second time (check the message in your version), so if `startup()` does other fallible work, do it **before** `initRustCore`, and keep everything that comes after the init (opening the store) in `ready()`. If it cannot be ordered so, guard the retry: `if (!RustLib.instance.initialized) await initRustCore(RustLib.init);`. The caveat: `initialized` can already be true when the failure came from the Rust initializer that `init` runs last, and the guard then skips a core that never started.
 
-**Testing.** `package:fespalier_frb/testing.dart` has `FakeChangeSource`, a stream you feed (`emit`, `emitError`, `close`) whose `listenCount` proves the single subscription; override the core provider, or build the feed over `fake.stream`:
-
-```dart
-final fake = FakeChangeSource<CoreEvent>(broadcast: false); // a generated stream is single-subscription
-final feed = ChangeFeed<CoreEvent>((ref) => fake.stream);
-// ... pump the page that watches feed.topic(...)(42)
-fake.emit(const OrderChanged(42));
-await tester.pump(); // the page reloads
-expect(fake.listenCount, 1);
-```
-
-A widget test never runs `startup()` (`pumpRouter` does not), so it needs no `RustLib.init` and no native library: the fake core is a provider override.
-
-The worked case is [`examples/frb-cose`](examples.md#frb-cose) (since 0.21.1): a Rust core that is CrateStack's client, whose `/core` page watches `coreChanges.any`. Its host tests need one thing a Dart app does not: with FRB's native-assets backend a host `flutter test` builds the core, but `RustLib.init()` does not find it by its bare name, so `test/support/host_core.dart` opens the file the build put in `build/native_assets/<os>/`.
-
-### Decoding a core's events: `ChangeCodec`
-
-Since 0.18.0. flutter_rust_bridge mirrors a Rust enum as Dart classes and decodes them inside the `Stream` it returns, so a feed over typed events needs nothing here; a core that sends a `Vec<CoreEvent>` per message is `changes().expand((batch) => batch)`. Some cores send **raw messages** instead:
-
-- a `StreamSink<String>` or `StreamSink<Vec<u8>>` (a `Uint8List`) of JSON, CBOR, protobuf or bincode, because one schema also serves a Swift or Kotlin shell;
-- a `ReceivePort` of plain `dart:ffi`;
-- a socket to a sidecar;
-- a core updated apart from the app.
-
-`ChangeCodec` is the decoder between that stream and the feed. It is a `StreamTransformer`, so it goes into `open` and nothing else changes: the feed numbers what it decodes, and topics, `changes.any`, the 64-event log and `InvalidationTable` see typed events.
+**A core that sends raw messages: `ChangeCodec`.** Since 0.18.0. A core that sends a `StreamSink<String>` or a `StreamSink<Vec<u8>>` of JSON, CBOR, protobuf or bincode (one schema for a Swift or Kotlin shell too), a `ReceivePort` of plain `dart:ffi`, or a socket to a sidecar decodes in Dart, where one bad message is skipped instead of ending the stream. `ChangeCodec` is that decoder, and since 0.25.0 it is a facade over `fespalier_stream`'s [`EventCodec`](streaming.md#decoding-eventcodec) with the same members (`ChangeCodec(decode)`, `ChangeCodec.batch(split, decode)`, `onSkipped`, `unknownCount`, `errorCount`, `decode`) and the same rules, that keeps reporting a skip as `fespalier.frb.decode` (with `fespalier.frb.result` and `fespalier.frb.skipped`), never as `fespalier.stream.decode`:
 
 ```dart
 // lib/core/changes.dart
-CoreEvent eventFromJson(Map<String, Object?> json) => switch (json['type']) {
-  'OrderChanged' => OrderChanged(json['id'] as int),
-  'CartCleared' => const CartCleared(),
-  _ => throw const UnknownChange(), // a variant a newer core added
-};
-
 final coreCodec = ChangeCodec<String, CoreEvent>(
-  (raw) => eventFromJson(jsonDecode(raw) as Map<String, Object?>),
+  (raw) => eventFromJson(jsonDecode(raw) as Map<String, Object?>), // throws UnknownChange for a newer variant
 );
 
 final changes = ChangeFeed<CoreEvent>(
@@ -471,31 +421,7 @@ final changes = ChangeFeed<CoreEvent>(
 );
 ```
 
-The Rust side is `#[serde(tag = "type")]` on the enum and `serde_json::to_string(&event)` into a `StreamSink<String>`.
-
-**A bad message is skipped, not fatal.** The codec catches what your decoder throws (a `FormatException`, a failed cast, a `RangeError`). The next message decodes as usual, `changes.latest` keeps its last change (one bad message is not a stopped core, so it is no `AsyncError`), and the skipped message gets no `Change.seq` and moves no topic. This is what decoding in Dart buys: `flutter_rust_bridge` 2.13 reads its stream in an `async*` that stops at the first throw, so a message it cannot decode, or an error the core adds, ends a typed stream _(read in its source, not run by a test here)_. An error of the stream itself still reaches `changes.latest` as an `AsyncError`.
-
-**Batches.** `ChangeCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a batch is a burst, so a watcher rebuilds at most once for it while another watched key is not concerned, or something watches `changes.latest`, and one that no event of the batch concerns does not rebuild (since 0.21.0; before, a batch longer than the 64-event log rebuilt every watcher once). A key watched alone takes the events of a batch one per turn and reloads once for each that concerns it, unless its topic has [a budget](#a-rebuild-budget-changebudget). A failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
-
-```dart
-final batchCodec = ChangeCodec.batch<String, Object?, CoreEvent>(
-  (raw) => jsonDecode(raw) as List<Object?>,
-  (item) => eventFromJson(item as Map<String, Object?>),
-);
-```
-
-**Unknown events.** Throw `UnknownChange` from the decoder: the event is skipped and counted apart from failures. If such an event should still refresh something, return an event of your own (a `SomethingChanged()` that the topics which care accept, or `changes.any` counts): a rebuild too many is safe.
-
-**What is reported.**
-
-- `onSkipped(reason, stackTrace)`, if you pass it, runs once per skip, inside the delivery: log it and return. What it throws becomes an `AsyncError` of `changes.latest`, and the rest of that message's events are dropped with it (a batch's items decoded before it, and those after it).
-- `unknownCount` and `errorCount` count the skips of each codec object, across its feeds and containers. Each subscription decodes on its own, so a codec shared by a broadcast source that two containers watch counts one bad message twice, calls `onSkipped` twice and makes the span twice.
-- The span `fespalier.frb.decode` ends `skipped` with `fespalier.frb.result` `unknown`, or `error` with `error`, and carries `fespalier.frb.skipped`, the count of that kind so far. It is a root span: a message is decoded in the zone of whoever first watched the feed, so the span is not made a child of whatever was running there.
-- It is reported at the 1st, 2nd, 4th, 8th... skip of each kind, so a thousand unknown events make ten spans, never a thousand.
-- It never carries the message, the variant's name or the error's text.
-- A decoded event reports nothing, and without a telemetry sink a skip costs a counter.
-
-**Other formats and sources.** The decoder and its package are yours: none of them is a dependency of `fespalier_frb`. The two below are fragments (they need your generated classes and your FFI call), not compiled code:
+The Rust side is `#[serde(tag = "type")]` on the enum and `serde_json::to_string(&event)` into a `StreamSink<String>`. The decoder and its package are yours: none of them is a dependency of `fespalier_frb`. The two below are fragments (they need your generated classes and your FFI call), not compiled code:
 
 ```dart
 // A protobuf message, with the generated `pb` library of your schema.
@@ -515,65 +441,9 @@ ref.watch(coreProvider).subscribe(port.sendPort.nativePort);
 return port.transform(ChangeCodec<Object?, CoreEvent>((raw) => eventFromProto(raw as Uint8List)));
 ```
 
-**Testing.** `FakeChangeSource<String>` (or `<Uint8List>`) is the raw stream. `codec.decode(raw)` is the codec without a stream (empty when the message is skipped), and it is also how an app that owns its subscription feeds an `InvalidationTable`: `for (final e in coreCodec.decode(raw)) table.apply(e, container.invalidate);`. A test can check a skip directly: `final before = coreCodec.unknownCount;`, then `expect(coreCodec.decode('{"type":"OrderArchived","id":42}'), isEmpty);` and `expect(coreCodec.unknownCount, before + 1);`. A top-level codec's counters never reset, so they add up across the tests of a run: compare with a count taken before, or assert on what `decode` returns alone.
+**Testing.** `package:fespalier_frb/testing.dart` re-exports `FakeChangeSource` ([Topics](streaming.md#topics) shows it). A widget test never runs `startup()` (`pumpRouter` does not), so it needs no `RustLib.init` and no native library: the fake core is a provider override.
 
-### A rebuild budget: `ChangeBudget`
-
-Since 0.21.0. What a core that emits thousands of events a second costs, measured in the package's tests (`flutter test`, a debug build, so the ratios matter more than the microseconds):
-
-- **The keys an event does not concern: a matcher call each.** A topic's key watches the feed through a `select`, so an event about order 7 costs the watcher of order 42 one call of its matcher, about a microsecond, and no rebuild. Before 0.21.0 every watched key was rebuilt by every event, and the cost grew with the square of the keys: about 40 µs per key per event with 100 keys watched, 200 µs with 1,000.
-- **Widgets: once a frame.** Flutter rebuilds a widget at most once a frame, however often what it watches changes: 5,000 events in a second were 60 widget builds.
-- **Providers: once per event.** Riverpod runs a provider's rebuild after two zero-length timers, not at the next frame, and `flutter_rust_bridge` delivers each event in an event-loop turn of its own. So a `data()` that watches a key reloads once per event about it: 5,000 events a second about one order are 5,000 calls to the core for 60 frames _(measured with fake time in a widget test, not checked on a device with a real core)_.
-- **A slow `data()` never settles.** One that takes 5 ms and is invalidated every millisecond starts again before it finishes: over a simulated second of 1,000 events, none of the 60 frames showed a loaded value, and the page kept its old one, refreshing, until the core went quiet.
-- **A burst that concerns every watched key comes through one event per turn.** Riverpod 3 pauses `changes.latest` while every provider that watches it rebuilds, and the stream holds the rest: a key watched alone takes 1,000 events of which 500 concern it in 500 turns and 500 reloads. While another watched key is not concerned, or something else watches `changes.latest`, the burst goes through in one turn and is one reload.
-- **Nobody watching: the stream holds what comes.** With no topic watched, Riverpod pauses `changes.latest` too, and the stream keeps what the core sends in memory until a topic is watched again _(Dart's buffering of a paused stream; not checked with a real core)_; that topic then rebuilds only for the events that concern it, and takes them in one turn while another watched key is not concerned, or something watches `changes.latest`; a key watched alone takes them one per turn, and reloads once for each, unless its topic has a budget. Something that keeps watching `changes.latest`, such as a "live updates stopped" banner in the app's shell that watches `changes.latest.select((v) => v.hasError)`, keeps the subscription flowing, so nothing is held, and it rebuilds on no event.
-
-A budget bounds the reloads: `budget: ChangeBudget(tick)` lets each key of a topic move at most once between two ticks of `tick`, a provider **you** fire:
-
-```dart
-// lib/core/change_tick.dart
-/// Fires every 100 ms while a budgeted key is watched and active: the app's timer, not the package's.
-final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
-
-class ChangeTick extends RefetchSignal {
-  Timer? _timer;
-
-  void _start() => _timer ??= Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
-
-  void _stop() {
-    _timer?.cancel();
-    _timer = null;
-  }
-
-  @override
-  int build() {
-    _start();
-    ref.onCancel(_stop); // every budgeted key is paused (a covered page, a hidden tab): no timer
-    ref.onResume(_start);
-    ref.onDispose(_stop);
-    return 0;
-  }
-}
-
-// lib/core/changes.dart
-final orderChanged = changes.topic<int>(
-  (event, id) => event is OrderChanged && event.id == id,
-  budget: ChangeBudget(changeTick),
-);
-```
-
-A key that has not moved since the last tick moves at once on the first event that concerns it, so a quiet core is as quick as before; the next ones are held, and the next tick moves the key once if anything was held. That move opens the next period: an event right after a tick that released a held change is held for the tick after it, and only a tick that moved nothing lets the next event through at once. A held change is never dropped: it waits for the next tick however long the core then stays quiet, so a tick that stops firing holds it until it fires again. A tick moves only the keys that hold a change. A held key does not rebuild, so the feed is not paused for it, and a key watched alone takes a whole burst in one turn. Measured: with a 16 ms tick, the 5,000 events a second are 61 reloads instead of 5,000; with the slow `data()`, a 16 ms tick let 40 of the 60 frames show a loaded value, 50 ms 21 and 100 ms 11, against none.
-
-The tick is yours because the package has no clock: a `Timer` in it would wake an idle app, and a frame callback is a listener on the framework; `test/no_timers_test.dart` allows neither. A `RefetchSignal` (from fespalier) fires with `fire()`; auto-dispose, as above, it is created by the first budgeted key watched and disposed with the last. Disposal is not enough to stop the timer when a page is hidden: Riverpod pauses the watchers of a page that an opaque route covers or a tab that is not shown, and a paused watcher still keeps its provider alive, so a timer that is only cancelled in `onDispose` keeps firing every 100 ms for a page nobody sees _(measured with fake time: 600 fires in a minute with the only budgeted key paused)_. The recipe starts the timer in `build`, stops it in `onCancel` (the last active watcher is gone or paused) and starts it again in `onResume`, so no budgeted key being active means no timer. A held change of a paused key waits for the page to be shown again and for the next tick after that. One tick serves every budgeted topic; 100 ms is ten updates a second. `changes.any` has no budget: `changes.topic<Null>((_, _) => true, budget: ChangeBudget(changeTick))(null)` is a budgeted "anything changed", whose value counts moves, not events.
-
-**Testing.** Override the tick with `RefetchSignal.new`: nothing fires it but the test, so a held change moves exactly when the test says.
-
-```dart
-final container = ProviderContainer(overrides: [changeTick.overrideWith(RefetchSignal.new)]);
-// ... the first OrderChanged(42) reloads order 42 at once, the next ones wait
-container.read(changeTick.notifier).fire();
-await container.pump(); // order 42 reloads once
-```
+The worked case is [`examples/frb-cose`](examples.md#frb-cose) (since 0.21.1): a Rust core that is CrateStack's client, whose `/core` page watches `coreChanges.any`. Its host tests need one thing a Dart app does not: with FRB's native-assets backend a host `flutter test` builds the core, but `RustLib.init()` does not find it by its bare name, so `test/support/host_core.dart` opens the file the build put in `build/native_assets/<os>/`.
 
 ### Providers per page instance: fespalier_riverpod
 

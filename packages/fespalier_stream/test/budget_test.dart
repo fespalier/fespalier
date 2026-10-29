@@ -5,8 +5,7 @@ import 'dart:async';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_frb/fespalier_frb.dart';
-import 'package:fespalier_frb/testing.dart';
+import 'package:fespalier_stream/testing.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,7 +35,7 @@ class TimerTick extends RefetchSignal {
   }
 }
 
-/// The tick of `docs/data.md` and of [ChangeBudget]'s dartdoc: the timer starts in `build`, stops
+/// The tick of `docs/streaming.md` and of [ChangeBudget]'s dartdoc: the timer starts in `build`, stops
 /// when the last active watcher is gone or paused, and starts again when one comes back.
 class RecipeTick extends RefetchSignal {
   RecipeTick(this.onFire);

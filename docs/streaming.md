@@ -3,18 +3,20 @@
 A page that shows something a server changes (an order's status, a queue, a price) can poll it, or the server can say when it
 changed. `fespalier_stream` (since 0.25.0) is the second: **server-sent events** (`text/event-stream`, the WHATWG standard) read
 through your own `HttpTransport`, as a `Stream` for a `data.dart` or as a **live feed** that Riverpod holds and that reconnects on
-your app's signals. It starts no timer, no backoff and no retry of its own: whatever waits, waits for something your app does.
+your app's signals. A stream that says only what changed is a [`ChangeFeed`](#something-changed-changefeed), whose topics rebuild
+exactly the providers an event concerns. It starts no timer, no backoff and no retry of its own: whatever waits, waits for
+something your app does.
 
 ## What streams, and where
 
-| Where                                      | What it is                                                                                                         | Read                                                                |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| A `data.dart` that returns a `Stream<T>`   | An autoDispose `StreamProvider` fespalier wraps around it; its telemetry ends at once with `stream`                | [Data](data.md#datadart-a-function-a-selector-or-a-provider)        |
-| `TransportResponse.body`                   | Every transport hands the body on as it arrives; a decorator that must read it uses `TransportResponse.buffered`   | [HTTP transport](transport.md#streaming-bodies)                     |
-| `fespalier_stream`                         | Server-sent events over that body: the decoder, a connection that reconnects, live feeds, telemetry, fakes         | this page                                                           |
-| `fespalier_frb`'s `ChangeFeed`             | A Rust core's stream of "what changed", held once, and topics that rebuild exactly the providers an event concerns | [A Rust core's changes](data.md#a-rust-cores-changes-fespalier_frb) |
-| `fespalier_download`'s `HttpTransfer`      | A body streamed to a file                                                                                          | [Downloads](downloads.md)                                           |
-| A generated CrateStack client's `stream()` | A procedure's items over `application/cbor-seq`                                                                    | [CrateStack](cratestack.md)                                         |
+| Where                                                           | What it is                                                                                                                         | Read                                                         |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| A `data.dart` that returns a `Stream<T>`                        | An autoDispose `StreamProvider` fespalier wraps around it; its telemetry ends at once with `stream`                                | [Data](data.md#datadart-a-function-a-selector-or-a-provider) |
+| `TransportResponse.body`                                        | Every transport hands the body on as it arrives; a decorator that must read it uses `TransportResponse.buffered`                   | [HTTP transport](transport.md#streaming-bodies)              |
+| `fespalier_stream`                                              | Server-sent events over that body: the decoder, a connection that reconnects, live feeds, telemetry, fakes                         | this page                                                    |
+| `ChangeFeed` (since 0.25.0 here, `fespalier_frb` re-exports it) | A stream of "what changed" (a Rust core's, a server's), held once, and topics that rebuild exactly the providers an event concerns | [Something changed](#something-changed-changefeed)           |
+| `fespalier_download`'s `HttpTransfer`                           | A body streamed to a file                                                                                                          | [Downloads](downloads.md)                                    |
+| A generated CrateStack client's `stream()`                      | A procedure's items over `application/cbor-seq`                                                                                    | [CrateStack](cratestack.md)                                  |
 
 ## Server-sent events: fespalier_stream
 
@@ -289,6 +291,10 @@ an event's type, data or id, or an error's text. They are root spans, so they ar
 watched the feed was doing. With no sink installed, each is one null check. The `http` span of `OtelTransport` and the breadcrumb
 of `SentryTransport` end when the headers arrive, so their duration is the time to the first byte, not the stream's.
 
+An `EventCodec` that skips a message reports one more instant root span, `fespalier.stream.decode`, with
+`fespalier.stream.result` (`unknown` or `error`) and `fespalier.stream.skipped`, a count, at the 1st, 2nd, 4th, 8th... skip of
+each kind (see [Decoding](#decoding-eventcodec)).
+
 ### Testing
 
 `package:fespalier_stream/testing.dart`:
@@ -322,6 +328,315 @@ test('a drop waits and the tick reopens it, from the last event', () async {
 });
 ```
 
+## Something changed: `ChangeFeed`
+
+Many streams say only **what changed**: "order 42 changed", "the cart was cleared". A Rust core behind flutter_rust_bridge says
+it on a `Stream`, a server on a live connection. The answers (`core.order(42)`, `GET /orders/42`) are a `data.dart`'s business;
+the stream is what keeps them current. A `ChangeFeed` holds that stream **once**, a topic says which events concern a key, and a
+`data.dart` **watches** the topic: the watch is the invalidation, with no listener of your own. It was `fespalier_frb`'s from
+0.13.0; since 0.25.0 it is `fespalier_stream`'s, and `fespalier_frb` re-exports the same declarations, so an app that imports
+`package:fespalier_frb/fespalier_frb.dart` changes nothing ([A Rust core's changes](data.md#a-rust-cores-changes-fespalier_frb)
+covers what stays there: starting the core and `ChangeCodec`).
+
+### Topics
+
+```dart
+// lib/core/changes.dart
+final changes = ChangeFeed<CoreEvent>((ref) => ref.watch(coreProvider).changes(), name: 'core');
+
+/// Rebuilds what watches it when order [id] changes, and on no other event.
+final orderChanged = changes.topic<int>((event, id) => event is OrderChanged && event.id == id);
+
+// lib/app/orders/$id/data.dart
+Future<Order> data(Ref ref, {required int id}) {
+  ref.watch(orderChanged(id));
+  return ref.read(coreProvider).order(id);
+}
+```
+
+`changes.latest` is the **one subscription**: a provider that is never auto-disposed, so it is opened by the first topic anyone
+watches (the function you gave it runs once per container, because a generated stream accepts one listener: since 0.16.0 not
+again after a failure either, because the provider does not retry, which would be a `Timer`) and cancelled by the container's
+disposal. Ten thousand topics are still one subscription. A topic's value is a counter per key that moves **only** when a
+matching event arrives after the first watch, so `data()` is rebuilt exactly then and the screen shows the usual reload (the old
+value stays up, `keepDataOnError` keeps the page if the reload fails, and the rest of
+[freshness](data.md#freshness-staletime-resume-and-reconnect) applies). `changes.any` is the topic of every event (it counts them,
+each event of a burst included), for a provider that depends on the whole stream (a badge count).
+
+What it does not do. It starts no timer, schedules nothing and has no `listen` of its own: `test/no_timers_test.dart` allows none
+in `lib/`. A key is rebuilt only by an event that concerns it (since 0.21.0): Riverpod calls the topic's matcher for each event
+through a `select`, and an event about another key costs that call and nothing else. Events that arrive before a dependent
+rebuilds (a burst, or a page that was paused) can share one rebuild, but **none is lost**: the feed remembers the last 64 events of
+its subscription (`changeLogCapacity`) and a topic looks at every one it missed, so a `[7, 42, 7]` burst still rebuilds the watcher
+of order 42, and `changes.any` counts each event of a burst. A watcher that missed more than 64, or whose stream was opened again,
+rebuilds anyway (a rebuild too many is safe, one too few is not). Two equal events one after the other are still two changes
+(`Change.seq` numbers them, because Riverpod drops a state equal to the last). A stream error stays in `changes.latest` as an
+`AsyncError` and rebuilds no topic. What a stream that emits thousands of events a second costs, and the budget that bounds it,
+are in [A rebuild budget](#a-rebuild-budget-changebudget). A page that is hidden in a tab has its watchers paused by Riverpod;
+they catch up when it comes back _(not checked on a device)_. If `open` does `ref.watch(coreProvider)` and the core is restarted,
+the stream is opened again and the next event counts as a change.
+
+**A table, when you own the subscription.** If the app already has code that receives the events (or does not want to edit its
+`data.dart` files), an `InvalidationTable` is the pure form: rules from an event to the providers it makes stale, applied by a
+function you pass. It holds no container and no stream:
+
+```dart
+// lib/core/changes.dart
+final table = InvalidationTable<CoreEvent>([
+  InvalidationRule.on<OrderChanged, CoreEvent>((e) => [orderProvider(e.id), ordersProvider]),
+  InvalidationRule.on<CartCleared, CoreEvent>((_) => [cartProvider]),
+]);
+
+// lib/app/startup.dart, in ready(container): the app's own subscription, held in a provider of the container
+container.listen(changes.latest, (_, next) {
+  final change = next.value;
+  if (change != null) table.apply(change.event, container.invalidate);
+});
+```
+
+`apply` invalidates each provider once and returns how many it invalidated. The `container.listen` in the app's `ready()` is the
+app's listener, not the package's; it dies with the container.
+
+**Testing.** `package:fespalier_stream/testing.dart` (and `package:fespalier_frb/testing.dart`, which re-exports it) has
+`FakeChangeSource`, a stream you feed (`emit`, `emitError`, `close`) whose `listenCount` proves the single subscription; override
+the core provider, or build the feed over `fake.stream`:
+
+```dart
+final fake = FakeChangeSource<CoreEvent>(broadcast: false); // a generated stream is single-subscription
+final feed = ChangeFeed<CoreEvent>((ref) => fake.stream);
+// ... pump the page that watches feed.topic(...)(42)
+fake.emit(const OrderChanged(42));
+await tester.pump(); // the page reloads
+expect(fake.listenCount, 1);
+```
+
+### Decoding: `EventCodec`
+
+A typed stream needs none of this: flutter_rust_bridge decodes a Rust enum into Dart classes inside the `Stream` it returns, and
+a core that sends a `Vec<CoreEvent>` per message is `changes().expand((batch) => batch)`. Some sources send **raw messages**
+instead:
+
+- a server's `ServerEvent`, whose `data` is JSON text;
+- a core's `StreamSink<String>` or `StreamSink<Vec<u8>>` (a `Uint8List`) of JSON, CBOR, protobuf or bincode, because one schema
+  also serves a Swift or Kotlin shell;
+- a `ReceivePort` of plain `dart:ffi`, a socket to a sidecar, a core updated apart from the app.
+
+`EventCodec` (since 0.25.0; `fespalier_frb`'s `ChangeCodec` since 0.18.0 is the same codec under that package's telemetry names)
+is the decoder between that stream and the feed. It is a `StreamTransformer`, so it goes into `open`, or onto a connection
+(`connection.transform(codec)`), and nothing else changes: the feed numbers what it decodes, and topics, `changes.any`, the 64-event
+log and `InvalidationTable` see typed events.
+
+```dart
+// lib/core/changes.dart
+OrderEvent eventFromJson(Map<String, Object?> json) => switch (json['type']) {
+  'OrderChanged' => OrderChanged(json['id'] as int),
+  'CartCleared' => const CartCleared(),
+  _ => throw const UnknownChange(), // a variant a newer server or core added
+};
+
+final orderCodec = EventCodec<ServerEvent, OrderEvent>(
+  (event) => eventFromJson(jsonDecode(event.data) as Map<String, Object?>),
+);
+```
+
+**A bad message is skipped, not fatal.** The codec catches what your decoder throws (a `FormatException`, a failed cast, a
+`RangeError`). The next message decodes as usual, `changes.latest` keeps its last change (one bad message is not a stopped
+stream, so it is no `AsyncError`), and the skipped message gets no `Change.seq` and moves no topic. For a core, this is what
+decoding in Dart buys: `flutter_rust_bridge` 2.13 reads its stream in an `async*` that stops at the first throw, so a message it
+cannot decode, or an error the core adds, ends a typed stream _(read in its source, not run by a test here)_. An error of the
+stream itself still reaches `changes.latest` as an `AsyncError`.
+
+**Batches.** `EventCodec.batch(split, decode)` takes a message that carries several events. Each event is numbered on its own; a
+batch is a burst, so a watcher rebuilds at most once for it while another watched key is not concerned, or something watches
+`changes.latest`, and one that no event of the batch concerns does not rebuild. A key watched alone takes the events of a batch
+one per turn and reloads once for each that concerns it, unless its topic has [a budget](#a-rebuild-budget-changebudget). A
+failing item is skipped alone; a message whose items cannot be read is skipped whole; a heartbeat is a batch of none.
+
+```dart
+final batchCodec = EventCodec.batch<String, Object?, OrderEvent>(
+  (raw) => jsonDecode(raw) as List<Object?>,
+  (item) => eventFromJson(item as Map<String, Object?>),
+);
+```
+
+**Unknown events.** Throw `UnknownChange` from the decoder: the event is skipped and counted apart from failures. If such an
+event should still refresh something, return an event of your own (a `SomethingChanged()` that the topics which care accept, or
+`changes.any` counts): a rebuild too many is safe.
+
+**What is reported.**
+
+- `onSkipped(reason, stackTrace)`, if you pass it, runs once per skip, inside the delivery: log it and return. What it throws
+  becomes an `AsyncError` of `changes.latest`, and the rest of that message's events are dropped with it (a batch's items decoded
+  before it, and those after it).
+- `unknownCount` and `errorCount` count the skips of each codec object, across its feeds and containers. Each subscription
+  decodes on its own, so a codec shared by a broadcast source that two containers watch counts one bad message twice, calls
+  `onSkipped` twice and makes the span twice.
+- The span `fespalier.stream.decode` ends `skipped` with `fespalier.stream.result` `unknown`, or `error` with `error`, and
+  carries `fespalier.stream.skipped`, the count of that kind so far. It is a root span: a message is decoded in the zone of
+  whoever first watched the feed, so the span is not made a child of whatever was running there. `fespalier_frb`'s `ChangeCodec`
+  makes the same span as `fespalier.frb.decode`, with `fespalier.frb.result` and `fespalier.frb.skipped`, as since 0.18.0
+  (`DecodeReport` names the span).
+- It is reported at the 1st, 2nd, 4th, 8th... skip of each kind, so a thousand unknown events make ten spans, never a thousand.
+- It never carries the message, the variant's name or the error's text.
+- A decoded event reports nothing, and without a telemetry sink a skip costs a counter.
+
+**Testing.** `FakeChangeSource<String>` (or `<Uint8List>`) is the raw stream. `codec.decode(raw)` is the codec without a stream
+(empty when the message is skipped), and it is also how an app that owns its subscription feeds an `InvalidationTable`:
+`for (final e in orderCodec.decode(raw)) table.apply(e, container.invalidate);`. A test can check a skip directly:
+`final before = batchCodec.unknownCount;`, then `expect(batchCodec.decode('[{"type":"OrderArchived","id":42}]'), isEmpty);` and
+`expect(batchCodec.unknownCount, before + 1);`. A top-level codec's counters never reset, so they add up across the tests of a
+run: compare with a count taken before, or assert on what `decode` returns alone.
+
+### A rebuild budget: `ChangeBudget`
+
+Since 0.21.0. What a stream that emits thousands of events a second costs, measured in the package's tests (`flutter test`, a
+debug build, so the ratios matter more than the microseconds):
+
+- **The keys an event does not concern: a matcher call each.** A topic's key watches the feed through a `select`, so an event
+  about order 7 costs the watcher of order 42 one call of its matcher, about a microsecond, and no rebuild. Before 0.21.0 every
+  watched key was rebuilt by every event, and the cost grew with the square of the keys: about 40 µs per key per event with 100
+  keys watched, 200 µs with 1,000.
+- **Widgets: once a frame.** Flutter rebuilds a widget at most once a frame, however often what it watches changes: 5,000 events
+  in a second were 60 widget builds.
+- **Providers: once per event.** Riverpod runs a provider's rebuild after two zero-length timers, not at the next frame, and
+  `flutter_rust_bridge` delivers each event in an event-loop turn of its own. So a `data()` that watches a key reloads once per
+  event about it: 5,000 events a second about one order are 5,000 calls to the core for 60 frames _(measured with fake time in a
+  widget test, not checked on a device with a real core)_.
+- **A slow `data()` never settles.** One that takes 5 ms and is invalidated every millisecond starts again before it finishes:
+  over a simulated second of 1,000 events, none of the 60 frames showed a loaded value, and the page kept its old one,
+  refreshing, until the stream went quiet.
+- **A burst that concerns every watched key comes through one event per turn.** Riverpod 3 pauses `changes.latest` while every
+  provider that watches it rebuilds, and the stream holds the rest: a key watched alone takes 1,000 events of which 500 concern it
+  in 500 turns and 500 reloads. While another watched key is not concerned, or something else watches `changes.latest`, the burst
+  goes through in one turn and is one reload.
+- **Nobody watching: the stream holds what comes.** With no topic watched, Riverpod pauses `changes.latest` too, and the stream
+  keeps what the core sends in memory until a topic is watched again _(Dart's buffering of a paused stream; not checked with a
+  real core)_; that topic then rebuilds only for the events that concern it, and takes them in one turn while another watched key
+  is not concerned, or something watches `changes.latest`; a key watched alone takes them one per turn, and reloads once for
+  each, unless its topic has a budget. Something that keeps watching `changes.latest`, such as a "live updates stopped" banner in
+  the app's shell that watches `changes.latest.select((v) => v.hasError)`, keeps the subscription flowing, so nothing is held, and
+  it rebuilds on no event. A feed over a live connection stops reading instead ([below](#a-feed-over-a-live-connection)).
+
+A budget bounds the reloads: `budget: ChangeBudget(tick)` lets each key of a topic move at most once between two ticks of
+`tick`, a provider **you** fire:
+
+```dart
+// lib/core/change_tick.dart
+/// Fires every 100 ms while a budgeted key is watched and active: the app's timer, not the package's.
+final changeTick = NotifierProvider.autoDispose<RefetchSignal, int>(ChangeTick.new);
+
+class ChangeTick extends RefetchSignal {
+  Timer? _timer;
+
+  void _start() => _timer ??= Timer.periodic(const Duration(milliseconds: 100), (_) => fire());
+
+  void _stop() {
+    _timer?.cancel();
+    _timer = null;
+  }
+
+  @override
+  int build() {
+    _start();
+    ref.onCancel(_stop); // every budgeted key is paused (a covered page, a hidden tab): no timer
+    ref.onResume(_start);
+    ref.onDispose(_stop);
+    return 0;
+  }
+}
+
+// lib/core/changes.dart
+final orderChanged = changes.topic<int>(
+  (event, id) => event is OrderChanged && event.id == id,
+  budget: ChangeBudget(changeTick),
+);
+```
+
+A key that has not moved since the last tick moves at once on the first event that concerns it, so a quiet stream is as quick as
+before; the next ones are held, and the next tick moves the key once if anything was held. That move opens the next period: an
+event right after a tick that released a held change is held for the tick after it, and only a tick that moved nothing lets the
+next event through at once. A held change is never dropped: it waits for the next tick however long the stream then stays quiet,
+so a tick that stops firing holds it until it fires again. A tick moves only the keys that hold a change. A held key does not
+rebuild, so the feed is not paused for it, and a key watched alone takes a whole burst in one turn. Measured: with a 16 ms tick,
+the 5,000 events a second are 61 reloads instead of 5,000; with the slow `data()`, a 16 ms tick let 40 of the 60 frames show a
+loaded value, 50 ms 21 and 100 ms 11, against none.
+
+The tick is yours because the package has no clock: a `Timer` in it would wake an idle app, and a frame callback is a listener on
+the framework; `test/no_timers_test.dart` allows neither. A `RefetchSignal` (from fespalier) fires with `fire()`; auto-dispose, as
+above, it is created by the first budgeted key watched and disposed with the last. Disposal is not enough to stop the timer when a
+page is hidden: Riverpod pauses the watchers of a page that an opaque route covers or a tab that is not shown, and a paused watcher
+still keeps its provider alive, so a timer that is only cancelled in `onDispose` keeps firing every 100 ms for a page nobody sees
+_(measured with fake time: 600 fires in a minute with the only budgeted key paused)_. The recipe starts the timer in `build`,
+stops it in `onCancel` (the last active watcher is gone or paused) and starts it again in `onResume`, so no budgeted key being
+active means no timer. A held change of a paused key waits for the page to be shown again and for the next tick after that. One
+tick serves every budgeted topic; 100 ms is ten updates a second. `changes.any` has no budget:
+`changes.topic<Null>((_, _) => true, budget: ChangeBudget(changeTick))(null)` is a budgeted "anything changed", whose value counts
+moves, not events.
+
+**Testing.** Override the tick with `RefetchSignal.new`: nothing fires it but the test, so a held change moves exactly when the
+test says.
+
+```dart
+final container = ProviderContainer(overrides: [changeTick.overrideWith(RefetchSignal.new)]);
+// ... the first OrderChanged(42) reloads order 42 at once, the next ones wait
+container.read(changeTick.notifier).fire();
+await container.pump(); // order 42 reloads once
+```
+
+### A feed over a live connection
+
+Since 0.25.0. `ChangeFeed.live` takes what a [`LiveFeed`](#a-live-feed-livefeed) takes, a function from the `Ref` and the ID to
+resume from to a `LiveConnection`, and makes its events the feed's changes:
+
+```dart
+// lib/live/changes.dart
+final changes = ChangeFeed<OrderEvent>.live(
+  (ref, lastEventId) => ServerEvents(
+    ref.watch(apiTransport),
+    Uri.parse('https://api.example.com/changes'),
+    lastEventId: lastEventId,
+    name: 'changes',
+  ).transform(orderCodec),
+  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+);
+
+final orderChanged = changes.topic<int>((event, id) => event is OrderChanged && event.id == id);
+```
+
+Topics, `any`, the 64-event log, budgets and `InvalidationTable` work as over a stream. The connection behaves as a `LiveFeed`'s
+with `keepAlive`: it opens when the first topic is watched and lives as long as the container; a drop is never an error and
+waits for a signal of `LiveRules.reconnectOn` or for [the tick](#reconnecting-without-a-timer-streamticker); when every topic is
+paused (each page that watches one is hidden, or nothing watches any) Riverpod pauses `changes.latest` and the connection
+**stops reading**, the tick closes it if it is still paused at the next one, and a topic watched or shown again opens it with
+`Last-Event-ID` ([Paused pages](#paused-pages)). `connect` runs again when a provider it watches changes (the signed-in user), with
+no ID, and the connection it made before is closed. A refusal ends `changes.latest` with its error, which a page that watches it
+shows; topics do not move on it. Every provider passes `retry: (_, _) => null`, and the feed starts no timer.
+
+`ChangeFeed.live` has no `status` (a `LiveFeed` has one): a banner watches `changes.latest.select((v) => v.hasError)` for a
+refusal.
+
+### Gaps
+
+A connection that opens again **without resuming** has missed whatever the server sent meanwhile: a server that sends no `id:`
+(CrateStack's `@@subscribe` sends none), or a feed that was rebuilt (which forgets its ID). So a live change feed
+treats `LiveOpen(resumed: false)` on a request made after an earlier open, or after failed tries (below), as a **gap**: it starts a
+new log, and **every watched key moves once, at that moment**, without waiting for an event (`changes.any` moves by one). Each `data.dart` that watches a
+topic reloads, which is the only safe answer to "something may have changed". A reopen that resumed (`LiveOpen(resumed: true)`,
+the request carried `Last-Event-ID`) moves nothing: the server sends what was missed, and those events move their keys as usual.
+After a gap the new log numbers from 1 again (`Change.seq`).
+
+`resumed` only says that the request **carried** an ID: the feed cannot tell that a server ignored it. A server that cannot honour
+`Last-Event-ID` (it keeps no history, or its IDs restart with the process) must not send `id:` at all, or must clear the ID with an
+empty `id:` line before it ends a stream; the next request then carries none, and that open is a gap.
+
+The rule reads the statuses of the connection: a request is a `LiveConnecting`, so the `LiveOpen` that only ends a pause is not
+a reopen and moves nothing. A key watched for the first time after a gap starts from there, and a key that was paused during a
+gap moves once when it is shown again. The first open of the feed is no gap when the first request opens it. An open that follows
+failed tries (a `LiveConnecting` with `attempt` above 1 or a `LiveWaiting` before any open: a 503, a timeout, a network error) is a
+gap even if it is the first open, because the server may have sent events while the connection was failing: every watched key
+moves once at that open. The same holds for a key watched after the gap: it counts from the log it first sees, even when only
+`changes.latest` (a "live updates stopped" banner) stayed watched while the gap happened.
+
 ## Servers and proxies
 
 - Answer `200` with `Content-Type: text/event-stream` and `Cache-Control: no-cache`; anything else is a refusal or a rejection
@@ -341,7 +656,7 @@ test('a drop waits and the tick reopens it, from the last event', () async {
 
 Not built: the browser's `EventSource` (above), an automatic backoff or reconnect timer, request bodies that stream on the web,
 WebSockets, WebTransport, GraphQL subscriptions, background streaming, `freshness` on a stream, a streaming `form()`, a dashboard
-panel for streams, and a scaffold in `fsp create` or `fsp new`.
+panel for streams, a scaffold in `fsp create` or `fsp new`, and a `status` on `ChangeFeed.live`.
 
 UNCHECKED, because no CI job can show them:
 

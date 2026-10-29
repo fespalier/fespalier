@@ -120,8 +120,13 @@ or returns it in the selector form (`ProviderListenable<AsyncValue<Order>> data(
 `fespalier.stream.open` (a request's send to its answer: `fespalier.stream.result` `open`, `done`, `refused`, `rejected`,
 `unavailable`, `failed` or `cancelled`, `status_code`, `resumed`) and `fespalier.stream.close` (instant, at the end of a
 connection that was open: `reason` `ended`, `failed`, `idle`, `paused` or `cancelled`, and `events`), both with `kind` `sse` and
-the `name` given to `ServerEvents`. Root spans, constants only: never a URL, a header, an event or an error's text. See
+the `name` given to `ServerEvents`. Root spans, constants only: never a URL, a header, an event or an error's text. An
+`EventCodec` that skips a message makes `fespalier.stream.decode` (`result` `unknown` or `error`, `skipped`, a count). See
 `fespalier-observability`.
+
+A server that says only what changed is a change feed over a live connection, `ChangeFeed.live` (since 0.25.0): topics that
+move only for the keys an event concerns, and a gap (a reopen that cannot resume, or an open that follows failed tries) that moves every watched key once. See
+[`change-feeds.md`](change-feeds.md).
 
 ## Testing
 

@@ -69,10 +69,18 @@ Future<List<Order>> data(Ref ref) {
   user) starts afresh.
 - `transport.serverEvents(url)` is the simple form: a plain `Stream` for a `data.dart`, which ends with the error a feed would
   wait through.
+- `ChangeFeed` (fespalier_frb's from 0.13.0, here since 0.25.0; fespalier_frb re-exports it) holds a stream of what changed
+  in one subscription, and `feed.topic(matches)(key)` is a provider that moves only on an event that concerns the key, so a
+  `data.dart` that watches it reloads exactly then; `any` counts every event, `ChangeBudget` holds a busy key to one move per
+  tick of a provider the app fires, and `InvalidationTable` is the pure form. `ChangeFeed.live(connect)` is one over a live
+  connection, with a `LiveFeed`'s pause, tick and resume; a reopen that cannot resume is a gap, and every watched key moves
+  once. `EventCodec` decodes raw messages on the way in and skips a bad or unknown one (`UnknownChange`) without ending the
+  stream.
 - Telemetry: `fespalier.stream.open` and `fespalier.stream.close`, short root spans with constants only
-  (`FespalierStreamConventions`), never a URL, an event or an error's text.
+  (`FespalierStreamConventions`), never a URL, an event or an error's text; `fespalier.stream.decode` for a message an
+  `EventCodec` skipped, with a count.
 - `package:fespalier_stream/testing.dart` has `FakeEventServer` (an `HttpTransport` that serves streams the test writes to and
-  honours the abort trigger), `ManualStreamTicker`, `FakeLiveConnection` and `streamTestOverrides()`.
+  honours the abort trigger), `ManualStreamTicker`, `FakeLiveConnection`, `FakeChangeSource` and `streamTestOverrides()`.
 
 UNCHECKED (no CI job shows them): a stream on Android and iOS across background and foreground, a network change, iOS
 socket suspension, Android Doze and a carrier proxy that buffers; and `ServerEvents` in a browser (a spike measured

@@ -23,10 +23,17 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.24.1 # x-release-please-version
+  # ChangeFeed, its topics, ChangeBudget, InvalidationTable and the codec under ChangeCodec live there
+  # since 0.25.0, and this package re-exports them. The same url and ref as fespalier, for the same
+  # reason; an app that overrides fespalier_frb by path overrides fespalier_stream (and
+  # fespalier_transport, which it depends on) too.
+  fespalier_stream:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_stream
+      ref: v0.24.1 # x-release-please-version
 
 dev_dependencies:
-  # retry_test.dart counts the timers a stream that fails leaves behind (none).
-  fake_async: ^1.3.0
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

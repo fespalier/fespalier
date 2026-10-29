@@ -103,7 +103,10 @@ as it: `fespalier.stream.open` (a request's send to its answer; `fespalier.strea
 was open ends; `reason` `ended`, `failed`, `idle`, `paused` or `cancelled`, and `events`), both with `kind` (`sse`) and the
 `name` the app gave `ServerEvents`. Constants only (`FespalierStreamConventions`), the package's own contract: never a URL, a
 header, an event's type, data or id, or an error's text. `OtelTransport`'s `http` span and `SentryTransport`'s breadcrumb end at
-the headers, so for a stream their duration is the time to the first byte.
+the headers, so for a stream their duration is the time to the first byte. An `EventCodec` that skips a message adds an instant
+root span, `fespalier.stream.decode` (`fespalier.stream.result` `unknown` or `error`, and `fespalier.stream.skipped`, a count),
+at the 1st, 2nd, 4th... skip of each kind; `fespalier_frb`'s `ChangeCodec`, a facade over it since 0.25.0, keeps its own name
+for the same span, `fespalier.frb.decode`.
 
 [`references/conventions.md`](references/conventions.md) is **contract version 1**: every span, event and
 attribute name, for anyone building a dashboard or an alert. Adding is allowed within version 1; renaming

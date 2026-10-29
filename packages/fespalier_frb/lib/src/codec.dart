@@ -1,24 +1,22 @@
 import 'dart:async';
 
+import 'package:fespalier_stream/fespalier_stream.dart';
+
 import 'telemetry.dart';
 
-/// Thrown by a decoder for a message this app is too old to understand (since 0.18.0): a
-/// variant, a tag or a field that a newer core added.
-///
-/// A [ChangeCodec] skips the message (or the batch item) and counts it in
-/// [ChangeCodec.unknownCount], apart from the ones that failed to decode. It carries nothing on
-/// purpose, so telemetry never sees what the core sent: log the tag yourself before throwing.
-final class UnknownChange implements Exception {
-  /// The marker: `throw const UnknownChange()`.
-  const UnknownChange();
-
-  /// `UnknownChange`.
-  @override
-  String toString() => 'UnknownChange';
-}
+/// The names a [ChangeCodec] reports a skip under: fespalier_frb's own, unchanged since 0.18.0.
+const DecodeReport _frbReport = DecodeReport(
+  operation: frbDecodeOp,
+  resultAttribute: frbResultAttribute,
+  skippedAttribute: frbSkippedAttribute,
+);
 
 /// Decodes a core's raw messages (JSON, bytes, a batch per message) into its events, on the way
 /// into a `ChangeFeed` (since 0.18.0).
+///
+/// Since 0.25.0 it is a facade over fespalier_stream's `EventCodec`, with the same members and
+/// behaviour, that reports under fespalier_frb's names: `fespalier.frb.decode`, never
+/// `fespalier.stream.decode`. A codec for a server's events is an `EventCodec`.
 ///
 /// It is a `StreamTransformer`: use it in the feed's `open`, and the feed numbers what it decodes.
 ///
@@ -35,8 +33,8 @@ final class UnknownChange implements Exception {
 /// 4th, 8th... skip of each kind is a `fespalier.frb.decode` span (a root span, not under whatever
 /// was running) holding constants and a count, never the message or the error's text. The source
 /// stream's own errors pass through unchanged.
-sealed class ChangeCodec<R, E> extends StreamTransformerBase<R, E> {
-  ChangeCodec._({this.onSkipped});
+final class ChangeCodec<R, E> extends StreamTransformerBase<R, E> {
+  ChangeCodec._(this._codec);
 
   /// A codec that turns each raw message into one event with [decode]. Throw [UnknownChange]
   /// from it for a variant this app does not know; anything else it throws is an undecodable
@@ -44,7 +42,9 @@ sealed class ChangeCodec<R, E> extends StreamTransformerBase<R, E> {
   factory ChangeCodec(
     E Function(R raw) decode, {
     void Function(Object reason, StackTrace stackTrace)? onSkipped,
-  }) = _OneCodec<R, E>;
+  }) => ChangeCodec<R, E>._(
+    EventCodec<R, E>(decode, onSkipped: onSkipped, report: _frbReport),
+  );
 
   /// A codec for messages that carry several events: [split] gives a message's items, [decode]
   /// turns one item into an event. An item that throws is skipped alone and the rest of its batch
@@ -53,90 +53,39 @@ sealed class ChangeCodec<R, E> extends StreamTransformerBase<R, E> {
     Iterable<I> Function(S raw) split,
     T Function(I item) decode, {
     void Function(Object reason, StackTrace stackTrace)? onSkipped,
-  }) => _BatchCodec<S, I, T>(split, decode, onSkipped: onSkipped);
+  }) => ChangeCodec<S, T>._(
+    EventCodec.batch<S, I, T>(
+      split,
+      decode,
+      onSkipped: onSkipped,
+      report: _frbReport,
+    ),
+  );
+
+  final EventCodec<R, E> _codec;
 
   /// Called once per skipped message or item with what was thrown (an [UnknownChange] or the
   /// decoder's error), inside the stream's delivery: log it and return. What it throws becomes an
   /// error of the decoded stream (an `AsyncError` in the feed's `latest`), and the rest of that
   /// message's events are dropped with it: the items of a batch decoded before it, and those
   /// after it.
-  final void Function(Object reason, StackTrace stackTrace)? onSkipped;
-
-  int _unknownCount = 0;
-  int _errorCount = 0;
+  void Function(Object reason, StackTrace stackTrace)? get onSkipped =>
+      _codec.onSkipped;
 
   /// How many messages or items this codec skipped for an [UnknownChange] since it was made.
   /// Each subscription decodes on its own, so a bad message that two listeners of a broadcast
   /// source both receive is counted twice.
-  int get unknownCount => _unknownCount;
+  int get unknownCount => _codec.unknownCount;
 
   /// How many messages or items this codec skipped because their decoding threw anything else.
-  int get errorCount => _errorCount;
+  int get errorCount => _codec.errorCount;
 
   /// The events [raw] carries, in order: one, several (a batch) or none (skipped, or an empty
   /// batch). Never throws, except what [onSkipped] throws.
-  List<E> decode(R raw);
+  List<E> decode(R raw) => _codec.decode(raw);
 
   /// [stream] with each message replaced by the events [decode] gives. Errors, the end and a
   /// cancel pass through.
   @override
-  Stream<E> bind(Stream<R> stream) => stream.expand(decode);
-
-  void _skip(Object reason, StackTrace stackTrace) {
-    final unknown = reason is UnknownChange;
-    final count = unknown ? ++_unknownCount : ++_errorCount;
-    // The 1st, 2nd, 4th, 8th... of each kind: a handful of spans, never one per message.
-    if ((count & (count - 1)) == 0) {
-      reportDecodeSkipped(unknown: unknown, count: count);
-    }
-    onSkipped?.call(reason, stackTrace);
-  }
-}
-
-final class _OneCodec<R, E> extends ChangeCodec<R, E> {
-  _OneCodec(this._decode, {super.onSkipped}) : super._();
-
-  final E Function(R raw) _decode;
-
-  @override
-  List<E> decode(R raw) {
-    try {
-      return [_decode(raw)];
-    } catch (reason, stackTrace) {
-      _skip(reason, stackTrace);
-      return <E>[];
-    }
-  }
-}
-
-final class _BatchCodec<R, I, E> extends ChangeCodec<R, E> {
-  _BatchCodec(this._split, this._decode, {super.onSkipped}) : super._();
-
-  final Iterable<I> Function(R raw) _split;
-  final E Function(I item) _decode;
-
-  /// The items of [raw], read at once, or null when reading them threw (reported).
-  List<I>? _items(R raw) {
-    try {
-      return _split(raw).toList(growable: false);
-    } catch (reason, stackTrace) {
-      _skip(reason, stackTrace);
-      return null;
-    }
-  }
-
-  @override
-  List<E> decode(R raw) {
-    final items = _items(raw);
-    if (items == null) return <E>[];
-    final events = <E>[];
-    for (final item in items) {
-      try {
-        events.add(_decode(item));
-      } catch (reason, stackTrace) {
-        _skip(reason, stackTrace);
-      }
-    }
-    return events;
-  }
+  Stream<E> bind(Stream<R> stream) => _codec.bind(stream);
 }

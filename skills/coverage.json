@@ -980,6 +980,7 @@
         "docs/offline-first.md#Owned rows",
         "docs/offline-first.md#Sync",
         "docs/offline-first.md#Triggers",
+        "docs/offline-first.md#A push from the server",
         "docs/offline-first.md#Freshness in the UI",
         "docs/offline-first.md#Testing offline",
         "docs/offline-first.md#Limits",
@@ -1020,6 +1021,7 @@
         "docs/cratestack.md#5. Actions",
         "docs/cratestack.md#6. Retries: one layer",
         "docs/cratestack.md#7. Offline rows and sync",
+        "docs/cratestack.md#Subscriptions (`@@subscribe`)",
         "docs/cratestack.md#8. Where CrateStack's embedded mode fits",
         "docs/cratestack.md#9. Test it",
         "docs/cratestack.md#10. Debug messages",
@@ -1037,7 +1039,8 @@
         "packages/fespalier_cratestack/README.md",
         "packages/fespalier_cratestack/lib/src/portal_transport.dart",
         "packages/fespalier_cratestack/lib/src/transport_cancel.dart",
-        "packages/fespalier_cratestack/lib/src/transport_failures.dart"
+        "packages/fespalier_cratestack/lib/src/transport_failures.dart",
+        "packages/fespalier_cratestack/lib/src/subscription.dart"
       ]
     },
     "fespalier-downloads": {

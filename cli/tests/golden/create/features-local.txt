@@ -53,6 +53,8 @@ dependency_overrides:
     path: /check out/packages/fespalier_cratestack
   fespalier_storage:
     path: /check out/packages/fespalier_storage
+  fespalier_stream:
+    path: /check out/packages/fespalier_stream
   fespalier_transport:
     path: /check out/packages/fespalier_transport
 

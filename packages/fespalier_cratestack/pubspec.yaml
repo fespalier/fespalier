@@ -24,6 +24,14 @@ dependencies:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
       ref: v0.24.1 # x-release-please-version
+  # crateStackEvents reads a subscription (`@@subscribe`) through ServerEvents and EventCodec
+  # (since 0.25.0). The same url and ref as fespalier, for the same reason; an app that overrides
+  # fespalier_cratestack by path overrides fespalier_stream (and fespalier_transport) too.
+  fespalier_stream:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_stream
+      ref: v0.24.1 # x-release-please-version
   # PortalTransport decorates an HttpTransport, TransportFailures reads its failures and
   # ref.cancellable runs a body under TransportZone (since 0.21.0; Dio was a dependency before):
   # the package links neither Dio nor package:http, test/no_http_test.dart checks it.

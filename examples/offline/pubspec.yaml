@@ -15,7 +15,11 @@ dependencies:
   # Its core is pure Dart: the demo server in lib/demo/ plays the transport, so nothing here needs a backend.
   fespalier_cratestack:
     path: ../../packages/fespalier_cratestack
-  # TransportUnsent, the failure the "network" switch throws while it is off (lib/network.dart).
+  # The change feed over the demo server's subscription, which makes autoSync sync by push (lib/server_changes.dart).
+  fespalier_stream:
+    path: ../../packages/fespalier_stream
+  # TransportUnsent, the failure the "network" switch throws while it is off (lib/network.dart), and the
+  # HttpTransport the subscription is read through.
   fespalier_transport:
     path: ../../packages/fespalier_transport
 
@@ -24,10 +28,13 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-# fespalier_cratestack depends on fespalier and fespalier_transport by git, as an app does; here both are the checkout's.
+# fespalier_cratestack depends on fespalier, fespalier_stream (since 0.25.0) and fespalier_transport by git, as an app
+# does; here all are the checkout's.
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
+  fespalier_stream:
+    path: ../../packages/fespalier_stream
   fespalier_transport:
     path: ../../packages/fespalier_transport
 

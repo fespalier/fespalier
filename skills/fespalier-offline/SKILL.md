@@ -1,6 +1,6 @@
 ---
 name: fespalier-offline
-description: "Offline-first fespalier apps (since 0.10.0, the pure-Dart core of fespalier_cratestack) — deciding what a write is (a row the user owns, merged field by field; a decision only the server makes, queued as an intent; or online-only), reads through ref.serve with Served (network or local, fetchedAt, stale, neverFetched) and the networkFirst, cacheFirst, localOnly and serverOnly policies, the IntentQueue (submit, Accepted or Queued, idempotency keys, per-subject order, pendingIntents for a waiting banner), OwnedRows with a hybrid logical clock and RowSync, SyncEngine and autoSync with the start, resume, reconnect and tick triggers, LocalStore and ReadCache, the sign-out wipe, and testing offline. Load before making a screen or a write work without a network, adding sync, an offline banner or a pending-changes indicator, or when a queued change never sends, sends twice or shows success too early."
+description: "Offline-first fespalier apps (since 0.10.0, the pure-Dart core of fespalier_cratestack) — deciding what a write is (a row the user owns, merged field by field; a decision only the server makes, queued as an intent; or online-only), reads through ref.serve with Served (network or local, fetchedAt, stale, neverFetched) and the networkFirst, cacheFirst, localOnly and serverOnly policies, the IntentQueue (submit, Accepted or Queued, idempotency keys, per-subject order, pendingIntents for a waiting banner), OwnedRows with a hybrid logical clock and RowSync, SyncEngine and autoSync with the start, resume, reconnect and tick triggers and (since 0.25.0) a push from the server (syncPushSignal over a CrateStack subscription), LocalStore and ReadCache, the sign-out wipe, and testing offline. Load before making a screen or a write work without a network, adding sync, an offline banner or a pending-changes indicator, or when a queued change never sends, sends twice or shows success too early."
 ---
 
 # fespalier-offline
@@ -216,10 +216,12 @@ and the same field goes to the greater stamp, on both. `references/owned-rows-an
 
 ## Sync and the triggers
 
-`ref.watch(autoSync)` **once, in the root `layout.dart`**, runs `syncRunner.sync(...)` on four triggers: **start**,
+`ref.watch(autoSync)` **once, in the root `layout.dart`**, runs `syncRunner.sync(...)` on five triggers: **start**,
 **resume** (`appResumeSignal`), **reconnect** (`reconnectSignal`, which does nothing until `startup()` overrides it with
-`ConnectivitySignal.new` from `fespalier_connectivity`) and the app's **tick**. The tick is a signal the package never
-fires itself, because it starts no timer: the app owns it.
+`ConnectivitySignal.new` from `fespalier_connectivity`), the app's **tick**, and (since 0.25.0) a **push** from the server
+(`syncPushSignal`, which does nothing until `startup()` overrides it, usually with a change feed over a CrateStack
+subscription: [`references/push-sync.md`](references/push-sync.md)). The tick is a signal the package never fires itself,
+because it starts no timer: the app owns it.
 
 ```dart
 // lib/foreground_ticker.dart
@@ -280,11 +282,15 @@ Future<List<Override>> startup() async => [
   a row made offline). The drain runs even if the push failed and stops at the first sign of no network.
 - **Single flight** (a sync that starts while another runs joins it) and a **`minInterval` of 10 seconds**: a signal
   within it of the last sync that reached the server does nothing unless the last found no network or work was queued
-  since. A manual sync and the first one at start always run. **A sync never throws**: its `SyncReport` has `failure`,
+  since. A manual sync and the first one at start always run. **A push is the exception to both** (since 0.25.0): it
+  skips `minInterval`, and one that arrives during a run marks the engine dirty, so one more sync runs after it (a
+  burst gives two, never more; a push queued behind an engine that is then replaced is asked again of the new one, once). A
+  `switch` over `SyncReason` that lists every value needs a `push` case. **A sync never throws**: its `SyncReport` has `failure`,
   `pushed`, `pulled`, `rolledBack` and the drain's `DrainReport`.
 - **Save locally, then sync best-effort**: an action edits the row, calls `engine.sync(SyncReason.manual)` and ignores
   the failure. **Push before a server decision that names a local row**: `await ref.read(syncEngine).push()` throws when
-  it fails, where `sync` does not, so you do not send a decision about a row the server has never seen. The report of a sync an action starts does not reach `autoSync`'s state, so its `rolledBack` is not shown by a banner on `autoSync` alone: keep it yourself (`examples/offline`'s `lastSync` notifier).
+  it fails, where `sync` does not, so you do not send a decision about a row the server has never seen (it waits for a
+  running sync and for the push run queued behind it, and while it pushes no sync starts alongside it). The report of a sync an action starts does not reach `autoSync`'s state, so its `rolledBack` is not shown by a banner on `autoSync` alone: keep it yourself (`examples/offline`'s `lastSync` notifier).
 
 ## Golden rules and traps
 
@@ -309,25 +315,27 @@ Future<List<Override>> startup() async => [
 
 ## References
 
-| Need                                                                                      | Page                                                                                                        |
-| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `serve`'s parameters, `ReadCache`, `Served`, the portal and gateway rules                 | [`references/reads.md`](references/reads.md)                                                                |
-| The answer table, statuses, `discard`, `drain`, field errors, the sign-out wipe           | [`references/intents.md`](references/intents.md)                                                            |
-| The clock, per-field merge, writing a `RowSync`, `SyncEngine` and the triggers            | [`references/owned-rows-and-sync.md`](references/owned-rows-and-sync.md)                                    |
-| `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides` | [`references/testing.md`](references/testing.md)                                                            |
-| Wiring a CrateStack client, Dio, the server's idempotency contract                        | [`fespalier-cratestack`](../fespalier-cratestack/SKILL.md)                                                  |
-| A signed transport under intents and `ref.serve`, with a server to run it against         | [`examples/cose`](../../examples/cose/README.md)                                                            |
-| A message from the package                                                                | [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-cratestack.md` page) |
+| Need                                                                                       | Page                                                                                                        |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `serve`'s parameters, `ReadCache`, `Served`, the portal and gateway rules                  | [`references/reads.md`](references/reads.md)                                                                |
+| The answer table, statuses, `discard`, `drain`, field errors, the sign-out wipe            | [`references/intents.md`](references/intents.md)                                                            |
+| The clock, per-field merge, writing a `RowSync`, `SyncEngine` and the triggers             | [`references/owned-rows-and-sync.md`](references/owned-rows-and-sync.md)                                    |
+| `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`  | [`references/testing.md`](references/testing.md)                                                            |
+| A sync when the server says something changed: `syncPushSignal`, a CrateStack subscription | [`references/push-sync.md`](references/push-sync.md)                                                        |
+| Wiring a CrateStack client, Dio, the server's idempotency contract                         | [`fespalier-cratestack`](../fespalier-cratestack/SKILL.md)                                                  |
+| A signed transport under intents and `ref.serve`, with a server to run it against          | [`examples/cose`](../../examples/cose/README.md)                                                            |
+| A message from the package                                                                 | [`fespalier-troubleshooting`](../fespalier-troubleshooting/SKILL.md) (its `diagnostics-cratestack.md` page) |
 
 ## Where the code is
 
 `packages/fespalier_cratestack/lib/src/`: `served.dart`, `read_cache.dart`, `intent_queue.dart`, `intent.dart`,
-`owned_rows.dart`, `lww.dart`, `hlc.dart`, `row_sync.dart`, `sync_engine.dart`, `auto_sync.dart`, `local_store.dart`,
-`scope.dart`, `errors.dart`, `transport.dart`; `test/intents_test.dart` pins the answer table and
+`owned_rows.dart`, `lww.dart`, `hlc.dart`, `row_sync.dart`, `sync_engine.dart`, `auto_sync.dart`, `subscription.dart`
+(since 0.25.0), `local_store.dart`, `scope.dart`, `errors.dart`, `transport.dart`; `test/intents_test.dart` pins the answer table and
 `test/no_timers_test.dart` greps `lib/` for timers. The guide is
 [`docs/offline-first.md`](https://github.com/fespalier/fespalier/blob/main/docs/offline-first.md).
 
 `examples/offline` (in the fespalier repository) is a running app of the sample above: an orders list read with
 `ref.serve`, a cancel as an intent, notes as owned rows with a `RowSync`, `autoSync` in the root layout with the app's
-own ticker, the sign-out wipe and a switch that plays the network, all on an in-process demo server. Its
+own ticker, a push from the demo server's subscription (since 0.25.0), the sign-out wipe and a switch that plays the
+network, all on an in-process demo server. Its
 `test/support.dart` is `references/testing.md` applied to a whole app.

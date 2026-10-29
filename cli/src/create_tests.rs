@@ -265,13 +265,14 @@ fn a_checkout_overrides_each_companion_and_what_it_needs() {
         .lines()
         .filter_map(|l| l.strip_prefix("  ").and_then(|l| l.strip_suffix(':')))
         .collect();
-    // cratestack depends on the transport, which the app does not name.
+    // cratestack depends on the transport and (since 0.25.0) the stream, which the app does not name.
     assert_eq!(
         names,
         [
             "fespalier",
             "fespalier_cratestack",
             "fespalier_storage",
+            "fespalier_stream",
             "fespalier_transport"
         ]
     );
@@ -1021,6 +1022,7 @@ fn the_closure_of_a_companion_names_what_it_needs() {
         [
             "fespalier_cratestack",
             "fespalier_otel",
+            "fespalier_stream",
             "fespalier_transport"
         ]
     );

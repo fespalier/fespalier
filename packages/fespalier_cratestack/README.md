@@ -38,18 +38,19 @@ dependencies:
 
 <!-- x-release-please-end -->
 
-Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `fespalier_transport` (an interface, no dependencies of its own) and
-`hive_ce` (`^2.16.0`, only `hive.dart` imports it), all pure Dart. It links neither Dio nor `package:http`
+Needs Dart 3.9 and Flutter 3.35 or newer. It depends on `clock`, `fespalier_transport` (an interface, no dependencies of its own),
+`fespalier_stream` (since 0.25.0, for subscriptions; pub fetches it with the same `ref`, and an app that overrides this package with a
+`path:` overrides it too) and `hive_ce` (`^2.16.0`, only `hive.dart` imports it), all pure Dart. It links neither Dio nor `package:http`
 (`test/no_http_test.dart`): the generated client keeps its own Dio, and you point that Dio's `httpClientAdapter` at
 `TransportAdapter(chain)`.
 
 ## Three libraries
 
-| Library                                                  | For                         | What is in it                                                                                                                                                                                                                |
-| -------------------------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync`, and the HTTP pieces: `ref.cancellable`, `PortalTransport`, `TransportFailures` |
-| `package:fespalier_cratestack/hive.dart`                 | a durable store             | `HiveLocalStore`, a hive_ce box that never evicts                                                                                                                                                                            |
-| `package:fespalier_cratestack/testing.dart`              | tests                       | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`                                                                                                                                    |
+| Library                                                  | For                         | What is in it                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_cratestack/fespalier_cratestack.dart` | everything that is not Hive | the transport seam, errors, `Served` and `ref.serve`, `LocalStore`, `ReadCache`, intents, owned rows and the merge, `SyncEngine`, `autoSync` and `syncPushSignal`, subscriptions (`crateStackEvents`, `CrateStackModelEvent`), and the HTTP pieces: `ref.cancellable`, `PortalTransport`, `TransportFailures` |
+| `package:fespalier_cratestack/hive.dart`                 | a durable store             | `HiveLocalStore`, a hive_ce box that never evicts                                                                                                                                                                                                                                                             |
+| `package:fespalier_cratestack/testing.dart`              | tests                       | `FakeCrateStackTransport`, `FakeRowServer`, `ManualSyncTicker`, `crateStackTestOverrides`, `modelEvent` and `lagged` on fespalier_stream's `FakeEventConnection`                                                                                                                                              |
 
 ## Wire it
 
@@ -161,6 +162,33 @@ class ForegroundTicker extends RefetchSignal {
 
 Each exists for a reason: a device that never backgrounds and never loses signal would otherwise never push.
 
+Since 0.25.0 it also syncs when the server says something changed: override `syncPushSignal` with a count that moves
+then, usually a change feed over a CrateStack subscription.
+
+```dart
+final serverChanges = ChangeFeed<CrateStackModelEvent>.live(
+  (ref, _) {
+    // Who is signed in: signing in, out or as someone else replaces the connection (a feed the
+    // server refused at a signed-out start opens again at sign-in).
+    ref.watch(crateStackScope);
+    return crateStackEvents(ref.watch(apiTransport), apiBase, 'model.Note.subscribe');
+  },
+  rules: LiveRules(reconnectOn: [reconnectSignal]),
+);
+// startup():
+syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any)),
+```
+
+A push skips the minimum interval, and one that arrives during a sync marks the engine dirty: one more sync runs after
+it, so a burst gives two. CrateStack 0.15.4 sends no event ID (every reopen is a gap, which syncs too), no heartbeat
+(leave `LiveRules.idle` unset; a connection that died silently is replaced by a rebuild of the feed, for instance
+`connect` watching `appShowSignal`, not by a signal or the tick), and applies no read policy to a subscription: an event
+is a hint, never something to render (its row is not even kept unless you pass `keepData: true`), and your
+`AuthProvider` must refuse an anonymous subscriber. A subscription is per model, not per account, so every device of
+every user syncs when anyone writes, and a device hears its own pushes (two syncs per local edit): give `syncPushSignal`
+a `topic` of the feed with a `ChangeBudget` to bound it. The details are in
+[Subscriptions](../../docs/cratestack.md#subscriptions-subscribe).
+
 ## Test it
 
 ```dart
@@ -191,4 +219,5 @@ the reconnect trigger.
 ## Not built
 
 Signed intents (a re-confirmation or a device-bound proof on a queued call), paging helpers beyond the cursor loop,
-a sync telemetry span, and a background isolate. See [Offline-first](../../docs/offline-first.md#limits).
+a sync telemetry span, a background isolate, and resuming a subscription or applying its events to rows (CrateStack
+0.15.4 sends no event ID and checks no read policy on one). See [Offline-first](../../docs/offline-first.md#limits).

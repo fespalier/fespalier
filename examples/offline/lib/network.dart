@@ -44,3 +44,21 @@ final class SwitchedTransport implements CrateStackTransport {
     return _inner.send(call, idempotencyKey: idempotencyKey);
   }
 }
+
+/// The subscription's side of the switch: an `HttpTransport` that fails with a `TransportUnsent` while the
+/// switch is off (the subscription waits, and the switch's `reconnectSignal` opens it again), and sends
+/// through otherwise. The switch plays the phone's requests: a subscription that is open stays open when it
+/// goes off, where a real network loss would break it too.
+final class SwitchedHttpTransport implements HttpTransport {
+  /// Sends through [_inner] while [_online] answers true.
+  const SwitchedHttpTransport(this._inner, this._online);
+
+  final HttpTransport _inner;
+  final bool Function() _online;
+
+  @override
+  Future<TransportResponse> send(TransportRequest request) {
+    if (!_online()) throw const TransportUnsent(Unreachable());
+    return _inner.send(request);
+  }
+}

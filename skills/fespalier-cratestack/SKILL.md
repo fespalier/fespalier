@@ -1,6 +1,6 @@
 ---
 name: fespalier-cratestack
-description: "Wiring a CrateStack backend into a fespalier app with fespalier_cratestack (since 0.10.0) — the generate-dart client, the two seams the app writes (a CrateStackTransport over the generated RPC adapter, an error reader with CrateStackFailure.fromEnvelope), the startup() overrides, the transport chain under the generated Dio (PortalTransport, WriteGuardTransport and a TransportAdapter on its httpClientAdapter, since 0.21.0), ref.cancellable in data.dart, TransportFailures.read composed with DioErrors.toTransport, actions as intents with withCrateStackFieldErrors, the server's idempotency contract (keys namespaced by a verified principal) and the answer table, one retry layer, where the embedded SQLite mode fits, a Rust core that is CrateStack's client behind flutter_rust_bridge (since 0.21.1), and the package's debug messages. Load before connecting a CrateStack client to data.dart or action.dart, configuring its Dio or transport, or when a CrateStack call runs twice, is cancelled with another page, or an override error names crateStackTransport."
+description: "Wiring a CrateStack backend into a fespalier app with fespalier_cratestack (since 0.10.0) — the generate-dart client, the two seams the app writes (a CrateStackTransport over the generated RPC adapter, an error reader with CrateStackFailure.fromEnvelope), the startup() overrides, the transport chain under the generated Dio (PortalTransport, WriteGuardTransport and a TransportAdapter on its httpClientAdapter, since 0.21.0), ref.cancellable in data.dart, TransportFailures.read composed with DioErrors.toTransport, actions as intents with withCrateStackFieldErrors, the server's idempotency contract (keys namespaced by a verified principal) and the answer table, one retry layer, where the embedded SQLite mode fits, a Rust core that is CrateStack's client behind flutter_rust_bridge (since 0.21.1), a subscription (@@subscribe) read with crateStackEvents that makes autoSync sync by push, with its caveats (no event ID, no heartbeat, no read policy, since 0.25.0), and the package's debug messages. Load before connecting a CrateStack client to data.dart or action.dart, configuring its Dio or transport, or when a CrateStack call runs twice, is cancelled with another page, or an override error names crateStackTransport."
 ---
 
 # fespalier-cratestack
@@ -373,6 +373,39 @@ off with a timer.
 - **`HiveLocalStore.open` needs a directory off the web**, a folder the system does not empty (the application support
   directory, not a cache directory).
 
+## Subscriptions (`@@subscribe`)
+
+Since 0.25.0 `crateStackEvents(transport, base, opId)` reads `GET <base>/rpc/subscribe/<opId>` through the app's
+`HttpTransport` as a `LiveConnection<CrateStackModelEvent>` (`fespalier_stream`'s `ServerEvents` and `EventCodec`), and the
+usual use is `syncPushSignal.overrideWith((ref) => ref.watch(serverChanges.any))` over a `ChangeFeed.live` of it, so
+`autoSync` syncs when a row changes on the server. The recipe and its test are in
+[`fespalier-offline`](../fespalier-offline/SKILL.md) (its `push-sync.md` page). What CrateStack 0.15.4 does, measured, and what
+it means:
+
+- **No `id:` and `Last-Event-ID` ignored: every reopen is a gap.** A `ChangeFeed.live` moves every watched key and `any`
+  then, so the app syncs once more. `CrateStackModelEvent.eventId` (a UUID) tells a duplicate after a reopen; `sequence`
+  restarts on every connection.
+- **A lagging subscriber is dropped** (past 64 buffered events): `event: error` with `unavailable` / `subscription lagged`,
+  then the response ends. `crateStackEvents` drops the event; the connection opens again at once, a gap.
+- **No heartbeat, so a silently dead connection is not found.** Leave `LiveRules.idle` unset (it would close a healthy quiet
+  subscription). A `reconnectOn` signal and the `streamTicker` act on a connection that is _waiting_ (the ticker also on an
+  idle or paused one), not on one that looks open. What replaces a dead one is a rebuild of the feed: have `connect` watch
+  `appShowSignal`, and each show opens a new connection (no resume point: a gap, so one sync).
+- **`connect` must watch the account** (`ref.watch(crateStackScope)`, or `authSession.select` as in `docs/streaming.md`
+  "Sign-in and sign-out"). A feed that starts signed out is refused with a `401` (`ServerEventsRefused`) and nothing
+  reopens it but a rebuild; after a sign-out the old connection would stay under the old session.
+- **Per model, not per account, and your own push echoes back.** Every device of every user syncs when anyone writes, and the
+  writer's device syncs twice per local edit (the push, then the echo). Bound `syncPushSignal` with a topic of the feed and a
+  `ChangeBudget` (the recipe is in `fespalier-offline`'s `push-sync.md`).
+- **No read policy at all on a subscription**: neither `@@allow("read")` nor the row policy is checked, and an anonymous
+  caller gets every event unless the `AuthProvider` refuses it. Treat an event as a hint, read rows through the
+  policy-checked API, never render `data` (not kept unless `keepData: true`), and make the server's `AuthProvider` (or a layer in front) refuse anonymous
+  subscribers.
+- **`Accept: text/event-stream` is required** (a 406 otherwise); `crateStackEvents` always sends it and replaces one given
+  in `headers`. A device signature over the `GET` (an empty body) is expected to work and is UNCHECKED.
+- `fespalier_cratestack` depends on `fespalier_stream` at the same `ref` since 0.25.0: an app that overrides it with a
+  `path:` overrides `fespalier_stream` too.
+
 ## A transport that signs each attempt
 
 When the server verifies a signature on every request, the signing goes **inside `CrateStackTransport.send`**, once per
@@ -419,36 +452,30 @@ namespace rule above).
 
 ## Not built
 
-Signed intents, paging helpers beyond `RowSync`'s cursor loop, sync telemetry spans (a data read through `serve` and an
+Signed intents, paging helpers beyond `RowSync`'s cursor loop, resuming a subscription or applying its events to rows (an
+event only starts a sync), sync telemetry spans (a data read through `serve` and an
 action that calls `submit` already run inside fespalier's data and action spans; a sync span is planned as a custom op
 (`TelemetryOp.custom`, since 0.11.0, named `fespalier.cratestack.sync`; no new `TelemetryOp` value, so no exhaustive sink breaks), and nothing from an intent, a row, a subject or a server message would ever be sent), and a background
 isolate.
 
 ## References
 
-| Need                                                                                                    | Page                                                             |
-| ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                     | [`references/wiring.md`](references/wiring.md)                   |
-| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do   | [`references/server-contract.md`](references/server-contract.md) |
-| Where CrateStack's embedded SQLite mode fits and where it does not                                      | [`references/embedded-mode.md`](references/embedded-mode.md)     |
-| Reads, intents, owned rows, sync, testing                                                               | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
-| A transport that signs every request and a server that checks it, end to end                            | [`examples/cose`](../../examples/cose/README.md)                 |
-| A generated client (`--preset fespalier`, no Dio), a Rust server and device-signed sessions, end to end | [`examples/cratestack`](../../examples/cratestack/README.md)     |
-| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)          | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
-| Need                                                                                                    | Page                                                             |
-| -----------------------------------------------------------------------------------------------------   | ---------------------------------------------------------------- |
-| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                     | [`references/wiring.md`](references/wiring.md)                   |
-| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do   | [`references/server-contract.md`](references/server-contract.md) |
-| Where CrateStack's embedded SQLite mode fits and where it does not                                      | [`references/embedded-mode.md`](references/embedded-mode.md)     |
-| Reads, intents, owned rows, sync, testing                                                               | [`fespalier-offline`](../fespalier-offline/SKILL.md)             |
-| A transport that signs every request and a server that checks it, end to end                            | [`examples/cose`](../../examples/cose/README.md)                 |
-| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                      | [`examples/frb-cose`](../../examples/frb-cose/README.md)         |
-| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)          | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)     |
+| Need                                                                                                    | Page                                                                  |
+| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                     | [`references/wiring.md`](references/wiring.md)                        |
+| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do   | [`references/server-contract.md`](references/server-contract.md)      |
+| Where CrateStack's embedded SQLite mode fits and where it does not                                      | [`references/embedded-mode.md`](references/embedded-mode.md)          |
+| Reads, intents, owned rows, sync, testing                                                               | [`fespalier-offline`](../fespalier-offline/SKILL.md)                  |
+| A subscription that makes `autoSync` sync by push, and its test (since 0.25.0)                          | [`fespalier-offline`](../fespalier-offline/SKILL.md) (`push-sync.md`) |
+| A transport that signs every request and a server that checks it, end to end                            | [`examples/cose`](../../examples/cose/README.md)                      |
+| A generated client (`--preset fespalier`, no Dio), a Rust server and device-signed sessions, end to end | [`examples/cratestack`](../../examples/cratestack/README.md)          |
+| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)          | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)          |
+| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                      | [`examples/frb-cose`](../../examples/frb-cose/README.md)              |
 
 ## Where the code is
 
 `packages/fespalier_cratestack/lib/`: `fespalier_cratestack.dart` (with `src/portal_transport.dart`,
-`src/transport_cancel.dart` and `src/transport_failures.dart`), `hive.dart`, `testing.dart`, and `src/transport.dart` (`CrateStackTransport`, `RpcCall`, `RestCall`,
+`src/transport_cancel.dart`, `src/transport_failures.dart` and, since 0.25.0, `src/subscription.dart`), `hive.dart`, `testing.dart`, and `src/transport.dart` (`CrateStackTransport`, `RpcCall`, `RestCall`,
 `crateStackTransport`). The guide is
 [`docs/cratestack.md`](https://github.com/fespalier/fespalier/blob/main/docs/cratestack.md).
 

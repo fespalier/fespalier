@@ -615,6 +615,10 @@ shows; topics do not move on it. Every provider passes `retry: (_, _) => null`, 
 `ChangeFeed.live` has no `status` (a `LiveFeed` has one): a banner watches `changes.latest.select((v) => v.hasError)` for a
 refusal.
 
+A CrateStack subscription is one such connection: `fespalier_cratestack`'s `crateStackEvents` (since 0.25.0) decodes its
+events, and its offline sync follows a feed's `any` through `syncPushSignal` ([Subscriptions](cratestack.md#subscriptions-subscribe),
+[A push from the server](offline-first.md#a-push-from-the-server)).
+
 ### Gaps
 
 A connection that opens again **without resuming** has missed whatever the server sent meanwhile: a server that sends no `id:`
@@ -650,7 +654,7 @@ moves once at that open. The same holds for a key watched after the gap: it coun
   (a `retry:` of 0, or none, reopens at once the first time, then waits for a signal or the tick when the bodies end within a
   second in a row).
 - A subscription of CrateStack 0.15.4 (`@@subscribe`) sends none of `id:`, `retry:` or comments, and its events skip the model's
-  read policy: read the row again through the API you already guard.
+  read policy: read the row again through the API you already guard ([Subscriptions](cratestack.md#subscriptions-subscribe)).
 
 ## Not built, and unchecked
 

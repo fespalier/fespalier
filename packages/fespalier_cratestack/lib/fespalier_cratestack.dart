@@ -6,8 +6,10 @@
 /// CrateStack package): the generated client reaches it through a [CrateStackTransport] and a
 /// `CrateStackErrorReader` that the app writes in about ten lines. The HTTP side is transport
 /// pieces: `PortalTransport` (a web page where an answer was expected), `ref.cancellable`
-/// (`CrateStackCancelRef`) and `TransportFailures.read`. `hive.dart` is a durable store, and
-/// `testing.dart` the fakes.
+/// (`CrateStackCancelRef`) and `TransportFailures.read`. Since 0.25.0 a subscription
+/// (`@@subscribe`) is a live connection of [CrateStackModelEvent]s ([crateStackEvents], over
+/// `fespalier_stream`), and [syncPushSignal] makes `autoSync` sync when the server says something
+/// changed. `hive.dart` is a durable store, and `testing.dart` the fakes.
 ///
 /// ```dart
 /// // lib/app/orders/data.dart
@@ -21,7 +23,14 @@
 library;
 
 export 'src/auto_sync.dart'
-    show AutoSync, SyncStatus, SyncTriggers, autoSync, syncTicker, syncTriggers;
+    show
+        AutoSync,
+        SyncStatus,
+        SyncTriggers,
+        autoSync,
+        syncPushSignal,
+        syncTicker,
+        syncTriggers;
 export 'src/errors.dart';
 export 'src/field_errors.dart'
     show CrateStackFieldErrors, CrateStackFieldErrorsOf;
@@ -51,6 +60,12 @@ export 'src/scope.dart'
         crateStackScope,
         crateStackWipes;
 export 'src/served.dart';
+export 'src/subscription.dart'
+    show
+        CrateStackModelEvent,
+        crateStackEventCodec,
+        crateStackEvents,
+        crateStackSubscribeUrl;
 export 'src/sync_engine.dart'
     show
         RolledBack,

@@ -1,6 +1,8 @@
 /// What tests use from fespalier_cratestack (since 0.10.0): a transport that plays the server's
-/// idempotency layer, a synchronous store, a ticker a test fires, an in-memory row server, and the
-/// override list that wires them. Nothing here starts a timer: every answer is a `Future.value`.
+/// idempotency layer, a synchronous store, a ticker a test fires, an in-memory row server, the
+/// override list that wires them, and (since 0.25.0) [CrateStackEventWrites], which writes what a
+/// CrateStack subscription sends to fespalier_stream's `FakeEventServer`. Nothing here starts a
+/// timer: every answer is a `Future.value`.
 ///
 /// ```dart
 /// final transport = FakeCrateStackTransport()..on('cancelOrder', (input) => {'id': 42});
@@ -13,6 +15,7 @@ import 'dart:convert';
 
 import 'package:fespalier/fespalier.dart' show RefetchSignal, appResumeSignal;
 import 'package:fespalier/startup.dart' show Override;
+import 'package:fespalier_stream/testing.dart' show FakeEventConnection;
 
 import 'fespalier_cratestack.dart';
 
@@ -271,3 +274,39 @@ List<Override> crateStackTestOverrides({
   if (collections.isNotEmpty) syncCollections.overrideWithValue(collections),
   if (!lifecycle) appResumeSignal.overrideWith(RefetchSignal.new),
 ];
+
+/// What a CrateStack 0.15.4 subscription writes, on fespalier_stream's `FakeEventConnection`
+/// (since 0.25.0): serve `crateStackEvents` from a `FakeEventServer`, then
+/// `server.current.modelEvent('Note', 'Updated', data: {'id': 1})`.
+extension CrateStackEventWrites on FakeEventConnection {
+  /// Writes one `event: message` whose data is `{"id": sequence, "next": {...}}`, as the server
+  /// does for each change: [operation] is `Created`, `Updated` or `Deleted`. [sequence] counts
+  /// from 1 per connection on a real server; [eventId] is a UUID there.
+  void modelEvent(
+    String model,
+    String operation, {
+    Object? data,
+    int sequence = 1,
+    String eventId = '00000000-0000-4000-8000-000000000000',
+    String occurredAt = '2026-10-28T20:05:22.370140Z',
+  }) => write(
+    'event: message\n'
+    'data: ${jsonEncode({
+      'id': sequence,
+      'next': {'event_id': eventId, 'model': model, 'operation': operation, 'occurred_at': occurredAt, 'data': data},
+    })}\n\n',
+  );
+
+  /// Writes the lag notice (`event: error`, code `unavailable`) and ends the body, as the server
+  /// does for a subscriber that read too slowly.
+  void lagged({int sequence = 1}) {
+    write(
+      'event: error\n'
+      'data: ${jsonEncode({
+        'id': sequence,
+        'err': {'code': 'unavailable', 'message': 'subscription lagged'},
+      })}\n\n',
+    );
+    end();
+  }
+}

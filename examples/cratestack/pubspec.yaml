@@ -57,6 +57,8 @@ dependency_overrides:
     path: ../../packages/fespalier_auth
   fespalier_keypair:
     path: ../../packages/fespalier_keypair
+  fespalier_stream:
+    path: ../../packages/fespalier_stream
   fespalier_transport:
     path: ../../packages/fespalier_transport
 

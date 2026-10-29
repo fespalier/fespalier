@@ -16,11 +16,18 @@ package's own fakes.
   field by field (`lib/app/notes/`, `lib/note_sync.dart`). Edit a note's body offline, press "Rename on the other
   phone" (the demo server edits the title with a later stamp), and switch the network on: the page shows both edits. A
   title over 60 characters is refused by the server, and the phone rolls the edit back and says so.
+- **A push from the server** (since 0.25.0): the demo server has a subscription shaped like CrateStack's `@@subscribe`
+  (`GET /rpc/subscribe/model.Note.subscribe`, an event per change, no event id, no heartbeat), which
+  `lib/server_changes.dart` reads with `crateStackEvents` into a `ChangeFeed.live` and gives `autoSync` as its
+  `syncPushSignal`. With the network on, "Rename on the other phone" reaches the open note at once: the event makes the
+  app sync, and the page shows the row the sync pulled, never the event's data. The switch plays the phone's requests: a
+  subscription already open stays open when it goes off (a real network loss would break it), and one that failed opens
+  again on `reconnectSignal`.
 - **Sign out** wipes the account's queue, rows and saved reads before the session ends (`lib/session.dart`).
 
 `lib/app/layout.dart` watches `autoSync` once, so a sync runs at start, on resume, on reconnect (the switch fires
-`reconnectSignal`; a device would use `fespalier_connectivity`) and on the app's tick (`lib/foreground_ticker.dart`, a
-timer the app owns: the package starts none). `lib/wiring.dart` is the whole connection to the package: the transport
+`reconnectSignal`; a device would use `fespalier_connectivity`), on the app's tick (`lib/foreground_ticker.dart`, a
+timer the app owns: the package starts none) and on a push from the server's subscription (`lib/server_changes.dart`). `lib/wiring.dart` is the whole connection to the package: the transport
 behind the switch (which fails with a `TransportUnsent` while it is off, as a real transport does), the error readers
 (`lib/errors.dart`: the app's own, then `TransportFailures.read`), the account as `crateStackScope`, and the `RowSync`.
 
@@ -67,3 +74,6 @@ Flip the "Online" switch, press **Cancel order 1**, flip it back. Nothing here n
   the same field (the greater stamp wins, on both); a refused row rolled back out loud; the app's tick pushing an edit
   nothing else would; the app's timer.
 - `demo_test.dart`: the same flows over the real demo server, with nothing scripted.
+- `push_test.dart`: a rename on the server reaching the open note by push, over the demo server; and over
+  `fespalier_stream`'s `FakeEventServer`, an event that makes the app pull the row (not show the event's data) and a
+  lag that reopens the subscription and syncs again.

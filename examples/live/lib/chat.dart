@@ -35,7 +35,8 @@ final class ChatLine {
   /// What it says.
   final String text;
 
-  /// [message] as a line, or null for what the page does not show (the server's ping).
+  /// [message] as a line, or null for what the page does not show (the server's ping). A text that is
+  /// not JSON throws a [FormatException]: [_chatLog] skips and counts it.
   static ChatLine? of(SocketMessage message) {
     if (message is! SocketText) return null;
     final json = jsonDecode(message.text);
@@ -66,16 +67,23 @@ final class ChatLog {
   final List<ChatLine> lines;
 }
 
-/// Each message the socket brings, as the whole chat so far.
+/// Each message the socket brings, as the whole chat so far. A message that is not JSON is skipped and
+/// counted by the [EventCodec] (a `fespalier.stream.decode` span with a telemetry sink), and the chat goes
+/// on: one bad message from a server must not end the feed. The codec is made per build, so its counts
+/// are this connection's.
 StreamTransformer<SocketMessage, ChatLog> _chatLog() =>
     StreamTransformer<SocketMessage, ChatLog>.fromBind((messages) {
       final lines = <ChatLine>[];
-      return messages.expand((message) {
+      final codec = EventCodec.batch<SocketMessage, ChatLine, ChatLine>((
+        message,
+      ) {
         final line = ChatLine.of(message);
-        if (line == null) return const <ChatLog>[];
+        return line == null ? const <ChatLine>[] : [line];
+      }, (line) => line);
+      return codec.bind(messages).map((line) {
         lines.add(line);
         if (lines.length > ChatLog.keep) lines.removeAt(0);
-        return [ChatLog(List.unmodifiable(lines))];
+        return ChatLog(List.unmodifiable(lines));
       });
     });
 

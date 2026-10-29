@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:fespalier_transport/fespalier_transport.dart';
 
@@ -8,7 +9,8 @@ import 'package:fespalier_transport/fespalier_transport.dart';
 ///
 /// Cancelling the subscription (the page's **Stop**, or leaving the page) completes the request's
 /// `abortTrigger` at once, even before the headers came, so the client lets the connection go and the
-/// server sees the client leave. A status that is not 200 is a [TransportStatusError].
+/// server sees the client leave. A status that is not 200 is a [TransportStatusError] with the status
+/// and no body, and every way the request can end, an answer or a failure, ends the stream.
 Stream<String> streamAnswer(HttpTransport transport, Uri url, String question) {
   final giveUp = Completer<void>();
   void letGo() {
@@ -34,19 +36,22 @@ Stream<String> streamAnswer(HttpTransport transport, Uri url, String question) {
             ),
           )
           .then(
-            (response) async {
+            (response) {
               if (cancelled) return;
               if (response.statusCode != 200) {
+                // Let the connection go and report the status, not the body: reading a body after the
+                // abort fails (a transport ends it with its own error), and what a server said in a
+                // refusal is not the app's to show.
                 letGo();
                 out.addError(
                   TransportStatusError(
                     statusCode: response.statusCode,
                     headers: response.headers,
-                    body: await response.bytes(),
+                    body: Uint8List(0),
                     reasonPhrase: response.reasonPhrase,
                   ),
                 );
-                await out.close();
+                unawaited(out.close());
                 return;
               }
               var text = '';

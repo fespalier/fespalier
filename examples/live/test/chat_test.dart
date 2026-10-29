@@ -103,4 +103,21 @@ void main() {
       expect(statusOf(tester), startsWith('Disconnected (unavailable)'));
     },
   );
+
+  testWidgets('a message that is not JSON is skipped, and the chat goes on', (
+    tester,
+  ) async {
+    final connector = FakeSocketConnector();
+    final live = Live(overrides: [liveConnector.overrideWithValue(connector)]);
+    await live.open(tester, '/chat');
+
+    final socket = connector.current;
+    socket.text('this is not JSON');
+    socket.text('{"type": "ping"}');
+    socket.text('{"type": "message", "from": "guest-9", "text": "Still here"}');
+    await tester.pumpAndSettle();
+
+    expect(find.text('guest-9: Still here'), findsOneWidget);
+    expect(statusOf(tester), 'Live');
+  });
 }

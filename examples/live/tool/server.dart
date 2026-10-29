@@ -20,11 +20,23 @@
 // `/inbox/<id>/post`, `/inbox/drop`, `/chat/other`, `/chat/kick` and `/admin/refuse-tickets?on=true|false`.
 //
 // Every answer carries `access-control-allow-origin: *`, so a web build served from elsewhere (`flutter run
-// -d chrome`) can call it. `--web <dir>` also serves a web build from this origin (with the headers a wasm
-// build needs), for a phone's browser.
+// -d chrome`) can call it. `--web <dir>` also serves a web build from this origin, for a phone's browser,
+// with the cross-origin-isolation headers a multi-threaded wasm build asks for. Over plain `http:` on a
+// network address the browser is not in a secure context and ignores them, and Flutter's wasm build then
+// renders on one thread, which works.
+//
+// SECURITY: it listens on every interface and allows every origin, so anyone on the network, and any
+// page open in the tester's browser, can reach it, the control endpoints (`/admin/refuse-tickets`,
+// `/chat/kick`, the drops) included. Run it only on a network you trust, and stop it when the test is over.
+//
+// A client that goes away (a phone back from airplane mode, a paused feed that a tick closed with bytes it
+// never read) resets its connection. Every socket this server detaches is watched, its `done` is handled,
+// and it is destroyed as soon as the server gives the client up, so a reset neither stops the server nor
+// leaves a socket half open.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:live/demo/script.dart';
 
@@ -91,7 +103,10 @@ final class LiveToolServer {
   }) async {
     final http = await HttpServer.bind(host, port);
     final server = LiveToolServer._(http, web, log ?? (_) {}, refuseTickets);
-    unawaited(http.forEach((request) => unawaited(server._handle(request))));
+    http.listen(
+      (request) => unawaited(server._handle(request)),
+      onError: (Object error) => server._log('error ${error.runtimeType}'),
+    );
     return server;
   }
 
@@ -108,9 +123,14 @@ final class LiveToolServer {
   var _ticketCount = 0;
   var _socketCount = 0;
   var _otherCount = 0;
+  final _sockets = _Sockets();
 
   /// The port it listens on.
   int get port => _http.port;
+
+  /// How many detached sockets (event streams and answers) are still open: a client that left must
+  /// bring it back down, whatever way it left. For the tests.
+  int get openSockets => _sockets.length;
 
   /// Runs one command typed in the terminal.
   void command(String line) {
@@ -146,6 +166,7 @@ final class LiveToolServer {
       order.lines.toList().forEach((line) => line.drop());
     }
     _inboxLines.toList().forEach((line) => line.drop());
+    _sockets.releaseAll();
     for (final chatter in _chatters.toList()) {
       await chatter.close(1001);
     }
@@ -209,8 +230,7 @@ final class LiveToolServer {
             _log('ticket-refused');
             return await _status(response, 401);
           }
-          final ticket = 'tk-${++_ticketCount}';
-          _tickets[ticket] = DateTime.now().add(ticketLifetime);
+          final ticket = _mintTicket();
           _log('ticket $ticket');
           return await _json(response, {'ticket': ticket});
         case ('GET', ['chat']):
@@ -231,7 +251,28 @@ final class LiveToolServer {
       await _status(response, 404);
     } on Object catch (error) {
       _log('error ${request.method} ${request.uri.path}: ${error.runtimeType}');
+      // Whatever is still open: answer 500 if the headers are not out, and close the response (a no-op
+      // on a detached one, whose socket the code that detached it destroys).
+      try {
+        response.statusCode = HttpStatus.internalServerError;
+        await response.close();
+      } on Object catch (_) {}
     }
+  }
+
+  /// The most tickets kept at once: they are single-use and live 30 s, so a client that asks for many
+  /// and uses none cannot grow the table.
+  static const _maxTickets = 256;
+
+  String _mintTicket() {
+    final now = DateTime.now();
+    _tickets.removeWhere((_, expires) => now.isAfter(expires));
+    while (_tickets.length >= _maxTickets) {
+      _tickets.remove(_tickets.keys.first);
+    }
+    final ticket = 'tk-${++_ticketCount}';
+    _tickets[ticket] = now.add(ticketLifetime);
+    return ticket;
   }
 
   void _setRefusal(bool on) {
@@ -268,9 +309,15 @@ final class LiveToolServer {
   }
 
   Future<void> _orderEvents(_Order order, HttpRequest request) async {
-    final resumeFrom = int.tryParse(
-      request.headers.value('last-event-id') ?? '',
-    );
+    // A number from 0 on, or none: anything else (text, a negative number) is no resume point, and the
+    // client gets the order as it is now.
+    //
+    // The IDs are the order's event numbers and start over when this server restarts. That is harmless
+    // here, because each event carries the whole order, so a client that resumes from an ID of the
+    // earlier run just reads the order as it is. A server whose events are deltas must keep its IDs across
+    // a restart, or send none (docs/streaming.md, "Gaps"), or a client would miss events silently.
+    final parsed = int.tryParse(request.headers.value('last-event-id') ?? '');
+    final resumeFrom = parsed == null || parsed < 0 ? null : parsed;
     final line = await _openEvents(
       request,
       'order-${order.script.id}',
@@ -278,6 +325,15 @@ final class LiveToolServer {
       resumed: resumeFrom,
     );
     order.lines.add(line);
+    try {
+      _replay(order, line, resumeFrom);
+    } on Object catch (_) {
+      line.drop();
+      rethrow;
+    }
+  }
+
+  void _replay(_Order order, _EventLine line, int? resumeFrom) {
     // What the client missed since the event it resumes from, or the order now; a client that is up to
     // date gets the last event again, so a page watched again has a value.
     final missed = [
@@ -306,6 +362,7 @@ final class LiveToolServer {
     );
     // dart:io's HttpResponse does not say when the client goes away: the raw socket does.
     final socket = await request.response.detachSocket(writeHeaders: false);
+    _sockets.add(socket);
     socket.write(
       _head(request, {
         'content-type': 'text/event-stream',
@@ -314,18 +371,38 @@ final class LiveToolServer {
         'x-accel-buffering': 'no',
       }),
     );
-    return _EventLine(number, label, socket, _log, onGone);
+    return _EventLine(number, label, socket, _sockets, _log, onGone);
   }
 
+  /// The most bytes of a question it reads.
+  static const _maxQuestion = 64 * 1024;
+
   Future<void> _ask(HttpRequest request) async {
-    final question = await utf8.decoder.bind(request).join();
+    final response = request.response;
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in request) {
+      bytes.add(chunk);
+      if (bytes.length > _maxQuestion) {
+        _log('ask-refused (more than $_maxQuestion bytes)');
+        response.headers.set('connection', 'close');
+        return await _status(response, HttpStatus.requestEntityTooLarge);
+      }
+    }
+    final String question;
+    try {
+      question = utf8.decode(bytes.takeBytes());
+    } on FormatException {
+      _log('ask-refused (not UTF-8)');
+      return await _status(response, HttpStatus.badRequest);
+    }
     final words = answerWords(question);
     final number = ++_connections;
     _log('ask-open #$number');
-    final socket = await request.response.detachSocket(writeHeaders: false);
+    final socket = await response.detachSocket(writeHeaders: false);
+    _sockets.add(socket);
     var open = true;
     var sent = 0;
-    _watch(socket, () {
+    _watch(socket, _sockets, () {
       if (!open) return;
       open = false;
       _log('ask-closed #$number after $sent words (the client left)');
@@ -346,13 +423,16 @@ final class LiveToolServer {
         open = false;
         _log('ask-ended #$number after $sent words');
         socket.write(_lastChunk);
-        await socket.close();
+        await socket.flush();
       }
     } on Object catch (_) {
       if (open) {
         open = false;
         _log('ask-closed #$number after $sent words (the client left)');
       }
+    } finally {
+      // Every way out lets the client go: an answer that ended, one the client left, one that failed.
+      _sockets.release(socket);
     }
   }
 
@@ -367,6 +447,8 @@ final class LiveToolServer {
       return _status(request.response, 401);
     }
     final socket = await WebSocketTransformer.upgrade(request);
+    // A reset connection fails the socket's `done`, which nobody else listens to.
+    socket.done.ignore();
     final chatter = _Chatter(++_socketCount, socket);
     _chatters.add(chatter);
     _log('ws-open #${chatter.number} ticket=$ticket');
@@ -378,8 +460,17 @@ final class LiveToolServer {
     );
     try {
       await for (final message in socket) {
-        if (message is! String) continue;
-        final json = jsonDecode(message);
+        if (message is! String || chatter.closedByServer) continue;
+        final Object? json;
+        try {
+          json = jsonDecode(message);
+        } on FormatException {
+          // This chat speaks JSON: say so with the code for data it cannot take, and read on until the
+          // close handshake ends the stream.
+          _log('ws-bad-message #${chatter.number} (not JSON)');
+          unawaited(chatter.close(1003));
+          continue;
+        }
         switch (json) {
           case {'join': final String room}:
             chatter.send({'type': 'joined', 'room': room, 'as': chatter.name});
@@ -397,6 +488,10 @@ final class LiveToolServer {
       _log('ws-error #${chatter.number} ${error.runtimeType}');
     } finally {
       ping.cancel();
+      // An error that ended the loop must not leave the socket open.
+      if (socket.readyState == WebSocket.open) {
+        unawaited(chatter.close(1011));
+      }
       _chatters.remove(chatter);
       _log(
         'ws-closed #${chatter.number} code=${socket.closeCode}'
@@ -412,6 +507,10 @@ final class LiveToolServer {
     final path = request.uri.path;
     var file = File('${web.path}$path');
     if (path.contains('..')) return _status(response, 404);
+    // A path that names a file the build does not have is a 404; only a route of the app (`/inbox`, no
+    // extension) is the page.
+    final isAsset = path.split('/').last.contains('.');
+    if (isAsset && !file.existsSync()) return _status(response, 404);
     if (path.endsWith('/') || !file.existsSync()) {
       file = File('${web.path}/index.html');
     }
@@ -485,18 +584,51 @@ List<int> _chunk(String text) {
 /// The end of a chunked body.
 const _lastChunk = '0\r\n\r\n';
 
-/// Watches [socket] for the client going away; [onGone] runs once.
-void _watch(Socket socket, void Function() onGone) {
+/// The raw sockets this server detached (event streams and answers), so each one is let go exactly when
+/// the server is done with it, and [length] says how many are still open.
+///
+/// It does not rely on `Socket.done`: dart:io never completes it for a socket that was flushed and then
+/// destroyed.
+final class _Sockets {
+  final Set<Socket> _open = {};
+
+  int get length => _open.length;
+
+  /// Takes care of [socket]: a reset connection fails its `done`, and an error nobody handles stops the
+  /// whole server.
+  void add(Socket socket) {
+    _open.add(socket);
+    socket.done.ignore();
+  }
+
+  /// Destroys [socket], so it is not left half open (a client that closed its side leaves ours in
+  /// CLOSE_WAIT until we do).
+  void release(Socket socket) {
+    _open.remove(socket);
+    socket.destroy();
+  }
+
+  void releaseAll() => _open.toList().forEach(release);
+}
+
+/// Watches [socket] for the client going away; [onGone] runs once, and the socket is released.
+///
+/// A client that resets the connection (a phone back from airplane mode, a feed closed with bytes it
+/// never read) is an error on the socket: the same end.
+void _watch(Socket socket, _Sockets sockets, void Function() onGone) {
   var gone = false;
+  void end() {
+    if (gone) return;
+    gone = true;
+    onGone();
+    sockets.release(socket);
+  }
+
   socket.listen(
     (_) {},
-    onDone: () {
-      if (gone) return;
-      gone = true;
-      onGone();
-    },
-    onError: (Object _) {},
-    cancelOnError: false,
+    onDone: end,
+    onError: (Object _) => end(),
+    cancelOnError: true,
   );
 }
 
@@ -539,8 +671,15 @@ final class _Thread {
 
 /// One event stream, written on the raw socket, with a comment every 15 s while it is quiet.
 final class _EventLine {
-  _EventLine(this.number, this.label, this._socket, this._log, this._onGone) {
-    _watch(_socket, () => _gone('the client left'));
+  _EventLine(
+    this.number,
+    this.label,
+    this._socket,
+    this._sockets,
+    this._log,
+    this._onGone,
+  ) {
+    _watch(_socket, _sockets, () => _gone('the client left'));
     _ping = Timer.periodic(
       const Duration(seconds: 15),
       (_) => write(': ping\n\n'),
@@ -550,6 +689,7 @@ final class _EventLine {
   final int number;
   final String label;
   final Socket _socket;
+  final _Sockets _sockets;
   final void Function(String line) _log;
   final void Function(_EventLine line) _onGone;
   late final Timer _ping;
@@ -570,13 +710,12 @@ final class _EventLine {
     _ping.cancel();
     _onGone(this);
     _log('sse-closed #$number $label ($why)');
+    _sockets.release(_socket);
   }
 
   /// Breaks the connection, as a network that drops does: no orderly end.
   void drop() {
-    if (!_open) return;
     _gone('dropped');
-    _socket.destroy();
   }
 }
 

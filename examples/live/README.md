@@ -95,6 +95,17 @@ from it (the app's **On the server** buttons do the same):
 | `ws-refused ticket=tk-2`                                                                      | a socket came with a ticket that was used already or too old (30 s)          |
 | `ask-open #5`, `ask-ended #5 after 36 words`, `ask-closed #5 after 4 words (the client left)` | an answer started, finished, or was cancelled by the app                     |
 
+### Security
+
+The server listens on every interface (`0.0.0.0`) and answers every origin (`access-control-allow-origin: *`). Anyone
+on the network, and any web page open in your browser while it runs, can reach it, including the endpoints that control
+it (`/admin/refuse-tickets`, `/chat/kick`, the drops). It has no login and keeps nothing worth stealing, but run it only on
+a network you trust, and stop it (Ctrl+C) when the test is over. `--host 127.0.0.1` listens on this computer only (a
+phone cannot then reach it).
+
+A client that resets its connection (a phone back from airplane mode, a paused feed that the tick closed) is normal here:
+the server logs the close, lets go of the socket and keeps serving.
+
 ### Point the app at it
 
 Every command below adds `--dart-define=LIVE_ORIGIN=<the address the server printed>`. The app bar then says
@@ -106,14 +117,14 @@ web build: `BrowserClient` instead of Dio's fetch adapter); test both if you can
   `macos/Runner/DebugProfile.entitlements` and `macos/Runner/Release.entitlements`, or nothing connects.
 - **Chrome**: `flutter run -d chrome --dart-define=LIVE_ORIGIN=http://localhost:8080`. The server allows every origin
   (CORS), so the page may come from Flutter's own server. Add `--wasm` for the wasm build.
-- **Android**: `flutter run -d <device id> --dart-define=LIVE_ORIGIN=http://<your computer's address>:8080` (the
+- **Android**: `flutter run -d <device id> --dart-define=LIVE_ORIGIN=<the address the server printed>` (the
   emulator: `http://10.0.2.2:8080`). The phone must be on the same Wi-Fi as the computer, and the computer's firewall
   must let port 8080 in. The server speaks plain `http:` and `ws:`, and Android 9 and later refuse cleartext traffic
   unless the app allows it: add `android:usesCleartextTraffic="true"` to the `<application>` tag of
   `android/app/src/main/AndroidManifest.xml`, so that no platform policy refuses it (whether the policy reaches
   `dart:io`'s sockets, which the app uses, is UNCHECKED: say in your report if it worked without the line). A debug build has the `INTERNET` permission; for `--profile` or
   `--release`, also add `<uses-permission android:name="android.permission.INTERNET" />` inside `<manifest>`.
-- **iPhone**: `flutter run -d <device id> --dart-define=LIVE_ORIGIN=http://<your computer's address>:8080`, on the same
+- **iPhone**: `flutter run -d <device id> --dart-define=LIVE_ORIGIN=<the address the server printed>`, on the same
   Wi-Fi. The first time the app reaches your computer, iOS asks whether it may find devices on your local network: allow
   it (to change it later: Settings > Privacy & Security > Local Network). If it never asks and stays on **Connecting**,
   add to `ios/Runner/Info.plist` the key `NSLocalNetworkUsageDescription` (a sentence such as "Talks to the test
@@ -123,11 +134,11 @@ web build: `BrowserClient` instead of Dio's fetch adapter); test both if you can
   `tool/server.dart` serve the web build itself, from the same address:
 
   ```sh
-  flutter build web --release --no-web-resources-cdn --dart-define=LIVE_ORIGIN=http://<your computer's address>:8080
+  flutter build web --release --no-web-resources-cdn --dart-define=LIVE_ORIGIN=<the address the server printed>
   dart run tool/server.dart --web build/web
   ```
 
-  Open `http://<your computer's address>:8080/` in Safari. For the wasm build add `--wasm` to `flutter build web` (Safari
+  Open that same address in Safari. For the wasm build add `--wasm` to `flutter build web` (Safari
   18.2 or later). For `package:http`, add `--dart-define=LIVE_CLIENT=http`. Build again for each, and stop and start the
   server after each build.
 
@@ -149,9 +160,9 @@ the server logs `ticket tk-1` then `ws-open #1 ticket=tk-1`.
    server's terminal. _Expected:_ `other phone: Hello from the other phone (1)` appears. With a second device (another
    phone, or Chrome on the computer) on the chat, a message from one shows on the other as `guest-<n>: ...`.
 2. **The app in the background.** Switch to another app for 30 seconds, come back; then for 5 minutes, and come back.
-   _Expected:_ the chat works again within a minute of coming back (at once when the app saw the socket close; up to
-   about a minute when the socket died without a word, which the app notices when the server's pings stop: say how long
-   it took). If the socket was closed meanwhile, the server logs a `ws-closed` line, then a **new** ticket and
+   _Expected:_ the chat works again within a minute of coming back (at once when the app saw the socket close). When the
+   socket died without a word, the app notices only that the server's pings stopped: after 45 seconds of silence a
+   15-second tick closes it and the next tick opens it, so up to about 75 seconds after it died. Say how long it took. If the socket was closed meanwhile, the server logs a `ws-closed` line, then a **new** ticket and
    `ws-open #<n> ticket=tk-<n>`, and the chat shows `Joined lobby as guest-<n>` again (it subscribed again). Say whether
    the socket survived each wait (no new `ws-open`) or not.
 3. **A network change.** Turn airplane mode on for 30 seconds, then off (or Wi-Fi off and on). _Expected:_ the banner
@@ -167,25 +178,30 @@ the server logs `ticket tk-1` then `ws-open #1 ticket=tk-1`.
    `ticket-refused` line, the app does not retry for ever. Type `accept`, tap **Sign in again**: _expected:_ a new ticket,
    and the chat is back.
 
-### Event streams on a phone
+### Event streams on a phone ([#325](https://github.com/fespalier/fespalier/issues/325))
 
 Open **Orders**, then **Order 1**. The banner says **Live** and the server logs `sse-open #<n> order-1`.
 
 1. **Events as they happen.** Type `advance 1` in the server's terminal. _Expected:_ **Status** moves to `packed` at once.
 2. **The app in the background.** Switch to another app for 30 seconds; while it is away, type `advance 1`. Come back.
-   Then the same for 5 minutes. _Expected:_ within a minute of coming back (say how long) the status shows the new value,
+   Then the same for 5 minutes. _Expected:_ within a minute of coming back (up to about 75 seconds when the stream died without a word, as in the chat's
+   case 2; say how long) the status shows the new value,
    and if the stream was closed meanwhile, the server logs `sse-open #<n> order-1 last-event-id=<k>`: the app asked for
    what it missed. Say whether the stream survived each wait (no new `sse-open`).
 3. **A network change.** Airplane mode on for 30 seconds, `advance 1` meanwhile, then off. _Expected:_ **Disconnected**,
    then **Live, resumed from the last event** with the new status.
-4. **The server restarts.** Ctrl+C and start the server again. _Expected:_ **Live** again within 15 seconds. (The
-   restarted server starts its orders over at `placed`.)
+4. **The server restarts.** Ctrl+C and start the server again. _Expected:_ **Disconnected**, then within 15 seconds
+   **Live, resumed from the last event** (the banner says resumed because the app asked from its last event ID), with the
+   order's real state on the new server: it starts over at `placed`, so the status may go _back_. That is harmless
+   here: every event carries the whole order, and the new server's IDs start again at 1. A real server must keep its
+   event IDs across a restart, or send none, or a client that resumes from an ID of the earlier run misses events without
+   knowing ([Streaming](../../docs/streaming.md), "Gaps").
 5. **A gap.** Open **Inbox** and type `drop`. _Expected:_ within 15 seconds every row's "read N times" goes up by one
    (the reopen is a gap, so every thread is read again), and `post t1` afterwards moves the Billing row only.
 
 ### A streaming action on a phone ([#322](https://github.com/fespalier/fespalier/issues/322))
 
-#322 runs `examples/features`' draft; **Ask** is the same over a real network. Open **Ask** and tap **Ask**.
+Issue #322 runs `examples/features`' draft; **Ask** is the same over a real network. Open **Ask** and tap **Ask**.
 
 1. _Expected:_ the answer grows a word at a time; the server logs `ask-open` and, at the end,
    `ask-ended #<n> after <k> words`.
@@ -197,7 +213,7 @@ Open **Orders**, then **Order 1**. The banner says **Live** and the server logs 
 
 ### Safari ([#316](https://github.com/fespalier/fespalier/issues/316))
 
-#316's harness checks the transports alone; this is the app on top of them (`ServerEvents` with its errors, the change
+Issue #316's harness checks the transports alone; this is the app on top of them (`ServerEvents` with its errors, the change
 feed, the streaming action and the socket). Serve the web build as in "Safari on a Mac, an iPhone or an iPad" above, once
 for each of the four builds (JavaScript and wasm, `dio` and `http`), and in each:
 

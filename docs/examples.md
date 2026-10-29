@@ -369,7 +369,7 @@ Add the location strings `geolocator` needs first (`NSLocationWhenInUseUsageDesc
 - `/inbox` is one `ChangeFeed.live` whose topics reload the rows: a change reloads its thread only, and a reopen after a drop is a gap that reloads every row once.
 - `/ask` is an `action.dart` that returns a `Stream<String>`, the answer as the server writes it; **Stop**, or leaving the page, cancels the request at the server.
 - `/chat` is a WebSocket held by a `LiveFeed`: a ticket from `ticketGrantor` before every connect, the room joined again in `onOpen`, a `SocketHandle` to send, and a refused ticket shown as signed out, with no retry until the user signs in again.
-- The tick is the app's own timer (`lib/ticker.dart`); **Tick now** fires it. `--dart-define=LIVE_ORIGIN=http://<address>:8080` points the app at `tool/server.dart`, through Dio with the fetch adapter on the web (`--dart-define=LIVE_CLIENT=http` for `package:http`), and the chat through `WebSocketConnector`.
+- The tick is the app's own timer (`lib/ticker.dart`); **Tick now** fires it. `--dart-define=LIVE_ORIGIN=<the address the server printed>` points the app at `tool/server.dart`, through Dio with the fetch adapter on the web (`--dart-define=LIVE_CLIENT=http` for `package:http`), and the chat through `WebSocketConnector`.
 - The widget tests run over the demo server with `ManualStreamTicker`, `FakeEventServer` and `FakeSocketConnector`, and a VM test runs the app's feeds against `tool/server.dart` over Dio, `package:http` and a real WebSocket.
 
 ```sh
@@ -378,7 +378,7 @@ flutter create --empty . --platforms=android,ios,macos,linux,windows,web
 flutter pub get
 flutter run                                   # the demo server, in the app
 dart run tool/server.dart                     # in another terminal: the real one, on port 8080
-flutter run -d <device id> --dart-define=LIVE_ORIGIN=http://<the address it printed>:8080
+flutter run -d <device id> --dart-define=LIVE_ORIGIN=<the address it printed>
 ```
 
-The [README](https://github.com/fespalier/fespalier/blob/main/examples/live/README.md) has the run steps for a desktop, Chrome, Safari, Android and an iPhone (cleartext `http:` on Android, the local network prompt on iOS), and the device tests no CI job runs: the WebSocket chat on a phone ([issue #324](https://github.com/fespalier/fespalier/issues/324)), event streams on a phone, a streaming action on a phone ([issue #322](https://github.com/fespalier/fespalier/issues/322)) and the app in Safari ([issue #316](https://github.com/fespalier/fespalier/issues/316)).
+The [README](https://github.com/fespalier/fespalier/blob/main/examples/live/README.md) has the run steps for a desktop, Chrome, Safari, Android and an iPhone (cleartext `http:` on Android, the local network prompt on iOS), and the device tests no CI job runs: the WebSocket chat on a phone ([issue #324](https://github.com/fespalier/fespalier/issues/324)), event streams on a phone ([issue #325](https://github.com/fespalier/fespalier/issues/325)), a streaming action on a phone ([issue #322](https://github.com/fespalier/fespalier/issues/322)) and the app in Safari ([issue #316](https://github.com/fespalier/fespalier/issues/316)).

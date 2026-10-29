@@ -340,7 +340,7 @@ fn a_data_or_action_site_is_named_after_its_folder_and_function() {
         ),
         (
             "orders/$id/action.dart",
-            "Future<void> action(Ref ref, {required int id, required String input}) async {}\nFuture<void> cancel(Ref ref, {required int id, required String input}) async {}\n",
+            "Future<void> action(Ref ref, {required int id, required String input}) async {}\nFuture<void> cancel(Ref ref, {required int id, required String input}) async {}\nStream<String> track(Ref ref, {required int id, required String input}) async* {}\n",
         ),
     ]);
     let (cfg, app, code) = analyzed(dir.path());
@@ -348,6 +348,9 @@ fn a_data_or_action_site_is_named_after_its_folder_and_function() {
     assert_eq!(tree["sites"]["dOrdersId"]["file"], "orders/$id/data.dart");
     assert_eq!(tree["sites"]["aOrdersId_action"]["name"], "action");
     assert_eq!(tree["sites"]["aOrdersId_cancel"]["name"], "cancel");
+    // A streaming action (since 0.25.0) is an action site like any other, with the same keys.
+    assert_eq!(tree["sites"]["aOrdersId_track"]["kind"], "action");
+    assert!(code.contains("  site: 'aOrdersId_track',"), "{code}");
     assert!(code.contains("final _dataOrdersId = "), "{code}");
     assert!(code.contains("final _actionOrdersId_cancel = "), "{code}");
     for (id, site) in sites(&tree) {
@@ -376,7 +379,12 @@ fn a_data_or_action_site_is_named_after_its_folder_and_function() {
     fs::write(dir.path().join("lib/app/aaa/page.dart"), page("Aaa")).unwrap();
     let (cfg, app, _) = analyzed(dir.path());
     let after = devtools::tree(&app, &cfg);
-    for site in ["dOrdersId", "aOrdersId_action", "aOrdersId_cancel"] {
+    for site in [
+        "dOrdersId",
+        "aOrdersId_action",
+        "aOrdersId_cancel",
+        "aOrdersId_track",
+    ] {
         assert_eq!(after["sites"][site], before[site], "{site}");
     }
 }

@@ -204,12 +204,14 @@ type Named = (String, Span);
 
 /// What an `action.dart` function returns, which is what its helpers return: a `Future<T>`
 /// stays a `Future`, a `T` stays a `T` (a sync action never gets an async gap), and a
-/// `FutureOr<T>` stays one.
+/// `FutureOr<T>` stays one. A `Stream<T>` (since 0.25.0) is a streaming action: its provider is a
+/// `streamActionProvider`, whose state follows the items as they come.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flow {
     Future,
     FutureOr,
     Sync,
+    Stream,
 }
 
 /// One function of an `action.dart`: `Future<Refund> action(Ref ref, {required int id, required
@@ -3453,6 +3455,10 @@ impl Resolver<'_> {
             at.m.variables
                 .iter()
                 .find(|v| v.name == forms::steps_name(&f.name) && forms::is_steps(v));
+        if a.flow == Flow::Stream {
+            self.stream_companions(at, f, find(Companion::Form), steps, input, a);
+            return;
+        }
         match (find(Companion::Form), steps) {
             (Some(g), steps) => {
                 a.form = self.form(at, f, g, input, a, steps.is_some());
@@ -3471,6 +3477,50 @@ impl Resolver<'_> {
         }
         if let Some(g) = find(Companion::Optimistic) {
             a.optimistic = self.optimistic(at, f, g, input);
+        }
+    }
+
+    /// The companions of a streaming action (since 0.25.0): its `validate()` runs before it as
+    /// any action's does, and a `form()`, `const steps` or `optimistic()` is reported, since none
+    /// is built for an action whose result is a stream of items.
+    fn stream_companions(
+        &mut self,
+        at: &Companions,
+        f: &Function,
+        form: Option<&Function>,
+        steps: Option<&dart::Variable>,
+        input: &Ty,
+        a: &mut Action,
+    ) {
+        let action = &f.name;
+        let hook = ActionNames::of(action).hook;
+        if let Some(g) = form {
+            let name = &g.name;
+            let msg = format!(
+                "`{name}()` is a form, and `{action}()` returns a Stream: a form of a streaming action is not built; return a Future<T> from `{action}()`, or drop `{name}()` and run it with `{hook}`"
+            );
+            self.diags.error(at.file, Some(&g.span), msg);
+        }
+        if let Some(v) = steps {
+            let name = &v.name;
+            let msg = format!(
+                "`{name}` makes a flow, and `{action}()` returns a Stream: a flow of a streaming action is not built; return a Future<T> from `{action}()`"
+            );
+            self.diags.error(at.file, Some(&v.span), msg);
+        }
+        let find = |role: Companion| {
+            let name = forms::companion(action, role);
+            at.m.functions.iter().find(|g| g.name == name)
+        };
+        if let Some(g) = find(Companion::Optimistic) {
+            let name = &g.name;
+            let msg = format!(
+                "`{name}()` is an optimistic patch, and `{action}()` returns a Stream: a patch of a streaming action is not built; show the items as they come from the state of `{hook}`, or return a Future<T> from `{action}()`"
+            );
+            self.diags.error(at.file, Some(&g.span), msg);
+        }
+        if let Some(g) = find(Companion::Validate) {
+            a.validate = self.validate(at, f, g, input);
         }
     }
 
@@ -3853,11 +3903,11 @@ impl Resolver<'_> {
         None
     }
 
-    /// What an action returns: `Future<T>`, `FutureOr<T>` or a plain `T`.
+    /// What an action returns: `Future<T>`, `FutureOr<T>`, `Stream<T>` (since 0.25.0) or a plain `T`.
     fn action_flow(&mut self, f: &Function, file: &str) -> Option<Flow> {
         let Some(ret) = &f.ret else {
             let msg = format!(
-                "{}() needs an explicit return type (Future<T>, FutureOr<T> or T)",
+                "{}() needs an explicit return type (Future<T>, FutureOr<T>, Stream<T> or T)",
                 f.name
             );
             self.diags.error(file, Some(&f.span), msg);
@@ -3867,17 +3917,11 @@ impl Resolver<'_> {
         match (head, args.len()) {
             ("Future", 1) => Some(Flow::Future),
             ("FutureOr", 1) => Some(Flow::FutureOr),
-            ("Future" | "FutureOr", _) => {
+            ("Stream", 1) => Some(Flow::Stream),
+            ("Future" | "FutureOr" | "Stream", _) => {
+                let example = if head == "Stream" { "String" } else { "Refund" };
                 let msg = format!(
-                    "give the {head} of {}() its type argument, e.g. `{head}<Refund>`",
-                    f.name
-                );
-                self.diags.error(file, Some(&f.span), msg);
-                None
-            }
-            ("Stream", _) => {
-                let msg = format!(
-                    "{}() returns a Stream, but an action is one write with one result: return a Future<T>, FutureOr<T> or T",
+                    "give the {head} of {}() its type argument, e.g. `{head}<{example}>`",
                     f.name
                 );
                 self.diags.error(file, Some(&f.span), msg);

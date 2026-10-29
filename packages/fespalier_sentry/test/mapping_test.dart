@@ -335,6 +335,44 @@ void main() {
       },
     );
 
+    testWidgets(
+      'a stopped streaming action is ok, not cancelled, and its count '
+      'of items is never sent (since 0.25.0)',
+      (tester) async {
+        final rig = Rig(tracing: true);
+        await rig.boot(tester);
+        final c = ProviderContainer();
+        addTearDown(c.dispose);
+        final controller = StreamController<String>();
+        final draft = streamActionProvider<String, String>(
+          (ref, input) => controller.stream,
+          invalidates: () => const [],
+          telemetry: actionSite,
+        );
+        c.listen(draft, (_, _) {});
+        final run = c.read(draft.notifier).call('a');
+        controller
+          ..add('secret one')
+          ..add('secret two');
+        await tester.pump();
+        c.read(draft.notifier).cancel();
+        await run;
+        await tester.pumpAndSettle();
+        final sent = await rig.sent(tester);
+        final tx = sent.lastWhere((e) => e['type'] == 'transaction');
+        final everything = jsonEncode(sent);
+        expect(everything, isNot(contains('secret')));
+        expect(everything, isNot(contains('fespalier.action.items')));
+        expect(tx['transaction'], r'action items/$id/action.dart#rename');
+        final trace = map(map(tx['contexts'])['trace']);
+        expect(trace['status'], 'ok');
+        expect(
+          map(trace['data']),
+          containsPair('fespalier.action.result', 'cancelled'),
+        );
+      },
+    );
+
     testWidgets('an auth step and an image load are spans of the open screen '
         'only when there is one', (tester) async {
       final answer = Completer<String>();

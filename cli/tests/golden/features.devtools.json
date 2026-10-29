@@ -212,6 +212,7 @@
                   "file": "docs/new/page.dart",
                   "folder": "docs/new",
                   "markers": [
+                    "action",
                     "leave"
                   ],
                   "params": [],
@@ -1096,6 +1097,12 @@
       "file": "(account)/nickname/action.dart",
       "name": "action",
       "route": "NicknameRoute"
+    },
+    "aDocsNew_draft": {
+      "kind": "action",
+      "file": "docs/new/action.dart",
+      "name": "draft",
+      "route": "NewDocRoute"
     },
     "aOrdersIdRefund_action": {
       "kind": "action",

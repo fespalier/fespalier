@@ -2,13 +2,13 @@
     this template owns the shape of the file. -#}
 {% from "manifest_body.dart" import body as manifest_body %}
 {% macro action_members(a) %}
-  /// The state of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}: `AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result. An action never replaces the page with `error.dart` and is never retried.
+  /// The state of `{{ a.name }}()` ({{ a.file }}){{ a.keyed }}: {{ a.state_doc }} An action never replaces the page with `error.dart` and is never retried.
   static final {{ a.provider }} = {{ a.top }};
 
-  /// Runs `{{ a.name }}()` once; after a success, the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. {{ a.returns }}; the error is in the state as well.
+  /// Runs `{{ a.name }}()` once{{ a.run_doc }} the data it made stale (by default the data.dart of this folder and the sections above it, or what `invalidates` lists) is invalidated. {{ a.returns }}; the error is in the state as well.
   static final {{ a.run }} = (WidgetRef ref, {{ a.params }}) => ref.{{ a.run_with }}({{ a.provider }}{{ a.key }}, input);
 
-  /// Watches the state of `{{ a.name }}()` and gives `call(input)` to run it, for `build`. A failed run is in `state`, not thrown.
+  /// Watches the state of `{{ a.name }}()` and gives `call(input)` to run it{{ a.hook_doc }}, for `build`. A failed run is in `state`, not thrown.
   static final {{ a.hook }} = (WidgetRef ref{{ a.hook_params }}) => ref.{{ a.watch_with }}({{ a.provider }}{{ a.key }});
 {%- if a.form %}
 

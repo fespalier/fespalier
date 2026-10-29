@@ -37,8 +37,9 @@ guard, redirect         fespalier.guard.decision = pass | redirect | error | ski
 data                    fespalier.data.state = data | error | stream | disposed
                         fespalier.data.keyed (bool)
                         fespalier.data.attempt (int), fespalier.data.source = cache | fetch (since 0.18.0)
-action                  fespalier.action.name, fespalier.action.result = ok | error
+action                  fespalier.action.name, fespalier.action.result = ok | error | cancelled (since 0.25.0)
                         fespalier.action.rolled_back (bool), fespalier.action.invalid (bool) (since 0.18.0)
+                        fespalier.action.items (int, a streaming action's count of items) (since 0.25.0)
 deferred                fespalier.deferred.result = ok | error
 auth (since 0.9.0)      fespalier.auth.operation = restore | sign_in | renew | sign_out   (renew was refresh until 0.20.0)
                         fespalier.auth.result = ok | none | expired | rejected | cancelled | error
@@ -139,6 +140,11 @@ enter, focus events     fespalier.route
   - `fespalier.action.invalid` is `true` on an `error` whose cause was `FieldErrors` (`validate()` refused the
     input, or the action named wrong fields). A form whose own check stops a submit before the action runs makes
     no span, so it is not counted.
+  - Since 0.25.0 a streaming action (an `action.dart` function that returns a `Stream<T>`) is one span per run:
+    `fespalier.action.result` is `cancelled` when the run was stopped before its stream ended (`cancel()`, a newer
+    run, or its page went away), which is not an error, and `fespalier.action.items` is the count of its items,
+    whatever the result (never the items). Absent for any other action. `fespalier_sentry` gives a cancelled run
+    the status `ok` and never sends the count. `RecordingTelemetry` writes `items=N` on its end.
 - **Metrics**: none. Derive them in the collector with the `spanmetrics` connector, using these
   attributes as dimensions. The `fespalier.auth.*`, `fespalier.image.*` and `fespalier.custom.*` attributes, the `http` span's `http.*`, `server.*` and `url.scheme` (since 0.21.0) and `fespalier.navigation.source` are not
   dimensions of the collector `fsp telemetry` starts yet (since 0.9.0).

@@ -214,6 +214,108 @@ fn what_an_action_returns_decides_how_its_helpers_run_it() {
 }
 
 #[test]
+fn a_stream_is_a_streaming_action_with_its_own_provider_and_helpers() {
+    // Since 0.25.0: `Stream<T>` is no longer an error, and its helpers keep the stream's state.
+    let c = code(&order(&[(
+        "orders/$id/action.dart",
+        "Stream<String> track(Ref ref, {required int id, required int input}) async* {}\n\
+         Future<int> later(Ref ref, {required int id, required int input}) async => input;",
+    )]));
+    has(
+        &c,
+        &[
+            "static final trackAction = _actionOrdersId_track;",
+            "static final track = (WidgetRef ref, {required int id, required int input}) => ref.runActionStream(trackAction(id), input);",
+            "static final useTrack = (WidgetRef ref, {required int id}) => ref.watchActionStream(trackAction(id));",
+            "final _actionOrdersId_track = streamActionFamily(",
+            "(Ref ref, int id, int input) => _i1.track(ref, id: id, input: input),",
+            "site: 'aOrdersId_track',",
+            // The doc follows the flow: a stream's state is a `StreamActionState`.
+            "`StreamActionState<T>`, idle (`StreamIdle`) until it runs",
+            "and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled after an item, the data it made stale",
+            "Completes with the last item, or throws what the stream threw",
+            "gives `call(input)` to run it and `cancel()` to stop it (the run stops too when nothing watches it any more), for `build`.",
+            // The Future beside it is as it always was.
+            "final _actionOrdersId_later = actionFamily(",
+            "ref.runAction(laterAction(id), input)",
+            "`AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result.",
+        ],
+    );
+    // With no keys, the plain provider.
+    let c = code(&[
+        ("page.dart", HOME),
+        (
+            "action.dart",
+            "Stream<String> action(Ref ref, {required String input}) async* {}",
+        ),
+    ]);
+    has(
+        &c,
+        &[
+            "final _actionRoot_action = streamActionProvider(",
+            "static final submit = (WidgetRef ref, {required String input}) => ref.runActionStream(action, input);",
+            "static final useAction = (WidgetRef ref) => ref.watchActionStream(action);",
+        ],
+    );
+}
+
+#[test]
+fn a_streaming_action_takes_its_validate_and_its_invalidates() {
+    let c = code(&order(&[
+        (
+            "orders/$id/data.dart",
+            "Future<Order> data(Ref ref, {required int id}) async => x;",
+        ),
+        (
+            "orders/$id/action.dart",
+            "FieldErrors? draftValidate(String input) => null;\n\
+             Stream<String> draft(Ref ref, {required int id, required String input}) async* {}",
+        ),
+    ]));
+    has(
+        &c,
+        &[
+            "final _actionOrdersId_draft = streamActionFamily(",
+            "invalidates: (int id) => <ProviderListenable<AsyncValue<Object?>>>[_dataOrdersId(id)],",
+            "validate: _i2.draftValidate,",
+        ],
+    );
+}
+
+#[test]
+fn a_streaming_action_with_a_form_steps_or_a_patch_is_an_error() {
+    // Not built (since 0.25.0): each is reported, and the action itself still generates.
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "typedef DraftFields = ({String topic});\n\
+         DraftFields draftForm() => (topic: '');\n\
+         Stream<String> draft(Ref ref, {required int id, required DraftFields input}) async* {}",
+    )]));
+    assert!(
+        e.contains("`draftForm()` is a form, and `draft()` returns a Stream: a form of a streaming action is not built; return a Future<T> from `draft()`, or drop `draftForm()` and run it with `useDraft`"),
+        "{e}"
+    );
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "const steps = {'a': ['topic']};\n\
+         Stream<String> action(Ref ref, {required int id, required String input}) async* {}",
+    )]));
+    assert!(
+        e.contains("`steps` makes a flow, and `action()` returns a Stream: a flow of a streaming action is not built; return a Future<T> from `action()`"),
+        "{e}"
+    );
+    let e = errors(&order(&[(
+        "orders/$id/action.dart",
+        "int optimistic(int current, String input) => current;\n\
+         Stream<String> action(Ref ref, {required int id, required String input}) async* {}",
+    )]));
+    assert!(
+        e.contains("`optimistic()` is an optimistic patch, and `action()` returns a Stream: a patch of a streaming action is not built; show the items as they come from the state of `useAction`, or return a Future<T> from `action()`"),
+        "{e}"
+    );
+}
+
+#[test]
 fn a_route_without_keys_gets_a_plain_provider() {
     let c = code(&[
         ("page.dart", HOME),
@@ -739,15 +841,18 @@ fn the_function_must_take_a_ref_and_say_what_it_returns() {
         "action(Ref ref, {required int id, required Object input}) async {}",
     )]));
     assert!(
-        e.contains("action() needs an explicit return type (Future<T>, FutureOr<T> or T)"),
+        e.contains(
+            "action() needs an explicit return type (Future<T>, FutureOr<T>, Stream<T> or T)"
+        ),
         "{e}"
     );
+    // A Stream is a streaming action (since 0.25.0), as long as it says what it gives.
     let e = errors(&order(&[(
         "orders/$id/action.dart",
-        "Stream<int> action(Ref ref, {required int id, required Object input}) => x;",
+        "Stream action(Ref ref, {required int id, required Object input}) => x;",
     )]));
     assert!(
-        e.contains("action() returns a Stream, but an action is one write with one result: return a Future<T>, FutureOr<T> or T"),
+        e.contains("give the Stream of action() its type argument, e.g. `Stream<String>`"),
         "{e}"
     );
     let e = errors(&order(&[(

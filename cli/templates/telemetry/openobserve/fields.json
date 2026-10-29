@@ -23,6 +23,7 @@
     "fespalier_action_result",
     "fespalier_action_rolled_back",
     "fespalier_action_invalid",
+    "fespalier_action_items",
     "fespalier_deferred_result",
     "fespalier_auth_operation",
     "fespalier_auth_result",

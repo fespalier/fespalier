@@ -432,7 +432,8 @@ struct ActionCx {
     hook: String,
     /// The private provider the member `provider` is: `_actionItemsId_edit`.
     top: String,
-    /// `actionProvider` for an action with no keys, else `actionFamily`.
+    /// `actionProvider` for an action with no keys, else `actionFamily`; `streamActionProvider` and
+    /// `streamActionFamily` for one that returns a `Stream` (since 0.25.0).
     factory: &'static str,
     /// The parameters of the function the provider runs: `Ref ref, int id, _i5.Input input`.
     run_params: String,
@@ -464,12 +465,19 @@ struct ActionCx {
     hook_params: String,
     /// `(id)`, `((a: a, b: b))` or nothing: the key the provider is called with.
     key: String,
-    /// `runAction`, `runActionSync` or `runActionOr`: what the one-shot helper calls.
+    /// `runAction`, `runActionSync`, `runActionOr` or `runActionStream`: what the one-shot helper calls.
     run_with: &'static str,
-    /// `watchAction`, `watchActionSync` or `watchActionOr`.
+    /// `watchAction`, `watchActionSync`, `watchActionOr` or `watchActionStream`.
     watch_with: &'static str,
     /// What the one-shot helper completes with, as the doc says it.
     returns: &'static str,
+    /// The state, as the provider's doc says it: `AsyncValue<T?>`, or (since 0.25.0) a stream
+    /// action's `StreamActionState<T>`.
+    state_doc: &'static str,
+    /// What the one-shot helper's doc says between "once" and "the data it made stale".
+    run_doc: &'static str,
+    /// What the hook's doc adds after "to run it": nothing, or a stream action's `cancel()`.
+    hook_doc: &'static str,
     /// The "keyed by" clause of the doc comment, or nothing.
     keyed: String,
 }
@@ -2822,6 +2830,21 @@ fn actions_of(app: &App, r: &Route) -> Vec<ActionCx> {
                 Flow::Future => ("runAction", "watchAction", "Completes with its result, or throws what the action threw"),
                 Flow::FutureOr => ("runActionOr", "watchActionOr", "Returns its result as the action does (a value when the action gave one, else a `Future`), or throws what the action threw"),
                 Flow::Sync => ("runActionSync", "watchActionSync", "Returns its result at once, or throws what the action threw"),
+                Flow::Stream => ("runActionStream", "watchActionStream", "Completes with the last item, or throws what the stream threw"),
+            };
+            let stream = a.flow == Flow::Stream;
+            let (state_doc, run_doc, hook_doc) = if stream {
+                (
+                    "`StreamActionState<T>`, idle (`StreamIdle`) until it runs, then running with the latest item, then done, failed or cancelled (since 0.25.0).",
+                    " and keeps listening to its stream until it ends, even when the page goes away; once it is done, or cancelled after an item,",
+                    " and `cancel()` to stop it (the run stops too when nothing watches it any more)",
+                )
+            } else {
+                (
+                    "`AsyncValue<T?>`, idle (`AsyncData(null)`) until it runs, then loading, the error or the result.",
+                    "; after a success,",
+                    "",
+                )
             };
             let flow = a.steps.as_ref().zip(a.form.as_ref()).map(|(steps, f)| {
                 flow_cx(app, r, a, (f, steps), (&names, &hook_keys_list, &hook_key_names))
@@ -2836,7 +2859,12 @@ fn actions_of(app: &App, r: &Route) -> Vec<ActionCx> {
                 site: devtools::site_action(&r.stem, &a.name),
                 site_file: dart_str(&rel(r, Kind::Action)),
                 site_route: dart_str(&resolve::pattern(&r.url)),
-                factory: if keyed { "actionFamily" } else { "actionProvider" },
+                factory: match (stream, keyed) {
+                    (false, false) => "actionProvider",
+                    (false, true) => "actionFamily",
+                    (true, false) => "streamActionProvider",
+                    (true, true) => "streamActionFamily",
+                },
                 run_params: if keyed {
                     format!("Ref ref, {key_ty}, {input}")
                 } else {
@@ -2863,6 +2891,9 @@ fn actions_of(app: &App, r: &Route) -> Vec<ActionCx> {
                 run_with,
                 watch_with,
                 returns,
+                state_doc,
+                run_doc,
+                hook_doc,
                 keyed: keyed_label(&d),
             }
         })

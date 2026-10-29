@@ -404,6 +404,10 @@ final class FespalierOtel extends FespalierTelemetry {
             end.actionInvalid,
           );
         }
+        final items = end.actionItems;
+        if (items != null) {
+          span.setIntAttribute(FespalierConventions.actionItems, items);
+        }
       case TelemetryOp.deferred:
         span.setStringAttribute<String>(
           FespalierConventions.deferredResult,

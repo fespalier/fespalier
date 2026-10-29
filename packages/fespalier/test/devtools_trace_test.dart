@@ -1204,6 +1204,66 @@ void main() {
       expect(record.result, const Shown('String', '5:x'));
     });
 
+    test('a streaming action is running, then done with its last item: '
+        'posted at the start and the end, never once per item '
+        '(since 0.25.0)', () async {
+      final c = container();
+      final controller = StreamController<String>();
+      final p = streamActionProvider<String, String>(
+        (ref, input) => controller.stream,
+        invalidates: () => const [],
+        site: 'a7_0',
+      );
+      c.listen(p, (_, _) {});
+      final run = c.read(p.notifier).call('go');
+      controller
+        ..add('a')
+        ..add('b')
+        ..add('c');
+      await Future<void>.delayed(Duration.zero);
+      expect((await snapshot()).actions.single.state, ActionState.running);
+      await controller.close();
+      await run;
+      final record = (await snapshot()).actions.single;
+      expect(record.state, ActionState.done);
+      expect(record.result, const Shown('String', 'c'));
+      expect(
+        [for (final a in actionEvents()) a.state],
+        [ActionState.running, ActionState.done],
+      );
+    });
+
+    test('a cancelled streaming run ends done, a failed one an error '
+        '(since 0.25.0)', () async {
+      final c = container();
+      final controllers = <StreamController<String>>[];
+      final p = streamActionProvider<String, String>(
+        (ref, input) {
+          final controller = StreamController<String>();
+          controllers.add(controller);
+          return controller.stream;
+        },
+        invalidates: () => const [],
+        site: 'a7_0',
+      );
+      c.listen(p, (_, _) {});
+      final first = c.read(p.notifier).call('one');
+      controllers[0].add('partial');
+      await Future<void>.delayed(Duration.zero);
+      c.read(p.notifier).cancel();
+      await first;
+      final second = c.read(p.notifier).call('two');
+      controllers[1].addError(StateError('refused'));
+      await expectLater(second, throwsStateError);
+      final all = (await snapshot()).actions;
+      expect(
+        [for (final a in all) a.state],
+        [ActionState.done, ActionState.error],
+      );
+      expect(all.first.result, const Shown('String', 'partial'));
+      expect(all.last.error, contains('refused'));
+    });
+
     test('an action with no site is not recorded', () async {
       final c = container();
       final p = actionProvider<int, int>(

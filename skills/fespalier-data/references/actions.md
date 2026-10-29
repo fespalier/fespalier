@@ -145,8 +145,10 @@ class RefundPage extends HookConsumerWidget {
   typed. Any other parameter is an error.
 - **Return type**: spelled out, `Future<T>`, `FutureOr<T>` or `T` (`Future<void>`
   too). **A sync action stays sync** (`submit` returns the value, no async gap,
-  no loading state), a `FutureOr<T>` one returns what the function returned. A
-  `Stream` is an error, and so is a bare `Future`.
+  no loading state), a `FutureOr<T>` one returns what the function returned. A bare
+  `Future` is an error. Since 0.25.0 a `Stream<T>` is a
+  [streaming action](#streaming-actions-a-stream) (until 0.24.0 it was an error), and a
+  bare `Stream` is an error too.
 
 ## What is generated
 
@@ -201,6 +203,122 @@ the route, or another action's helper is an error.
   order's `data.dart` takes `int id`, and the action takes `id`. A route whose data is keyed
   by a query parameter (`String? q`) needs the action to take it. Otherwise it is an
   error that says so (see `fespalier-troubleshooting`).
+
+## Streaming actions: a `Stream`
+
+Since 0.25.0 (`packages/fespalier/lib/src/stream_action.dart`). An `action.dart`
+function that returns `Stream<T>` is a write whose answer comes in pieces: a text a
+model writes word by word, the progress of an export. Its state follows each item, the
+user can stop it, and a page that goes away stops it.
+
+```dart
+// lib/exports.dart
+import 'package:fespalier/fespalier.dart';
+
+class ExportApi {
+  /// The percentage done, as the server reports it.
+  Stream<int> export(int id, String format) => Stream.fromIterable([25, 50, 100]);
+}
+
+final exportApiProvider = Provider<ExportApi>((ref) => ExportApi());
+```
+
+```dart
+// lib/app/orders/$id/export/action.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:my_app/exports.dart';
+
+/// Run first: a format the server does not know never starts the stream.
+FieldErrors? validate(String input) =>
+    input == 'csv' ? null : const FieldErrors({'format': 'Only csv for now'});
+
+Stream<int> action(Ref ref, {required int id, required String input}) =>
+    ref.read(exportApiProvider).export(id, input);
+```
+
+```dart
+// lib/app/orders/$id/export/page.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter/material.dart';
+import 'package:my_app/app.g.dart';
+
+class ExportPage extends HookConsumerWidget {
+  const ExportPage({super.key, required this.id});
+
+  final int id;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final export = ExportRoute.useAction(ref, id: id);
+    return Column(
+      children: [
+        if (export.isPending)
+          TextButton(onPressed: export.cancel, child: const Text('Stop'))
+        else
+          FilledButton(
+            onPressed: () => export.call('csv'),
+            child: const Text('Export'),
+          ),
+        if (export.value case final percent?) Text('$percent%'),
+        if (export.state case StreamFailed(:final error)) Text('Failed: $error'),
+        if (export.state is StreamCancelled<int>) const Text('Stopped'),
+      ],
+    );
+  }
+}
+```
+
+- **The state** is a sealed `StreamActionState<T>`, not an `AsyncValue`: `StreamIdle`,
+  `StreamRunning`, then `StreamDone`, `StreamFailed` (`error`, `stackTrace`) or
+  `StreamCancelled`. Each has `latest` (the last item of the run, null before the
+  first) and `count`. Every item is a new state, so the page rebuilds on each.
+- **The members** are an action's: `ExportRoute.action(1)` (a `streamActionFamily`;
+  `streamActionProvider` with no keys), `ExportRoute.submit(ref, id: 1, input: 'csv')`
+  (a `Future` of the last item; throws what the stream threw) and
+  `ExportRoute.useAction(ref, id: 1)`, a `StreamActionHandle` with `state`, `value`,
+  `isPending`, `hasError`, `fieldErrors`, `call(input)` (`null` on a failure, never
+  throws), `cancel()` and `reset()`.
+- **`validate()` runs first**; the last run wins (a new `call` stops the one in
+  progress, which ends cancelled).
+- **Lifetime.** A run started from the hook lives while the page watches it: when the
+  page goes away the subscription is cancelled, and the request under it with it.
+  `submit` holds the provider alive until the stream ends, like a `Future` action; from
+  a container, `call(input, hold: true)` does the same.
+- **Invalidation** happens when the stream ends, and when a run is stopped after at least
+  one item; never after a failure, and not for a run stopped because its page went
+  away. Never retried.
+- **Not built**: a `form()`, `const steps` or `optimistic()` beside it is an error.
+- **Telemetry**: one action span per run, `fespalier.action.result` `ok`, `error` or
+  `cancelled`, and `fespalier.action.items`, the count (never the items). No timer, and no
+  listener but the stream's own subscription.
+
+```dart
+// test/export_test.dart
+import 'package:fespalier/fespalier.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:my_app/app.g.dart';
+import 'package:my_app/exports.dart';
+
+void main() {
+  test('an export streams its progress to the end', () async {
+    final container = ProviderContainer(
+      overrides: [exportApiProvider.overrideWithValue(ExportApi())],
+    );
+    addTearDown(container.dispose);
+    final states = <StreamActionState<int>>[];
+    container.listen(ExportRoute.action(1), (_, next) => states.add(next));
+
+    final last = await container.read(ExportRoute.action(1).notifier).call('csv');
+
+    expect(last, 100);
+    expect([for (final s in states) s.latest], [null, 25, 50, 100, 100]);
+    expect(states.last, isA<StreamDone<int>>());
+  });
+}
+```
+
+To hold a stream mid-run in a test, return a `StreamController`'s stream from a fake
+and add items by hand; `pump()` after each.
 
 ## Testing it
 

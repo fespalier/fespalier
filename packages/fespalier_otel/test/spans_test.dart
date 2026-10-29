@@ -76,6 +76,7 @@ const Set<String> contractKeys = {
   'fespalier.action.result',
   'fespalier.action.rolled_back',
   'fespalier.action.invalid',
+  'fespalier.action.items',
   'fespalier.deferred.result',
   'fespalier.auth.operation',
   'fespalier.auth.result',
@@ -969,6 +970,46 @@ void main() {
       expect(span.attributes.getString('fespalier.action.name'), 'rename');
       expect(span.attributes.getString('fespalier.action.result'), 'ok');
       expect(span.attributes.getBool('fespalier.async'), true);
+    });
+
+    test('a streaming action is one span with the count of its items, and '
+        'a stopped one ends cancelled, not an error (since 0.25.0)', () async {
+      final c = ProviderContainer();
+      addTearDown(c.dispose);
+      final controllers = <StreamController<String>>[];
+      final draft = streamActionProvider<String, String>(
+        (ref, input) {
+          final controller = StreamController<String>();
+          controllers.add(controller);
+          return controller.stream;
+        },
+        invalidates: () => const [],
+        telemetry: actionSite,
+      );
+      c.listen(draft, (_, _) {});
+      final run = c.read(draft.notifier).call('a');
+      controllers[0]
+        ..add('secret one')
+        ..add('secret two');
+      await controllers[0].close();
+      await run;
+      final span = only('action items/\$id/action.dart#rename');
+      expect(span.attributes.getString('fespalier.action.result'), 'ok');
+      expect(span.attributes.getInt('fespalier.action.items'), 2);
+      expect(span.attributes.getBool('fespalier.action.invalid'), isNull);
+      expect(span.attributes.getBool('fespalier.async'), true);
+      expect(span.attributes.toString(), isNot(contains('secret')));
+      final stopped = c.read(draft.notifier).call('b');
+      controllers[1].add('x');
+      await Future<void>.delayed(Duration.zero);
+      c.read(draft.notifier).cancel();
+      await stopped;
+      final last = exporter
+          .findSpansByName('action items/\$id/action.dart#rename')
+          .last;
+      expect(last.attributes.getString('fespalier.action.result'), 'cancelled');
+      expect(last.attributes.getInt('fespalier.action.items'), 1);
+      expect(last.status, isNot(SpanStatusCode.Error));
     });
 
     test('a failed action is an error span', () async {

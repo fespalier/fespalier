@@ -234,6 +234,11 @@ abstract final class FespalierConventions {
   /// fields. Recorded on an error only (since 0.18.0).
   static const String actionInvalid = 'fespalier.action.invalid';
 
+  /// How many items a streaming action's stream gave in the run, whatever its outcome
+  /// (`fespalier.action.result` is `cancelled` when the run was stopped). Absent for an action
+  /// that returns a `Future` or a value (since 0.25.0). Never the items themselves.
+  static const String actionItems = 'fespalier.action.items';
+
   // Attributes of a `deferred` span.
 
   /// How the load ended.

@@ -28,6 +28,8 @@ flutter run
   and a title that shows the new nickname at once.
 - `/teams/core/members`: **Add carol** writes to the team's section, and the page and the team reload.
 - `/photos/share`: a bottom sheet with a URL of its own, over `/photos`; `/photos/share/terms` opens a page on top of it.
+- `/docs/new`: type a topic and tap **Draft**: a streaming action (since 0.25.0) writes the doc word by word under the
+  field, **Stop** cancels it, **Use draft** puts it in the field, and leaving the page stops it.
 - `/vault` signed out: the guard sends you to `/login?from=/vault`, and **Sign in** sends you back. `/admin` goes to the
   login page too; once signed in, its own guard runs next and, since you are not an admin, sends you to `/inbox` (guards
   run outermost first).

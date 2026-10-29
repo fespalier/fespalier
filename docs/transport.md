@@ -46,7 +46,7 @@ abstract interface class HttpTransport {
 Three more pieces of the package are not transports but belong to them:
 
 - **`HttpWrites`** is the one rule for what counts as a write: any method but `GET`, `HEAD`, `OPTIONS` and `TRACE`, unless the request carries an `Idempotency-Key` header. `WriteGuardTransport` and `fespalier_dio`'s `WriteGuard` share it, so the two never disagree.
-- **`HttpCredentials`** is what a transfer that is not a transport (a download, a plugin, a websocket handshake) needs from a session: `covers(uri)`, `authorize(request, previous:)` for the headers and `retry(attempt, response)` for "send it once more?". `fespalier_auth`'s `Authorizer` implements it ([Credentials for clients that are not an http.Client](http.md#credentials-for-clients-that-are-not-an-httpclient)).
+- **`HttpCredentials`** is what a transfer that is not a transport (a download, a plugin, a WebSocket handshake on a device; in a browser a socket takes a [ticket](streaming.md#signing-in-tickets) fetched through the transport) needs from a session: `covers(uri)`, `authorize(request, previous:)` for the headers and `retry(attempt, response)` for "send it once more?". `fespalier_auth`'s `Authorizer` implements it ([Credentials for clients that are not an http.Client](http.md#credentials-for-clients-that-are-not-an-httpclient)).
 - **`TransportZone`** carries an abort trigger in a `Zone`, for code that cannot hand one to the request it makes: a generated client takes no abort trigger, so `ref.cancellable` in `fespalier_cratestack` runs the call in a zone that carries one, and `TransportAdapter` merges it into the request's `abortTrigger`.
 
 ## The two implementations

@@ -41,8 +41,9 @@ asks for it.
 0.25.0 changes no code you wrote and regenerates no different `app.g.dart`.
 
 1. **`fespalier_stream` is new and opt-in.** Server-sent events read through the app's own `HttpTransport`, as a `Stream` for a
-   `data.dart` or as a `LiveFeed` that reconnects on the app's signals and its `streamTicker`, with no timer of its own. An app
-   that does not list it changes nothing. See [`fespalier-data`](../fespalier-data/SKILL.md) (its streaming page). Details:
+   `data.dart` or as a `LiveFeed` that reconnects on the app's signals and its `streamTicker`, with no timer of its own, and
+   WebSockets in a library of its own (`package:fespalier_stream/web_socket.dart`, signed in with a ticket fetched through the
+   transport). An app that does not list it changes nothing. See [`fespalier-data`](../fespalier-data/SKILL.md) (its streaming page). Details:
    `docs/migration.md`, "0.25.0".
 2. **`fespalier_frb`'s change feed is `fespalier_stream`'s.** `ChangeFeed`, its topics, `ChangeBudget`, `InvalidationTable`,
    `UnknownChange` and `FakeChangeSource` moved, and `fespalier_frb` re-exports the same declarations: an import from either

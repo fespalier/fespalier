@@ -287,7 +287,7 @@ Every retry the interceptor makes calls the adapter again, so every send is sign
 
 ## Credentials for clients that are not an http.Client
 
-A transfer that is not a transport (a plugin that downloads a file, a native upload, a websocket handshake) still needs the session: the headers for a request and the answer to "send it once more?". `HttpCredentials` (since 0.15.0 in `fespalier_http`; in `fespalier_transport` since 0.21.0) is that, with no client in it:
+A transfer that is not a transport (a plugin that downloads a file, a native upload, a WebSocket handshake on a device; a browser cannot set its headers, so a socket there takes a [ticket](streaming.md#signing-in-tickets) fetched through the transport) still needs the session: the headers for a request and the answer to "send it once more?". `HttpCredentials` (since 0.15.0 in `fespalier_http`; in `fespalier_transport` since 0.21.0) is that, with no client in it:
 
 ```dart
 abstract interface class HttpCredentials {

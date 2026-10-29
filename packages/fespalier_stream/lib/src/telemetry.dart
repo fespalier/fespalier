@@ -17,8 +17,14 @@ import 'wire/event_source.dart';
 /// - [close] starts and ends when a connection that was open ends: [reason] (`ended`, `failed`,
 ///   `idle`, `paused`, `cancelled`) and the number of [events] it delivered.
 ///
-/// Both carry [kind] (`sse`) and, when the connection was given one, [name]. Neither carries a URL,
-/// a query, a header, an event's type, data or id, or an error's text.
+/// Both carry [kind] (`sse`, or `websocket` since 0.25.0) and, when the connection was given one,
+/// [name]. Neither carries a URL, a query, a header, an event's type, data or id, a message, a
+/// close reason's text or an error's text.
+///
+/// A WebSocket's [open] (since 0.25.0) covers its grant and its handshake: [result] (`open`,
+/// `refused`, `unavailable`, `failed`, `cancelled`) and no [statusCode] or [resumed] (a browser
+/// shows no handshake status, and a socket never resumes). Its [close] carries [closeCode] when
+/// the peer sent one (1006 for a socket that broke), and [events] counts its messages.
 ///
 /// - [decode] (since 0.25.0) is the instant span of a message an `EventCodec` skipped, at the 1st,
 ///   2nd, 4th, 8th... skip of each kind: [result] (`unknown` or `error`) and the count so far,
@@ -30,11 +36,14 @@ abstract final class FespalierStreamConventions {
   /// The instant span of the end of a connection that was open.
   static const String close = 'fespalier.stream.close';
 
-  /// What kind of connection: [kindSse].
+  /// What kind of connection: [kindSse] or [kindWebSocket].
   static const String kind = 'fespalier.stream.kind';
 
   /// The kind of a server-sent events connection.
   static const String kindSse = 'sse';
+
+  /// The kind of a WebSocket connection (since 0.25.0).
+  static const String kindWebSocket = 'websocket';
 
   /// The connection's name, as the app gave it (`orders`), when it gave one.
   static const String name = 'fespalier.stream.name';
@@ -52,8 +61,13 @@ abstract final class FespalierStreamConventions {
   /// Why a [close] happened: `ended`, `failed`, `idle`, `paused` or `cancelled`.
   static const String reason = 'fespalier.stream.reason';
 
-  /// How many events a [close]d connection delivered.
+  /// How many events (or a WebSocket's messages) a [close]d connection delivered.
   static const String events = 'fespalier.stream.events';
+
+  /// The close code a WebSocket's peer sent, on its [close] (an `int`, since 0.25.0): 1000
+  /// normal, 1001 going away, 1006 a socket that broke, 1012 a restart, 1013 try again later, 3000
+  /// to 4999 the server's own. Never the reason's text.
+  static const String closeCode = 'fespalier.stream.close_code';
 
   /// The instant span of a message (or batch item) an `EventCodec` skipped (since 0.25.0).
   static const String decode = 'fespalier.stream.decode';
@@ -70,13 +84,18 @@ final RegExp _name = RegExp(r'^[a-z][a-z0-9_]*$');
 /// constant: a name built from an id (`order_42`) passes. Always true for null.
 bool isTelemetryName(String? name) => name == null || _name.hasMatch(name);
 
-Map<String, Object> _base(String? name) => <String, Object>{
-  FespalierStreamConventions.kind: FespalierStreamConventions.kindSse,
+Map<String, Object> _base(String? name, String kind) => <String, Object>{
+  FespalierStreamConventions.kind: kind,
   FespalierStreamConventions.name: ?name,
 };
 
 /// Starts the open span of a request (a root span: see [reportStreamClose]); null without a sink.
-Object? reportStreamOpenStart({String? name, required bool resumed}) {
+/// [resumed] is left out when null (a WebSocket's).
+Object? reportStreamOpenStart({
+  String? name,
+  required bool? resumed,
+  String kind = FespalierStreamConventions.kindSse,
+}) {
   if (FespalierTelemetry.current == null) return null;
   return Zone.root.run(
     () => FespalierTelemetry.begin(
@@ -84,8 +103,8 @@ Object? reportStreamOpenStart({String? name, required bool resumed}) {
         TelemetryOp.custom,
         name: FespalierStreamConventions.open,
         attributes: <String, Object>{
-          ..._base(name),
-          FespalierStreamConventions.resumed: resumed,
+          ..._base(name, kind),
+          FespalierStreamConventions.resumed: ?resumed,
         },
       ),
     ),
@@ -126,6 +145,8 @@ void reportStreamClose({
   String? name,
   required String reason,
   required int events,
+  String kind = FespalierStreamConventions.kindSse,
+  int? closeCode,
 }) {
   if (FespalierTelemetry.current == null) return;
   Zone.root.run(() {
@@ -133,7 +154,7 @@ void reportStreamClose({
       TelemetryStart(
         TelemetryOp.custom,
         name: FespalierStreamConventions.close,
-        attributes: _base(name),
+        attributes: _base(name, kind),
       ),
     );
     FespalierTelemetry.finish(
@@ -145,6 +166,7 @@ void reportStreamClose({
         attributes: <String, Object>{
           FespalierStreamConventions.reason: reason,
           FespalierStreamConventions.events: events,
+          FespalierStreamConventions.closeCode: ?closeCode,
         },
       ),
     );

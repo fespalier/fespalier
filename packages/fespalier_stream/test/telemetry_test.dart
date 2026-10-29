@@ -1,6 +1,7 @@
 // The package's telemetry contract: two short root spans per connection, constants only. Nothing
 // from the wire (an event's type, data or id), the URL, a header or an error's text is reported.
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/testing.dart';
@@ -40,6 +41,8 @@ void main() {
     expect(FespalierStreamConventions.close, 'fespalier.stream.close');
     expect(FespalierStreamConventions.kind, 'fespalier.stream.kind');
     expect(FespalierStreamConventions.kindSse, 'sse');
+    expect(FespalierStreamConventions.kindWebSocket, 'websocket');
+    expect(FespalierStreamConventions.closeCode, 'fespalier.stream.close_code');
     expect(FespalierStreamConventions.name, 'fespalier.stream.name');
     expect(FespalierStreamConventions.result, 'fespalier.stream.result');
     expect(FespalierStreamConventions.resumed, 'fespalier.stream.resumed');
@@ -303,6 +306,119 @@ void main() {
     await sub.cancel();
     expect(seen, ['a']);
     expect(sink.log, isEmpty);
+  });
+
+  group('a WebSocket', () {
+    final socketUrl = Uri.parse('wss://api.example.com/chat?ticket=secret-t');
+    late FakeSocketConnector connector;
+
+    setUp(() => connector = FakeSocketConnector());
+
+    test('is an open span and a close span of kind websocket, with the close code', () async {
+      final connection = SocketConnection(
+        connector,
+        socketUrl,
+        grantor: (url) async => SocketGrant(url),
+        name: 'chat',
+      );
+      final sub = connection.events.listen((_) {});
+      await settle();
+      connector.current
+        ..text('secret-message')
+        ..closeFromPeer(4001);
+      await settle();
+      connection.reconnect();
+      await settle();
+      connector.current.drop();
+      await settle();
+      connection.reconnect();
+      await settle();
+      await sub.cancel();
+      await settle();
+      expect(sink.log, [
+        '#1 start custom fespalier.stream.open fespalier.stream.kind=websocket '
+            'fespalier.stream.name=chat',
+        '#1 end custom ok async fespalier.stream.result=open',
+        '#2 start custom fespalier.stream.close fespalier.stream.kind=websocket '
+            'fespalier.stream.name=chat',
+        '#2 end custom ok fespalier.stream.close_code=4001 fespalier.stream.events=1 '
+            'fespalier.stream.reason=ended',
+        '#3 start custom fespalier.stream.open fespalier.stream.kind=websocket '
+            'fespalier.stream.name=chat',
+        '#3 end custom ok async fespalier.stream.result=open',
+        '#4 start custom fespalier.stream.close fespalier.stream.kind=websocket '
+            'fespalier.stream.name=chat',
+        '#4 end custom error fespalier.stream.close_code=1006 fespalier.stream.events=0 '
+            'fespalier.stream.reason=failed',
+        '#5 start custom fespalier.stream.open fespalier.stream.kind=websocket '
+            'fespalier.stream.name=chat',
+        '#5 end custom ok async fespalier.stream.result=open',
+        '#6 start custom fespalier.stream.close fespalier.stream.kind=websocket '
+            'fespalier.stream.name=chat',
+        '#6 end custom ok fespalier.stream.events=0 fespalier.stream.reason=cancelled',
+      ]);
+      final all = sink.log.join('\n');
+      for (final secret in ['secret', 'example.com', 'ticket', '/chat']) {
+        expect(all, isNot(contains(secret)));
+      }
+    });
+
+    test('the start carries no resumed and no status', () async {
+      final starts = <TelemetryStart>[];
+      FespalierTelemetry.install(_Starts(starts));
+      final connection = SocketConnection(connector, socketUrl, name: 'chat');
+      final sub = connection.events.listen((_) {});
+      await settle();
+      await sub.cancel();
+      await settle();
+      expect(starts.first.attributes, {
+        'fespalier.stream.kind': 'websocket',
+        'fespalier.stream.name': 'chat',
+      });
+    });
+
+    test('a refused, a failed and an abandoned attempt', () async {
+      var answer = 0;
+      final connection = SocketConnection(
+        connector,
+        socketUrl,
+        grantor: (url) async => switch (answer++) {
+          0 => throw const TransportUnsent(FormatException('secret-cause')),
+          1 => throw TransportStatusError(
+            statusCode: 503,
+            headers: const {},
+            body: Uint8List(0),
+          ),
+          _ => throw const SocketTicketRefused(401),
+        },
+      );
+      final sub = connection.events.listen((_) {}, onError: (Object _) {});
+      await settle();
+      connection.reconnect();
+      await settle();
+      connection.reconnect();
+      await settle();
+      connector.hang();
+      final other = SocketConnection(connector, socketUrl);
+      final sub2 = other.events.listen((_) {});
+      await settle();
+      await sub2.cancel();
+      await sub.cancel();
+      expect(sink.log.where((l) => l.contains(' end ')), [
+        '#1 end custom error async fespalier.stream.result=failed',
+        '#2 end custom error async fespalier.stream.result=unavailable',
+        '#3 end custom rejected async fespalier.stream.result=refused',
+        '#4 end custom cancelled async fespalier.stream.result=cancelled',
+      ]);
+      expect(sink.log.join('\n'), isNot(contains('secret')));
+    });
+
+    test('a name that could be a URL or an id is refused in debug', () {
+      expect(
+        () => SocketConnection(connector, socketUrl, name: 'chat/42'),
+        throwsAssertionError,
+      );
+    });
   });
 
   test('a name that could be a URL or an id is refused in debug', () {

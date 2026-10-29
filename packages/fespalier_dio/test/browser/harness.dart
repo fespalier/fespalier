@@ -15,6 +15,13 @@
 // - `headers`: the response headers come lower-cased, an exposed header included;
 // - `status`: a 418 is an answer with its status, reason phrase and body;
 //
+// and, over fespalier_stream's WebSocketConnector (since 0.25.0, the browser's WebSocket through
+// package:web_socket), `socket`: a header on the handshake is refused (`ArgumentError`), and its
+// SocketSource (what SocketConnection is, without the fespalier telemetry and refusals that need
+// Flutter) connects with a grant (a ticket in the query, a subprotocol), runs onOpen, receives text
+// and bytes, sends both, waits after the server closes with 4001 (the code, never the reason),
+// replays onOpen on the reconnect, and closes with 1000, which the server sees;
+//
 // and, for the fetch adapter alone: cancelling the body subscription, Dio's CancelToken (after
 // and before the headers) and `close(force: true)` abort the request; a cancel while the request
 // body is still being read cancels its source; a port nothing listens on is a connection error
@@ -38,7 +45,12 @@ import 'package:dio/dio.dart';
 import 'package:fespalier_dio/fetch.dart';
 import 'package:fespalier_dio/src/dio_transport.dart';
 import 'package:fespalier_http/src/http_client_transport.dart';
+import 'package:fespalier_stream/src/socket/connector.dart';
+import 'package:fespalier_stream/src/socket/grant.dart';
+import 'package:fespalier_stream/src/socket/socket_source.dart';
+import 'package:fespalier_stream/src/socket/web_socket_connector.dart';
 import 'package:fespalier_stream/src/wire/event_source.dart';
+import 'package:fespalier_stream/src/wire/live_status.dart';
 import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:http/browser_client.dart';
 import 'package:web/web.dart' as web;
@@ -638,6 +650,117 @@ Future<Map<String, Object?>> _credentials() async {
   return result;
 }
 
+/// fespalier_stream's socket hooks, with no telemetry: nothing is a refusal.
+final class _SocketHooks implements SocketSourceHooks {
+  @override
+  bool isRefusal(Object error) => false;
+  @override
+  Object? reportOpenStart() => null;
+  @override
+  void reportOpenEnd(Object? token, String result) {}
+  @override
+  void reportClose(String reason, int messages, {int? closeCode}) {}
+}
+
+/// A WebSocket to the server's `/ws`: the browser's, through package:web_socket.
+Future<Map<String, Object?>> _socket() async {
+  final id = _id('ws');
+  final url = _api.replace(scheme: 'ws', path: '/ws');
+  const connector = WebSocketConnector();
+
+  // A browser cannot set a handshake header: refused before anything is opened.
+  Object? refused;
+  try {
+    await connector.connect(url, headers: const {'x-device': 'phone'});
+  } on ArgumentError catch (error) {
+    refused = error;
+  }
+  _expect(refused != null, 'a header on the handshake was not refused');
+
+  var attempt = 0;
+  final opened = <String>[];
+  final source = SocketSource(
+    connector,
+    url,
+    hooks: _SocketHooks(),
+    grantor: (asked) async => SocketGrant(
+      asked.replace(
+        queryParameters: {'id': '$id-${++attempt}', 'ticket': 'tk-$attempt'},
+      ),
+      protocols: const ['fsp.v1'],
+    ),
+    onOpen: (socket) {
+      opened.add(socket.protocol);
+      socket.sendText('echo:subscribed');
+    },
+  );
+  // Read without pausing (a StreamIterator pauses between reads, and a paused connection stops
+  // reading, so it would never see the server's close).
+  final inbox = <String>[];
+  var waiter = Completer<void>();
+  final subscription = source.events.listen(
+    (message) {
+      inbox.add(switch (message) {
+        SocketText(:final text) => text,
+        SocketBytes(:final bytes) => 'bytes:${bytes.join(',')}',
+      });
+      if (!waiter.isCompleted) waiter.complete();
+    },
+    onError: (Object error) {
+      if (!waiter.isCompleted) waiter.completeError(error);
+    },
+  );
+  Future<String> next() async {
+    while (inbox.isEmpty) {
+      waiter = Completer<void>();
+      await waiter.future;
+    }
+    return inbox.removeAt(0);
+  }
+
+  final first = [await next(), await next(), await next()];
+  _expect(
+    first.join(' ') == 'hello bytes:1,2,3 subscribed',
+    'first messages $first',
+  );
+  _expect(opened.join() == 'fsp.v1', 'onOpen saw protocols $opened');
+  source.send(const SocketText('echo:ping'));
+  _expect(await next() == 'ping', 'no echo of the text');
+  source.send(SocketBytes(Uint8List.fromList([7, 8])));
+  _expect(await next() == 'bytes:7,8', 'no echo of the bytes');
+
+  // The server closes with 4001 and a reason: the connection waits, and keeps the code only.
+  source.send(const SocketText('close'));
+  final waiting = await source.statusChanges.firstWhere(
+    (s) => s is LiveWaiting,
+  );
+  _expect(source.lastCloseCode == 4001, 'close code ${source.lastCloseCode}');
+  _expect(
+    (waiting as LiveWaiting).drop == LiveDrop.failed,
+    'a 4001 waits as ${waiting.drop}',
+  );
+
+  // A reconnect asks a new grant and runs onOpen again.
+  _expect(source.reconnect(), 'reconnect refused');
+  final again = [await next(), await next(), await next()];
+  _expect(
+    again.join(' ') == 'hello bytes:1,2,3 subscribed',
+    'after the reconnect $again',
+  );
+  _expect(opened.length == 2, 'onOpen ran ${opened.length} times');
+  await subscription.cancel();
+  final log = await _serverSaw('$id-2', 'ws-closed');
+  final firstLog = await _serverSaw('$id-1', 'ws-closed');
+  _expect(
+    firstLog.contains('ws-open $id-1 ticket=tk-1 protocol=fsp.v1'),
+    'the server saw $firstLog',
+  );
+  _expect(log.contains('ws-closed $id-2 code 1000'), 'the server saw $log');
+  return {
+    'server': [...firstLog, ...log],
+  };
+}
+
 Future<void> main() async {
   final page = Uri.parse(web.window.location.href);
   _api = Uri.parse(page.queryParameters['api']!);
@@ -665,6 +788,7 @@ Future<void> main() async {
     ('dio', 'malformed', _malformed),
     ('dio', 'cancel-upload', _cancelUpload),
     ('dio', 'credentials', _credentials),
+    ('ws', 'socket', _socket),
   ];
   _draw();
   final results = <Map<String, Object?>>[];

@@ -1,19 +1,26 @@
 /// What tests use from fespalier_stream (since 0.25.0): [FakeEventServer], an `HttpTransport` that
 /// serves event streams the test writes to; [ManualStreamTicker], a tick fired by hand;
 /// [FakeLiveConnection], a connection the test drives; [FakeChangeSource], a change stream the test
-/// feeds (fespalier_frb's until 0.24); and [streamTestOverrides].
+/// feeds (fespalier_frb's until 0.24); [FakeSocketConnector], WebSockets the test plays the peer
+/// of; and [streamTestOverrides].
+///
+/// It exports `package:fespalier_stream/fespalier_stream.dart` and
+/// `package:fespalier_stream/web_socket.dart`.
 library;
 
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:fespalier/startup.dart' show Override;
 import 'package:fespalier_transport/fespalier_transport.dart';
 
 import 'fespalier_stream.dart';
+import 'web_socket.dart';
 
 export 'package:fespalier_stream/fespalier_stream.dart';
+export 'package:fespalier_stream/web_socket.dart';
 
 /// A [StreamTicker] a test fires: `streamTicker.overrideWith(ManualStreamTicker.new)`, then
 /// `(container.read(streamTicker.notifier) as ManualStreamTicker).tick()`.
@@ -427,4 +434,213 @@ final class FakeChangeSource<E> {
 
   /// Ends the stream.
   Future<void> close() => _controller.close();
+}
+
+/// A WebSocket a [FakeSocketConnector] opened (since 0.25.0): the test is the peer. It writes
+/// with [text] and [bytes], closes with [closeFromPeer] or [drop], and reads what the client
+/// [sent].
+final class FakeSocket implements StreamSocket {
+  FakeSocket._(this.url, this.protocols, this.headers, this.protocol) {
+    _messages = StreamController<SocketMessage>(
+      onPause: () => pauseCount++,
+      onCancel: () => cancelled = true,
+    );
+  }
+
+  /// The URL it was opened with (a grant's, ticket included).
+  final Uri url;
+
+  /// The subprotocols the client offered.
+  final List<String> protocols;
+
+  /// The handshake's headers.
+  final Map<String, String> headers;
+
+  @override
+  final String protocol;
+
+  late final StreamController<SocketMessage> _messages;
+  bool _ended = false;
+
+  /// What the client sent, oldest first.
+  final List<SocketMessage> sent = <SocketMessage>[];
+
+  /// The texts the client sent, oldest first.
+  List<String> get sentTexts => <String>[
+    for (final message in sent)
+      if (message case SocketText(:final text)) text,
+  ];
+
+  /// Whether the client closed it, and with which code.
+  bool closedByClient = false;
+
+  /// The code the client closed it with, or null.
+  int? clientCloseCode;
+
+  /// Whether the client cancelled its subscription to [messages].
+  bool cancelled = false;
+
+  /// How many times the client paused [messages].
+  int pauseCount = 0;
+
+  /// Whether it is open: neither side closed it.
+  bool get isOpen => !_ended;
+
+  /// Whether the client is not reading now: what [text] writes is buffered.
+  bool get isPaused => _messages.isPaused;
+
+  /// The peer sends a text frame.
+  void text(String text) {
+    if (!_ended) _messages.add(SocketText(text));
+  }
+
+  /// The peer sends a binary frame.
+  void bytes(List<int> bytes) {
+    if (!_ended) _messages.add(SocketBytes(Uint8List.fromList(bytes)));
+  }
+
+  /// The peer closes it with [code] (null: a close frame with no code).
+  void closeFromPeer([int? code = 1000]) {
+    if (_ended) return;
+    _ended = true;
+    _messages.addError(SocketClosed(code));
+    unawaited(_messages.close());
+  }
+
+  /// The connection breaks with no close frame: 1006, or [error] as the socket's failure.
+  void drop([Object? error]) {
+    if (_ended) return;
+    _ended = true;
+    _messages.addError(error ?? const SocketClosed(1006));
+    unawaited(_messages.close());
+  }
+
+  @override
+  Stream<SocketMessage> get messages => _messages.stream;
+
+  @override
+  void sendText(String text) {
+    if (_ended) throw StateError('FakeSocket: closed');
+    sent.add(SocketText(text));
+  }
+
+  @override
+  void sendBytes(Uint8List bytes) {
+    if (_ended) throw StateError('FakeSocket: closed');
+    sent.add(SocketBytes(bytes));
+  }
+
+  /// Records the client's close; its [messages] end with no [SocketClosed], as a real socket's do.
+  @override
+  Future<void> close([int? code, String? reason]) async {
+    if (_ended) return;
+    _ended = true;
+    closedByClient = true;
+    clientCloseCode = code;
+    unawaited(_messages.close());
+  }
+
+  @override
+  String toString() => 'FakeSocket';
+}
+
+/// A handshake a [FakeSocketConnector] holds: the test answers it with [open] or [fail].
+final class FakeSocketHandshake {
+  FakeSocketHandshake._(
+    this._connector,
+    this.url,
+    this.protocols,
+    this.headers,
+  );
+
+  final FakeSocketConnector _connector;
+  final Completer<StreamSocket> _answer = Completer<StreamSocket>();
+
+  /// The URL being opened.
+  final Uri url;
+
+  /// The subprotocols offered.
+  final List<String> protocols;
+
+  /// The handshake's headers.
+  final Map<String, String> headers;
+
+  /// Whether it was answered.
+  bool get isAnswered => _answer.isCompleted;
+
+  /// Opens the socket, and answers it.
+  FakeSocket open({String protocol = ''}) {
+    final socket = _connector._socket(url, protocols, headers, protocol);
+    _answer.complete(socket);
+    return socket;
+  }
+
+  /// Fails the handshake with [error] (a `WebSocketException`, say).
+  void fail(Object error) => _answer.completeError(error);
+}
+
+/// A [SocketConnector] for tests (since 0.25.0): each connect opens a [FakeSocket] at once, unless
+/// the test scripted a failure ([fail]) or a handshake it answers itself ([hang]). It starts no
+/// timer and listens to nothing.
+final class FakeSocketConnector implements SocketConnector {
+  /// A connector with nothing scripted.
+  FakeSocketConnector();
+
+  final Queue<Object> _script = Queue<Object>();
+  final List<FakeSocket> _sockets = <FakeSocket>[];
+  final List<FakeSocketHandshake> _handshakes = <FakeSocketHandshake>[];
+  int _connects = 0;
+
+  /// How many connects were asked for.
+  int get connectCount => _connects;
+
+  /// The sockets opened so far, oldest first.
+  List<FakeSocket> get sockets => List<FakeSocket>.unmodifiable(_sockets);
+
+  /// The last socket opened.
+  FakeSocket get current => _sockets.last;
+
+  /// The handshakes [hang] held, oldest first.
+  List<FakeSocketHandshake> get handshakes =>
+      List<FakeSocketHandshake>.unmodifiable(_handshakes);
+
+  /// The next connect fails with [error].
+  void fail(Object error) => _script.add(_Fail(error));
+
+  /// The next connect waits for the test to answer its [FakeSocketHandshake].
+  void hang() => _script.add(const _Hang());
+
+  FakeSocket _socket(
+    Uri url,
+    List<String> protocols,
+    Map<String, String> headers,
+    String protocol,
+  ) {
+    final socket = FakeSocket._(url, protocols, headers, protocol);
+    _sockets.add(socket);
+    return socket;
+  }
+
+  @override
+  Future<StreamSocket> connect(
+    Uri url, {
+    Iterable<String> protocols = const <String>[],
+    Map<String, String> headers = const <String, String>{},
+  }) {
+    _connects++;
+    final offered = List<String>.unmodifiable(protocols);
+    final sent = Map<String, String>.unmodifiable(headers);
+    switch (_script.isEmpty ? null : _script.removeFirst()) {
+      case _Fail(:final error):
+        return Future<StreamSocket>.error(error);
+      case _Hang():
+        final handshake = FakeSocketHandshake._(this, url, offered, sent);
+        _handshakes.add(handshake);
+        return handshake._answer.future;
+    }
+    return Future<StreamSocket>.value(_socket(url, offered, sent, ''));
+  }
+
+  @override
+  String toString() => 'FakeSocketConnector';
 }

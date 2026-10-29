@@ -25,6 +25,10 @@
 // - `POST /echo`: the request body, unchanged.
 // - `GET /cors-star`: `ok`, with `access-control-allow-origin: *`, which a request that carries
 //   credentials must refuse; every other answer names the caller's origin and allows credentials.
+// - `GET /ws?id=<id>&ticket=<t>` (since 0.25.0): a WebSocket that picks the subprotocol `fsp.v1`
+//   when offered and logs `ws-open <id> ticket=<t> protocol=<p>`, sends `hello` and the bytes 1, 2,
+//   3, answers `echo:<x>` with `<x>`, bytes with the same bytes, and `close` by closing with 4001
+//   and a reason; `ws-closed <id> code <n>` once it is closed, with the client's code.
 // - `GET /log?id=<id>`: the log lines of that id, as JSON.
 //
 // Every answer exposes `x-fespalier-probe`. dart:io only: no package, no Flutter.
@@ -140,6 +144,8 @@ Future<void> _handle(HttpRequest request, Directory root, bool isPage) async {
     switch (path) {
       case '/sse':
         return await _sse(request);
+      case '/ws':
+        return await _ws(request);
       case '/slow':
         return await _slow(request);
       case '/quiet':
@@ -363,4 +369,31 @@ Future<void> _slow(HttpRequest request) async {
   } on Object catch (_) {
     // The client went away as the answer was written.
   }
+}
+
+Future<void> _ws(HttpRequest request) async {
+  final id = request.uri.queryParameters['id'] ?? '-';
+  final ticket = request.uri.queryParameters['ticket'];
+  final socket = await WebSocketTransformer.upgrade(
+    request,
+    protocolSelector: (offered) => offered.contains('fsp.v1') ? 'fsp.v1' : null,
+  );
+  _record('ws-open $id ticket=$ticket protocol=${socket.protocol}');
+  socket
+    ..add('hello')
+    ..add(<int>[1, 2, 3]);
+  try {
+    await for (final message in socket) {
+      if (message is String && message.startsWith('echo:')) {
+        socket.add(message.substring('echo:'.length));
+      } else if (message == 'close') {
+        await socket.close(4001, 'a reason the client never keeps');
+      } else if (message is List<int>) {
+        socket.add(message);
+      }
+    }
+  } on Object catch (error) {
+    _record('ws-error $id ${error.runtimeType}');
+  }
+  _record('ws-closed $id code ${socket.closeCode}');
 }

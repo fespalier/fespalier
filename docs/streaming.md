@@ -4,8 +4,9 @@ A page that shows something a server changes (an order's status, a queue, a pric
 changed. `fespalier_stream` (since 0.25.0) is the second: **server-sent events** (`text/event-stream`, the WHATWG standard) read
 through your own `HttpTransport`, as a `Stream` for a `data.dart` or as a **live feed** that Riverpod holds and that reconnects on
 your app's signals. A stream that says only what changed is a [`ChangeFeed`](#something-changed-changefeed), whose topics rebuild
-exactly the providers an event concerns. It starts no timer, no backoff and no retry of its own: whatever waits, waits for
-something your app does.
+exactly the providers an event concerns, and a [WebSocket](#websockets) is a live connection too, whose credential is a ticket
+fetched through your transport. It starts no timer, no backoff and no retry of its own: whatever waits, waits for something your
+app does.
 
 ## What streams, and where
 
@@ -14,6 +15,7 @@ something your app does.
 | A `data.dart` that returns a `Stream<T>`                            | An autoDispose `StreamProvider` fespalier wraps around it; its telemetry ends at once with `stream`                                | [Data](data.md#datadart-a-function-a-selector-or-a-provider)    |
 | `TransportResponse.body`                                            | Every transport hands the body on as it arrives; a decorator that must read it uses `TransportResponse.buffered`                   | [HTTP transport](transport.md#streaming-bodies)                 |
 | `fespalier_stream`                                                  | Server-sent events over that body: the decoder, a connection that reconnects, live feeds, telemetry, fakes                         | this page                                                       |
+| `package:fespalier_stream/web_socket.dart` (since 0.25.0)           | A WebSocket as a live connection, signed in with a ticket fetched through the transport                                            | [WebSockets](#websockets)                                       |
 | An `action.dart` function that returns a `Stream<T>` (since 0.25.0) | A write whose answer comes in pieces: its state follows each item, and leaving the page stops it                                   | [A write that streams](#a-write-that-streams-streaming-actions) |
 | `ChangeFeed` (since 0.25.0 here, `fespalier_frb` re-exports it)     | A stream of "what changed" (a Rust core's, a server's), held once, and topics that rebuild exactly the providers an event concerns | [Something changed](#something-changed-changefeed)              |
 | `fespalier_download`'s `HttpTransfer`                               | A body streamed to a file                                                                                                          | [Downloads](downloads.md)                                       |
@@ -73,7 +75,10 @@ connection after three makes the server see the disconnect, and headers and a st
 cancelled body subscription, a `CancelToken` (before and after the headers) and `close(force: true)` each abort the request at the
 server, a cancel while the request body is read cancels its source, a port nothing listens on is `TransportUnsent` and a request the
 browser refuses to build is not, a `POST` body arrives whole, Dio's `receiveTimeout` drops a quiet stream and `Duration.zero` (or
-none) lets it stream, and `withCredentials` chooses the request's credentials.
+none) lets it stream, and `withCredentials` chooses the request's credentials. Since 0.25.0 the same page opens a WebSocket
+through `WebSocketConnector` ([WebSockets](#websockets)): a handshake header is refused, a grant's ticket and subprotocol reach the
+server, text and bytes go both ways, a server's close code 4001 arrives without its reason, `onOpen` runs again on the reconnect,
+and the client's close (1000) reaches the server.
 
 | Browser                               | dart2js   | dart2wasm |
 | ------------------------------------- | --------- | --------- |
@@ -642,6 +647,185 @@ gap even if it is the first open, because the server may have sent events while 
 moves once at that open. The same holds for a key watched after the gap: it counts from the log it first sees, even when only
 `changes.latest` (a "live updates stopped" banner) stayed watched while the gap happened.
 
+## WebSockets
+
+Since 0.25.0. A server that also listens (a chat, a game, a shared editor) wants a WebSocket: messages both ways on one
+connection. `package:fespalier_stream/web_socket.dart` is a library of its own, so an app that opens none does not import
+`package:web_socket`. `SocketConnection` is a WebSocket as a `LiveConnection<SocketMessage>`: a `LiveFeed` or
+`ChangeFeed.live` holds it as it holds `ServerEvents`, with the same statuses, signals, tick and pauses, and no timer.
+
+### Connect
+
+```dart
+// lib/live/chat.dart
+import 'package:fespalier_stream/fespalier_stream.dart';
+import 'package:fespalier_stream/web_socket.dart';
+
+final chatConnection = Provider.autoDispose<SocketConnection>((ref) {
+  final connection = SocketConnection(
+    const WebSocketConnector(),
+    Uri.parse('wss://api.example.com/chat'),
+    grantor: ticketGrantor(ref.watch(apiTransport), Uri.parse('https://api.example.com/ws-ticket')),
+    onOpen: (socket) => socket.sendText('{"join":"room-1"}'),
+    name: 'chat',
+  );
+  ref.onDispose(connection.close);
+  return connection;
+});
+
+final chat = LiveFeed<SocketMessage>(
+  (ref, _) => ref.watch(chatConnection),
+  rules: LiveRules(reconnectOn: [reconnectSignal, appShowSignal]),
+);
+
+// A page watches `chat.latest` (each message is a `SocketText` or a `SocketBytes`) and sends with
+// ref.read(chatConnection).send(SocketText('{"say":"hello"}'));
+```
+
+- **`WebSocketConnector`** opens the socket with `package:web_socket`: `dart:io`'s WebSocket on Android, iOS and the desktop, the
+  browser's in a web build (dart2js and wasm). It is the `SocketConnector` port; a test passes a fake.
+- **`send`** sends a `SocketText` or a `SocketBytes` while a socket is open (`LiveOpen`, or `LivePaused(connected: true)`, since
+  Riverpod pauses a feed for a moment while it rebuilds), and throws a `StateError` otherwise. A message sent to a peer that went
+  away without a word is lost: a WebSocket says nothing about it.
+- **A close or a failure waits.** Every close is `LiveWaiting`: `ended` for 1000 or 1001, `unavailable` for 1012, 1013 or 1014,
+  `failed` for 1006 (a socket that broke) and every other code. Unlike an event stream, a socket never opens again by itself:
+  the next open is a `reconnectOn` signal or [the tick](#reconnecting-without-a-timer-streamticker). `lastCloseCode` is the code
+  the server sent, for an app that gave its own codes (3000 to 4999) a meaning.
+- **A pause buffers.** A WebSocket cannot slow its server down, so while the page is hidden the messages that arrive are held in
+  memory, delivered in order when it is shown, or dropped with the socket when the tick closes it (`closeIfPaused`), as a hidden
+  page's event stream is ([Paused pages](#paused-pages)). The tick period bounds what a hidden page holds.
+- **No resume.** A socket has no `Last-Event-ID` (`lastEventId` is always null): a live `ChangeFeed` over one reads each reopen as a
+  [gap](#gaps), and every watched key moves once.
+- **Errors.** A refusal (a `DataRefusal`: `SocketTicketRefused`, a session that ended) ends `latest` with it, which a page shows
+  as its error; an `Error` (a header in a browser, a URL that is not `ws:` or `wss:`) ends it with that error, since asking again
+  would fail the same way. A grant or a handshake that fails otherwise waits (`failed`, or `unavailable` with the
+  `Retry-After` for a ticket endpoint's 408, 429 or 5xx).
+
+Read the provider with `ref.read`, not `ref.watch`, where it sends: the feed is what holds it, so the connection lives exactly as
+long as the page watches `chat.latest`. To replace the connection (another room), invalidate `chatConnection`, not the feed.
+
+### Signing in: tickets
+
+A WebSocket is not an HTTP request a transport can send: the upgrade cannot go through `HttpTransport`, so `SessionTransport`,
+a signature or a trace never see the handshake. A browser cannot even set a header on it. Its credential is a **grant**
+(`SocketGrant`: the URL to connect to, protocols and, natively, headers), which a `SocketGrantor` fetches **once before every
+connect**. `ticketGrantor(transport, endpoint)` is the usual one:
+
+1. it `POST`s to `endpoint` through your transport chain, so the session applies (a 401 renews and is sent again) and so does
+   every other decorator;
+2. the server answers a short-lived, single-use ticket (`{"ticket": "..."}` as JSON, or the ticket as `text/plain`);
+3. it connects to the socket URL with `?ticket=<ticket>` (`param:` names the parameter, `field:` the JSON field).
+
+A 4xx other than 408 and 429 from the endpoint is `SocketTicketRefused` (a `DataRefusal`: the connection ends, and a page shows
+its error), a 408, 429 or 5xx a `TransportStatusError` (the connection waits, `unavailable`), and another answer (a captive
+portal's page, an empty ticket) a `FormatException` that quotes nothing of it. The request is aborted with the attempt (the
+grantor runs in a `TransportZone`).
+
+The `POST` is a **write** (it has no `Idempotency-Key`): `WriteGuardTransport` keeps a retrier from sending it again after a failure
+whose outcome is unknown, which is right for a ticket the server may already have minted, and costs nothing, since the next
+connect asks for a new one. A session still renews and sends it again after a 401, which the server did not process.
+
+On the server, accept a ticket once, within seconds, for the user the session named, and drop it. A ticket is in the URL, so a
+server's or a proxy's access log can keep it: that is why it must be single-use and short-lived. fespalier records it nowhere (a
+`SocketGrant` prints no field, and no span carries a URL). Natively, a grantor may hand headers instead
+(`SocketGrant(url, headers: {...})`), but the same code would fail in a browser: a ticket works everywhere. Not chosen: a token in
+`Sec-WebSocket-Protocol` (proxies log it and the server must echo it back) and a cookie (fespalier's sessions are tokens, and a
+cookie needs CSRF care).
+
+### Resubscribing
+
+A server forgets what a socket subscribed to when the socket closes. `onOpen` runs with the new socket on **every** open, the
+first and each reopen, before the status says `LiveOpen`, so the subscribe messages go first and a live change feed reloads
+after them. Send on the socket it is given (`connection.send` refuses until the status is open). An `onOpen` that throws an
+`Exception` closes that socket and waits (`failed`).
+
+```dart
+SocketConnection(
+  const WebSocketConnector(),
+  url,
+  grantor: grantor,
+  onOpen: (socket) {
+    for (final room in openRooms) {
+      socket.sendText(jsonEncode({'join': room}));
+    }
+  },
+);
+```
+
+What happened while the socket was closed is lost: read the state again after a reopen (a `ChangeFeed.live` over the socket does
+it for every watched key).
+
+### Liveness and pings
+
+A WebSocket ping is a control frame that neither `dart:io` nor a browser shows to Dart, and the connector sends none (a ping
+every few seconds is a timer, which the package does not start). `lastSeen` moves with each message, so `LiveRules.idle` closes a
+socket whose server sent no message for that long, on the tick, and the next tick opens it again. For that, either the server
+sends a message of its own while it has nothing to say (`{"type":"ping"}` every 15 to 30 seconds, which the app's decoder
+ignores), or the app sends one from its tick and the server answers:
+
+```dart
+final class AppStreamTicker extends StreamTicker {
+  @override
+  int build() {
+    final timer = Timer.periodic(const Duration(seconds: 15), (_) {
+      final connection = ref.read(chatConnection);
+      if (connection.status is LiveOpen) connection.send(const SocketText('{"type":"ping"}'));
+      fire();
+    });
+    ref.onDispose(timer.cancel);
+    return super.build();
+  }
+}
+```
+
+The same limit bounds a grant or a handshake that hangs: it is given up on the tick (`LiveWaiting(failed)`) and tried again.
+
+### WebSocket telemetry
+
+The same two root spans as an event stream, with `fespalier.stream.kind` `websocket`:
+
+| Span                     | Attributes                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fespalier.stream.open`  | `.kind`, `.name`; at the end `.result` (`open`, `refused`, `unavailable`, `failed`, `cancelled`). It covers the grant and the handshake; no `.status_code`, no `.resumed` |
+| `fespalier.stream.close` | `.kind`, `.name`; at the end `.reason` (`ended`, `failed` for a socket that broke, `idle`, `paused`, `cancelled`), `.events` (its messages) and `.close_code`             |
+
+`fespalier.stream.close_code` (an `int`, since 0.25.0) is the code the server sent, or 1006 for a socket that broke; it is left
+out when the app closed the socket. Never a URL, a ticket, a message or the close reason's text: the reason is dropped where the
+socket is read, before anything can keep it. The ticket `POST` is an ordinary request, with the spans of your transport's
+decorators.
+
+### Testing a WebSocket
+
+`package:fespalier_stream/testing.dart` exports the socket library too, and has **`FakeSocketConnector`**: each connect opens a
+`FakeSocket` at once (`connector.current`, `connector.sockets`), unless `fail(error)` or `hang()` scripted it (a hung handshake is
+answered with `connector.handshakes.last.open()` or `.fail(error)`). The test is the peer: `text(...)`, `bytes(...)`,
+`closeFromPeer(code)`, `drop()`; it reads what the client `sent` (`sentTexts`), whether it closed it (`closedByClient`,
+`clientCloseCode`) and whether it is reading (`isPaused`), and the `url`, `protocols` and `headers` it opened with, the ticket
+included.
+
+```dart
+test('a reopen joins the room again', () async {
+  final connector = FakeSocketConnector();
+  final connection = SocketConnection(
+    connector,
+    Uri.parse('wss://api.example.com/chat'),
+    onOpen: (socket) => socket.sendText('join'),
+  );
+  final sub = connection.events.listen((_) {});
+  await pumpEventQueue();
+  connector.current.closeFromPeer(1001);
+  await pumpEventQueue();
+  expect(connection.status, isA<LiveWaiting>());
+  connection.reconnect(); // what the tick or a signal does
+  await pumpEventQueue();
+  expect(connector.current.sentTexts, ['join']);
+  await sub.cancel();
+});
+```
+
+A grantor is a function: a test passes `(url) async => SocketGrant(url)`, or `ticketGrantor` over a `FakeTransport` to check
+the ticket request.
+
 ## A write that streams: streaming actions
 
 Since 0.25.0 an `action.dart` function may return a `Stream<T>`: a write whose answer comes in pieces, such as a text a language
@@ -688,7 +872,7 @@ an error the state shows), and a "Stop" button on the page (`cancel()`). The `Fu
 ## Not built, and unchecked
 
 Not built: the browser's `EventSource` (above), an automatic backoff or reconnect timer, request bodies that stream on the web,
-WebSockets, WebTransport, GraphQL subscriptions, background streaming, `freshness` on a stream, a streaming `form()`, a dashboard
+a WebSocket ping of the package's own, a WebSocket through `HttpTransport`, WebTransport, GraphQL subscriptions, background streaming, `freshness` on a stream, a streaming `form()`, a dashboard
 panel for streams, a scaffold in `fsp create` or `fsp new`, and a `status` on `ChangeFeed.live`.
 
 UNCHECKED, because no CI job can show them:
@@ -700,3 +884,7 @@ UNCHECKED, because no CI job can show them:
   ([On the web](#on-the-web)); Safari on macOS and iOS is not WebKit on Linux. `ServerEvents` with its telemetry and errors is run
   by no browser test, only the connection under it.
 - **Proxies in production**, and HTTP/2: every measurement was HTTP/1.1 on loopback.
+- **WebSockets** ([WebSockets](#websockets)): a socket on Android and iOS (background and foreground, a network change, a reconnect
+  that joins again through `onOpen`), in Safari on macOS and iOS, and a ticket against a real server and session. CI runs
+  `WebSocketConnector` on the VM against a `dart:io` server and in Playwright's Chromium, Firefox and WebKit, without fespalier's
+  telemetry and refusals (`SocketConnection` is that connection with them).

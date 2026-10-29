@@ -106,7 +106,10 @@ header, an event's type, data or id, or an error's text. `OtelTransport`'s `http
 the headers, so for a stream their duration is the time to the first byte. An `EventCodec` that skips a message adds an instant
 root span, `fespalier.stream.decode` (`fespalier.stream.result` `unknown` or `error`, and `fespalier.stream.skipped`, a count),
 at the 1st, 2nd, 4th... skip of each kind; `fespalier_frb`'s `ChangeCodec`, a facade over it since 0.25.0, keeps its own name
-for the same span, `fespalier.frb.decode`.
+for the same span, `fespalier.frb.decode`. A WebSocket (`SocketConnection`, since 0.25.0) reports the same two spans with `kind`
+`websocket`: the open covers its ticket and its handshake (no `status_code`, no `resumed`), and the close carries
+`fespalier.stream.close_code` (an `int`, the server's code or 1006 for a socket that broke), never the close reason's text, a
+message or the URL with its ticket.
 
 [`references/conventions.md`](references/conventions.md) is **contract version 1**: every span, event and
 attribute name, for anyone building a dashboard or an alert. Adding is allowed within version 1; renaming

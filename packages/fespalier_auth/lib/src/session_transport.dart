@@ -27,7 +27,9 @@ const int _maxJudgedBody = 64 * 1024;
 /// A request to any other origin goes through untouched. When the credential has expired, the
 /// request waits for one shared renewal. What a response means is the authenticator's to say
 /// (`AuthVerdict`): a 401 renews once and sends the request again, a nonce challenge sends it
-/// again with the nonce. At most three sends per request, and **every send is authorized again**
+/// again with the nonce, and a step-up refusal (RFC 9470, since 0.25.0) asks the user once and
+/// sends it again. At most four sends per request (one resend, one renewal, one step-up), and
+/// **every send is authorized again**
 /// with the exact bytes of the body, so a signature is fresh each time; a send that follows a
 /// verdict carries `transportReplayKey` in its attributes, which a write guard lets through. The
 /// body of a 401 or a 403 is read (64 KiB at most) before the authenticator is asked, and handed
@@ -52,7 +54,9 @@ const int _maxJudgedBody = 64 * 1024;
 ///   user signed out or another signed in between two sends: `AuthRejected`, no send (a request
 ///   that could not get the session, an `AuthUnavailable`, is held to the user who wanted it too);
 /// * a request renews at most once, however many sends it takes: a 401, a 503 and a 401 renew
-///   once, and the second 401 is the answer.
+///   once, and the second 401 is the answer;
+/// * a request steps up at most once (since 0.25.0): a second step-up refusal is the answer,
+///   never another prompt.
 ///
 /// A request with no memo (a client that keeps none) is a request seen once. `TransportClient`
 /// keeps one per `http.BaseRequest`, so a `RetryClient`, which sends copies, gets none of this.
@@ -117,6 +121,7 @@ final class SessionTransport implements HttpTransport {
           attempt,
           response,
           mayRenew: (memo.get<int>(_renewalsKey) ?? 0) == 0,
+          mayStepUp: (memo.get<int>(_stepUpsKey) ?? 0) == 0,
         );
       } catch (_) {
         unawaited(_discard(response));
@@ -125,6 +130,7 @@ final class SessionTransport implements HttpTransport {
       if (!again || !request.replayable) return response;
       await _discard(response);
       final renewedBefore = attempt.renewed;
+      final steppedUpBefore = attempt.steppedUp;
       attempt = await authorizer.authorize(request, previous: attempt);
       // The previous attempt carried headers (retry() says yes only then): the user signed out
       // while the answer was read. The replay is not sent without the session.
@@ -133,15 +139,20 @@ final class SessionTransport implements HttpTransport {
         // One renewal per logical request, whatever number of sends it takes.
         memo.set(_renewalsKey, (memo.get<int>(_renewalsKey) ?? 0) + 1);
       }
+      if (attempt.steppedUp && !steppedUpBefore) {
+        // One step-up per logical request: a second refusal is the answer.
+        memo.set(_stepUpsKey, (memo.get<int>(_stepUpsKey) ?? 0) + 1);
+      }
     }
   }
 }
 
 /// The memo keys `SessionTransport` owns: the `AuthRejected` that stopped the request, the id of
-/// the user it was authorized for, and the number of renewals it has spent.
+/// the user it was authorized for, and the number of renewals and step-ups it has spent.
 const String _refusedKey = 'fespalier_auth.refused';
 const String _userKey = 'fespalier_auth.user';
 const String _renewalsKey = 'fespalier_auth.renewals';
+const String _stepUpsKey = 'fespalier_auth.step_ups';
 
 /// [response] with its body read, up to [_maxJudgedBody] bytes; a larger one is handed back
 /// unbuffered (its stream whole).

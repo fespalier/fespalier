@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'authenticator.dart';
+import 'challenge.dart';
 import 'session.dart';
 
 /// What a sign-in asks for (since 0.9.0). Not sealed: an app adds its own (a magic-link code, a
@@ -62,6 +63,26 @@ abstract class AuthBackend {
   /// session stays and the next request asks again. [hint] is `Renew.hint`, for instance which
   /// key role to renew; null for the default.
   Future<AuthSession> renew(AuthSession session, {Object? hint});
+
+  /// The same user, proved again to what [challenge] asks (since 0.25.0): an OpenID Connect
+  /// re-authorization with `acr_values`, `max_age` or `prompt=login` (`OidcBackend`). The core
+  /// calls it for a `StepUp` verdict and for `AuthSessionNotifier.stepUp`, one at a time.
+  ///
+  /// Return the new session, with `AuthSession.authenticatedAt` when the backend knows when the
+  /// user authenticated (the core sets the time of the step-up otherwise). Throw `AuthCancelled`
+  /// when the user gave up, `AuthRejected` when the server refused (the session stays: it is not
+  /// a renewal), and anything else when it could not ask. A session for another user is refused
+  /// by the core.
+  ///
+  /// The default throws an `UnsupportedError`: a backend that cannot ask the user again (a device
+  /// session steps up per request, with the user-present key) never gets a `StepUp` verdict from
+  /// its own authenticator.
+  Future<AuthSession> stepUp(
+    AuthSession session,
+    StepUpChallenge challenge,
+  ) async => throw UnsupportedError(
+    'fespalier_auth: the "$name" backend cannot step up the user\'s authentication',
+  );
 
   /// The check `restoreAuth` runs on a stored session after the expiry rule (since 0.21.0): null
   /// keeps it, a reason drops it (`SignOutReason.keyLost` when the device key is gone, or is not

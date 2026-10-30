@@ -126,7 +126,7 @@ class Conventions(unittest.TestCase):
         )
         # fespalier_auth's attributes (since 0.9.0): the prefixed constants are values of their own
         # attribute, and the attributes themselves keep their keys.
-        self.assertEqual(["restore", "sign_in", "renew", "sign_out"], c.attrs["fespalier.auth.operation"])
+        self.assertEqual(["restore", "sign_in", "renew", "sign_out", "step_up"], c.attrs["fespalier.auth.operation"])
         self.assertEqual(
             ["ok", "none", "expired", "rejected", "cancelled", "error"],
             c.attrs["fespalier.auth.result"],

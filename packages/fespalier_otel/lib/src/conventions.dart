@@ -291,6 +291,10 @@ abstract final class FespalierConventions {
   /// The user signed out.
   static const String authOpSignOut = 'sign_out';
 
+  /// The user proved who they are again, for a step-up refusal (RFC 9470) or a re-proof page
+  /// (since 0.25.0).
+  static const String authOpStepUp = 'step_up';
+
   // The values of `fespalier.auth.result`.
 
   /// It worked.

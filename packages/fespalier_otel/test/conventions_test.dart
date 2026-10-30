@@ -111,8 +111,9 @@ void main() {
         FespalierConventions.authOpSignIn,
         FespalierConventions.authOpRenew,
         FespalierConventions.authOpSignOut,
+        FespalierConventions.authOpStepUp,
       ],
-      ['restore', 'sign_in', 'renew', 'sign_out'],
+      ['restore', 'sign_in', 'renew', 'sign_out', 'step_up'],
     );
     expect(
       [

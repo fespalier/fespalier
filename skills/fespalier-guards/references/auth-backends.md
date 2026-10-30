@@ -16,7 +16,8 @@ Every backend gives `AuthConfig` the `transport:` its calls and the session's re
 `OidcBackend` (`package:fespalier_oidc`) is the authorization code flow with PKCE (S256) for a **public** client, in
 pure Dart over an `HttpTransport`: it owns the token exchange and the renewal, which is what makes single-flight
 renewal, refresh-token rotation and DPoP on the token endpoint possible. Its `BearerAuthenticator` sends
-`Authorization: Bearer <token>` and answers a 401 with `Renew`. The browser step is a function **you** give it, so the
+`Authorization: Bearer <token>` and answers a 401 with `Renew` (since 0.25.0 an RFC 9470 step-up 401 with `StepUp`, and
+`OidcBackend.stepUp` signs the same user in again with `acr_values` / `max_age`: [`auth-package.md`](auth-package.md#step-up-and-recent-sign-ins)). The browser step is a function **you** give it, so the
 package links no plugin: `flutter_web_auth_2` (MIT; Android, iOS, macOS, web, Windows, Linux) is the usual one. It signs
 in with `BrowserSignIn` only; any other request throws `UnsupportedError`
 (`fespalier_oidc: OidcBackend signs in with BrowserSignIn, not ...`).

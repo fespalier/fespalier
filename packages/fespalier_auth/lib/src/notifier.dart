@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart'
     show ErrorDescription, FlutterError, FlutterErrorDetails;
 
 import 'backend.dart';
+import 'challenge.dart';
 import 'config.dart';
 import 'errors.dart';
 import 'session.dart';
@@ -56,6 +57,7 @@ class AuthSessionNotifier extends Notifier<SessionState> {
   int _generation = 0;
 
   Completer<AuthSession>? _renewing;
+  Completer<AuthSession>? _steppingUp;
   Completer<SessionState>? _ready;
 
   @override
@@ -63,6 +65,7 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     _config = ref.watch(authConfig);
     _generation++;
     _renewing = null;
+    _steppingUp = null;
     _ready = null;
     final initial = ref.watch(authInitialState);
     if (initial != null) return initial;
@@ -115,7 +118,9 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     _ => null,
   };
 
-  /// Signs in with the configured backend, stores the session, and sets [SignedIn].
+  /// Signs in with the configured backend, stores the session, and sets [SignedIn]. A session
+  /// whose backend did not say when the user authenticated gets the time of the sign-in
+  /// (`AuthSession.authenticatedAt`, since 0.25.0).
   ///
   /// Rethrows what the backend threw, with the state unchanged: `AuthCancelled` when the user
   /// gave up, `FieldErrors` for wrong credentials (a form shows them under its fields),
@@ -127,7 +132,7 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     final token = authSpan('sign_in', backend);
     final generation = ++_generation;
     try {
-      final session = await backend.signIn(request);
+      final session = _stamped(await backend.signIn(request));
       await _adopt(session, generation);
       authSpanEnd(token, TelemetryOutcome.ok);
       return session;
@@ -139,7 +144,7 @@ class AuthSessionNotifier extends Notifier<SessionState> {
 
   /// Takes a session the app obtained itself (a deep-link callback, a multi-step SDK flow) and
   /// signs in with it. Throws an `ArgumentError` when it comes from another backend than the
-  /// configured one.
+  /// configured one. Without `AuthSession.authenticatedAt` it gets the time of the call.
   Future<void> adopt(AuthSession session) async {
     final backend = _config.backend;
     if (session.backend != backend.name) {
@@ -151,13 +156,19 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     final token = authSpan('sign_in', backend);
     final generation = ++_generation;
     try {
-      await _adopt(session, generation);
+      await _adopt(_stamped(session), generation);
       authSpanEnd(token, TelemetryOutcome.ok);
     } catch (error, stackTrace) {
       _endSignIn(token, error, stackTrace);
       rethrow;
     }
   }
+
+  /// [session], with the time of now as its authentication time when the backend gave none.
+  static AuthSession _stamped(AuthSession session) =>
+      session.authenticatedAt != null
+      ? session
+      : session.copyWith(authenticatedAt: clock.now().toUtc());
 
   void _endSignIn(Object? token, Object error, StackTrace stackTrace) {
     final outcome = switch (error) {
@@ -286,6 +297,7 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     if (old == null || (only != null && old.user.id != only)) return;
     _generation++;
     _renewing = null;
+    _steppingUp = null;
     state = SignedOut(reason: reason);
     await _endedByServer(_config.backend, old);
   }
@@ -320,6 +332,19 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     final held = current.session.credential;
     if (rejected != null && held != rejected) return held;
     if (!forceRenew && rejected == null && !_expiring(held)) return held;
+    final stepping = _steppingUp;
+    if (stepping != null) {
+      // A step-up brings a new credential: wait for it, then look again (whatever its outcome).
+      return stepping.future
+          .then<void>((_) {}, onError: (Object _) {})
+          .then<SessionCredential>(
+            (_) => credential(
+              forceRenew: forceRenew,
+              rejected: rejected,
+              hint: hint,
+            ),
+          );
+    }
     final trigger = rejected != null
         ? 'unauthorized'
         : forceRenew
@@ -360,7 +385,12 @@ class AuthSessionNotifier extends Notifier<SessionState> {
     final backend = _config.backend;
     final token = authSpan('renew', backend, trigger: trigger);
     try {
-      final next = await backend.renew(from, hint: hint);
+      final renewed = await backend.renew(from, hint: hint);
+      // A renewal does not ask the user: the authentication time stays, unless the backend knows
+      // it (an ID token's auth_time).
+      final next = renewed.authenticatedAt != null
+          ? renewed
+          : renewed.copyWith(authenticatedAt: from.authenticatedAt);
       if (generation != _generation || !ref.mounted) {
         authSpanEnd(token, TelemetryOutcome.cancelled);
         completer.completeError(NotSignedIn());
@@ -401,6 +431,102 @@ class AuthSessionNotifier extends Notifier<SessionState> {
       completer.completeError(unavailable, stackTrace);
     } finally {
       if (identical(_renewing, completer)) _renewing = null;
+    }
+  }
+
+  /// Asks the user to prove who they are again, to what [challenge] asks (since 0.25.0): the
+  /// backend's `AuthBackend.stepUp` (an OpenID Connect re-authorization). One at a time: a call
+  /// while one is running shares it (and its challenge stands). The new session is stored and
+  /// published, with its `AuthSession.authenticatedAt` (the time of the step-up when the backend
+  /// gave none), so `redirectIfFreshAuth` on the re-proof page sends the user back by itself.
+  ///
+  /// `SessionTransport` calls it for a `StepUp` verdict, with [rejected], the credential the
+  /// server refused: when the session already holds another one (a request that finished first
+  /// stepped up), it is returned without asking the user a second time. An app calls it from its
+  /// re-proof page, `const StepUpChallenge()` for "the same, again".
+  ///
+  /// Never ends the session: throws [AuthCancelled] when the user gave up and [AuthRejected]
+  /// when the server refused, with the session as it was; [NotSignedIn] when nobody is signed
+  /// in or the session changed meanwhile; an `AuthRejected` (`step_up_user_mismatch`) when the
+  /// backend answered for another user, whose session is not taken; [AuthUnavailable] when it
+  /// could not ask.
+  Future<AuthSession> stepUp(
+    StepUpChallenge challenge, {
+    SessionCredential? rejected,
+  }) async {
+    if (state is SessionRestoring) await ready;
+    final current = state;
+    if (current is! SignedIn) throw NotSignedIn();
+    if (rejected != null && current.session.credential != rejected) {
+      return current.session;
+    }
+    final running = _steppingUp ?? _startStepUp(current.session, challenge);
+    return running.future;
+  }
+
+  Completer<AuthSession> _startStepUp(
+    AuthSession from,
+    StepUpChallenge challenge,
+  ) {
+    final completer = Completer<AuthSession>();
+    _steppingUp = completer;
+    unawaited(_stepUp(completer, from, challenge));
+    return completer;
+  }
+
+  Future<void> _stepUp(
+    Completer<AuthSession> completer,
+    AuthSession from,
+    StepUpChallenge challenge,
+  ) async {
+    final backend = _config.backend;
+    final token = authSpan('step_up', backend);
+    try {
+      // A renewal that is running finishes first: its answer would replace the stepped-up one.
+      final renewing = _renewing;
+      if (renewing != null) {
+        await renewing.future.then<void>((_) {}, onError: (Object _) {});
+      }
+      final generation = _generation;
+      final base = session;
+      if (base == null || base.user.id != from.user.id) throw NotSignedIn();
+      final proved = await backend.stepUp(base, challenge);
+      if (proved.user.id != base.user.id) {
+        throw const AuthRejected(
+          'step_up_user_mismatch',
+          'the step-up signed in another user',
+        );
+      }
+      final next = proved.authenticatedAt != null
+          ? proved
+          : proved.copyWith(authenticatedAt: clock.now().toUtc());
+      if (generation != _generation || !ref.mounted) throw NotSignedIn();
+      await _persist(next);
+      if (generation != _generation || !ref.mounted) throw NotSignedIn();
+      state = SignedIn(next);
+      authSpanEnd(token, TelemetryOutcome.ok);
+      completer.complete(next);
+    } catch (error, stackTrace) {
+      final Object failure = switch (error) {
+        AuthCancelled() || AuthRejected() || NotSignedIn() || Error() => error,
+        AuthUnavailable() => error,
+        _ => AuthUnavailable(error),
+      };
+      final outcome = switch (failure) {
+        AuthCancelled() || NotSignedIn() => TelemetryOutcome.cancelled,
+        AuthRejected() => TelemetryOutcome.rejected,
+        _ => TelemetryOutcome.error,
+      };
+      final reported = outcome == TelemetryOutcome.error;
+      authSpanEnd(
+        token,
+        outcome,
+        error: reported ? failure : null,
+        stackTrace: reported ? stackTrace : null,
+      );
+      completer.completeError(failure, stackTrace);
+    } finally {
+      if (identical(_steppingUp, completer)) _steppingUp = null;
     }
   }
 

@@ -107,8 +107,9 @@ typedef FakeVerdict =
 
 /// An authenticator with no crypto (since 0.21.0): it adds `x-fake-credential: <id>#<n>`, where
 /// `n` counts the sends it was asked about (so every send is visibly signed afresh), and by
-/// default answers `Renew` to a 401 and `Accept` to anything else. Set [verdict] to say
-/// otherwise. Every request it was asked to sign is in [signed], with its body.
+/// default answers `StepUp` to a 401 with an RFC 9470 challenge
+/// (`StepUpChallenge.fromResponse`, since 0.25.0), `Renew` to any other 401 and `Accept` to
+/// anything else. Set [verdict] to say otherwise. Every request it was asked to sign is in [signed], with its body.
 final class FakeAuthenticator implements RequestAuthenticator {
   /// An authenticator that adds [headerName].
   FakeAuthenticator({this.headerName = 'x-fake-credential', this.verdict});
@@ -116,7 +117,8 @@ final class FakeAuthenticator implements RequestAuthenticator {
   /// The header it adds.
   final String headerName;
 
-  /// What a response means; null: a 401 is a `Renew`, anything else is `Accept`.
+  /// What a response means; null: a 401 is a `StepUp` when it carries a step-up challenge, else
+  /// a `Renew`; anything else is `Accept`.
   FakeVerdict? verdict;
 
   /// A request `headers` was asked about, in order.
@@ -150,7 +152,9 @@ final class FakeAuthenticator implements RequestAuthenticator {
     if (custom != null) {
       return custom(session, request, statusCode, headers, body, retried);
     }
-    return statusCode == 401 ? const Renew() : const Accept();
+    if (statusCode != 401) return const Accept();
+    final challenge = StepUpChallenge.fromResponse(statusCode, headers);
+    return challenge != null ? StepUp(challenge) : const Renew();
   }
 }
 
@@ -169,6 +173,13 @@ final class FakeAuthBackend extends AuthBackend {
 
   /// Who `signIn` signs in as.
   AuthUser user;
+
+  /// What `signIn` and `stepUp` give as `AuthSession.authenticatedAt` (since 0.25.0); null lets
+  /// the core stamp the time of the call.
+  DateTime? authTime;
+
+  /// Who `stepUp` answers for (since 0.25.0); null: the session's own user.
+  AuthUser? stepUpUser;
 
   /// How long a credential lives, read against `clock.now()`; null: it never expires.
   Duration? credentialLifetime;
@@ -193,10 +204,14 @@ final class FakeAuthBackend extends AuthBackend {
   /// `expired`; `AuthEnded(reason)` gives another), anything else keeps it.
   Object? renewError;
 
+  /// Thrown by every step-up until it is cleared (since 0.25.0): `AuthCancelled()`,
+  /// `AuthRejected()`, or anything else for a step-up that could not ask.
+  Object? stepUpError;
+
   /// What `check` answers at a restore: null keeps the session.
   SignOutReason? checkResult;
 
-  /// While set, `signIn` and `renew` wait for it: a pending state a test can look at.
+  /// While set, `signIn`, `renew` and `stepUp` wait for it: a pending state a test can look at.
   Completer<void>? gate;
 
   /// How many sign-ins were asked for.
@@ -207,6 +222,12 @@ final class FakeAuthBackend extends AuthBackend {
 
   /// The `hint` of each renewal, in order.
   final List<Object?> hints = [];
+
+  /// How many step-ups were asked for (since 0.25.0).
+  int stepUps = 0;
+
+  /// The challenge of each step-up, in order (since 0.25.0).
+  final List<StepUpChallenge> stepUpChallenges = [];
 
   /// How many sign-outs were asked for.
   int signOuts = 0;
@@ -233,7 +254,12 @@ final class FakeAuthBackend extends AuthBackend {
       signInError = null;
       throw error;
     }
-    return AuthSession(backend: name, credential: _issue(), user: user);
+    return AuthSession(
+      backend: name,
+      credential: _issue(),
+      user: user,
+      authenticatedAt: authTime,
+    );
   }
 
   @override
@@ -244,6 +270,24 @@ final class FakeAuthBackend extends AuthBackend {
     final error = renewError;
     if (error != null) throw error;
     return session.copyWith(credential: _issue());
+  }
+
+  @override
+  Future<AuthSession> stepUp(
+    AuthSession session,
+    StepUpChallenge challenge,
+  ) async {
+    stepUps++;
+    stepUpChallenges.add(challenge);
+    await gate?.future;
+    final error = stepUpError;
+    if (error != null) throw error;
+    return AuthSession(
+      backend: name,
+      credential: _issue(),
+      user: stepUpUser ?? session.user,
+      authenticatedAt: authTime,
+    );
   }
 
   @override
@@ -269,12 +313,14 @@ final class FakeAuthBackend extends AuthBackend {
 }
 
 /// A session for [user], as [FakeAuthBackend] makes them (since 0.9.0): the credential
-/// `fake-0`, expiring after [lifetime] (never when null). Call it inside the test body, where the
-/// fake clock starts.
+/// `fake-0`, expiring after [lifetime] (never when null), authenticated at [authenticatedAt]
+/// (since 0.25.0; null: unknown, which `requireFreshAuth` reads as too old). Call it inside the
+/// test body, where the fake clock starts.
 AuthSession fakeSession(
   AuthUser user, {
   Duration? lifetime,
   String backend = 'fake',
+  DateTime? authenticatedAt,
 }) => AuthSession(
   backend: backend,
   credential: FakeCredential(
@@ -282,6 +328,7 @@ AuthSession fakeSession(
     expiresAt: lifetime == null ? null : clock.now().add(lifetime),
   ),
   user: user,
+  authenticatedAt: authenticatedAt,
 );
 
 /// The overrides for `pumpRouter(overrides: ...)` (since 0.9.0): signed in as [signedInAs], or
@@ -290,8 +337,9 @@ AuthSession fakeSession(
 ///
 /// Pass a [backend] to read its counters or to make it fail, a [store] to look at what is kept,
 /// [apiOrigins] and a [transport] (a `FakeTransport`) to test an API call, and
-/// [credentialLifetime] to age the session with `tester.pump`. Call it inside the test body (the
-/// fake clock starts there).
+/// [credentialLifetime] to age the session with `tester.pump`, and [authenticatedAt] (since
+/// 0.25.0; `clock.now()` for a fresh one) for a route behind `requireFreshAuth`. Call it inside
+/// the test body (the fake clock starts there).
 List<Override> fakeAuth({
   AuthUser? signedInAs,
   FakeAuthBackend? backend,
@@ -299,6 +347,7 @@ List<Override> fakeAuth({
   List<Uri> apiOrigins = const [],
   HttpTransport? transport,
   Duration? credentialLifetime,
+  DateTime? authenticatedAt,
 }) {
   final fake =
       backend ?? FakeAuthBackend(credentialLifetime: credentialLifetime);
@@ -315,6 +364,7 @@ List<Override> fakeAuth({
             signedInAs,
             lifetime: credentialLifetime ?? fake.credentialLifetime,
             backend: fake.name,
+            authenticatedAt: authenticatedAt,
           ),
         );
   return <Override>[

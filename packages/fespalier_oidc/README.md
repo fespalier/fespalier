@@ -74,6 +74,11 @@ Sign in with `ref.read(authSession.notifier).signIn(const BrowserSignIn())`.
 and, through the `BearerAuthenticator`, every API call, and binds the tokens to its key (`TokenCredential.jkt`).
 `fespalier_keypair_dpop` makes the proofs.
 
+Since 0.25.0 the `BearerAuthenticator` answers an RFC 9470 step-up refusal
+(`error="insufficient_user_authentication"`) with `StepUp`, and `OidcBackend.stepUp` opens the browser sign-in
+again for the same user with the challenge's `acr_values` and `max_age` (`prompt=login` when it names neither).
+The session's `authenticatedAt` is the ID token's `auth_time` ([docs/auth.md](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#step-up-authentication)).
+
 ## What it costs
 
 No timer, no listener and no `Future.delayed` (`test/no_timers_test.dart`).

@@ -167,7 +167,8 @@ final class OidcBackend extends AuthBackend {
     }
   }
 
-  /// BrowserSignIn only: the browser step, then the code exchange.
+  /// BrowserSignIn only: the browser step, then the code exchange. The session's
+  /// `AuthSession.authenticatedAt` is the ID token's `auth_time` when it has one (since 0.25.0).
   @override
   Future<AuthSession> signIn(SignInRequest request) async {
     if (request is! BrowserSignIn) {
@@ -175,6 +176,44 @@ final class OidcBackend extends AuthBackend {
         'fespalier_oidc: OidcBackend signs in with BrowserSignIn, not ${request.runtimeType}',
       );
     }
+    return _browserSession(request);
+  }
+
+  /// Step-up (RFC 9470, since 0.25.0): the browser sign-in again, for the same user, with what
+  /// [challenge] asks: `acr_values` and `max_age` when it names them, `prompt=login` when it
+  /// names neither (a re-proof as it is), and `login_hint` with the user's e-mail address when
+  /// it is known. The new tokens replace the old ones (a new refresh token too), and
+  /// `AuthSession.authenticatedAt` is the new ID token's `auth_time` (the core stamps the time of
+  /// the step-up when there is none).
+  ///
+  /// `AuthCancelled` when the user closed the browser, `AuthRejected` when the provider answered
+  /// the authorization with an error (`access_denied` is a cancel), an `OidcException` for
+  /// anything else it could not check. The session stays as it was in every case.
+  @override
+  Future<AuthSession> stepUp(
+    AuthSession session,
+    StepUpChallenge challenge,
+  ) async {
+    final maxAge = challenge.maxAge;
+    final next = await _browserSession(
+      BrowserSignIn(
+        loginHint: session.user.email,
+        prompt: challenge.acrValues.isEmpty && maxAge == null ? 'login' : null,
+        parameters: {
+          if (challenge.acrValues.isNotEmpty)
+            'acr_values': challenge.acrValues.join(' '),
+          if (maxAge != null) 'max_age': '${maxAge.inSeconds}',
+        },
+      ),
+      stepUp: true,
+    );
+    return next;
+  }
+
+  Future<AuthSession> _browserSession(
+    BrowserSignIn request, {
+    bool stepUp = false,
+  }) async {
     final endpoints = await _resolve();
     final pkce = Pkce.generate(_random);
     final state = randomToken(_random, 16);
@@ -200,7 +239,7 @@ final class OidcBackend extends AuthBackend {
       },
     );
     final redirect = await openBrowser(authorization, redirectUri);
-    final code = _code(redirect.queryParameters, state);
+    final code = _code(redirect.queryParameters, state, stepUp: stepUp);
     final answer = await _post(endpoints.token, {
       'grant_type': 'authorization_code',
       'code': code,
@@ -212,8 +251,14 @@ final class OidcBackend extends AuthBackend {
     return _session(answer, nonce: nonce);
   }
 
-  /// Checks the redirect and returns its code.
-  String _code(Map<String, String> params, String state) {
+  /// Checks the redirect and returns its code. During a step-up, an error the provider answered
+  /// (an `unmet_authentication_requirements`, a `login_required`) is an `AuthRejected`: the
+  /// session stays and the request's 401 stands.
+  String _code(
+    Map<String, String> params,
+    String state, {
+    bool stepUp = false,
+  }) {
     if (params['state'] != state) {
       throw const OidcException(
         "the redirect's state does not match the sign-in that opened it",
@@ -223,6 +268,7 @@ final class OidcBackend extends AuthBackend {
     if (error != null) {
       if (error == 'access_denied') throw const AuthCancelled();
       final description = params['error_description'];
+      if (stepUp) throw AuthRejected(error, description);
       throw OidcException(
         'the server answered the sign-in with error $error'
         '${description == null ? '' : ': $description'}',
@@ -405,6 +451,7 @@ final class OidcBackend extends AuthBackend {
     }
     final accessClaims =
         unverifiedJwtClaims(access) ?? const <String, Object?>{};
+    final authTime = _authTime(idClaims) ?? _authTime(accessClaims);
     final AuthUser user;
     try {
       user = userFromClaims({
@@ -418,6 +465,17 @@ final class OidcBackend extends AuthBackend {
       backend: name,
       credential: previous == null ? tokens : _tokens(previous).merge(tokens),
       user: user,
+      authenticatedAt: authTime ?? previous?.authenticatedAt,
+    );
+  }
+
+  /// The `auth_time` claim (seconds since the epoch), as a UTC time; null when absent.
+  static DateTime? _authTime(Map<String, Object?> claims) {
+    final value = claims['auth_time'];
+    if (value is! num) return null;
+    return DateTime.fromMillisecondsSinceEpoch(
+      (value * 1000).round(),
+      isUtc: true,
     );
   }
 

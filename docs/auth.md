@@ -307,7 +307,12 @@ WWW-Authenticate: Bearer error="insufficient_user_authentication",
 TransportRequest(method: 'POST', uri: uri, body: bytes)
     .copyWith(attributes: {Authorizer.stepUpAttribute: false});
 // under Dio: Options(extra: {Authorizer.stepUpAttribute: false})
+
+// a client that cannot set attributes (a generated CrateStack call), since 0.25.0:
+await Authorizer.unattended(() => api.payOrder(args));
 ```
+
+`Authorizer.unattended(body)` runs `body` in a zone where every request it sends is treated as `stepUpAttribute: false`, as `TransportZone` carries an abort trigger for a client that takes none; `Authorizer.attended(request)` is the test both read, for an authenticator that steps up by itself.
 
 **Routes that need a recent sign-in.** The session carries **`AuthSession.authenticatedAt`**: an OpenID Connect `auth_time` claim when the ID token has one, else the time of the sign-in or of the last step-up (`clock.now()`); a renewal keeps it. `requireFreshAuth` sends the user to the app's re-proof page before the route opens, and `redirectIfFreshAuth` on that page sends them back, as `redirectIfSignedIn` does for the sign-in page:
 
@@ -337,8 +342,9 @@ FilledButton(
 - **The age is read when the guard runs**, from `clock.now()`: when the route opens, and when the session's authentication time changes (a step-up). There is no timer, so a page open for longer than `maxAge` stays open; what it sends from there is the API's to refuse, with a step-up challenge.
 - **An unknown time is too old.** A session stored before 0.25.0 has no `authenticatedAt` (the stored format is the same version 2, with one more optional key, so an older app still reads a newer session and the other way round); its first visit to a fresh-only route asks for a re-proof. So does a backend that keeps its own session and says nothing.
 - **A clock set back is not trusted**: an authentication time in the future is not fresh.
-- **Device sessions** (`fespalier_sign_keypair`) do not step up through the browser: `DeviceAuthBackend` has no `stepUp`, and a call that needs the user is signed with the user-present key from the start (`DeviceSigner.roleAttribute`, [below](#device-signed-sessions-fespalier_sign_keypair)), never escalated after a refusal, so background work never prompts.
-- **CrateStack's typed `StepUpRequired`** is not read yet: a generated client that maps it gets the 401's `WWW-Authenticate` through the transport, which is what the session reads.
+- **Device sessions** (`fespalier_sign_keypair`) step up **per request**, since 0.25.0: there is no browser to open and no session-wide re-proof (`DeviceAuthBackend` has no `stepUp`), so `DeviceSigner` answers a step-up refusal by signing **that request** once more with the user-present key, which prompts ([below](#device-signed-sessions-fespalier_sign_keypair)). The same rules hold: once per request, never for work that may not ask, and a cancelled prompt leaves the 401 as the answer with the session kept.
+- **A declined proof on a resend.** An authenticator that needs the user for a send the session makes again throws a **`ProofDeclined`** (since 0.25.0; `UserPresenceRefused` is one) when the user says no, and `SessionTransport` then hands back the response that asked for the resend (a 401 or a 403 it read) instead of the error. On a first send it fails the request, as before.
+- **CrateStack's typed `StepUpRequired`** (cratestack/cratestack#1244) is the same refusal as the generated client reads it: the session acts on the 401's `WWW-Authenticate` before the client sees it, and only a refusal that stands (a second one, a cancelled prompt, unattended work) reaches the call as a `CratestackRpcException` or `CratestackRestException` whose `stepUp` is set. CrateStack's challenge is `Bearer` whatever the provider; `StepUpChallenge.fromResponse(..., schemes: null)` reads one of any scheme, which is what `DeviceSigner` does.
 - UNCHECKED: a real browser re-authorization with `acr_values` and `max_age` against Keycloak or Authkestra (the tests run a fake provider). Keycloak's step-up needs its authentication flows configured with levels of authentication.
 
 ## OpenID Connect and Keycloak
@@ -454,6 +460,7 @@ AuthConfig authSetup() => AuthConfig(
 - **Renewal is a re-attestation**, not a refresh token: a silent proof of possession (`beginRenewal`, sign the challenge, `confirmRenewal`), lazy and single-flight, when the ambient attestation is within `renewAhead` (12 hours) of its expiry or a server refuses it.
 - **A refusal is classified, not guessed.** `webankRefusals` (replace it with `classify:`) reads the status and the `error` of the body: `attestation_expired` and `device_not_active` renew and send once more; `key_not_bound`, `bad_jwk` and `missing_credential` end the session as `keyLost` (both keys are deleted); a 403 `DEVICE_REVOKED` ends it as `revoked`. Anything else is ambiguous and never wipes the session or loops.
 - **Key roles per request.** A request asks for the user-present key through its attributes (`DeviceSigner.roleAttribute: KeyRole.userPresent`, `DeviceSigner.reasonAttribute: 'Confirm the transfer'`, or a `policy:` of your own, a `KeyRolePolicy`). A refused prompt is a `UserPresenceRefused` that fails that one request and nothing else. Background and queued work never asks.
+- **Step-up, when the server asks (since 0.25.0).** A server can keep the rule itself: a 401 with `WWW-Authenticate: ... error="insufficient_user_authentication"` (RFC 9470; **any scheme**, since CrateStack's `@authn` challenges with `Bearer` whatever the provider; or that `error` in a JSON body) makes `DeviceSigner` sign **that request** once more with the user-present key and send it again: the same bytes, a fresh `jti`, one prompt captioned by the request's `reasonAttribute` or `stepUpReason:`. Never twice for one request (it is kept in the request's `TransportMemo`), never for a request already signed with that key, never on a device with no user-present key, and **never for a request that may not ask** (`Authorizer.stepUpAttribute: false`, or sent inside `Authorizer.unattended`), so background and queued work still never prompts. A cancelled prompt leaves the server's 401 as the answer (`UserPresenceRefused` is a `ProofDeclined`) and the session as it was. Why per request: a user-present proof covers the one signature it made, so there is nothing for a session-wide `stepUp` to keep (fespalier#319's open question 1). An app may still sign a call with the user-present key from the start (`roleAttribute`), which saves the refused round trip.
 - **Sign-out revokes the device**, best effort, signed with the user-present key when there is one (it prompts), and then deletes **both** keys and the stored session whatever the revoke did. A restore signs the user out as `keyLost` when the ambient key is gone or is not the one the stored attestation is bound to.
 - **The enrolment and renewal calls are unsigned by name**, not by origin: send them through the transport you gave `AuthConfig.transport`, or list their paths in `unsignedPaths:` when they go through `authTransport`.
 - **A server and tests.** `package:fespalier_sign_keypair/verify.dart` has `verifyDeviceSignature` for a demo server (it checks the attestation, `cnf.jkt`, the signature, freshness, the claims and a `jti` that was not used before; the failure's `code` is the one the client classifier reads), and `package:fespalier_sign_keypair/testing.dart` has `FakeDeviceAuthServer` next to `FakeKeypairSigner`.
@@ -480,6 +487,11 @@ sequenceDiagram
   B->>S: beginRenewal, sign, confirmRenewal
   S-->>B: a new attestation
   P->>API: the request again, signed again
+  P->>API: a request the API wants confirmed, signed by the ambient key
+  API-->>P: 401 WWW-Authenticate error="insufficient_user_authentication"
+  B->>K: sign the same request with the user-present key (it prompts)
+  P->>API: the request again, user-present
+  API-->>P: 200, or the 401 stands when the prompt is cancelled
 ```
 
 ```mermaid

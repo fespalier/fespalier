@@ -85,9 +85,21 @@ from that commit) writes the same Riverpod client **with no Dio**: it sends thro
 overrides `<prefix>TransportProvider` (typically `ref.watch(authTransport)`) and `<prefix>BaseUriProvider`; the adapter
 provider defaults to the HTTP adapter over them. The pubspec pins `fespalier_transport` by git (`--fespalier-ref`; a commit
 until fespalier 0.21.0 is released, overridden with the checkout inside this repository). Things the generated calls cannot do
-yet, with what to do: a call carries no attributes for a signer (put a header on it and turn it into `TransportRequest.attributes`
-in a decorator above the session); a generated exception wraps the transport's failure as its `cause`
-(read the cause with `TransportFailures.read`). `examples/cratestack` does all of it.
+yet, with what to do: a call carries no attributes for the session (cratestack/cratestack#1207: run work that must never
+prompt inside `Authorizer.unattended(...)`, since 0.25.0, instead of setting `Authorizer.stepUpAttribute`); a generated
+exception wraps the transport's failure as its `cause` (read the cause with `TransportFailures.read`). `examples/cratestack`
+does all of it.
+
+**Step-up, `@authn` (since 0.25.0; CrateStack's cratestack/cratestack#1244, in no release yet).** A procedure that declares
+`@authn(maxAge:, amr:, acr:)` refuses a caller whose authentication falls short with RFC 9470's 401: `error:
+"insufficient_user_authentication"` and `details` in the envelope, and `WWW-Authenticate: Bearer error=...` on REST and on
+RPC unary responses (the body is CBOR, so the session reads the header). The session completes it before the call returns:
+an OpenID Connect session re-authorizes the user once, a device session signs the same request again with the user-present
+key. Only a refusal that stands reaches the call, as a `CratestackRpcException` whose `stepUp` is a `StepUpRequired`
+(show "not confirmed"; the client's `retryAfterStepUp` is not needed). Server side, the provider fills `auth_time` and
+`amr` through the principal contract, and an idempotency store must not replay the 401 to the retry, which comes under the
+same `Idempotency-Key`. Details: [Step-up authentication](../../docs/auth.md#step-up-authentication) and
+`examples/cratestack`.
 
 ## 2. The two seams
 

@@ -43,8 +43,8 @@ Commit the output as a path dependency of the app, and gate it in the app's CI w
 `cratestack generate-dart ... --check`, so a schema change cannot leave it stale.
 
 The preset is the one that matters here. `--preset riverpod` writes a client on Dio (sections 3 and 4 below). With
-`--preset fespalier` (merged in CrateStack in cratestack/cratestack#1206, in no release after 0.15.4 yet, so the CLI comes
-from that commit) the client sends through fespalier's [`HttpTransport`](transport.md) and links no Dio: its
+`--preset fespalier` (merged in CrateStack in cratestack/cratestack#1206, in no release after 0.15.4, so the CLI comes
+from a commit: `examples/cratestack` builds it at the one that also has `@authn`) the client sends through fespalier's [`HttpTransport`](transport.md) and links no Dio: its
 `<prefix>TransportProvider` and `<prefix>BaseUriProvider` are the two seams the app overrides, typically with
 `ref.watch(authTransport)`. [`examples/cratestack`](https://github.com/fespalier/fespalier/blob/main/examples/cratestack/README.md)
 is the example with a generated client: that preset, a Rust server, device-signed sessions, and a script that generates the
@@ -334,6 +334,26 @@ fespalier's `FieldErrors`, like `withFieldErrors` in `fespalier_http` and `fespa
 `details` when it is a map of field to message or a list of `{field|path, message}`, and falls back to the
 message. That shape is an assumption; anything else is tolerated, not an error. `fieldName: (key) => ...` maps
 the server's key to your form's field.
+
+**Step-up (`@authn`, since 0.25.0).** A procedure can say how recently and how strongly the caller must have
+authenticated: `@authn(maxAge: 300, amr: ["hwk"], acr: [...])` next to its `@allow` (cratestack/cratestack#1244, ADR
+0022; in no CrateStack release yet). An unmet requirement is RFC 9470's step-up refusal: a `401` (RPC code
+`unauthenticated`) whose envelope has `error: "insufficient_user_authentication"` and `details` (`max_age`,
+`acr_values`, `amr`, `unmet`), and a `WWW-Authenticate: Bearer error="insufficient_user_authentication", ...` header,
+**on REST and on RPC unary responses alike** (a batch frame carries the refusal in the frame only). The challenge's
+scheme is `Bearer` whatever your provider, and over CBOR the body is not text, so a client reads the header. The session
+acts on it before the generated client sees it ([Step-up authentication](auth.md#step-up-authentication)): an OpenID
+Connect session re-authorizes the user once, a [device session](auth.md#device-signed-sessions-fespalier_sign_keypair)
+signs the same request again with the user-present key, and the call is sent once more. What reaches the call is a
+refusal that stands (a second one, a cancelled prompt, or work that may not ask: run a sync or a queue drain inside
+`Authorizer.unattended`, since a generated call cannot set `Authorizer.stepUpAttribute`), typed by the generated
+client as a `CratestackRpcException` whose `stepUp` is a `StepUpRequired`. The client's own `retryAfterStepUp` is not
+needed for this: the session has retried the call once already, and a refusal that reaches it is the answer. The server's provider fills the facts (`auth_time`, `amr`,
+`acr`) through CrateStack's principal contract; [`examples/cratestack`](https://github.com/fespalier/fespalier/blob/main/examples/cratestack/README.md)
+maps a signature by the user-present key to `amr` `["user", "pop"]` and its time to `auth_time`, and declares
+`@authn(amr: ["user"])` on `payOrder`. One server-side catch: CrateStack's idempotency layer keeps the 401 under the
+call's `Idempotency-Key`, and the retry is the same request under the same key, so the example's store releases a key
+whose answer is a 401.
 
 ## 6. Retries: one layer
 

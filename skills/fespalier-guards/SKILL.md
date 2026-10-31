@@ -183,7 +183,9 @@ AuthConfig authSetup() => AuthConfig(
   once (`AuthSessionNotifier.stepUp`, shared by concurrent requests; `OidcBackend` signs the same user in again with
   `acr_values` / `max_age`, or `prompt=login`), then sends the request **once** more. A second refusal is the answer; a
   cancel or a provider refusal keeps the session and returns the 401. Mark background work
-  `Authorizer.stepUpAttribute: false` so it never opens a browser. A route that needs a recent sign-in uses
+  `Authorizer.stepUpAttribute: false`, or run it inside `Authorizer.unattended(...)` when the client cannot set
+  attributes (a generated CrateStack call), so it never prompts. A device session steps up per request instead: the
+  same request signed again with the user-present key. A route that needs a recent sign-in uses
   `requireFreshAuth(ref, uri, maxAge:, signIn:, reauthenticate:)`, and the re-proof page's own guard
   `redirectIfFreshAuth(ref, maxAge:, from:)`; the time is `AuthSession.authenticatedAt` (`auth_time`, else the sign-in or
   step-up time; null, too old, for a session stored before 0.25.0). Details and code:
@@ -219,7 +221,9 @@ DpopFallback.software` (a key in memory) or `DpopFallback.bearer` (no DPoP) is g
   unsigned), every request carries `X-Attestation` and `X-Signature` over its method, path, query and exact body bytes
   (**a streamed body cannot be signed**: `ArgumentError`), renewal is a re-attestation, `webankRefusals` sorts a 401 or 403
   into renew, `keyLost` or `revoked`, and a request asks for the user-present key (a biometric prompt) with
-  `DeviceSigner.roleAttribute`. You write the `DeviceAuthServer` (five methods over your endpoints); the secure-element
+  `DeviceSigner.roleAttribute`, or, since 0.25.0, gets it when the server answers a step-up refusal (CrateStack's
+  `@authn`): `DeviceSigner` signs that request again with the user-present key, once, never for unattended work, and a
+  cancelled prompt leaves the 401. You write the `DeviceAuthServer` (five methods over your endpoints); the secure-element
   parts are **UNCHECKED on a device**. [`references/auth-device-sessions.md`](references/auth-device-sessions.md).
 
 [`references/auth-package.md`](references/auth-package.md) has the pieces, a compiled starter (a backend over

@@ -148,6 +148,15 @@ A refused prompt is a `UserPresenceRefused` that fails that one request: the ses
 request go on working. For a rule of your own pass `policy:` (`KeyRole Function(TransportRequest)`). A device without a
 user-present key (the web) fails such a request with a `StateError` that says so.
 
+**Or let the server ask (since 0.25.0).** A step-up refusal, a 401 whose `WWW-Authenticate` says
+`error="insufficient_user_authentication"` under any scheme (RFC 9470; CrateStack's `@authn` sends `Bearer`) or whose JSON
+body's `error` does, makes `DeviceSigner` sign **that request** once more with the user-present key and send it again (one
+prompt, captioned by the request's `reasonAttribute` or `DeviceAuthBackend(stepUpReason:)`). Once per request (kept in its
+`TransportMemo`), never for a request already signed with that key or on a device without one, and never for a request
+that may not ask (`Authorizer.stepUpAttribute: false`, or sent inside `Authorizer.unattended`), so background work still
+never prompts. A cancelled prompt leaves the server's 401 as the answer (`UserPresenceRefused` is a `ProofDeclined`) and
+the session as it was. There is no session-wide step-up: a user-present proof covers the one signature it made.
+
 The enrolment and renewal calls are unsigned **by name, not by origin**: send them through the transport you gave
 `AuthConfig.transport` (no session on it), or list their paths in `unsignedPaths:` when they go through `authTransport`.
 

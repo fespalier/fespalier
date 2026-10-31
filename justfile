@@ -250,7 +250,7 @@ cose: cose-server
     flutter analyze
     COSE_SERVER_BIN="$PWD/server/target/debug/cose-demo-server" FSP_REQUIRE_COSE_SERVER=1 flutter test
 
-# The cratestack example's server (examples/cratestack/server, a standalone Rust crate on cratestack-api 0.17.1, the
+# The cratestack example's server (examples/cratestack/server, a standalone Rust crate on cratestack-api 0.17.2, the
 # first release with `@authn`):
 # fmt, clippy, tests (the verifier's unit tests and the router driven in process, with a Rust device that signs as
 # Dart's DeviceSigner does), a locked build and cargo-deny. A cold build compiles cratestack and takes a couple of
@@ -264,7 +264,7 @@ cratestack-server:
     cargo deny --config deny.toml check
 
 # Installs the `cratestack` CLI the example's client is generated with, from the commit scripts/cratestack-client.sh
-# names (the commit of CrateStack's tag v0.17.1, the release the server pins). A cold build takes a few minutes.
+# names (the commit of CrateStack's tag v0.17.2, the release the server pins). A cold build takes a few minutes.
 cratestack-cli:
     scripts/cratestack-client.sh install
 

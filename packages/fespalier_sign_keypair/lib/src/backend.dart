@@ -49,8 +49,8 @@ import 'signer.dart';
 final class DeviceAuthBackend extends AuthBackend {
   /// A backend over the app's [server] and the device's [keys], for the API in [profile].
   ///
-  /// [policy], [classify], [unsignedPaths], [unsigned] and [random] configure the `DeviceSigner`
-  /// (see there). [renewAhead] is how long before the ambient attestation expires the next
+  /// [policy], [classify], [unsignedPaths], [unsigned], [stepUpReason] (since 0.25.0) and [random]
+  /// configure the `DeviceSigner` (see there). [renewAhead] is how long before the ambient attestation expires the next
   /// request renews it: twelve hours by default, which keeps a daily attestation fresh for a
   /// user who opens the app once a day.
   DeviceAuthBackend({
@@ -61,6 +61,7 @@ final class DeviceAuthBackend extends AuthBackend {
     DeviceRefusalClassifier classify = webankRefusals,
     Iterable<String> unsignedPaths = const <String>[],
     bool Function(TransportRequest request)? unsigned,
+    String? stepUpReason,
     Random? random,
     this.renewAhead = const Duration(hours: 12),
   }) : signer = DeviceSigner(
@@ -70,6 +71,7 @@ final class DeviceAuthBackend extends AuthBackend {
          classify: classify,
          unsignedPaths: unsignedPaths,
          unsigned: unsigned,
+         stepUpReason: stepUpReason,
          random: random,
        );
 

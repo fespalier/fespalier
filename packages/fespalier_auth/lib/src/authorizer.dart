@@ -76,8 +76,35 @@ final class Authorizer implements HttpCredentials {
   /// The request attribute that says whether a `StepUp` verdict may ask the user (since
   /// 0.25.0): `false` makes the request's 401 stand. Set it on work the user is not looking at (a
   /// sync, a queued intent, a background refresh), so a refusal never opens a sign-in page by
-  /// itself; under Dio, `Options(extra: {Authorizer.stepUpAttribute: false})`.
+  /// itself; under Dio, `Options(extra: {Authorizer.stepUpAttribute: false})`. A client that
+  /// cannot set attributes (a generated CrateStack call) runs the work in [unattended] instead.
   static const String stepUpAttribute = 'fespalier.auth.step_up';
+
+  /// The zone key [unattended] sets.
+  static const Symbol _unattendedKey = #fespalierAuthUnattended;
+
+  /// Runs [body] in a zone where no request steps up (since 0.25.0): every request [body] sends,
+  /// and every request sent by what it starts, is treated as if its [stepUpAttribute] were
+  /// `false`, so a step-up refusal is the answer and the user is never asked. It is the
+  /// [stepUpAttribute] for a client that has no attributes to give, as `TransportZone` is the
+  /// abort trigger for one that takes none: a sync, the drain of a queue of intents, a refresh
+  /// in the background.
+  ///
+  /// ```dart
+  /// await Authorizer.unattended(() => client.procedures.payOrder(args));
+  /// ```
+  ///
+  /// Starts no timer and listens to nothing; returns what [body] returns.
+  static R unattended<R>(R Function() body) =>
+      runZoned<R>(body, zoneValues: <Object?, Object?>{_unattendedKey: true});
+
+  /// Whether a step-up refusal of [request] may ask the user (since 0.25.0): false when its
+  /// [stepUpAttribute] is `false`, or when it is sent from inside [unattended]. A
+  /// `RequestAuthenticator` that steps up by itself (`DeviceSigner` signs once more with the
+  /// user-present key) asks it from `judge`, which runs in the zone of the request.
+  static bool attended(TransportRequest request) =>
+      request.attributes[stepUpAttribute] != false &&
+      Zone.current[_unattendedKey] != true;
 
   /// Whether [uri]'s origin (scheme, host and port) is one of `AuthConfig.apiOrigins`. Nothing
   /// else gets a credential.
@@ -171,7 +198,8 @@ final class Authorizer implements HttpCredentials {
   /// by every request that asks at the same time) and says true; the response stands when this
   /// request already stepped up, when [mayStepUp] is false (`SessionTransport` passes false once
   /// the logical request has spent its step-up), when the request's [stepUpAttribute] is
-  /// `false`, and when the user cancelled or the server refused the step-up.
+  /// `false` or it is sent from inside [unattended] ([attended]), and when the user cancelled or
+  /// the server refused the step-up.
   @override
   Future<bool> retry(
     covariant AuthAttempt attempt,
@@ -211,9 +239,7 @@ final class Authorizer implements HttpCredentials {
         attempt._renewNext = true;
         return true;
       case StepUp(:final challenge):
-        if (attempt.steppedUp ||
-            !mayStepUp ||
-            request.attributes[stepUpAttribute] == false) {
+        if (attempt.steppedUp || !mayStepUp || !attended(request)) {
           return false;
         }
         try {

@@ -75,19 +75,23 @@ final class StepUpChallenge {
   /// The step-up an RFC 9470 refusal asks for, or null when [statusCode] and [headers] are not
   /// one: a 401 whose `www-authenticate` header (lower-case name, as a `TransportResponse` has
   /// it) has a challenge of one of [schemes] with `error="insufficient_user_authentication"`.
+  /// With [schemes] null (since 0.25.0) a challenge of any scheme counts: a server that does not
+  /// authenticate with bearer tokens may still challenge with `Bearer` (CrateStack's `@authn` does,
+  /// whatever its provider), so a client that signs requests itself (`DeviceSigner`) reads the
+  /// error, not the scheme.
   ///
   /// `acr_values` is space-separated; `max_age` is a whole number of seconds (anything else is
   /// ignored). The first matching challenge wins.
   static StepUpChallenge? fromResponse(
     int statusCode,
     Map<String, String> headers, {
-    Set<String> schemes = const {'bearer', 'dpop'},
+    Set<String>? schemes = const {'bearer', 'dpop'},
   }) {
     if (statusCode != 401) return null;
     final header = headers['www-authenticate'];
     if (header == null) return null;
     for (final challenge in parseChallenges(header)) {
-      if (!schemes.contains(challenge.scheme)) continue;
+      if (schemes != null && !schemes.contains(challenge.scheme)) continue;
       final error = challenge.params['error']?.trim().toLowerCase();
       if (error != insufficientUserAuthentication) continue;
       final acr = challenge.params['acr_values'];

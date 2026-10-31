@@ -27,17 +27,17 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.25.0
+      ref: v0.25.1
   fespalier_download:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_download
-      ref: v0.25.0
+      ref: v0.25.1
   fespalier_maps:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_maps
-      ref: v0.25.0
+      ref: v0.25.1
 ```
 
 <!-- x-release-please-end -->

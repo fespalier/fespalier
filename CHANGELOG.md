@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.1](https://github.com/fespalier/fespalier/compare/v0.25.0...v0.25.1) (2026-10-31)
+
+
+### Build System
+
+* **cratestack:** move examples/cratestack to CrateStack 0.17.2 and drop the 401 release workaround ([#329](https://github.com/fespalier/fespalier/issues/329)) ([caf5116](https://github.com/fespalier/fespalier/commit/caf51165914fcf4c28168be3c87aec1331bb7afe))
+
 ## [0.25.0](https://github.com/fespalier/fespalier/compare/v0.24.1...v0.25.0) (2026-10-31)
 
 

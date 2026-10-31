@@ -13,7 +13,7 @@
 // break the no-hash case, which is a real, exercised code path.
 // ignore: unnecessary_nullable_for_final_variable_declarations
 const String? cratestackSchemaSha256 =
-    '6cdd031e3226dd868d4b3de64ad7ecc5402ecebf99f7744a0a73a174c44c3722';
+    'e6206303fa9ea2569ba0ec5fc3de6c770cdcd2836e50f393a93e4da7a96271eb';
 
 /// Per-op contract digests (binding version 2, cratestack#1123): what a
 /// signed request to each op binds into its COSE AAD, keyed like the Rust

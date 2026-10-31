@@ -1,12 +1,13 @@
 import 'package:cratestack_example/app.g.dart';
 import 'package:cratestack_example/src/wiring.dart';
 import 'package:fespalier/fespalier.dart';
-import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
 import 'package:flutter/material.dart';
-import 'package:orders_client/orders_client.dart' show Order;
+import 'package:orders_client/orders_client.dart'
+    show CratestackRpcException, Order;
 
-/// One order, and the one sensitive action: paying, which asks for the user-present key. Where the
-/// device has none (the web), the page says so and does not offer it.
+/// One order, and the one sensitive action: paying, which the server accepts only when signed by the
+/// user-present key (a step-up the session completes). Where the device has none (the web), the
+/// page says so and does not offer it.
 class OrderPage extends ConsumerWidget {
   const OrderPage(this.order, {super.key});
 
@@ -39,7 +40,9 @@ class OrderPage extends ConsumerWidget {
               child: Text(pay.isPending ? 'Paying...' : 'Confirm and pay'),
             ),
           ],
-          if (pay.state.error case final UserPresenceRefused _)
+          // The step-up refusal stands only when the user did not confirm (the session retried it
+          // once with the user-present key, and the prompt was cancelled).
+          if (pay.state.error case CratestackRpcException(stepUp: _?))
             const Text('Confirmation cancelled. Nothing was paid.')
           else if (pay.state.error case final error?)
             Text('The payment failed: $error'),

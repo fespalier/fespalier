@@ -131,5 +131,10 @@ procedure getOrder(args: GetOrderArgs): Order
 mutation procedure placeOrder(args: PlaceOrderArgs): Order
   @allow(auth() != null)
 
+// Paying moves money, so it needs a user-presence test (RFC 8176 `user`), which only a signature
+// by the device's user-present key proves (`DeviceAuth` in src/lib.rs maps the key role to `amr`).
+// Any other signed caller is refused with RFC 9470's step-up 401 before the procedure runs; the
+// app's session signs the request again with the user-present key and sends it once more.
 mutation procedure payOrder(args: PayOrderArgs): Order
   @allow(auth() != null)
+  @authn(amr: ["user"])

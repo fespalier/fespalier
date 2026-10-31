@@ -15,6 +15,11 @@ import 'package:fespalier_sign_keypair/verify.dart';
 import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:fespalier_transport/testing.dart';
 
+/// The challenge CrateStack's `@authn` refusal carries (`Bearer`, whatever the provider).
+const stepUpChallenge =
+    'Bearer error="insufficient_user_authentication", '
+    'error_description="step-up authentication required"';
+
 /// What the fake saw of one request.
 class Served {
   Served(this.request, this.body)
@@ -336,6 +341,19 @@ class FakeOrdersServer {
       return _json(stored.status, jsonDecode(stored.payload));
     }
     final answer = _run(call, device, role);
+    if (answer.status == 401) {
+      // payOrder's step-up refusal: it ran nothing, so it is not kept under the key (the server's
+      // MemoryIdempotency releases it the same way), and the session's retry runs the call.
+      call.refusedWith = 'insufficient_user_authentication';
+      return fakeResponse(
+        401,
+        body: answer.payload,
+        headers: const {
+          'content-type': 'application/json',
+          'www-authenticate': stepUpChallenge,
+        },
+      );
+    }
     if (key != null) {
       _stored['${device.userId}/$key'] = (
         body: '',
@@ -410,8 +428,20 @@ class FakeOrdersServer {
         orders.add(order);
         return ok(order);
       case 'payOrder':
+        // `@authn(amr: ["user"])`: only the user-present key proves `user`. CrateStack's refusal.
         if (role != KeyRole.userPresent) {
-          return no(403, 'permission_denied', 'user_presence_required');
+          return (
+            status: 401,
+            payload: jsonEncode({
+              'code': 'unauthenticated',
+              'message': 'step-up authentication required',
+              'error': 'insufficient_user_authentication',
+              'details': {
+                'amr': ['user'],
+                'unmet': ['amr'],
+              },
+            }),
+          );
         }
         final order = orders.where((o) => o['id'] == args['id']).firstOrNull;
         if (order == null) return no(404, 'not_found', 'order ${args['id']}');

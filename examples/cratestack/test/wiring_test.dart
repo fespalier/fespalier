@@ -3,7 +3,6 @@
 // overridden with that session and the origin.
 import 'dart:io';
 
-import 'package:cratestack_example/src/confirm_transport.dart';
 import 'package:cratestack_example/src/errors.dart';
 import 'package:cratestack_example/src/wiring.dart';
 import 'package:fespalier/fespalier.dart' show ProviderContainer;
@@ -66,10 +65,10 @@ void main() {
       );
       addTearDown(container.dispose);
       final transport = container.read(ordersClientTransportProvider);
-      expect(transport, isA<ConfirmTransport>());
       expect(
-        (transport as ConfirmTransport).inner,
+        transport,
         same(container.read(authTransport)),
+        reason: 'the session itself: nothing above it asks for a key',
       );
       expect(container.read(ordersClientBaseUriProvider), testConfig.server);
       expect(

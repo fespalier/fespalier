@@ -18,7 +18,6 @@ import 'dart:typed_data';
 import 'package:cbor/simple.dart' as cbor;
 import 'package:clock/clock.dart';
 import 'package:cratestack_example/src/config.dart';
-import 'package:cratestack_example/src/confirm_transport.dart';
 import 'package:cratestack_example/src/errors.dart';
 import 'package:cratestack_example/src/wiring.dart';
 import 'package:fespalier/fespalier.dart' show FieldErrors, ProviderContainer;
@@ -36,6 +35,32 @@ import 'package:orders_client/orders_client.dart';
 /// The CBOR body of an RPC call: what the generated client would send.
 Uint8List encodeBody(Object? args) =>
     Uint8List.fromList(cbor.cbor.encode(args));
+
+/// One send that reached the wire: what it carried, and the status it got.
+typedef _Sent = ({
+  TransportRequest request,
+  int status,
+  Map<String, String> headers,
+});
+
+/// The bottom of the app's chain, recording each send: what the server saw, under the session.
+class _Recording implements HttpTransport {
+  _Recording(this.inner);
+
+  final HttpTransport inner;
+  final List<_Sent> sent = [];
+
+  @override
+  Future<TransportResponse> send(TransportRequest request) async {
+    final response = await inner.send(request);
+    sent.add((
+      request: request,
+      status: response.statusCode,
+      headers: response.headers,
+    ));
+    return response;
+  }
+}
 
 /// A running `orders-demo-server`, from the one JSON line it prints.
 class _Server {
@@ -91,13 +116,29 @@ class _Server {
 
 /// The app, on real sockets: the production chain, the session, the generated client.
 class _App {
-  _App(this.server, this.ambient, this.presence, this.container, this.client);
+  _App(
+    this.server,
+    this.ambient,
+    this.presence,
+    this.container,
+    this.client,
+    this.wire,
+  );
 
   final _Server server;
   final FakeKeypairSigner ambient;
   final FakeKeypairSigner? presence;
   final ProviderContainer container;
   final http.Client client;
+
+  /// Every send that left the app, in order.
+  final _Recording wire;
+
+  /// The sends of [op].
+  List<_Sent> sentTo(String op) => [
+    for (final s in wire.sent)
+      if (s.request.uri.path == '/rpc/procedure.$op') s,
+  ];
 
   static Future<_App> start(
     _Server server, {
@@ -114,9 +155,8 @@ class _App {
           )
         : null;
     final client = http.Client();
-    final network = PortalTransport(
-      WriteGuardTransport(HttpClientTransport(client)),
-    );
+    final wire = _Recording(HttpClientTransport(client));
+    final network = PortalTransport(WriteGuardTransport(wire));
     final container = ProviderContainer(
       overrides: [
         ...await restoreAuth(
@@ -131,7 +171,7 @@ class _App {
         ...ordersOverrides(server.config),
       ],
     );
-    return _App(server, ambient, presence, container, client);
+    return _App(server, ambient, presence, container, client, wire);
   }
 
   ProceduresApi get api => container.read(ordersClientProceduresApiProvider);
@@ -328,38 +368,116 @@ void main() {
     }
   });
 
-  test(
-    'paying needs the user-present key: the ambient one is refused, the prompt is once',
-    () async {
+  group('step-up: payOrder declares @authn(amr: ["user"])', () {
+    Future<Order> pay({String key = 'pay-1'}) => app.api.payOrder(
+      PayOrderProcedureArgs(args: PayOrderArgs(id: 1)),
+      options: CratestackRpcCallOptions(idempotencyKey: key),
+    );
+
+    String? attestationOf(_Sent sent) => {
+      for (final e in sent.request.headers.entries)
+        e.key.toLowerCase(): e.value,
+    }['x-attestation'];
+
+    test(
+      'the ambient key gets the step-up refusal; one user-present signature and one retry complete it',
+      () async {
+        await app.enrol();
+        final prompts = app.presence!.prompts;
+        final paid = await pay();
+        expect(paid.status, 'paid');
+        expect(app.presence!.prompts, prompts + 1, reason: 'one prompt');
+        expect(app.presence!.lastReason, 'Confirm it is you');
+        final sends = app.sentTo('payOrder');
+        expect([for (final s in sends) s.status], [401, 200]);
+        // The real server's refusal, on an RPC unary response: the challenge is on it.
+        final challenge = sends[0].headers['www-authenticate'] ?? '';
+        expect(challenge, startsWith('Bearer '));
+        expect(challenge, contains('error="insufficient_user_authentication"'));
+        expect(
+          attestationOf(sends[0]),
+          app.credential.attestation(KeyRole.ambient)!.jws,
+        );
+        expect(
+          attestationOf(sends[1]),
+          app.credential.attestation(KeyRole.userPresent)!.jws,
+        );
+        expect(sends[1].request.body, sends[0].request.body);
+        expect(
+          sends[1].request.headers['Idempotency-Key'] ??
+              sends[1].request.headers['idempotency-key'],
+          'pay-1',
+          reason: 'the same request, under the same key',
+        );
+        // The step-up refusal was not kept under the key: a retry of it replays the payment.
+        final again = await pay();
+        expect(again.status, 'paid');
+        expect(app.sentTo('payOrder').last.status, 200);
+        expect(app.container.read(authSession), isA<SignedIn>());
+      },
+    );
+
+    test(
+      'a refused prompt surfaces the 401, and the session is kept',
+      () async {
+        await app.enrol();
+        app.presence!.refuseNextPrompt();
+        await expectLater(
+          pay(),
+          throwsA(
+            isA<CratestackRpcException>()
+                .having((e) => e.status, 'status', 401)
+                .having((e) => e.code, 'code', 'unauthenticated')
+                .having((e) => e.stepUp?.amr, 'stepUp.amr', ['user'])
+                .having((e) => e.stepUp?.unmet, 'stepUp.unmet', ['amr']),
+          ),
+        );
+        expect(app.sentTo('payOrder'), hasLength(1));
+        expect(app.container.read(authSession), isA<SignedIn>());
+        final order = await app.api.getOrder(
+          GetOrderProcedureArgs(args: GetOrderArgs(id: 1)),
+        );
+        expect(order.status, 'placed', reason: 'nothing was paid');
+        // The user tries again, and confirms.
+        expect((await pay(key: 'pay-2')).status, 'paid');
+      },
+    );
+
+    test('background work never prompts: the refusal is the answer', () async {
       await app.enrol();
       final prompts = app.presence!.prompts;
       await expectLater(
-        app.api.payOrder(PayOrderProcedureArgs(args: PayOrderArgs(id: 1))),
+        Authorizer.unattended(pay),
         throwsA(
           isA<CratestackRpcException>()
-              .having((e) => e.status, 'status', 403)
-              .having((e) => e.message, 'message', 'user_presence_required'),
+              .having((e) => e.status, 'status', 401)
+              .having((e) => e.stepUp, 'stepUp', isNotNull),
         ),
       );
-      expect(app.presence!.prompts, prompts);
-      final paid = await app.api.payOrder(
-        PayOrderProcedureArgs(args: PayOrderArgs(id: 1)),
-        options: const CratestackRpcCallOptions(
-          headers: {confirmHeader: 'Pay order 1'},
-        ),
-      );
-      expect(paid.status, 'paid');
-      expect(app.presence!.prompts, prompts + 1);
-      expect(app.presence!.lastReason, 'Pay order 1');
-      final account = await app.api.account(
-        AccountArgs(args: NoArgs()),
-        options: const CratestackRpcCallOptions(
-          headers: {confirmHeader: 'Who am I'},
-        ),
-      );
-      expect(account.signedWith, 'userPresent');
-    },
-  );
+      expect(app.presence!.prompts, prompts, reason: 'nobody was asked');
+      expect(app.sentTo('payOrder'), hasLength(1));
+      expect(app.container.read(authSession), isA<SignedIn>());
+    });
+
+    test(
+      'a request already signed with the user-present key is accepted at once',
+      () async {
+        await app.enrol();
+        final request = await app.signed('payOrder', {
+          'args': {'id': 1},
+        }, role: KeyRole.userPresent);
+        final (status, body) = await app.send(request);
+        expect(status, 200);
+        expect(body['status'], 'paid');
+        final account = await app.send(
+          await app.signed('account', {
+            'args': <String, Object?>{},
+          }, role: KeyRole.userPresent),
+        );
+        expect(account.$2['signedWith'], 'userPresent');
+      },
+    );
+  });
 
   test(
     'a replayed, tampered or foreign request is refused with the code the client reads',

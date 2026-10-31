@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.25.0](https://github.com/fespalier/fespalier/compare/v0.24.1...v0.25.0) (2026-10-31)
+
+
+### Features
+
+* a server push starts an offline sync, and CrateStack subscriptions feed it ([#318](https://github.com/fespalier/fespalier/issues/318)) ([133fc4b](https://github.com/fespalier/fespalier/commit/133fc4b3a114f974a29c768e61a7685386e68cd5))
+* add fespalier_stream: server-sent events as live feeds ([#314](https://github.com/fespalier/fespalier/issues/314)) ([1eb9247](https://github.com/fespalier/fespalier/commit/1eb924748be32cd3bebc35ee5d655888b7cf2a27))
+* **auth:** device sessions step up per request with the user-present key, and examples/cratestack declares it with [@authn](https://github.com/authn) ([#327](https://github.com/fespalier/fespalier/issues/327)) ([5a2ae6e](https://github.com/fespalier/fespalier/commit/5a2ae6e8deb6d1d4156443eb07b1e286bdc770b5))
+* **auth:** step-up authentication (RFC 9470) and requireFreshAuth ([#319](https://github.com/fespalier/fespalier/issues/319)) ([cbcf42b](https://github.com/fespalier/fespalier/commit/cbcf42bf8928f8656ce957f6dfb5315d1a7bc915)), closes [#309](https://github.com/fespalier/fespalier/issues/309)
+* change feeds move into fespalier_stream and follow live connections ([#317](https://github.com/fespalier/fespalier/issues/317)) ([4705411](https://github.com/fespalier/fespalier/commit/47054112649f87010d45fb70cdbe88eaf2284132))
+* examples/live: feeds, a live change feed, a streaming action and a WebSocket chat ([#326](https://github.com/fespalier/fespalier/issues/326)) ([670527c](https://github.com/fespalier/fespalier/commit/670527c492e07491aa12e583a8f69b7a4a37d1e2))
+* stream on the web through Dio with a fetch adapter ([#315](https://github.com/fespalier/fespalier/issues/315)) ([f9dd9f0](https://github.com/fespalier/fespalier/commit/f9dd9f0c694d653698d82cdef22f083245624421))
+* streaming actions: an action.dart that returns a Stream ([#321](https://github.com/fespalier/fespalier/issues/321)) ([e420aa8](https://github.com/fespalier/fespalier/commit/e420aa8c975e17cf49cf3ed7dda8f095ad775ca7))
+* WebSockets in fespalier_stream: a socket connection, tickets through the transport ([#323](https://github.com/fespalier/fespalier/issues/323)) ([7fc1176](https://github.com/fespalier/fespalier/commit/7fc11765f8e3891b8ede436726fcc80819637ccc))
+
+
+### Tests
+
+* pin Riverpod's stream contract and streamed bodies through the transports ([#311](https://github.com/fespalier/fespalier/issues/311)) ([779f576](https://github.com/fespalier/fespalier/commit/779f5760054953bba192c65ccf2e0a839c3af85a))
+
+
+### Build System
+
+* **cratestack:** pin examples/cratestack to the CrateStack 0.17.1 release ([#328](https://github.com/fespalier/fespalier/issues/328)) ([8891c22](https://github.com/fespalier/fespalier/commit/8891c22e9bd123111519cb69f3dff98e31012f79))
+
 ## [0.24.1](https://github.com/fespalier/fespalier/compare/v0.24.0...v0.24.1) (2026-10-26)
 
 

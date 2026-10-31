@@ -106,6 +106,10 @@ Since 0.25.0, a step-up refusal (RFC 9470: a 401 with `error="insufficient_user_
 that asks), the request goes out once more, and a second refusal is the answer. A route that needs a
 recent sign-in uses `requireFreshAuth`, and the re-proof page `redirectIfFreshAuth`, over
 `AuthSession.authenticatedAt` ([docs/auth.md](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#step-up-authentication)).
+Work nobody is looking at sets `Authorizer.stepUpAttribute: false`, or runs inside `Authorizer.unattended(...)` when
+its client cannot set attributes. An authenticator that steps up by itself (a device session signs the same request
+again with the user-present key) throws a `ProofDeclined` when the user says no, and the response that asked for the
+resend is the answer.
 
 ## Backends
 

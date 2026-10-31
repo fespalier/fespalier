@@ -448,10 +448,18 @@ optional; a `DPoP` challenge counts too).
   renewal, whose refusal signs out. A step-up that could not run is `AuthUnavailable`. One that comes back as another
   user is `AuthRejected('step_up_user_mismatch')` and that session is not taken.
 - **Background work never prompts.** Mark it `Authorizer.stepUpAttribute: false` (`TransportRequest.attributes`, or
-  Dio's `Options(extra: ...)`): its 401 stands.
-- **`AuthBackend.stepUp`'s default throws `UnsupportedError`.** `DeviceAuthBackend` has none: a device session signs a
-  call that needs the user with the user-present key from the start ([`auth-device-sessions.md`](auth-device-sessions.md)),
-  never after a refusal.
+  Dio's `Options(extra: ...)`): its 401 stands. A client that cannot set attributes (a generated CrateStack call) runs
+  the work inside `Authorizer.unattended(() => ...)` (since 0.25.0), a zone with the same effect;
+  `Authorizer.attended(request)` is the test both read.
+- **`AuthBackend.stepUp`'s default throws `UnsupportedError`.** `DeviceAuthBackend` has none: a device session steps up
+  **per request** (since 0.25.0): `DeviceSigner` answers the refusal with `Resend` and signs that request again with the
+  user-present key ([`auth-device-sessions.md`](auth-device-sessions.md#step-up-when-the-server-asks)).
+- **A declined proof on a resend is the server's answer** (since 0.25.0). An authenticator whose `headers` needs the user
+  throws a `ProofDeclined` when they say no (`UserPresenceRefused` is one); on a resend `SessionTransport` returns the
+  response that asked for it (a buffered 401 or 403) instead of the error, and on a first send the error fails the request.
+- **The challenge's scheme.** `StepUpChallenge.fromResponse(status, headers)` reads `Bearer` and `DPoP` challenges;
+  pass `schemes: null` (since 0.25.0) to read one of any scheme (CrateStack's `@authn` says `Bearer` whatever the
+  provider).
 - **`AuthSession.authenticatedAt`** is when the user last proved who they are: the ID token's `auth_time`, else the time
   of `signIn`, `adopt` or `stepUp` (`clock.now()`); a renewal keeps it. It is stored as an optional key of the same
   version-2 session, so a session stored before 0.25.0 restores with `null`, which the freshness guards read as too old.

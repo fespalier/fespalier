@@ -1130,7 +1130,8 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-      # The CLI at a commit, not a tag or a release: `--preset fespalier` (cratestack/cratestack#1206) is not in 0.15.4.
+      # The CLI at a commit, not a tag or a release: `@authn` and the generated clients' `StepUpRequired`
+      # (cratestack/cratestack#1244) are in no release yet. The server pins the same commit.
       - name: Install the cratestack CLI (the pinned commit)
         run: scripts/cratestack-client.sh install
       - name: The committed client is what the schema generates

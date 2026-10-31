@@ -23,7 +23,7 @@
 set -euo pipefail
 
 # Where the preset is merged: CrateStack's main at the merge of cratestack/cratestack#1206.
-CRATESTACK_REV=642fc9abec3da6906ab0423fd9452a3198cb97ca
+CRATESTACK_REV=f78e71d2382cf873acf8c7d1a6d89d26f84cffb5
 # The fespalier commit the generated pubspec pins fespalier_transport at (`--fespalier-ref`). A
 # commit and not a tag: the pin is never read by anything in this repository (the example overrides
 # fespalier_transport with the checkout, see its pubspec.yaml), a `ref: v...` in a pubspec is read by

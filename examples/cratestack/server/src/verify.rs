@@ -198,6 +198,10 @@ pub struct Verified {
     pub jkt: String,
     /// The signature's `jti`.
     pub jti: String,
+    /// When the request was signed: the signature's `iat`, never later than now (a clock a little
+    /// ahead is within the skew this check allows). For the user-present key it is when the user
+    /// passed the platform's presence test, the principal's `auth_time`.
+    pub signed_at: i64,
 }
 
 fn int(claims: &Map<String, Value>, name: &str) -> Option<i64> {
@@ -306,11 +310,7 @@ pub fn verify(
     if claim("mth") != Some(request.method.to_ascii_uppercase().as_str()) {
         return Err(Refusal::Mismatch("mth"));
     }
-    let path = if request.path.is_empty() {
-        "/"
-    } else {
-        request.path
-    };
+    let path = Some(request.path).filter(|p| !p.is_empty()).unwrap_or("/");
     if claim("pth") != Some(path) {
         return Err(Refusal::Mismatch("pth"));
     }
@@ -338,5 +338,6 @@ pub fn verify(
         role,
         jkt: jkt.to_owned(),
         jti: jti.to_owned(),
+        signed_at: iat.min(now),
     })
 }

@@ -15,7 +15,14 @@
 //!   layer, which runs before the handlers and so before `authenticate`, keys on a
 //!   `VerifiedPrincipal` that only a layer in front of it can set.
 //! - `CrateStack`'s auth seam, [`AuthProvider`], then only turns that extension into the caller the
-//!   procedures and their `@allow(auth() != null)` policies see: it never reads a header or a body.
+//!   procedures and their `@allow(auth() != null)` policies see ([`principal_of`], through the
+//!   principal contract): it never reads a header or a body.
+//! - **Step-up is in the schema.** `payOrder` declares `@authn(amr: ["user"])` (cratestack#1244): the
+//!   principal of a request signed by the user-present key has `amr` `["user", "pop"]` and an
+//!   `auth_time` ([`amr_of`]), the ambient key's has `["pop"]` and none, so an ambient-key payment is
+//!   refused before the procedure runs with RFC 9470's step-up 401 (`WWW-Authenticate: Bearer
+//!   error="insufficient_user_authentication"`, and `error` in the envelope). The client's session
+//!   signs the request again with the user-present key and sends it once more.
 //!
 //! The attestation issuer is this server's own P-256 key. Devices, enrolments, orders and the
 //! single-use `jti`s are in memory: a restart forgets them (and a random issuer key makes every old
@@ -34,7 +41,8 @@ use cratestack::idempotency::{IdempotencyLayer, IdempotencyStore};
 use cratestack::ratelimit::VerifiedPrincipal;
 use cratestack::serde_json::{Value as Json, json};
 use cratestack::{
-    AuthProvider, CratestackContext, CratestackError, RequestContext, Value, include_server_schema,
+    AuthProvider, CratestackContext, CratestackError, KeyRole, RequestContext, Value,
+    include_server_schema,
 };
 use cratestack_codec_cbor::CborCodec;
 use p256::ecdsa::{SigningKey, VerifyingKey};
@@ -254,21 +262,19 @@ struct Caller {
     role: Role,
 }
 
-fn field(ctx: &CratestackContext, name: &str) -> Option<String> {
-    match ctx.auth_field(name)? {
-        Value::String(text) => Some(text.clone()),
-        _ => None,
-    }
-}
-
 fn caller(ctx: &CratestackContext) -> Result<Caller, CratestackError> {
     let unsigned = || CratestackError::Unauthorized("sign the request".to_owned());
+    let device_id = match ctx.auth_field("did") {
+        Some(Value::String(id)) => id.clone(),
+        _ => return Err(unsigned()),
+    };
     Ok(Caller {
-        subject: field(ctx, "id").ok_or_else(unsigned)?,
-        device_id: field(ctx, "did").ok_or_else(unsigned)?,
-        role: field(ctx, "role")
-            .and_then(|name| Role::parse(&name))
-            .ok_or_else(unsigned)?,
+        subject: ctx.subject().ok_or_else(unsigned)?.into_owned(),
+        device_id,
+        role: match ctx.key_role().ok_or_else(unsigned)? {
+            KeyRole::Ambient => Role::Ambient,
+            KeyRole::UserPresent => Role::UserPresent,
+        },
     })
 }
 
@@ -557,7 +563,10 @@ impl ProcedureRegistry for Procedures {
             .devices
             .get_mut(&device_id)
             .ok_or_else(|| CratestackError::NotFound("device".to_owned()))?;
-        // A device that holds a user-present key signs out with it: it prompts.
+        // A device that holds a user-present key signs out with it: it prompts. Not an `@authn`: the
+        // rule depends on what this device enrolled (the web has no user-present key and must still
+        // be able to sign out), which a schema attribute cannot see. `DeviceAuthServer.revoke`
+        // signs this call with the user-present key itself, so it is never a step-up.
         if device.keys.contains_key(&Role::UserPresent) {
             user_present_only(&caller)?;
         }
@@ -669,9 +678,9 @@ impl ProcedureRegistry for Procedures {
         args: procs::pay_order::Args,
         _authorized: procs::pay_order::Authorized,
     ) -> Result<procs::pay_order::Output, CratestackError> {
+        // Paying needs the user-present key: `@authn(amr: ["user"])` in schema.cstack, which the
+        // generated code checks before this runs, and refuses with the step-up 401.
         let caller = caller(ctx)?;
-        // Paying moves money: only the key that proves the user is there may ask for it.
-        user_present_only(&caller)?;
         let id = args.args.id;
         let mut state = self.shared.state();
         let order = seeded(&mut state.orders, &caller.subject)
@@ -692,9 +701,49 @@ impl ProcedureRegistry for Procedures {
 #[derive(Clone, Debug)]
 struct VerifiedDevice(Verified);
 
+/// The RFC 8176 methods a request signed by `role`'s key proves, for the principal's `amr`.
+///
+/// - Every signed request proves possession of a key bound to the device's attestation: `pop`.
+/// - The user-present key signs only after the platform's user-presence test (a biometric or the
+///   device credential, behind `KeyRole.userPresent`), so its signature also proves `user`. That is
+///   what `payOrder`'s `@authn(amr: ["user"])` asks for.
+///
+/// Not `hwk`: this server cannot tell a hardware-backed key from a software one (the example lets
+/// Windows and Linux fall back to a key in memory, `KeypairFallback.software`), and a claim the
+/// server did not check is not a fact. A server that verifies a key attestation (Android Key
+/// Attestation, App Attest) at enrolment can add it.
+#[must_use]
+pub fn amr_of(role: Role) -> &'static [&'static str] {
+    match role {
+        Role::Ambient => &["pop"],
+        Role::UserPresent => &["user", "pop"],
+    }
+}
+
+/// The caller of a verified request, through the principal contract (ADR 0021): `sub`, `did`, the
+/// `key_role`, the `amr` of [`amr_of`], `cnf.jkt`, and, for the user-present key only, `auth_time`
+/// (when it signed, the moment the user proved they were there). The ambient key never tests the
+/// user, so its requests carry no `auth_time`, and a `maxAge` requirement fails closed for them.
+#[must_use]
+pub fn principal_of(device: &Verified) -> CratestackContext {
+    let builder = CratestackContext::builder(device.subject.clone())
+        .claim("did", Value::String(device.device_id.clone()))
+        .key_role(match device.role {
+            Role::Ambient => KeyRole::Ambient,
+            Role::UserPresent => KeyRole::UserPresent,
+        })
+        .amr(amr_of(device.role).iter().copied())
+        .cnf_jkt(device.jkt.clone());
+    match device.role {
+        Role::UserPresent => builder.auth_time(device.signed_at),
+        Role::Ambient => builder,
+    }
+    .build()
+}
+
 /// Turns the verified device, if the verification layer recorded one, into the caller procedures
-/// see. It authenticates exactly when [`verify_device`] verified a device, and trusts nothing else:
-/// no header and no body is read here.
+/// see ([`principal_of`]). It authenticates exactly when [`verify_device`] verified a device, and
+/// trusts nothing else: no header and no body is read here.
 #[derive(Clone)]
 struct DeviceAuth;
 
@@ -705,19 +754,12 @@ impl AuthProvider for DeviceAuth {
         &self,
         request: &RequestContext<'_>,
     ) -> impl core::future::Future<Output = Result<CratestackContext, Self::Error>> + Send {
-        let context = request.extensions.get::<VerifiedDevice>().map_or_else(
-            CratestackContext::anonymous,
-            |VerifiedDevice(device)| {
-                CratestackContext::authenticated([
-                    ("id".to_owned(), Value::String(device.subject.clone())),
-                    ("did".to_owned(), Value::String(device.device_id.clone())),
-                    (
-                        "role".to_owned(),
-                        Value::String(device.role.name().to_owned()),
-                    ),
-                ])
-            },
-        );
+        let context = request
+            .extensions
+            .get::<VerifiedDevice>()
+            .map_or_else(CratestackContext::anonymous, |VerifiedDevice(device)| {
+                principal_of(device)
+            });
         core::future::ready(Ok(context))
     }
 }

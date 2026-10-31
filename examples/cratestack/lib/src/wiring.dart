@@ -8,7 +8,6 @@ import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:orders_client/orders_client.dart';
 
 import 'config.dart';
-import 'confirm_transport.dart';
 import 'device_server.dart';
 import 'errors.dart';
 
@@ -52,6 +51,9 @@ AuthConfig authSetup(
     server: OrdersDeviceServer(network, config.server),
     keys: keys ?? deviceKeys(),
     profile: DeviceSignatureProfile(audience: config.audience),
+    // The caption of the prompt when a step-up refusal (payOrder's `@authn`) makes the session sign
+    // a request again with the user-present key.
+    stepUpReason: 'Confirm it is you',
     renewAhead: renewAhead,
   ),
   // Signed requests go to this origin, and to no other.
@@ -72,8 +74,10 @@ final Provider<DeviceAuthBackend> deviceBackend = Provider<DeviceAuthBackend>((
 /// What connects the generated client and `fespalier_cratestack` to this app, once.
 ///
 /// - **The generated client's two seams.** `ordersClientTransportProvider` is the app's session,
-///   `authTransport` (a `SessionTransport` over the plain chain), behind [ConfirmTransport]: every
-///   generated call carries `X-Attestation` and `X-Signature`, and never `Authorization`.
+///   `authTransport` (a `SessionTransport` over the plain chain): every generated call carries
+///   `X-Attestation` and `X-Signature`, and never `Authorization`. A call the server refuses with a
+///   step-up refusal (`payOrder`'s `@authn`) is signed again by the session with the user-present
+///   key and sent once more, so no call asks for that key itself.
 ///   `ordersClientBaseUriProvider` is the server's origin. The adapter provider is left at its
 ///   default: the HTTP adapter over those two.
 /// - **The error reader** that classifies what the client throws, so a `TransportUnsent` reads as
@@ -82,9 +86,7 @@ final Provider<DeviceAuthBackend> deviceBackend = Provider<DeviceAuthBackend>((
 ///   sign-out and never shown to the next account.
 List<Override> ordersOverrides(OrdersConfig config) => [
   ordersConfig.overrideWithValue(config),
-  ordersClientTransportProvider.overrideWith(
-    (ref) => ConfirmTransport(ref.watch(authTransport)),
-  ),
+  ordersClientTransportProvider.overrideWith((ref) => ref.watch(authTransport)),
   ordersClientBaseUriProvider.overrideWithValue(config.server),
   crateStackErrors.overrideWithValue(ordersErrors),
   crateStackScope.overrideWith((ref) => ref.watch(authUserId)),

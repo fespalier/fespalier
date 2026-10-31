@@ -58,6 +58,17 @@ final class DeviceRefusal {
       return null;
     }
   }
+
+  /// Whether this is a step-up refusal (RFC 9470, since 0.25.0): a 401 whose `WWW-Authenticate`
+  /// has a challenge, **of any scheme**, with `error="insufficient_user_authentication"`, or whose
+  /// JSON body's `error` member says so. The scheme is not read because a server that verifies
+  /// device signatures still challenges with `Bearer` (CrateStack's `@authn` does, whatever its
+  /// provider), and the body is read only as a fallback: a CBOR body is not text.
+  bool get isStepUp =>
+      statusCode == 401 &&
+      (StepUpChallenge.fromResponse(statusCode, headers, schemes: null) !=
+              null ||
+          error == insufficientUserAuthentication);
 }
 
 /// Reads a refusal and says what it means for the session (since 0.21.0).
@@ -110,14 +121,34 @@ AuthVerdict webankRefusals(DeviceRefusal refusal) {
 /// [roleAttribute] (a request made with `Options(extra: {DeviceSigner.roleAttribute:
 /// KeyRole.userPresent})` under Dio). A user-present signature prompts; a refused prompt is a
 /// [UserPresenceRefused] that fails that one request and leaves the session alone.
+///
+/// **Step-up (since 0.25.0).** A request the server refuses with a step-up refusal
+/// ([DeviceRefusal.isStepUp]: RFC 9470's `insufficient_user_authentication`, which CrateStack's
+/// `@authn` answers) is sent once more, signed with the **user-present** key: the signature is the
+/// proof that the user is there. It happens at most once per request, and never:
+///
+/// * when the request may not ask the user (`Authorizer.attended` is false: its
+///   `Authorizer.stepUpAttribute` is `false`, or it is sent inside `Authorizer.unattended`), so
+///   background and queued work never prompts;
+/// * when the refused send was already signed with the user-present key;
+/// * when the device has no user-present key, or no attestation for one;
+/// * when the request has no `TransportMemo` (`SessionTransport` always gives it one).
+///
+/// In each of those cases the refusal is the answer (`StepUpRequired` in a CrateStack client). A
+/// refused prompt is a [UserPresenceRefused], which `SessionTransport` turns back into the
+/// server's refusal; the session is kept. The escalation lives in the request's memo, not in the
+/// session: a device session has no session-wide step-up (`DeviceAuthBackend.stepUp` is not
+/// implemented), because a user-present proof covers the one signature it made.
 final class DeviceSigner implements RequestAuthenticator {
   /// A signer over the device's [keys] for the API in [profile].
   ///
   /// [classify] reads refusals (Webank's rules by default). The calls in [unsignedPaths] (exact
   /// `uri.path` matches), or for which [unsigned] answers true, carry no headers at all: the
   /// enrolment and renewal legs, when they go through the session's transport. [random] makes the
-  /// `jti`s; it is `Random.secure()` unless a test passes one. Throws an `ArgumentError` when the
-  /// profile's lifetime is not positive or is longer than five minutes.
+  /// `jti`s; it is `Random.secure()` unless a test passes one. [stepUpReason] captions the prompt of
+  /// a send escalated after a step-up refusal, when the request carries no [reasonAttribute] (null:
+  /// the platform's default caption). Throws an `ArgumentError` when the profile's lifetime is not
+  /// positive or is longer than five minutes.
   DeviceSigner({
     required this.keys,
     required this.profile,
@@ -125,6 +156,7 @@ final class DeviceSigner implements RequestAuthenticator {
     this.classify = webankRefusals,
     Iterable<String> unsignedPaths = const <String>[],
     this.unsigned,
+    this.stepUpReason,
     Random? random,
   }) : unsignedPaths = Set<String>.unmodifiable(unsignedPaths),
        _random = random ?? Random.secure() {
@@ -140,7 +172,7 @@ final class DeviceSigner implements RequestAuthenticator {
   }
 
   /// This signer with another [policy], sharing everything else (keys, profile, classifier,
-  /// unsigned calls and the `jti` source).
+  /// unsigned calls, step-up caption and the `jti` source).
   DeviceSigner withPolicy(KeyRolePolicy policy) => DeviceSigner(
     keys: keys,
     profile: profile,
@@ -148,6 +180,7 @@ final class DeviceSigner implements RequestAuthenticator {
     classify: classify,
     unsignedPaths: unsignedPaths,
     unsigned: unsigned,
+    stepUpReason: stepUpReason,
     random: _random,
   );
 
@@ -182,6 +215,23 @@ final class DeviceSigner implements RequestAuthenticator {
   /// Whether a call is sent unsigned, besides [unsignedPaths]; null: none is.
   final bool Function(TransportRequest request)? unsigned;
 
+  /// The caption of the prompt for a send escalated after a step-up refusal, when the request has
+  /// no [reasonAttribute] (since 0.25.0); null for the platform's default.
+  final String? stepUpReason;
+
+  /// The memo key of a request this signer escalated to the user-present key after a step-up
+  /// refusal: every later send of it is signed with that key, and it is never escalated again.
+  static const String _escalatedKey = 'fespalier_sign_keypair.step_up';
+
+  /// Whether [request] was escalated to the user-present key.
+  static bool _escalated(TransportRequest request) =>
+      request.memo?.get<bool>(_escalatedKey) ?? false;
+
+  /// The key that signs a send of [request]: the user-present key once a step-up refusal escalated
+  /// it, the [policy]'s choice otherwise.
+  KeyRole _roleOf(TransportRequest request) =>
+      _escalated(request) ? KeyRole.userPresent : policy(request);
+
   final Random _random;
 
   bool _isUnsigned(TransportRequest request) =>
@@ -194,7 +244,7 @@ final class DeviceSigner implements RequestAuthenticator {
     TransportRequest request,
   ) async {
     if (_isUnsigned(request)) return const <String, String>{};
-    return signFor(_credential(session), request);
+    return signFor(_credential(session), request, role: _roleOf(request));
   }
 
   /// The two headers for one send of [request], signed with the key of [role] (the [policy]'s
@@ -234,7 +284,10 @@ final class DeviceSigner implements RequestAuthenticator {
       if (body.isNotEmpty) 'bdh': _hex(body),
       'aud': profile.audience,
     };
-    final reason = request.attributes[reasonAttribute];
+    final asked = request.attributes[reasonAttribute];
+    final reason = asked is String
+        ? asked
+        : (_escalated(request) ? stepUpReason : null);
     final signature = await refusingPrompts(
       chosen,
       () => compactJws(
@@ -249,7 +302,7 @@ final class DeviceSigner implements RequestAuthenticator {
         },
         claims,
         signer,
-        reason: reason is String ? reason : null,
+        reason: reason,
       ),
     );
     return <String, String>{
@@ -268,15 +321,40 @@ final class DeviceSigner implements RequestAuthenticator {
     required bool retried,
   }) {
     if (_isUnsigned(request)) return const Accept();
-    return classify(
-      DeviceRefusal(
-        role: policy(request),
-        statusCode: statusCode,
-        headers: headers,
-        body: body,
-        retried: retried,
-      ),
+    final refusal = DeviceRefusal(
+      role: _roleOf(request),
+      statusCode: statusCode,
+      headers: headers,
+      body: body,
+      retried: retried,
     );
+    if (refusal.isStepUp) return _stepUp(session, request, refusal.role);
+    return classify(refusal);
+  }
+
+  /// A step-up refusal of a send signed with [role]: send the request once more, with the
+  /// user-present key ([Resend]; [headers] signs the next send with it), or let the refusal stand
+  /// ([Accept]). A [Resend] and not a `StepUp`: nothing about the session changes, and the prompt
+  /// is the signature of the next send, so a refused prompt fails that send (a
+  /// [UserPresenceRefused], which `SessionTransport` answers with this refusal).
+  AuthVerdict _stepUp(
+    AuthSession session,
+    TransportRequest request,
+    KeyRole role,
+  ) {
+    final memo = request.memo;
+    final credential = session.credential;
+    if (role == KeyRole.userPresent ||
+        memo == null ||
+        memo.get<bool>(_escalatedKey) != null ||
+        !Authorizer.attended(request) ||
+        keys.userPresent == null ||
+        credential is! DeviceCredential ||
+        credential.attestation(KeyRole.userPresent) == null) {
+      return const Accept();
+    }
+    memo.set(_escalatedKey, true);
+    return const Resend();
   }
 
   DeviceCredential _credential(AuthSession session) {

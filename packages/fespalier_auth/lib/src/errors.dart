@@ -82,3 +82,15 @@ final class NotSignedIn extends StateError {
   /// The error for a request made with no session.
   NotSignedIn() : super('fespalier_auth: not signed in');
 }
+
+/// What a `RequestAuthenticator` throws from `headers` when the user declined the proof one send
+/// needed (since 0.25.0): a biometric or device-credential prompt for a stronger key, say
+/// (`UserPresenceRefused` in `package:fespalier_sign_keypair` is one). Not a lost session: nothing
+/// is signed out.
+///
+/// On the first send of a request it fails that request, as any error of `headers` does. On a send
+/// the session makes again after a verdict (a replay, `transportReplayKey`), `SessionTransport`
+/// hands back the response that asked for the replay instead: the server's refusal stands, so the
+/// caller reads the server's answer (a step-up refusal, `StepUpRequired` in a CrateStack client)
+/// rather than the prompt's.
+abstract interface class ProofDeclined implements Exception {}

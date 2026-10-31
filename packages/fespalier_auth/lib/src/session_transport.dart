@@ -28,7 +28,9 @@ const int _maxJudgedBody = 64 * 1024;
 /// request waits for one shared renewal. What a response means is the authenticator's to say
 /// (`AuthVerdict`): a 401 renews once and sends the request again, a nonce challenge sends it
 /// again with the nonce, and a step-up refusal (RFC 9470, since 0.25.0) asks the user once and
-/// sends it again. At most four sends per request (one resend, one renewal, one step-up), and
+/// sends it again. When the user declines the proof a send made again needs (a `ProofDeclined`
+/// from the authenticator, since 0.25.0), the response that asked for it is the answer (a 401 or
+/// a 403 of at most 64 KiB, which is read; the `ProofDeclined` itself otherwise). At most four sends per request (one resend, one renewal, one step-up), and
 /// **every send is authorized again**
 /// with the exact bytes of the body, so a signature is fresh each time; a send that follows a
 /// verdict carries `transportReplayKey` in its attributes, which a write guard lets through. The
@@ -84,7 +86,7 @@ final class SessionTransport implements HttpTransport {
       return _refuse(memo, const AuthRejected());
     }
     try {
-      return await _send(request, memo);
+      return await _send(request, _withMemo(request, memo), memo);
     } on AuthRejected catch (error) {
       memo.set(_refusedKey, error);
       rethrow;
@@ -102,11 +104,13 @@ final class SessionTransport implements HttpTransport {
     throw error;
   }
 
+  /// Sends [request], authorized as [judged] (the same request, with [memo] in its attributes).
   Future<TransportResponse> _send(
     TransportRequest request,
+    TransportRequest judged,
     TransportMemo memo,
   ) async {
-    var attempt = await authorizer.authorize(request);
+    var attempt = await authorizer.authorize(judged);
     if (attempt.session case final session?) {
       memo.putIfAbsent(_userKey, session.user.id);
     }
@@ -128,10 +132,20 @@ final class SessionTransport implements HttpTransport {
         rethrow;
       }
       if (!again || !request.replayable) return response;
+      // Drained before the replay is authorized: what happens while it drains (a sign-out, another
+      // user) is what the replay is authorized against.
       await _discard(response);
       final renewedBefore = attempt.renewed;
       final steppedUpBefore = attempt.steppedUp;
-      attempt = await authorizer.authorize(request, previous: attempt);
+      try {
+        attempt = await authorizer.authorize(judged, previous: attempt);
+      } on ProofDeclined {
+        // The user declined the proof the replay needed (since 0.25.0): the server's answer that
+        // asked for it stands (a 401 or a 403 was read, so it can be handed on), and the session
+        // is left as it is.
+        if (response.isBuffered) return response;
+        rethrow;
+      }
       // The previous attempt carried headers (retry() says yes only then): the user signed out
       // while the answer was read. The replay is not sent without the session.
       if (attempt.request == null) throw const AuthRejected();
@@ -146,6 +160,20 @@ final class SessionTransport implements HttpTransport {
     }
   }
 }
+
+/// [request] as the authorizer and the authenticator see it (since 0.25.0): with [memo] in its
+/// attributes, whether or not its client keeps one, so what the authenticator settled on one send
+/// (a key it escalated to) holds for the next. What is sent below is [request] itself, its
+/// attributes as the caller gave them.
+TransportRequest _withMemo(TransportRequest request, TransportMemo memo) =>
+    request.memo != null
+    ? request
+    : request.copyWith(
+        attributes: <String, Object?>{
+          ...request.attributes,
+          TransportMemo.key: memo,
+        },
+      );
 
 /// The memo keys `SessionTransport` owns: the `AuthRejected` that stopped the request, the id of
 /// the user it was authorized for, and the number of renewals and step-ups it has spent.

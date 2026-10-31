@@ -1,3 +1,4 @@
+import 'package:fespalier_auth/fespalier_auth.dart' show ProofDeclined;
 import 'package:fespalier_keypair/fespalier_keypair.dart';
 
 /// A user-present signature was not made (since 0.21.0): the user cancelled the biometric or
@@ -8,7 +9,11 @@ import 'package:fespalier_keypair/fespalier_keypair.dart';
 /// prompt, and the session, the ambient key and every ordinary request go on working. A screen
 /// shows "confirmation cancelled" and lets the user try again. [code] says which of the three it
 /// was; [cause] is the platform's own error.
-final class UserPresenceRefused implements Exception {
+///
+/// It is a `ProofDeclined` (since 0.25.0): when the prompt was for a send the session makes again
+/// after a step-up refusal (`DeviceSigner` escalates to the user-present key), `SessionTransport`
+/// answers with the server's refusal instead of this error, and the session is kept.
+final class UserPresenceRefused implements Exception, ProofDeclined {
   /// A refused prompt: the platform's [cause].
   const UserPresenceRefused(this.cause);
 

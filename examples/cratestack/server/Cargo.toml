@@ -16,11 +16,13 @@ name = "orders-demo-server"
 path = "src/main.rs"
 
 [dependencies]
-# Schema macros emit `::cratestack::*` paths, hence the rename. The released 0.15.4: the generated
-# Dart client (CrateStack's own commit 642fc9ab, which is not in a release yet) speaks the same
-# `/rpc/{op_id}` wire, and the end-to-end test proves it.
-cratestack = { package = "cratestack-api", version = "=0.15.4", default-features = false }
-cratestack-codec-cbor = { version = "=0.15.4", default-features = false }
+# Schema macros emit `::cratestack::*` paths, hence the rename. CrateStack's main at
+# f78e71d2382cf873acf8c7d1a6d89d26f84cffb5, by commit: `@authn` (cratestack/cratestack#1244, the
+# step-up rule `payOrder` declares in schema.cstack) is in no release yet (0.17.0 is the newest on
+# crates.io). The same commit as CRATESTACK_REV in scripts/cratestack-client.sh, which builds the
+# CLI the Dart client is generated with, so both sides speak one wire; move them together.
+cratestack = { package = "cratestack-api", git = "https://github.com/cratestack/cratestack", rev = "f78e71d2382cf873acf8c7d1a6d89d26f84cffb5", default-features = false }
+cratestack-codec-cbor = { git = "https://github.com/cratestack/cratestack", rev = "f78e71d2382cf873acf8c7d1a6d89d26f84cffb5", default-features = false }
 # The generated structs derive through bare `serde::` paths.
 serde = { version = "1", features = ["derive"] }
 async-trait = "0.1"

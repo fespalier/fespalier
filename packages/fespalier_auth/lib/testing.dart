@@ -109,10 +109,15 @@ typedef FakeVerdict =
 /// `n` counts the sends it was asked about (so every send is visibly signed afresh), and by
 /// default answers `StepUp` to a 401 with an RFC 9470 challenge
 /// (`StepUpChallenge.fromResponse`, since 0.25.0), `Renew` to any other 401 and `Accept` to
-/// anything else. Set [verdict] to say otherwise. Every request it was asked to sign is in [signed], with its body.
+/// anything else. Set [verdict] to say otherwise, and [refuse] to make a send fail to sign. Every
+/// request it was asked to sign is in [signed], with its body.
 final class FakeAuthenticator implements RequestAuthenticator {
   /// An authenticator that adds [headerName].
-  FakeAuthenticator({this.headerName = 'x-fake-credential', this.verdict});
+  FakeAuthenticator({
+    this.headerName = 'x-fake-credential',
+    this.verdict,
+    this.refuse,
+  });
 
   /// The header it adds.
   final String headerName;
@@ -120,6 +125,10 @@ final class FakeAuthenticator implements RequestAuthenticator {
   /// What a response means; null: a 401 is a `StepUp` when it carries a step-up challenge, else
   /// a `Renew`; anything else is `Accept`.
   FakeVerdict? verdict;
+
+  /// What `headers` throws for a request instead of signing it, when it answers one (since
+  /// 0.25.0): a `ProofDeclined` plays a user who declined a prompt. Null, or a null answer, signs.
+  Object? Function(TransportRequest request)? refuse;
 
   /// A request `headers` was asked about, in order.
   final List<TransportRequest> signed = [];
@@ -133,6 +142,8 @@ final class FakeAuthenticator implements RequestAuthenticator {
     TransportRequest request,
   ) async {
     signed.add(request);
+    final refusal = refuse?.call(request);
+    if (refusal != null) throw refusal;
     final credential = session.credential;
     final id = credential is FakeCredential ? credential.id : '$credential';
     return {headerName: '$id#${signed.length}'};

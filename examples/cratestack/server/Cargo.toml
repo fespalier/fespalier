@@ -16,12 +16,12 @@ name = "orders-demo-server"
 path = "src/main.rs"
 
 [dependencies]
-# Schema macros emit `::cratestack::*` paths, hence the rename. CrateStack 0.17.1, the first release
-# with `@authn` (cratestack/cratestack#1244, the step-up rule `payOrder` declares in schema.cstack),
-# pinned exactly. CRATESTACK_REV in scripts/cratestack-client.sh is that release's tag commit, which
+# Schema macros emit `::cratestack::*` paths, hence the rename. CrateStack 0.17.2, pinned exactly:
+# `@authn` (cratestack/cratestack#1244, the step-up rule `payOrder` declares in schema.cstack) since
+# 0.17.1, and since 0.17.2 no recorded refusal under an Idempotency-Key (cratestack/cratestack#1261). CRATESTACK_REV in scripts/cratestack-client.sh is that release's tag commit, which
 # builds the CLI the Dart client is generated with, so both sides speak one wire; move them together.
-cratestack = { package = "cratestack-api", version = "=0.17.1", default-features = false }
-cratestack-codec-cbor = { version = "=0.17.1", default-features = false }
+cratestack = { package = "cratestack-api", version = "=0.17.2", default-features = false }
+cratestack-codec-cbor = { version = "=0.17.2", default-features = false }
 # The generated structs derive through bare `serde::` paths.
 serde = { version = "1", features = ["derive"] }
 async-trait = "0.1"

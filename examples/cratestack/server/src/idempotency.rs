@@ -124,18 +124,6 @@ impl IdempotencyStore for MemoryIdempotency {
     ) -> Result<(), CratestackError> {
         let mut entries = self.entries.lock().unwrap_or_else(PoisonError::into_inner);
         let id = (principal.to_owned(), key.to_owned());
-        if status == 401 {
-            // An authentication refusal ran nothing, so it is not the answer to keep: the key is
-            // released and the same request may be sent again under it. That is what the step-up
-            // needs: `payOrder`'s `@authn` refuses the ambient key with a 401 before the procedure
-            // runs, and the session sends the very same request (same key, same body, same user)
-            // signed with the user-present key; a recorded 401 would be replayed to it. Every
-            // other 401 of this server is answered by the verification layer, in front of this one.
-            if entries.get(&id).is_some_and(|entry| entry.token == token) {
-                entries.remove(&id);
-            }
-            return Ok(());
-        }
         if let Some(entry) = entries.get_mut(&id)
             && entry.token == token
         {

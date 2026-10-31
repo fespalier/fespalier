@@ -6,7 +6,7 @@ A [CrateStack](https://cratestack.dev) backend, a Flutter client **generated** f
 no token, no `Authorization` header. A small orders app that shows how the three fit together, with tests on both sides
 and a cross-language end-to-end test (Dart signs, Rust verifies).
 
-- [`server/`](server) is a standalone Rust crate, `cratestack-api` 0.17.1 (the first release with `@authn`), no
+- [`server/`](server) is a standalone Rust crate, `cratestack-api` 0.17.2 (`@authn` since 0.17.1; 0.17.2 keeps no `Idempotency-Key` for a refusal), no
   database. `schema.cstack` is the contract: four **public** procedures (`beginEnrolment`,
   `confirmEnrolment`, `beginRenewal`, `confirmRenewal`) and the signed ones (`listOrders`, `getOrder`, `placeOrder`,
   `payOrder`, `account`, `revokeDevice`), and `payOrder`'s **step-up rule**, `@authn(amr: ["user"])`. It issues attestations
@@ -147,9 +147,9 @@ signs out on it), so enrol again.
   is not released, so the default (`v0.21.0`) resolves to nothing yet; inside this repository `pubspec.yaml` overrides it
   with the checkout anyway, so the pin is never fetched. A commit is not a `ref: v...`, which `cli/tests/versions.rs` reads
   as fespalier's own version and release-please would never bump. In your own app leave `--fespalier-ref` out.
-- **CrateStack is pinned to 0.17.1, on both sides**: the server's two CrateStack dependencies are `=0.17.1`, the first
+- **CrateStack is pinned to 0.17.2, on both sides**: the server's two CrateStack dependencies are `=0.17.2`, the first
   release with `@authn` and the generated clients' `StepUpRequired` (cratestack/cratestack#1244), and `CRATESTACK_REV` in
-  `scripts/cratestack-client.sh` is the commit of its tag `v0.17.1`, which the CLI is built from (a commit, never a tag
+  `scripts/cratestack-client.sh` is the commit of its tag `v0.17.2`, which the CLI is built from (a commit, never a tag
   name). `just cratestack-cli` installs the CLI. `--no-native-cbor`: the pure-Dart `cbor`, so the client needs no native
   library.
 - **Step-up is the server's rule, and the session follows it.** `payOrder` declares `@authn(amr: ["user"])` (RFC 8176
@@ -160,10 +160,10 @@ signs out on it), so enrol again.
 error="insufficient_user_authentication"` on the RPC unary response too (the body is CBOR, so the client reads the
   header); the session's `DeviceSigner` signs the same request again with the user-present key and sends it once more
   (since 0.25.0). Nothing in the app asks for the key: the confirm header and `ConfirmTransport` of 0.21.0 are gone.
-- **A step-up refusal does not keep the `Idempotency-Key`.** CrateStack's idempotency layer records every answer but an
-  aborted transaction, a 401 included, and the session's retry is the very same request under the same key, so a kept 401
-  would be replayed to it. The server's store (`server/src/idempotency.rs`) releases the key on a 401: an authentication
-  refusal ran nothing. (Upstream: CrateStack should not record an `AuthRefusal`.)
+- **A step-up refusal does not keep the `Idempotency-Key`.** The session's retry is the very same request under the same
+  key. Since CrateStack 0.17.2 (cratestack/cratestack#1261) the idempotency layer releases the key for a refusal the
+  generated dispatch makes before the procedure runs (`@authn`'s among them), so the retry runs once; on 0.17.1 the 401
+  was recorded and replayed, and this example's store released it by hand.
 - **The generated files are committed.** `client/` (the generator's output, formatted, and `*.g.dart`, `*.mapper.dart`,
   `*.builder.dart` from `build_runner`) is in the repository, like `lib/app.g.dart`, so a clone builds with `flutter pub
 get`. `scripts/cratestack-client.sh check` generates again into a temporary directory and compares everything the

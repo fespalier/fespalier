@@ -1,6 +1,6 @@
 name: fespalier_dio
 description: Dio for fespalier — Dio as a fespalier_transport transport and a Dio over one, requests cancelled with their page, server validation errors on fespalier_forms forms, and writes that are never retried.
-version: 0.24.1 # x-release-please-version
+version: 0.25.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -29,14 +29,14 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   # HttpTransport, which DioTransport implements and TransportAdapter takes (since 0.21.0), and the
   # one write rule WriteGuard shares with every transport.
   fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_transport
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   # FetchHttpClientAdapter (lib/fetch.dart, since 0.25.0): fetch, AbortController and the body's
   # ReadableStream, in a web build only. 0.5.0 is where these are extension types, which dart2js
   # and dart2wasm both compile; 1.1.2 asks for Dart 3.13, so the 3.35 floor resolves 1.1.1.
@@ -48,7 +48,7 @@ dev_dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   # The tests run WriteGuard against the retry interceptor apps actually use, with zero delays.
   dio_smart_retry: ^7.0.1
   # The browser harness (test/browser/harness.dart, `just fetch-adapter`) reads an event stream
@@ -58,14 +58,14 @@ dev_dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_http
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   # The browser harness reads events with fespalier_stream's wire layer (EventSource), which has
   # no Flutter in it, over both transports.
   fespalier_stream:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_stream
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

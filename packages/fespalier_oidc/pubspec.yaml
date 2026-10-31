@@ -1,6 +1,6 @@
 name: fespalier_oidc
 description: OpenID Connect (PKCE, Keycloak) and bearer-token sessions for fespalier_auth — a token credential, the Bearer authenticator, DPoP's proof-of-possession seam and a browser or password sign-in.
-version: 0.24.1 # x-release-please-version
+version: 0.25.0 # x-release-please-version
 # Not published to pub.dev: apps depend on it through the repository, next to fespalier (see the README).
 publish_to: 'none'
 homepage: https://github.com/fespalier/fespalier
@@ -25,20 +25,20 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   # AuthBackend, AuthSession, the notifier: what this package is a backend for.
   fespalier_auth:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_auth
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
   # HttpTransport: the only way this package sends a request (the token endpoint, discovery,
   # revocation), so it links neither package:http nor Dio.
   fespalier_transport:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_transport
-      ref: v0.24.1 # x-release-please-version
+      ref: v0.25.0 # x-release-please-version
 
 dev_dependencies:
   flutter_lints: ^6.0.0

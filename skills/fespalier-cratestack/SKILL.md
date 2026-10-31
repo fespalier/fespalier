@@ -90,7 +90,7 @@ prompt inside `Authorizer.unattended(...)`, since 0.25.0, instead of setting `Au
 exception wraps the transport's failure as its `cause` (read the cause with `TransportFailures.read`). `examples/cratestack`
 does all of it.
 
-**Step-up, `@authn` (since 0.25.0; CrateStack's cratestack/cratestack#1244, in no release yet).** A procedure that declares
+**Step-up, `@authn` (since 0.25.0; CrateStack's cratestack/cratestack#1244, released in CrateStack 0.17.1).** A procedure that declares
 `@authn(maxAge:, amr:, acr:)` refuses a caller whose authentication falls short with RFC 9470's 401: `error:
 "insufficient_user_authentication"` and `details` in the envelope, and `WWW-Authenticate: Bearer error=...` on REST and on
 RPC unary responses (the body is CBOR, so the session reads the header). The session completes it before the call returns:

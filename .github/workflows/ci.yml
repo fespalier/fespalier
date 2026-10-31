@@ -1084,7 +1084,7 @@ jobs:
   # builds the server and runs that test against it with FSP_REQUIRE_ORDERS_SERVER=1, which fails the test instead of
   # skipping it, so the job cannot go green by not running the server. Dart signs and Rust verifies: that is the
   # cross-language check. It also generates the client again, with the CLI built from the CrateStack commit that
-  # scripts/cratestack-client.sh names (the preset is in no release yet), and fails when the committed client differs.
+  # scripts/cratestack-client.sh names (v0.17.1's tag commit), and fails when the committed client differs.
   # It is not in the `floor` job: fespalier_sign_keypair needs Flutter 3.44. `just cratestack` runs the same steps.
   cratestack:
     name: CrateStack example (server, generated client and app, end to end)
@@ -1130,8 +1130,8 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
-      # The CLI at a commit, not a tag or a release: `@authn` and the generated clients' `StepUpRequired`
-      # (cratestack/cratestack#1244) are in no release yet. The server pins the same commit.
+      # The CLI at a commit, never a tag name: the commit of CrateStack's tag v0.17.1, the first release with `@authn`
+      # and the generated clients' `StepUpRequired` (cratestack/cratestack#1244). The server pins =0.17.1.
       - name: Install the cratestack CLI (the pinned commit)
         run: scripts/cratestack-client.sh install
       - name: The committed client is what the schema generates

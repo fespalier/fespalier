@@ -6,8 +6,8 @@ A [CrateStack](https://cratestack.dev) backend, a Flutter client **generated** f
 no token, no `Authorization` header. A small orders app that shows how the three fit together, with tests on both sides
 and a cross-language end-to-end test (Dart signs, Rust verifies).
 
-- [`server/`](server) is a standalone Rust crate, `cratestack-api` at CrateStack's commit `f78e71d` (for `@authn`, in no
-  release yet), no database. `schema.cstack` is the contract: four **public** procedures (`beginEnrolment`,
+- [`server/`](server) is a standalone Rust crate, `cratestack-api` 0.17.1 (the first release with `@authn`), no
+  database. `schema.cstack` is the contract: four **public** procedures (`beginEnrolment`,
   `confirmEnrolment`, `beginRenewal`, `confirmRenewal`) and the signed ones (`listOrders`, `getOrder`, `placeOrder`,
   `payOrder`, `account`, `revokeDevice`), and `payOrder`'s **step-up rule**, `@authn(amr: ["user"])`. It issues attestations
   from its own issuer key and verifies **every other request** with the profile of `fespalier_sign_keypair`.
@@ -147,10 +147,10 @@ signs out on it), so enrol again.
   is not released, so the default (`v0.21.0`) resolves to nothing yet; inside this repository `pubspec.yaml` overrides it
   with the checkout anyway, so the pin is never fetched. A commit is not a `ref: v...`, which `cli/tests/versions.rs` reads
   as fespalier's own version and release-please would never bump. In your own app leave `--fespalier-ref` out.
-- **CrateStack is pinned by commit, on both sides** (`CRATESTACK_REV` in `scripts/cratestack-client.sh`, and the `git`
-  `rev` of the server's two CrateStack dependencies, the same commit): `@authn` and the generated clients' `StepUpRequired`
-  (cratestack/cratestack#1244) are in no release (0.17.0 is the latest on crates.io). `just cratestack-cli` installs the CLI.
-  Pin a release exactly once one carries `@authn`. `--no-native-cbor`: the pure-Dart `cbor`, so the client needs no native
+- **CrateStack is pinned to 0.17.1, on both sides**: the server's two CrateStack dependencies are `=0.17.1`, the first
+  release with `@authn` and the generated clients' `StepUpRequired` (cratestack/cratestack#1244), and `CRATESTACK_REV` in
+  `scripts/cratestack-client.sh` is the commit of its tag `v0.17.1`, which the CLI is built from (a commit, never a tag
+  name). `just cratestack-cli` installs the CLI. `--no-native-cbor`: the pure-Dart `cbor`, so the client needs no native
   library.
 - **Step-up is the server's rule, and the session follows it.** `payOrder` declares `@authn(amr: ["user"])` (RFC 8176
   `user`, a user-presence test). The server's principal says how a request was signed: `amr` `["user", "pop"]` and an

@@ -8,8 +8,8 @@
 #                                           when the committed client is stale against the schema
 #
 # Needs the `cratestack` CLI built from CrateStack's commit CRATESTACK_REV (`just cratestack-cli`
-# installs it: the preset is merged there, cratestack/cratestack#1206, and is in no release yet) and
-# Flutter's `dart`. `generate` also needs network (`flutter pub get` and build_runner).
+# installs it: the commit of the v0.17.1 tag, the release the server pins exactly, with the preset,
+# cratestack/cratestack#1206, and `@authn`, cratestack/cratestack#1244) and Flutter's `dart`. `generate` also needs network (`flutter pub get` and build_runner).
 #
 # The CLI goes into a folder of its own, named after the commit (CRATESTACK_CLI_ROOT, by default
 # ~/.cache/fespalier/cratestack-<rev>), and this script runs that binary and no other: a `cratestack`
@@ -22,8 +22,9 @@
 # compared: their text depends on the builders' resolution, and a stale one does not compile.
 set -euo pipefail
 
-# Where the preset is merged: CrateStack's main at the merge of cratestack/cratestack#1206.
-CRATESTACK_REV=f78e71d2382cf873acf8c7d1a6d89d26f84cffb5
+# CrateStack 0.17.1: the commit its tag v0.17.1 names, the release examples/cratestack/server pins
+# (`=0.17.1`). A commit and not the tag, like FESPALIER_REF below; move both sides together.
+CRATESTACK_REV=3278bf7a8611480af735f9db6532c087ce245e54
 # The fespalier commit the generated pubspec pins fespalier_transport at (`--fespalier-ref`). A
 # commit and not a tag: the pin is never read by anything in this repository (the example overrides
 # fespalier_transport with the checkout, see its pubspec.yaml), a `ref: v...` in a pubspec is read by

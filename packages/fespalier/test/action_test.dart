@@ -387,6 +387,7 @@ void main() {
         final run = c.read(p.notifier).call(1);
         sub.close();
         expect(
+          // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
           c.exists(p),
           isTrue,
           reason: 'alive while the write is in flight',
@@ -396,6 +397,7 @@ void main() {
         expect(await run, 1);
         // Dropped once it is over, and it refreshed the data.
         await c.pump();
+        // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
         expect(c.exists(p), isFalse);
         await c.read(counted.data('a').future);
         expect(counted.builds['a'], 2);

@@ -114,10 +114,12 @@ void main() {
       final container = await pumpRouter(tester, AppRoutes.router());
       final handle = const ProductRoute(id: 2).preload(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isTrue);
       expect(AppRoutes.deferred.every((l) => l.isLoaded), isTrue);
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isFalse);
       // The data goes with the handle; the code, once loaded, stays.
       expect(AppRoutes.deferred.every((l) => l.isLoaded), isTrue);

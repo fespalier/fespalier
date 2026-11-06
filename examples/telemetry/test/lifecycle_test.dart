@@ -105,25 +105,28 @@ void main() {
     ]);
   });
 
-  testWidgets(
-    "the order page's scope holds its data and runs onLeave at leave",
-    (tester) async {
-      scopeLog.clear();
-      final router = AppRoutes.router(initialLocation: '/orders/1');
-      final c = await boot(tester, router);
-      expect(c.exists(OrderRoute.data(1)), isTrue);
-      // Another id is another page instance: the scope of order 1 ends.
-      router.go('/orders/2');
-      await tester.pumpAndSettle();
-      expect(scopeLog, ['order 1 scope left']);
-      expect(c.exists(OrderRoute.data(1)), isFalse);
-      expect(c.exists(OrderRoute.data(2)), isTrue);
-      router.go('/login');
-      await tester.pumpAndSettle();
-      expect(scopeLog, ['order 1 scope left', 'order 2 scope left']);
-      expect(c.exists(OrderRoute.data(2)), isFalse);
-    },
-  );
+  testWidgets("the order page's scope holds its data and runs onLeave at leave", (
+    tester,
+  ) async {
+    scopeLog.clear();
+    final router = AppRoutes.router(initialLocation: '/orders/1');
+    final c = await boot(tester, router);
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
+    expect(c.exists(OrderRoute.data(1)), isTrue);
+    // Another id is another page instance: the scope of order 1 ends.
+    router.go('/orders/2');
+    await tester.pumpAndSettle();
+    expect(scopeLog, ['order 1 scope left']);
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
+    expect(c.exists(OrderRoute.data(1)), isFalse);
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
+    expect(c.exists(OrderRoute.data(2)), isTrue);
+    router.go('/login');
+    await tester.pumpAndSettle();
+    expect(scopeLog, ['order 1 scope left', 'order 2 scope left']);
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
+    expect(c.exists(OrderRoute.data(2)), isFalse);
+  });
 
   testWidgets('only the scope keeps the order loaded once its page is not built', (
     tester,
@@ -134,6 +137,7 @@ void main() {
     // on the router's stack, and the scope's `hold` is all that keeps it out of autoDispose.
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(c.pump);
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     expect(c.exists(OrderRoute.data(1)), isTrue);
   });
 }

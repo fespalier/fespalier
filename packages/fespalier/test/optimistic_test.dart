@@ -186,6 +186,7 @@ void main() {
     expect(find.text('a,b'), findsOneWidget);
     await tester.pumpWidget(host(const SizedBox()));
     await tester.pump();
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     expect(container.exists(_layer), isFalse);
     gates['b']!.complete();
     await done;
@@ -332,9 +333,11 @@ void main() {
     final done = container.read(_add.notifier);
     gates['b'] = Completer();
     final write = done.call('b') as Future<void>;
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     expect(container.exists(_layer), isFalse);
     gates['b']!.complete();
     await write;
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     expect(container.exists(_layer), isFalse);
     expect(items, ['a', 'b']);
   });

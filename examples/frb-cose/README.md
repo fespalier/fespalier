@@ -9,7 +9,7 @@ It is the notes app of [`examples/cose`](../cose/README.md) with a different spl
 - **A change stream with one subscription.** The core reports its registrations, its forgotten keys and its calls on a `Stream`, and [`fespalier_frb`](../../packages/fespalier_frb) turns it into the feed the `/core` page watches.
 - **The device key in Dart.** [`fespalier_keypair`](../../packages/fespalier_keypair) holds the key: a `HardwareKeypairSigner` (the Secure Enclave or the AndroidKeyStore) on a device, a `SoftwareKeypairSigner` elsewhere, as in `examples/cose`.
 
-Read it with the skills [`fespalier-cratestack`](../../skills/fespalier-cratestack/SKILL.md) (the wiring) and [`fespalier-data`](../../skills/fespalier-data/SKILL.md) (its change feeds). The guide is [`docs/examples.md`](../../docs/examples.md#frb-cose).
+Read it with the skills [`fespalier-frb`](../../skills/fespalier-frb/SKILL.md) (the layout of an app with a Rust core, which this example sets), [`fespalier-cratestack`](../../skills/fespalier-cratestack/SKILL.md) (the wiring) and [`fespalier-data`](../../skills/fespalier-data/SKILL.md) (its change feeds). The guide is [`docs/examples.md`](../../docs/examples.md#frb-cose).
 
 ## Screenshots
 

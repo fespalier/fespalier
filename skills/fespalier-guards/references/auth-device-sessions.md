@@ -30,9 +30,17 @@ before they are sent, and the signature covers them. Send the body as bytes ...`
 - **The enrolment and renewal calls are unsigned by name, not by origin.** Send them through the transport you gave
   `AuthConfig.transport` (no session on it), or list their paths in `DeviceAuthBackend(unsignedPaths: [...])` when they go
   through `authTransport`. A signed enrolment would need a session that does not exist yet.
-- **The server decides what is renewable and what is dead, by status and by the `error` of a JSON body.** The default
-  classifier `webankRefusals` reads Webank's codes; a server that says something else is `Accept` (ambiguous: the session is
-  never wiped and a request never loops). Replace it with `classify:`.
+- **The server decides what is renewable and what is dead, by status and by the `error` of a JSON body** (or, since the
+  release after 0.25.0, of a `WWW-Authenticate: DeviceSignature error="..."` challenge when the body has none). The default
+  classifier `webankRefusals` reads the refusal table of Authkestra's device-signature profile v1 (since the release after
+  0.25.0) and Webank's old names (`DEVICE_REVOKED`, `replay`, `mismatch`); a server that says something else, or a code at
+  another status than its own, is `Accept` (ambiguous: the session is never wiped and a request never loops). Replace it
+  with `classify:`.
+- **The attestation's `att` is an object (since the release after 0.25.0).** Profile v1: `att.status` must be `"active"`
+  (else `device_not_active`), and only `att.role == "user_present"` (snake case, never Dart's `userPresent`) is the
+  user-present key; anything else is the ambient key. The issuer's header carries a `kid`, and `verifyDeviceSignature`'s
+  `issuerKeys` each need one. An issuer of your own that still mints `att` as a string, or a top-level `status`, is refused
+  `malformed`.
 - **Sign-out flips the state first.** `signOut()` sets `SignedOut(reason: SignOutReason.user)` before anything else, then the
   revoke call runs, signed with the user-present key when the device has one, so **the prompt appears after the UI has already
   moved on**. A refused prompt or a failed revoke still ends in a signed-out device with no keys.
@@ -95,9 +103,9 @@ sequenceDiagram
 stateDiagram-v2
   [*] --> SignedOut
   SignedOut --> SignedIn: enrolment (two unsigned legs)
-  SignedIn --> SignedIn: renewal (ambient attestation within 12 h of expiry, or 401 attestation_expired, device_not_active)
+  SignedIn --> SignedIn: renewal (ambient attestation within 12 h of expiry, or 401 attestation_expired, device_not_active, unknown_kid)
   SignedIn --> SignedOut_keyLost: 401 key_not_bound, bad_jwk, missing_credential; or a restore finds the ambient key gone
-  SignedIn --> SignedOut_revoked: 403 DEVICE_REVOKED; or the server refuses a renewal (AuthRejected)
+  SignedIn --> SignedOut_revoked: 403 device_revoked; or the server refuses a renewal (AuthRejected)
   SignedIn --> SignedOut_user: signOut (revoke, then both keys deleted)
 ```
 
@@ -108,15 +116,21 @@ it, `confirmRenewal` returns a fresh attestation. It is lazy (the first request 
 when a server refuses it, and that renewal prompts. An `AuthRejected` from `beginRenewal` or `confirmRenewal` (the device is
 dead) ends the session as `SignOutReason.revoked`; anything else (offline, a 5xx) keeps it.
 
-**The classifier.** `webankRefusals` (the default `classify:`) sorts a refusal by status and the lower-cased `error` of its JSON
-body (`DeviceRefusal.error`):
+**The classifier.** `webankRefusals` (the default `classify:`, also `deviceSignatureRefusals`) sorts a refusal by status and the
+lower-cased `error` of its JSON body, or of its `DeviceSignature` challenge (`DeviceRefusal.error`), with the table of
+Authkestra's device-signature profile v1 (since the release after 0.25.0; `DeviceRefusals.actionOf`):
 
-| Answer                                               | Verdict                                                        |
-| ---------------------------------------------------- | -------------------------------------------------------------- |
-| 401 `attestation_expired`, `device_not_active`       | `Renew` the attestation of the key that signed, send once more |
-| 401 `key_not_bound`, `bad_jwk`, `missing_credential` | `SessionEnded(SignOutReason.keyLost)`: both keys deleted       |
-| 403 `DEVICE_REVOKED`                                 | `SessionEnded(SignOutReason.revoked)`: both keys deleted       |
-| anything else                                        | `Accept`: the response stands, nothing is wiped, nothing loops |
+| Answer                                                                        | Verdict                                                        |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| 401 `attestation_expired`, `device_not_active`, `unknown_kid`                 | `Renew` the attestation of the key that signed, send once more |
+| 401 `key_not_bound`, `bad_jwk`, `missing_credential`                          | `SessionEnded(SignOutReason.keyLost)`: both keys deleted       |
+| 403 `device_revoked` (or `DEVICE_REVOKED`)                                    | `SessionEnded(SignOutReason.revoked)`: both keys deleted       |
+| 401 `insufficient_user_authentication`                                        | step-up: signed again with the user-present key, once          |
+| anything else (`replay_detected`, a `*_mismatch`, `malformed`, `replay`, ...) | `Accept`: the response stands, nothing is wiped, nothing loops |
+
+A server answers a refusal with the status, `Content-Type: application/json`, the body exactly `{"error":"<code>"}` and, for a
+401, `WWW-Authenticate: DeviceSignature error="<code>"`: `DeviceRefusals.body`, `.challenge` and `.headers` (or
+`DeviceSignatureInvalid.statusCode`, `.headers` and `.body`) build it.
 
 ## Wire it
 
@@ -334,16 +348,24 @@ The device-sessions example, `examples/device`, runs this whole flow (enrolment,
 ## On the server and in tests
 
 `package:fespalier_sign_keypair/verify.dart` is pure Dart, for a demo server and for tests. `verifyDeviceSignature(method:, uri:,
-headers:, body:, profile:, issuerKeys:, seenJtis:)` checks, in order: the attestation's issuer signature and expiry; `cnf.jkt`
-equals the thumbprint of the signature's `jwk`; the signature; freshness (30 s of skew, a lifetime of at most 300 s); `mth`,
-`pth`, `aud`, `qsh` and `bdh` (a hash on one side only is refused); and a `jti` that was not used before (added to `seenJtis` only
-when everything passed). A failure is a `DeviceSignatureInvalid` whose `code` (`missing_credential`, `bad_attestation`,
-`attestation_expired`, `bad_jwk`, `key_not_bound`, `bad_signature`, `signature_expired`, `lifetime_too_long`, `mismatch`,
-`replay`) is the one the client classifier reads. Replay storage, the issuer, denylists and access tiers stay with your backend.
+headers:, body:, profile:, issuerKeys:, seenJtis:, trustedIssuers:)` follows Authkestra's device-signature profile v1 (since the
+release after 0.25.0) and checks, in its order: both headers (an empty one is missing); both are compact JWSs of JSON with an
+allowed `alg` (an issuer ES256, EdDSA or RS256, a device ES256; `issuerAlgorithms:`, `deviceAlgorithms:`); the attestation's
+claims and `att` object, its `iss`, its `kid` among `issuerKeys` (each a JWK **with its `kid`**), its signature, its validity
+(30 s of skew) and `att.status`; `cnf.jkt` equals the thumbprint of the signature's `jwk`; the signature; freshness (30 s of
+skew, a lifetime of at most 300 s); `mth`, `pth`, `aud`, `qsh` and `bdh` (a hash on one side only is refused; a bare `?` is no
+query); and a `jti` that was not used before (added to `seenJtis` only when everything passed; a set that throws is refused as a
+replay). A failure is a `DeviceSignatureInvalid` whose `code` (`missing_credential`, `malformed`, `bad_alg`, `untrusted_issuer`,
+`unknown_kid`, `bad_attestation`, `attestation_expired`, `device_not_active`, `bad_jwk`, `key_not_bound`, `bad_signature`,
+`signature_expired`, `lifetime_too_long`, `method_mismatch`, `path_mismatch`, `audience_mismatch`, `query_mismatch`,
+`body_mismatch`, `replay_detected`; until 0.25.0 one `mismatch` and `replay`) is the one the client classifier reads, and
+`VerifiedDeviceRequest.role` is `att.role`. The package runs the profile's conformance vectors, pinned by Authkestra commit and
+SHA-256 (`test/fixtures/devsig-profile-v1/`, `tool/refresh-devsig-vectors.sh`). Replay storage, the issuer, revocation
+(`device_revoked`), step-up, denylists and access tiers stay with your backend.
 
 `package:fespalier_sign_keypair/testing.dart` has `FakeDeviceAuthServer`: it checks the one-time code (`otp`, `123456`), verifies each
-challenge signature against the registered key, issues attestations signed by a test issuer key (`issuerKeys`, for
-`verifyDeviceSignature`), renews and revokes, and can be told to refuse (`renewalError`, `revokeError`, `revokeDevice(id)`), hold a
+challenge signature against the registered key, issues attestations of profile v1's shape signed by a test issuer key
+(`issuerKeys`, with its `kid`, for `verifyDeviceSignature`; `issue(role:, status:)` mints one by hand), renews and revokes, and can be told to refuse (`renewalError`, `revokeError`, `revokeDevice(id)`), hold a
 renewal in flight (`renewalGate`) or issue short-lived or foreign attestations (`issue`). It counts `enrolments`, `renewals` and
 `revocations`. With `FakeKeypairSigner` (`package:fespalier_keypair/testing.dart`), which counts `signatures` and `prompts`, can
 `refuseNextPrompt()` and can `loseKey()`, the whole scheme runs in a unit test with a fake clock (`clock.now()`, no timer):

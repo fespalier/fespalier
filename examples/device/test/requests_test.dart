@@ -86,11 +86,11 @@ void main() {
 
     // Made for GET /me: refused as another method, as another route...
     expect(await replay('DELETE', '/devices/device-1'), 401);
-    expect(server.served.last.refusedWith, 'mismatch');
+    expect(server.served.last.refusedWith, 'method_mismatch');
     expect(await replay('GET', '/transfers'), 404);
     // ...good once for what it was made for, and not twice.
     expect(await replay('GET', '/me'), 200);
     expect(await replay('GET', '/me'), 401);
-    expect(server.served.last.refusedWith, 'replay');
+    expect(server.served.last.refusedWith, 'replay_detected');
   });
 }

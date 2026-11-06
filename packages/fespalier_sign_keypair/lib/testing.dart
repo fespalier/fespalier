@@ -19,6 +19,7 @@ import 'package:fespalier_keypair/verify.dart';
 import 'package:fespalier_transport/fespalier_transport.dart';
 
 import 'fespalier_sign_keypair.dart';
+import 'verify.dart' show userPresentRole;
 
 /// A device-auth server with no network (since 0.21.0): it checks the one-time code, verifies each
 /// challenge signature against the key the device registered, and issues attestations signed by a
@@ -99,9 +100,14 @@ final class FakeDeviceAuthServer implements DeviceAuthServer {
   int _challenges = 0;
   int _devicesIssued = 0;
 
-  /// The issuer's public key, for `verifyDeviceSignature(issuerKeys: ...)`.
+  /// The `kid` of the issuer's key: the attestations' header names it (since the release after
+  /// 0.25.0).
+  static const String issuerKeyId = 'fake-issuer-es256';
+
+  /// The issuer's public key, with its `kid` and `alg`, for `verifyDeviceSignature(issuerKeys:
+  /// ...)` (a JWKS's `keys`).
   Future<List<Map<String, Object?>>> get issuerKeys async => [
-    await _issuer.publicJwk(),
+    {...await _issuer.publicJwk(), 'kid': issuerKeyId, 'alg': 'ES256'},
   ];
 
   /// Makes the server refuse [deviceId] from now on, as one that was revoked: a renewal is
@@ -111,18 +117,27 @@ final class FakeDeviceAuthServer implements DeviceAuthServer {
   /// The ids of the devices that enrolled, in order.
   List<String> get devices => _devices.keys.toList();
 
-  /// An attestation for [jwk], issued now by the test issuer, for the device [deviceId]. Public so
-  /// a test can mint what the server would not (one for another key, an expired one with a
-  /// negative [lifetime]).
+  /// An attestation for [jwk], issued now by the test issuer, for the device [deviceId]: the shape
+  /// of Authkestra's device-signature profile v1 (since the release after 0.25.0), a header with
+  /// `alg` ES256 and the issuer's `kid`, and an `att` object with `status` (`"active"` unless
+  /// [status] says otherwise) and, for the user-present key's, `role: "user_present"`. Public so a
+  /// test can mint what the server would not (one for another key, an expired one with a negative
+  /// [lifetime], a suspended device).
   Future<Attestation> issue({
     required String deviceId,
     required Map<String, String> jwk,
+    KeyRole role = KeyRole.ambient,
     Duration? lifetime,
     String? subject,
+    String status = 'active',
   }) async {
     final now = clock.now().millisecondsSinceEpoch ~/ 1000;
     final jws = await compactJws(
-      const <String, Object?>{'alg': 'ES256', 'typ': 'JWT'},
+      const <String, Object?>{
+        'alg': 'ES256',
+        'kid': issuerKeyId,
+        'typ': 'webank-attest+jws',
+      },
       <String, Object?>{
         'iss': issuerName,
         'sub': subject ?? user.id,
@@ -130,7 +145,10 @@ final class FakeDeviceAuthServer implements DeviceAuthServer {
         'iat': now,
         'exp': now + (lifetime ?? attestationLifetime).inSeconds,
         'cnf': <String, Object?>{'jkt': jwkThumbprint(jwk)},
-        'status': 'active',
+        'att': <String, Object?>{
+          'status': status,
+          if (role == KeyRole.userPresent) 'role': userPresentRole,
+        },
       },
       _issuer,
     );
@@ -186,7 +204,11 @@ final class FakeDeviceAuthServer implements DeviceAuthServer {
       deviceId: deviceId,
       attestations: {
         for (final entry in keys.entries)
-          entry.key: await issue(deviceId: deviceId, jwk: entry.value),
+          entry.key: await issue(
+            deviceId: deviceId,
+            jwk: entry.value,
+            role: entry.key,
+          ),
       },
       user: user,
     );
@@ -222,7 +244,7 @@ final class FakeDeviceAuthServer implements DeviceAuthServer {
       throw const AuthRejected('invalid_signature');
     }
     renewals++;
-    return issue(deviceId: deviceId, jwk: jwk);
+    return issue(deviceId: deviceId, jwk: jwk, role: challenge.role);
   }
 
   @override

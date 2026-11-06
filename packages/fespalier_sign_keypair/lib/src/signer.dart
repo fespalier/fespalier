@@ -12,6 +12,7 @@ import 'credential.dart';
 import 'errors.dart';
 import 'keys.dart';
 import 'profile.dart';
+import 'refusals.dart';
 
 /// Which key signs a request (since 0.21.0). A user-present key prompts on every use, so a policy
 /// must never choose it for background or queued work: only for a call the user is looking at.
@@ -45,9 +46,13 @@ final class DeviceRefusal {
   /// Whether this send already followed a renewal or a resend.
   final bool retried;
 
-  /// The `error` member of a JSON object body (`{"error": "attestation_expired"}`), lower-cased;
-  /// null for any other body.
-  String? get error {
+  /// The refusal's code, lower-cased: the `error` member of a JSON object body
+  /// (`{"error": "attestation_expired"}`) or, since the release after 0.25.0, when the body has
+  /// none (a CBOR body, an empty one), the `error` parameter of a `DeviceSignature` challenge in
+  /// `www-authenticate` (Authkestra's profile v1 sends both); null for anything else.
+  String? get error => _bodyError ?? _challengeError;
+
+  String? get _bodyError {
     final text = body;
     if (text == null || text.isEmpty) return null;
     try {
@@ -57,6 +62,17 @@ final class DeviceRefusal {
     } on FormatException {
       return null;
     }
+  }
+
+  String? get _challengeError {
+    final header = headers['www-authenticate'];
+    if (header == null) return null;
+    for (final challenge in parseChallenges(header)) {
+      if (challenge.scheme != 'devicesignature') continue;
+      final error = challenge.params['error']?.trim();
+      if (error != null && error.isNotEmpty) return error.toLowerCase();
+    }
+    return null;
   }
 
   /// Whether this is a step-up refusal (RFC 9470, since 0.25.0): a 401 whose `WWW-Authenticate`
@@ -74,32 +90,34 @@ final class DeviceRefusal {
 /// Reads a refusal and says what it means for the session (since 0.21.0).
 typedef DeviceRefusalClassifier = AuthVerdict Function(DeviceRefusal refusal);
 
-/// Webank's reading of a refusal, the default of [DeviceSigner]:
+/// The default reading of a refusal (since 0.21.0; Authkestra's device-signature profile v1,
+/// RFC-014 §5, since the release after 0.25.0): [DeviceRefusals.actionOf] on the status and the
+/// [DeviceRefusal.error] code.
 ///
-/// * 401 `attestation_expired` or `device_not_active`: [Renew] the attestation of the key that
-///   signed (the hint is its [KeyRole]), then send again, once.
+/// * 401 `attestation_expired`, `device_not_active` or `unknown_kid` (an issuer key rotation, since
+///   the release after 0.25.0): [Renew] the attestation of the key that signed (the hint is its
+///   [KeyRole]), then send again, once.
 /// * 401 `key_not_bound`, `bad_jwk` or `missing_credential`: the server confirms the key is not
 ///   the one enrolled, so [SessionEnded] with `SignOutReason.keyLost`.
-/// * 403 `DEVICE_REVOKED`: [SessionEnded] with `SignOutReason.revoked`.
-/// * Anything else: [Accept]. It is ambiguous, so the session is never wiped and a request never
-///   loops on it.
+/// * 403 `device_revoked` (and Webank's `DEVICE_REVOKED`, in any case): [SessionEnded] with
+///   `SignOutReason.revoked`.
+/// * 401 `insufficient_user_authentication` is the step-up, which [DeviceSigner] handles before it
+///   asks the classifier ([DeviceRefusal.isStepUp]); here it is [Accept].
+/// * Anything else, the legacy `replay` and `mismatch` included: [Accept]. The refusal stands, so
+///   the session is never wiped and a request never loops on it.
 AuthVerdict webankRefusals(DeviceRefusal refusal) {
   final error = refusal.error;
   if (error == null) return const Accept();
-  if (refusal.statusCode == 401) {
-    return switch (error) {
-      'attestation_expired' || 'device_not_active' => Renew(hint: refusal.role),
-      'key_not_bound' ||
-      'bad_jwk' ||
-      'missing_credential' => const SessionEnded(SignOutReason.keyLost),
-      _ => const Accept(),
-    };
-  }
-  if (refusal.statusCode == 403 && error == 'device_revoked') {
-    return const SessionEnded(SignOutReason.revoked);
-  }
-  return const Accept();
+  return switch (DeviceRefusals.actionOf(refusal.statusCode, error)) {
+    DeviceRefusalAction.renew => Renew(hint: refusal.role),
+    DeviceRefusalAction.keyLost => const SessionEnded(SignOutReason.keyLost),
+    DeviceRefusalAction.revoked => const SessionEnded(SignOutReason.revoked),
+    DeviceRefusalAction.stepUp || DeviceRefusalAction.none => const Accept(),
+  };
 }
+
+/// [webankRefusals] under the profile's name (since the release after 0.25.0).
+const DeviceRefusalClassifier deviceSignatureRefusals = webankRefusals;
 
 /// Signs every request with the device key and reads the refusals (since 0.21.0): the
 /// `RequestAuthenticator` of `DeviceAuthBackend`. A request leaves with two headers and **no

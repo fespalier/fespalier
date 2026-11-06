@@ -76,13 +76,19 @@ Safari, dart2js and a private window (where a browser may refuse IndexedDB) were
 
 ## JOSE helpers
 
-- `jwkThumbprint(jwk)`: the RFC 7638 thumbprint of a P-256 public key.
+- `jwkThumbprint(jwk)`: the RFC 7638 thumbprint of a P-256 public key (and, since the release after 0.25.0, of an Ed25519
+  one).
 - `base64UrlNoPad(bytes)`, `base64UrlDecodeLoose(text)`.
 - `compactJws(header, payload, signer, {reason})`: `header.payload.signature`, the members in the order given.
 - `package:fespalier_keypair/verify.dart` (pure Dart, for a server, a demo server and a test): `verifyEs256(jwk,
   signingInput, signature)` checks a 64-byte `r||s` ES256 signature (false, never a throw, for anything wrong), and
   `publicP256Jwk(jwk)` returns `{crv, kty, x, y}` for a public P-256 key on the curve and null for anything else.
-  `verifyDpopProof` and `verifyDeviceSignature` are built on them.
+  `verifyDpopProof` and `verifyDeviceSignature` are built on them. Since the release after 0.25.0 it also has
+  `verifyEd25519` (JWS `EdDSA`, strict: a non-canonical point or scalar and a small-order key are refused; pure Dart over
+  `BigInt`, since no package in the graph has Ed25519, checked against RFC 8032's vectors; not constant-time and slow next
+  to a native library, so for a verifier of public data in a test or a demo server) and `verifyRs256` (RSASSA-PKCS1-v1_5
+  over SHA-256, pointycastle, a modulus of at least 2048 bits), the issuer algorithms of Authkestra's device-signature
+  profile v1, with `publicEd25519Key` and `publicRsaKey`.
 
 ## Tests
 

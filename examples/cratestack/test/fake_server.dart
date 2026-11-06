@@ -84,6 +84,9 @@ class FakeOrdersServer {
 
   static const String audience = 'fespalier-cratestack';
   static const String issuerName = 'https://issuer.cratestack.example';
+
+  /// The `kid` of the issuer's key, in every attestation's header (profile v1).
+  static const String issuerKeyId = 'fake-cratestack-issuer';
   static const String otp = '123456';
   static const DeviceSignatureProfile profile = DeviceSignatureProfile(
     audience: audience,
@@ -292,34 +295,29 @@ class FakeOrdersServer {
         headers: request.headers,
         body: call.body,
         profile: profile,
-        issuerKeys: [await _issuer.publicJwk()],
+        issuerKeys: [
+          {...await _issuer.publicJwk(), 'kid': issuerKeyId, 'alg': 'ES256'},
+        ],
+        trustedIssuers: const [issuerName],
         seenJtis: seenJtis,
         now: clock.now().add(skew),
       );
     } on DeviceSignatureInvalid catch (invalid) {
       call.refusedWith = invalid.code;
-      return _json(401, {
-        'error': invalid.code,
-        'code': 'unauthenticated',
-        'message': invalid.code,
-      });
+      return _deviceRefusal(invalid.code, 401, 'unauthenticated');
     }
     final device = _devices[verified.deviceId];
     if (device == null) {
       call.refusedWith = 'device_not_active';
-      return _json(401, {
-        'error': 'device_not_active',
-        'code': 'unauthenticated',
-        'message': 'device_not_active',
-      });
+      return _deviceRefusal('device_not_active', 401, 'unauthenticated');
     }
     if (device.revoked) {
-      call.refusedWith = 'DEVICE_REVOKED';
-      return _json(403, {
-        'error': 'DEVICE_REVOKED',
-        'code': 'permission_denied',
-        'message': 'revoked',
-      });
+      call.refusedWith = DeviceRefusals.deviceRevoked;
+      return _deviceRefusal(
+        DeviceRefusals.deviceRevoked,
+        403,
+        'permission_denied',
+      );
     }
     final role = device.keys.entries
         .where((e) => jwkThumbprint(e.value) == verified.thumbprint)
@@ -327,11 +325,7 @@ class FakeOrdersServer {
         .firstOrNull;
     if (role == null) {
       call.refusedWith = 'key_not_bound';
-      return _json(401, {
-        'error': 'key_not_bound',
-        'code': 'unauthenticated',
-        'message': 'key_not_bound',
-      });
+      return _deviceRefusal('key_not_bound', 401, 'unauthenticated');
     }
     call.signedWith = role;
     final key = call.headers['idempotency-key'];
@@ -474,7 +468,11 @@ class FakeOrdersServer {
   Future<String> _issue(_Device device, KeyRole role) {
     final now = clock.now().millisecondsSinceEpoch ~/ 1000;
     return compactJws(
-      const <String, Object?>{'alg': 'ES256', 'typ': 'JWT'},
+      const <String, Object?>{
+        'alg': 'ES256',
+        'kid': issuerKeyId,
+        'typ': 'webank-attest+jws',
+      },
       <String, Object?>{
         'iss': issuerName,
         'sub': device.userId,
@@ -482,7 +480,10 @@ class FakeOrdersServer {
         'iat': now,
         'exp': now + attestationLifetime.inSeconds,
         'cnf': <String, Object?>{'jkt': jwkThumbprint(device.keys[role]!)},
-        'att': role.name,
+        'att': <String, Object?>{
+          'status': 'active',
+          if (role == KeyRole.userPresent) 'role': userPresentRole,
+        },
       },
       _issuer,
     );
@@ -522,6 +523,15 @@ class FakeOrdersServer {
 
   TransportResponse _refuse(int status, String code, String message) =>
       _json(status, {'code': code, 'message': message});
+
+  /// A refusal as the server sends it: profile v1's `error` and challenge, and CrateStack's
+  /// `{code, message}` envelope.
+  TransportResponse _deviceRefusal(String error, int status, String code) =>
+      fakeResponse(
+        status,
+        body: jsonEncode({'error': error, 'code': code, 'message': error}),
+        headers: DeviceRefusals.headers(error, statusCode: status),
+      );
 
   TransportResponse _json(int status, Object? body) => fakeResponse(
     status,

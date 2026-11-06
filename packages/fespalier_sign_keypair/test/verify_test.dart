@@ -132,8 +132,9 @@ void main() {
       await check(sent, now: issued.subtract(const Duration(seconds: 29)));
       await check(sent, now: issued.add(const Duration(seconds: 300 + 29)));
       await expectLater(
+        // The attestation was issued in the same second, and profile v1 checks it first.
         check(sent, now: issued.subtract(const Duration(seconds: 31))),
-        refusedWith(DeviceSignatureError.signatureExpired),
+        refusedWith(DeviceSignatureError.attestationExpired),
       );
       await expectLater(
         check(sent, now: issued.add(const Duration(seconds: 300 + 30))),
@@ -152,15 +153,15 @@ void main() {
     test('the body', () async {
       await expectLater(
         check(sent, body: [1, 2, 4]),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'bdh'),
+        refusedWith(DeviceSignatureError.bodyMismatch, claim: 'bdh'),
       );
       await expectLater(
         check(sent, body: [1, 2, 3, 4]),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'bdh'),
+        refusedWith(DeviceSignatureError.bodyMismatch, claim: 'bdh'),
       );
       await expectLater(
         check(sent, noBody: true),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'bdh'),
+        refusedWith(DeviceSignatureError.bodyMismatch, claim: 'bdh'),
       );
     });
 
@@ -173,22 +174,22 @@ void main() {
       );
       await expectLater(
         check(c, body: [9]),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'bdh'),
+        refusedWith(DeviceSignatureError.bodyMismatch, claim: 'bdh'),
       );
     });
 
     test('the query', () async {
       await expectLater(
         check(sent, uri: sent.uri.replace(query: 'page=3')),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'qsh'),
+        refusedWith(DeviceSignatureError.queryMismatch, claim: 'qsh'),
       );
       await expectLater(
         check(sent, uri: sent.uri.replace(query: '')),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'qsh'),
+        refusedWith(DeviceSignatureError.queryMismatch, claim: 'qsh'),
       );
       await expectLater(
         check(sent, uri: sent.uri.replace(query: 'page=2&x=1')),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'qsh'),
+        refusedWith(DeviceSignatureError.queryMismatch, claim: 'qsh'),
       );
     });
 
@@ -201,25 +202,25 @@ void main() {
       );
       await expectLater(
         check(c, noBody: true, uri: c.uri.replace(query: 'admin=1')),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'qsh'),
+        refusedWith(DeviceSignatureError.queryMismatch, claim: 'qsh'),
       );
     });
 
     test('the path', () async {
       await expectLater(
         check(sent, uri: sent.uri.replace(path: '/orders/43')),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'pth'),
+        refusedWith(DeviceSignatureError.pathMismatch, claim: 'pth'),
       );
     });
 
     test('the method', () async {
       await expectLater(
         check(sent, method: 'PUT'),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'mth'),
+        refusedWith(DeviceSignatureError.methodMismatch, claim: 'mth'),
       );
       await expectLater(
         check(sent, method: 'DELETE'),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'mth'),
+        refusedWith(DeviceSignatureError.methodMismatch, claim: 'mth'),
       );
     });
 
@@ -231,7 +232,7 @@ void main() {
             audience: 'https://other.example.com',
           ),
         ),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'aud'),
+        refusedWith(DeviceSignatureError.audienceMismatch, claim: 'aud'),
       );
     });
   });
@@ -242,7 +243,7 @@ void main() {
       await check(sent, seen: seen);
       await expectLater(
         check(sent, seen: seen),
-        refusedWith(DeviceSignatureError.replay),
+        refusedWith(DeviceSignatureError.replayDetected),
       );
     });
 
@@ -250,7 +251,7 @@ void main() {
       final seen = <String>{};
       await expectLater(
         check(sent, body: [0], seen: seen),
-        refusedWith(DeviceSignatureError.mismatch, claim: 'bdh'),
+        refusedWith(DeviceSignatureError.bodyMismatch, claim: 'bdh'),
       );
       expect(seen, isEmpty);
       await check(sent, seen: seen);
@@ -401,7 +402,7 @@ void main() {
       );
       await expectLater(
         check(sent, issuerKeys: const []),
-        refusedWith(DeviceSignatureError.badAttestation),
+        refusedWith(DeviceSignatureError.unknownKid),
       );
     });
 
@@ -430,7 +431,7 @@ void main() {
         };
         await expectLater(
           check(sent, headers: headers),
-          refusedWith(DeviceSignatureError.badAttestation),
+          refusedWith(DeviceSignatureError.malformed),
           reason: garbage,
         );
       }
@@ -442,7 +443,7 @@ void main() {
             'X-Signature': 'x.y',
           },
         ),
-        refusedWith(DeviceSignatureError.badSignature),
+        refusedWith(DeviceSignatureError.malformed),
       );
     });
   });
@@ -487,66 +488,75 @@ void main() {
   });
 
   group('the codes match the client classifier', () {
-    AuthVerdict classify(DeviceSignatureError error, {int status = 401}) =>
-        webankRefusals(
-          DeviceRefusal(
-            role: KeyRole.ambient,
-            statusCode: status,
-            headers: const {},
-            body: jsonEncode({'error': error.code}),
-            retried: false,
-          ),
-        );
+    AuthVerdict classify(DeviceSignatureError error) => webankRefusals(
+      DeviceRefusal(
+        role: KeyRole.ambient,
+        statusCode: const DeviceSignatureInvalid(
+          DeviceSignatureError.malformed,
+          'm',
+        ).statusCode,
+        headers: const {},
+        body: DeviceSignatureInvalid(error, 'm').body,
+        retried: false,
+      ),
+    );
 
-    test('renewable, dead and ambiguous', () {
-      expect(classify(DeviceSignatureError.attestationExpired), isA<Renew>());
-      for (final dead in [
-        DeviceSignatureError.keyNotBound,
-        DeviceSignatureError.badJwk,
-        DeviceSignatureError.missingCredential,
-      ]) {
-        expect(
-          classify(dead),
-          isA<SessionEnded>().having(
+    test('every code is read as profile v1 says', () {
+      for (final error in DeviceSignatureError.values) {
+        final verdict = classify(error);
+        final expected = switch (error) {
+          DeviceSignatureError.attestationExpired ||
+          DeviceSignatureError.deviceNotActive ||
+          DeviceSignatureError.unknownKid => isA<Renew>(),
+          DeviceSignatureError.keyNotBound ||
+          DeviceSignatureError.badJwk ||
+          DeviceSignatureError.missingCredential => isA<SessionEnded>().having(
             (e) => e.reason,
             'reason',
             SignOutReason.keyLost,
           ),
-          reason: dead.code,
-        );
-      }
-      for (final other in [
-        DeviceSignatureError.badSignature,
-        DeviceSignatureError.signatureExpired,
-        DeviceSignatureError.replay,
-        DeviceSignatureError.mismatch,
-        DeviceSignatureError.badAttestation,
-        DeviceSignatureError.lifetimeTooLong,
-      ]) {
-        expect(classify(other), isA<Accept>(), reason: other.code);
+          _ => isA<Accept>(),
+        };
+        expect(verdict, expected, reason: error.code);
       }
     });
 
-    test('the wire names', () {
+    test('the wire names, statuses and answers', () {
       expect(DeviceSignatureError.values.map((e) => e.code), [
         'missing_credential',
+        'malformed',
+        'bad_alg',
+        'untrusted_issuer',
+        'unknown_kid',
         'bad_attestation',
         'attestation_expired',
+        'device_not_active',
         'bad_jwk',
         'key_not_bound',
         'bad_signature',
         'signature_expired',
         'lifetime_too_long',
-        'mismatch',
-        'replay',
+        'method_mismatch',
+        'path_mismatch',
+        'audience_mismatch',
+        'query_mismatch',
+        'body_mismatch',
+        'replay_detected',
       ]);
-      expect(
-        const DeviceSignatureInvalid(
-          DeviceSignatureError.replay,
-          'm',
-        ).toString(),
-        'DeviceSignatureInvalid: replay: m',
+      const invalid = DeviceSignatureInvalid(
+        DeviceSignatureError.replayDetected,
+        'm',
       );
+      expect(invalid.toString(), 'DeviceSignatureInvalid: replay_detected: m');
+      expect(invalid.statusCode, 401);
+      expect(invalid.body, '{"error":"replay_detected"}');
+      expect(invalid.headers, {
+        'content-type': 'application/json',
+        'www-authenticate': 'DeviceSignature error="replay_detected"',
+      });
+      for (final error in DeviceSignatureError.values) {
+        expect(DeviceRefusals.statuses[error.code], 401, reason: error.code);
+      }
     });
   });
 }

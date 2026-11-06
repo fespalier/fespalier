@@ -31,6 +31,7 @@ export 'src/credential.dart' show DeviceCredential;
 export 'src/errors.dart' show UserPresenceRefused;
 export 'src/keys.dart' show DeviceKeys;
 export 'src/profile.dart' show DeviceSignatureProfile;
+export 'src/refusals.dart' show DeviceRefusalAction, DeviceRefusals;
 export 'src/server.dart'
     show
         CompleteEnrolment,
@@ -45,4 +46,5 @@ export 'src/signer.dart'
         DeviceRefusalClassifier,
         DeviceSigner,
         KeyRolePolicy,
+        deviceSignatureRefusals,
         webankRefusals;

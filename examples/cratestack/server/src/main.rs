@@ -1,8 +1,8 @@
 //! `orders-demo-server --listen 127.0.0.1:0 [--audience NAME] [--attestation-ttl-secs N]
-//! [--issuer-scalar-hex 64HEX]`
+//! [--clock-skew-secs N] [--issuer-scalar-hex 64HEX]`
 //!
 //! Prints one JSON line on stdout once it is listening, then serves until killed:
-//! `{"addr":"127.0.0.1:PORT","audience":"...","issuer_jwk":{...}}`.
+//! `{"addr":"127.0.0.1:PORT","audience":"...","issuer_jwk":{...},"issuer_kid":"..."}`.
 
 use std::process::ExitCode;
 
@@ -29,6 +29,13 @@ fn parse() -> Result<Args, String> {
                 args.config.attestation_ttl_secs = value()?
                     .parse()
                     .map_err(|_| "--attestation-ttl-secs is a number of seconds".to_owned())?;
+            }
+            "--clock-skew-secs" => {
+                args.config.clock_skew_secs = value()?
+                    .parse()
+                    .ok()
+                    .filter(|skew: &i64| *skew >= 0)
+                    .ok_or_else(|| "--clock-skew-secs is a number of seconds".to_owned())?;
             }
             "--issuer-scalar-hex" => args.config.issuer_scalar = Some(scalar_from_hex(&value()?)?),
             other => return Err(format!("unknown flag {other}")),
@@ -63,6 +70,7 @@ async fn run() -> Result<(), String> {
             "addr": addr.to_string(),
             "audience": built.hello.audience,
             "issuer_jwk": built.hello.issuer_jwk.to_json(),
+            "issuer_kid": built.hello.issuer_kid,
         })
     );
     cratestack::axum::serve(listener, built.router.into_make_service())

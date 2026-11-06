@@ -88,9 +88,11 @@ class _Renewal {
 ///   a request is good once. A call that moves money (`POST /transfers`) and the revocation of a
 ///   device need the **user-present** key.
 ///
-/// The failures are the codes the client classifies (`webankRefusals`): `attestation_expired` and
-/// `device_not_active` (renew and send again), `key_not_bound` (the key is not the one enrolled),
-/// `device_revoked` (a 403: the device is dead).
+/// The failures are Authkestra's device-signature profile v1 (`{"error":"<code>"}`, JSON, and a
+/// `WWW-Authenticate: DeviceSignature error="<code>"` on a 401), the codes the client classifies
+/// (`webankRefusals`): `attestation_expired` and `device_not_active` (renew and send again),
+/// `key_not_bound` (the key is not the one enrolled), `device_revoked` (a 403: the device is dead),
+/// and the verifier's others, which leave the session alone (`replay_detected`, `*_mismatch`, ...).
 ///
 /// [latency] makes every answer take that long (zero in tests); [attestationLifetime] is read
 /// against `clock`, so a test's fake clock ages what the server issued.
@@ -112,6 +114,10 @@ class DemoApi {
 
   /// The `iss` of what the server issues.
   static const String issuerName = 'https://issuer.example.com';
+
+  /// The `kid` of the issuer's key, in every attestation's header (Authkestra's device-signature
+  /// profile v1).
+  static const String issuerKeyId = 'demo-issuer-es256';
 
   /// The one-time code the demo "sends" to every phone number.
   static const String demoCode = '123456';
@@ -262,7 +268,7 @@ class DemoApi {
       'deviceId': device.id,
       'attestations': {
         for (final entry in device.keys.entries)
-          entry.key.name: await _issue(device, entry.value),
+          entry.key.name: await _issue(device, entry.value, entry.key),
       },
       'user': {'id': device.userId, 'name': device.phone},
     });
@@ -299,7 +305,7 @@ class DemoApi {
       return _json({'error': 'invalid_signature'}, 403);
     }
     renewals++;
-    return _json({'attestation': await _issue(device, jwk)});
+    return _json({'attestation': await _issue(device, jwk, renewal.role)});
   }
 
   // --------------------------------------------------------------------------------- the API
@@ -320,17 +326,24 @@ class DemoApi {
         headers: request.headers,
         body: request.bodyBytes,
         profile: profile,
-        issuerKeys: [await _issuer.publicJwk()],
+        issuerKeys: [
+          {...await _issuer.publicJwk(), 'kid': issuerKeyId, 'alg': 'ES256'},
+        ],
+        trustedIssuers: const [issuerName],
         seenJtis: seenJtis,
       );
     } on DeviceSignatureInvalid catch (invalid) {
       record.refusedWith = invalid.code;
-      return _json({'error': invalid.code}, 401);
+      return _refusal(invalid.code, invalid.statusCode);
     }
     final device = _devices[verified.deviceId];
-    if (device == null || device.revoked) {
+    if (device == null) {
       record.refusedWith = 'device_not_active';
-      return _json({'error': 'device_not_active'}, 401);
+      return _refusal('device_not_active', 401);
+    }
+    if (device.revoked) {
+      record.refusedWith = DeviceRefusals.deviceRevoked;
+      return _refusal(DeviceRefusals.deviceRevoked, 403);
     }
     final role = device.keys.entries
         .where((e) => jwkThumbprint(e.value) == verified.thumbprint)
@@ -338,7 +351,7 @@ class DemoApi {
         .firstOrNull;
     if (role == null) {
       record.refusedWith = 'key_not_bound';
-      return _json({'error': 'key_not_bound'}, 401);
+      return _refusal('key_not_bound', 401);
     }
     record.deviceId = device.id;
     record.signedWith = role;
@@ -384,12 +397,18 @@ class DemoApi {
 
   // --------------------------------------------------------------------------------- the issuer
 
-  /// An attestation for [jwk], issued now by this server for [device]: a compact JWS signed with
-  /// the issuer key, bound to the key by `cnf.jkt`, and useless without a signature from it.
-  Future<String> _issue(_Device device, Map<String, String> jwk) {
+  /// An attestation for [role]'s key [jwk], issued now by this server for [device]: a compact JWS
+  /// signed with the issuer key (its `kid` in the header), bound to the key by `cnf.jkt`, and
+  /// useless without a signature from it. Its `att` is profile v1's object: `status` and, for the
+  /// user-present key, `role: "user_present"`.
+  Future<String> _issue(_Device device, Map<String, String> jwk, KeyRole role) {
     final now = clock.now().millisecondsSinceEpoch ~/ 1000;
     return compactJws(
-      const <String, Object?>{'alg': 'ES256', 'typ': 'JWT'},
+      const <String, Object?>{
+        'alg': 'ES256',
+        'kid': issuerKeyId,
+        'typ': 'webank-attest+jws',
+      },
       <String, Object?>{
         'iss': issuerName,
         'sub': device.userId,
@@ -397,7 +416,10 @@ class DemoApi {
         'iat': now,
         'exp': now + attestationLifetime.inSeconds,
         'cnf': <String, Object?>{'jkt': jwkThumbprint(jwk)},
-        'status': 'active',
+        'att': <String, Object?>{
+          'status': 'active',
+          if (role == KeyRole.userPresent) 'role': userPresentRole,
+        },
       },
       _issuer,
     );
@@ -454,6 +476,14 @@ class DemoApi {
 
   http.Response _fieldErrors(Map<String, String> fields) =>
       _json({'errors': fields}, 422);
+
+  /// A refusal as Authkestra's device-signature profile v1 shapes it: `{"error":"<code>"}`, JSON,
+  /// and a `DeviceSignature` challenge on a 401.
+  http.Response _refusal(String code, int status) => http.Response(
+    DeviceRefusals.body(code),
+    status,
+    headers: DeviceRefusals.headers(code, statusCode: status),
+  );
 
   http.Response _json(Object? body, [int status = 200]) => http.Response(
     jsonEncode(body),

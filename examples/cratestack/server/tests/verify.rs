@@ -1,5 +1,6 @@
 //! `verify::verify` on its own: a request that is right passes, and each thing that can be wrong
-//! with it is refused with the code Dart's `verifyDeviceSignature` and `webankRefusals` use.
+//! with it is refused with the code Dart's `verifyDeviceSignature` and `webankRefusals` use
+//! (Authkestra's device-signature profile v1; its vectors are `tests/profile_v1.rs`).
 
 #![allow(clippy::unused_self, reason = "a test rig")]
 #![allow(clippy::expect_used, clippy::unwrap_used, reason = "tests may unwrap")]
@@ -9,12 +10,13 @@ mod support;
 use cratestack::serde_json::{Value, json};
 use orders_demo_server::jose::{Jwk, b64, sha256_hex, sign_compact};
 use orders_demo_server::verify::{
-    MAX_LIFETIME, Profile, Received, Refusal, Role, SKEW, SeenJtis, Verified, verify,
+    IssuerKey, MAX_LIFETIME, Profile, Received, Refusal, Role, SKEW, SeenJtis, Verified, verify,
 };
 use orders_demo_server::{DEFAULT_AUDIENCE, ISSUER};
-use p256::ecdsa::{SigningKey, VerifyingKey};
+use p256::ecdsa::SigningKey;
 
 const NOW: i64 = 1_800_000_000;
+const KID: &str = "issuer-1";
 
 struct Rig {
     issuer: SigningKey,
@@ -49,19 +51,22 @@ impl Rig {
         }
     }
 
-    fn issuer_keys(&self) -> Vec<VerifyingKey> {
-        vec![*self.issuer.verifying_key()]
+    fn issuer_keys(&self) -> Vec<IssuerKey> {
+        vec![IssuerKey {
+            kid: KID.to_owned(),
+            key: *self.issuer.verifying_key(),
+        }]
     }
 
     fn attestation(&self, exp: i64) -> String {
         sign_compact(
             &self.issuer,
-            &json!({"alg": "ES256", "typ": "JWT"}),
+            &json!({"alg": "ES256", "kid": KID, "typ": "webank-attest+jws"}),
             &json!({
                 "iss": ISSUER, "sub": "user-1", "did": "device-1",
                 "iat": NOW - 10, "exp": exp,
                 "cnf": {"jkt": Jwk::of(self.device.verifying_key()).thumbprint()},
-                "att": "ambient",
+                "att": {"status": "active"},
             }),
         )
     }
@@ -322,7 +327,8 @@ fn an_expired_attestation_is_the_renewable_refusal() {
     assert_eq!(
         rig.check(
             &req(),
-            &rig.attestation(NOW),
+            // exp plus the profile's 30 s of skew is now.
+            &rig.attestation(NOW - SKEW),
             &signature,
             &mut SeenJtis::default()
         ),
@@ -370,11 +376,11 @@ fn an_attestation_from_another_issuer_is_refused() {
     let rig = Rig::new();
     let forged = sign_compact(
         &support::key(77),
-        &json!({"alg": "ES256"}),
+        &json!({"alg": "ES256", "kid": KID}),
         &json!({
-            "iss": ISSUER, "sub": "user-1", "did": "device-1", "exp": NOW + 60,
+            "iss": ISSUER, "sub": "user-1", "did": "device-1", "iat": NOW - 10, "exp": NOW + 60,
             "cnf": {"jkt": Jwk::of(rig.device.verifying_key()).thumbprint()},
-            "att": "ambient",
+            "att": {"status": "active"},
         }),
     );
     let signature = rig.sign(&rig.device, &Rig::claims(&req(), "j"));
@@ -437,4 +443,28 @@ fn a_jwk_with_a_private_part_or_another_curve_is_bad() {
         rig.check(&req(), &attestation, &signature, &mut SeenJtis::default()),
         Err(Refusal::BadJwk)
     );
+}
+
+#[test]
+fn only_the_exact_user_present_role_is_the_user_present_key() {
+    use cratestack::serde_json::Map;
+    let att = |role: Value| -> Map<String, Value> {
+        let mut att = Map::new();
+        att.insert("status".to_owned(), json!("active"));
+        att.insert("role".to_owned(), role);
+        att
+    };
+    assert_eq!(Role::of_att(&att(json!("user_present"))), Role::UserPresent);
+    // The camel case this server sent before profile v1, an application's own role, and anything
+    // that is not a string are the ambient key: never a presence proof.
+    for other in [
+        json!("userPresent"),
+        json!("user"),
+        json!("USER_PRESENT"),
+        json!(1),
+    ] {
+        assert_eq!(Role::of_att(&att(other)), Role::Ambient);
+    }
+    assert_eq!(Role::UserPresent.att(), Some("user_present"));
+    assert_eq!(Role::Ambient.att(), None);
 }

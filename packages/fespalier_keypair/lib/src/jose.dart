@@ -13,31 +13,41 @@ String base64UrlNoPad(List<int> bytes) =>
 Uint8List base64UrlDecodeLoose(String value) =>
     base64Url.decode(base64Url.normalize(value));
 
-/// The RFC 7638 thumbprint of a P-256 public key given as a JWK (since 0.21.0; it was in
+/// The RFC 7638 thumbprint of a public key given as a JWK (since 0.21.0; it was in
 /// `fespalier_sign_keypair`): the base64url SHA-256 of
-/// `{"crv":"P-256","kty":"EC","x":"...","y":"..."}`, with those members in that order and no
-/// white space.
+/// `{"crv":"P-256","kty":"EC","x":"...","y":"..."}` for a P-256 key and, since the release after
+/// 0.25.0, of `{"crv":"Ed25519","kty":"OKP","x":"..."}` for an Ed25519 key, with those members in
+/// that order and no white space.
 ///
-/// Throws an [ArgumentError] when [jwk] is not an EC P-256 public key.
+/// Throws an [ArgumentError] when [jwk] is neither an EC P-256 nor an OKP Ed25519 public key.
 String jwkThumbprint(Map<String, Object?> jwk) {
   final x = jwk['x'];
   final y = jwk['y'];
-  if (jwk['kty'] != 'EC' ||
-      jwk['crv'] != 'P-256' ||
-      x is! String ||
-      y is! String) {
+  final String canonical;
+  if (jwk['kty'] == 'EC' &&
+      jwk['crv'] == 'P-256' &&
+      x is String &&
+      y is String) {
+    canonical = jsonEncode(<String, String>{
+      'crv': 'P-256',
+      'kty': 'EC',
+      'x': x,
+      'y': y,
+    });
+  } else if (jwk['kty'] == 'OKP' && jwk['crv'] == 'Ed25519' && x is String) {
+    canonical = jsonEncode(<String, String>{
+      'crv': 'Ed25519',
+      'kty': 'OKP',
+      'x': x,
+    });
+  } else {
     throw ArgumentError.value(
       jwk.keys.toList(),
       'jwk',
-      'fespalier_keypair: not an EC P-256 public key (kty, crv, x and y are needed)',
+      'fespalier_keypair: not an EC P-256 or an OKP Ed25519 public key (kty, crv, x and, for '
+          'EC, y are needed)',
     );
   }
-  final canonical = jsonEncode(<String, String>{
-    'crv': 'P-256',
-    'kty': 'EC',
-    'x': x,
-    'y': y,
-  });
   return base64UrlNoPad(sha256.convert(utf8.encode(canonical)).bytes);
 }
 

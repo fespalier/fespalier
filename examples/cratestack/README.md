@@ -63,10 +63,10 @@ stateDiagram-v2
   Restoring --> SignedIn: key matches cnf.jkt
   SignedOut --> Enrolling: beginEnrolment (public)
   Enrolling --> SignedIn: confirmEnrolment (public)
-  SignedIn --> Renewing: ambient attestation within 12 h of its end, or 401 attestation_expired / device_not_active
+  SignedIn --> Renewing: ambient attestation within 12 h of its end, or 401 attestation_expired / device_not_active / unknown_kid
   Renewing --> SignedIn: new attestation (one renewal, shared by the calls that wait)
   Renewing --> SignedOut_revoked: beginRenewal answers 403 (a device the server never saw, or revoked)
-  SignedIn --> SignedOut_revoked: 403 DEVICE_REVOKED
+  SignedIn --> SignedOut_revoked: 403 device_revoked
   SignedIn --> SignedOut_keyLost: 401 key_not_bound / bad_jwk / missing_credential
   SignedIn --> SignedOut_user: sign-out (revokeDevice, then both keys deleted)
 ```
@@ -94,8 +94,8 @@ stateDiagram-v2
 | `lib/app/(signed-in)/orders/data.dart`                            | The list: the generated call inside `ref.cancellable` (leaving the page aborts the load), served by `ref.serve` (offline, the copy this phone saved)                                                                                                                                                                                                             |
 | `lib/app/(signed-in)/orders/action.dart`                          | `placeOrder` with an `Idempotency-Key`; a validation answer is `FieldErrors` under its field; the list is invalidated                                                                                                                                                                                                                                            |
 | `lib/app/(signed-in)/orders/$id/`                                 | The detail, and `pay`: an ordinary call that the server steps up (`@authn`) and the session completes with the **user-present key**; a cancelled prompt is the refusal (`stepUp` set)                                                                                                                                                                            |
-| [`server/src/lib.rs`](server/src/lib.rs) `verify_device`, `admit` | The layer in front of the generated router: reads the body, runs the verifier, answers `401 {"error": code}` / `403 DEVICE_REVOKED` itself, and hands the verified device on as a request extension                                                                                                                                                              |
-| [`server/src/verify.rs`](server/src/verify.rs) `verify`           | The profile, check by check, in the order of Dart's `verifyDeviceSignature`                                                                                                                                                                                                                                                                                      |
+| [`server/src/lib.rs`](server/src/lib.rs) `verify_device`, `admit` | The layer in front of the generated router: reads the body, runs the verifier, answers the refusal itself in Authkestra's device-signature profile v1 (`{"error": code}`, JSON, a `WWW-Authenticate: DeviceSignature` challenge on a 401, `403 device_revoked`, `413 body_too_large`), and hands the verified device on as a request extension |
+| [`server/src/verify.rs`](server/src/verify.rs) `verify`           | Authkestra's device-signature profile v1, hand-written, check by check, in the order of Dart's `verifyDeviceSignature`: an issuer key found by `kid`, `att` an object with `status` and `role: "user_present"`, the profile's codes. `server/tests/profile_v1.rs` runs the profile's vectors (the copy `fespalier_sign_keypair` vendors); its issuer keys are ES256 only and its devices sign ES256, so the EdDSA and RS256 issuer vectors are `unknown_kid` and the optional EdDSA device one `bad_alg` here. Replacing it with Authkestra's own verifier is [#310](https://github.com/fespalier/fespalier/issues/310) |
 | [`server/src/lib.rs`](server/src/lib.rs) `DeviceAuth`             | CrateStack's auth seam (`AuthProvider`): turns that extension into the caller the procedures, `@allow(auth() != null)` and `@authn` see, through the principal contract (`principal_of`: `key_role`, `amr` from the key, `auth_time` for the user-present key). It reads no header and no body                                                                   |
 
 ## Screenshots
@@ -220,9 +220,10 @@ Each of these is a gap to close upstream; none needs a change to CrateStack here
   write replayed under one key, the step-up (an ambient-key `payOrder` refused, then completed with one user-present
   signature and one retry; a cancelled prompt surfacing the 401; unattended work never prompting), a replayed or tampered
   or unsigned request, sign-out and
-  `DEVICE_REVOKED`, a renewal before a call and after a real `401 attestation_expired`, and a restarted server that forgot the
-  device. The server has its own tests in `server/tests/` (`verify.rs` for the verifier, `api.rs` for the router with a Rust
-  device).
+  `device_revoked`, a renewal before a call and after a real `401 attestation_expired`, and a restarted server that forgot the
+  device. The server has its own tests in `server/tests/` (`verify.rs` for the verifier, `profile_v1.rs` for Authkestra's
+  profile v1 vectors, `api.rs` for the router with a Rust device). `--clock-skew-secs` (30 by default, the profile's) lets
+  the end-to-end test see an attestation refused as soon as it expires.
 
 ```sh
 just cratestack          # the server's gates, the client compared with a fresh one, then the app's tests with the server required

@@ -220,7 +220,8 @@ DpopFallback.software` (a key in memory) or `DpopFallback.bearer` (no DPoP) is g
   session of an enrolled device key: enrolment is signing in (`beginEnrolment`, then `signIn(CompleteEnrolment(...))`, both
   unsigned), every request carries `X-Attestation` and `X-Signature` over its method, path, query and exact body bytes
   (**a streamed body cannot be signed**: `ArgumentError`), renewal is a re-attestation, `webankRefusals` sorts a 401 or 403
-  into renew, `keyLost` or `revoked`, and a request asks for the user-present key (a biometric prompt) with
+  into renew, `keyLost` or `revoked` (by the table of Authkestra's device-signature profile v1 since the release after
+  0.25.0, whose `{"error":"<code>"}` refusals, `att` object and `kid` the verifier and fakes follow too), and a request asks for the user-present key (a biometric prompt) with
   `DeviceSigner.roleAttribute`, or, since 0.25.0, gets it when the server answers a step-up refusal (CrateStack's
   `@authn`): `DeviceSigner` signs that request again with the user-present key, once, never for unattended work, and a
   cancelled prompt leaves the 401. You write the `DeviceAuthServer` (five methods over your endpoints); the secure-element

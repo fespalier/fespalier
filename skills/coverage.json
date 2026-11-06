@@ -1159,6 +1159,16 @@
         "packages/fespalier_maps/lib/src/telemetry.dart",
         "packages/fespalier_maps/lib/src/tiles.dart"
       ]
+    },
+    "fespalier-frb": {
+      "covers": [
+        "examples/frb-cose",
+        "docs/examples.md#frb-cose",
+        "docs/data.md#A Rust core's changes: fespalier_frb",
+        "packages/fespalier_frb/README.md",
+        "packages/fespalier_frb/lib/fespalier_frb.dart",
+        "docs/cratestack.md#8. Where CrateStack's embedded mode fits"
+      ]
     }
   },
   "exempt": [

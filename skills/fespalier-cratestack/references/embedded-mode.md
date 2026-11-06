@@ -37,6 +37,12 @@ why none of `fespalier_storage`'s budgeted storages is one. It answers with `Fut
 and costs the frame noted above. One writer per store: a second isolate (a background sync) needs a store that can be
 opened safely from two.
 
+## Where the Rust core goes
+
+The layout of an app with a Rust core (the crate, the bindings, the Dart seam, the build backend, the tests), and the
+embedded store as a `LocalStore` or `SyncRunner` behind it, are
+[`fespalier-frb`](../../fespalier-frb/references/cratestack-embedded.md).
+
 ## Where the code is
 
 `packages/fespalier_cratestack/lib/src/local_store.dart` (the interface and `InMemoryLocalStore`), `hive_store.dart`

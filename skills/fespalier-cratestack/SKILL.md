@@ -429,6 +429,7 @@ device sessions of `fespalier_sign_keypair`), sending through the app's one `Htt
 `TransportResponse` out, built once in `startup()`), a Rust CrateStack server that checks it, and an end-to-end test that
 starts the server's binary. `examples/frb-cose` (since 0.21.1) is the same contract with the sealing
 in CrateStack's own Rust, behind a flutter_rust_bridge core: the device key is still in Dart, which the core calls back to sign.
+The layout of such an app, and CrateStack's client or embedded store inside a Rust core, are [`fespalier-frb`](../fespalier-frb/SKILL.md)'s (its `cratestack-embedded.md` page).
 
 - **An unsigned `401` is `CrateStackUnauthenticated`**: the intent stays pending under the same key. Do not turn it into a
   retry inside the transport.
@@ -472,17 +473,18 @@ isolate.
 
 ## References
 
-| Need                                                                                                    | Page                                                                  |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                     | [`references/wiring.md`](references/wiring.md)                        |
-| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do   | [`references/server-contract.md`](references/server-contract.md)      |
-| Where CrateStack's embedded SQLite mode fits and where it does not                                      | [`references/embedded-mode.md`](references/embedded-mode.md)          |
-| Reads, intents, owned rows, sync, testing                                                               | [`fespalier-offline`](../fespalier-offline/SKILL.md)                  |
-| A subscription that makes `autoSync` sync by push, and its test (since 0.25.0)                          | [`fespalier-offline`](../fespalier-offline/SKILL.md) (`push-sync.md`) |
-| A transport that signs every request and a server that checks it, end to end                            | [`examples/cose`](../../examples/cose/README.md)                      |
-| A generated client (`--preset fespalier`, no Dio), a Rust server and device-signed sessions, end to end | [`examples/cratestack`](../../examples/cratestack/README.md)          |
-| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)          | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)          |
-| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                      | [`examples/frb-cose`](../../examples/frb-cose/README.md)              |
+| Need                                                                                                          | Page                                                                  |
+| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                           | [`references/wiring.md`](references/wiring.md)                        |
+| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do         | [`references/server-contract.md`](references/server-contract.md)      |
+| Where CrateStack's embedded SQLite mode fits and where it does not                                            | [`references/embedded-mode.md`](references/embedded-mode.md)          |
+| Reads, intents, owned rows, sync, testing                                                                     | [`fespalier-offline`](../fespalier-offline/SKILL.md)                  |
+| A subscription that makes `autoSync` sync by push, and its test (since 0.25.0)                                | [`fespalier-offline`](../fespalier-offline/SKILL.md) (`push-sync.md`) |
+| A transport that signs every request and a server that checks it, end to end                                  | [`examples/cose`](../../examples/cose/README.md)                      |
+| A generated client (`--preset fespalier`, no Dio), a Rust server and device-signed sessions, end to end       | [`examples/cratestack`](../../examples/cratestack/README.md)          |
+| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)                | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)          |
+| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                            | [`examples/frb-cose`](../../examples/frb-cose/README.md)              |
+| The layout of an app with a Rust core, CrateStack's client or embedded store in it, Cargokit or native assets | [`fespalier-frb`](../fespalier-frb/SKILL.md)                          |
 
 ## Where the code is
 

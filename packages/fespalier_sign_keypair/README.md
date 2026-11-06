@@ -224,7 +224,7 @@ the attestations only, no private material.
 
 ## The wire: Authkestra's device-signature profile v1
 
-Since the release after 0.25.0 the package follows [Authkestra's device-signature profile v1](https://github.com/Authkestra/authkestra/blob/fdcaefe7af8259a7cd2ce85efb40dd074ad5435f/docs/rfc-014-devsig-profile-v1.md)
+Since the release after 0.25.0 the package follows [Authkestra's device-signature profile v1](https://github.com/Authkestra/authkestra/blob/af5c0e1b477ce1ebfda6eabb6f8f5a0c6e697279/docs/rfc-014-devsig-profile-v1.md)
 (RFC-014), so an unmodified client talks to an Authkestra server, to `examples/cratestack`'s and to `examples/device`'s:
 
 - **The attestation**: header `alg` (an issuer signs ES256, EdDSA or RS256, never `none` or an HMAC) and the issuer key's

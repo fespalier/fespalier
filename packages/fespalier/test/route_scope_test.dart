@@ -326,7 +326,9 @@ void main() {
       tester.element(find.text('a')),
       listen: false,
     );
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     expect(other.exists(held), isFalse, reason: 'held in the given container');
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     expect(container.exists(held), isTrue);
   });
 

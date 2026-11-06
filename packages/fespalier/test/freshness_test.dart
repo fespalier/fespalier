@@ -443,6 +443,7 @@ void main() {
       await resume(tester);
       await frames(tester);
       expect(loads.count, 1);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(appResumeSignal), isFalse);
     });
 
@@ -484,11 +485,14 @@ void main() {
       final container = await boot(tester);
       final keep = container.listen(p, (_, _) {});
       await frames(tester);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(appResumeSignal), isTrue);
       keep.close();
       await frames(tester);
       await frames(tester);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(p), isFalse);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(appResumeSignal), isFalse);
       // No listener is left to fire: a resume is a no-op.
       await resume(tester);
@@ -524,9 +528,11 @@ void main() {
       final container = ProviderContainer();
       addTearDown(container.dispose);
       final keep = container.listen(appShowSignal, (_, _) {});
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(appShowSignal), isTrue);
       keep.close();
       await tester.pump(const Duration(milliseconds: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(appShowSignal), isFalse);
     });
   });

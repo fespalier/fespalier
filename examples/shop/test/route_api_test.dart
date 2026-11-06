@@ -127,10 +127,12 @@ void main() {
       );
       final handle = const ProductRoute(id: 2).prefetch(rootRef(tester));
       await tester.pump(const Duration(minutes: 2));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isTrue);
 
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isFalse);
     });
 
@@ -161,10 +163,12 @@ void main() {
       const ProductRoute(id: 2)
           .prefetch(rootRef(tester), keepFor: const Duration(seconds: 5));
       await tester.pump(const Duration(seconds: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isTrue);
 
       await tester.pump(const Duration(seconds: 5));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isFalse);
     });
 
@@ -178,6 +182,7 @@ void main() {
       final handle = const ProductRoute(id: 99).prefetch(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(99)), isFalse);
       expect(handle.isClosed, isTrue);
     });

@@ -92,11 +92,13 @@ void main() {
       final handle = const ProductRoute(id: 2).preload(rootRef(tester));
       await tester.pump(const Duration(seconds: 1));
       expect(api.productCalls, 1);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isTrue);
       expect(currentLocation(tester), '/');
 
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(2)), isFalse);
     });
 
@@ -108,9 +110,11 @@ void main() {
       final handle = AppRoutes.preload(ref, Uri.parse('/products/3'));
       await tester.pump(const Duration(seconds: 1));
       expect(api.productCalls, 1);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(3)), isTrue);
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(ProductRoute.data(3)), isFalse);
 
       // Nothing to warm: a route without data, a location no route fits, a

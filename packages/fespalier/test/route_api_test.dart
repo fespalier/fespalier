@@ -91,6 +91,7 @@ void main() {
       expect(loads, 1);
       // Nothing keeps it after that.
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(slow(1)), isFalse);
     });
 
@@ -114,6 +115,7 @@ void main() {
 
       // Still there a second later, so a watcher gets it without loading.
       await tester.pump(const Duration(seconds: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(slow(2)), isTrue);
       expect(container.read(slow(2)).value, 'value 2');
       expect(loads, 1);
@@ -121,6 +123,7 @@ void main() {
 
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(slow(2)), isFalse);
       expect(handle.isClosed, isTrue);
     });
@@ -130,6 +133,7 @@ void main() {
       final handle = ref.prefetchData(slow(-1));
       await tester.pump(const Duration(milliseconds: 150));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(slow(-1)), isFalse);
       expect(handle.isClosed, isTrue);
     });
@@ -140,6 +144,7 @@ void main() {
       final (ref, container) = await boot(tester);
       ref.prefetchData(slow(3), keepFor: Duration.zero);
       await tester.pump(const Duration(milliseconds: 150));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(slow(3)), isFalse);
     });
   });

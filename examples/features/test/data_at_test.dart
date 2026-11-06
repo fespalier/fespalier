@@ -299,6 +299,7 @@ void main() {
 
       // Long after the old default of 30 s, with nothing watching it: still warm.
       await tester.pump(const Duration(minutes: 5));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(productProvider('2')), isTrue);
       expect(productFetches, 1);
 
@@ -326,10 +327,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(container.read(productProvider('9')).value?.name, 'Product 9');
       await tester.pump(const Duration(minutes: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(productProvider('9')), isTrue);
 
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(productProvider('9')), isFalse);
     });
   });
@@ -368,6 +371,7 @@ void main() {
         final handle = ReportsSection.prefetch(ref, period: '2026-02');
         await tester.pump();
         expect(report_data.reportFetches, 3);
+        // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
         expect(container.exists(ReportsSection.data('2026-02')), isTrue);
         handle.close();
       },

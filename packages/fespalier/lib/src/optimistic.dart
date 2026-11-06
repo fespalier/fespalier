@@ -110,6 +110,7 @@ final class OptimisticLayerNotifier<T> extends Notifier<OptimisticLayer<T>> {
   /// The value the data has now, or null when it has none (or is not alive).
   Object? _current() {
     final d = data;
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     if (d is ProviderBase<Object?> && !ref.exists(d as ProviderBase<Object?>)) {
       return null;
     }
@@ -196,17 +197,20 @@ final class _Patch<T, I> extends OptimisticPatch<I> {
   Object? begin(Ref ref, I input) {
     // Nothing shows the data: there is nothing to patch, and reading the layer would only make
     // one to throw away.
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     if (!ref.exists(layer)) return null;
     return ref.read(layer.notifier)._add((value) => patch(value, input));
   }
 
   @override
   void commit(Ref ref, Object ticket) {
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     if (ref.exists(layer)) ref.read(layer.notifier)._commit(ticket);
   }
 
   @override
   void rollback(Ref ref, Object ticket) {
+    // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
     if (ref.exists(layer)) ref.read(layer.notifier)._remove(ticket);
   }
 }

@@ -23,7 +23,7 @@ tmp="$(mktemp)"
 trap 'rm -f "$tmp"' EXIT
 
 if [[ -n "$checkout" ]]; then
-  git -C "$checkout" show "$commit:$path" >"$tmp"
+  git -C "$checkout" show "$commit:$path" > "$tmp"
 else
   curl -fsSL "https://raw.githubusercontent.com/Authkestra/authkestra/$commit/$path" -o "$tmp"
 fi
@@ -32,7 +32,7 @@ python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "$tmp"
 sum="$(sha256sum "$tmp" | cut -d' ' -f1)"
 mv "$tmp" "$dir/vectors.json"
 trap - EXIT
-cat >"$dir/PIN" <<PIN
+cat > "$dir/PIN" << PIN
 # Authkestra's device-signature profile v1 conformance vectors (RFC-014), copied unchanged.
 # Never edit vectors.json: run tool/refresh-devsig-vectors.sh <commit>, which rewrites both files.
 # test/profile_v1_test.dart fails when the copy's SHA-256 is not the one below.

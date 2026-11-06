@@ -1,4 +1,4 @@
-import 'package:fespalier_storage/src/entry.dart';
+import 'package:fespalier_storage_hive/src/entry.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const s2 =

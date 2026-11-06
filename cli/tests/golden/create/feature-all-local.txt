@@ -114,6 +114,8 @@ dependency_overrides:
     path: /checkout/packages/fespalier_sentry
   fespalier_storage:
     path: /checkout/packages/fespalier_storage
+  fespalier_storage_hive:
+    path: /checkout/packages/fespalier_storage_hive
   fespalier_tolgee:
     path: /checkout/packages/fespalier_tolgee
   fespalier_transport:

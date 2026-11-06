@@ -1,9 +1,9 @@
 // HiveDataStorage over boxes opened with `bytes:`: in memory, no file, no plugin, and they complete under fake async.
 import 'package:clock/clock.dart';
 import 'package:fespalier/persist.dart';
-import 'package:fespalier_storage/fespalier_storage.dart';
-import 'package:fespalier_storage/src/bounded.dart';
-import 'package:fespalier_storage/testing.dart';
+import 'package:fespalier_storage_hive/fespalier_storage_hive.dart';
+import 'package:fespalier_storage_hive/src/bounded.dart';
+import 'package:fespalier_storage_hive/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive_ce/hive.dart';
 

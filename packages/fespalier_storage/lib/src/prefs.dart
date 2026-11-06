@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'bounded.dart';
+import 'package:fespalier_storage_hive/bounded.dart';
 
 /// shared_preferences' cache as an [EntryStore].
 final class _PrefsStore implements EntryStore {

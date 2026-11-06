@@ -5,7 +5,7 @@ import 'dart:async';
 import 'package:fespalier/fespalier.dart';
 import 'package:fespalier/persist.dart' show Storage;
 import 'package:fespalier_storage/fespalier_storage.dart';
-import 'package:fespalier_storage/src/bounded.dart';
+import 'package:fespalier_storage_hive/bounded.dart';
 import 'package:fespalier_storage/testing.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';

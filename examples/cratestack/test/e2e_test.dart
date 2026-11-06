@@ -74,12 +74,14 @@ class _Server {
     int? ttlSeconds,
     int port = 0,
     String? issuerScalarHex,
+    int? skewSeconds,
   }) async {
     final process = await Process.start(binary, [
       '--listen',
       '127.0.0.1:$port',
       if (ttlSeconds != null) ...['--attestation-ttl-secs', '$ttlSeconds'],
       if (issuerScalarHex != null) ...['--issuer-scalar-hex', issuerScalarHex],
+      if (skewSeconds != null) ...['--clock-skew-secs', '$skewSeconds'],
     ]);
     unawaited(process.stderr.drain<void>());
     final lines = process.stdout
@@ -489,7 +491,7 @@ void main() {
       expect((await app.send(request)).$1, 200);
       final replay = await app.send(request);
       expect(replay.$1, 401);
-      expect(replay.$2['error'], 'replay');
+      expect(replay.$2['error'], 'replay_detected');
 
       // Signed for one body, sent with another.
       final signed = await app.signed('placeOrder', {
@@ -505,7 +507,7 @@ void main() {
       );
       final mismatch = await app.send(tampered);
       expect(mismatch.$1, 401);
-      expect(mismatch.$2['error'], 'mismatch');
+      expect(mismatch.$2['error'], 'body_mismatch');
 
       // Signed for one procedure, sent to another.
       final pay = await app.signed('getOrder', {
@@ -514,7 +516,7 @@ void main() {
       final elsewhere = await app.send(
         pay.copyWith(uri: pay.uri.replace(path: '/rpc/procedure.payOrder')),
       );
-      expect(elsewhere.$2['error'], 'mismatch');
+      expect(elsewhere.$2['error'], 'path_mismatch');
 
       // No credential at all, and an Authorization header is not one.
       final plain = TransportRequest(
@@ -533,7 +535,7 @@ void main() {
   );
 
   test(
-    'sign-out revokes the device: a request signed before it is then a 403 DEVICE_REVOKED',
+    'sign-out revokes the device: a request signed before it is then a 403 device_revoked',
     () async {
       await app.enrol();
       final before = await app.signed('listOrders', {
@@ -555,7 +557,7 @@ void main() {
 
       final refused = await app.send(before);
       expect(refused.$1, 403);
-      expect(refused.$2['error'], 'DEVICE_REVOKED');
+      expect(refused.$2['error'], 'device_revoked');
     },
   );
 
@@ -567,7 +569,7 @@ void main() {
       await app.enrol();
       final before = await app.signed('account', {'args': <String, Object?>{}});
       await app.container.read(authSession.notifier).signOut();
-      expect((await app.send(before)).$2['error'], 'DEVICE_REVOKED');
+      expect((await app.send(before)).$2['error'], 'device_revoked');
     },
   );
 
@@ -598,7 +600,9 @@ void main() {
     'a 401 attestation_expired from the real server renews and sends the call once more',
     () async {
       await server.stop();
-      server = await _Server.start(binary, ttlSeconds: 3);
+      // No clock skew on the server, or the attestation would be good for 30 s past its exp
+      // (profile v1).
+      server = await _Server.start(binary, ttlSeconds: 3, skewSeconds: 0);
       await app.close();
       app = await _App.start(server, renewAhead: Duration.zero);
       await app.enrol();

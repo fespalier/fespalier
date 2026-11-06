@@ -58,7 +58,8 @@ void main() {
     tester,
   ) async {
     // The phone renews only when an attestation has run out (renewAhead zero), and the server's clock
-    // is a few seconds ahead of the phone's: it refuses an attestation the phone still holds good.
+    // is ahead of the phone's by more than the 30 s profile v1 tolerates: it refuses an attestation
+    // the phone still holds good.
     final server = FakeOrdersServer(
       attestationLifetime: const Duration(hours: 1),
     );
@@ -72,7 +73,7 @@ void main() {
     server.served.clear();
 
     await tester.pump(const Duration(hours: 1) - const Duration(seconds: 3));
-    server.skew = const Duration(seconds: 5);
+    server.skew = const Duration(seconds: 35);
     await api.listOrders(ListOrdersProcedureArgs(args: ListOrdersArgs()));
     expect(server.renewals, 1);
     expect(
@@ -111,7 +112,7 @@ void main() {
   });
 
   testWidgets(
-    'a revoked device is told 403 DEVICE_REVOKED and signs out as revoked',
+    'a revoked device is told 403 device_revoked and signs out as revoked',
     (tester) async {
       final server = FakeOrdersServer();
       final container = await enrol(tester, server, FakeDevice());

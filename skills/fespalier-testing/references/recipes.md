@@ -453,7 +453,9 @@ With `package:fespalier_sign_keypair` the whole scheme runs in a unit test, with
 
 - `FakeDeviceAuthServer` checks the one-time code (`otp`, `123456` by default; a wrong one is a `FieldErrors`), verifies each
   challenge signature against the key the device registered, issues attestations signed by a test issuer key (`issuerKeys`,
-  for `verifyDeviceSignature`, so a fake API can verify every request), renews and revokes. Steer it with `renewalError`,
+  each with its `kid`, for `verifyDeviceSignature`, so a fake API can verify every request; since the release after 0.25.0
+  in the shape of Authkestra's device-signature profile v1: the `kid` in the header, `att: {status: "active"}` and
+  `role: "user_present"` for the user-present key; `issue(role:, status:)` mints one by hand), renews and revokes. Steer it with `renewalError`,
   `revokeError`, `beginEnrolmentError`, `confirmEnrolmentError`, `revokeDevice(id)`, `renewalGate` (a `Completer`: a renewal
   in flight) and `attestationLifetime`; read `enrolments`, `renewals`, `renewalRequests`, `revocations` and `revokeSignedWith`.
   `AuthRejected()` thrown from it is the server saying the device is dead (the session ends as `revoked`), a `TransportUnsent()`

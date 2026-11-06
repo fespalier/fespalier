@@ -1,0 +1,7 @@
+# Authkestra's device-signature profile v1 conformance vectors (RFC-014), copied unchanged.
+# Never edit vectors.json: run tool/refresh-devsig-vectors.sh <commit>, which rewrites both files.
+# test/profile_v1_test.dart fails when the copy's SHA-256 is not the one below.
+repository: https://github.com/Authkestra/authkestra
+path: conformance/devsig-profile-v1/vectors.json
+commit: fdcaefe7af8259a7cd2ce85efb40dd074ad5435f
+sha256: c517b68acbf4b36f7e7555f24868a08be3e886c6dc7c9a043557a7454c53a8b8

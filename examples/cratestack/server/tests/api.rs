@@ -6,9 +6,9 @@
 mod support;
 
 use cratestack::axum::http::{StatusCode, header};
-use cratestack::serde_json::json;
+use cratestack::serde_json::{Value, json};
 use orders_demo_server::jose::{Jwk, split, verify_es256};
-use orders_demo_server::verify::Role;
+use orders_demo_server::verify::{Role, SKEW};
 use orders_demo_server::{DEFAULT_ATTESTATION_TTL_SECS, ISSUER};
 use support::{Device, Parts, call, claims_of, send, world};
 
@@ -44,7 +44,17 @@ async fn enrolling_issues_an_attestation_per_key_bound_to_it() {
             "derived from the phone, not sent"
         );
         assert_eq!(claims["did"], device.device_id.as_str());
-        assert_eq!(claims["att"], role.name());
+        // Profile v1: `att` is an object, `status` active and, for the user-present key only,
+        // `role: "user_present"` (snake case, never Dart's `userPresent`).
+        assert_eq!(claims["att"]["status"], "active");
+        assert_eq!(
+            claims["att"].get("role").and_then(Value::as_str),
+            role.att()
+        );
+        assert!(
+            compact.header.get("kid").and_then(Value::as_str).is_some(),
+            "the issuer key's kid"
+        );
         assert_eq!(claims["iat"], world.now());
         assert_eq!(claims["exp"], world.now() + DEFAULT_ATTESTATION_TTL_SECS);
         assert_eq!(
@@ -170,7 +180,12 @@ async fn a_replayed_request_is_refused() {
     );
     let again = send(&world.router, parts.request(&headers)).await;
     assert_eq!(again.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(again.error().as_deref(), Some("replay"));
+    assert_eq!(again.error().as_deref(), Some("replay_detected"));
+    assert_eq!(
+        again.headers[header::WWW_AUTHENTICATE],
+        "DeviceSignature error=\"replay_detected\""
+    );
+    assert_eq!(again.headers[header::CONTENT_TYPE], "application/json");
 }
 
 #[tokio::test]
@@ -186,11 +201,11 @@ async fn a_request_changed_after_signing_is_refused() {
     tampered.body = support::cbor(&json!({"args": {"item": "Tea", "quantity": 99}}));
     let refused = send(&world.router, tampered.request(&headers)).await;
     assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
-    assert_eq!(refused.error().as_deref(), Some("mismatch"));
+    assert_eq!(refused.error().as_deref(), Some("body_mismatch"));
     let mut elsewhere = signed.clone();
     elsewhere.path = "/rpc/procedure.payOrder".to_owned();
     let refused = send(&world.router, elsewhere.request(&headers)).await;
-    assert_eq!(refused.error().as_deref(), Some("mismatch"));
+    assert_eq!(refused.error().as_deref(), Some("path_mismatch"));
 }
 
 #[tokio::test]
@@ -429,7 +444,8 @@ async fn an_idempotency_key_runs_a_write_once() {
 async fn an_expired_attestation_is_renewed_by_a_proof_of_possession() {
     let world = world();
     let mut device = enrolled(&world, false).await;
-    world.advance(DEFAULT_ATTESTATION_TTL_SECS + 1);
+    // Past exp and the 30 s of skew the profile allows.
+    world.advance(DEFAULT_ATTESTATION_TTL_SECS + SKEW + 1);
     let expired = device
         .ambient(&world, "listOrders", &json!({"args": {}}))
         .await;
@@ -519,7 +535,7 @@ async fn revoking_ends_the_device_and_a_device_with_a_user_present_key_needs_it(
             .call(&world, role, "listOrders", &json!({"args": {}}))
             .await;
         assert_eq!(after.status, StatusCode::FORBIDDEN);
-        assert_eq!(after.error().as_deref(), Some("DEVICE_REVOKED"));
+        assert_eq!(after.error().as_deref(), Some("device_revoked"));
     }
     assert_eq!(
         device.renew(&world, Role::Ambient).await.status,

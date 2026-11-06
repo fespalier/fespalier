@@ -7,7 +7,8 @@
 //!   They are unsigned **by name**, in [`PUBLIC_OPS`].
 //! - Every other request is checked by [`verify_device`], a layer in front of the generated router
 //!   that reads the body (the signature covers its exact bytes), runs [`verify::verify`] and
-//!   either answers the refusal itself (`401 {"error": code}`, `403 DEVICE_REVOKED`) or hands the
+//!   either answers the refusal itself (Authkestra's device-signature profile v1: `{"error":"<code>"}`,
+//!   JSON, a `WWW-Authenticate: DeviceSignature error="<code>"` on a 401, `403 device_revoked`) or hands the
 //!   verified device on as a request extension. The check itself could run in an `AuthProvider`
 //!   (it sees the method, path, query and exact body, and `/rpc/batch` authenticates once per
 //!   request); it is a layer for two reasons: an `AuthProvider` error cannot shape its status and
@@ -45,7 +46,7 @@ use cratestack::{
     include_server_schema,
 };
 use cratestack_codec_cbor::CborCodec;
-use p256::ecdsa::{SigningKey, VerifyingKey};
+use p256::ecdsa::SigningKey;
 
 pub mod idempotency;
 pub mod jose;
@@ -53,7 +54,9 @@ pub mod verify;
 
 use idempotency::MemoryIdempotency;
 use jose::{Jwk, random_token, sign_compact, split, verify_es256};
-use verify::{Profile, Received, Refusal, Role, SeenJtis, Verified, verify as verify_request};
+use verify::{
+    IssuerKey, Profile, Received, Refusal, Role, SeenJtis, Verified, verify as verify_request,
+};
 
 include_server_schema!("schema.cstack", db = None);
 
@@ -123,6 +126,9 @@ pub struct Config {
     pub attestation_ttl_secs: i64,
     /// The issuer's private scalar; `None` draws a fresh one.
     pub issuer_scalar: Option<[u8; 32]>,
+    /// How far a clock may differ from this server's, in seconds: 30, profile v1's. A test that
+    /// wants an attestation refused as soon as it expires sets 0.
+    pub clock_skew_secs: i64,
     /// The clock: seconds since the epoch.
     pub clock: Clock,
 }
@@ -133,6 +139,7 @@ impl Default for Config {
             audience: DEFAULT_AUDIENCE.to_owned(),
             attestation_ttl_secs: DEFAULT_ATTESTATION_TTL_SECS,
             issuer_scalar: None,
+            clock_skew_secs: verify::SKEW,
             clock: system_clock(),
         }
     }
@@ -145,6 +152,8 @@ pub struct Hello {
     pub audience: String,
     /// The issuer's public key, as a JWK: what attestations verify with.
     pub issuer_jwk: Jwk,
+    /// The `kid` of that key, in every attestation's header.
+    pub issuer_kid: String,
 }
 
 /// A configured server.
@@ -194,7 +203,8 @@ struct Store {
 pub struct Shared {
     profile: Profile,
     issuer: SigningKey,
-    issuer_keys: Vec<VerifyingKey>,
+    issuer_kid: String,
+    issuer_keys: Vec<IssuerKey>,
     ttl: i64,
     clock: Clock,
     state: Mutex<Store>,
@@ -235,7 +245,7 @@ impl Shared {
         let now = self.now();
         sign_compact(
             &self.issuer,
-            &json!({ "alg": "ES256", "typ": "JWT" }),
+            &json!({ "alg": "ES256", "kid": self.issuer_kid, "typ": "webank-attest+jws" }),
             &json!({
                 "iss": self.profile.issuer,
                 "sub": device.subject,
@@ -243,7 +253,10 @@ impl Shared {
                 "iat": now,
                 "exp": now + self.ttl,
                 "cnf": { "jkt": jwk.thumbprint() },
-                "att": role.name(),
+                "att": match role.att() {
+                    Some(name) => json!({ "status": "active", "role": name }),
+                    None => json!({ "status": "active" }),
+                },
             }),
         )
     }
@@ -764,42 +777,40 @@ impl AuthProvider for DeviceAuth {
     }
 }
 
-/// An error answer in the shape both sides read: `CrateStack`'s `{code, message}` envelope for the
-/// generated client, and the `error` the device-session classifier (`webankRefusals`) reads.
+/// An error answer in the shape both sides read: Authkestra's device-signature profile v1
+/// (`{"error": code}`, JSON, and for a 401 `WWW-Authenticate: DeviceSignature error="<code>"`),
+/// which the device-session classifier (`webankRefusals`) reads, plus `CrateStack`'s
+/// `{code, message}` envelope for the generated client (the profile lets a server add members).
 fn refusal_response(status: StatusCode, error: &str, code: &str, message: &str) -> Response {
     let mut response = (
         status,
         json!({ "error": error, "code": code, "message": message }).to_string(),
     )
         .into_response();
-    response.headers_mut().insert(
+    let headers = response.headers_mut();
+    headers.insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
+    if status == StatusCode::UNAUTHORIZED
+        && let Ok(challenge) = HeaderValue::from_str(&format!("DeviceSignature error=\"{error}\""))
+    {
+        headers.insert(header::WWW_AUTHENTICATE, challenge);
+    }
     response
 }
 
 fn refused(refusal: Refusal) -> Response {
-    match refusal {
-        Refusal::Overloaded => refusal_response(
-            StatusCode::SERVICE_UNAVAILABLE,
-            refusal.code(),
-            "unavailable",
-            "too many signatures are being remembered",
-        ),
-        Refusal::Mismatch(claim) => refusal_response(
-            StatusCode::UNAUTHORIZED,
-            refusal.code(),
-            "unauthenticated",
-            &format!("the signature's {claim} does not match the request"),
-        ),
-        other => refusal_response(
-            StatusCode::UNAUTHORIZED,
-            other.code(),
-            "unauthenticated",
-            other.code(),
-        ),
-    }
+    let message = match refusal {
+        Refusal::Mismatch(claim) => format!("the signature's {claim} does not match the request"),
+        other => other.code().to_owned(),
+    };
+    refusal_response(
+        StatusCode::UNAUTHORIZED,
+        refusal.code(),
+        "unauthenticated",
+        &message,
+    )
 }
 
 /// How much past the limit is read and thrown away before answering `413`, so the answer is not
@@ -828,7 +839,12 @@ async fn read_body(mut body: Body) -> Result<Vec<u8>, Box<Response>> {
         }
     }
     if seen > limit {
-        return Err(Box::new(StatusCode::PAYLOAD_TOO_LARGE.into_response()));
+        return Err(Box::new(refusal_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "body_too_large",
+            "payload_too_large",
+            "the body is over the limit",
+        )));
     }
     Ok(kept)
 }
@@ -859,7 +875,7 @@ fn admit(shared: &Shared, received: &Received<'_>) -> Result<Verified, Box<Respo
     if device.revoked {
         return Err(Box::new(refusal_response(
             StatusCode::FORBIDDEN,
-            "DEVICE_REVOKED",
+            "device_revoked",
             "permission_denied",
             "this device was revoked",
         )));
@@ -935,10 +951,20 @@ pub fn build(config: &Config) -> Result<Built, CratestackError> {
         CratestackError::Internal("the issuer scalar is not a P-256 key".to_owned())
     })?;
     let issuer_public = *issuer.verifying_key();
+    // The issuer key's `kid` (profile v1 requires one): its RFC 7638 thumbprint, so a new key is a
+    // new `kid`.
+    let issuer_kid = Jwk::of(&issuer_public).thumbprint();
     let shared = Arc::new(Shared {
-        profile: Profile::new(&config.audience, ISSUER),
+        profile: Profile {
+            skew: config.clock_skew_secs,
+            ..Profile::new(&config.audience, ISSUER)
+        },
         issuer,
-        issuer_keys: vec![issuer_public],
+        issuer_kid: issuer_kid.clone(),
+        issuer_keys: vec![IssuerKey {
+            kid: issuer_kid.clone(),
+            key: issuer_public,
+        }],
         ttl: config.attestation_ttl_secs,
         clock: Arc::clone(&config.clock),
         state: Mutex::new(Store::default()),
@@ -970,6 +996,7 @@ pub fn build(config: &Config) -> Result<Built, CratestackError> {
         hello: Hello {
             audience: config.audience.clone(),
             issuer_jwk: Jwk::of(&issuer_public),
+            issuer_kid,
         },
         shared,
         idempotency,

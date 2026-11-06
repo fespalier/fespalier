@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.26.0](https://github.com/fespalier/fespalier/compare/v0.25.0...v0.26.0) (2026-11-06)
+
+
+### Features
+
+* **auth:** device sessions follow Authkestra's device-signature profile v1 ([#332](https://github.com/fespalier/fespalier/issues/332)) ([b46776d](https://github.com/fespalier/fespalier/commit/b46776d1f94b3de141ee933f69413f77975026e5))
+* **storage:** fespalier_storage_hive, the Hive storage without shared_preferences ([#333](https://github.com/fespalier/fespalier/issues/333)) ([66b68e8](https://github.com/fespalier/fespalier/commit/66b68e84b0799963cf7491192ee172fa226b759f))
+
+
+### Documentation
+
+* add the fespalier-frb skill for apps with a Rust core ([#331](https://github.com/fespalier/fespalier/issues/331)) ([afe9ccf](https://github.com/fespalier/fespalier/commit/afe9ccfd7896e9bc307a4f251e850f8d86c2dff0))
+
+
+### Build System
+
+* **cratestack:** move examples/cratestack to CrateStack 0.17.2 and drop the 401 release workaround ([#329](https://github.com/fespalier/fespalier/issues/329)) ([caf5116](https://github.com/fespalier/fespalier/commit/caf51165914fcf4c28168be3c87aec1331bb7afe))
+
 ## [0.25.0](https://github.com/fespalier/fespalier/compare/v0.24.1...v0.25.0) (2026-10-31)
 
 

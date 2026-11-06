@@ -311,9 +311,26 @@ Future<List<Override>> startup() async => [
 | Backend        | `SharedPreferencesWithCache`; localStorage on the web                        | a `hive_ce` `Box<String>`; IndexedDB on the web                                      |
 | Reads          | synchronous                                                                  | synchronous once the box is open                                                     |
 | Default budget | 1,000,000 characters, 200 entries                                            | 4,000,000 characters, 1,000 entries                                                  |
-| Plugins        | `shared_preferences` (most apps have it)                                     | none: `hive_ce` is pure Dart; `path_provider` for the cache directory                |
+| Plugins        | `shared_preferences` (most apps have it)                                     | none: `hive_ce` is pure Dart; `path_provider` for the cache directory (see below)    |
 | Where on disk  | the platform's preferences, beside the app's own keys                        | `getApplicationCacheDirectory()` (OS-purgeable, not backed up), none on the web      |
 | Pick it when   | a few small values; on the web localStorage is about 5 MB per origin, shared | more or larger values; opening reads the whole box, so `maxSize` also bounds startup |
+
+**Hive alone: fespalier_storage_hive.** Since the release after 0.25.0, `HiveDataStorage` and the core both storages are built on are `package:fespalier_storage_hive`'s, and `fespalier_storage` depends on it and re-exports them, so an app that depends on `fespalier_storage` changes nothing. A Flutter plugin's native code is in an app whenever the plugin is in its dependencies, called or not, so `fespalier_storage` always brings `shared_preferences`. An app that saves to Hive alone depends on `fespalier_storage_hive` instead (`HiveDataStorage`, `DataEntryTooLarge`, and `memoryBox()` in its `testing.dart`) and has no `shared_preferences` in it:
+
+<!-- x-release-please-start-version -->
+
+```yaml
+dependencies:
+  fespalier_storage_hive:
+    git:
+      url: https://github.com/fespalier/fespalier
+      path: packages/fespalier_storage_hive
+      ref: v0.25.0
+```
+
+<!-- x-release-please-end -->
+
+An app that overrides `fespalier_storage` with a `path:` overrides `fespalier_storage_hive` the same way. Opening reads the whole box into memory and Hive keeps it there, so on a phone with little memory lower `maxSize` and `maxEntries`: they bound the memory as well as the startup. `package:fespalier_storage_hive/bounded.dart` is the core itself (`BoundedDataStorage` over an `EntryStore`), for a storage of your own over another synchronous store.
 
 **The budget.** `maxSize` is in `String.length` units (UTF-16 code units, what browsers count localStorage in), keys and headers included; `maxEntries` is a count. Over either, the entries **written longest ago** go first, ties by key (no timer, no background sweep). A route's value is written each time it is fetched fresh; reads never write. A value too large for `maxSize` is not saved: it fails with `DataEntryTooLarge`, which fespalier prints after `could not save`, and the route works. Expired and unreadable entries are deleted once, when the storage is made. A full web `localStorage` is a `QuotaExceededError` on the write: the entry is dropped and fespalier prints "could not save"; keep `maxSize` well below, or use Hive.
 

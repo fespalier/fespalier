@@ -22,6 +22,22 @@ dependencies:
 
 (A fragment, not a sample: pub resolves the pair only at a release tag. `docs/data.md` has the annotated block.)
 
+**Hive alone: `fespalier_storage_hive` (since the release after 0.25.0).** `HiveDataStorage`, `DataEntryTooLarge`,
+`memoryBox()` and the core both storages are built on (`BoundedDataStorage`) moved to `package:fespalier_storage_hive`, and
+`fespalier_storage` depends on it and **re-exports** them: an app that imports `fespalier_storage` changes nothing. What
+the split is for: a Flutter plugin's native code is in an app whenever the plugin is in its dependencies, called or not, so
+`fespalier_storage` always brings `shared_preferences`. An app that saves to Hive and nothing else depends on
+`fespalier_storage_hive` **instead** (same `url` and `ref`, `path: packages/fespalier_storage_hive`), imports
+`package:fespalier_storage_hive/fespalier_storage_hive.dart` and `.../testing.dart`, and has no `shared_preferences` in it.
+
+- **Do not depend on both** to "pick one later": `fespalier_storage` alone already gives both storages.
+- **An app that overrides `fespalier_storage` with a `path:`** (a checkout, a fork) overrides `fespalier_storage_hive` too, or
+  pub resolves the inner git dependency at a tag that has no such package, as `examples/features` does.
+- **A release before the split** has no `fespalier_storage_hive`: there, `fespalier_storage` is the only way to Hive.
+- `package:fespalier_storage_hive/bounded.dart` exports `BoundedDataStorage`, `EntryStore`, `checkBudget` and
+  `storedKeyPrefix`, for a storage of your own over another synchronous store. Its debug lines still start with
+  `fespalier_storage:`.
+
 ## Which one
 
 | What           | `PrefsDataStorage`                                                          | `HiveDataStorage`                                                                    |
@@ -230,6 +246,9 @@ void main() {
 - **`open()` in a test with no `fakePrefsStore()` is `null`**, silently apart from a debug line: the cache is off and a
   restart test shows `loading.dart`. `setUp(fakePrefsStore)`, also before a test that boots `AppMain.run()` or
   `AppMain.root()` (the app's `startup()` opens one).
+- **On a phone with little memory, Hive's budget is a memory budget.** Opening reads the whole box into memory, and Hive keeps
+  it there for as long as the box is open: lower `maxSize` and `maxEntries` there, or use `PrefsDataStorage` for a few small
+  values.
 - **`HiveDataStorage.open()` needs the `path_provider` plugin**, which a widget test does not have: it returns `null` and prints
   `MissingPluginException(...)` (S5). Use `HiveDataStorage(await memoryBox())` in tests.
 - **A platform channel call needs the real event loop.** If a test of your own awaits a plugin (`path_provider`), wrap it in

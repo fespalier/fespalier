@@ -801,6 +801,10 @@ pub const NOT_A_CREATE_FEATURE: &[(&str, &str)] = &[
         "needs Flutter 3.44 and a git dependency of another repository",
     ),
     (
+        "fespalier_storage_hive",
+        "the storage feature's Hive half, which fespalier_storage brings and re-exports; an app that saves to Hive alone depends on it instead",
+    ),
+    (
         "fespalier_stream",
         "needs a server that streams events, which is the app's own",
     ),
@@ -840,6 +844,7 @@ pub const COMPANION_DEPS: &[(&str, &[&str])] = &[
         "fespalier_sign_keypair",
         &["fespalier_auth", "fespalier_keypair", "fespalier_transport"],
     ),
+    ("fespalier_storage", &["fespalier_storage_hive"]),
     ("fespalier_stream", &["fespalier_transport"]),
     ("fespalier_tolgee", &["fespalier_transport"]),
 ];

@@ -2,7 +2,7 @@
 import 'package:clock/clock.dart';
 import 'package:fespalier/persist.dart';
 import 'package:fespalier_storage/fespalier_storage.dart';
-import 'package:fespalier_storage/src/bounded.dart';
+import 'package:fespalier_storage_hive/bounded.dart';
 import 'package:fespalier_storage/testing.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

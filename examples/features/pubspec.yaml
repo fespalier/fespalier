@@ -36,6 +36,9 @@ dev_dependencies:
 dependency_overrides:
   fespalier:
     path: ../../packages/fespalier
+  # fespalier_storage depends on fespalier_storage_hive by git (since the release after 0.25.0).
+  fespalier_storage_hive:
+    path: ../../packages/fespalier_storage_hive
 
 flutter:
   uses-material-design: true

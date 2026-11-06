@@ -2,8 +2,8 @@
 import 'dart:async';
 
 import 'package:fespalier/persist.dart';
-import 'package:fespalier_storage/fespalier_storage.dart';
-import 'package:fespalier_storage/src/bounded.dart';
+import 'package:fespalier_storage_hive/fespalier_storage_hive.dart';
+import 'package:fespalier_storage_hive/src/bounded.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';

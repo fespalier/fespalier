@@ -7,6 +7,12 @@ saved value is **on the first frame** while the fresh one loads. Both keep to a 
 longest ago, and drop what they cannot read. fespalier itself has no dependency on either plugin: the generated code is
 the same bytes, and an app that does not depend on this package pays nothing.
 
+**Hive alone?** Since the release after 0.25.0, `HiveDataStorage` and the core both storages are built on are
+[fespalier_storage_hive](https://github.com/fespalier/fespalier/tree/main/packages/fespalier_storage_hive)'s, and this
+package re-exports them, so nothing changes for an app that depends on it. A Flutter plugin's native code is in an app
+whenever the plugin is in its dependencies, so an app that saves to Hive alone depends on `fespalier_storage_hive`
+instead and has no `shared_preferences` in it.
+
 ## Install
 
 Add it next to fespalier, with the same `url` and the same `ref`: pub resolves the two to one package only if they are
@@ -32,6 +38,9 @@ dependencies:
 
 The package needs Dart 3.9 and Flutter 3.35 or newer. `shared_preferences` and `path_provider` are flutter.dev plugins
 most apps have; `hive_ce` is pure Dart (no plugin). Dart that an app does not use is not in its release build.
+
+It depends on `fespalier_storage_hive` at the same tag, which pub resolves for you. An app that overrides
+`fespalier_storage` with a `path:` (a checkout, a fork) overrides `fespalier_storage_hive` the same way.
 
 ## Wire it
 
@@ -74,7 +83,7 @@ testWidgets('the saved team is on the first frame of the next start', (tester) a
 ```
 
 `package:fespalier_storage/testing.dart` has `fakePrefsStore([values])` and `memoryBox()` (a Hive box in memory, for
-`HiveDataStorage(await memoryBox())`). Call `fakePrefsStore` before any test that boots `AppMain.root()` or `AppMain.run()`
+`HiveDataStorage(await memoryBox())`; `fespalier_storage_hive`'s, re-exported). Call `fakePrefsStore` before any test that boots `AppMain.root()` or `AppMain.run()`
 when `startup()` opens a `PrefsDataStorage`: with no platform `open()` returns `null` and nothing is saved.
 
 ## Rules

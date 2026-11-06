@@ -101,7 +101,7 @@ now reads in a `data.dart` (a public variable of that name and another type is a
 reconnect signal, the storage, the key format and the tests. [`references/reconnect-and-network.md`](references/reconnect-and-network.md) (since 0.9.0) is `fespalier_connectivity`: the
 reconnect signal, `hasNetwork` and an offline banner, connectivity versus reachability, a reachability recipe, and tests with
 `FakeConnectivity`. [`references/storage-backends.md`](references/storage-backends.md)
-(since 0.9.0) is `fespalier_storage`: choosing Prefs or Hive, the budget and eviction, versioning, corrupt entries, sign-out, the web's
+(since 0.9.0) is `fespalier_storage`: choosing Prefs or Hive, Hive alone without shared_preferences (`fespalier_storage_hive`, since the release after 0.25.0), the budget and eviction, versioning, corrupt entries, sign-out, the web's
 quota, and a restart test that compiles.
 
 **A Rust core that says what changed (since 0.13.0).** `fespalier_frb`: `ChangeFeed(open)` holds the core's change stream in

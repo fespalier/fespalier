@@ -397,6 +397,7 @@ void main() {
       await pointer.moveTo(tester.getCenter(find.text('Two')));
       await tester.pump();
       expect(loads, 1);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
 
       for (var i = 0; i < 3; i++) {
@@ -405,6 +406,7 @@ void main() {
       await tester.pump();
       expect(loads, 1);
       // Moving away doesn't drop it: the click is about to follow.
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
     });
 
@@ -436,6 +438,7 @@ void main() {
         tester.getCenter(find.text('Two')),
       );
       expect(loads, 1);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
       await touch.up();
       await tester.pumpAndSettle();
@@ -476,12 +479,14 @@ void main() {
       final pointer = await mouse(tester);
       await pointer.moveTo(tester.getCenter(find.text('Two')));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
 
       // go: the page with the link is gone.
       router.go('/about');
       await tester.pumpAndSettle();
       expect(find.text('Two'), findsNothing);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isFalse);
     });
 
@@ -497,6 +502,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(loads, 1);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(-1)), isFalse);
 
       await hover(tester, pointer, find.text('Bad'));
@@ -553,14 +559,18 @@ void main() {
       final pointer = await mouse(tester);
       await pointer.moveTo(tester.getCenter(find.text('Item')));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(1)), isTrue);
       notifier.value = 2;
       await tester.pump();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(1)), isFalse);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isFalse);
       await hover(tester, pointer, find.text('Item'));
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
     });
   });
@@ -577,8 +587,10 @@ void main() {
       final (_, container) = await boot(tester, list());
       // 600 high: items 0 to 5.
       for (var i = 0; i < 6; i++) {
+        // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
         expect(container.exists(item(i)), isTrue, reason: 'item $i');
       }
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(6)), isFalse);
       expect(loads, 6);
     });
@@ -590,14 +602,18 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -2000));
       await tester.pump();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(0)), isFalse);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(20)), isTrue);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(25)), isTrue);
       // Back: it loads again, once per visit.
       final before = loads;
       await tester.drag(find.byType(ListView), const Offset(0, 2000));
       await tester.pump();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(0)), isTrue);
       expect(loads, greaterThan(before));
     });
@@ -625,12 +641,15 @@ void main() {
         tester,
         linkTile(const ItemRoute(2), 'Two', preload: Preload.visible),
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
       unawaited(router.push<Object?>('/about'));
       await tester.pumpAndSettle();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isFalse);
       router.pop();
       await tester.pumpAndSettle();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
     });
 
@@ -657,10 +676,12 @@ void main() {
 
     testWidgets('disposing closes every handle', (tester) async {
       final (router, container) = await boot(tester, list());
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(0)), isTrue);
       router.go('/about');
       await tester.pumpAndSettle();
       for (var i = 0; i < 6; i++) {
+        // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
         expect(container.exists(item(i)), isFalse, reason: 'item $i');
       }
     });
@@ -850,6 +871,7 @@ void main() {
         reported.single.context.toString(),
         'while running onPreload of a RouteLink to /items/2',
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
     });
   });
@@ -867,7 +889,9 @@ void main() {
         scope: (child) =>
             RouteLinkScope(preload: Preload.visible, child: child),
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(1)), isTrue);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isFalse);
     });
 
@@ -885,14 +909,17 @@ void main() {
               RouteLinkScope(preload: preload, child: child),
         ),
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(1)), isTrue);
       mode.value = Preload.none;
       await tester.pump();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(1)), isFalse);
       mode.value = Preload.visible;
       await tester.pump();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(1)), isTrue);
     });
 
@@ -910,6 +937,7 @@ void main() {
           child: child,
         ),
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isTrue);
     });
 
@@ -935,6 +963,7 @@ void main() {
         final pointer = await mouse(tester);
         await hover(tester, pointer, find.text('Code'));
         expect(CodeRoute.preloads, 1);
+        // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
         expect(container.exists(item(7)), isTrue);
 
         CodeRoute.completer.complete();
@@ -952,6 +981,7 @@ void main() {
           builder: (context, follow) => ListTile(onTap: follow),
         ),
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(item(2)), isFalse);
       expect(loads, 0);
     });

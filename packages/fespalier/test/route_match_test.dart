@@ -327,6 +327,7 @@ void main() {
 
       // A minute on, with nothing watching, the warm value is still there.
       await tester.pump(const Duration(minutes: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(1)), isTrue);
       expect(container.read(product(1)).value, 'product 1');
       expect(loads, 1);
@@ -334,6 +335,7 @@ void main() {
 
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(1)), isFalse);
       expect(handle.isClosed, isTrue);
       // Closing twice is fine.
@@ -355,11 +357,14 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
       early.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(3)), isFalse);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(2)), isTrue);
 
       await tester.pump(const Duration(seconds: 6));
       expect(timed.isClosed, isTrue);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(2)), isFalse);
     });
 
@@ -387,6 +392,7 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 150));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(5)), isTrue);
       expect(handle.isClosed, isFalse);
 
@@ -396,6 +402,7 @@ void main() {
       await tester.pumpWidget(app(const SizedBox()));
       expect(handle.isClosed, isTrue);
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(5)), isFalse);
     });
 
@@ -409,9 +416,11 @@ void main() {
       expect(loads, 1);
       a.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(4)), isTrue);
       b.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(4)), isFalse);
     });
 
@@ -423,6 +432,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
       await tester.pump();
       expect(handle.isClosed, isTrue);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(-1)), isFalse);
     });
 
@@ -434,12 +444,16 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
       expect(loads, 2);
       await tester.pump(const Duration(minutes: 1));
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(5)), isTrue);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(6)), isTrue);
 
       handle.close();
       await tester.pump();
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(5)), isFalse);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(6)), isFalse);
       expect(ref.prefetchAll(const []).isClosed, isTrue);
     });
@@ -452,7 +466,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 150));
       await tester.pump();
       expect(handle.isClosed, isTrue);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(5)), isFalse);
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(product(-1)), isFalse);
     });
 

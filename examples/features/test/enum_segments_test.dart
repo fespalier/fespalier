@@ -66,6 +66,7 @@ void main() {
         expect(shop_data.shopFetches, 1);
         // Another value is another provider, which nothing has asked for yet.
         expect(
+          // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
           container.exists(CategoryShopRoute.data(Category.shoes)),
           isFalse,
         );

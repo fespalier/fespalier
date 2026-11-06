@@ -644,6 +644,7 @@ void main() {
       final container = ProviderScope.containerOf(
         tester.element(find.byType(Consumer)),
       );
+      // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
       expect(container.exists(p), isFalse, reason: 'the link was released');
       // The next call, from an event handler, runs.
       final run = widgetRef.read(p.notifier).call('y', hold: true);

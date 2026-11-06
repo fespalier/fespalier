@@ -1067,6 +1067,7 @@ bool? _alive(_DataEntry entry) {
   final container = entry.owner?.target;
   final provider = entry.source?.target;
   if (container == null || provider is! ProviderBase<Object?>) return null;
+  // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
   return container.exists(provider);
 }
 
@@ -1599,6 +1600,7 @@ Map<String, Object?> _invalidate(Map<String, String> params) {
     final provider = entry.source?.target;
     if (container != null &&
         provider is ProviderBase<Object?> &&
+        // ignore: deprecated_member_use (riverpod 3.5; the floor lacks provider.exists)
         container.exists(provider)) {
       container.invalidate(provider);
       ok = true;

@@ -408,6 +408,23 @@ issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8
 
 Since 0.27.0, `OidcBackend` also signs in with `DeviceSignIn`: the OAuth 2.0 device authorization grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)), for a TV, a kiosk or a CLI that has no browser or no keyboard. The app shows a short code and a URL; the user opens the URL on their phone, signs in there and approves; the app polls the token endpoint until they did, and ends `SignedIn` with a `TokenCredential` like a browser sign-in.
 
+An app that signs in this way alone leaves out `redirectUri` and `openBrowser` (both optional since 0.27.0): it links no browser plugin. Such a backend throws a `StateError` naming the missing argument (`fespalier_oidc: a BrowserSignIn needs OidcBackend(openBrowser:, redirectUri:), and this backend was made without openBrowser and redirectUri ...`) for a `BrowserSignIn`, a step-up or `endBrowserSession`, before any request.
+
+```dart
+// lib/auth_setup.dart (a TV app)
+AuthConfig authSetup() => AuthConfig(
+  transport: transport,
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'tv-app',
+    endpoints: OidcEndpoints.keycloak(issuer), // or OidcEndpoints(..., deviceAuthorization: ...)
+    transport: transport,
+    scopes: const ['openid', 'profile', 'offline_access'],
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
 ```dart
 // In the TV page's State: it shows the code, and its "Cancel" button completes `_cancel`.
 final _cancel = Completer<void>();

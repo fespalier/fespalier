@@ -59,6 +59,18 @@ typedef OpenBrowser =
 /// )
 /// ```
 ///
+/// A TV or kiosk app that signs in with `DeviceSignIn` alone (since 0.27.0) leaves out
+/// `redirectUri` and `openBrowser`:
+///
+/// ```dart
+/// OidcBackend(
+///   issuer: issuer,
+///   clientId: 'tv-app',
+///   endpoints: OidcEndpoints.keycloak(issuer),
+///   transport: transport,
+/// )
+/// ```
+///
 /// It owns the token exchange and the refresh, which is what makes single-flight refresh,
 /// refresh-token rotation and DPoP on the token endpoint possible. It does not verify the ID
 /// token's signature (OpenID Connect Core 3.1.3.7: the token came from the token endpoint over
@@ -67,7 +79,10 @@ typedef OpenBrowser =
 /// `client_secret`) are out of scope: a mobile or web app is a public client.
 final class OidcBackend extends AuthBackend {
   /// A backend for the client [clientId] of the issuer [issuer]. The browser is [openBrowser];
-  /// [redirectUri] is what the provider sends it back to (registered with the client). The
+  /// [redirectUri] is what the provider sends it back to (registered with the client). Both are
+  /// optional since 0.27.0: a TV or kiosk app that signs in with `DeviceSignIn` alone passes
+  /// neither, and a `BrowserSignIn`, a step-up or [endBrowserSession] then throws a `StateError`
+  /// that names the missing argument. The
   /// token, discovery and revocation calls go through [transport], which should be the one of
   /// `AuthConfig.transport` (a session is not attached to them: the token endpoint is not the
   /// API).
@@ -80,8 +95,8 @@ final class OidcBackend extends AuthBackend {
   OidcBackend({
     required this.issuer,
     required this.clientId,
-    required this.redirectUri,
-    required this.openBrowser,
+    this.redirectUri,
+    this.openBrowser,
     this.scopes = const ['openid', 'profile', 'email'],
     OidcEndpoints? endpoints,
     this.postLogoutRedirectUri,
@@ -102,11 +117,30 @@ final class OidcBackend extends AuthBackend {
   /// The public client's id.
   final String clientId;
 
-  /// Where the browser is sent back to: a custom scheme (`com.example.shop:/callback`), or a page.
-  final Uri redirectUri;
+  /// Where the browser is sent back to: a custom scheme (`com.example.shop:/callback`), or a page;
+  /// null (since 0.27.0) for a backend that never opens a browser.
+  final Uri? redirectUri;
 
-  /// Opens the authorization URL and returns the redirect.
-  final OpenBrowser openBrowser;
+  /// Opens the authorization URL and returns the redirect; null (since 0.27.0) for a backend that
+  /// signs in with `DeviceSignIn` only.
+  final OpenBrowser? openBrowser;
+
+  /// The browser and the redirect, or a `StateError` naming what [what] needs and is missing.
+  (OpenBrowser, Uri) _browser(String what, {Uri? redirect}) {
+    final open = openBrowser;
+    final back = redirect ?? redirectUri;
+    if (open == null || back == null) {
+      final missing = [
+        if (open == null) 'openBrowser',
+        if (back == null) 'redirectUri',
+      ].join(' and ');
+      throw StateError(
+        'fespalier_oidc: $what needs OidcBackend(openBrowser:, redirectUri:), and this '
+        'backend was made without $missing (a backend for DeviceSignIn alone needs neither)',
+      );
+    }
+    return (open, back);
+  }
 
   /// The scopes asked for.
   final List<String> scopes;
@@ -252,6 +286,9 @@ final class OidcBackend extends AuthBackend {
     BrowserSignIn request, {
     bool stepUp = false,
   }) async {
+    final (openBrowser, redirectUri) = _browser(
+      stepUp ? 'a step-up' : 'a BrowserSignIn',
+    );
     final endpoints = await _resolve();
     final pkce = Pkce.generate(_random);
     final state = randomToken(_random, 16);
@@ -384,10 +421,13 @@ final class OidcBackend extends AuthBackend {
   /// browser session (`preferEphemeral: true`) there is none to end, and [signOut] already revoked
   /// the refresh token. A closed browser is not an error.
   Future<void> endBrowserSession(AuthSession session) async {
+    final (openBrowser, back) = _browser(
+      'endBrowserSession',
+      redirect: postLogoutRedirectUri,
+    );
     final endpoints = await _resolve();
     final endSession = endpoints.endSession;
     if (endSession == null) return;
-    final back = postLogoutRedirectUri ?? redirectUri;
     final url = endSession.replace(
       queryParameters: {
         ...endSession.queryParameters,

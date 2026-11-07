@@ -153,6 +153,36 @@ poll carries a proof, the code request none).
   it**, so write the endpoints out for it; it answers no `verification_uri_complete`, a fixed 5-second `slow_down`
   window, and a refresh token only with `offline_access` (`DeviceSignIn(scopes: [..., 'offline_access'])`).
 
+A backend for `DeviceSignIn` alone leaves out `redirectUri` and `openBrowser` (both optional since 0.27.0, so a TV
+app links no browser plugin); a `BrowserSignIn`, a step-up or `endBrowserSession` on it throws `StateError:
+fespalier_oidc: a BrowserSignIn needs OidcBackend(openBrowser:, redirectUri:), and this backend was made without ...`,
+before any request.
+
+```dart
+// lib/tv_auth_setup.dart
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:http/http.dart' as http;
+
+final tvTransport = HttpClientTransport(http.Client());
+
+final tvIssuer = Uri.parse('https://sso.example.com/realms/tv');
+
+AuthConfig tvAuthSetup() => AuthConfig(
+  transport: tvTransport,
+  backend: OidcBackend(
+    issuer: tvIssuer,
+    clientId: 'tv-app',
+    // No redirectUri and no openBrowser: this app never opens a browser.
+    endpoints: OidcEndpoints.keycloak(tvIssuer),
+    transport: tvTransport,
+    scopes: const ['openid', 'profile', 'offline_access'],
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
 ```dart
 // lib/app/tv/page.dart
 import 'dart:async';

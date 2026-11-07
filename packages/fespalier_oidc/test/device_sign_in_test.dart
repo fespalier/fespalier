@@ -56,8 +56,7 @@ final class Rig {
   late final backend = OidcBackend(
     issuer: issuer,
     clientId: clientId,
-    redirectUri: Uri.parse('com.example.tv:/callback'),
-    openBrowser: (_, _) => throw const AuthCancelled(),
+    // A device-only backend: no browser, no redirect.
     endpoints: known,
     transport: transport,
     proof: proof,
@@ -565,8 +564,6 @@ void main() {
       final backend = OidcBackend(
         issuer: issuer,
         clientId: clientId,
-        redirectUri: Uri.parse('com.example.tv:/callback'),
-        openBrowser: (_, _) => throw const AuthCancelled(),
         transport: transport,
       );
       final signedIn = backend.signIn(
@@ -577,6 +574,76 @@ void main() {
       wait.elapse();
       await signedIn;
       expect(server.codeRequests, hasLength(1));
+    });
+  });
+
+  group('a backend made without a browser', () {
+    Matcher names(String what, String missing) => throwsA(
+      isA<StateError>().having(
+        (e) => e.message,
+        'message',
+        allOf(
+          startsWith(
+            'fespalier_oidc: $what needs OidcBackend(openBrowser:, redirectUri:)',
+          ),
+          contains('made without $missing'),
+        ),
+      ),
+    );
+
+    test(
+      'signs in with DeviceSignIn (the rig has neither) but refuses a BrowserSignIn',
+      () async {
+        final rig = Rig();
+        expect(rig.backend.openBrowser, isNull);
+        expect(rig.backend.redirectUri, isNull);
+        await expectLater(
+          rig.backend.signIn(const BrowserSignIn()),
+          names('a BrowserSignIn', 'openBrowser and redirectUri'),
+        );
+        expect(rig.transport.requests, isEmpty);
+      },
+    );
+
+    test('names the one argument that is missing', () async {
+      final transport = FakeTransport.script(const []);
+      final noRedirect = OidcBackend(
+        issuer: issuer,
+        clientId: clientId,
+        openBrowser: (_, _) => throw const AuthCancelled(),
+        endpoints: endpoints,
+        transport: transport,
+      );
+      await expectLater(
+        noRedirect.signIn(const BrowserSignIn()),
+        names('a BrowserSignIn', 'redirectUri'),
+      );
+      final noBrowser = OidcBackend(
+        issuer: issuer,
+        clientId: clientId,
+        redirectUri: Uri.parse('com.example.tv:/callback'),
+        endpoints: endpoints,
+        transport: transport,
+      );
+      await expectLater(
+        noBrowser.signIn(const BrowserSignIn()),
+        names('a BrowserSignIn', 'openBrowser'),
+      );
+      expect(transport.requests, isEmpty);
+    });
+
+    test('refuses a step-up and endBrowserSession the same way', () async {
+      final rig = Rig();
+      final session = fakeTokenSession(ada);
+      await expectLater(
+        rig.backend.stepUp(session, const StepUpChallenge()),
+        names('a step-up', 'openBrowser and redirectUri'),
+      );
+      await expectLater(
+        rig.backend.endBrowserSession(session),
+        names('endBrowserSession', 'openBrowser and redirectUri'),
+      );
+      expect(rig.transport.requests, isEmpty);
     });
   });
 

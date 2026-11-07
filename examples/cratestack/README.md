@@ -84,9 +84,15 @@ sequenceDiagram
   Q->>S: intent 1, the same bytes and key
   S->>R: signed at send time: a new signature and jti, never the one made offline
   R-->>S: 403 device_revoked (WWW-Authenticate: DeviceSignature error="device_revoked")
-  S-->>Q: the session ends as revoked; nothing else is sent
-  Note over Q: wipeWhenSessionEnds: crateStackAccount.clear(scope: the account that ended), every queued intent gone
+  S-->>Q: the session ends as revoked: AuthRejected, read as CrateStackSessionEnded
+  Note over Q: the drain stops, nothing else is sent; the intents stay pending under their keys
+  Note over Q: wipeWhenSessionEnds (this app's choice): crateStackAccount.clear(scope: the account that ended)
 ```
+
+Since 0.27.0 the queue stops by itself: `TransportFailures.read` reads the session's `AuthRejected` (a
+`CredentialsRefused`) as `CrateStackSessionEnded`, the drain sends nothing after it and keeps the writes under their keys.
+The wipe is the app's: a revoked device should not keep the account's data. A second end-to-end test runs the same
+revocation without it and finds the three writes still queued, under the keys they were queued with.
 
 ```mermaid
 stateDiagram-v2

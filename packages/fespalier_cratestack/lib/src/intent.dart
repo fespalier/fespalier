@@ -159,6 +159,7 @@ final class DrainReport {
     this.conflicts = 0,
     this.retained = 0,
     this.offline = false,
+    this.sessionEnded = false,
     this.reachedServer = false,
   });
 
@@ -171,11 +172,16 @@ final class DrainReport {
   /// Intents the server answered with a conflict (kept as `conflict`).
   final int conflicts;
 
-  /// Intents still pending after an answer that decided nothing (in flight, `401`, a stored failure).
+  /// Intents still pending after an answer that decided nothing (in flight, `401`, a session that
+  /// ended, a stored failure).
   final int retained;
 
   /// Whether the drain stopped at a call that got no answer.
   final bool offline;
+
+  /// Whether the drain stopped because the session it sent for is over (since 0.27.0): an intent
+  /// met a `CrateStackSessionEnded` and was kept `pending`; nothing was sent after it.
+  final bool sessionEnded;
 
   /// Whether any call got an answer from CrateStack, of any kind.
   final bool reachedServer;

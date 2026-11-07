@@ -35,4 +35,5 @@ Future<List<Override>> startup() async {
 
 /// Runs on the app's container, before the router: a session that ends without the user asking (a
 /// revoked device, a lost key) wipes what this phone kept for that account ([wipeWhenSessionEnds]).
+/// The queue stops at the refusal without it (since 0.27.0); the wipe is this app's privacy choice.
 void ready(ProviderContainer container) => wipeWhenSessionEnds(container);

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:fespalier_transport/fespalier_transport.dart'
     show
+        CredentialsRefused,
         TransportAborted,
         TransportBroken,
         TransportPortal,
@@ -38,9 +39,13 @@ abstract final class TransportFailures {
   /// captive portal or an attack) are unknown, not offline: null. A `TransportStatusError` is classified by its status and body
   /// (`CrateStackFailure.fromResponse`), after the app's own reader had its turn: a body with a
   /// CrateStack envelope by its status and code, a `5xx` with an envelope is
-  /// [CrateStackUnavailable].
+  /// [CrateStackUnavailable]. A `CredentialsRefused` (`fespalier_auth`'s `AuthRejected`: the
+  /// session the call was made for is over) is [CrateStackSessionEnded] (since 0.27.0; unknown,
+  /// null, before).
   static CrateStackFailure? read(Object error) {
     switch (error) {
+      case CredentialsRefused():
+        return const CrateStackSessionEnded();
       case TransportAborted():
         return const CrateStackCancelled();
       case TransportUnsent() || TransportTimedOut() || TransportPortal():

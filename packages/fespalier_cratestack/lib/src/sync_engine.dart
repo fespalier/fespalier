@@ -112,7 +112,9 @@ abstract interface class SyncRunner {
 
 /// Push the dirty owned rows, pull each collection, then drain the intents, in that order: an
 /// intent may name a row made offline, and the server must have it first. The drain runs even if
-/// the push failed, and stops at the first sign of no network.
+/// the push failed, and stops at the first sign of no network. A push, a pull or an intent that
+/// meets the end of the session (`CrateStackSessionEnded`, since 0.27.0) stops the sync there:
+/// nothing after it is sent, and the report's `failure` says so.
 final class SyncEngine implements SyncRunner {
   /// An engine over [rows] and [intents]; [rowSync] is null for an app with intents only.
   SyncEngine({
@@ -294,7 +296,7 @@ final class SyncEngine implements SyncRunner {
         // A refusal or a server failure is an answer: the server was reached.
         reached = reached || !offline;
       }
-      if (!offline) {
+      if (!offline && failure is! CrateStackSessionEnded) {
         try {
           for (final collection in _collections) {
             pulled += await _pull(
@@ -316,13 +318,18 @@ final class SyncEngine implements SyncRunner {
       }
     }
     var intents = const DrainReport();
-    try {
-      intents = await _intents.drain();
-      reached = reached || intents.reachedServer;
-    } on Object catch (error) {
-      failure ??= _failureOf(error);
+    // A push or a pull that met the end of the session: nothing made for it would be accepted,
+    // so the intents wait for that account to sign in again, or for the sign-out's wipe.
+    if (failure is! CrateStackSessionEnded) {
+      try {
+        intents = await _intents.drain();
+        reached = reached || intents.reachedServer;
+      } on Object catch (error) {
+        failure ??= _failureOf(error);
+      }
     }
     if (intents.offline) failure ??= const CrateStackOffline();
+    if (intents.sessionEnded) failure ??= const CrateStackSessionEnded();
     if (changed.isNotEmpty) _bump(changed);
     if (reached) _lastReached = clock.now();
     final report = SyncReport(

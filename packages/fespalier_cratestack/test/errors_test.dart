@@ -239,6 +239,24 @@ void main() {
         isA<CrateStackOffline>(),
       );
     });
+    test(
+      'a refused session (CredentialsRefused, an AuthRejected) is the session ended, since 0.27.0',
+      () {
+        final failure = TransportFailures.read(const _SessionOver());
+        expect(failure, isA<CrateStackSessionEnded>());
+        expect(
+          failure,
+          isA<CrateStackUnauthenticated>(),
+          reason: 'code that handles a 401 handles it too',
+        );
+        expect(
+          const CrateStackErrors([
+            TransportFailures.read,
+          ]).classify(const _SessionOver()),
+          isA<CrateStackSessionEnded>(),
+        );
+      },
+    );
     test('anything else is not its to read', () {
       expect(TransportFailures.read(StateError('x')), isNull);
     });
@@ -414,4 +432,9 @@ void main() {
       );
     });
   });
+}
+
+/// What `fespalier_auth`'s `AuthRejected` is to this package: a `CredentialsRefused`.
+final class _SessionOver implements CredentialsRefused {
+  const _SessionOver();
 }

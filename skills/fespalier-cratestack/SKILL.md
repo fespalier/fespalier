@@ -103,8 +103,12 @@ same `Idempotency-Key`. Details: [Step-up authentication](../../docs/auth.md#ste
 handlers for the attestations, refusals as `AuthRefusal`s, no layer in front of the router; the `DeviceAuthServer` recipe is
 in [`fespalier-guards`](../fespalier-guards/SKILL.md), "A `DeviceAuthServer` for an Authkestra server"). Its server keeps a write's answer per user and key in its
 procedures, after authentication, because CrateStack's `IdempotencyLayer` runs before any `AuthProvider`. A session that
-ends as `revoked` or `keyLost` does not wipe the queue by itself: call `crateStackAccount.clear(scope:)` with the account
-that ended (the example's `wipeWhenSessionEnds`).
+ends as `revoked` or `keyLost` stops the queue by itself (since 0.27.0): the session's `AuthRejected` is a
+`CredentialsRefused`, which `TransportFailures.read` reads as `CrateStackSessionEnded`, so a drain keeps that intent
+`pending` under its key, sends nothing after it and reports `DrainReport.sessionEnded`. It does not wipe the queue: to
+remove what the account kept, call `crateStackAccount.clear(scope:)` with the account that ended (the example's
+`wipeWhenSessionEnds`, a listener in the app, never in a package). Before 0.27.0 the drain went on past the refusal and
+sent the next intents without credentials.
 
 ## 2. The two seams
 

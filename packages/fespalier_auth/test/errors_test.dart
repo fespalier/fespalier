@@ -3,7 +3,7 @@
 import 'package:fespalier/fespalier.dart' show DataRefusal;
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_transport/fespalier_transport.dart'
-    show CredentialsUnavailable, TransportBroken;
+    show CredentialsRefused, CredentialsUnavailable, TransportBroken;
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -36,6 +36,15 @@ void main() {
     expect(NotSignedIn(), isA<StateError>());
     expect('${NotSignedIn()}', 'Bad state: fespalier_auth: not signed in');
   });
+
+  test(
+    'AuthRejected is a CredentialsRefused (since 0.27.0), so a reader that knows no auth package '
+    'tells a lost session from an unknown error',
+    () {
+      expect(const AuthRejected(), isA<CredentialsRefused>());
+      expect(const AuthRejected(), isNot(isA<CredentialsUnavailable>()));
+    },
+  );
 
   test(
     'AuthUnavailable is a CredentialsUnavailable, and names the cause but not the server',

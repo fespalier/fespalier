@@ -26,6 +26,24 @@ final class LoggingSync implements RowSync {
   }
 }
 
+/// A [RowSync] whose server says the session is over.
+final class _EndedSync implements RowSync {
+  _EndedSync(this.log);
+  final List<String> log;
+
+  @override
+  Future<PushResult> push(List<OwnedRow> dirty) async {
+    log.add('push');
+    throw const CrateStackSessionEnded();
+  }
+
+  @override
+  Future<PullPage> pull(String collection, String? cursor) async {
+    log.add('pull:$collection');
+    throw const CrateStackSessionEnded();
+  }
+}
+
 typedef Rig = ({
   ProviderContainer container,
   SyncEngine engine,
@@ -113,6 +131,44 @@ void main() {
       );
     },
   );
+
+  test(
+    'a push that meets the end of the session: no pull, no drain (since 0.27.0)',
+    () async {
+      final r = rig();
+      await r.rows.edit('notes', 'n1', {'title': 't'});
+      r.transport.offline = true;
+      await submitCancel(r.queue);
+      r.transport.offline = false;
+      final engine = SyncEngine(
+        rows: r.rows,
+        rowSync: _EndedSync(r.log),
+        intents: r.queue,
+        collections: const ['notes'],
+        bump: r.container.read(crateStackBump),
+      );
+
+      final report = await engine.sync(SyncReason.manual);
+
+      expect(report.failure, isA<CrateStackSessionEnded>());
+      expect(r.log, ['push'], reason: 'nothing is sent after it');
+      expect(await r.queue.list(), hasLength(1), reason: 'the intent is kept');
+    },
+  );
+
+  test('an intent that meets the end of the session is the failure', () async {
+    final r = rig();
+    r.transport.offline = true;
+    await submitCancel(r.queue);
+    r.transport.offline = false;
+    r.transport.fail('cancelOrder', const CrateStackSessionEnded(), times: 1);
+
+    final report = await r.engine.sync(SyncReason.manual);
+
+    expect(report.intents.sessionEnded, isTrue);
+    expect(report.failure, isA<CrateStackSessionEnded>());
+    expect(await r.queue.list(), hasLength(1));
+  });
 
   test('nothing reachable: the report says so and nothing throws', () async {
     final r = rig();

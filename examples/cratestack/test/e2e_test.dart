@@ -173,6 +173,7 @@ class _App {
     String seed = 'e2e',
     Duration renewAhead = const Duration(hours: 12),
     bool userPresent = true,
+    bool wipeWhenEnded = true,
   }) async {
     final ambient = FakeKeypairSigner(keyId: 'ambient', seed: '$seed ambient');
     final presence = userPresent
@@ -200,7 +201,7 @@ class _App {
       ],
     );
     // What `ready()` in lib/app/startup.dart installs on the app's container.
-    wipeWhenSessionEnds(container);
+    if (wipeWhenEnded) wipeWhenSessionEnds(container);
     return _App(server, ambient, presence, container, client, wire);
   }
 
@@ -767,8 +768,13 @@ void main() {
       await server.revoke(app.credential.deviceId);
       final reconnected = DateTime.now();
       app.wire.offline = false;
-      await queue.drain();
+      final report = await queue.drain();
       await pumpEventQueue();
+      expect(
+        report.sessionEnded,
+        isTrue,
+        reason: 'the drain met the end of the session and stopped there',
+      );
 
       // The session is over, as revoked, and what the phone kept for the account is gone.
       expect(
@@ -831,6 +837,72 @@ void main() {
         iat,
         greaterThanOrEqualTo(reconnected.millisecondsSinceEpoch ~/ 1000),
         reason: 'signed at send time, not at queue time',
+      );
+    },
+  );
+  test(
+    'revocation with queued intents, without the app\'s wipe: fespalier_cratestack stops at the '
+    'refusal, sends nothing after it and keeps every write under its key',
+    () async {
+      await app.close();
+      app = await _App.start(server, seed: 'kept', wipeWhenEnded: false);
+      await app.enrol();
+      final userId = app.container.read(authUserId)!;
+      final queue = app.container.read(intentQueue);
+
+      app.wire.offline = true;
+      for (final item in ['Tea', 'Milk', 'Sugar']) {
+        await queue.submit<Object?>(
+          RpcCall(
+            'procedure.placeOrder',
+            PlaceOrderProcedureArgs(
+              args: PlaceOrderArgs(item: item, quantity: 1),
+            ).toWire(),
+          ),
+          decode: (output) => output,
+        );
+      }
+      final queued = await queue.list();
+      expect(queued, hasLength(3));
+
+      await server.revoke(app.credential.deviceId);
+      app.wire.offline = false;
+      final report = await queue.drain();
+      await pumpEventQueue();
+
+      expect(
+        app.container.read(authSession),
+        const SignedOut(reason: SignOutReason.revoked),
+      );
+      expect(report.sessionEnded, isTrue);
+      expect(report.accepted, 0);
+      expect(report.failed, 0);
+      expect(
+        [for (final s in app.sentTo('placeOrder')) s.status],
+        [403],
+        reason: 'one send, refused; nothing after it, signed or not',
+      );
+      expect(
+        app.wire.attempts.last.uri.path,
+        '/rpc/procedure.placeOrder',
+        reason: 'no renewal, no other call after the refusal',
+      );
+      // The writes are the user's: kept, pending, under the keys they were queued with, in the
+      // account's own part of the store, until a sign-out's crateStackAccount.clear wipes them.
+      final store = app.container.read(localStore);
+      final kept = [
+        for (final key in await store.keys(
+          'cs/${Uri.encodeComponent(userId)}/intent/',
+        ))
+          Intent.fromJson(jsonDecode((await store.read(key))!)),
+      ]..sort((a, b) => a.seq.compareTo(b.seq));
+      expect(
+        [for (final i in kept) i.status],
+        [for (final _ in queued) IntentStatus.pending],
+      );
+      expect(
+        [for (final i in kept) i.idempotencyKey],
+        [for (final i in queued) i.idempotencyKey],
       );
     },
   );

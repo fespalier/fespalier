@@ -1,12 +1,14 @@
 import 'package:fespalier/fespalier.dart' show DataRefusal;
 import 'package:fespalier_transport/fespalier_transport.dart'
-    show CredentialsUnavailable;
+    show CredentialsRefused, CredentialsUnavailable;
 
 import 'session.dart';
 
 /// The server refused the session: an error such as `invalid_grant` (since 0.9.0). The
-/// session is over, and the user has to sign in again. A [DataRefusal] (since 0.13.1).
-final class AuthRejected implements Exception, DataRefusal {
+/// session is over, and the user has to sign in again. A [DataRefusal] (since 0.13.1), and a
+/// `CredentialsRefused` (`package:fespalier_transport`, since 0.27.0), so a reader that knows no
+/// auth package can tell a lost session from an unknown error.
+final class AuthRejected implements Exception, DataRefusal, CredentialsRefused {
   /// The refusal: the OAuth [error] code, and the server's [description] when it gave one.
   const AuthRejected([this.error = 'invalid_grant', this.description]);
 

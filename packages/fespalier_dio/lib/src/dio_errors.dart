@@ -16,6 +16,9 @@ abstract final class DioErrors {
   ///
   /// * a `DioException` whose cause (`error`) is a [TransportFailure] (what `TransportAdapter`
   ///   puts there) is that failure, the very object;
+  /// * a `DioException` whose cause is a [CredentialsRefused] (a session's `AuthRejected`, which
+  ///   `TransportAdapter` wraps as an `unknown` `DioException`) is that cause, the very object
+  ///   (since 0.27.0);
   /// * a `DioException` of type `cancel` is a [TransportAborted];
   /// * a `DioException` with a response (Dio's `badResponse`: it throws for a 4xx and a 5xx) is a
   ///   [TransportStatusError] with the status, the lower-case headers and the body as bytes;
@@ -24,6 +27,7 @@ abstract final class DioErrors {
     if (error is! DioException) return error;
     final cause = error.error;
     if (cause is TransportFailure) return cause;
+    if (cause is CredentialsRefused) return cause;
     if (error.type == DioExceptionType.cancel) {
       return TransportAborted(error, error.requestOptions.uri);
     }

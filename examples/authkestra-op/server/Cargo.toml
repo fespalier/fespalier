@@ -1,0 +1,49 @@
+[package]
+name = "authkestra-op-demo-server"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98.0"
+license = "MIT"
+publish = false
+description = "The server of fespalier's authkestra-op example: an authkestra-op OpenID Provider (PKCE S256, DPoP-bound tokens, DPoP-Nonce) and an API that checks the tokens' cnf.jkt"
+
+[lib]
+name = "authkestra_op_demo_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "authkestra-op-demo-server"
+path = "src/main.rs"
+
+[dependencies]
+# Authkestra by git, at one commit: crates.io's 0.14.0 predates the DPoP nonce (Authkestra#441,
+# 68a250f). cli/tests/versions.rs keeps every `authkestra*` rev of the repository's Cargo.toml
+# files equal, so a bump is one PR that moves them all (and the Cargo.lock files with them).
+authkestra-axum = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36", default-features = false, features = ["op", "rustls-aws-lc-rs"] }
+authkestra-engine = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36", default-features = false, features = ["memory", "rustls-aws-lc-rs"] }
+authkestra-op = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36", default-features = false, features = ["rustls-aws-lc-rs"] }
+authkestra-resource = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36", default-features = false, features = ["rustls-aws-lc-rs"] }
+axum = { version = "0.8", default-features = false, features = ["form", "http1", "json", "query", "tokio"] }
+# The demo login session's expiry.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# The token signing key: a fresh Ed25519 key per run, handed to TokenManager as PKCS#8 PEM.
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
+getrandom = "0.3"
+# `Algorithm::EdDSA` for the resource side's ValidationConfig (authkestra's own jsonwebtoken).
+jsonwebtoken = { version = "11", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tower-cookies = "0.11"
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

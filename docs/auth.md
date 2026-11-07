@@ -436,6 +436,41 @@ Install `fespalier_keypair` and `fespalier_keypair_dpop` next to `fespalier`, `f
 - **A retrier goes over the session transport**, never under it (see Calling your API).
 - **Tests.** `package:fespalier_keypair/testing.dart` has `FakeKeypairSigner` (a software key from a fixed scalar: the same key and signature on every run) and `package:fespalier_keypair_dpop/verify.dart` has `verifyDpopProof`, which a fake server checks every proof with and which names the first check that failed. `examples/auth` runs a DPoP-checking demo server.
 
+## OpenID Connect with Authkestra
+
+[Authkestra](https://github.com/Authkestra/authkestra)'s OpenID Provider, `authkestra-op`, needs no preset and no adapter code: leave `endpoints:` out and `OidcEndpoints.discover` reads its document. It is tested in CI (since the release after 0.26.0): [`examples/authkestra-op`](https://github.com/fespalier/fespalier/tree/main/examples/authkestra-op) is an `authkestra-op` server built from Authkestra at a pinned commit, and `fespalier_keypair_dpop`'s `test/authkestra_op_test.dart` signs in against it, renews, calls a DPoP-checking API and signs out, with the stack an app runs.
+
+```dart
+// lib/auth_setup.dart
+final issuer = Uri.parse('https://id.example.com'); // authkestra-op's OpConfig.issuer
+
+AuthConfig authSetup() => AuthConfig(
+  transport: transport,
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'shop-app',
+    redirectUri: Uri.parse('com.example.shop:/callback'),
+    // No endpoints: discovered at the first sign-in or renewal, once.
+    scopes: const ['openid', 'profile', 'email', 'offline_access'],
+    openBrowser: openBrowser,
+    transport: transport,
+    proof: DpopProof.device(),
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
+What an `authkestra-op` server must be configured with, and what differs from Keycloak (read at Authkestra `68a250f`):
+
+- **A public client** (`ClientRegistration` with no `client_secret_hash`) with the `authorization_code` and `refresh_token` grants, `redirect_uris` listing `redirectUri` exactly, and every scope the app asks for. PKCE S256 is required for every client.
+- **`offline_access`** is what makes `authkestra-op` issue a refresh token: without it there is no renewal, and the session ends when the access token does. Ask for it in `scopes:`.
+- **Discovery advertises DPoP and revocation only when the server opts in**: `OidcDiscovery::from_config(...).with_dpop_support()` once a DPoP replay store is wired, and `.with_revocation_endpoint(url)` once the host mounts an RFC 7009 `/revoke` (`authkestra-op` ships none; the example's is a few lines over the refresh-token store). Without a `revocation_endpoint`, sign-out is local: the refresh token stays good until it expires. There is no `end_session_endpoint`, so `endBrowserSession` does nothing.
+- **DPoP nonces** (`CompositeOpStore::with_dpop_nonces`, Authkestra#441): the token endpoint answers a proof without a current nonce `400 use_dpop_nonce` with a `DPoP-Nonce`, and a nonce on every answer. `OidcBackend` sends the request once more with it, so a cold sign-in is two POSTs to `/token`, and the nonce is kept for the renewals after it. An API that asks for its own nonce (`401`, `WWW-Authenticate: DPoP error="use_dpop_nonce"`) gets one `Resend` from the authenticator. A refused code exchange keeps its code: `authkestra-op` checks the nonce before it spends anything. A refresh token bound to a key is refused for any other key with `invalid_dpop_proof` (`This refresh token is bound to a different DPoP key`), which `OidcBackend.renew` reads as the end of the session (`AuthRejected`).
+- **`dpop_jkt` is ignored** at the authorization endpoint (the code is not bound to the key; the tokens are, at the code exchange).
+- **The user's attributes are in an `identity` object**, not in OpenID Connect's standard claims: `AuthUser.id` is `sub`, but `email` and `name` are null, and the app reads `session.user.claims['identity']` (`email`, `username`). There are no Keycloak roles (pass your own `roles:`).
+- **The login page is the host's.** `/authorize` redirects to `/login` when the browser has no session; the host application signs the user in and sends the browser back.
+- UNCHECKED by CI: a real browser. The test's "browser" posts the example's demo `/login` and reopens the authorization URL with the session cookie; `flutter_web_auth_2` and a person typing are not run.
+
 ## Device-signed sessions: fespalier_sign_keypair
 
 `package:fespalier_sign_keypair` (since 0.21.0; it held DPoP until 0.20.0) is a session with **no token at all**: no OIDC provider, no access or refresh token, no DPoP, no `Authorization` header. "Signed in" means this device's key is enrolled and holds a valid attestation, and every request then carries its own signature over its method, path, query and exact body bytes. It plugs into the same core as an OIDC app: the same `authSession` states, guards, restore, `keyLost` and sign-out. It depends on `fespalier_auth` and `fespalier_keypair`, and on no HTTP client; it talks to your server through the `DeviceAuthServer` you write. Its README has the full guide; this section is the map, and `examples/device` is the device-sessions example (an enrolment you can run).

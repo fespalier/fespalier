@@ -1,0 +1,47 @@
+# cargo-deny configuration for the authkestra-op example's server (`just authkestra-op-server`). The
+# same policy as cli/deny.toml, plus the licences Authkestra's dependency graph brings in, and its
+# one git source: Authkestra itself, at the commit Cargo.toml pins.
+
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+yanked = "deny"
+unmaintained = "workspace"
+# The two advisories Authkestra's own deny.toml ignores at the pinned commit, for the same reasons;
+# neither is reachable from a fix here. Both come in through jsonwebtoken 11, which Authkestra uses.
+ignore = [
+  # rsa: the Marvin attack, no patched release. The demo signs with Ed25519, never RSA.
+  "RUSTSEC-2023-0071",
+  # crypto-bigint 0.5.5 timing variability, through p256/p384 0.13 and elliptic-curve 0.13.8;
+  # fixed in crypto-bigint 0.7.6, which no stable elliptic-curve release depends on yet.
+  "RUSTSEC-2026-0387",
+]
+
+[licenses]
+version = 2
+confidence-threshold = 0.9
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "ISC",
+  "Unicode-3.0",
+  "CC0-1.0",
+  "Unlicense",
+  # Beyond cli/deny.toml, all permissive and OSI-approved or equivalent:
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+# Authkestra by git: crates.io's 0.14.0 has no DPoP nonce (see Cargo.toml).
+allow-git = ["https://github.com/Authkestra/authkestra"]

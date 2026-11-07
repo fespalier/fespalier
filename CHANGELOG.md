@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.27.0](https://github.com/fespalier/fespalier/compare/v0.26.0...v0.27.0) (2026-11-07)
+
+
+### Features
+
+* **examples:** run examples/cratestack on Authkestra ([#339](https://github.com/fespalier/fespalier/issues/339)) ([aa47d0c](https://github.com/fespalier/fespalier/commit/aa47d0c878de75853fe97b0eff04093777e245bc))
+* **oidc:** RFC 8628 device-authorization sign-in ([#337](https://github.com/fespalier/fespalier/issues/337)) ([d30ab36](https://github.com/fespalier/fespalier/commit/d30ab36fbf7d28861572c540c2eee1007472b051))
+
+
+### Bug Fixes
+
+* **cratestack:** stop a drain at a session that ended, keeping the intent ([#340](https://github.com/fespalier/fespalier/issues/340)) ([e73655f](https://github.com/fespalier/fespalier/commit/e73655f5d2daccca39e21f69946b12db01a27ac0)), closes [#310](https://github.com/fespalier/fespalier/issues/310)
+
+
+### Tests
+
+* **auth:** pin the devsig profile v1 vectors to Authkestra's merged commit ([#334](https://github.com/fespalier/fespalier/issues/334)) ([1647253](https://github.com/fespalier/fespalier/commit/164725393aa0350e4c681b135fb95c79b64e351b))
+* **oidc:** fespalier_oidc against authkestra-op in CI ([#338](https://github.com/fespalier/fespalier/issues/338)) ([e137fe9](https://github.com/fespalier/fespalier/commit/e137fe9599c8f4dc2d23ecdd261867f8039280d2)), closes [#309](https://github.com/fespalier/fespalier/issues/309)
+
+
+### Chores
+
+* **deps:** keep flutter analyze clean on riverpod 3.5 ([#335](https://github.com/fespalier/fespalier/issues/335)) ([90ec496](https://github.com/fespalier/fespalier/commit/90ec496dc6c300157d23e9614999ea6c1bbda15a))
+
 ## [0.26.0](https://github.com/fespalier/fespalier/compare/v0.25.0...v0.26.0) (2026-11-06)
 
 

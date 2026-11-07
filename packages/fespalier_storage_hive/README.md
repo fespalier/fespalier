@@ -30,12 +30,12 @@ dependencies:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier
-      ref: v0.26.0
+      ref: v0.27.0
   fespalier_storage_hive:
     git:
       url: https://github.com/fespalier/fespalier
       path: packages/fespalier_storage_hive
-      ref: v0.26.0
+      ref: v0.27.0
 ```
 
 <!-- x-release-please-end -->

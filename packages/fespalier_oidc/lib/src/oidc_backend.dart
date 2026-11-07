@@ -9,6 +9,8 @@ import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'bearer_authenticator.dart';
+import 'device_grant.dart';
+import 'device_sign_in.dart';
 import 'endpoints.dart';
 import 'exception.dart';
 import 'jwt.dart';
@@ -57,6 +59,18 @@ typedef OpenBrowser =
 /// )
 /// ```
 ///
+/// A TV or kiosk app that signs in with `DeviceSignIn` alone (since 0.27.0) leaves out
+/// `redirectUri` and `openBrowser`:
+///
+/// ```dart
+/// OidcBackend(
+///   issuer: issuer,
+///   clientId: 'tv-app',
+///   endpoints: OidcEndpoints.keycloak(issuer),
+///   transport: transport,
+/// )
+/// ```
+///
 /// It owns the token exchange and the refresh, which is what makes single-flight refresh,
 /// refresh-token rotation and DPoP on the token endpoint possible. It does not verify the ID
 /// token's signature (OpenID Connect Core 3.1.3.7: the token came from the token endpoint over
@@ -65,7 +79,10 @@ typedef OpenBrowser =
 /// `client_secret`) are out of scope: a mobile or web app is a public client.
 final class OidcBackend extends AuthBackend {
   /// A backend for the client [clientId] of the issuer [issuer]. The browser is [openBrowser];
-  /// [redirectUri] is what the provider sends it back to (registered with the client). The
+  /// [redirectUri] is what the provider sends it back to (registered with the client). Both are
+  /// optional since 0.27.0: a TV or kiosk app that signs in with `DeviceSignIn` alone passes
+  /// neither, and a `BrowserSignIn`, a step-up or [endBrowserSession] then throws a `StateError`
+  /// that names the missing argument. The
   /// token, discovery and revocation calls go through [transport], which should be the one of
   /// `AuthConfig.transport` (a session is not attached to them: the token endpoint is not the
   /// API).
@@ -78,8 +95,8 @@ final class OidcBackend extends AuthBackend {
   OidcBackend({
     required this.issuer,
     required this.clientId,
-    required this.redirectUri,
-    required this.openBrowser,
+    this.redirectUri,
+    this.openBrowser,
     this.scopes = const ['openid', 'profile', 'email'],
     OidcEndpoints? endpoints,
     this.postLogoutRedirectUri,
@@ -100,11 +117,30 @@ final class OidcBackend extends AuthBackend {
   /// The public client's id.
   final String clientId;
 
-  /// Where the browser is sent back to: a custom scheme (`com.example.shop:/callback`), or a page.
-  final Uri redirectUri;
+  /// Where the browser is sent back to: a custom scheme (`com.example.shop:/callback`), or a page;
+  /// null (since 0.27.0) for a backend that never opens a browser.
+  final Uri? redirectUri;
 
-  /// Opens the authorization URL and returns the redirect.
-  final OpenBrowser openBrowser;
+  /// Opens the authorization URL and returns the redirect; null (since 0.27.0) for a backend that
+  /// signs in with `DeviceSignIn` only.
+  final OpenBrowser? openBrowser;
+
+  /// The browser and the redirect, or a `StateError` naming what [what] needs and is missing.
+  (OpenBrowser, Uri) _browser(String what, {Uri? redirect}) {
+    final open = openBrowser;
+    final back = redirect ?? redirectUri;
+    if (open == null || back == null) {
+      final missing = [
+        if (open == null) 'openBrowser',
+        if (back == null) 'redirectUri',
+      ].join(' and ');
+      throw StateError(
+        'fespalier_oidc: $what needs OidcBackend(openBrowser:, redirectUri:), and this '
+        'backend was made without $missing (a backend for DeviceSignIn alone needs neither)',
+      );
+    }
+    return (open, back);
+  }
 
   /// The scopes asked for.
   final List<String> scopes;
@@ -167,16 +203,52 @@ final class OidcBackend extends AuthBackend {
     }
   }
 
-  /// BrowserSignIn only: the browser step, then the code exchange. The session's
-  /// `AuthSession.authenticatedAt` is the ID token's `auth_time` when it has one (since 0.25.0).
+  /// A [BrowserSignIn] (the browser step, then the code exchange) or, since 0.27.0, a
+  /// [DeviceSignIn] (RFC 8628: a code the user enters on another device, then polls). The
+  /// session's `AuthSession.authenticatedAt` is the ID token's `auth_time` when it has one (since
+  /// 0.25.0).
   @override
   Future<AuthSession> signIn(SignInRequest request) async {
+    if (request is DeviceSignIn) return _deviceSession(request);
     if (request is! BrowserSignIn) {
       throw UnsupportedError(
-        'fespalier_oidc: OidcBackend signs in with BrowserSignIn, not ${request.runtimeType}',
+        'fespalier_oidc: OidcBackend signs in with BrowserSignIn or DeviceSignIn, '
+        'not ${request.runtimeType}',
       );
     }
     return _browserSession(request);
+  }
+
+  /// The device authorization grant (RFC 8628): the code request carries no proof, every poll
+  /// of the token endpoint carries one when there is a [proof] (a `use_dpop_nonce` is answered
+  /// once, as on every token request), so the tokens are bound to the key as a browser sign-in's
+  /// are. There is no nonce to check in the ID token: the grant has none.
+  Future<AuthSession> _deviceSession(DeviceSignIn request) async {
+    final endpoints = await _resolve();
+    final device = endpoints.deviceAuthorization;
+    if (device == null) {
+      throw const OidcException(
+        'the provider has no device_authorization_endpoint: '
+        'pass OidcEndpoints(deviceAuthorization: ...)',
+      );
+    }
+    final answer = await runDeviceGrant(
+      request: request,
+      deviceEndpoint: device,
+      tokenEndpoint: endpoints.token,
+      clientId: clientId,
+      scopes: request.scopes ?? scopes,
+      post: (uri, form, {required prove, abortTrigger}) async {
+        final answer = await _post(
+          uri,
+          form,
+          prove: prove,
+          abortTrigger: abortTrigger,
+        );
+        return (status: answer.status, body: answer.body);
+      },
+    );
+    return _session(_Answer(answer.status, answer.body));
   }
 
   /// Step-up (RFC 9470, since 0.25.0): the browser sign-in again, for the same user, with what
@@ -214,6 +286,9 @@ final class OidcBackend extends AuthBackend {
     BrowserSignIn request, {
     bool stepUp = false,
   }) async {
+    final (openBrowser, redirectUri) = _browser(
+      stepUp ? 'a step-up' : 'a BrowserSignIn',
+    );
     final endpoints = await _resolve();
     final pkce = Pkce.generate(_random);
     final state = randomToken(_random, 16);
@@ -346,10 +421,13 @@ final class OidcBackend extends AuthBackend {
   /// browser session (`preferEphemeral: true`) there is none to end, and [signOut] already revoked
   /// the refresh token. A closed browser is not an error.
   Future<void> endBrowserSession(AuthSession session) async {
+    final (openBrowser, back) = _browser(
+      'endBrowserSession',
+      redirect: postLogoutRedirectUri,
+    );
     final endpoints = await _resolve();
     final endSession = endpoints.endSession;
     if (endSession == null) return;
-    final back = postLogoutRedirectUri ?? redirectUri;
     final url = endSession.replace(
       queryParameters: {
         ...endSession.queryParameters,
@@ -367,7 +445,15 @@ final class OidcBackend extends AuthBackend {
 
   /// A form POST to [uri], with a DPoP proof when there is one. A nonce challenge or a clock
   /// correction is answered once with a fresh proof; a code survives that (Keycloak 26.8 keeps it).
-  Future<_Answer> _post(Uri uri, Map<String, String> form) async {
+  /// [prove] false sends no proof (the device authorization request), and [abortTrigger] aborts
+  /// the send.
+  Future<_Answer> _post(
+    Uri uri,
+    Map<String, String> form, {
+    bool prove = true,
+    Future<void>? abortTrigger,
+  }) async {
+    final proof = prove ? this.proof : null;
     var retried = false;
     final body = Uint8List.fromList(
       utf8.encode(Uri(queryParameters: form).query),
@@ -386,6 +472,7 @@ final class OidcBackend extends AuthBackend {
             ...proofHeaders,
           },
           body: body,
+          abortTrigger: abortTrigger,
         ),
       );
       final text = utf8.decode(await response.bytes(), allowMalformed: true);

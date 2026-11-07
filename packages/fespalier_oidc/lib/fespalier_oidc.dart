@@ -1,7 +1,8 @@
 /// OpenID Connect for `fespalier_auth` (since 0.9.0 as `package:fespalier_auth/oidc.dart`; its own
 /// package since 0.21.0): the authorization code flow with PKCE for a public client, with
 /// Keycloak's defaults, and any token backend (a `TokenCredential` and the `BearerAuthenticator`
-/// that sends it). It sends through `package:fespalier_transport`, so it links neither
+/// that sends it), and (since 0.27.0) the device authorization grant of RFC 8628 for a TV or a
+/// kiosk (`DeviceSignIn`). It sends through `package:fespalier_transport`, so it links neither
 /// `package:http` nor Dio.
 ///
 /// ```dart
@@ -27,6 +28,7 @@
 library;
 
 export 'src/bearer_authenticator.dart' show BearerAuthenticator;
+export 'src/device_sign_in.dart' show DeviceCode, DeviceSignIn, DeviceWait;
 export 'src/endpoints.dart' show OidcEndpoints;
 export 'src/exception.dart' show OidcException;
 export 'src/jwt.dart' show unverifiedJwtClaims;

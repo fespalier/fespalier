@@ -19,8 +19,9 @@ renewal, refresh-token rotation and DPoP on the token endpoint possible. Its `Be
 `Authorization: Bearer <token>` and answers a 401 with `Renew` (since 0.25.0 an RFC 9470 step-up 401 with `StepUp`, and
 `OidcBackend.stepUp` signs the same user in again with `acr_values` / `max_age`: [`auth-package.md`](auth-package.md#step-up-and-recent-sign-ins)). The browser step is a function **you** give it, so the
 package links no plugin: `flutter_web_auth_2` (MIT; Android, iOS, macOS, web, Windows, Linux) is the usual one. It signs
-in with `BrowserSignIn` only; any other request throws `UnsupportedError`
-(`fespalier_oidc: OidcBackend signs in with BrowserSignIn, not ...`).
+in with `BrowserSignIn` and, since 0.27.0, `DeviceSignIn` ([below](#signing-in-on-another-device-rfc-8628)); any
+other request throws `UnsupportedError` (`fespalier_oidc: OidcBackend signs in with BrowserSignIn or DeviceSignIn, not
+...`; until 0.26.0 `... signs in with BrowserSignIn, not ...`).
 
 ```yaml
 # pubspec.yaml dependencies
@@ -127,6 +128,134 @@ class SignInPage extends ConsumerWidget {
   (`signOut`, best effort). `endBrowserSession(session)` also ends the browser's SSO session through
   Keycloak's end-session endpoint (`id_token_hint`, `client_id`, `post_logout_redirect_uri`, which the client must list);
   with `preferEphemeral: true` there is none to end.
+
+### Signing in on another device (RFC 8628)
+
+Since 0.27.0. A TV, a kiosk or a CLI with no browser signs in with `DeviceSignIn`, the device authorization grant: the
+app shows a short code and a URL, the user approves on their phone, and the backend polls the token endpoint until they
+did. The session is the same `TokenCredential` a browser sign-in makes (DPoP-bound with `OidcBackend(proof:)`: every
+poll carries a proof, the code request none).
+
+- **The wait is the app's.** `fespalier_oidc` starts no timer, so `DeviceSignIn(wait:)` is a function the app gives:
+  `(interval) => Future.delayed(interval)`. The interval is the provider's `interval` (5 seconds when it gives none),
+  plus 5 seconds after each `slow_down`; twice as long after a poll that could not be sent (`TransportUnsent`) or
+  timed out (`TransportTimedOut`).
+- **`onCode`** gets a `DeviceCode` once, before the first poll: `userCode`, `verificationUri`,
+  `verificationUriComplete` (the URL for a QR code, when the provider gives one), `expiresAt`, `interval`. It holds no
+  `device_code`.
+- **The ends**: `cancel` completing is `AuthCancelled` (a request in flight is aborted); `access_denied` is
+  `AuthRejected('access_denied')`; `expired_token`, or a code past its `expiresAt` before the next poll, is
+  `AuthRejected('expired_token')`; any other OAuth error is `AuthRejected` with it; a 5xx or an answer it cannot read is
+  an `OidcException`.
+- **The endpoint** is `OidcEndpoints.deviceAuthorization`: `OidcEndpoints.keycloak` spells Keycloak's
+  `protocol/openid-connect/auth/device` (switch on **OAuth 2.0 Device Authorization Grant** on the client), `discover`
+  reads `device_authorization_endpoint`. **`authkestra-op` serves `<issuer>/device_authorization` without advertising
+  it**, so write the endpoints out for it; it answers no `verification_uri_complete`, a fixed 5-second `slow_down`
+  window, and a refresh token only with `offline_access` (`DeviceSignIn(scopes: [..., 'offline_access'])`).
+
+A backend for `DeviceSignIn` alone leaves out `redirectUri` and `openBrowser` (both optional since 0.27.0, so a TV
+app links no browser plugin); a `BrowserSignIn`, a step-up or `endBrowserSession` on it throws `StateError:
+fespalier_oidc: a BrowserSignIn needs OidcBackend(openBrowser:, redirectUri:), and this backend was made without ...`,
+before any request.
+
+```dart
+// lib/tv_auth_setup.dart
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_http/fespalier_http.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:http/http.dart' as http;
+
+final tvTransport = HttpClientTransport(http.Client());
+
+final tvIssuer = Uri.parse('https://sso.example.com/realms/tv');
+
+AuthConfig tvAuthSetup() => AuthConfig(
+  transport: tvTransport,
+  backend: OidcBackend(
+    issuer: tvIssuer,
+    clientId: 'tv-app',
+    // No redirectUri and no openBrowser: this app never opens a browser.
+    endpoints: OidcEndpoints.keycloak(tvIssuer),
+    transport: tvTransport,
+    scopes: const ['openid', 'profile', 'offline_access'],
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
+```dart
+// lib/app/tv/page.dart
+import 'dart:async';
+
+import 'package:fespalier/fespalier.dart';
+import 'package:fespalier_auth/fespalier_auth.dart';
+import 'package:fespalier_oidc/fespalier_oidc.dart';
+import 'package:flutter/material.dart';
+
+class TvSignInPage extends ConsumerStatefulWidget {
+  const TvSignInPage({super.key});
+
+  @override
+  ConsumerState<TvSignInPage> createState() => _TvSignInPageState();
+}
+
+class _TvSignInPageState extends ConsumerState<TvSignInPage> {
+  Completer<void>? _cancel;
+  DeviceCode? _code;
+
+  Future<void> _signIn() async {
+    final cancel = _cancel = Completer<void>();
+    try {
+      await ref
+          .read(authSession.notifier)
+          .signIn(
+            DeviceSignIn(
+              onCode: (code) => setState(() => _code = code),
+              // The app's timer: the package starts none.
+              wait: (interval) => Future<void>.delayed(interval),
+              cancel: cancel.future,
+            ),
+          );
+    } on AuthCancelled {
+      // The user pressed Cancel.
+    } on AuthRejected {
+      // access_denied on the phone, or the code expired: show the button again.
+    } finally {
+      if (mounted) setState(() => _code = _cancel = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final code = _code;
+    return Scaffold(
+      body: Center(
+        child: code == null
+            ? FilledButton(
+                onPressed: _cancel == null ? () => unawaited(_signIn()) : null,
+                child: const Text('Sign in with your phone'),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Open ${code.verificationUri}'),
+                  Text('and enter ${code.userCode}'),
+                  TextButton(
+                    onPressed: () => _cancel?.complete(),
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+```
+
+In a test, `package:fespalier_oidc/testing.dart` drives it with no timer: `FakeDeviceWait` (pass `wait: fakeWait.call`;
+`await fakeWait.next` is when the backend waits, `fakeWait.elapse()` ends the wait, `onElapse:` moves a fake clock) and
+`FakeDeviceAuthorizationServer` (`FakeTransport(server.handle)`; `approve()`, `deny()`, `expire()`, `slowDownNext()`,
+`codeRequests`, `polls`, `pollHeaders`).
 
 ### What was read from a live Keycloak (26.8.0)
 

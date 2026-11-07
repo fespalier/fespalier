@@ -216,7 +216,7 @@ Future<void> action(Ref ref, {required SignInFields input}) async {
 }
 ```
 
-`signIn(request)` asks the backend, **stores the session, then** sets `SignedIn`, and rethrows what the backend threw with the state unchanged: `AuthCancelled` (the user closed a browser sign-in), `FieldErrors` (wrong credentials), `AuthRejected` (the server refused), or any other error (it could not ask). A sign-in overtaken by another one, or by a sign-out, throws `NotSignedIn` and changes nothing. The request is typed: `PasswordSignIn` and `BrowserSignIn` (from `fespalier_oidc`), a `CompleteEnrolment` (`fespalier_sign_keypair`), or a subclass of `SignInRequest` of your own, so a page is the same whichever backend is configured, and a test swaps in `FakeAuthBackend`. `adopt(session)` signs in with a session the app obtained itself (a deep-link callback, a multi-step SDK flow), and throws an `ArgumentError` when it comes from another backend than the configured one.
+`signIn(request)` asks the backend, **stores the session, then** sets `SignedIn`, and rethrows what the backend threw with the state unchanged: `AuthCancelled` (the user closed a browser sign-in), `FieldErrors` (wrong credentials), `AuthRejected` (the server refused), or any other error (it could not ask). A sign-in overtaken by another one, or by a sign-out, throws `NotSignedIn` and changes nothing. The request is typed: `PasswordSignIn`, `BrowserSignIn` and (since 0.27.0) `DeviceSignIn` (from `fespalier_oidc`), a `CompleteEnrolment` (`fespalier_sign_keypair`), or a subclass of `SignInRequest` of your own, so a page is the same whichever backend is configured, and a test swaps in `FakeAuthBackend`. `adopt(session)` signs in with a session the app obtained itself (a deep-link callback, a multi-step SDK flow), and throws an `ArgumentError` when it comes from another backend than the configured one.
 
 `signOut()` sets `SignedOut(reason: SignOutReason.user)` **synchronously**, so the guards move the user in that frame (from a pushed page too since 0.21.0), then clears the store, runs the backend's `signOut` (best effort: its errors are swallowed) and `discard`, which forgets what was bound to the session (a DPoP key and its nonces, a device's keys). It does nothing when nobody is signed in. `endSession(reason)` (since 0.21.0) is the same without the server call: an app whose own API says the device is revoked ends the session with `SignOutReason.revoked`; the transport does it itself when an authenticator says so.
 
@@ -403,6 +403,56 @@ The sign-in button calls `ref.read(authSession.notifier).signIn(const BrowserSig
 - **The issuer is Keycloak's configured hostname.** With `--hostname=http://10.0.2.2:8080` every token says `http://10.0.2.2:8080/realms/...`, so an app that reaches the same Keycloak as `localhost` gets `the ID token was
 issued by ..., not ...`. On an Android emulator, use `adb reverse tcp:8080 tcp:8080` and `localhost`, or give Keycloak the `10.0.2.2` hostname.
 - **A single-sign-on cookie signs the user in again silently** after a sign-out, unless the browser session is ephemeral (`preferEphemeral: true`) or the sign-in asks `BrowserSignIn(prompt: 'login')`.
+
+## Signing in on another device: the device grant
+
+Since 0.27.0, `OidcBackend` also signs in with `DeviceSignIn`: the OAuth 2.0 device authorization grant ([RFC 8628](https://www.rfc-editor.org/rfc/rfc8628)), for a TV, a kiosk or a CLI that has no browser or no keyboard. The app shows a short code and a URL; the user opens the URL on their phone, signs in there and approves; the app polls the token endpoint until they did, and ends `SignedIn` with a `TokenCredential` like a browser sign-in.
+
+An app that signs in this way alone leaves out `redirectUri` and `openBrowser` (both optional since 0.27.0): it links no browser plugin. Such a backend throws a `StateError` naming the missing argument (`fespalier_oidc: a BrowserSignIn needs OidcBackend(openBrowser:, redirectUri:), and this backend was made without openBrowser and redirectUri ...`) for a `BrowserSignIn`, a step-up or `endBrowserSession`, before any request.
+
+```dart
+// lib/auth_setup.dart (a TV app)
+AuthConfig authSetup() => AuthConfig(
+  transport: transport,
+  backend: OidcBackend(
+    issuer: issuer,
+    clientId: 'tv-app',
+    endpoints: OidcEndpoints.keycloak(issuer), // or OidcEndpoints(..., deviceAuthorization: ...)
+    transport: transport,
+    scopes: const ['openid', 'profile', 'offline_access'],
+  ),
+  apiOrigins: [Uri.parse('https://api.example.com')],
+);
+```
+
+```dart
+// In the TV page's State: it shows the code, and its "Cancel" button completes `_cancel`.
+final _cancel = Completer<void>();
+DeviceCode? _code;
+
+Future<void> _signIn() async {
+  try {
+    await ref
+        .read(authSession.notifier)
+        .signIn(
+          DeviceSignIn(
+            onCode: (code) => setState(() => _code = code), // user_code and verification_uri
+            wait: (interval) => Future.delayed(interval), // the app's timer: the package has none
+            cancel: _cancel.future,
+          ),
+        );
+  } on AuthCancelled {
+    // The user pressed Cancel. The sign-in guard moves the user on success.
+  }
+}
+```
+
+- **The steps.** A POST to the device authorization endpoint with `client_id` and `scope` (the backend's `scopes`, or `DeviceSignIn(scopes:)`, plus `parameters`); `onCode` gets a `DeviceCode`: `userCode`, `verificationUri`, `verificationUriComplete` (for a QR code, when the provider gives one), `expiresAt` and `interval`. It holds no `device_code`, which stays in the backend. Then a poll of the token endpoint with `grant_type=urn:ietf:params:oauth:grant-type:device_code` after each wait: `authorization_pending` waits again, `slow_down` adds 5 seconds to every later wait, a 200 signs in (the ID token's `iss` and `aud` are checked; the grant has no `nonce`).
+- **No timer.** `wait` is the app's (`Future.delayed` in the app, `FakeDeviceWait` in a test), because `fespalier_oidc` starts none. A wait that ends early polls early (a "Check now" button), and a provider that thinks the app polls too fast answers `slow_down`.
+- **The ends.** `access_denied` (the user refused on the phone) is `AuthRejected('access_denied')`; `expired_token`, and a code past its `expires_in` by `clock.now()` before the next poll, is `AuthRejected('expired_token')`; any other OAuth error (`invalid_client`, `unauthorized_client`, `invalid_scope`, `invalid_grant`) is `AuthRejected` with it; an answer it cannot read, or a 5xx, is an `OidcException`. `cancel` completing is `AuthCancelled`, at once: the wait is left and a request in flight is aborted through its `abortTrigger`. A poll that could not be sent (`TransportUnsent`) or timed out (`TransportTimedOut`) is sent again after twice the wait (RFC 8628 §3.5); any other `TransportFailure` ends the sign-in. The state stays `SignedOut` in every case.
+- **DPoP.** With `OidcBackend(proof:)`, every poll carries a new proof (the code request carries none: RFC 9449 does not cover it), a `use_dpop_nonce` is answered once with a new proof as on every token request, and tokens the provider binds (`token_type: DPoP`) are a `TokenCredential` with `jkt`.
+- **The endpoint.** `OidcEndpoints.deviceAuthorization`: `OidcEndpoints.keycloak` spells Keycloak's `protocol/openid-connect/auth/device` (enable **OAuth 2.0 Device Authorization Grant** on the client), and `discover` reads `device_authorization_endpoint`. **`authkestra-op`** serves `<issuer>/device_authorization` but does not advertise it in its discovery document (read at Authkestra `68a250f`), so write it out: `OidcEndpoints(authorization: ..., token: Uri.parse('$issuer/token'), deviceAuthorization: Uri.parse('$issuer/device_authorization'))`. It answers `interval: 5` and no `verification_uri_complete`, refuses a poll less than 5 seconds after the last one with `slow_down` (a fixed window, it does not grow), and gives a refresh token only for the `offline_access` scope. Without the endpoint, `signIn` throws `OidcException: the provider has no device_authorization_endpoint: ...`.
+- **Tests.** `package:fespalier_oidc/testing.dart` has `FakeDeviceWait` (each wait ends when the test calls `elapse()`; `next` completes when the backend waits; `onElapse` moves a fake clock) and `FakeDeviceAuthorizationServer` (a handler for `FakeTransport`: `approve`, `deny`, `expire`, `slowDownNext`, and what it was sent).
 
 ## Device-bound tokens: DPoP with fespalier_keypair_dpop
 

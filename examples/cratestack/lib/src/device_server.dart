@@ -13,9 +13,21 @@ import 'errors.dart';
 /// The server's own endpoints for the device ceremonies, called through the **generated client**.
 ///
 /// `fespalier_sign_keypair` knows the order of the legs, what is signed and what is kept; it knows no
-/// URL and no payload, so this class is the only place that does: the four public procedures of
-/// `server/schema.cstack` (`beginEnrolment`, `confirmEnrolment`, `beginRenewal`, `confirmRenewal`) and
-/// the signed `revokeDevice`.
+/// URL and no payload, so this class is the only place that does: the public procedures of
+/// `server/schema.cstack` (`sendEnrolmentCode`, `beginEnrolment`, `confirmEnrolment`, `beginRenewal`,
+/// `confirmRenewal`) and the signed `revokeDevice`.
+///
+/// **The server is Authkestra's** (`authkestra-op`'s enrolment and re-issuance handlers), whose
+/// shape differs from [DeviceAuthServer]'s in two places, which this recipe absorbs:
+///
+/// - **The second factor comes first.** Authkestra checks the one-time code before it issues a
+///   challenge, so the code is asked for by [sendCode] (the phone page), and sent with the keys in
+///   leg one: the enrolment page calls `beginEnrolment(fields: {'phone': ..., 'otp': ...})` from the
+///   code page, then `signIn(CompleteEnrolment(challenge))` with no `proof`. Leg two carries the
+///   challenge signatures only.
+/// - **A renewal re-issues an attestation.** Authkestra's re-issuance takes the key's current
+///   attestation and its JWK; [beginRenewal] names only the device and the role, so the server hands
+///   Authkestra the attestation it last issued for that key, with the JWK it enrolled.
 ///
 /// It is built over [AuthConfig.transport]: the plain chain with **no session on it**, so the four
 /// legs go out unsigned, by construction (the server lists them by name too). The generated
@@ -47,6 +59,16 @@ final class OrdersDeviceServer implements DeviceAuthServer {
         ),
       ).procedures;
 
+  /// Asks the server to send a one-time code to [phone]: before leg one, since Authkestra checks the
+  /// code before it issues a challenge. A wrong number is a `FieldErrors` on `phone`.
+  Future<void> sendCode(String phone) => _leg(
+    () => _procedures.sendEnrolmentCode(
+      SendEnrolmentCodeArgs(args: SendCodeArgs(phone: phone)),
+    ),
+  );
+
+  /// Leg one: the keys, the phone number and the code ([EnrolmentStart.fields] `phone` and `otp`).
+  /// A wrong code is a `FieldErrors` on `otp`.
   @override
   Future<EnrolmentChallenge> beginEnrolment(EnrolmentStart start) async {
     final answer = await _leg(
@@ -54,6 +76,7 @@ final class OrdersDeviceServer implements DeviceAuthServer {
         BeginEnrolmentProcedureArgs(
           args: BeginEnrolmentArgs(
             phone: '${start.fields['phone'] ?? ''}',
+            otp: '${start.fields['otp'] ?? ''}',
             ambient: _jwk(start.keys[KeyRole.ambient]!),
             userPresent: switch (start.keys[KeyRole.userPresent]) {
               final jwk? => _jwk(jwk),
@@ -72,6 +95,7 @@ final class OrdersDeviceServer implements DeviceAuthServer {
     );
   }
 
+  /// Leg two: the challenge signatures. [proof] is not read: the code went with leg one.
   @override
   Future<DeviceEnrolment> confirmEnrolment(
     EnrolmentChallenge challenge,
@@ -83,7 +107,6 @@ final class OrdersDeviceServer implements DeviceAuthServer {
         ConfirmEnrolmentProcedureArgs(
           args: ConfirmEnrolmentArgs(
             enrolmentId: '${challenge.data['enrolmentId']}',
-            otp: '${proof ?? ''}',
             ambient: challengeSignatures[KeyRole.ambient]!,
             userPresent: challengeSignatures[KeyRole.userPresent],
           ),

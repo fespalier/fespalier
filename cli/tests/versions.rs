@@ -2157,6 +2157,64 @@ fn the_cratestack_example_pins_what_is_not_fespaliers_by_commit() {
     );
 }
 
+/// The cratestack example's server is built on Authkestra (fespalier#310), pinned to one commit:
+/// every `authkestra-*` line of its Cargo.toml names the same `rev`, a full commit and never a tag
+/// or a branch, and every Authkestra package of its Cargo.lock comes from that commit. A bump is one
+/// PR that moves them together (the `cratestack` job builds `--locked`, so a stale lockfile fails
+/// there too).
+#[test]
+fn the_cratestack_example_pins_one_authkestra() {
+    const REPO: &str = "https://github.com/Authkestra/authkestra";
+    let manifest = read("examples/cratestack/server/Cargo.toml");
+    let revs: Vec<(String, String)> = manifest
+        .lines()
+        .filter(|l| l.starts_with("authkestra"))
+        .map(|l| {
+            assert!(
+                l.contains(&format!("git = \"{REPO}\"")),
+                "examples/cratestack/server/Cargo.toml: `{l}` is not a git dependency on {REPO}"
+            );
+            let rev = l
+                .split_once("rev = \"")
+                .and_then(|(_, rest)| rest.split('"').next())
+                .unwrap_or_else(|| panic!("`{l}` names no rev"))
+                .to_string();
+            (
+                l.split_whitespace().next().unwrap_or_default().to_string(),
+                rev,
+            )
+        })
+        .collect();
+    assert!(
+        revs.len() >= 2,
+        "examples/cratestack/server/Cargo.toml depends on authkestra-devsig and authkestra-op"
+    );
+    let pin = revs[0].1.clone();
+    assert!(
+        pin.len() == 40 && pin.chars().all(|c| c.is_ascii_hexdigit()),
+        "the Authkestra rev is a full commit: {pin}"
+    );
+    for (name, rev) in &revs {
+        assert_eq!(
+            rev, &pin,
+            "{name} is pinned to {rev}, the others to {pin}: one commit"
+        );
+    }
+    let lock = read("examples/cratestack/server/Cargo.lock");
+    let sources: Vec<&str> = lock
+        .lines()
+        .filter_map(|l| l.strip_prefix("source = \"git+"))
+        .filter(|l| l.starts_with(REPO))
+        .collect();
+    assert!(!sources.is_empty(), "Cargo.lock has no Authkestra package");
+    for source in sources {
+        assert!(
+            source.starts_with(&format!("{REPO}?rev={pin}#")),
+            "Cargo.lock resolves Authkestra from `{source}`, and Cargo.toml pins {pin}"
+        );
+    }
+}
+
 /// The frb-cose example's Rust: its core (rust/) is built by the Flutter hook with the toolchain its own file names, and
 /// its server is a crate of its own with a copy of that file. Both channels must be cli's; the core must list the host's
 /// target, because the hook refuses a target its toolchain file does not list; and the `frb-cose` job must read both

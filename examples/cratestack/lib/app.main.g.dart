@@ -27,10 +27,11 @@ abstract final class AppMain {
 
   /// The widget [run] gives `runApp`: startup() (splash.dart while it runs, and if it fails),
   /// then a `ProviderScope` with the overrides it returned around app.dart, which gets
-  /// [router]'s router. [router] is called once, after startup().
+  /// [router]'s router. [router] is called once, after startup() and ready().
   static Widget root({GoRouter Function() router = AppRoutes.router}) => StartupGate(
     overrides: _i1.startup,
     splash: _splash,
+    ready: _i1.ready,
     router: router,
     app: app,
   );

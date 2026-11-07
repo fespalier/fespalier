@@ -4,10 +4,11 @@ import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_sign_keypair/fespalier_sign_keypair.dart';
 import 'package:flutter/material.dart';
 
-/// Enrolling the device is signing in: the phone number first (the server texts a code and sends a
-/// challenge for each key), then the code (the keys sign the challenges). Both legs go through the
-/// generated client over the plain chain (`OrdersDeviceServer`). Neither step navigates:
-/// the enrolment guard moves the user once there is a session.
+/// Enrolling the device is signing in: the phone number first (the server texts a code), then the
+/// code, which goes to the server with the device's public keys (Authkestra checks it, then sends a
+/// challenge for each key) before the keys sign the challenges. Every call goes through the generated
+/// client over the plain chain (`OrdersDeviceServer`). Neither step navigates: the enrolment guard
+/// moves the user once there is a session.
 class EnrolPage extends HookConsumerWidget {
   const EnrolPage({super.key, this.from});
 
@@ -18,8 +19,8 @@ class EnrolPage extends HookConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final phone = useTextEditingController();
     final code = useTextEditingController();
-    // The challenge leg one answered: its presence is the second step.
-    final challenge = useState<EnrolmentChallenge?>(null);
+    // Whether the code was sent: the second step.
+    final sent = useState(false);
     final errors = useState<FieldErrors?>(null);
     final failure = useState<String?>(null);
     final pending = useState(false);
@@ -46,7 +47,7 @@ class EnrolPage extends HookConsumerWidget {
         child: Column(
           children: [
             if (from != null) Text('Enrol to see $from'),
-            if (challenge.value == null) ...[
+            if (!sent.value) ...[
               TextField(
                 controller: phone,
                 keyboardType: TextInputType.phone,
@@ -57,13 +58,12 @@ class EnrolPage extends HookConsumerWidget {
               ),
               const SizedBox(height: 16),
               FilledButton(
-                // Makes the device's keys, and sends their public halves with the phone number.
+                // The server texts a code to the number.
                 onPressed: pending.value
                     ? null
                     : () => run(() async {
-                        challenge.value = await ref
-                            .read(deviceBackend)
-                            .beginEnrolment(fields: {'phone': phone.text});
+                        await ref.read(ordersDeviceServer).sendCode(phone.text);
+                        sent.value = true;
                       }),
                 child: const Text('Send code'),
               ),
@@ -80,24 +80,25 @@ class EnrolPage extends HookConsumerWidget {
               ),
               const SizedBox(height: 16),
               FilledButton(
-                // The keys sign the challenges (the user-present one prompts), and the server
-                // answers an attestation for each.
+                // Makes the device's keys and sends their public halves with the number and the
+                // code; then the keys sign the challenges (the user-present one prompts), and the
+                // server answers an attestation for each.
                 onPressed: pending.value
                     ? null
                     : () => run(() async {
+                        final challenge = await ref
+                            .read(deviceBackend)
+                            .beginEnrolment(
+                              fields: {'phone': phone.text, 'otp': code.text},
+                            );
                         await ref
                             .read(authSession.notifier)
-                            .signIn(
-                              CompleteEnrolment(
-                                challenge.value!,
-                                proof: code.text,
-                              ),
-                            );
+                            .signIn(CompleteEnrolment(challenge));
                       }),
                 child: Text(pending.value ? 'Enrolling...' : 'Confirm code'),
               ),
               TextButton(
-                onPressed: () => challenge.value = null,
+                onPressed: () => sent.value = false,
                 child: const Text('Use another number'),
               ),
             ],

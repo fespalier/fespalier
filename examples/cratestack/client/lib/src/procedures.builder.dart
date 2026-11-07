@@ -7,6 +7,26 @@ part of 'procedures.dart';
 // CratestackBuilderGenerator
 // **************************************************************************
 
+class SendEnrolmentCodeArgsBuilder {
+  SendCodeArgs? _args;
+  bool _argsSet = false;
+
+  SendEnrolmentCodeArgsBuilder args(SendCodeArgs value) {
+    _args = value;
+    _argsSet = true;
+    return this;
+  }
+
+  SendEnrolmentCodeArgs build() {
+    return SendEnrolmentCodeArgs(
+      args: _argsSet
+          ? (_args as SendCodeArgs)
+          : (throw StateError(
+              'SendEnrolmentCodeArgs.args is required but was not set')),
+    );
+  }
+}
+
 class BeginEnrolmentProcedureArgsBuilder {
   BeginEnrolmentArgs? _args;
   bool _argsSet = false;
@@ -262,6 +282,8 @@ class AccountBuilder {
 class BeginEnrolmentArgsBuilder {
   String? _phone;
   bool _phoneSet = false;
+  String? _otp;
+  bool _otpSet = false;
   Jwk? _ambient;
   bool _ambientSet = false;
   Jwk? _userPresent;
@@ -269,6 +291,12 @@ class BeginEnrolmentArgsBuilder {
   BeginEnrolmentArgsBuilder phone(String value) {
     _phone = value;
     _phoneSet = true;
+    return this;
+  }
+
+  BeginEnrolmentArgsBuilder otp(String value) {
+    _otp = value;
+    _otpSet = true;
     return this;
   }
 
@@ -289,6 +317,10 @@ class BeginEnrolmentArgsBuilder {
           ? (_phone as String)
           : (throw StateError(
               'BeginEnrolmentArgs.phone is required but was not set')),
+      otp: _otpSet
+          ? (_otp as String)
+          : (throw StateError(
+              'BeginEnrolmentArgs.otp is required but was not set')),
       ambient: _ambientSet
           ? (_ambient as Jwk)
           : (throw StateError(
@@ -330,11 +362,28 @@ class BeginRenewalArgsBuilder {
   }
 }
 
+class CodeSentBuilder {
+  String? _phone;
+  bool _phoneSet = false;
+
+  CodeSentBuilder phone(String value) {
+    _phone = value;
+    _phoneSet = true;
+    return this;
+  }
+
+  CodeSent build() {
+    return CodeSent(
+      phone: _phoneSet
+          ? (_phone as String)
+          : (throw StateError('CodeSent.phone is required but was not set')),
+    );
+  }
+}
+
 class ConfirmEnrolmentArgsBuilder {
   String? _enrolmentId;
   bool _enrolmentIdSet = false;
-  String? _otp;
-  bool _otpSet = false;
   String? _ambient;
   bool _ambientSet = false;
   String? _userPresent;
@@ -342,12 +391,6 @@ class ConfirmEnrolmentArgsBuilder {
   ConfirmEnrolmentArgsBuilder enrolmentId(String value) {
     _enrolmentId = value;
     _enrolmentIdSet = true;
-    return this;
-  }
-
-  ConfirmEnrolmentArgsBuilder otp(String value) {
-    _otp = value;
-    _otpSet = true;
     return this;
   }
 
@@ -368,10 +411,6 @@ class ConfirmEnrolmentArgsBuilder {
           ? (_enrolmentId as String)
           : (throw StateError(
               'ConfirmEnrolmentArgs.enrolmentId is required but was not set')),
-      otp: _otpSet
-          ? (_otp as String)
-          : (throw StateError(
-              'ConfirmEnrolmentArgs.otp is required but was not set')),
       ambient: _ambientSet
           ? (_ambient as String)
           : (throw StateError(
@@ -826,6 +865,26 @@ class RevokedBuilder {
       deviceId: _deviceIdSet
           ? (_deviceId as String)
           : (throw StateError('Revoked.deviceId is required but was not set')),
+    );
+  }
+}
+
+class SendCodeArgsBuilder {
+  String? _phone;
+  bool _phoneSet = false;
+
+  SendCodeArgsBuilder phone(String value) {
+    _phone = value;
+    _phoneSet = true;
+    return this;
+  }
+
+  SendCodeArgs build() {
+    return SendCodeArgs(
+      phone: _phoneSet
+          ? (_phone as String)
+          : (throw StateError(
+              'SendCodeArgs.phone is required but was not set')),
     );
   }
 }

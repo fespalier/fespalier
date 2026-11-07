@@ -35,6 +35,50 @@ part 'procedures.builder.dart';
 // `dart_mappable`'s own list handling.
 @MappableClass(generateMethods: GenerateMethods.equals | GenerateMethods.copy)
 @CratestackBuilder()
+class SendEnrolmentCodeArgs with SendEnrolmentCodeArgsMappable {
+  const SendEnrolmentCodeArgs({
+    required this.args,
+  });
+
+  final SendCodeArgs args;
+
+  factory SendEnrolmentCodeArgs.fromWire(CratestackValueMap value) {
+    return SendEnrolmentCodeArgs(
+      args: SendCodeArgs.fromWire(cratestackAsValueMap(
+          cratestackRequireWireValue(
+              'SendEnrolmentCodeArgs', 'args', value['args']))),
+    );
+  }
+
+  CratestackValueMap toWire() {
+    return <String, Object?>{
+      'args': args.toWire(),
+    };
+  }
+}
+
+// issue #325: `@MappableClass()` (expanded by `dart_mappable_builder`
+// alongside `riverpod_generator` in the same `build_runner` pass) gives
+// this class real `operator ==`/`hashCode`/`copyWith` — every generated
+// data class needs this under the `riverpod` preset because any of them
+// can end up as a `@riverpod` family provider's argument type (see
+// `EstimateFocusMinutesArgs` in `procedures.dart`), and riverpod's family
+// cache dedupes provider instances by argument *value* equality, not
+// identity. `generateMethods: GenerateMethods.equals | GenerateMethods.copy`
+// deliberately does NOT ask for `encode`/`decode`/`stringify` — this
+// generator already hand-rolls `fromWire`/`toWire` below (different
+// method names, so there's no collision either way), and duplicating a
+// second, unused `toMap`/`fromMap`/`toJson`/`fromJson` surface per class
+// would be pure noise. Relation fields (e.g. `Task.board` -> `Board?`)
+// get deep equality "for free": the referenced type is itself a
+// `@MappableClass()`-annotated generated class in this same preset, so
+// the field-by-field comparison this class's own `==` performs recurses
+// into the related type's generated `==` rather than falling back to
+// object identity; list-valued relations get the same element-wise
+// (not `List.==`/identity) comparison automatically from
+// `dart_mappable`'s own list handling.
+@MappableClass(generateMethods: GenerateMethods.equals | GenerateMethods.copy)
+@CratestackBuilder()
 class BeginEnrolmentProcedureArgs with BeginEnrolmentProcedureArgsMappable {
   const BeginEnrolmentProcedureArgs({
     required this.args,
@@ -535,11 +579,13 @@ class Account with AccountMappable {
 class BeginEnrolmentArgs with BeginEnrolmentArgsMappable {
   const BeginEnrolmentArgs({
     required this.phone,
+    required this.otp,
     required this.ambient,
     this.userPresent,
   });
 
   final String phone;
+  final String otp;
   final Jwk ambient;
   final Jwk? userPresent;
 
@@ -547,6 +593,8 @@ class BeginEnrolmentArgs with BeginEnrolmentArgsMappable {
     return BeginEnrolmentArgs(
       phone: cratestackRequireWireValue(
           'BeginEnrolmentArgs', 'phone', value['phone']) as String,
+      otp: cratestackRequireWireValue('BeginEnrolmentArgs', 'otp', value['otp'])
+          as String,
       ambient: Jwk.fromWire(cratestackAsValueMap(cratestackRequireWireValue(
           'BeginEnrolmentArgs', 'ambient', value['ambient']))),
       userPresent: value['userPresent'] == null
@@ -558,6 +606,7 @@ class BeginEnrolmentArgs with BeginEnrolmentArgsMappable {
   CratestackValueMap toWire() {
     return <String, Object?>{
       'phone': phone,
+      'otp': otp,
       'ambient': ambient.toWire(),
       'userPresent': userPresent?.toWire(),
     };
@@ -635,16 +684,57 @@ class BeginRenewalArgs with BeginRenewalArgsMappable {
 // `dart_mappable`'s own list handling.
 @MappableClass(generateMethods: GenerateMethods.equals | GenerateMethods.copy)
 @CratestackBuilder()
+class CodeSent with CodeSentMappable {
+  const CodeSent({
+    required this.phone,
+  });
+
+  final String phone;
+
+  factory CodeSent.fromWire(CratestackValueMap value) {
+    return CodeSent(
+      phone: cratestackRequireWireValue('CodeSent', 'phone', value['phone'])
+          as String,
+    );
+  }
+
+  CratestackValueMap toWire() {
+    return <String, Object?>{
+      'phone': phone,
+    };
+  }
+}
+
+// issue #325: `@MappableClass()` (expanded by `dart_mappable_builder`
+// alongside `riverpod_generator` in the same `build_runner` pass) gives
+// this class real `operator ==`/`hashCode`/`copyWith` — every generated
+// data class needs this under the `riverpod` preset because any of them
+// can end up as a `@riverpod` family provider's argument type (see
+// `EstimateFocusMinutesArgs` in `procedures.dart`), and riverpod's family
+// cache dedupes provider instances by argument *value* equality, not
+// identity. `generateMethods: GenerateMethods.equals | GenerateMethods.copy`
+// deliberately does NOT ask for `encode`/`decode`/`stringify` — this
+// generator already hand-rolls `fromWire`/`toWire` below (different
+// method names, so there's no collision either way), and duplicating a
+// second, unused `toMap`/`fromMap`/`toJson`/`fromJson` surface per class
+// would be pure noise. Relation fields (e.g. `Task.board` -> `Board?`)
+// get deep equality "for free": the referenced type is itself a
+// `@MappableClass()`-annotated generated class in this same preset, so
+// the field-by-field comparison this class's own `==` performs recurses
+// into the related type's generated `==` rather than falling back to
+// object identity; list-valued relations get the same element-wise
+// (not `List.==`/identity) comparison automatically from
+// `dart_mappable`'s own list handling.
+@MappableClass(generateMethods: GenerateMethods.equals | GenerateMethods.copy)
+@CratestackBuilder()
 class ConfirmEnrolmentArgs with ConfirmEnrolmentArgsMappable {
   const ConfirmEnrolmentArgs({
     required this.enrolmentId,
-    required this.otp,
     required this.ambient,
     this.userPresent,
   });
 
   final String enrolmentId;
-  final String otp;
   final String ambient;
   final String? userPresent;
 
@@ -653,8 +743,6 @@ class ConfirmEnrolmentArgs with ConfirmEnrolmentArgsMappable {
       enrolmentId: cratestackRequireWireValue(
               'ConfirmEnrolmentArgs', 'enrolmentId', value['enrolmentId'])
           as String,
-      otp: cratestackRequireWireValue(
-          'ConfirmEnrolmentArgs', 'otp', value['otp']) as String,
       ambient: cratestackRequireWireValue(
           'ConfirmEnrolmentArgs', 'ambient', value['ambient']) as String,
       userPresent:
@@ -665,7 +753,6 @@ class ConfirmEnrolmentArgs with ConfirmEnrolmentArgsMappable {
   CratestackValueMap toWire() {
     return <String, Object?>{
       'enrolmentId': enrolmentId,
-      'otp': otp,
       'ambient': ambient,
       'userPresent': userPresent,
     };
@@ -1393,10 +1480,66 @@ class Revoked with RevokedMappable {
   }
 }
 
+// issue #325: `@MappableClass()` (expanded by `dart_mappable_builder`
+// alongside `riverpod_generator` in the same `build_runner` pass) gives
+// this class real `operator ==`/`hashCode`/`copyWith` — every generated
+// data class needs this under the `riverpod` preset because any of them
+// can end up as a `@riverpod` family provider's argument type (see
+// `EstimateFocusMinutesArgs` in `procedures.dart`), and riverpod's family
+// cache dedupes provider instances by argument *value* equality, not
+// identity. `generateMethods: GenerateMethods.equals | GenerateMethods.copy`
+// deliberately does NOT ask for `encode`/`decode`/`stringify` — this
+// generator already hand-rolls `fromWire`/`toWire` below (different
+// method names, so there's no collision either way), and duplicating a
+// second, unused `toMap`/`fromMap`/`toJson`/`fromJson` surface per class
+// would be pure noise. Relation fields (e.g. `Task.board` -> `Board?`)
+// get deep equality "for free": the referenced type is itself a
+// `@MappableClass()`-annotated generated class in this same preset, so
+// the field-by-field comparison this class's own `==` performs recurses
+// into the related type's generated `==` rather than falling back to
+// object identity; list-valued relations get the same element-wise
+// (not `List.==`/identity) comparison automatically from
+// `dart_mappable`'s own list handling.
+@MappableClass(generateMethods: GenerateMethods.equals | GenerateMethods.copy)
+@CratestackBuilder()
+class SendCodeArgs with SendCodeArgsMappable {
+  const SendCodeArgs({
+    required this.phone,
+  });
+
+  final String phone;
+
+  factory SendCodeArgs.fromWire(CratestackValueMap value) {
+    return SendCodeArgs(
+      phone: cratestackRequireWireValue('SendCodeArgs', 'phone', value['phone'])
+          as String,
+    );
+  }
+
+  CratestackValueMap toWire() {
+    return <String, Object?>{
+      'phone': phone,
+    };
+  }
+}
+
 class ProceduresApi {
   const ProceduresApi(this._client);
 
   final OrdersClientCratestackClient _client;
+
+  Future<CodeSent> sendEnrolmentCode(
+    SendEnrolmentCodeArgs args, {
+    CratestackRpcCallOptions? options,
+  }) async {
+    final body = await _client.adapter.call(
+      'procedure.sendEnrolmentCode',
+      args.toWire(),
+      options: options,
+    );
+    return CodeSent.fromWire(cratestackAsValueMap(
+        cratestackRequireWireValue('Procedure', 'sendEnrolmentCode', body)));
+  }
 
   Future<EnrolmentChallenges> beginEnrolment(
     BeginEnrolmentProcedureArgs args, {
@@ -1541,6 +1684,26 @@ final ordersClientProceduresApiProvider = Provider<ProceduresApi>((ref) {
 // get a controller class (mirrors a model's create/update/delete
 // controllers) — see `model_providers.dart.j2`'s header comment for why
 // writes aren't forced into the same shape as reads.
+@riverpod
+class SendEnrolmentCodeController extends _$SendEnrolmentCodeController {
+  @override
+  FutureOr<CodeSent?> build() => null;
+
+  Future<CodeSent> sendEnrolmentCode(SendEnrolmentCodeArgs args) async {
+    state = const AsyncValue.loading();
+    try {
+      final result = await ref
+          .read(ordersClientProceduresApiProvider)
+          .sendEnrolmentCode(args);
+      state = AsyncValue.data(result);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncValue.error(error, stackTrace);
+      rethrow;
+    }
+  }
+}
+
 @riverpod
 class BeginEnrolmentController extends _$BeginEnrolmentController {
   @override

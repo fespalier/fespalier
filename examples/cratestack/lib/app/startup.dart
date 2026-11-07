@@ -1,5 +1,7 @@
 import 'package:cratestack_example/src/config.dart';
+import 'package:cratestack_example/src/session.dart';
 import 'package:cratestack_example/src/wiring.dart';
+import 'package:fespalier/fespalier.dart' show ProviderContainer;
 import 'package:fespalier/startup.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
@@ -30,3 +32,7 @@ Future<List<Override>> startup() async {
   final auth = await restoreAuth(authSetup(network, config));
   return [...auth, ...ordersOverrides(config)];
 }
+
+/// Runs on the app's container, before the router: a session that ends without the user asking (a
+/// revoked device, a lost key) wipes what this phone kept for that account ([wipeWhenSessionEnds]).
+void ready(ProviderContainer container) => wipeWhenSessionEnds(container);

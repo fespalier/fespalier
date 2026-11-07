@@ -10,6 +10,7 @@ import 'package:orders_client/orders_client.dart';
 import 'config.dart';
 import 'device_server.dart';
 import 'errors.dart';
+import 'intents.dart';
 
 /// The server this build talks to. `startup()` overrides it from the `--dart-define`s; a test passes
 /// its own.
@@ -71,6 +72,17 @@ final Provider<DeviceAuthBackend> deviceBackend = Provider<DeviceAuthBackend>((
   return backend;
 });
 
+/// The device ceremonies' server, for the enrolment page's first step (`sendCode`): the one the
+/// backend holds.
+final Provider<OrdersDeviceServer> ordersDeviceServer =
+    Provider<OrdersDeviceServer>((ref) {
+      final server = ref.watch(deviceBackend).server;
+      if (server is! OrdersDeviceServer) {
+        throw StateError('this app enrols through an OrdersDeviceServer');
+      }
+      return server;
+    });
+
 /// What connects the generated client and `fespalier_cratestack` to this app, once.
 ///
 /// - **The generated client's two seams.** `ordersClientTransportProvider` is the app's session,
@@ -82,6 +94,8 @@ final Provider<DeviceAuthBackend> deviceBackend = Provider<DeviceAuthBackend>((
 ///   default: the HTTP adapter over those two.
 /// - **The error reader** that classifies what the client throws, so a `TransportUnsent` reads as
 ///   offline and a validation answer as a field error.
+/// - **The intent queue's seam** (`crateStackTransport`): the generated adapter, on the session, so a
+///   queued write is signed when it is sent ([OrdersIntentTransport]).
 /// - **Whose data it is** (`crateStackScope`): the user, so the saved copy of a read is wiped with a
 ///   sign-out and never shown to the next account.
 List<Override> ordersOverrides(OrdersConfig config) => [
@@ -89,5 +103,8 @@ List<Override> ordersOverrides(OrdersConfig config) => [
   ordersClientTransportProvider.overrideWith((ref) => ref.watch(authTransport)),
   ordersClientBaseUriProvider.overrideWithValue(config.server),
   crateStackErrors.overrideWithValue(ordersErrors),
+  crateStackTransport.overrideWith(
+    (ref) => OrdersIntentTransport(ref.watch(ordersClientAdapterProvider)),
+  ),
   crateStackScope.overrideWith((ref) => ref.watch(authUserId)),
 ];

@@ -1,5 +1,6 @@
-// Enrolling the device is signing in: two unsigned legs through the generated client over the plain
-// chain, and from then on every call is signed, with no Authorization header at all.
+// Enrolling the device is signing in: unsigned calls through the generated client over the plain
+// chain (the code, then the keys with it, then the challenge signatures: Authkestra's order), and
+// from then on every call is signed, with no Authorization header at all.
 import 'package:cratestack_example/app.g.dart';
 import 'package:fespalier/testing.dart';
 import 'package:fespalier_auth/fespalier_auth.dart';
@@ -24,6 +25,7 @@ void main() {
     expect(find.text('Signed in as +237655000000'), findsOneWidget);
 
     expect(server.served.map((s) => '$s'), [
+      'POST sendEnrolmentCode',
       'POST beginEnrolment',
       'POST confirmEnrolment',
     ]);
@@ -34,9 +36,15 @@ void main() {
           'a device with no session cannot sign: the legs are unsigned by construction',
     );
     // The server derives the subject from the phone; the client never says who it is.
+    expect(server.served.first.args.keys, ['phone']);
     expect(
-      server.served.first.args.keys,
-      unorderedEquals(['phone', 'ambient', 'userPresent']),
+      server.served[1].args.keys,
+      unorderedEquals(['phone', 'otp', 'ambient', 'userPresent']),
+    );
+    expect(
+      server.served[2].args.keys,
+      unorderedEquals(['enrolmentId', 'ambient', 'userPresent']),
+      reason: 'the code went with the keys, not with the signatures',
     );
   });
 

@@ -1,35 +1,28 @@
-//! Authkestra's device-signature profile v1 (RFC-014): its conformance vectors run through this
-//! server's hand-written `verify::verify`, so the example and `fespalier_sign_keypair` agree on
-//! one table. The vectors are the copy `fespalier_sign_keypair` vendors, pinned by commit and
-//! SHA-256 (`packages/fespalier_sign_keypair/test/fixtures/devsig-profile-v1/`, whose Dart test
-//! checks the pin).
-//!
-//! This server is its own issuer and holds ES256 issuer keys only, and takes ES256 device keys
-//! only, so three vectors get another verdict, each listed in [`DIFFERENT`] with what it is
-//! instead: every other vector must give exactly the profile's verdict.
+//! Authkestra's device-signature profile v1 (RFC-014): its conformance vectors, the copy
+//! `fespalier_sign_keypair` vendors (pinned by commit and SHA-256 in
+//! `packages/fespalier_sign_keypair/test/fixtures/devsig-profile-v1/`), run through the verifier
+//! this server calls, `authkestra_devsig::verify_at`, and then through the server's own rendering
+//! of a refusal (`orders_demo_server::auth::refusal`). The verdicts are Authkestra's, which runs the
+//! same vectors in its own tests; what this file pins is that the Dart client's copy and the
+//! Authkestra commit the server is built on agree, and that every refusal leaves the server with
+//! the status, the `error` member and the `DeviceSignature` challenge the client's table reads.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, reason = "tests may unwrap")]
 
-use std::collections::HashMap;
+use std::time::{Duration, UNIX_EPOCH};
 
+use authkestra_devsig::{
+    InMemoryReplayStore, IssuerJwks, ReplayStore, SignedRequest, UnavailableReplayStore,
+    VerifierConfig, verify_at,
+};
 use cratestack::serde_json::{self, Value};
-use orders_demo_server::jose::Jwk;
-use orders_demo_server::verify::{IssuerKey, Profile, Received, Refusal, Role, SeenJtis, verify};
+use cratestack::{CratestackError, Value as CsValue};
+use orders_demo_server::auth::refusal;
 
 const VECTORS: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../packages/fespalier_sign_keypair/test/fixtures/devsig-profile-v1/vectors.json"
 );
-
-/// The vectors this server answers differently, and its answer.
-const DIFFERENT: [(&str, &str); 3] = [
-    // An EdDSA issuer key: this server's key set is ES256 only, so its kid is not one of them.
-    ("accept-eddsa-issuer", "unknown_kid"),
-    // An RS256 issuer key: the same.
-    ("accept-rs256-issuer", "unknown_kid"),
-    // An EdDSA device key, which a verifier MAY accept (optional): this server takes ES256 only.
-    ("accept-eddsa-device", "bad_alg"),
-];
 
 fn text<'a>(value: &'a Value, name: &str) -> &'a str {
     value[name]
@@ -37,129 +30,92 @@ fn text<'a>(value: &'a Value, name: &str) -> &'a str {
         .unwrap_or_else(|| panic!("{name} is not a string"))
 }
 
-#[test]
-fn every_vector_gets_the_profile_verdict() {
+#[tokio::test]
+async fn every_vector_gets_the_profile_verdict_and_the_refusal_its_wire_form() {
     let raw = std::fs::read_to_string(VECTORS).expect("the vendored vectors");
     let vectors: Value = serde_json::from_str(&raw).expect("JSON");
     let verifier = &vectors["verifier"];
-    let trusted = verifier["trusted_issuers"].as_array().unwrap();
-    assert_eq!(trusted.len(), 1);
-    assert_eq!(verifier["clock_skew_secs"], 30);
-    assert_eq!(verifier["max_signature_lifetime_secs"], 300);
-    let mut profile = Profile::new(text(verifier, "audience"), trusted[0].as_str().unwrap());
-    assert_eq!(text(verifier, "signature_header"), "X-Signature");
-    assert_eq!(text(verifier, "attestation_header"), "X-Attestation");
-    profile.signature_header = "x-signature";
-    profile.attestation_header = "x-attestation";
-
-    let issuer_keys: Vec<IssuerKey> = vectors["issuer_keys"]
+    let issuers: Vec<&str> = verifier["trusted_issuers"]
         .as_array()
         .unwrap()
         .iter()
-        .filter_map(|key| {
-            let jwk = Jwk::parse(&key["jwk"])?;
-            Some(IssuerKey {
-                kid: text(key, "kid").to_owned(),
-                key: jwk.verifying_key()?,
-            })
-        })
+        .map(|v| v.as_str().unwrap())
         .collect();
-    assert_eq!(issuer_keys.len(), 1, "one ES256 issuer key");
+    let config = VerifierConfig::profile_v1(issuers.clone(), text(verifier, "audience"));
+    assert_eq!(config.max_clock_skew.as_secs(), 30);
+    assert_eq!(config.max_signature_lifetime.as_secs(), 300);
+    let jwks = IssuerJwks::new();
+    for key in vectors["issuer_keys"].as_array().unwrap() {
+        let jwk = serde_json::from_value(key["jwk"].clone()).expect("a JWK");
+        jwks.insert(issuers[0], text(key, "kid"), jwk).await;
+    }
 
-    let different: HashMap<&str, &str> = DIFFERENT.into_iter().collect();
     let cases = vectors["vectors"].as_array().unwrap();
     assert_eq!(cases.len(), 44);
-    let mut seen_different = 0;
     for vector in cases {
         let id = text(vector, "id");
         let request = &vector["request"];
         let headers = request["headers"].as_object().unwrap();
         let header = |name: &str| headers.get(name).and_then(Value::as_str);
         let body = request["body"].as_str().unwrap_or_default();
-        let now = vector["now"].as_i64().unwrap();
-        // A store that cannot be reached: this server's memory with no room for a jti.
-        let mut seen = if vector["replay"]["store"] == "unavailable" {
-            SeenJtis::with_capacity(0)
+        let now = UNIX_EPOCH + Duration::from_secs(vector["now"].as_u64().unwrap());
+        let store: Box<dyn ReplayStore> = if vector["replay"]["store"] == "unavailable" {
+            Box::new(UnavailableReplayStore)
         } else {
-            SeenJtis::default()
+            Box::new(InMemoryReplayStore::new())
         };
         for jti in vector["replay"]["seen_jtis"].as_array().unwrap() {
-            seen.remember(jti.as_str().unwrap(), now + 3600);
+            store
+                .put_if_absent(jti.as_str().unwrap(), Duration::from_hours(1))
+                .await
+                .unwrap();
         }
-        let outcome = verify(
-            &profile,
-            &issuer_keys,
-            &Received {
+        let outcome = verify_at(
+            &SignedRequest {
+                signature: header("X-Signature"),
+                attestation: header("X-Attestation"),
                 method: text(request, "method"),
                 path: text(request, "path"),
                 query: request["query"].as_str(),
-                attestation: header("X-Attestation"),
-                signature: header("X-Signature"),
-                body: body.as_bytes(),
+                body: (!body.is_empty()).then_some(body.as_bytes()),
             },
+            &config,
+            &jwks,
+            &*store,
             now,
-            &mut seen,
-        );
+        )
+        .await;
         let expect = &vector["expect"];
-        let got = outcome.as_ref().map_err(|refusal| refusal.code());
-        if let Some(instead) = different.get(id) {
-            seen_different += 1;
-            assert_eq!(got.err(), Some(*instead), "{id}");
+        if expect["outcome"] == "accept" {
+            let device = outcome.unwrap_or_else(|e| panic!("{id}: refused {}", e.code()));
+            assert_eq!(device.subject, text(expect, "sub"), "{id}");
+            assert_eq!(device.device, text(expect, "did"), "{id}");
+            assert_eq!(device.key_thumbprint, text(expect, "jkt"), "{id}");
+            assert_eq!(device.key_role().as_str(), text(expect, "role"), "{id}");
             continue;
         }
-        if expect["outcome"] == "accept" {
-            let accepted = outcome.unwrap_or_else(|r| panic!("{id}: refused {}", r.code()));
-            assert_eq!(accepted.subject, text(expect, "sub"), "{id}");
-            assert_eq!(accepted.device_id, text(expect, "did"), "{id}");
-            assert_eq!(accepted.jkt, text(expect, "jkt"), "{id}");
-            let role = match text(expect, "role") {
-                "user_present" => Role::UserPresent,
-                _ => Role::Ambient,
-            };
-            assert_eq!(accepted.role, role, "{id}");
-        } else {
-            assert_eq!(got.err(), Some(text(expect, "error")), "{id}");
-            assert_eq!(
-                expect["status"], 401,
-                "{id}: every verifier refusal is a 401"
-            );
-        }
+        let error = outcome.err().unwrap_or_else(|| panic!("{id}: accepted"));
+        let code = text(expect, "error");
+        assert_eq!(error.code(), code, "{id}");
+        let wire = error.refusal();
+        assert_eq!(
+            i64::from(wire.status),
+            expect["status"].as_i64().unwrap(),
+            "{id}"
+        );
+        // The server's rendering: status, `error` member and challenge.
+        let CratestackError::AuthRefused(rendered) = refusal(wire) else {
+            panic!("{id}: not an AuthRefusal");
+        };
+        assert_eq!(
+            rendered.members().get("error"),
+            Some(&CsValue::String(code.to_owned())),
+            "{id}"
+        );
+        assert_eq!(
+            rendered.challenges(),
+            [format!(r#"DeviceSignature error="{code}""#)],
+            "{id}"
+        );
     }
-    assert_eq!(seen_different, DIFFERENT.len());
-}
-
-#[test]
-fn the_refusal_codes_are_the_profiles() {
-    let raw = std::fs::read_to_string(VECTORS).expect("the vendored vectors");
-    let vectors: Value = serde_json::from_str(&raw).expect("JSON");
-    let verifier_codes: Vec<&str> = vectors["refusals"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|row| row["produced_by"] == "verifier")
-        .map(|row| text(row, "error"))
-        .collect();
-    let ours = [
-        Refusal::MissingCredential,
-        Refusal::Malformed,
-        Refusal::BadAlg,
-        Refusal::UntrustedIssuer,
-        Refusal::UnknownKid,
-        Refusal::BadAttestation,
-        Refusal::AttestationExpired,
-        Refusal::DeviceNotActive,
-        Refusal::BadJwk,
-        Refusal::KeyNotBound,
-        Refusal::BadSignature,
-        Refusal::SignatureExpired,
-        Refusal::LifetimeTooLong,
-        Refusal::Mismatch("mth"),
-        Refusal::Mismatch("pth"),
-        Refusal::Mismatch("aud"),
-        Refusal::Mismatch("qsh"),
-        Refusal::Mismatch("bdh"),
-        Refusal::Replay,
-    ]
-    .map(Refusal::code);
-    assert_eq!(ours.to_vec(), verifier_codes);
 }

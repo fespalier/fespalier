@@ -1,6 +1,6 @@
 # cargo-deny configuration for the cratestack example's server (`just cratestack-server`). The same policy as
 # cli/deny.toml, plus the licences cratestack's dependency graph (axum, reqwest and rustls
-# through the Rust client runtime, the dalek crates) brings in.
+# through the Rust client runtime, the dalek crates) and Authkestra's bring in.
 
 [graph]
 all-features = true
@@ -9,6 +9,17 @@ all-features = true
 version = 2
 yanked = "deny"
 unmaintained = "workspace"
+# Both come with Authkestra's graph, and Authkestra's own deny.toml ignores them for the same reasons.
+ignore = [
+  # rsa 0.9 (Marvin attack, no fixed release): authkestra-engine links it for RS256 tokens. This
+  # server's issuer key is Ed25519 and it holds no RSA private key, so no RSA decryption or
+  # signature with a secret ever runs here.
+  "RUSTSEC-2023-0071",
+  # crypto-bigint 0.5.5 timing variability, through jsonwebtoken 11 -> p256 0.13 ->
+  # elliptic-curve 0.13; the fix (crypto-bigint 0.7.6) has no stable elliptic-curve release yet.
+  # The server verifies device ES256 signatures (public data) and signs with Ed25519.
+  "RUSTSEC-2026-0387",
+]
 
 [licenses]
 version = 2
@@ -36,3 +47,5 @@ allow-wildcard-paths = true
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# Authkestra, pinned to one commit in Cargo.toml (device-signature profile v1 is in no release yet).
+allow-git = ["https://github.com/Authkestra/authkestra"]

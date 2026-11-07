@@ -24,17 +24,32 @@ cratestack = { package = "cratestack-api", version = "=0.17.2", default-features
 cratestack-codec-cbor = { version = "=0.17.2", default-features = false }
 # The generated structs derive through bare `serde::` paths.
 serde = { version = "1", features = ["derive"] }
+# Authkestra, pinned to one commit, the same in every line and in Cargo.lock (cli/tests/versions.rs
+# keeps them equal): device-signature profile v1 (`authkestra-devsig`, Authkestra#440) is in no
+# crates.io release yet. Only this example depends on it, never a CrateStack crate
+# (`cargo tree -i authkestra-devsig`). `authkestra-devsig` verifies every signed request (src/auth.rs);
+# `authkestra-op`'s enrolment and re-issuance handlers issue the attestations (src/issuer.rs), over
+# `authkestra-engine`'s token manager and in-memory challenge store. `rustls-no-provider`: the
+# engine's HTTP client is never built here, so no TLS provider (and no C code) is compiled in.
+authkestra-devsig = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36" }
+authkestra-op = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36", default-features = false, features = ["rustls-no-provider"] }
+authkestra-engine = { git = "https://github.com/Authkestra/authkestra", rev = "68a250fc0cc676c8ae70a9c7a7c4bfd6a061df36", default-features = false, features = ["memory", "rustls-no-provider"] }
 async-trait = "0.1"
-base64 = "0.23"
+base64 = "0.22"
+# The issuer's Ed25519 key: drawn at start (or from `--issuer-seed-hex`) and handed to Authkestra's
+# token manager as PKCS#8, which is the form it takes.
+ed25519-dalek = { version = "2", features = ["pkcs8", "pem"] }
 getrandom = "0.4"
-# ES256 (the attestations' signature and the device's) and the SHA-256 of a thumbprint, a query and
-# a body. RustCrypto, no C code.
-p256 = { version = "0.14", default-features = false, features = ["ecdsa", "std"] }
+# The types Authkestra's API speaks (a JWK, an algorithm), not a JOSE implementation of ours.
+jsonwebtoken = { version = "11", default-features = false, features = ["rust_crypto"] }
+# The fingerprint of a write's arguments under its `Idempotency-Key`.
 sha2 = "0.10"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+# The device's side in the Rust tests: an ES256 key that signs requests and challenges.
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 
 [lints.rust]
 unsafe_code = "forbid"

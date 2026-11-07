@@ -47,8 +47,12 @@ The preset is the one that matters here. `--preset riverpod` writes a client on 
 from a commit: `examples/cratestack` builds it at the one that also has `@authn`) the client sends through fespalier's [`HttpTransport`](transport.md) and links no Dio: its
 `<prefix>TransportProvider` and `<prefix>BaseUriProvider` are the two seams the app overrides, typically with
 `ref.watch(authTransport)`. [`examples/cratestack`](https://github.com/fespalier/fespalier/blob/main/examples/cratestack/README.md)
-is the example with a generated client: that preset, a Rust server, device-signed sessions, and a script that generates the
-client again in CI and compares. It also lists what the generated calls cannot do yet and what to do about each.
+is the example with a generated client: that preset, a Rust server built on Authkestra (`authkestra-devsig` verifies each
+request inside a CrateStack `AuthProvider`, `authkestra-op` issues the attestations, refusals go out as `AuthRefusal`s,
+and nothing sits in front of the generated router), device-signed sessions, and a script that generates the client again
+in CI and compares. Its end-to-end test also revokes a device whose writes are queued offline: the session ends as
+`revoked`, nothing is sent after the refusal, each queued send is signed when it is sent, and the app wipes the queue with
+`crateStackAccount.clear(scope:)`. It also lists what the generated calls cannot do yet and what to do about each.
 
 Use the **RPC transport**. Every procedure takes a per-call options object that carries the idempotency key,
 and RPC errors are typed (`CratestackRpcException` with a status, a code and a message). REST works for
@@ -350,10 +354,11 @@ refusal that stands (a second one, a cancelled prompt, or work that may not ask:
 client as a `CratestackRpcException` whose `stepUp` is a `StepUpRequired`. The client's own `retryAfterStepUp` is not
 needed for this: the session has retried the call once already, and a refusal that reaches it is the answer. The server's provider fills the facts (`auth_time`, `amr`,
 `acr`) through CrateStack's principal contract; [`examples/cratestack`](https://github.com/fespalier/fespalier/blob/main/examples/cratestack/README.md)
-maps a signature by the user-present key to `amr` `["user", "pop"]` and its time to `auth_time`, and declares
-`@authn(amr: ["user"])` on `payOrder`. One server-side catch: CrateStack's idempotency layer keeps the 401 under the
-call's `Idempotency-Key`, and the retry is the same request under the same key, so the example's store releases a key
-whose answer is a 401.
+maps a signature by the user-present key to `amr` `["user", "pop"]` (with an `auth_time` no later than it), and declares
+`@authn(amr: ["user"])` on `payOrder`. The retry is the same request under the same `Idempotency-Key`, so no refusal may be
+kept under it: CrateStack 0.17.2's idempotency layer releases a key whose refusal came from the generated dispatch
+(cratestack/cratestack#1261). The example keeps a write's answer in its procedures instead, after authentication,
+because that layer runs before any `AuthProvider` and has no verified principal to namespace by without a layer in front.
 
 ## 6. Retries: one layer
 

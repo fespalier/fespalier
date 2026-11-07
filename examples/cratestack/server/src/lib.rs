@@ -1,136 +1,70 @@
 //! The server of fespalier's `cratestack` example: a `CrateStack` `transport rpc` service, no
 //! database, in which **a request is signed by the device that sends it** (`fespalier_sign_keypair`,
-//! fespalier#267): no password, no token, no `Authorization` header.
+//! fespalier#267): no password, no token, no `Authorization` header. It is built on the public
+//! seams of three projects (fespalier#310), with no cryptography of its own:
 //!
-//! - Four procedures are public (`beginEnrolment`, `confirmEnrolment`, `beginRenewal`,
-//!   `confirmRenewal`): they are how a device becomes known and how its attestation is renewed.
-//!   They are unsigned **by name**, in [`PUBLIC_OPS`].
-//! - Every other request is checked by [`verify_device`], a layer in front of the generated router
-//!   that reads the body (the signature covers its exact bytes), runs [`verify::verify`] and
-//!   either answers the refusal itself (Authkestra's device-signature profile v1: `{"error":"<code>"}`,
-//!   JSON, a `WWW-Authenticate: DeviceSignature error="<code>"` on a 401, `403 device_revoked`) or hands the
-//!   verified device on as a request extension. The check itself could run in an `AuthProvider`
-//!   (it sees the method, path, query and exact body, and `/rpc/batch` authenticates once per
-//!   request); it is a layer for two reasons: an `AuthProvider` error cannot shape its status and
-//!   body, which the client's classifier needs (cratestack/cratestack#1208), and the idempotency
-//!   layer, which runs before the handlers and so before `authenticate`, keys on a
-//!   `VerifiedPrincipal` that only a layer in front of it can set.
-//! - `CrateStack`'s auth seam, [`AuthProvider`], then only turns that extension into the caller the
-//!   procedures and their `@allow(auth() != null)` policies see ([`principal_of`], through the
-//!   principal contract): it never reads a header or a body.
-//! - **Step-up is in the schema.** `payOrder` declares `@authn(amr: ["user"])` (cratestack#1244): the
-//!   principal of a request signed by the user-present key has `amr` `["user", "pop"]` and an
-//!   `auth_time` ([`amr_of`]), the ambient key's has `["pop"]` and none, so an ambient-key payment is
-//!   refused before the procedure runs with RFC 9470's step-up 401 (`WWW-Authenticate: Bearer
-//!   error="insufficient_user_authentication"`, and `error` in the envelope). The client's session
-//!   signs the request again with the user-present key and sends it once more.
+//! - **Authkestra verifies and issues.** `authkestra-devsig` verifies every signed request
+//!   ([`auth`]); `authkestra-op`'s enrolment and re-issuance handlers issue the attestations
+//!   ([`issuer`]).
+//! - **`CrateStack` hosts it** through its pluggable-auth seam: [`auth::DeviceAuth`] is an
+//!   `AuthProvider`, and its refusals go out as `AuthRefusal`s (cratestack#1243, #1208). Nothing
+//!   sits in front of the generated router.
+//! - **The step-up rule is in the schema.** `payOrder` declares `@authn(amr: ["user"])`
+//!   (cratestack#1244): a request signed by the user-present key has `amr` `["user", "pop"]`
+//!   ([`auth::amr_of`]), the ambient key's `["pop"]`, so an ambient-key payment is refused before
+//!   the procedure runs with RFC 9470's step-up 401, and the app's session signs it again with the
+//!   user-present key and sends it once more.
 //!
-//! The attestation issuer is this server's own P-256 key. Devices, enrolments, orders and the
-//! single-use `jti`s are in memory: a restart forgets them (and a random issuer key makes every old
-//! attestation `bad_attestation`: pass `--issuer-scalar-hex` to keep them).
+//! Devices, enrolments, orders, the answers kept under an `Idempotency-Key` and the single-use
+//! `jti`s are in memory: a restart forgets them (and a fresh issuer key makes every old
+//! attestation `unknown_kid`: pass `--issuer-seed-hex` to keep it).
 
 use std::collections::HashMap;
-use std::pin::Pin;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
-use cratestack::axum::body::{Body, HttpBody as _};
-use cratestack::axum::extract::{Request, State};
-use cratestack::axum::http::{HeaderValue, Method, StatusCode, header};
-use cratestack::axum::middleware::{Next, from_fn, from_fn_with_state};
-use cratestack::axum::response::{IntoResponse, Response};
-use cratestack::idempotency::{IdempotencyLayer, IdempotencyStore};
-use cratestack::ratelimit::VerifiedPrincipal;
-use cratestack::serde_json::{Value as Json, json};
-use cratestack::{
-    AuthProvider, CratestackContext, CratestackError, KeyRole, RequestContext, Value,
-    include_server_schema,
-};
+use authkestra_devsig::{DeviceIdentity, KeyRole, Refusal, VerifyError};
+use cratestack::serde_json::Value as Json;
+use cratestack::{CratestackError, include_server_schema};
 use cratestack_codec_cbor::CborCodec;
-use p256::ecdsa::SigningKey;
 
-pub mod idempotency;
-pub mod jose;
-pub mod verify;
+pub mod auth;
+pub mod issuer;
+mod procedures;
+pub mod test_hooks;
 
-use idempotency::MemoryIdempotency;
-use jose::{Jwk, random_token, sign_compact, split, verify_es256};
-use verify::{
-    IssuerKey, Profile, Received, Refusal, Role, SeenJtis, Verified, verify as verify_request,
-};
+use issuer::{Issuer, IssuerConfig};
 
 include_server_schema!("schema.cstack", db = None);
 
-use cratestack_schema::procedures::{self as procs, ProcedureRegistry};
-use cratestack_schema::{
-    Account, Cratestack, EnrolledDevice, EnrolmentChallenges, Jwk as WireJwk, Order, OrderList,
-    RenewalChallenge, Renewed, Revoked,
-};
+use cratestack_schema::{Cratestack, Order};
 
 /// The `aud` of a signature, unless told otherwise.
 pub const DEFAULT_AUDIENCE: &str = "fespalier-cratestack";
-
-/// The `iss` of every attestation.
-pub const ISSUER: &str = "https://issuer.cratestack.example";
 
 /// The one-time code the demo "sends" to every phone number.
 pub const DEMO_OTP: &str = "123456";
 
 /// How long an attestation lives, unless told otherwise: a day.
-pub const DEFAULT_ATTESTATION_TTL_SECS: i64 = 24 * 60 * 60;
-
-/// The procedures a device calls before it has a session, or to renew one: unsigned, by name.
-pub const PUBLIC_OPS: [&str; 4] = [
-    "procedure.beginEnrolment",
-    "procedure.confirmEnrolment",
-    "procedure.beginRenewal",
-    "procedure.confirmRenewal",
-];
-
-/// How long an enrolment, and a renewal, wait for their second leg, in seconds.
-const ENROLMENT_WINDOW: i64 = 10 * 60;
-const RENEWAL_WINDOW: i64 = 5 * 60;
-
-/// How many wrong codes an enrolment takes.
-const OTP_ATTEMPTS: u8 = 5;
-
-/// How many unfinished enrolments and renewals are held at most.
-const PENDING_CAPACITY: usize = 1_000;
-
-/// How long a stored answer is replayed for a retry under the same `Idempotency-Key`.
-const IDEMPOTENCY_TTL: std::time::Duration = std::time::Duration::from_hours(24);
+pub const DEFAULT_ATTESTATION_TTL_SECS: u64 = 24 * 60 * 60;
 
 /// How many orders a user may keep (the store is in memory).
 pub const MAX_ORDERS: usize = 200;
 
-/// Seconds since the epoch.
-pub type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
-
-/// The real clock.
-#[must_use]
-pub fn system_clock() -> Clock {
-    Arc::new(|| {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |since| {
-                i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
-            })
-    })
-}
-
 /// How a server is configured.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Config {
     /// The `aud` every signature must carry.
     pub audience: String,
     /// How long an attestation lives, in seconds.
-    pub attestation_ttl_secs: i64,
-    /// The issuer's private scalar; `None` draws a fresh one.
-    pub issuer_scalar: Option<[u8; 32]>,
+    pub attestation_ttl_secs: u64,
     /// How far a clock may differ from this server's, in seconds: 30, profile v1's. A test that
     /// wants an attestation refused as soon as it expires sets 0.
-    pub clock_skew_secs: i64,
-    /// The clock: seconds since the epoch.
-    pub clock: Clock,
+    pub clock_skew_secs: u64,
+    /// The issuer's Ed25519 seed; `None` draws a fresh one.
+    pub issuer_seed: Option<[u8; 32]>,
+    /// Whether `POST /test/revoke` exists ([`test_hooks`]): only for the end-to-end tests.
+    pub test_hooks: bool,
 }
 
 impl Default for Config {
@@ -138,9 +72,9 @@ impl Default for Config {
         Self {
             audience: DEFAULT_AUDIENCE.to_owned(),
             attestation_ttl_secs: DEFAULT_ATTESTATION_TTL_SECS,
-            issuer_scalar: None,
-            clock_skew_secs: verify::SKEW,
-            clock: system_clock(),
+            clock_skew_secs: authkestra_devsig::RECOMMENDED_CLOCK_SKEW.as_secs(),
+            issuer_seed: None,
+            test_hooks: false,
         }
     }
 }
@@ -150,73 +84,86 @@ impl Default for Config {
 pub struct Hello {
     /// The audience a signature must name.
     pub audience: String,
-    /// The issuer's public key, as a JWK: what attestations verify with.
-    pub issuer_jwk: Jwk,
-    /// The `kid` of that key, in every attestation's header.
-    pub issuer_kid: String,
+    /// The issuer's public key, as a JWK (with its `kid`): what attestations verify with.
+    pub issuer_jwk: Json,
 }
 
 /// A configured server.
 pub struct Built {
-    /// The generated router with the verification layer in front.
+    /// The generated router (and, with `test_hooks`, the one test route).
     pub router: cratestack::axum::Router,
     /// What a client needs.
     pub hello: Hello,
     /// The state, to inspect in tests.
     pub shared: Arc<Shared>,
-    /// The idempotency store, to count its keys in tests.
-    pub idempotency: Arc<MemoryIdempotency>,
 }
 
-struct Device {
-    subject: String,
-    phone: String,
-    keys: HashMap<Role, Jwk>,
-    revoked: bool,
+/// A key a device enrolled: its thumbprint, its public JWK, and the attestation last issued for
+/// it, which a renewal hands to Authkestra as the one to re-issue.
+pub(crate) struct Key {
+    pub(crate) jkt: String,
+    pub(crate) jwk: Json,
+    pub(crate) attestation: String,
 }
 
-struct Enrolment {
-    created: i64,
-    phone: String,
-    keys: HashMap<Role, Jwk>,
-    challenges: HashMap<Role, String>,
-    attempts: u8,
+pub(crate) struct Device {
+    pub(crate) phone: String,
+    pub(crate) keys: HashMap<KeyRole, Key>,
+    pub(crate) revoked: bool,
 }
 
-struct Renewal {
-    created: i64,
-    device_id: String,
-    role: Role,
-    challenge: String,
+pub(crate) struct SentCode {
+    pub(crate) code: String,
+    pub(crate) sent: Instant,
+    pub(crate) attempts: u8,
+}
+
+pub(crate) struct Enrolment {
+    pub(crate) created: Instant,
+    pub(crate) subject: String,
+    pub(crate) phone: String,
+    /// The JWK and the challenge Authkestra issued, by role.
+    pub(crate) keys: HashMap<KeyRole, (Json, String)>,
+}
+
+pub(crate) struct Renewal {
+    pub(crate) created: Instant,
+    pub(crate) device_id: String,
+    pub(crate) role: KeyRole,
+}
+
+pub(crate) struct Recorded {
+    pub(crate) op: &'static str,
+    pub(crate) fingerprint: [u8; 32],
+    pub(crate) answer: Order,
+    pub(crate) expires: Instant,
 }
 
 #[derive(Default)]
-struct Store {
-    devices: HashMap<String, Device>,
-    enrolments: HashMap<String, Enrolment>,
-    renewals: HashMap<String, Renewal>,
-    orders: HashMap<String, Vec<Order>>,
-    seen: SeenJtis,
+pub(crate) struct Store {
+    pub(crate) devices: HashMap<String, Device>,
+    pub(crate) codes: HashMap<String, SentCode>,
+    pub(crate) enrolments: HashMap<String, Enrolment>,
+    pub(crate) renewals: HashMap<String, Renewal>,
+    pub(crate) orders: HashMap<String, Vec<Order>>,
+    /// The answer of a write, by subject and `Idempotency-Key`.
+    pub(crate) recorded: HashMap<(String, String), Recorded>,
 }
 
-/// Everything the procedures and the verification layer share.
+/// Everything the procedures and the provider share.
 pub struct Shared {
-    profile: Profile,
-    issuer: SigningKey,
-    issuer_kid: String,
-    issuer_keys: Vec<IssuerKey>,
-    ttl: i64,
-    clock: Clock,
+    pub(crate) issuer: Issuer,
+    clock_skew_secs: u64,
     state: Mutex<Store>,
 }
 
 impl Shared {
-    fn state(&self) -> MutexGuard<'_, Store> {
+    pub(crate) fn state(&self) -> MutexGuard<'_, Store> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn now(&self) -> i64 {
-        (self.clock)()
+    pub(crate) fn clock_skew_secs(&self) -> i64 {
+        i64::try_from(self.clock_skew_secs).unwrap_or(i64::MAX)
     }
 
     /// How many devices enrolled.
@@ -234,779 +181,92 @@ impl Shared {
             .is_some_and(|device| device.revoked)
     }
 
-    /// How many single-use `jti`s are held.
+    /// How many answers are kept under an `Idempotency-Key`.
     #[must_use]
-    pub fn seen_jti_count(&self) -> usize {
-        self.state().seen.len()
+    pub fn recorded_count(&self) -> usize {
+        self.state().recorded.len()
     }
 
-    /// An attestation for `role`'s key `jwk` of a device, issued now.
-    fn attest(&self, device_id: &str, device: &Device, role: Role, jwk: &Jwk) -> String {
-        let now = self.now();
-        sign_compact(
-            &self.issuer,
-            &json!({ "alg": "ES256", "kid": self.issuer_kid, "typ": "webank-attest+jws" }),
-            &json!({
-                "iss": self.profile.issuer,
-                "sub": device.subject,
-                "did": device_id,
-                "iat": now,
-                "exp": now + self.ttl,
-                "cnf": { "jkt": jwk.thumbprint() },
-                "att": match role.att() {
-                    Some(name) => json!({ "status": "active", "role": name }),
-                    None => json!({ "status": "active" }),
-                },
-            }),
-        )
-    }
-}
-
-/// Procedures over [`Shared`].
-#[derive(Clone)]
-struct Procedures {
-    shared: Arc<Shared>,
-}
-
-/// The caller of a signed request, as [`DeviceAuth`] recorded it.
-struct Caller {
-    subject: String,
-    device_id: String,
-    role: Role,
-}
-
-fn caller(ctx: &CratestackContext) -> Result<Caller, CratestackError> {
-    let unsigned = || CratestackError::Unauthorized("sign the request".to_owned());
-    let device_id = match ctx.auth_field("did") {
-        Some(Value::String(id)) => id.clone(),
-        _ => return Err(unsigned()),
-    };
-    Ok(Caller {
-        subject: ctx.subject().ok_or_else(unsigned)?.into_owned(),
-        device_id,
-        role: match ctx.key_role().ok_or_else(unsigned)? {
-            KeyRole::Ambient => Role::Ambient,
-            KeyRole::UserPresent => Role::UserPresent,
-        },
-    })
-}
-
-fn token(bytes: usize) -> Result<String, CratestackError> {
-    random_token(bytes)
-        .map_err(|error| CratestackError::Internal(format!("no randomness: {error}")))
-}
-
-fn wire_jwk(name: &str, jwk: &WireJwk) -> Result<Jwk, CratestackError> {
-    Jwk::parse(&json!({ "kty": jwk.kty, "crv": jwk.crv, "x": jwk.x, "y": jwk.y })).ok_or_else(
-        || CratestackError::Validation(format!("field '{name}' is not a P-256 public key")),
-    )
-}
-
-/// A phone number as the server keeps it: `+`, then 8 to 15 digits, spaces dropped.
-fn normalise_phone(phone: &str) -> Result<String, CratestackError> {
-    let phone: String = phone.chars().filter(|c| !c.is_whitespace()).collect();
-    let digits = phone.strip_prefix('+').unwrap_or_default();
-    if (8..=15).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit()) {
-        Ok(phone)
-    } else {
-        Err(CratestackError::Validation(
-            "field 'phone' must look like +237 6 55 00 00 00".to_owned(),
-        ))
-    }
-}
-
-/// Whether `signature` is a compact JWS over `{"challenge": challenge}` made by `jwk`.
-fn signs_challenge(jwk: &Jwk, signature: &str, challenge: &str) -> bool {
-    let (Some(compact), Some(key)) = (split(signature), jwk.verifying_key()) else {
-        return false;
-    };
-    compact.header.get("alg").and_then(Json::as_str) == Some("ES256")
-        && compact.claims.get("challenge").and_then(Json::as_str) == Some(challenge)
-        && verify_es256(&key, compact.signing_input.as_bytes(), &compact.signature)
-}
-
-fn seeded<'a>(orders: &'a mut HashMap<String, Vec<Order>>, subject: &str) -> &'a mut Vec<Order> {
-    orders.entry(subject.to_owned()).or_insert_with(|| {
-        [
-            (1, "Espresso beans", 2, "placed"),
-            (2, "Oat milk", 6, "paid"),
-        ]
-        .into_iter()
-        .map(|(id, item, quantity, status)| Order {
-            id,
-            item: item.to_owned(),
-            quantity,
-            status: status.to_owned(),
-        })
-        .collect()
-    })
-}
-
-fn user_present_only(caller: &Caller) -> Result<(), CratestackError> {
-    if caller.role == Role::UserPresent {
-        Ok(())
-    } else {
-        Err(CratestackError::Forbidden(
-            "user_presence_required".to_owned(),
-        ))
-    }
-}
-
-#[allow(
-    clippy::unused_async_trait_impl,
-    reason = "the trait methods are async; this example keeps its state in memory"
-)]
-impl ProcedureRegistry for Procedures {
-    async fn begin_enrolment(
-        &self,
-        _db: &Cratestack,
-        _ctx: &CratestackContext,
-        args: procs::begin_enrolment::Args,
-        _authorized: procs::begin_enrolment::Authorized,
-    ) -> Result<procs::begin_enrolment::Output, CratestackError> {
-        let args = args.args;
-        let phone = normalise_phone(&args.phone)?;
-        let mut keys = HashMap::from([(Role::Ambient, wire_jwk("ambient", &args.ambient)?)]);
-        if let Some(key) = &args.userPresent {
-            keys.insert(Role::UserPresent, wire_jwk("userPresent", key)?);
-        }
-        let challenges = keys
-            .keys()
-            .map(|role| Ok((*role, token(24)?)))
-            .collect::<Result<HashMap<_, _>, CratestackError>>()?;
-        let id = token(16)?;
-        let now = self.shared.now();
-        let mut state = self.shared.state();
-        state
-            .enrolments
-            .retain(|_, e| e.created + ENROLMENT_WINDOW > now);
-        if state.enrolments.len() >= PENDING_CAPACITY {
-            return Err(CratestackError::Unavailable(
-                "too many enrolments are waiting for their code".to_owned(),
-            ));
-        }
-        // A real server texts the code here; the demo's is always DEMO_OTP.
-        let answer = EnrolmentChallenges {
-            enrolmentId: id.clone(),
-            ambient: challenges[&Role::Ambient].clone(),
-            userPresent: challenges.get(&Role::UserPresent).cloned(),
-        };
-        state.enrolments.insert(
-            id,
-            Enrolment {
-                created: now,
-                phone,
-                keys,
-                challenges,
-                attempts: 0,
-            },
-        );
-        Ok(answer)
-    }
-
-    async fn confirm_enrolment(
-        &self,
-        _db: &Cratestack,
-        _ctx: &CratestackContext,
-        args: procs::confirm_enrolment::Args,
-        _authorized: procs::confirm_enrolment::Authorized,
-    ) -> Result<procs::confirm_enrolment::Output, CratestackError> {
-        let args = args.args;
-        let now = self.shared.now();
-        let device_id = format!("device-{}", token(9)?);
-        let mut state = self.shared.state();
-        let Some(enrolment) = state
-            .enrolments
-            .get_mut(&args.enrolmentId)
-            .filter(|e| e.created + ENROLMENT_WINDOW > now)
-        else {
-            return Err(CratestackError::NotFound("enrolment".to_owned()));
-        };
-        if args.otp != DEMO_OTP {
-            enrolment.attempts += 1;
-            if enrolment.attempts >= OTP_ATTEMPTS {
-                state.enrolments.remove(&args.enrolmentId);
+    /// Revokes a device, whoever asks: the operator's side of a revocation ([`test_hooks`]).
+    /// `false` when there is no such device.
+    pub fn revoke(&self, device_id: &str) -> bool {
+        match self.state().devices.get_mut(device_id) {
+            Some(device) => {
+                device.revoked = true;
+                true
             }
-            return Err(CratestackError::Validation(
-                "field 'otp' is not the code that was sent".to_owned(),
-            ));
+            None => false,
         }
-        let signatures = HashMap::from([
-            (Role::Ambient, Some(args.ambient.as_str())),
-            (Role::UserPresent, args.userPresent.as_deref()),
-        ]);
-        let signed_all = enrolment.keys.iter().all(|(role, jwk)| {
-            signatures[role]
-                .is_some_and(|sig| signs_challenge(jwk, sig, &enrolment.challenges[role]))
-        });
-        if !signed_all {
-            return Err(CratestackError::Forbidden(
-                "a challenge was not signed by the key it was sent for".to_owned(),
-            ));
-        }
-        let Some(enrolment) = state.enrolments.remove(&args.enrolmentId) else {
-            return Err(CratestackError::NotFound("enrolment".to_owned()));
-        };
-        let digits: String = enrolment
-            .phone
-            .chars()
-            .filter(char::is_ascii_digit)
-            .collect();
-        let device = Device {
-            subject: format!("user-{digits}"),
-            phone: enrolment.phone,
-            keys: enrolment.keys,
-            revoked: false,
-        };
-        let attest = |role| {
-            device
-                .keys
-                .get(&role)
-                .map(|jwk| self.shared.attest(&device_id, &device, role, jwk))
-        };
-        let answer = EnrolledDevice {
-            deviceId: device_id.clone(),
-            userId: device.subject.clone(),
-            phone: device.phone.clone(),
-            ambient: attest(Role::Ambient).unwrap_or_default(),
-            userPresent: attest(Role::UserPresent),
-        };
-        state.devices.insert(device_id, device);
-        Ok(answer)
     }
 
-    async fn begin_renewal(
-        &self,
-        _db: &Cratestack,
-        _ctx: &CratestackContext,
-        args: procs::begin_renewal::Args,
-        _authorized: procs::begin_renewal::Authorized,
-    ) -> Result<procs::begin_renewal::Output, CratestackError> {
-        let args = args.args;
-        let now = self.shared.now();
-        let challenge_id = token(16)?;
-        let challenge = token(24)?;
-        let mut state = self.shared.state();
-        // A device this server does not know, or revoked: the client's session is over.
-        let known = state
-            .devices
-            .get(&args.deviceId)
-            .filter(|device| !device.revoked);
-        let Some(device) = known else {
-            return Err(CratestackError::Forbidden("device_revoked".to_owned()));
+    /// Checks a verified request against this server's devices: the profile's refusal when the
+    /// device is unknown (`device_not_active`), revoked (`device_revoked`), or signed with a key
+    /// it did not enrol for that role (`key_not_bound`).
+    pub(crate) fn admit(&self, device: &DeviceIdentity) -> Result<(), Refusal> {
+        let state = self.state();
+        let Some(known) = state.devices.get(&device.device) else {
+            // Signed under this issuer's key, for a device it has no record of (a restart forgot
+            // it): the client renews, and the renewal says the device is gone.
+            return Err(VerifyError::DeviceNotActive.refusal());
         };
-        let role = Role::parse(&args.role)
-            .filter(|role| device.keys.contains_key(role))
-            .ok_or_else(|| {
-                CratestackError::Validation("field 'role' is not a key of this device".to_owned())
-            })?;
-        state
-            .renewals
-            .retain(|_, r| r.created + RENEWAL_WINDOW > now);
-        if state.renewals.len() >= PENDING_CAPACITY {
-            return Err(CratestackError::Unavailable(
-                "too many renewals are waiting".to_owned(),
-            ));
+        if known.revoked {
+            return Err(Refusal::device_revoked());
         }
-        state.renewals.insert(
-            challenge_id.clone(),
-            Renewal {
-                created: now,
-                device_id: args.deviceId,
-                role,
-                challenge: challenge.clone(),
-            },
-        );
-        Ok(RenewalChallenge {
-            challengeId: challenge_id,
-            challenge,
+        match known.keys.get(&device.key_role()) {
+            Some(key) if key.jkt == device.key_thumbprint => Ok(()),
+            _ => Err(VerifyError::KeyNotBound.refusal()),
+        }
+    }
+}
+
+/// Seconds since the epoch, by the system clock (Authkestra reads the same one).
+pub(crate) fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
         })
-    }
-
-    async fn confirm_renewal(
-        &self,
-        _db: &Cratestack,
-        _ctx: &CratestackContext,
-        args: procs::confirm_renewal::Args,
-        _authorized: procs::confirm_renewal::Authorized,
-    ) -> Result<procs::confirm_renewal::Output, CratestackError> {
-        let args = args.args;
-        let now = self.shared.now();
-        let mut state = self.shared.state();
-        // Single use, whatever the outcome.
-        let renewal = state
-            .renewals
-            .remove(&args.challengeId)
-            .filter(|r| r.created + RENEWAL_WINDOW > now)
-            .ok_or_else(|| CratestackError::NotFound("renewal".to_owned()))?;
-        let device = state
-            .devices
-            .get(&renewal.device_id)
-            .filter(|device| !device.revoked)
-            .ok_or_else(|| CratestackError::Forbidden("device_revoked".to_owned()))?;
-        let jwk = &device.keys[&renewal.role];
-        if !signs_challenge(jwk, &args.signature, &renewal.challenge) {
-            return Err(CratestackError::Forbidden(
-                "the challenge was not signed by the device's key".to_owned(),
-            ));
-        }
-        Ok(Renewed {
-            attestation: self
-                .shared
-                .attest(&renewal.device_id, device, renewal.role, jwk),
-        })
-    }
-
-    async fn revoke_device(
-        &self,
-        _db: &Cratestack,
-        ctx: &CratestackContext,
-        args: procs::revoke_device::Args,
-        _authorized: procs::revoke_device::Authorized,
-    ) -> Result<procs::revoke_device::Output, CratestackError> {
-        let caller = caller(ctx)?;
-        let device_id = args.args.deviceId;
-        if device_id != caller.device_id {
-            return Err(CratestackError::Forbidden(
-                "a device revokes itself and no other".to_owned(),
-            ));
-        }
-        let mut state = self.shared.state();
-        let device = state
-            .devices
-            .get_mut(&device_id)
-            .ok_or_else(|| CratestackError::NotFound("device".to_owned()))?;
-        // A device that holds a user-present key signs out with it: it prompts. Not an `@authn`: the
-        // rule depends on what this device enrolled (the web has no user-present key and must still
-        // be able to sign out), which a schema attribute cannot see. `DeviceAuthServer.revoke`
-        // signs this call with the user-present key itself, so it is never a step-up.
-        if device.keys.contains_key(&Role::UserPresent) {
-            user_present_only(&caller)?;
-        }
-        device.revoked = true;
-        Ok(Revoked {
-            deviceId: device_id,
-        })
-    }
-
-    async fn account(
-        &self,
-        _db: &Cratestack,
-        ctx: &CratestackContext,
-        _args: procs::account::Args,
-        _authorized: procs::account::Authorized,
-    ) -> Result<procs::account::Output, CratestackError> {
-        let caller = caller(ctx)?;
-        let state = self.shared.state();
-        let device = state
-            .devices
-            .get(&caller.device_id)
-            .ok_or_else(|| CratestackError::NotFound("device".to_owned()))?;
-        Ok(Account {
-            userId: caller.subject,
-            phone: device.phone.clone(),
-            deviceId: caller.device_id,
-            signedWith: caller.role.name().to_owned(),
-        })
-    }
-
-    async fn list_orders(
-        &self,
-        _db: &Cratestack,
-        ctx: &CratestackContext,
-        args: procs::list_orders::Args,
-        _authorized: procs::list_orders::Authorized,
-    ) -> Result<procs::list_orders::Output, CratestackError> {
-        let caller = caller(ctx)?;
-        let limit = args
-            .args
-            .limit
-            .map_or(usize::MAX, |limit| usize::try_from(limit).unwrap_or(0));
-        let mut state = self.shared.state();
-        let mine = seeded(&mut state.orders, &caller.subject);
-        Ok(OrderList {
-            orders: mine.iter().take(limit).cloned().collect(),
-        })
-    }
-
-    async fn get_order(
-        &self,
-        _db: &Cratestack,
-        ctx: &CratestackContext,
-        args: procs::get_order::Args,
-        _authorized: procs::get_order::Authorized,
-    ) -> Result<procs::get_order::Output, CratestackError> {
-        let caller = caller(ctx)?;
-        let id = args.args.id;
-        let mut state = self.shared.state();
-        seeded(&mut state.orders, &caller.subject)
-            .iter()
-            .find(|order| order.id == id)
-            .cloned()
-            .ok_or_else(|| CratestackError::NotFound(format!("order {id}")))
-    }
-
-    async fn place_order(
-        &self,
-        _db: &Cratestack,
-        ctx: &CratestackContext,
-        args: procs::place_order::Args,
-        _authorized: procs::place_order::Authorized,
-    ) -> Result<procs::place_order::Output, CratestackError> {
-        let caller = caller(ctx)?;
-        let args = args.args;
-        let item = args.item.trim().to_owned();
-        if item.is_empty() || item.chars().count() > 40 {
-            return Err(CratestackError::Validation(
-                "field 'item' must be 1 to 40 characters".to_owned(),
-            ));
-        }
-        if !(1..=99).contains(&args.quantity) {
-            return Err(CratestackError::Validation(
-                "field 'quantity' must be between 1 and 99".to_owned(),
-            ));
-        }
-        let mut state = self.shared.state();
-        let mine = seeded(&mut state.orders, &caller.subject);
-        if mine.len() >= MAX_ORDERS {
-            return Err(CratestackError::Validation(
-                "field 'item' cannot be added: this account has as many orders as the demo keeps"
-                    .to_owned(),
-            ));
-        }
-        let order = Order {
-            id: mine.last().map_or(1, |last| last.id + 1),
-            item,
-            quantity: args.quantity,
-            status: "placed".to_owned(),
-        };
-        mine.push(order.clone());
-        Ok(order)
-    }
-
-    async fn pay_order(
-        &self,
-        _db: &Cratestack,
-        ctx: &CratestackContext,
-        args: procs::pay_order::Args,
-        _authorized: procs::pay_order::Authorized,
-    ) -> Result<procs::pay_order::Output, CratestackError> {
-        // Paying needs the user-present key: `@authn(amr: ["user"])` in schema.cstack, which the
-        // generated code checks before this runs, and refuses with the step-up 401.
-        let caller = caller(ctx)?;
-        let id = args.args.id;
-        let mut state = self.shared.state();
-        let order = seeded(&mut state.orders, &caller.subject)
-            .iter_mut()
-            .find(|order| order.id == id)
-            .ok_or_else(|| CratestackError::NotFound(format!("order {id}")))?;
-        if order.status == "paid" {
-            return Err(CratestackError::Conflict(format!(
-                "order {id} is already paid"
-            )));
-        }
-        "paid".clone_into(&mut order.status);
-        Ok(order.clone())
-    }
 }
 
-/// The device a request was signed by, as [`verify_device`] verified it: a request extension.
-#[derive(Clone, Debug)]
-struct VerifiedDevice(Verified);
-
-/// The RFC 8176 methods a request signed by `role`'s key proves, for the principal's `amr`.
-///
-/// - Every signed request proves possession of a key bound to the device's attestation: `pop`.
-/// - The user-present key signs only after the platform's user-presence test (a biometric or the
-///   device credential, behind `KeyRole.userPresent`), so its signature also proves `user`. That is
-///   what `payOrder`'s `@authn(amr: ["user"])` asks for.
-///
-/// Not `hwk`: this server cannot tell a hardware-backed key from a software one (the example lets
-/// Windows and Linux fall back to a key in memory, `KeypairFallback.software`), and a claim the
-/// server did not check is not a fact. A server that verifies a key attestation (Android Key
-/// Attestation, App Attest) at enrolment can add it.
-#[must_use]
-pub fn amr_of(role: Role) -> &'static [&'static str] {
-    match role {
-        Role::Ambient => &["pop"],
-        Role::UserPresent => &["user", "pop"],
-    }
-}
-
-/// The caller of a verified request, through the principal contract (ADR 0021): `sub`, `did`, the
-/// `key_role`, the `amr` of [`amr_of`], `cnf.jkt`, and, for the user-present key only, `auth_time`
-/// (when it signed, the moment the user proved they were there). The ambient key never tests the
-/// user, so its requests carry no `auth_time`, and a `maxAge` requirement fails closed for them.
-#[must_use]
-pub fn principal_of(device: &Verified) -> CratestackContext {
-    let builder = CratestackContext::builder(device.subject.clone())
-        .claim("did", Value::String(device.device_id.clone()))
-        .key_role(match device.role {
-            Role::Ambient => KeyRole::Ambient,
-            Role::UserPresent => KeyRole::UserPresent,
-        })
-        .amr(amr_of(device.role).iter().copied())
-        .cnf_jkt(device.jkt.clone());
-    match device.role {
-        Role::UserPresent => builder.auth_time(device.signed_at),
-        Role::Ambient => builder,
-    }
-    .build()
-}
-
-/// Turns the verified device, if the verification layer recorded one, into the caller procedures
-/// see ([`principal_of`]). It authenticates exactly when [`verify_device`] verified a device, and
-/// trusts nothing else: no header and no body is read here.
-#[derive(Clone)]
-struct DeviceAuth;
-
-impl AuthProvider for DeviceAuth {
-    type Error = CratestackError;
-
-    fn authenticate(
-        &self,
-        request: &RequestContext<'_>,
-    ) -> impl core::future::Future<Output = Result<CratestackContext, Self::Error>> + Send {
-        let context = request
-            .extensions
-            .get::<VerifiedDevice>()
-            .map_or_else(CratestackContext::anonymous, |VerifiedDevice(device)| {
-                principal_of(device)
-            });
-        core::future::ready(Ok(context))
-    }
-}
-
-/// An error answer in the shape both sides read: Authkestra's device-signature profile v1
-/// (`{"error": code}`, JSON, and for a 401 `WWW-Authenticate: DeviceSignature error="<code>"`),
-/// which the device-session classifier (`webankRefusals`) reads, plus `CrateStack`'s
-/// `{code, message}` envelope for the generated client (the profile lets a server add members).
-fn refusal_response(status: StatusCode, error: &str, code: &str, message: &str) -> Response {
-    let mut response = (
-        status,
-        json!({ "error": error, "code": code, "message": message }).to_string(),
-    )
-        .into_response();
-    let headers = response.headers_mut();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/json"),
-    );
-    if status == StatusCode::UNAUTHORIZED
-        && let Ok(challenge) = HeaderValue::from_str(&format!("DeviceSignature error=\"{error}\""))
-    {
-        headers.insert(header::WWW_AUTHENTICATE, challenge);
-    }
-    response
-}
-
-fn refused(refusal: Refusal) -> Response {
-    let message = match refusal {
-        Refusal::Mismatch(claim) => format!("the signature's {claim} does not match the request"),
-        other => other.code().to_owned(),
-    };
-    refusal_response(
-        StatusCode::UNAUTHORIZED,
-        refusal.code(),
-        "unauthenticated",
-        &message,
-    )
-}
-
-/// How much past the limit is read and thrown away before answering `413`, so the answer is not
-/// cut off by a reset (an unbounded drain would defeat the limit).
-const DRAIN_PAST_LIMIT: usize = 4 * cratestack::DEFAULT_BODY_LIMIT_BYTES;
-
-/// Reads the request body (up to the codec's limit): the signature covers its exact bytes.
-async fn read_body(mut body: Body) -> Result<Vec<u8>, Box<Response>> {
-    let limit = cratestack::DEFAULT_BODY_LIMIT_BYTES;
-    let (mut kept, mut seen) = (Vec::new(), 0_usize);
-    loop {
-        match std::future::poll_fn(|cx| Pin::new(&mut body).poll_frame(cx)).await {
-            None => break,
-            // The connection broke or the body was malformed: not a size problem.
-            Some(Err(_)) => return Err(Box::new(StatusCode::BAD_REQUEST.into_response())),
-            Some(Ok(frame)) => {
-                if let Some(data) = frame.data_ref() {
-                    seen = seen.saturating_add(data.len());
-                    if seen <= limit {
-                        kept.extend_from_slice(data);
-                    } else if seen > limit.saturating_add(DRAIN_PAST_LIMIT) {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    if seen > limit {
-        return Err(Box::new(refusal_response(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "body_too_large",
-            "payload_too_large",
-            "the body is over the limit",
-        )));
-    }
-    Ok(kept)
-}
-
-/// Verifies a request and checks that the device it names is enrolled and not revoked, under one
-/// lock: the refusal is the response to send.
-fn admit(shared: &Shared, received: &Received<'_>) -> Result<Verified, Box<Response>> {
-    let mut state = shared.state();
-    let Store { devices, seen, .. } = &mut *state;
-    let verified = verify_request(
-        &shared.profile,
-        &shared.issuer_keys,
-        received,
-        shared.now(),
-        seen,
-    )
-    .map_err(|refusal| Box::new(refused(refusal)))?;
-    let Some(device) = devices.get(&verified.device_id) else {
-        // Signed by an issuer this server trusts, for a device it has no record of (a restart
-        // forgot it): the client renews, and the renewal's answer says the device is gone.
-        return Err(Box::new(refusal_response(
-            StatusCode::UNAUTHORIZED,
-            "device_not_active",
-            "unauthenticated",
-            "this device is not known",
-        )));
-    };
-    if device.revoked {
-        return Err(Box::new(refusal_response(
-            StatusCode::FORBIDDEN,
-            "device_revoked",
-            "permission_denied",
-            "this device was revoked",
-        )));
-    }
-    match device.keys.get(&verified.role) {
-        Some(jwk) if jwk.thumbprint() == verified.jkt => Ok(verified),
-        _ => Err(Box::new(refusal_response(
-            StatusCode::UNAUTHORIZED,
-            "key_not_bound",
-            "unauthenticated",
-            "this key is not one of the device's",
-        ))),
-    }
-}
-
-/// The layer in front of the router: verifies a device-signed request before anything else sees it.
-///
-/// A public procedure ([`PUBLIC_OPS`]) passes as it is. Anything else must carry a valid
-/// attestation and signature ([`verify_request`]) from a device that is enrolled and not revoked;
-/// the refusal is answered here, with the code the client reads. A verified device goes on as a
-/// request extension, and as the `VerifiedPrincipal` the idempotency layer keys on.
-async fn verify_device(
-    State(shared): State<Arc<Shared>>,
-    request: Request,
-    next: Next,
-) -> Response {
-    let (mut parts, body) = request.into_parts();
-    let bytes = match read_body(body).await {
-        Ok(bytes) => bytes,
-        Err(response) => return *response,
-    };
-    let is_public = parts.method == Method::POST
-        && parts
-            .uri
-            .path()
-            .strip_prefix("/rpc/")
-            .is_some_and(|op| PUBLIC_OPS.contains(&op));
-    if !is_public {
-        let header = |name: &str| parts.headers.get(name).and_then(|v| v.to_str().ok());
-        let received = Received {
-            method: parts.method.as_str(),
-            path: parts.uri.path(),
-            query: parts.uri.query(),
-            attestation: header(shared.profile.attestation_header),
-            signature: header(shared.profile.signature_header),
-            body: &bytes,
-        };
-        match admit(&shared, &received) {
-            Ok(verified) => {
-                parts
-                    .extensions
-                    .insert(VerifiedPrincipal(verified.subject.clone()));
-                parts.extensions.insert(VerifiedDevice(verified));
-            }
-            Err(response) => return *response,
-        }
-    }
-    next.run(Request::from_parts(parts, Body::from(bytes)))
-        .await
-}
-
-/// Build the server: the generated RPC router under the verification layer.
+/// Build the server: the generated RPC router, its auth provider over Authkestra.
 ///
 /// # Errors
-/// When the issuer's scalar is not a valid P-256 key, or there is no randomness.
-pub fn build(config: &Config) -> Result<Built, CratestackError> {
-    let scalar = match config.issuer_scalar {
-        Some(scalar) => scalar,
-        None => jose::random_scalar()
-            .map_err(|error| CratestackError::Internal(format!("no randomness: {error}")))?,
+/// When there is no randomness, or the issuer key cannot be made.
+pub async fn build(config: &Config) -> Result<Built, CratestackError> {
+    let issuer = Issuer::new(&IssuerConfig {
+        audience: config.audience.clone(),
+        attestation_ttl_secs: config.attestation_ttl_secs,
+        clock_skew_secs: config.clock_skew_secs,
+        seed: config.issuer_seed,
+    })
+    .await?;
+    let hello = Hello {
+        audience: config.audience.clone(),
+        issuer_jwk: issuer.public_jwk.clone(),
     };
-    let issuer = jose::signing_key(&scalar).ok_or_else(|| {
-        CratestackError::Internal("the issuer scalar is not a P-256 key".to_owned())
-    })?;
-    let issuer_public = *issuer.verifying_key();
-    // The issuer key's `kid` (profile v1 requires one): its RFC 7638 thumbprint, so a new key is a
-    // new `kid`.
-    let issuer_kid = Jwk::of(&issuer_public).thumbprint();
     let shared = Arc::new(Shared {
-        profile: Profile {
-            skew: config.clock_skew_secs,
-            ..Profile::new(&config.audience, ISSUER)
-        },
         issuer,
-        issuer_kid: issuer_kid.clone(),
-        issuer_keys: vec![IssuerKey {
-            kid: issuer_kid.clone(),
-            key: issuer_public,
-        }],
-        ttl: config.attestation_ttl_secs,
-        clock: Arc::clone(&config.clock),
+        clock_skew_secs: config.clock_skew_secs,
         state: Mutex::new(Store::default()),
     });
-    let idempotency = Arc::new(MemoryIdempotency::new());
-    let router = cratestack_schema::axum::rpc_router(
+    let mut router = cratestack_schema::axum::rpc_router(
         Cratestack::builder().build(),
-        Procedures {
+        procedures::Procedures {
             shared: Arc::clone(&shared),
         },
         (),
         CborCodec,
-        DeviceAuth,
+        auth::DeviceAuth {
+            shared: Arc::clone(&shared),
+        },
         cratestack::DEFAULT_BODY_LIMIT_BYTES,
-    )
-    // Inside the verification layer: it sees the user a device belongs to as its principal, so a
-    // retry under the same key is replayed.
-    .layer(IdempotencyLayer::new(
-        Arc::clone(&idempotency) as Arc<dyn IdempotencyStore>,
-        IDEMPOTENCY_TTL,
-    ))
-    // Only a verified device may hold a key: for anyone else the header is dropped, so the store
-    // is never reached by a caller who can mint an identity (an unsigned call), and cannot be
-    // filled by one.
-    .layer(from_fn(keys_for_verified_callers_only))
-    .layer(from_fn_with_state(Arc::clone(&shared), verify_device));
+    );
+    if config.test_hooks {
+        router = router.merge(test_hooks::routes(Arc::clone(&shared)));
+    }
     Ok(Built {
         router,
-        hello: Hello {
-            audience: config.audience.clone(),
-            issuer_jwk: Jwk::of(&issuer_public),
-            issuer_kid,
-        },
+        hello,
         shared,
-        idempotency,
     })
-}
-
-/// Drops the `Idempotency-Key` of a request no layer verified a device for.
-async fn keys_for_verified_callers_only(mut request: Request, next: Next) -> Response {
-    if request.extensions().get::<VerifiedPrincipal>().is_none() {
-        request.headers_mut().remove("idempotency-key");
-    }
-    next.run(request).await
 }

@@ -8,6 +8,189 @@
 
 part of 'procedures.dart';
 
+class SendEnrolmentCodeArgsMapper
+    extends ClassMapperBase<SendEnrolmentCodeArgs> {
+  SendEnrolmentCodeArgsMapper._();
+
+  static SendEnrolmentCodeArgsMapper? _instance;
+  static SendEnrolmentCodeArgsMapper ensureInitialized() {
+    if (_instance == null) {
+      MapperContainer.globals.use(_instance = SendEnrolmentCodeArgsMapper._());
+      SendCodeArgsMapper.ensureInitialized();
+    }
+    return _instance!;
+  }
+
+  @override
+  final String id = 'SendEnrolmentCodeArgs';
+
+  static SendCodeArgs _$args(SendEnrolmentCodeArgs v) => v.args;
+  static const Field<SendEnrolmentCodeArgs, SendCodeArgs> _f$args = Field(
+    'args',
+    _$args,
+  );
+
+  @override
+  final MappableFields<SendEnrolmentCodeArgs> fields = const {#args: _f$args};
+
+  static SendEnrolmentCodeArgs _instantiate(DecodingData data) {
+    return SendEnrolmentCodeArgs(args: data.dec(_f$args));
+  }
+
+  @override
+  final Function instantiate = _instantiate;
+}
+
+mixin SendEnrolmentCodeArgsMappable {
+  SendEnrolmentCodeArgsCopyWith<SendEnrolmentCodeArgs, SendEnrolmentCodeArgs,
+      SendEnrolmentCodeArgs> get copyWith => _SendEnrolmentCodeArgsCopyWithImpl<
+          SendEnrolmentCodeArgs, SendEnrolmentCodeArgs>(
+      this as SendEnrolmentCodeArgs, $identity, $identity);
+  @override
+  bool operator ==(Object other) {
+    return SendEnrolmentCodeArgsMapper.ensureInitialized().equalsValue(
+      this as SendEnrolmentCodeArgs,
+      other,
+    );
+  }
+
+  @override
+  int get hashCode {
+    return SendEnrolmentCodeArgsMapper.ensureInitialized().hashValue(
+      this as SendEnrolmentCodeArgs,
+    );
+  }
+}
+
+extension SendEnrolmentCodeArgsValueCopy<$R, $Out>
+    on ObjectCopyWith<$R, SendEnrolmentCodeArgs, $Out> {
+  SendEnrolmentCodeArgsCopyWith<$R, SendEnrolmentCodeArgs, $Out>
+      get $asSendEnrolmentCodeArgs => $base.as(
+            (v, t, t2) =>
+                _SendEnrolmentCodeArgsCopyWithImpl<$R, $Out>(v, t, t2),
+          );
+}
+
+abstract class SendEnrolmentCodeArgsCopyWith<
+    $R,
+    $In extends SendEnrolmentCodeArgs,
+    $Out> implements ClassCopyWith<$R, $In, $Out> {
+  SendCodeArgsCopyWith<$R, SendCodeArgs, SendCodeArgs> get args;
+  $R call({SendCodeArgs? args});
+  SendEnrolmentCodeArgsCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
+    Then<$Out2, $R2> t,
+  );
+}
+
+class _SendEnrolmentCodeArgsCopyWithImpl<$R, $Out>
+    extends ClassCopyWithBase<$R, SendEnrolmentCodeArgs, $Out>
+    implements SendEnrolmentCodeArgsCopyWith<$R, SendEnrolmentCodeArgs, $Out> {
+  _SendEnrolmentCodeArgsCopyWithImpl(super.value, super.then, super.then2);
+
+  @override
+  late final ClassMapperBase<SendEnrolmentCodeArgs> $mapper =
+      SendEnrolmentCodeArgsMapper.ensureInitialized();
+  @override
+  SendCodeArgsCopyWith<$R, SendCodeArgs, SendCodeArgs> get args =>
+      $value.args.copyWith.$chain((v) => call(args: v));
+  @override
+  $R call({SendCodeArgs? args}) =>
+      $apply(FieldCopyWithData({if (args != null) #args: args}));
+  @override
+  SendEnrolmentCodeArgs $make(CopyWithData data) =>
+      SendEnrolmentCodeArgs(args: data.get(#args, or: $value.args));
+
+  @override
+  SendEnrolmentCodeArgsCopyWith<$R2, SendEnrolmentCodeArgs, $Out2>
+      $chain<$R2, $Out2>(Then<$Out2, $R2> t) =>
+          _SendEnrolmentCodeArgsCopyWithImpl<$R2, $Out2>($value, $cast, t);
+}
+
+class SendCodeArgsMapper extends ClassMapperBase<SendCodeArgs> {
+  SendCodeArgsMapper._();
+
+  static SendCodeArgsMapper? _instance;
+  static SendCodeArgsMapper ensureInitialized() {
+    if (_instance == null) {
+      MapperContainer.globals.use(_instance = SendCodeArgsMapper._());
+    }
+    return _instance!;
+  }
+
+  @override
+  final String id = 'SendCodeArgs';
+
+  static String _$phone(SendCodeArgs v) => v.phone;
+  static const Field<SendCodeArgs, String> _f$phone = Field('phone', _$phone);
+
+  @override
+  final MappableFields<SendCodeArgs> fields = const {#phone: _f$phone};
+
+  static SendCodeArgs _instantiate(DecodingData data) {
+    return SendCodeArgs(phone: data.dec(_f$phone));
+  }
+
+  @override
+  final Function instantiate = _instantiate;
+}
+
+mixin SendCodeArgsMappable {
+  SendCodeArgsCopyWith<SendCodeArgs, SendCodeArgs, SendCodeArgs> get copyWith =>
+      _SendCodeArgsCopyWithImpl<SendCodeArgs, SendCodeArgs>(
+        this as SendCodeArgs,
+        $identity,
+        $identity,
+      );
+  @override
+  bool operator ==(Object other) {
+    return SendCodeArgsMapper.ensureInitialized().equalsValue(
+      this as SendCodeArgs,
+      other,
+    );
+  }
+
+  @override
+  int get hashCode {
+    return SendCodeArgsMapper.ensureInitialized().hashValue(
+      this as SendCodeArgs,
+    );
+  }
+}
+
+extension SendCodeArgsValueCopy<$R, $Out>
+    on ObjectCopyWith<$R, SendCodeArgs, $Out> {
+  SendCodeArgsCopyWith<$R, SendCodeArgs, $Out> get $asSendCodeArgs =>
+      $base.as((v, t, t2) => _SendCodeArgsCopyWithImpl<$R, $Out>(v, t, t2));
+}
+
+abstract class SendCodeArgsCopyWith<$R, $In extends SendCodeArgs, $Out>
+    implements ClassCopyWith<$R, $In, $Out> {
+  $R call({String? phone});
+  SendCodeArgsCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
+}
+
+class _SendCodeArgsCopyWithImpl<$R, $Out>
+    extends ClassCopyWithBase<$R, SendCodeArgs, $Out>
+    implements SendCodeArgsCopyWith<$R, SendCodeArgs, $Out> {
+  _SendCodeArgsCopyWithImpl(super.value, super.then, super.then2);
+
+  @override
+  late final ClassMapperBase<SendCodeArgs> $mapper =
+      SendCodeArgsMapper.ensureInitialized();
+  @override
+  $R call({String? phone}) =>
+      $apply(FieldCopyWithData({if (phone != null) #phone: phone}));
+  @override
+  SendCodeArgs $make(CopyWithData data) =>
+      SendCodeArgs(phone: data.get(#phone, or: $value.phone));
+
+  @override
+  SendCodeArgsCopyWith<$R2, SendCodeArgs, $Out2> $chain<$R2, $Out2>(
+    Then<$Out2, $R2> t,
+  ) =>
+      _SendCodeArgsCopyWithImpl<$R2, $Out2>($value, $cast, t);
+}
+
 class BeginEnrolmentProcedureArgsMapper
     extends ClassMapperBase<BeginEnrolmentProcedureArgs> {
   BeginEnrolmentProcedureArgsMapper._();
@@ -137,6 +320,8 @@ class BeginEnrolmentArgsMapper extends ClassMapperBase<BeginEnrolmentArgs> {
     'phone',
     _$phone,
   );
+  static String _$otp(BeginEnrolmentArgs v) => v.otp;
+  static const Field<BeginEnrolmentArgs, String> _f$otp = Field('otp', _$otp);
   static Jwk _$ambient(BeginEnrolmentArgs v) => v.ambient;
   static const Field<BeginEnrolmentArgs, Jwk> _f$ambient = Field(
     'ambient',
@@ -152,6 +337,7 @@ class BeginEnrolmentArgsMapper extends ClassMapperBase<BeginEnrolmentArgs> {
   @override
   final MappableFields<BeginEnrolmentArgs> fields = const {
     #phone: _f$phone,
+    #otp: _f$otp,
     #ambient: _f$ambient,
     #userPresent: _f$userPresent,
   };
@@ -159,6 +345,7 @@ class BeginEnrolmentArgsMapper extends ClassMapperBase<BeginEnrolmentArgs> {
   static BeginEnrolmentArgs _instantiate(DecodingData data) {
     return BeginEnrolmentArgs(
       phone: data.dec(_f$phone),
+      otp: data.dec(_f$otp),
       ambient: data.dec(_f$ambient),
       userPresent: data.dec(_f$userPresent),
     );
@@ -204,7 +391,7 @@ abstract class BeginEnrolmentArgsCopyWith<$R, $In extends BeginEnrolmentArgs,
     $Out> implements ClassCopyWith<$R, $In, $Out> {
   JwkCopyWith<$R, Jwk, Jwk> get ambient;
   JwkCopyWith<$R, Jwk, Jwk>? get userPresent;
-  $R call({String? phone, Jwk? ambient, Jwk? userPresent});
+  $R call({String? phone, String? otp, Jwk? ambient, Jwk? userPresent});
   BeginEnrolmentArgsCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
     Then<$Out2, $R2> t,
   );
@@ -225,9 +412,16 @@ class _BeginEnrolmentArgsCopyWithImpl<$R, $Out>
   JwkCopyWith<$R, Jwk, Jwk>? get userPresent =>
       $value.userPresent?.copyWith.$chain((v) => call(userPresent: v));
   @override
-  $R call({String? phone, Jwk? ambient, Object? userPresent = $none}) => $apply(
+  $R call({
+    String? phone,
+    String? otp,
+    Jwk? ambient,
+    Object? userPresent = $none,
+  }) =>
+      $apply(
         FieldCopyWithData({
           if (phone != null) #phone: phone,
+          if (otp != null) #otp: otp,
           if (ambient != null) #ambient: ambient,
           if (userPresent != $none) #userPresent: userPresent,
         }),
@@ -235,6 +429,7 @@ class _BeginEnrolmentArgsCopyWithImpl<$R, $Out>
   @override
   BeginEnrolmentArgs $make(CopyWithData data) => BeginEnrolmentArgs(
         phone: data.get(#phone, or: $value.phone),
+        otp: data.get(#otp, or: $value.otp),
         ambient: data.get(#ambient, or: $value.ambient),
         userPresent: data.get(#userPresent, or: $value.userPresent),
       );
@@ -471,8 +666,6 @@ class ConfirmEnrolmentArgsMapper extends ClassMapperBase<ConfirmEnrolmentArgs> {
     'enrolmentId',
     _$enrolmentId,
   );
-  static String _$otp(ConfirmEnrolmentArgs v) => v.otp;
-  static const Field<ConfirmEnrolmentArgs, String> _f$otp = Field('otp', _$otp);
   static String _$ambient(ConfirmEnrolmentArgs v) => v.ambient;
   static const Field<ConfirmEnrolmentArgs, String> _f$ambient = Field(
     'ambient',
@@ -488,7 +681,6 @@ class ConfirmEnrolmentArgsMapper extends ClassMapperBase<ConfirmEnrolmentArgs> {
   @override
   final MappableFields<ConfirmEnrolmentArgs> fields = const {
     #enrolmentId: _f$enrolmentId,
-    #otp: _f$otp,
     #ambient: _f$ambient,
     #userPresent: _f$userPresent,
   };
@@ -496,7 +688,6 @@ class ConfirmEnrolmentArgsMapper extends ClassMapperBase<ConfirmEnrolmentArgs> {
   static ConfirmEnrolmentArgs _instantiate(DecodingData data) {
     return ConfirmEnrolmentArgs(
       enrolmentId: data.dec(_f$enrolmentId),
-      otp: data.dec(_f$otp),
       ambient: data.dec(_f$ambient),
       userPresent: data.dec(_f$userPresent),
     );
@@ -539,12 +730,7 @@ abstract class ConfirmEnrolmentArgsCopyWith<
     $R,
     $In extends ConfirmEnrolmentArgs,
     $Out> implements ClassCopyWith<$R, $In, $Out> {
-  $R call({
-    String? enrolmentId,
-    String? otp,
-    String? ambient,
-    String? userPresent,
-  });
+  $R call({String? enrolmentId, String? ambient, String? userPresent});
   ConfirmEnrolmentArgsCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(
     Then<$Out2, $R2> t,
   );
@@ -561,14 +747,12 @@ class _ConfirmEnrolmentArgsCopyWithImpl<$R, $Out>
   @override
   $R call({
     String? enrolmentId,
-    String? otp,
     String? ambient,
     Object? userPresent = $none,
   }) =>
       $apply(
         FieldCopyWithData({
           if (enrolmentId != null) #enrolmentId: enrolmentId,
-          if (otp != null) #otp: otp,
           if (ambient != null) #ambient: ambient,
           if (userPresent != $none) #userPresent: userPresent,
         }),
@@ -576,7 +760,6 @@ class _ConfirmEnrolmentArgsCopyWithImpl<$R, $Out>
   @override
   ConfirmEnrolmentArgs $make(CopyWithData data) => ConfirmEnrolmentArgs(
         enrolmentId: data.get(#enrolmentId, or: $value.enrolmentId),
-        otp: data.get(#otp, or: $value.otp),
         ambient: data.get(#ambient, or: $value.ambient),
         userPresent: data.get(#userPresent, or: $value.userPresent),
       );
@@ -2246,6 +2429,88 @@ class _AccountCopyWithImpl<$R, $Out>
   @override
   AccountCopyWith<$R2, Account, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t) =>
       _AccountCopyWithImpl<$R2, $Out2>($value, $cast, t);
+}
+
+class CodeSentMapper extends ClassMapperBase<CodeSent> {
+  CodeSentMapper._();
+
+  static CodeSentMapper? _instance;
+  static CodeSentMapper ensureInitialized() {
+    if (_instance == null) {
+      MapperContainer.globals.use(_instance = CodeSentMapper._());
+    }
+    return _instance!;
+  }
+
+  @override
+  final String id = 'CodeSent';
+
+  static String _$phone(CodeSent v) => v.phone;
+  static const Field<CodeSent, String> _f$phone = Field('phone', _$phone);
+
+  @override
+  final MappableFields<CodeSent> fields = const {#phone: _f$phone};
+
+  static CodeSent _instantiate(DecodingData data) {
+    return CodeSent(phone: data.dec(_f$phone));
+  }
+
+  @override
+  final Function instantiate = _instantiate;
+}
+
+mixin CodeSentMappable {
+  CodeSentCopyWith<CodeSent, CodeSent, CodeSent> get copyWith =>
+      _CodeSentCopyWithImpl<CodeSent, CodeSent>(
+        this as CodeSent,
+        $identity,
+        $identity,
+      );
+  @override
+  bool operator ==(Object other) {
+    return CodeSentMapper.ensureInitialized().equalsValue(
+      this as CodeSent,
+      other,
+    );
+  }
+
+  @override
+  int get hashCode {
+    return CodeSentMapper.ensureInitialized().hashValue(this as CodeSent);
+  }
+}
+
+extension CodeSentValueCopy<$R, $Out> on ObjectCopyWith<$R, CodeSent, $Out> {
+  CodeSentCopyWith<$R, CodeSent, $Out> get $asCodeSent =>
+      $base.as((v, t, t2) => _CodeSentCopyWithImpl<$R, $Out>(v, t, t2));
+}
+
+abstract class CodeSentCopyWith<$R, $In extends CodeSent, $Out>
+    implements ClassCopyWith<$R, $In, $Out> {
+  $R call({String? phone});
+  CodeSentCopyWith<$R2, $In, $Out2> $chain<$R2, $Out2>(Then<$Out2, $R2> t);
+}
+
+class _CodeSentCopyWithImpl<$R, $Out>
+    extends ClassCopyWithBase<$R, CodeSent, $Out>
+    implements CodeSentCopyWith<$R, CodeSent, $Out> {
+  _CodeSentCopyWithImpl(super.value, super.then, super.then2);
+
+  @override
+  late final ClassMapperBase<CodeSent> $mapper =
+      CodeSentMapper.ensureInitialized();
+  @override
+  $R call({String? phone}) =>
+      $apply(FieldCopyWithData({if (phone != null) #phone: phone}));
+  @override
+  CodeSent $make(CopyWithData data) =>
+      CodeSent(phone: data.get(#phone, or: $value.phone));
+
+  @override
+  CodeSentCopyWith<$R2, CodeSent, $Out2> $chain<$R2, $Out2>(
+    Then<$Out2, $R2> t,
+  ) =>
+      _CodeSentCopyWithImpl<$R2, $Out2>($value, $cast, t);
 }
 
 class EnrolledDeviceMapper extends ClassMapperBase<EnrolledDevice> {

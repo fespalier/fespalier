@@ -246,6 +246,7 @@ Query procedures:
 
 Mutation procedures:
 
+- `client.procedures.sendEnrolmentCode(SendEnrolmentCodeArgs(...), options: options)`
 - `client.procedures.beginEnrolment(BeginEnrolmentProcedureArgs(...), options: options)`
 - `client.procedures.confirmEnrolment(ConfirmEnrolmentProcedureArgs(...), options: options)`
 - `client.procedures.beginRenewal(BeginRenewalProcedureArgs(...), options: options)`
@@ -256,6 +257,7 @@ Mutation procedures:
 
 Full generated procedure inventory:
 
+- `mutation` `client.procedures.sendEnrolmentCode(...)` returns `CodeSent`
 - `mutation` `client.procedures.beginEnrolment(...)` returns `EnrolmentChallenges`
 - `mutation` `client.procedures.confirmEnrolment(...)` returns `EnrolledDevice`
 - `mutation` `client.procedures.beginRenewal(...)` returns `RenewalChallenge`
@@ -401,6 +403,7 @@ Model entry points:
 
 Procedure entry points:
 
+- `client.procedures.sendEnrolmentCode(...)`
 - `client.procedures.beginEnrolment(...)`
 - `client.procedures.confirmEnrolment(...)`
 - `client.procedures.beginRenewal(...)`

@@ -157,6 +157,7 @@ class FakeOrdersServer {
     final hold = _held[record.op];
     if (hold != null) await hold.future;
     return switch (record.op) {
+      'sendEnrolmentCode' => _sendCode(record),
       'beginEnrolment' => _beginEnrolment(record),
       'confirmEnrolment' => await _confirmEnrolment(record),
       'beginRenewal' => _beginRenewal(record),
@@ -167,16 +168,40 @@ class FakeOrdersServer {
 
   // ----------------------------------------------------------------------------------- enrolment
 
+  /// The phone numbers a code was sent to, and not used yet.
+  final Set<String> _codesSent = {};
+
+  static String? _phoneOf(Served call) {
+    final phone = '${call.args['phone']}'.replaceAll(' ', '');
+    return RegExp(r'^\+\d{8,15}$').hasMatch(phone) ? phone : null;
+  }
+
+  TransportResponse _badPhone() => _refuse(
+    422,
+    'invalid_argument',
+    "field 'phone' must look like +237 6 55 00 00 00",
+  );
+
+  // Authkestra's order: the code is sent, then checked with the keys before any challenge.
+  TransportResponse _sendCode(Served call) {
+    final phone = _phoneOf(call);
+    if (phone == null) return _badPhone();
+    _codesSent.add(phone);
+    return _ok({'phone': phone});
+  }
+
   TransportResponse _beginEnrolment(Served call) {
     final args = call.args;
-    final phone = '${args['phone']}'.replaceAll(' ', '');
-    if (!RegExp(r'^\+\d{8,15}$').hasMatch(phone)) {
+    final phone = _phoneOf(call);
+    if (phone == null) return _badPhone();
+    if (!_codesSent.contains(phone) || args['otp'] != otp) {
       return _refuse(
         422,
         'invalid_argument',
-        "field 'phone' must look like +237 6 55 00 00 00",
+        "field 'otp' is not the code that was sent",
       );
     }
+    _codesSent.remove(phone);
     final keys = {
       KeyRole.ambient: publicP256Jwk(args['ambient'])!,
       KeyRole.userPresent: ?publicP256Jwk(args['userPresent']),
@@ -195,13 +220,6 @@ class FakeOrdersServer {
     final args = call.args;
     final pending = _enrolments[args['enrolmentId']];
     if (pending == null) return _refuse(404, 'not_found', 'enrolment');
-    if (args['otp'] != otp) {
-      return _refuse(
-        422,
-        'invalid_argument',
-        "field 'otp' is not the code that was sent",
-      );
-    }
     for (final entry in pending.keys.entries) {
       final signature = args[entry.key.name];
       if (signature is! String ||

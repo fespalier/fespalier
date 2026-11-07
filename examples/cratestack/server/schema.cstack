@@ -11,8 +11,17 @@ type Jwk {
   y String
 }
 
+type SendCodeArgs {
+  phone String
+}
+
+type CodeSent {
+  phone String
+}
+
 type BeginEnrolmentArgs {
   phone String
+  otp String
   ambient Jwk
   userPresent Jwk?
 }
@@ -25,7 +34,6 @@ type EnrolmentChallenges {
 
 type ConfirmEnrolmentArgs {
   enrolmentId String
-  otp String
   ambient String
   userPresent String?
 }
@@ -104,6 +112,13 @@ type PayOrderArgs {
   id Int
 }
 
+// The public procedures: a device that has no session calls them unsigned, so the provider reads
+// it as anonymous and these policies let it in. Authkestra's enrolment checks the second factor
+// before it issues a challenge, so the code is asked for first (sendEnrolmentCode), and sent with
+// the keys (beginEnrolment); confirmEnrolment carries the challenge signatures only.
+mutation procedure sendEnrolmentCode(args: SendCodeArgs): CodeSent
+  @allow(true)
+
 mutation procedure beginEnrolment(args: BeginEnrolmentArgs): EnrolmentChallenges
   @allow(true)
 
@@ -132,7 +147,7 @@ mutation procedure placeOrder(args: PlaceOrderArgs): Order
   @allow(auth() != null)
 
 // Paying moves money, so it needs a user-presence test (RFC 8176 `user`), which only a signature
-// by the device's user-present key proves (`DeviceAuth` in src/lib.rs maps the key role to `amr`).
+// by the device's user-present key proves (`principal_of` in src/auth.rs maps the key role to `amr`).
 // Any other signed caller is refused with RFC 9470's step-up 401 before the procedure runs; the
 // app's session signs the request again with the user-present key and sends it once more.
 mutation procedure payOrder(args: PayOrderArgs): Order

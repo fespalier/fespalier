@@ -25,6 +25,7 @@ void main() {
     // Generated model API entry points:
 
     // Generated procedures:
+    // - sendEnrolmentCode(...)
     // - beginEnrolment(...)
     // - confirmEnrolment(...)
     // - beginRenewal(...)

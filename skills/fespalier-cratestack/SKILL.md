@@ -99,7 +99,12 @@ key. Only a refusal that stands reaches the call, as a `CratestackRpcException` 
 (show "not confirmed"; the client's `retryAfterStepUp` is not needed). Server side, the provider fills `auth_time` and
 `amr` through the principal contract, and an idempotency store must not replay the 401 to the retry, which comes under the
 same `Idempotency-Key`. Details: [Step-up authentication](../../docs/auth.md#step-up-authentication) and
-`examples/cratestack`.
+`examples/cratestack`, whose server is built on Authkestra (`authkestra-devsig` in an `AuthProvider`, `authkestra-op`'s
+handlers for the attestations, refusals as `AuthRefusal`s, no layer in front of the router; the `DeviceAuthServer` recipe is
+in [`fespalier-guards`](../fespalier-guards/SKILL.md), "A `DeviceAuthServer` for an Authkestra server"). Its server keeps a write's answer per user and key in its
+procedures, after authentication, because CrateStack's `IdempotencyLayer` runs before any `AuthProvider`. A session that
+ends as `revoked` or `keyLost` does not wipe the queue by itself: call `crateStackAccount.clear(scope:)` with the account
+that ended (the example's `wipeWhenSessionEnds`).
 
 ## 2. The two seams
 
@@ -473,18 +478,18 @@ isolate.
 
 ## References
 
-| Need                                                                                                          | Page                                                                  |
-| ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                           | [`references/wiring.md`](references/wiring.md)                        |
-| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do         | [`references/server-contract.md`](references/server-contract.md)      |
-| Where CrateStack's embedded SQLite mode fits and where it does not                                            | [`references/embedded-mode.md`](references/embedded-mode.md)          |
-| Reads, intents, owned rows, sync, testing                                                                     | [`fespalier-offline`](../fespalier-offline/SKILL.md)                  |
-| A subscription that makes `autoSync` sync by push, and its test (since 0.25.0)                                | [`fespalier-offline`](../fespalier-offline/SKILL.md) (`push-sync.md`) |
-| A transport that signs every request and a server that checks it, end to end                                  | [`examples/cose`](../../examples/cose/README.md)                      |
-| A generated client (`--preset fespalier`, no Dio), a Rust server and device-signed sessions, end to end       | [`examples/cratestack`](../../examples/cratestack/README.md)          |
-| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)                | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)          |
-| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                            | [`examples/frb-cose`](../../examples/frb-cose/README.md)              |
-| The layout of an app with a Rust core, CrateStack's client or embedded store in it, Cargokit or native assets | [`fespalier-frb`](../fespalier-frb/SKILL.md)                          |
+| Need                                                                                                                  | Page                                                                  |
+| --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| The whole `startup()`, the Dio, the root layout, sign-out, `path_provider`, the web                                   | [`references/wiring.md`](references/wiring.md)                        |
+| What the server's idempotency layer guarantees, the answer table, what `RowSync`'s procedures must do                 | [`references/server-contract.md`](references/server-contract.md)      |
+| Where CrateStack's embedded SQLite mode fits and where it does not                                                    | [`references/embedded-mode.md`](references/embedded-mode.md)          |
+| Reads, intents, owned rows, sync, testing                                                                             | [`fespalier-offline`](../fespalier-offline/SKILL.md)                  |
+| A subscription that makes `autoSync` sync by push, and its test (since 0.25.0)                                        | [`fespalier-offline`](../fespalier-offline/SKILL.md) (`push-sync.md`) |
+| A transport that signs every request and a server that checks it, end to end                                          | [`examples/cose`](../../examples/cose/README.md)                      |
+| A generated client (`--preset fespalier`, no Dio), a Rust server on Authkestra and device-signed sessions, end to end | [`examples/cratestack`](../../examples/cratestack/README.md)          |
+| What a call costs in bytes as JSON, CBOR and `COSE_Sign1` CBOR, counted in process (no socket)                        | [`examples/wire-sizes`](../../examples/wire-sizes/README.md)          |
+| A Rust core that is CrateStack's client, behind flutter_rust_bridge (since 0.21.1)                                    | [`examples/frb-cose`](../../examples/frb-cose/README.md)              |
+| The layout of an app with a Rust core, CrateStack's client or embedded store in it, Cargokit or native assets         | [`fespalier-frb`](../fespalier-frb/SKILL.md)                          |
 
 ## Where the code is
 

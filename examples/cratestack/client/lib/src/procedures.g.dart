@@ -9,6 +9,49 @@ part of 'procedures.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 
+@ProviderFor(SendEnrolmentCodeController)
+final sendEnrolmentCodeControllerProvider =
+    SendEnrolmentCodeControllerProvider._();
+
+final class SendEnrolmentCodeControllerProvider
+    extends $AsyncNotifierProvider<SendEnrolmentCodeController, CodeSent?> {
+  SendEnrolmentCodeControllerProvider._()
+      : super(
+          from: null,
+          argument: null,
+          retry: null,
+          name: r'sendEnrolmentCodeControllerProvider',
+          isAutoDispose: true,
+          dependencies: null,
+          $allTransitiveDependencies: null,
+        );
+
+  @override
+  String debugGetCreateSourceHash() => _$sendEnrolmentCodeControllerHash();
+
+  @$internal
+  @override
+  SendEnrolmentCodeController create() => SendEnrolmentCodeController();
+}
+
+String _$sendEnrolmentCodeControllerHash() =>
+    r'362e3ce5164ac4f573fac37de3910d3ba02100df';
+
+abstract class _$SendEnrolmentCodeController extends $AsyncNotifier<CodeSent?> {
+  FutureOr<CodeSent?> build();
+  @$mustCallSuper
+  @override
+  WhenComplete runBuild() {
+    final ref = this.ref as $Ref<AsyncValue<CodeSent?>, CodeSent?>;
+    final element = ref.element as $ClassProviderElement<
+        AnyNotifier<AsyncValue<CodeSent?>, CodeSent?>,
+        AsyncValue<CodeSent?>,
+        Object?,
+        Object?>;
+    return element.handleCreate(ref, build);
+  }
+}
+
 @ProviderFor(BeginEnrolmentController)
 final beginEnrolmentControllerProvider = BeginEnrolmentControllerProvider._();
 

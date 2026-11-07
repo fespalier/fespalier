@@ -1,8 +1,9 @@
 // The app's Dart signatures against the real Rust server (examples/cratestack/server), as a process:
-// the cross-language check of the scheme. `DeviceSigner` signs with fake (deterministic) keys, and
-// the server's own verifier (src/verify.rs, written from the profile and not from Dart's code) has to
-// accept every request, refuse every tampered one, and agree with `webankRefusals` on what a refusal
-// means.
+// the cross-language check of the stack. `DeviceSigner` signs with fake (deterministic) keys, and
+// Authkestra (`authkestra-devsig` inside the server's CrateStack `AuthProvider`, `authkestra-op`'s
+// enrolment and re-issuance handlers) has to accept every request, refuse every tampered one, and
+// agree with `webankRefusals` on what a refusal means. The server is started with `--test-hooks`,
+// which adds the one route a client never has (`POST /test/revoke`, an operator's revocation).
 //
 //   cd examples/cratestack/server && cargo build --locked
 //   cd .. && ORDERS_SERVER_BIN=server/target/debug/orders-demo-server flutter test test/e2e_test.dart
@@ -19,6 +20,7 @@ import 'package:cbor/simple.dart' as cbor;
 import 'package:clock/clock.dart';
 import 'package:cratestack_example/src/config.dart';
 import 'package:cratestack_example/src/errors.dart';
+import 'package:cratestack_example/src/session.dart';
 import 'package:cratestack_example/src/wiring.dart';
 import 'package:fespalier/fespalier.dart' show FieldErrors, ProviderContainer;
 import 'package:fespalier_auth/fespalier_auth.dart';
@@ -44,14 +46,22 @@ typedef _Sent = ({
 });
 
 /// The bottom of the app's chain, recording each send: what the server saw, under the session.
+/// While [offline], nothing leaves: each send is recorded as [attempts] and fails as `TransportUnsent`.
 class _Recording implements HttpTransport {
   _Recording(this.inner);
 
   final HttpTransport inner;
   final List<_Sent> sent = [];
 
+  /// Every send the session made, reached or not.
+  final List<TransportRequest> attempts = [];
+
+  bool offline = false;
+
   @override
   Future<TransportResponse> send(TransportRequest request) async {
+    attempts.add(request);
+    if (offline) throw TransportUnsent(null, request.uri);
     final response = await inner.send(request);
     sent.add((
       request: request,
@@ -73,14 +83,15 @@ class _Server {
     String binary, {
     int? ttlSeconds,
     int port = 0,
-    String? issuerScalarHex,
+    String? issuerSeedHex,
     int? skewSeconds,
   }) async {
     final process = await Process.start(binary, [
       '--listen',
       '127.0.0.1:$port',
+      '--test-hooks',
       if (ttlSeconds != null) ...['--attestation-ttl-secs', '$ttlSeconds'],
-      if (issuerScalarHex != null) ...['--issuer-scalar-hex', issuerScalarHex],
+      if (issuerSeedHex != null) ...['--issuer-seed-hex', issuerSeedHex],
       if (skewSeconds != null) ...['--clock-skew-secs', '$skewSeconds'],
     ]);
     unawaited(process.stderr.drain<void>());
@@ -101,6 +112,21 @@ class _Server {
     } on Object {
       process.kill();
       rethrow;
+    }
+  }
+
+  /// The operator revokes [deviceId] (`POST /test/revoke`, `--test-hooks` only).
+  Future<void> revoke(String deviceId) async {
+    final client = http.Client();
+    try {
+      final response = await client.post(
+        config.server.resolve('/test/revoke'),
+        headers: const {'content-type': 'application/json'},
+        body: jsonEncode({'deviceId': deviceId}),
+      );
+      expect(response.statusCode, 204, reason: 'the device was revoked');
+    } finally {
+      client.close();
     }
   }
 
@@ -173,6 +199,8 @@ class _App {
         ...ordersOverrides(server.config),
       ],
     );
+    // What `ready()` in lib/app/startup.dart installs on the app's container.
+    wipeWhenSessionEnds(container);
     return _App(server, ambient, presence, container, client, wire);
   }
 
@@ -184,12 +212,16 @@ class _App {
 
   DeviceCredential get credential => session.credential as DeviceCredential;
 
-  /// Enrolls by the two public legs, as the enrolment page does.
+  /// Enrols by the public legs, as the enrolment page does: the code, then the keys with it, then
+  /// the challenge signatures.
   Future<void> enrol({String phone = '+237 6 55 00 00 00'}) async {
-    final challenge = await backend.beginEnrolment(fields: {'phone': phone});
+    await container.read(ordersDeviceServer).sendCode(phone);
+    final challenge = await backend.beginEnrolment(
+      fields: {'phone': phone, 'otp': '123456'},
+    );
     await container
         .read(authSession.notifier)
-        .signIn(CompleteEnrolment(challenge, proof: '123456'));
+        .signIn(CompleteEnrolment(challenge));
   }
 
   /// `listOrders`, through the generated client and the session.
@@ -295,18 +327,19 @@ void main() {
     'a wrong phone or code is a validation answer, read as FieldErrors',
     () async {
       await expectLater(
-        app.backend.beginEnrolment(fields: {'phone': 'hello'}),
+        app.container.read(ordersDeviceServer).sendCode('hello'),
         throwsA(
           isA<FieldErrors>().having((e) => e.fields.keys, 'fields', ['phone']),
         ),
       );
-      final challenge = await app.backend.beginEnrolment(
-        fields: {'phone': '+237 6 55 00 00 00'},
-      );
+      await app.container
+          .read(ordersDeviceServer)
+          .sendCode('+237 6 55 00 00 00');
+      // Authkestra checks the code before it issues a challenge: leg one is refused.
       await expectLater(
-        app.container
-            .read(authSession.notifier)
-            .signIn(CompleteEnrolment(challenge, proof: '000000')),
+        app.backend.beginEnrolment(
+          fields: {'phone': '+237 6 55 00 00 00', 'otp': '000000'},
+        ),
         throwsA(
           isA<FieldErrors>().having((e) => e.fields.keys, 'fields', ['otp']),
         ),
@@ -518,7 +551,8 @@ void main() {
       );
       expect(elsewhere.$2['error'], 'path_mismatch');
 
-      // No credential at all, and an Authorization header is not one.
+      // No credential at all, and an Authorization header is not one: anonymous, which the
+      // schema's `@allow(auth() != null)` refuses, with no profile code for a client to act on.
       final plain = TransportRequest(
         method: 'POST',
         uri: signed.uri.replace(path: '/rpc/procedure.listOrders'),
@@ -529,8 +563,19 @@ void main() {
         body: encodeBody({'args': <String, Object?>{}}),
       );
       final unsigned = await app.send(plain);
-      expect(unsigned.$1, 401);
-      expect(unsigned.$2['error'], 'missing_credential');
+      expect(unsigned.$1, 403);
+      expect(unsigned.$2['error'], isNull);
+      // Half a credential is the profile's `missing_credential`.
+      final half = await app.send(
+        plain.copyWith(
+          headers: {
+            'content-type': 'application/cbor',
+            'x-attestation': app.credential.attestation(KeyRole.ambient)!.jws,
+          },
+        ),
+      );
+      expect(half.$1, 401);
+      expect(half.$2['error'], 'missing_credential');
     },
   );
 
@@ -631,11 +676,11 @@ void main() {
       await probe.close();
       // The same issuer key, so the attestation still reads: only the device is gone.
       final issuer = '42' * 32;
-      server = await _Server.start(binary, port: port, issuerScalarHex: issuer);
+      server = await _Server.start(binary, port: port, issuerSeedHex: issuer);
       app = await _App.start(server);
       await app.enrol();
       await server.stop();
-      server = await _Server.start(binary, port: port, issuerScalarHex: issuer);
+      server = await _Server.start(binary, port: port, issuerSeedHex: issuer);
 
       // 401 device_not_active asks for a renewal, and the server answers 403 for a device it never
       // saw: the session is over.
@@ -643,6 +688,149 @@ void main() {
       expect(
         app.container.read(authSession),
         const SignedOut(reason: SignOutReason.revoked),
+      );
+    },
+  );
+
+  test(
+    'a key that is not the one enrolled is key_not_bound, and the session ends as keyLost',
+    () async {
+      await app.enrol();
+      // The keystore lost the ambient key behind the app's back: the next signature is a new key,
+      // which the attestation does not name.
+      await app.ambient.loseKey();
+      await expectLater(app.orders(), throwsA(anything));
+      final refused = app.sentTo('listOrders').last;
+      expect(refused.status, 401);
+      expect(
+        refused.headers['www-authenticate'],
+        'DeviceSignature error="key_not_bound"',
+      );
+      expect(
+        app.container.read(authSession),
+        const SignedOut(reason: SignOutReason.keyLost),
+      );
+    },
+  );
+
+  test(
+    'a device the operator revoked ends the session as revoked at its next call',
+    () async {
+      await app.enrol();
+      expect(await app.orders(), hasLength(2));
+      await server.revoke(app.credential.deviceId);
+      await expectLater(app.orders(), throwsA(anything));
+      final refused = app.sentTo('listOrders').last;
+      expect(refused.status, 403);
+      expect(
+        refused.headers['www-authenticate'],
+        'DeviceSignature error="device_revoked"',
+      );
+      expect(
+        app.container.read(authSession),
+        const SignedOut(reason: SignOutReason.revoked),
+      );
+    },
+  );
+
+  test(
+    'revocation with queued intents: the session ends as revoked, the queue is wiped, '
+    'nothing is sent after the refusal, and each send is signed when it is sent',
+    () async {
+      await app.enrol();
+      final userId = app.container.read(authUserId)!;
+      final queue = app.container.read(intentQueue);
+
+      // Offline: three writes are queued, each tried once and kept under its key.
+      app.wire.offline = true;
+      for (final item in ['Tea', 'Milk', 'Sugar']) {
+        final outcome = await queue.submit<Object?>(
+          RpcCall(
+            'procedure.placeOrder',
+            PlaceOrderProcedureArgs(
+              args: PlaceOrderArgs(item: item, quantity: 1),
+            ).toWire(),
+          ),
+          decode: (output) => output,
+        );
+        expect(outcome, isA<Queued<Object?>>(), reason: '$item waits offline');
+      }
+      List<TransportRequest> placeAttempts() => [
+        for (final r in app.wire.attempts)
+          if (r.uri.path == '/rpc/procedure.placeOrder') r,
+      ];
+      final offlineSends = placeAttempts();
+      expect(offlineSends, hasLength(3));
+      expect(await queue.list(), hasLength(3));
+
+      // The operator revokes the device while the phone is away; then the network comes back.
+      await server.revoke(app.credential.deviceId);
+      final reconnected = DateTime.now();
+      app.wire.offline = false;
+      await queue.drain();
+      await pumpEventQueue();
+
+      // The session is over, as revoked, and what the phone kept for the account is gone.
+      expect(
+        app.container.read(authSession),
+        const SignedOut(reason: SignOutReason.revoked),
+      );
+      final store = app.container.read(localStore);
+      expect(
+        // What fespalier_cratestack keys an account's data under: `cs/<scope>/`.
+        (await store.keys('cs/${Uri.encodeComponent(userId)}/')).toList(),
+        isEmpty,
+        reason: 'crateStackAccount.clear(scope: the account that ended)',
+      );
+
+      // One send reached the server, the first intent, refused; nothing was sent after it.
+      final online = app.sentTo('placeOrder');
+      expect([for (final s in online) s.status], [403]);
+      expect(
+        online.single.headers['www-authenticate'],
+        'DeviceSignature error="device_revoked"',
+      );
+      expect(placeAttempts(), hasLength(offlineSends.length + 1));
+      expect(
+        app.wire.attempts.last.uri.path,
+        '/rpc/procedure.placeOrder',
+        reason: 'no renewal, no other call after the refusal',
+      );
+
+      // Each send was signed when it was sent: the same queued bytes and key, a new signature with a
+      // jti of its own, dated after the reconnection.
+      Map<String, Object?> signatureOf(TransportRequest request) {
+        final jws = {
+          for (final e in request.headers.entries) e.key.toLowerCase(): e.value,
+        }['x-signature']!;
+        final payload = jws.split('.')[1];
+        return jsonDecode(
+              utf8.decode(base64Url.decode(base64Url.normalize(payload))),
+            )
+            as Map<String, Object?>;
+      }
+
+      final sent = online.single.request;
+      final first = offlineSends.first;
+      expect(sent.body, first.body, reason: 'the bytes that were queued');
+      String? keyOf(TransportRequest request) => {
+        for (final e in request.headers.entries) e.key.toLowerCase(): e.value,
+      }['idempotency-key'];
+      expect(keyOf(sent), keyOf(first), reason: 'the key that was queued');
+      final jtis = [
+        for (final request in [...offlineSends, sent])
+          signatureOf(request)['jti'],
+      ];
+      expect(
+        jtis.toSet(),
+        hasLength(jtis.length),
+        reason: 'a fresh jti per send',
+      );
+      final iat = signatureOf(sent)['iat']! as int;
+      expect(
+        iat,
+        greaterThanOrEqualTo(reconnected.millisecondsSinceEpoch ~/ 1000),
+        reason: 'signed at send time, not at queue time',
       );
     },
   );

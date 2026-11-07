@@ -9,6 +9,8 @@ import 'package:fespalier_transport/fespalier_transport.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'bearer_authenticator.dart';
+import 'device_grant.dart';
+import 'device_sign_in.dart';
 import 'endpoints.dart';
 import 'exception.dart';
 import 'jwt.dart';
@@ -167,16 +169,52 @@ final class OidcBackend extends AuthBackend {
     }
   }
 
-  /// BrowserSignIn only: the browser step, then the code exchange. The session's
-  /// `AuthSession.authenticatedAt` is the ID token's `auth_time` when it has one (since 0.25.0).
+  /// A [BrowserSignIn] (the browser step, then the code exchange) or, since 0.27.0, a
+  /// [DeviceSignIn] (RFC 8628: a code the user enters on another device, then polls). The
+  /// session's `AuthSession.authenticatedAt` is the ID token's `auth_time` when it has one (since
+  /// 0.25.0).
   @override
   Future<AuthSession> signIn(SignInRequest request) async {
+    if (request is DeviceSignIn) return _deviceSession(request);
     if (request is! BrowserSignIn) {
       throw UnsupportedError(
-        'fespalier_oidc: OidcBackend signs in with BrowserSignIn, not ${request.runtimeType}',
+        'fespalier_oidc: OidcBackend signs in with BrowserSignIn or DeviceSignIn, '
+        'not ${request.runtimeType}',
       );
     }
     return _browserSession(request);
+  }
+
+  /// The device authorization grant (RFC 8628): the code request carries no proof, every poll
+  /// of the token endpoint carries one when there is a [proof] (a `use_dpop_nonce` is answered
+  /// once, as on every token request), so the tokens are bound to the key as a browser sign-in's
+  /// are. There is no nonce to check in the ID token: the grant has none.
+  Future<AuthSession> _deviceSession(DeviceSignIn request) async {
+    final endpoints = await _resolve();
+    final device = endpoints.deviceAuthorization;
+    if (device == null) {
+      throw const OidcException(
+        'the provider has no device_authorization_endpoint: '
+        'pass OidcEndpoints(deviceAuthorization: ...)',
+      );
+    }
+    final answer = await runDeviceGrant(
+      request: request,
+      deviceEndpoint: device,
+      tokenEndpoint: endpoints.token,
+      clientId: clientId,
+      scopes: request.scopes ?? scopes,
+      post: (uri, form, {required prove, abortTrigger}) async {
+        final answer = await _post(
+          uri,
+          form,
+          prove: prove,
+          abortTrigger: abortTrigger,
+        );
+        return (status: answer.status, body: answer.body);
+      },
+    );
+    return _session(_Answer(answer.status, answer.body));
   }
 
   /// Step-up (RFC 9470, since 0.25.0): the browser sign-in again, for the same user, with what
@@ -367,7 +405,15 @@ final class OidcBackend extends AuthBackend {
 
   /// A form POST to [uri], with a DPoP proof when there is one. A nonce challenge or a clock
   /// correction is answered once with a fresh proof; a code survives that (Keycloak 26.8 keeps it).
-  Future<_Answer> _post(Uri uri, Map<String, String> form) async {
+  /// [prove] false sends no proof (the device authorization request), and [abortTrigger] aborts
+  /// the send.
+  Future<_Answer> _post(
+    Uri uri,
+    Map<String, String> form, {
+    bool prove = true,
+    Future<void>? abortTrigger,
+  }) async {
+    final proof = prove ? this.proof : null;
     var retried = false;
     final body = Uint8List.fromList(
       utf8.encode(Uri(queryParameters: form).query),
@@ -386,6 +432,7 @@ final class OidcBackend extends AuthBackend {
             ...proofHeaders,
           },
           body: body,
+          abortTrigger: abortTrigger,
         ),
       );
       final text = utf8.decode(await response.bytes(), allowMalformed: true);

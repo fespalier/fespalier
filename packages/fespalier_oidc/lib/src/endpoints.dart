@@ -13,10 +13,12 @@ final class OidcEndpoints {
     this.revocation,
     this.endSession,
     this.dpopAlgorithms,
+    this.deviceAuthorization,
   });
 
   /// Keycloak's endpoints from the realm's issuer (`https://host/realms/shop`): the usual
-  /// `protocol/openid-connect/auth`, `token`, `revoke` and `logout`. It makes no discovery
+  /// `protocol/openid-connect/auth`, `token`, `revoke` and `logout`, and (since 0.27.0)
+  /// `auth/device` for a `DeviceSignIn`. It makes no discovery
   /// request, so a cold start's first refresh does not pay one.
   factory OidcEndpoints.keycloak(Uri issuer) {
     final base = issuer.toString().replaceFirst(RegExp(r'/+$'), '');
@@ -26,6 +28,7 @@ final class OidcEndpoints {
       token: at('token'),
       revocation: at('revoke'),
       endSession: at('logout'),
+      deviceAuthorization: at('auth/device'),
     );
   }
 
@@ -43,6 +46,12 @@ final class OidcEndpoints {
 
   /// `dpop_signing_alg_values_supported`, when the provider says.
   final List<String>? dpopAlgorithms;
+
+  /// RFC 8628's device authorization endpoint (`device_authorization_endpoint`), where a
+  /// `DeviceSignIn` asks for its code (since 0.27.0); null when the provider has none. A provider
+  /// whose discovery document leaves it out (`authkestra-op` serves `<issuer>/device_authorization`
+  /// but does not advertise it) needs it written here by hand.
+  final Uri? deviceAuthorization;
 
   /// Reads `<issuer>/.well-known/openid-configuration` through [transport], and checks that the
   /// document's `issuer` is [issuer] (a document served for another issuer is refused).
@@ -99,6 +108,7 @@ final class OidcEndpoints {
       token: token,
       revocation: endpoint('revocation_endpoint'),
       endSession: endpoint('end_session_endpoint'),
+      deviceAuthorization: endpoint('device_authorization_endpoint'),
       dpopAlgorithms: algs is List<Object?>
           ? [
               for (final a in algs)

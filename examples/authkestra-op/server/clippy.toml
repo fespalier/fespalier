@@ -1,0 +1,2 @@
+# Words the docs use as words, not code (clippy::doc_markdown).
+doc-valid-idents = ["DPoP", "OpenID", ".."]

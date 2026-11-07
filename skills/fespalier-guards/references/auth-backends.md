@@ -288,6 +288,31 @@ client credentials`. A renewal's `AuthRejected` carries the `error` and this des
 
 Run it: `docker run --rm -p 8080:8080 -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin -v "$PWD/examples/auth/keycloak:/opt/keycloak/data/import:ro" quay.io/keycloak/keycloak:26.8.0 start-dev --import-realm`.
 
+## Authkestra (`authkestra-op`)
+
+Since the release after 0.26.0 `OidcBackend` is tested in CI against an [Authkestra](https://github.com/Authkestra/authkestra)
+OpenID Provider (`examples/authkestra-op`, Authkestra at `68a250f`; the test is
+`packages/fespalier_keypair_dpop/test/authkestra_op_test.dart`). No preset: leave `endpoints:` out and
+`OidcEndpoints.discover(issuer)` reads its document. What differs from Keycloak, read from that run:
+
+- **Ask for `offline_access`** (`scopes: ['openid', 'profile', 'email', 'offline_access']`): without it `authkestra-op`
+  issues no refresh token, so there is no renewal. The client must be public, list the scopes and `redirectUri`, and have
+  the `authorization_code` and `refresh_token` grants; PKCE S256 is required.
+- **DPoP and revocation are advertised only when the server opts in** (`OidcDiscovery::with_dpop_support()`,
+  `.with_revocation_endpoint(url)`). `authkestra-op` ships no `/revoke` and no end-session endpoint: without a
+  `revocation_endpoint` the sign-out is local, and `endBrowserSession` does nothing.
+- **The nonce** (`with_dpop_nonces`): a cold sign-in is two POSTs to `/token` (`400 use_dpop_nonce` with a `DPoP-Nonce`,
+  then `200`), handled inside `OidcBackend`; a resource server's `401` `use_dpop_nonce` is one `Resend`. The code
+  survives the refusal.
+- **Errors**: a rotated or revoked refresh token is `invalid_grant` / `Invalid refresh token`; a refresh token presented
+  with another key is `invalid_dpop_proof` / `This refresh token is bound to a different DPoP key`. Both end the session
+  (`AuthRejected`).
+- **The user**: `sub` is the id, but the attributes are in an `identity` object (`identity.email`,
+  `identity.username`), not in `email` / `name`, so `AuthUser.email` and `.name` are null; read
+  `session.user.claims['identity']`. There are no Keycloak roles: pass `roles:`. `dpop_jkt` is ignored at `/authorize`.
+- `/authorize` sends a browser with no session to the host's `/login`: the login page is the server's, not
+  `authkestra-op`'s. UNCHECKED in CI: a real browser (the test posts the example's demo login).
+
 ## Your own API (username and password)
 
 The starter in [`auth-package.md`](auth-package.md) is the recipe, compiled: a credential (`ApiCredential`), what adds it to a

@@ -202,7 +202,9 @@ AuthConfig authSetup() => AuthConfig(
   0.20.0). `OidcBackend(transport: ...)`: code flow with PKCE for a public client, Keycloak's endpoints and roles,
   refresh-token rotation, a `TokenCredential` and a `BearerAuthenticator`. Firebase and Supabase are **recipes**, not
   packages. [`references/auth-backends.md`](references/auth-backends.md) has the code and what was read from a live
-  Keycloak 26.8.0.
+  Keycloak 26.8.0, and (since the release after 0.26.0) from Authkestra's `authkestra-op`, which CI signs in against
+  (`examples/authkestra-op`): discovery is enough, ask for `offline_access`, and the user's e-mail is in the `identity`
+  claim.
 - **A replay after a verdict is marked** (`transportReplayKey` in `TransportRequest.attributes`) and keeps the request's
   abort trigger. **Never put a retrier under the session transport**: it re-sends the same DPoP proof, or the same
   signature, and the server refuses it. Put `RetryClient` or `dio_smart_retry` above it. The whole chain's order is in

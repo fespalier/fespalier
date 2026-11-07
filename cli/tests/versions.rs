@@ -2157,64 +2157,6 @@ fn the_cratestack_example_pins_what_is_not_fespaliers_by_commit() {
     );
 }
 
-/// The cratestack example's server is built on Authkestra (fespalier#310), pinned to one commit:
-/// every `authkestra-*` line of its Cargo.toml names the same `rev`, a full commit and never a tag
-/// or a branch, and every Authkestra package of its Cargo.lock comes from that commit. A bump is one
-/// PR that moves them together (the `cratestack` job builds `--locked`, so a stale lockfile fails
-/// there too).
-#[test]
-fn the_cratestack_example_pins_one_authkestra() {
-    const REPO: &str = "https://github.com/Authkestra/authkestra";
-    let manifest = read("examples/cratestack/server/Cargo.toml");
-    let revs: Vec<(String, String)> = manifest
-        .lines()
-        .filter(|l| l.starts_with("authkestra"))
-        .map(|l| {
-            assert!(
-                l.contains(&format!("git = \"{REPO}\"")),
-                "examples/cratestack/server/Cargo.toml: `{l}` is not a git dependency on {REPO}"
-            );
-            let rev = l
-                .split_once("rev = \"")
-                .and_then(|(_, rest)| rest.split('"').next())
-                .unwrap_or_else(|| panic!("`{l}` names no rev"))
-                .to_string();
-            (
-                l.split_whitespace().next().unwrap_or_default().to_string(),
-                rev,
-            )
-        })
-        .collect();
-    assert!(
-        revs.len() >= 2,
-        "examples/cratestack/server/Cargo.toml depends on authkestra-devsig and authkestra-op"
-    );
-    let pin = revs[0].1.clone();
-    assert!(
-        pin.len() == 40 && pin.chars().all(|c| c.is_ascii_hexdigit()),
-        "the Authkestra rev is a full commit: {pin}"
-    );
-    for (name, rev) in &revs {
-        assert_eq!(
-            rev, &pin,
-            "{name} is pinned to {rev}, the others to {pin}: one commit"
-        );
-    }
-    let lock = read("examples/cratestack/server/Cargo.lock");
-    let sources: Vec<&str> = lock
-        .lines()
-        .filter_map(|l| l.strip_prefix("source = \"git+"))
-        .filter(|l| l.starts_with(REPO))
-        .collect();
-    assert!(!sources.is_empty(), "Cargo.lock has no Authkestra package");
-    for source in sources {
-        assert!(
-            source.starts_with(&format!("{REPO}?rev={pin}#")),
-            "Cargo.lock resolves Authkestra from `{source}`, and Cargo.toml pins {pin}"
-        );
-    }
-}
-
 /// The frb-cose example's Rust: its core (rust/) is built by the Flutter hook with the toolchain its own file names, and
 /// its server is a crate of its own with a copy of that file. Both channels must be cli's; the core must list the host's
 /// target, because the hook refuses a target its toolchain file does not list; and the `frb-cose` job must read both
@@ -2375,6 +2317,141 @@ fn the_cratestack_examples_share_one_cratestack() {
         all.len(),
         1,
         "the CrateStack examples resolve to more than one cratestack version: {all:?}"
+    );
+}
+
+#[test]
+fn the_authkestra_op_example_server_builds_with_the_generators_rust() {
+    // Same as the cose server: a crate of its own with its own rust-toolchain.toml, which the
+    // `authkestra-op` job reads, so it must not drift from cli/rust-toolchain.toml.
+    assert_eq!(
+        toolchain_channel("examples/authkestra-op/server/rust-toolchain.toml"),
+        toolchain_channel("cli/rust-toolchain.toml"),
+        "examples/authkestra-op/server/rust-toolchain.toml (left) and cli/rust-toolchain.toml \
+         (right) differ"
+    );
+    let ci = read(".github/workflows/ci.yml");
+    assert!(
+        ci.contains("\n  authkestra-op:\n"),
+        "ci.yml has no `authkestra-op` job (examples/authkestra-op)"
+    );
+    for needle in [
+        "examples/authkestra-op/server/rust-toolchain.toml",
+        "AUTHKESTRA_OP_BIN",
+        "FSP_REQUIRE_AUTHKESTRA_OP",
+        "test/authkestra_op_test.dart",
+    ] {
+        assert!(
+            ci.contains(needle),
+            "the authkestra-op job must mention `{needle}`: it builds the server with the pinned \
+             toolchain and requires the end-to-end test to run against it"
+        );
+    }
+}
+
+/// Every `Cargo.toml` under `examples/` and `cli/`, outside build output, sorted.
+fn cargo_manifests() -> Vec<String> {
+    fn walk(dir: &Path, out: &mut Vec<String>) {
+        for entry in fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if path.is_dir() {
+                if !matches!(
+                    name.as_str(),
+                    "target" | "build" | ".dart_tool" | "node_modules"
+                ) && !name.starts_with('.')
+                {
+                    walk(&path, out);
+                }
+            } else if name == "Cargo.toml" {
+                out.push(
+                    path.strip_prefix(root())
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+            }
+        }
+    }
+    let mut out = Vec::new();
+    for dir in ["examples", "cli"] {
+        walk(&root().join(dir), &mut out);
+    }
+    out.sort();
+    out
+}
+
+/// Authkestra is a git dependency (crates.io's releases trail the commits the examples need), so
+/// every manifest that names an `authkestra*` crate takes it from the one repository at a full
+/// commit (`rev = "<40 hex>"`, never a branch or a tag, which move), every one of them the same
+/// commit, and each lockfile beside such a manifest resolves it to exactly that commit. A bump is
+/// one PR that moves every pin and lockfile together.
+#[test]
+fn every_authkestra_dependency_is_one_commit() {
+    const REPO: &str = "https://github.com/Authkestra/authkestra";
+    let mut revs: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for manifest in cargo_manifests() {
+        let text = read(&manifest);
+        let mut pinned = BTreeSet::new();
+        for line in text.lines() {
+            let trimmed = line.trim_start();
+            if !trimmed.starts_with("authkestra") || !trimmed.contains('=') {
+                continue;
+            }
+            assert!(
+                line.contains(&format!("git = \"{REPO}\"")),
+                "{manifest}: `{trimmed}` must take Authkestra from git = \"{REPO}\""
+            );
+            assert!(
+                !line.contains("branch =") && !line.contains("tag ="),
+                "{manifest}: `{trimmed}` pins Authkestra by a branch or a tag: use rev = \"<commit>\""
+            );
+            let rev = line
+                .split("rev = \"")
+                .nth(1)
+                .and_then(|rest| rest.split('"').next())
+                .unwrap_or_default()
+                .to_string();
+            assert!(
+                rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()),
+                "{manifest}: `{trimmed}` must pin a full 40-hex commit (rev = \"...\"), not `{rev}`"
+            );
+            pinned.insert(rev);
+        }
+        if pinned.is_empty() {
+            continue;
+        }
+        let lock_path = manifest.replace("Cargo.toml", "Cargo.lock");
+        let lock = read(&lock_path);
+        let sources: BTreeSet<&str> = lock
+            .lines()
+            .filter_map(|l| l.strip_prefix("source = \""))
+            .filter(|l| l.contains("authkestra"))
+            .collect();
+        assert!(
+            !sources.is_empty(),
+            "{lock_path} resolves no Authkestra crate from git"
+        );
+        for source in sources {
+            for rev in &pinned {
+                assert_eq!(
+                    source,
+                    format!("git+{REPO}?rev={rev}#{rev}\""),
+                    "{lock_path} resolves Authkestra to `{source}`, not the commit {manifest} pins"
+                );
+            }
+        }
+        revs.insert(manifest, pinned);
+    }
+    assert!(
+        revs.contains_key("examples/authkestra-op/server/Cargo.toml"),
+        "examples/authkestra-op/server/Cargo.toml pins no Authkestra commit"
+    );
+    let all: BTreeSet<&String> = revs.values().flatten().collect();
+    assert_eq!(
+        all.len(),
+        1,
+        "the examples pin Authkestra at more than one commit: {revs:?}"
     );
 }
 

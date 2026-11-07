@@ -973,6 +973,65 @@ jobs:
           FSP_REQUIRE_COSE_SERVER: "1"
         run: flutter test
 
+  # examples/authkestra-op: an Authkestra OpenID Provider (`authkestra-op`, by git at the commit its Cargo.toml pins) and an
+  # API that checks DPoP-bound tokens with Authkestra's JwtStrategy, in a Rust crate of its own. This job builds it and runs
+  # packages/fespalier_keypair_dpop/test/authkestra_op_test.dart against the binary: fespalier_oidc's sign-in (PKCE S256),
+  # the DPoP-Nonce challenge at the token endpoint and at the API (one Resend each), the renewal and the sign-out. The
+  # `dart` job runs that file too, skipped (no binary); here FSP_REQUIRE_AUTHKESTRA_OP fails it instead of skipping, so the
+  # job cannot go green by not running the server. Not in the `floor` job: fespalier_keypair_dpop needs Flutter 3.44.
+  # `just authkestra-op` runs the same steps.
+  authkestra-op:
+    name: authkestra-op example (fespalier_oidc against Authkestra, end to end)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The server crate pins its own toolchain (cli/tests/versions.rs checks it equals the
+      # generator's); this reads it from there.
+      - name: Read the Rust toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$GITHUB_WORKSPACE/examples/authkestra-op/server/rust-toolchain.toml")" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master, resolved 2026-09-30
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: examples/authkestra-op/server
+      - name: Server (fmt, clippy, tests, locked build)
+        working-directory: examples/authkestra-op/server
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+      # Licences, advisories, sources: examples/authkestra-op/server/deny.toml (Authkestra by git is its one allowed git
+      # source).
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: examples/authkestra-op/server/Cargo.toml
+          command: check
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+      # Plain `test`s over real sockets, with the stack an app runs (OidcBackend, DpopProof over a real ES256 key, the
+      # session notifier and SessionTransport); the "browser" is the test's HTTP requests to the demo /login and /authorize.
+      - name: fespalier_oidc and DpopProof against the server binary
+        working-directory: packages/fespalier_keypair_dpop
+        env:
+          AUTHKESTRA_OP_BIN: ${{ github.workspace }}/examples/authkestra-op/server/target/debug/authkestra-op-demo-server
+          FSP_REQUIRE_AUTHKESTRA_OP: "1"
+        run: |
+          flutter pub get
+          flutter test test/authkestra_op_test.dart
+
   # examples/frb-cose: a Rust core (examples/frb-cose/rust) behind flutter_rust_bridge, which is the CrateStack client of the
   # example: it seals every call as COSE_Sign1 and the device key stays in Dart. The server is a copy of examples/cose/server.
   # The job gates both Rust crates, regenerates the committed bindings with the pinned codegen and fails on any difference,

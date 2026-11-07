@@ -271,6 +271,20 @@ just cratestack-cli && just cratestack                                          
 
 Its tests run on an in-memory server over `FakeTransport` (enrolment, signed calls, an abort on leaving a page, offline, one renewal for an expired attestation, the step-up, sign-out), and **`test/e2e_test.dart` starts the real Rust binary**: Dart's signatures are verified by a verifier written from the profile and not from Dart's code. `HardwareKeypairSigner` and the user-present prompt are not run by any test: they use fake keys.
 
+## authkestra-op
+
+[`examples/authkestra-op`](https://github.com/fespalier/fespalier/tree/main/examples/authkestra-op) (since the release after 0.26.0) is a **server for a test**, not an app: an [Authkestra](https://github.com/Authkestra/authkestra) OpenID Provider (`authkestra-op`, by git at a pinned commit) that `fespalier_oidc` and `fespalier_keypair_dpop` are checked against in CI. Its [README](https://github.com/fespalier/fespalier/blob/main/examples/authkestra-op/README.md) has what it serves and what is not checked.
+
+- a Rust server (`examples/authkestra-op/server`, in memory, its own `Cargo.lock`): `authkestra-op`'s own `/authorize` (PKCE S256), `/token` (DPoP-bound tokens, a `DPoP-Nonce` required), `/jwks.json` and `/userinfo`, its discovery document with DPoP and revocation advertised, an RFC 7009 `/revoke`, a demo `/login` (one user, `ada`/`ada`), and, on a second origin, `GET /api/me`, which checks the token and its proof with Authkestra's `JwtStrategy` and asks for a nonce of its own;
+- `packages/fespalier_keypair_dpop/test/authkestra_op_test.dart`, which starts the binary and runs the stack an app runs: discovery, the sign-in (one `use_dpop_nonce` at the code exchange), a DPoP-bound call (one `Resend` for the API's nonce), a renewal that rotates the refresh token and keeps the key, and a sign-out that revokes it.
+
+```sh
+cd examples/authkestra-op/server && cargo build --locked
+cd packages/fespalier_keypair_dpop && \
+  AUTHKESTRA_OP_BIN=../../examples/authkestra-op/server/target/debug/authkestra-op-demo-server flutter test test/authkestra_op_test.dart
+just authkestra-op   # the server's gates, then the test, required (FSP_REQUIRE_AUTHKESTRA_OP=1)
+```
+
 ## wire-sizes
 
 [`examples/wire-sizes`](https://github.com/fespalier/fespalier/tree/main/examples/wire-sizes) is a **measurement**, not an app: one CrateStack schema served as JSON, plain CBOR and `COSE_Sign1` CBOR, with every call weighed by a layer in the server that handles it: the request line, headers and body of each request and the status line, headers and body of each response, as the server's handler stack sees them. That is a count of the HTTP message, not a capture of a socket: `host`, `content-length`, hyper's `date` and TCP/TLS framing are not in it, so totals are lower bounds. It answers the question [`examples/cose`](https://github.com/fespalier/fespalier/tree/main/examples/cose) raises: what does signing a call actually cost?

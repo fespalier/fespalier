@@ -51,8 +51,9 @@ is the example with a generated client: that preset, a Rust server built on Auth
 request inside a CrateStack `AuthProvider`, `authkestra-op` issues the attestations, refusals go out as `AuthRefusal`s,
 and nothing sits in front of the generated router), device-signed sessions, and a script that generates the client again
 in CI and compares. Its end-to-end test also revokes a device whose writes are queued offline: the session ends as
-`revoked`, nothing is sent after the refusal, each queued send is signed when it is sent, and the app wipes the queue with
-`crateStackAccount.clear(scope:)`. It also lists what the generated calls cannot do yet and what to do about each.
+`revoked`, the drain stops at the refusal and sends nothing after it (`CrateStackSessionEnded`, since 0.27.0), each
+queued send is signed when it is sent, and the app wipes the queue with `crateStackAccount.clear(scope:)`, a choice of
+its own: without the wipe the writes stay queued under their keys, which a second test checks. It also lists what the generated calls cannot do yet and what to do about each.
 
 Use the **RPC transport**. Every procedure takes a per-call options object that carries the idempotency key,
 and RPC errors are typed (`CratestackRpcException` with a status, a code and a message). REST works for
@@ -306,16 +307,30 @@ against a server that cannot.
 The package builds the key as `<intent id>#<attempt>`, and sends the stored bytes every time. The answers it
 recognises, row by row:
 
-| The server answers                                                                  | Classified as               | The intent                              |
-| ----------------------------------------------------------------------------------- | --------------------------- | --------------------------------------- |
-| success                                                                             |                             | deleted, `touches` bumped               |
-| no answer (network, timeout, a portal page, a `5xx` without CrateStack's envelope)  | `CrateStackOffline`         | `pending`, same key                     |
-| `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                     |
-| `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                     |
-| a `5xx` **in CrateStack's envelope** (`code` and `message`)                         | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1` |
-| `422` `idempotency_key_conflict`                                                    | refused                     | `failed`                                |
-| `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)     |
-| any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only            |
+| The server answers                                                                  | Classified as               | The intent                               |
+| ----------------------------------------------------------------------------------- | --------------------------- | ---------------------------------------- |
+| success                                                                             |                             | deleted, `touches` bumped                |
+| no answer (network, timeout, a portal page, a `5xx` without CrateStack's envelope)  | `CrateStackOffline`         | `pending`, same key                      |
+| `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                      |
+| `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                      |
+| the session is over (`AuthRejected`: a device revoked, a key lost), since 0.27.0    | `CrateStackSessionEnded`    | `pending`, same key; **the drain stops** |
+| a `5xx` **in CrateStack's envelope** (`code` and `message`)                         | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1`  |
+| `422` `idempotency_key_conflict`                                                    | refused                     | `failed`                                 |
+| `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)      |
+| any other `4xx`                                                                     | `CrateStackRefused`         | `failed`, the wire code only             |
+
+**A session that ends stops the drain** (since 0.27.0). When the session a queued call was made for is over (the server
+revoked the device, the key is lost, a renewal was refused, or another user signed in while it was on its way),
+`fespalier_auth`'s `SessionTransport` ends the session and throws an `AuthRejected`. `AuthRejected` is a
+`CredentialsRefused` (`fespalier_transport`), which `TransportFailures.read` reads as `CrateStackSessionEnded`, a
+`CrateStackUnauthenticated`, so there is nothing to compose and the package still depends on no auth package. The
+intent stays `pending` under the same key, with the same bytes: it is the user's write, kept for that account (the
+queue is per account, so it is never sent as anyone else), and sent again if the same account signs in again. The drain
+sends nothing after it (`DrainReport.sessionEnded`), and a sync that meets it in a push or a pull does not pull or drain
+after it (`SyncReport.failure`). Wiping is the sign-out's job: `crateStackAccount.clear()`, or
+`clear(scope: <the account that ended>)` when the session ended without the user asking and the app wants its data gone
+too. Before 0.27.0 no reader knew `AuthRejected`: the intent was kept as an unknown error and the drain went on to the
+next one, which `SessionTransport` sent with no credentials.
 
 **A refused TLS certificate is not offline** (since 0.21.0). A `TransportUntrusted` (Dio's `badCertificate`) is
 unclassified: a certificate that does not verify may be a captive portal or an attack, so a read behind `serve` serves no

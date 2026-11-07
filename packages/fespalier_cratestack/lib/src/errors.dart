@@ -186,6 +186,25 @@ final class CrateStackUnauthenticated extends CrateStackFailure {
   String toString() => 'CrateStackUnauthenticated';
 }
 
+/// The session the call was made for is over (since 0.27.0): the server refused it (a device
+/// revoked, a key lost, a renewal refused), or the user signed out or another signed in while it
+/// was on its way. `TransportFailures.read` makes it from a `CredentialsRefused`
+/// (`package:fespalier_transport`), which `fespalier_auth`'s `AuthRejected` is.
+///
+/// A [CrateStackUnauthenticated], so code that handles a `401` handles it too. Unlike a `401` it
+/// is no renewal in progress: nothing made for that session will be accepted, so a drain **stops**
+/// at it and sends nothing after it, and a sync does not drain after a push or a pull that met
+/// it. The intent keeps its key and its bytes, still `pending`: it is the user's write, kept for
+/// the same account (the queue is per account, so it is never sent as anyone else), until a
+/// sign-out wipes it with `crateStackAccount.clear`.
+final class CrateStackSessionEnded extends CrateStackUnauthenticated {
+  /// A session-ended failure.
+  const CrateStackSessionEnded();
+
+  @override
+  String toString() => 'CrateStackSessionEnded';
+}
+
 /// A conflict the server decided (`409` without `Retry-After`, e.g. optimistic locking): the
 /// person resolves it.
 final class CrateStackConflict extends CrateStackFailure {

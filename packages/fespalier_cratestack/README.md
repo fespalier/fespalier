@@ -87,7 +87,10 @@ CrateStackFailure? readShopError(Object e) => e is CratestackRpcException
 ```
 
 The root `layout.dart` does `ref.watch(autoSync)` once. A sign-out calls `ref.read(crateStackAccount).clear()` before
-the session ends: it removes that account's intents, rows and saved reads.
+the session ends: it removes that account's intents, rows and saved reads. When the session ends without the user asking
+(a revoked device, a lost key), `fespalier_auth`'s `AuthRejected` reaches the queue; `TransportFailures.read` reads it as
+`CrateStackSessionEnded` (since 0.27.0), so a drain stops there, sends nothing after it and keeps the intents under their
+keys for that account. Wipe them with `clear(scope:)`, naming the account that ended, if the app wants them gone.
 
 ## Read
 

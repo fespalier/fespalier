@@ -31,6 +31,7 @@ conflict, never the server's message) and `failures` (stored `5xx` answers).
 | no answer (network, timeout, a portal page, a `5xx` without CrateStack's envelope)  | `CrateStackOffline`         | `pending`, same key                       |
 | `409` + `Retry-After`, or `409` `TRANSACTION_ABORTED` (the server did not store it) | `CrateStackInFlight`        | `pending`, same key                       |
 | `401`                                                                               | `CrateStackUnauthenticated` | `pending`, same key                       |
+| the session is over (`AuthRejected`: a device revoked, a key lost), since 0.27.0    | `CrateStackSessionEnded`    | `pending`, same key; **the drain stops**  |
 | a `5xx` **in CrateStack's envelope** (`code` and `message`)                         | `CrateStackUnavailable`     | `pending`, **next key**, `failures + 1`   |
 | `422` `idempotency_key_conflict`                                                    | refused                     | `failed` (a bug: the stored body changed) |
 | `409` without `Retry-After` and not `TRANSACTION_ABORTED`                           | `CrateStackConflict`        | `conflict` (the person resolves it)       |

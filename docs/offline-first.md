@@ -96,7 +96,9 @@ What an intent is:
 
 The answer table is in [CrateStack with fespalier](cratestack.md#5-actions). In short: no answer, in flight and
 `401` keep the key; a stored failure takes the next; a refusal is kept `failed` with its wire code (never the
-server's message, which may quote values); a conflict is kept for the person.
+server's message, which may quote values); a conflict is kept for the person. A session that ended (a revoked device, a
+lost key: `fespalier_auth`'s `AuthRejected`, read as `CrateStackSessionEnded`, since 0.27.0) keeps the key too, and the
+drain stops there: nothing made for that session is sent after it, and the sign-out's wipe removes what is left.
 
 **Never fake success.** `submit` returns `Accepted` only when the server said yes. A queued intent is `Queued`, and
 the page says so. An optimistic overlay (a row that reads "cancelling...") comes from `pendingIntents`, not from

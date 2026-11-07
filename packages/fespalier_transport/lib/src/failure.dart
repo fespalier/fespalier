@@ -99,6 +99,16 @@ abstract interface class CredentialsUnavailable implements Exception {
   Object get cause;
 }
 
+/// What credentials throw when the session a request was made for is over (since 0.27.0): the
+/// server refused it (a renewal refused, a device revoked, a key lost), or the user signed out or
+/// another signed in between two sends of the request. Unlike [CredentialsUnavailable], something
+/// was decided: no later send of this request, nor of another request made for that session,
+/// can succeed, and sending it under the next session would be sending it as someone else. The
+/// user has to sign in again. `fespalier_auth`'s `AuthRejected` implements it, so a reader that
+/// knows no auth package (`fespalier_cratestack`'s `TransportFailures.read`) can tell a lost
+/// session from an unknown error.
+abstract interface class CredentialsRefused implements Exception {}
+
 /// An HTTP error answer (since 0.21.0): the server answered, with a status that is an error. Not
 /// a [TransportFailure], because a response did come back; a client that wraps a transport's
 /// answers in exceptions (Dio does for a 4xx or a 5xx) can carry one through

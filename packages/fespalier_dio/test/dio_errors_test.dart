@@ -69,6 +69,18 @@ void main() {
       expect(DioErrors.toTransport(error), same(failure));
     });
 
+    test(
+      'a DioException caused by a CredentialsRefused (a session\'s AuthRejected) is that cause, '
+      'since 0.27.0',
+      () {
+        const refused = _Refused();
+        expect(
+          DioErrors.toTransport(_dio(DioExceptionType.unknown, error: refused)),
+          same(refused),
+        );
+      },
+    );
+
     test('a cancel is TransportAborted, with the cancelled request\'s url', () {
       final result = DioErrors.toTransport(_dio(DioExceptionType.cancel));
       expect(result, isA<TransportAborted>());
@@ -121,4 +133,9 @@ void main() {
       expect(DioErrors.toTransport(failure), same(failure));
     });
   });
+}
+
+/// What `fespalier_auth`'s `AuthRejected` is to this package: a `CredentialsRefused`.
+final class _Refused implements CredentialsRefused {
+  const _Refused();
 }

@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:clock/clock.dart';
 import 'package:fespalier_cratestack/fespalier_cratestack.dart';
 import 'package:fespalier_cratestack/testing.dart';
+import 'package:fespalier_transport/fespalier_transport.dart'
+    show CredentialsRefused;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support.dart';
@@ -209,6 +211,119 @@ void main() {
       },
     );
   });
+
+  group(
+    'the session ended: kept, same key, and the drain stops (since 0.27.0)',
+    () {
+      Rig ended() {
+        final transport = FakeCrateStackTransport()
+          ..on('cancelOrder', (_) => 1)
+          ..on('first', (_) => 'first')
+          ..on('second', (_) => 'second')
+          ..on('other', (_) => 'other');
+        final store = InMemoryLocalStore();
+        final container = containerFor(
+          transport: transport,
+          store: store,
+          extra: [
+            crateStackErrors.overrideWithValue(
+              const CrateStackErrors([TransportFailures.read]),
+            ),
+          ],
+        );
+        return (
+          transport: transport,
+          store: store,
+          queue: container.read(intentQueue),
+          revision: (tag) => container.read(crateStackRevision(tag)),
+        );
+      }
+
+      test('in a drain: nothing is sent after it, and nothing is lost', () async {
+        final r = ended();
+        r.transport.offline = true;
+        await submitCancel(r.queue, op: 'first', id: 1);
+        await submitCancel(r.queue, op: 'second', id: 2);
+        await submitCancel(r.queue, op: 'other', id: 3);
+        final queuedKeys = [
+          for (final i in await r.queue.list()) i.idempotencyKey,
+        ];
+        r.transport.offline = false;
+        r.transport.calls.clear();
+        r.transport.fail('first', const _SessionOver(), times: 1);
+
+        final report = await r.queue.drain();
+
+        expect(report.sessionEnded, isTrue);
+        expect(report.offline, isFalse);
+        expect(report.accepted, 0);
+        expect(report.failed, 0);
+        expect(report.retained, 1);
+        expect(
+          [
+            for (final c in r.transport.calls)
+              FakeCrateStackTransport.nameOf(c.call),
+          ],
+          ['first'],
+          reason: 'nothing made for the session that ended is sent after it',
+        );
+        final kept = await r.queue.list();
+        expect(
+          [for (final i in kept) i.status],
+          [IntentStatus.pending, IntentStatus.pending, IntentStatus.pending],
+        );
+        expect(
+          [for (final i in kept) i.idempotencyKey],
+          queuedKeys,
+          reason: 'the same keys: nothing moved on',
+        );
+
+        // The same account signs in again: the next drain sends them all, under their keys.
+        final again = await r.queue.drain();
+        expect(again.accepted, 3);
+        expect(again.sessionEnded, isFalse);
+        expect(keyOf(r.transport, 1), keyOf(r.transport, 0));
+        expect(await r.queue.list(), isEmpty);
+      });
+
+      test('a later subject is not sent either', () async {
+        final r = ended();
+        r.transport.offline = true;
+        await submitCancel(r.queue, op: 'first', id: 1, subject: 'order:1');
+        await submitCancel(r.queue, op: 'second', id: 2, subject: 'order:2');
+        r.transport.offline = false;
+        r.transport.calls.clear();
+        r.transport.fail('first', const _SessionOver(), times: 1);
+        await r.queue.drain();
+        expect(r.transport.calls, hasLength(1));
+      });
+
+      test('on the spot: queued under its key, never thrown', () async {
+        final r = ended();
+        r.transport.fail('cancelOrder', const _SessionOver(), times: 1);
+        final out = await submitCancel(r.queue);
+        final queued = (out as Queued<Object?>).intent;
+        expect(queued.status, IntentStatus.pending);
+        expect(queued.attempt, 0);
+        expect(
+          only(await r.queue.list()).idempotencyKey,
+          keyOf(r.transport, 0),
+        );
+      });
+
+      test('the wipe at sign-out removes them', () async {
+        final r = ended();
+        r.transport.offline = true;
+        await submitCancel(r.queue);
+        r.transport.offline = false;
+        r.transport.fail('cancelOrder', const _SessionOver(), times: 1);
+        await r.queue.drain();
+        expect(await r.queue.list(), hasLength(1));
+        await r.queue.clear();
+        expect(await r.queue.list(), isEmpty);
+      });
+    },
+  );
 
   group('a stored failure moves to the next key', () {
     test('5xx: pending, attempt and failures up', () async {
@@ -644,4 +759,9 @@ void main() {
       expect(await container.read(pendingIntents(null).future), isEmpty);
     },
   );
+}
+
+/// What `fespalier_auth`'s `AuthRejected` is to this package: a `CredentialsRefused`.
+final class _SessionOver implements CredentialsRefused {
+  const _SessionOver();
 }

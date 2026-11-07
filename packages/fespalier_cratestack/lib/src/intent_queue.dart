@@ -114,7 +114,8 @@ final class IntentQueue {
   /// Saves [call] as an intent, then sends it once.
   ///
   /// Accepted: deleted, the revisions in [touches] bumped, [Accepted]. No answer (offline, in
-  /// flight, `401`, a stored `5xx`): [Queued]. A refusal on the spot is thrown as the
+  /// flight, `401`, a session that ended (`CrateStackSessionEnded`, since 0.27.0), a stored `5xx`):
+  /// [Queued]. A refusal on the spot is thrown as the
   /// `CrateStackFailure` (or `FieldErrors` through `withCrateStackFieldErrors`) and nothing is
   /// kept: the person is on the screen that asked.
   ///
@@ -214,7 +215,8 @@ final class IntentQueue {
   }
 
   /// Sends every pending intent, oldest first, one at a time, skipping a subject with an undecided
-  /// earlier one; stops at the first [CrateStackOffline], and when the account changes. **Each
+  /// earlier one; stops at the first [CrateStackOffline], at the first [CrateStackSessionEnded]
+  /// (since 0.27.0), and when the account changes. **Each
   /// intent is read from the store again right before it is sent** (since 0.16.0): one that was
   /// accepted, discarded or wiped while the drain was busy with an earlier one is not sent. The
   /// answers:
@@ -222,6 +224,11 @@ final class IntentQueue {
   /// - success: deleted, its `touches` bumped;
   /// - no answer (a `5xx` without a CrateStack envelope included, since 0.16.0), `409` with
   ///   `Retry-After` (or `TRANSACTION_ABORTED`), `401`: `pending`, the same key;
+  /// - the session the intent was sent for is over ([CrateStackSessionEnded], since 0.27.0:
+  ///   `fespalier_auth`'s `AuthRejected`, through `TransportFailures.read`): `pending`, the same
+  ///   key, and **the drain stops**: nothing made for that session would be accepted, and nothing
+  ///   is sent after it. A sign-out's `crateStackAccount.clear` wipes it; until then it is kept,
+  ///   for that account only;
   /// - a `5xx` in CrateStack's envelope: `pending`, the next key (`attempt + 1`);
   /// - `422 idempotency_key_conflict` (a bug: the stored body changed): `failed`;
   /// - `409` without `Retry-After`: `conflict`;
@@ -246,6 +253,7 @@ final class IntentQueue {
     var conflicts = 0;
     var retained = 0;
     var offline = false;
+    var ended = false;
     var reached = false;
     for (final saved in all) {
       // A's intent is never sent under B's session.
@@ -300,6 +308,16 @@ final class IntentQueue {
                 sending.copyWith(status: IntentStatus.pending),
               );
               offline = true;
+            case CrateStackSessionEnded():
+              // The session is over: the user's write is kept as it was, and nothing made for
+              // that session is sent after it (it would be refused, or sent unauthenticated).
+              await _write(
+                scope,
+                generation,
+                sending.copyWith(status: IntentStatus.pending),
+              );
+              retained++;
+              ended = true;
             case CrateStackInFlight() ||
                 CrateStackUnauthenticated() ||
                 CrateStackCancelled() ||
@@ -353,7 +371,7 @@ final class IntentQueue {
       } finally {
         _inFlight.remove(saved.id);
       }
-      if (offline) break;
+      if (offline || ended) break;
     }
     if (touched.isNotEmpty && _scope() == scope) _bump(touched);
     return DrainReport(
@@ -362,6 +380,7 @@ final class IntentQueue {
       conflicts: conflicts,
       retained: retained,
       offline: offline,
+      sessionEnded: ended,
       reachedServer: reached,
     );
   }

@@ -17,8 +17,13 @@ Future<void> signOutAndWipe(WidgetRef ref) async {
 /// A session that ends without the user asking (the server revoked the device, the key is lost)
 /// wipes what this phone kept for that account: its queued intents, owned rows and saved reads
 /// (`crateStackAccount.clear`). By then `crateStackScope` is already null, so the account it was is
-/// named (`clear(scope:)`). Sending one account's queued intent under the next account's session is
-/// worse than losing it, and a revoked device's intents would only be refused again.
+/// named (`clear(scope:)`).
+///
+/// This is the app's choice, not a fix for the queue. Since 0.27.0 `fespalier_cratestack` stops a
+/// drain by itself at the refusal (`TransportFailures.read` reads the session's `AuthRejected` as
+/// `CrateStackSessionEnded`), sends nothing after it and keeps the writes under their keys, for
+/// that account only. This app wipes them as well because an operator revoked the device: what it
+/// kept for the account should not outlive that, and the writes would only be refused again.
 ///
 /// Installed once on the app's container, by `ready()` in `lib/app/startup.dart` (a test that makes
 /// its own container calls it too).

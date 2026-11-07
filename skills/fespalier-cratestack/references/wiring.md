@@ -233,7 +233,9 @@ Future<void> signOutAndWipe(WidgetRef ref) async {
 ```
 
 `clear` deletes the account's intents, owned rows, sync cursors and cached reads. A `401` on a queued call keeps the
-intent and its key (the session is being renewed); only a sign-out removes the account's queue.
+intent and its key (the session is being renewed); only a sign-out removes the account's queue. A session that ended
+(`AuthRejected`, read as `CrateStackSessionEnded`, since 0.27.0) keeps the intent and its key too and stops the drain:
+nothing is sent after it.
 
 ## Where the code is
 

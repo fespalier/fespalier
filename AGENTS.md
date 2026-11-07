@@ -351,7 +351,10 @@ data(...))`; the others keep `traceData`. A `fespalier_otel` convention is contr
   keep the durable store out of the budgeted storages. An intent is stored once, encoded, and every attempt sends those
   bytes under the same key unless the server gave a stored failure (the next key): changing the answer table or the key
   format changes the idempotency contract with the server, so it is a breaking release. Only a `CrateStackOffline` makes a
-  read fall back to the device; a refusal is the answer. Nothing a server said (message, details) is stored in an intent
+  read fall back to the device; a refusal is the answer. A session that ended (`AuthRejected` is a `fespalier_transport`
+  `CredentialsRefused`, which `TransportFailures.read` reads as `CrateStackSessionEnded`, since 0.27.0) keeps the intent
+  under its key and **stops** the drain and the sync: nothing made for that session is sent after it, and the package
+  still depends on no auth package and listens to no session (the wipe stays the app's `crateStackAccount.clear`). Nothing a server said (message, details) is stored in an intent
   or sent to telemetry.
 - **`fespalier_sentry` is errors first, and the sink stays a sink.** The default sends events, breadcrumbs and the
   scope's names and no transaction; `tracing: true` is the opt-in, and each part of it goes behind it (a new span

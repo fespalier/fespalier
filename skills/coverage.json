@@ -637,6 +637,7 @@
         "packages/fespalier_keypair_dpop/lib/fespalier_keypair_dpop.dart",
         "packages/fespalier_keypair_dpop/lib/verify.dart",
         "docs/auth.md#OpenID Connect and Keycloak",
+        "docs/auth.md#Signing in on another device: the device grant",
         "docs/auth.md#Firebase, Supabase and your own API",
         "docs/auth.md#Device-bound tokens: DPoP with fespalier_keypair_dpop",
         "docs/auth.md#OpenID Connect with Authkestra",

@@ -61,12 +61,37 @@ AuthConfig authSetup() => AuthConfig(
 
 Sign in with `ref.read(authSession.notifier).signIn(const BrowserSignIn())`.
 
+## Device sign-in
+
+Since 0.27.0 `OidcBackend` also signs in with `DeviceSignIn`, the device authorization grant (RFC 8628) for a TV,
+a kiosk or a CLI: the app shows the `DeviceCode` it gets in `onCode` (`userCode`, `verificationUri`,
+`verificationUriComplete`), the user approves on their phone, and the backend polls the token endpoint after each
+`wait`, which is the app's (`(interval) => Future.delayed(interval)`: the package starts no timer). `slow_down` adds
+5 seconds to the wait, `access_denied` and `expired_token` are `AuthRejected`, `cancel` is `AuthCancelled` (a request
+in flight is aborted), and with a `proof:` every poll carries a DPoP proof. The endpoint is
+`OidcEndpoints.deviceAuthorization` (`keycloak` spells it, `discover` reads `device_authorization_endpoint`; write it
+out for a provider that does not advertise it, such as `authkestra-op`). `FakeDeviceWait` and
+`FakeDeviceAuthorizationServer` drive it in a test
+([docs/auth.md](https://github.com/fespalier/fespalier/blob/main/docs/auth.md#signing-in-on-another-device-the-device-grant)).
+
+An app that signs in this way alone leaves `redirectUri` and `openBrowser` out (both optional since 0.27.0); a
+`BrowserSignIn`, a step-up or `endBrowserSession` on such a backend throws a `StateError` that names them:
+
+```dart
+OidcBackend(
+  issuer: Uri.parse('https://sso.example.com/realms/tv'),
+  clientId: 'tv-app',
+  endpoints: OidcEndpoints.keycloak(Uri.parse('https://sso.example.com/realms/tv')),
+  transport: transport,
+)
+```
+
 ## Libraries
 
-| Library                                      | What is in it                                                                                                                                                                              |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `package:fespalier_oidc/fespalier_oidc.dart` | `OidcBackend`, `OidcEndpoints`, `TokenCredential`, `BearerAuthenticator`, `ProofOfPossession`, `BrowserSignIn`, `PasswordSignIn`, `userFromClaims`, `keycloakRoles`, `unverifiedJwtClaims` |
-| `package:fespalier_oidc/testing.dart`        | `FakeProof` (a proof of possession with no crypto), `fakeTokenSession`                                                                                                                     |
+| Library                                      | What is in it                                                                                                                                                                                                                          |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package:fespalier_oidc/fespalier_oidc.dart` | `OidcBackend`, `OidcEndpoints`, `TokenCredential`, `BearerAuthenticator`, `ProofOfPossession`, `BrowserSignIn`, `PasswordSignIn`, `DeviceSignIn`, `DeviceCode`, `DeviceWait`, `userFromClaims`, `keycloakRoles`, `unverifiedJwtClaims` |
+| `package:fespalier_oidc/testing.dart`        | `FakeProof` (a proof of possession with no crypto), `fakeTokenSession`, `FakeDeviceWait`, `FakeDeviceAuthorizationServer`                                                                                                              |
 
 ## DPoP
 

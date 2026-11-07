@@ -212,7 +212,8 @@ void main() {
           isA<UnsupportedError>().having(
             (e) => e.message,
             'message',
-            'fespalier_oidc: OidcBackend signs in with BrowserSignIn, not PasswordSignIn',
+            'fespalier_oidc: OidcBackend signs in with BrowserSignIn or DeviceSignIn, '
+                'not PasswordSignIn',
           ),
         ),
       );
